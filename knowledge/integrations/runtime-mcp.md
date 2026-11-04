@@ -40,6 +40,20 @@ depend on, wire it into the runtime's discovery + execution path, add an
 builds), and make **credential acquisition pluggable** so non-web (CLI) hosts
 can authenticate. Acceptance is MCP working in the example coding CLI.
 
+## HTTP response bounds
+
+Every response from an MCP server is untrusted, including initialization,
+continuations, task polls, resources, and error bodies. The [HTTP reader](../../crates/core/src/mcp/http/body.rs)
+counts streamed bytes before retaining them and drops oversized bodies. A single
+request deadline covers response headers and body reading; HTTP failures retain
+their status and a bounded excerpt even if the body fails or stalls. This keeps
+credential refresh and cache invalidation independent of error-body quality.
+
+Operators can raise the ordinary response bound for legitimate large results;
+see [MCP HTTP response limits](../../docs/sre/environment-variables.md#mcp-http-response-limits).
+Discovery keeps its existing aggregate catalog budgets. DNS pinning, egress
+policy, sessions, and multi-round-trip negotiation use the same request path.
+
 ## Motivation and constraints
 
 The end goals for this work, and how the design meets each:
@@ -155,6 +169,18 @@ is the issuer), the token is bound to the server with a `resource` indicator
 (RFC 8707), and `prepare_login`/`complete_login` split the flow so the host
 supplies only the callback leg, a loopback listener for a CLI, a redirect
 route for the control plane. Persistence is the `McpTokenStore` trait.
+
+Outbound login can negotiate Client ID Metadata Documents (CIMD) through
+`prepare_login_with_options`. A host-supplied configured or saved registration
+wins; otherwise an explicitly advertised CIMD capability selects the host's
+published HTTPS metadata URL as a public client, falling back to DCR when that
+option is unavailable. Hosts retain ownership of issuer-scoped registrations
+and must publish a document covering their redirect URIs. The client validates
+the identifier's syntax and preserves its exact spelling, but never fetches
+it. Authorization and token errors do not trigger a second registration attempt.
+PKCE, callback state/issuer checks, resource binding and token persistence use
+the same path for all client types. This is independent of inbound `/oauth/*`
+support, which does not gain arbitrary-URL metadata fetching.
 
 Every OAuth request goes through `EgressService` with DNS pinning. The
 authorization-server URL is discovered *from the remote MCP server*, so it is

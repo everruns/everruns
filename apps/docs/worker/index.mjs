@@ -10,6 +10,8 @@
 // an AI client asking for `text/markdown` on the page URL gets that twin, the
 // same contract the landing site's middleware follows, so agents see one
 // behavior across everruns.com.
+import { changelogRedirect, galleryRedirect } from "../redirects.mjs";
+
 const BASE = "/docs";
 
 // The former docs host. This Worker also takes the route `docs.everruns.com/*`
@@ -91,6 +93,9 @@ export default {
     if (url.pathname === "/" || url.pathname === BASE) {
       return Response.redirect(new URL(`${BASE}/`, url), 301);
     }
+
+    const successor = changelogRedirect(url) ?? galleryRedirect(url);
+    if (successor) return Response.redirect(successor, 301);
 
     const markdown = markdownPath(url.pathname);
     const vary = markdown ? [["Vary", "Accept, User-Agent"]] : [];

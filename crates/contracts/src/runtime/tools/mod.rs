@@ -353,11 +353,11 @@ impl ToolRegistry {
 
     /// Create a tool registry for autonomous scheduled monitor probes.
     ///
-    /// Probe execution currently uses a scheduler-local [`ToolContext`] instead
-    /// of the fully populated worker/API executor context. Keep this registry to
-    /// context-free tools so scheduled probes cannot bypass session-scoped
-    /// controls such as network ACLs, egress routing, storage, or filesystem
-    /// mediation.
+    /// The host adds exactly the tools in
+    /// [`MONITOR_PROBE_TOOLS`](crate::runtime::monitor_probe::MONITOR_PROBE_TOOLS)
+    /// and runs them with the session's network access list and egress
+    /// routing. Tools that need session storage, files or a sandbox stay out:
+    /// a probe context does not carry them.
     pub fn with_monitor_probe_defaults() -> Self {
         Self::new()
     }

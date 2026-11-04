@@ -66,6 +66,11 @@ See [test database selection](../../crates/server/src/storage/test_database.rs).
 Disposable clusters disable durability for functional tests. They prove actual SQL,
 constraints, transactions, and locking, but do not establish crash persistence.
 Persistence and recovery validation needs durable PostgreSQL settings.
+Tests that check pool-level durability overrides must establish their defaults
+with connection-local startup options, rather than assume the disposable server
+is durable or change settings shared by other tests. The
+[pool isolation regression](../../crates/server/tests/domain/db_pool_isolation_test.rs)
+checks both durable and relaxed connection defaults.
 
 The library version is pinned to its published compatibility line, with default
 features disabled so it retains the existing archive source and Rustls backend.

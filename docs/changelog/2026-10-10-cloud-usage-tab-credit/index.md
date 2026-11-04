@@ -22,3 +22,9 @@ banner appears on every page when credit is low (under $1), below zero, or used
 up, asking members to contact an admin and admins to top up.
 
 See [Credit and the spend cap](/getting-started/cloud/#credit-and-the-spend-cap).
+
+## Update 2026-11-02
+
+Credit activity now links back to your balance in Billing, and Billing links
+directly to credit activity. Both pages keep the app navigation available while
+credit purchases are paused.

@@ -34,6 +34,7 @@ impl WorkerServiceImpl {
         &self,
         request: Request<Streaming<EmitEventRequest>>,
     ) -> Result<Response<EmitEventStreamResponse>, Status> {
+        let authority = super::super::authority::resolve(request.extensions())?.clone();
         let mut stream = request.into_inner();
         let mut event_requests: Vec<everruns_core::EventRequest> = Vec::new();
         // The first message's fence is the stream's; every message must carry
@@ -70,6 +71,10 @@ impl WorkerServiceImpl {
 
             event_requests.push(core_event_request);
         }
+
+        // A stream admitted before cutover cannot defer its writes until after
+        // legacy authority has been refused. Recheck before publishing/storing.
+        super::super::authority::admit_ingress(&self.db, &authority).await?;
 
         // Emit all events through the EventService
         let (events_processed, last_event) = match fence.flatten() {

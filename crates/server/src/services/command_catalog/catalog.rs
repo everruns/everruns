@@ -31,7 +31,10 @@ fn exposed_to_scripting(meta: &crate::domains::common::CommandMeta) -> bool {
     // Durable control-plane APIs are infrastructure internals. App schedule
     // channels expose their own user-facing commands instead. Internal worker
     // commands are nobody's tool (`INTERNAL_COMMAND_PATH_PREFIX`).
-    !meta.path.starts_with("/v1/durable/") && !meta.is_internal() && !meta.is_retired()
+    !meta.path.starts_with("/v1/durable/")
+        && !meta.is_internal()
+        && !meta.is_retired()
+        && !meta.is_interactive_secret_setup()
 }
 
 static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock::new(|| {
@@ -911,6 +914,20 @@ fn decorate_mcp_capability_refs(value: &mut serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn external_worker_secret_setup_is_not_an_agent_tool() {
+        use crate::domains::{common::Command, external_agents::RegisterExternalAgent};
+        let meta = RegisterExternalAgent::meta();
+        assert!(!is_exposed(&meta));
+        assert!(scripted_descriptor(meta.name, ToolsetMode::Full).is_none());
+        assert!(super::super::cli_tree::contract(meta.name).is_none());
+        assert!(
+            !everruns_capabilities::capabilities::platform_native::operations()
+                .iter()
+                .any(|operation| operation.name == meta.name)
+        );
+    }
 
     #[test]
     fn bash_usage_renders_booleans_as_switches() {

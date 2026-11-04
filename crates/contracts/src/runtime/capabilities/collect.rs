@@ -78,6 +78,8 @@ pub struct CollectedCapabilities {
     /// (e.g. AGENTS.md hierarchies) belongs here, below harness safety
     /// instructions in the instruction hierarchy.
     pub conversation_context_parts: Vec<String>,
+    /// Mutable reference data recorded as later conversation updates.
+    pub conversation_context_update_parts: Vec<String>,
     /// Source attribution for each conversation-context addition.
     pub conversation_context_attributions: Vec<SystemPromptAttribution>,
     /// Tool implementations for the registry
@@ -143,6 +145,12 @@ impl CollectedCapabilities {
         } else {
             Some(self.conversation_context_parts.join("\n\n"))
         }
+    }
+
+    /// Combined current reference data for append-only conversation updates.
+    pub fn conversation_context_update(&self) -> Option<String> {
+        (!self.conversation_context_update_parts.is_empty())
+            .then(|| self.conversation_context_update_parts.join("\n\n"))
     }
 
     /// Apply all collected message filter providers to a query.
@@ -622,6 +630,7 @@ async fn collect(
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut conversation_context_parts: Vec<String> = Vec::new();
+    let mut conversation_context_update_parts: Vec<String> = Vec::new();
     let mut conversation_context_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
@@ -860,6 +869,21 @@ async fn collect(
                 conversation_context_parts.push(contribution);
             }
 
+            if dynamic_prompts
+                && let Some(contribution) = effective
+                    .conversation_context_update_contribution_with_config(
+                        ctx,
+                        cap_config.config_value(),
+                    )
+                    .await
+            {
+                conversation_context_attributions.push(SystemPromptAttribution {
+                    capability_id: cap_id.to_string(),
+                    content: contribution.clone(),
+                });
+                conversation_context_update_parts.push(contribution);
+            }
+
             // Collect declared facts. Static facts fold into the cached prompt
             // below; dynamic facts are re-collected per request by `ReasonAtom`
             // and appended at the conversation tail, so here we only note their
@@ -1022,6 +1046,7 @@ async fn collect(
         system_prompt_parts,
         system_prompt_attributions,
         conversation_context_parts,
+        conversation_context_update_parts,
         conversation_context_attributions,
         tools,
         tool_definitions,
@@ -1106,6 +1131,7 @@ pub async fn apply_capabilities(
     // leading user-role message, never as system prompt. Bound before fields
     // move out of `collected` below.
     let conversation_context = collected.conversation_context();
+    let conversation_context_update = collected.conversation_context_update();
     // Build tool registry from collected tools
     let mut tool_registry = ToolRegistry::new();
     for tool in collected.tools {
@@ -1135,6 +1161,7 @@ pub async fn apply_capabilities(
         // Conversation context (e.g. hierarchical AGENTS.md) renders as the
         // leading user-role message, never as system prompt.
         conversation_context,
+        conversation_context_update,
         communication: base_runtime_agent.communication,
     };
 

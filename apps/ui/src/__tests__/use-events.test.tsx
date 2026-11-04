@@ -7,6 +7,7 @@ import { useEvents } from "@/hooks/use-sessions";
 const mockSseListeners: Record<string, Array<(e: MessageEvent) => void>> = {};
 
 jest.mock("@/lib/event-stream", () => ({
+  eventStreamScope: jest.requireActual("@/lib/event-stream").eventStreamScope,
   createEventStream: jest.fn(() => ({
     addEventListener: (type: string, listener: (e: MessageEvent) => void) => {
       (mockSseListeners[type] ||= []).push(listener);

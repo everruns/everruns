@@ -7,7 +7,6 @@ significance: major
 products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 release: "0.31.0"
-visual: "Ask User inline card in a chat session with a choice question and a text question, Continue and Decline buttons visible; route /chat/{session}; crop to the card."
 links:
   docs: [/capabilities/ask-user/, /framework/ask-user/]
   prs: [everruns/everruns#3735, everruns/everruns#3738, everruns/everruns#3747, everruns/everruns#3757, everruns/everruns#3790]
@@ -19,6 +18,8 @@ choice options, a free-form text field, or a secret field; answering resumes
 the turn. An unanswered choice falls back to the option the model recommended,
 while text and secret questions are declined. A secret answer never enters the
 event log or the agent's context. The default chat harnesses enable it.
+
+![Ask User card in a chat asking for an order number, with Decline and Continue](./ask-user-card@2x.png)
 
 **In code:** implement the `AskUser` trait to answer questions from your own
 interface when you embed the Framework.

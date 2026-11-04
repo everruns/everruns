@@ -186,6 +186,11 @@ text first persists the existing same-message replacement boundary, so a new
 executor restarts the attempt instead of finalizing its abandoned partial text.
 The boundary is written only if another wait fits the remaining recovery budget.
 A trailing stream error otherwise retains the usable partial answer.
+The checkpoint also keeps the last provider failure's classification (kind,
+status and short allowlisted identifiers, never provider text). When the window
+expires, even on an attempt that never answered or after executor loss, the
+terminal error names both the exhausted budget and that cause, so a shared-pool
+429, an outage and a network timeout stay distinguishable.
 The [Framework tests](../../crates/everruns/tests/hibernation.rs) cover reopening,
 policy limits, cancellation and the backend-free default Engine.
 

@@ -5,7 +5,7 @@
 // flag regressions (passed → failed) and improvements (failed → passed). With a
 // pass-rate row on top, this is the "did this run regress vs last" view.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { meanScore } from "@/components/evals/eval-format";
@@ -59,6 +59,8 @@ function runShortId(run: EvalRun): string {
 }
 
 export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[] }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   // Oldest → newest so "previous run" is the column to the left.
   const ordered = [...runs].sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -98,7 +100,7 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
                     {runShortId(run)}
                   </Link>
                   <div className="text-[10px] font-normal text-muted-foreground whitespace-nowrap">
-                    {new Date(run.created_at).toLocaleDateString()}
+                    {new Date(run.created_at).toLocaleDateString(displayLocale)}
                   </div>
                   {run.source === "external" && (
                     <Badge variant="secondary" className="mt-1 text-[10px]">

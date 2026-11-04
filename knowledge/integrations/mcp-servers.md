@@ -93,12 +93,13 @@ never crosses authorization contexts.
 
 #### Multi round-trip requests (MRTR)
 
-A `2026-07-28` server may answer `tools/call` with
+A `2026-07-28` server may answer `tools/call` or `resources/read` with
 `resultType: "input_required"` rather than a result. The client handles both
-shapes (`crates/core/src/mcp/http.rs::resolve_input_required`):
+shapes (`crates/core/src/mcp/http/mrtr.rs::resolve_input_required`), following the
+[2026-07-28 MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr):
 
 - **No `inputRequests`**: the server only needs the round trip, having stashed
-  context in `requestState`. Retry once, echoing `requestState` verbatim under a
+  context in `requestState`. Retry, echoing `requestState` verbatim under a
   *different* JSON-RPC id, since MRTR treats the retry as an independent request.
 - **A URL mode `elicitation/create`**: handled, see [URL mode
   elicitation](#url-mode-elicitation) below.
@@ -112,6 +113,23 @@ shapes (`crates/core/src/mcp/http.rs::resolve_input_required`):
 Bounded at two rounds (`MAX_INPUT_REQUIRED_ROUNDS`): a server may keep asking,
 but each round costs a human interaction and holds the turn open, so looping
 would only burn the call timeout.
+
+Resource reads use the same input handlers and per-server elicitation policy
+as tool calls. Continuations retain the original method, exact URI, credential,
+protocol version and negotiated session; only the JSON-RPC id and round inputs
+change. Each round replaces the previous opaque state and input responses.
+Resource consent and form answers use a reserved method-and-URI target, so a
+read cannot consume another resource's answer or a tool's consent. A tool trying
+to elicit under that reserved target fails closed.
+
+A single 60-second deadline covers the HTTP resource request, negotiation,
+input handling and all retries. Dropping the read cancels the in-flight future;
+there are no background continuation tasks. The free HTTP request helper also
+handles state-only resource retries, but declares no input capabilities because
+it has no host handlers. Discovery methods still declare no input capabilities.
+`prompts/get` MRTR and stdio resource MRTR remain outside this implementation.
+These contracts are exercised in
+[`resource_read.rs`](../../crates/core/tests/consolidated/mcp/resource_read.rs).
 
 #### URL mode elicitation
 

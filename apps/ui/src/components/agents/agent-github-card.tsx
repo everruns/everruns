@@ -19,8 +19,8 @@
 // shows a "Set the avatar" step: download the agent's avatar, open the App's
 // settings page. Whether a logo is already set is not detected.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import {

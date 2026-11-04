@@ -241,6 +241,11 @@ impl LocalScheduleStore {
             created_at: now,
             updated_at: now,
             deleted_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
+            stop_reason: None,
+            budget: None,
         };
         if schedule.cron_expression.is_some() {
             schedule.next_trigger_at = Some(next_cron_trigger(&schedule, now)?);
@@ -721,8 +726,10 @@ fn next_cron_trigger(schedule: &SessionSchedule, after: DateTime<Utc>) -> Result
         ))
     })?;
     let local_after = after.with_timezone(&timezone);
+    // cron yields both offsets of an ambiguous wall time, including an earlier
+    // UTC instant when starting in the repeated hour. Never schedule the past.
     cron.after(&local_after)
-        .next()
+        .find(|next| next.with_timezone(&Utc) > after)
         .map(|next| next.with_timezone(&Utc))
         .ok_or_else(|| AgentLoopError::config("cron expression has no future occurrence"))
 }
@@ -756,13 +763,23 @@ impl SessionScheduleStore for LocalScheduleStore {
         cron_expression: Option<String>,
         scheduled_at: Option<DateTime<Utc>>,
         timezone: String,
+        bounds: everruns_core::session_schedule::ScheduleBounds,
     ) -> std::result::Result<SessionSchedule, ScheduleLimitError> {
         if let Some(cron) = cron_expression.as_deref() {
             validate_cron_min_interval_with(cron, schedule_limits().0)
                 .map_err(ScheduleLimitError::Rejected)?;
         }
+        // The agent states what it needs here as on the server, and the local
+        // record keeps it; the local runner does not meter spend.
+        let bounds = everruns_core::session_schedule::resolve_agent_schedule_bounds(
+            &bounds,
+            &everruns_core::session_schedule::BackgroundLimits::default(),
+            cron_expression.is_some(),
+            Utc::now(),
+        )
+        .map_err(ScheduleLimitError::Rejected)?;
 
-        let schedule = self
+        let mut schedule = self
             .build_schedule(
                 session_id,
                 description,
@@ -776,6 +793,9 @@ impl SessionScheduleStore for LocalScheduleStore {
                 AgentLoopError::Configuration(message) => ScheduleLimitError::Rejected(message),
                 error => ScheduleLimitError::Store(error),
             })?;
+        schedule.ends_at = bounds.ends_at;
+        schedule.max_runs = bounds.max_runs;
+        schedule.stop_when = bounds.stop_when;
         let snapshot = serde_json::to_string(&schedule)
             .map_err(|e| ScheduleLimitError::Store(AgentLoopError::from(LocalError::from(e))))?;
         let metadata_json = serde_json::to_string(&Value::Object(Default::default()))
@@ -923,6 +943,31 @@ impl SessionScheduleStore for LocalScheduleStore {
 #[cfg(test)]
 mod retry_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn recurring_cron_stays_in_future_during_repeated_hour() -> Result<()> {
+        let store =
+            LocalScheduleStore::new(SqliteDb::open_in_memory()?, 1, PrincipalId::from_seed(1))?;
+        let schedule = store
+            .create_schedule(
+                SessionId::new(),
+                "tick".into(),
+                Some("*/1 * * * * *".into()),
+                None,
+                "America/Chicago".into(),
+            )
+            .await?;
+        for timestamp in ["2026-11-01T06:02:07Z", "2026-11-01T07:02:07Z"] {
+            let after = DateTime::parse_from_rfc3339(timestamp)
+                .unwrap()
+                .with_timezone(&Utc);
+            assert_eq!(
+                next_cron_trigger(&schedule, after)?,
+                after + chrono::Duration::seconds(1)
+            );
+        }
+        Ok(())
+    }
 
     #[tokio::test]
     async fn failed_delivery_keeps_retry_exclusive_until_timeout() -> Result<()> {

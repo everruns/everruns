@@ -1,12 +1,11 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Capability } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import { localizedCapabilityName } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
 
 /** The same read-only capability presentation for saved agents and import candidates. */
 export function AgentCapabilityList({

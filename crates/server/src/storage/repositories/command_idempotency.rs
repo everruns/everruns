@@ -10,6 +10,22 @@ use crate::storage::command_idempotency::{
 };
 
 impl Database {
+    /// Serialize a keyed operation on its request transaction without making
+    /// contenders wait with a checked-out connection. Cancellation or process
+    /// death releases the lock together with the uncommitted claim and effect.
+    pub(crate) async fn try_lock_command_idempotency(
+        &self,
+        scope: &IdempotencyKeyScope,
+    ) -> Result<bool> {
+        self.pool
+            .try_advisory_xact_lock(&format!(
+                "command_idempotency/{}/{}/{}",
+                scope.org_id, scope.principal_id, scope.key
+            ))
+            .await
+            .map_err(Into::into)
+    }
+
     /// Claims the key in one statement: a new key is inserted, and an expired
     /// row, or an abandoned in-flight row for the same request, is taken
     /// over. Anything else is returned as it stands.
@@ -24,6 +40,7 @@ impl Database {
                 SELECT ctid FROM command_idempotency_keys
                 WHERE expires_at < NOW()
                 LIMIT $1
+                FOR UPDATE SKIP LOCKED
             )
             "#,
         )

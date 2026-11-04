@@ -40,12 +40,19 @@ const mockContext = {
   chatSends: { pending: [], busy: false, retry: jest.fn() },
 };
 
+jest.mock("@/components/chat/run-request-cards", () => ({
+  RunRequestCards: () => null,
+}));
+
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   useSessionContext: () => mockContext,
 }));
 
 jest.mock("@/hooks", () => ({
-  useMessageScrollerVisibility: () => ({ currentAnchorId: null, scrollToAnchor: jest.fn() }),
+  useMessageScrollerVisibility: () => ({
+    currentAnchorId: null,
+    scrollToAnchor: jest.fn(),
+  }),
   useScrollManager: () => ({
     scrollContainerRef: { current: null },
     messagesEndRef: { current: null },
@@ -94,7 +101,9 @@ jest.mock("@/providers/locale-provider", () => ({
 
 import { SessionTranscript } from "@/components/session/session-transcript";
 
-jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+}));
 
 describe("SessionTranscript replay and streaming", () => {
   beforeEach(() => {

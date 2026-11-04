@@ -5,16 +5,18 @@
 //! Repeat with `poll`, `collect` or `cancel` and the same directory.
 //! Set BATCH_SCOPE to the same trusted tenant/account on every invocation.
 //!
-//! This calls the real Anthropic Message Batches API and can incur charges.
+//! BATCH_PROVIDER=anthropic|openai|gemini selects the enabled provider feature.
+//! This calls the real provider batch API and can incur charges.
 //! A new directory is required for each submission. An intent without a ticket
 //! means creation may have succeeded: reconcile in the provider console before retrying.
+
+mod batch_support;
 
 use std::{error::Error, fs::OpenOptions, io::Write, path::Path};
 
 use everruns::{
     Model,
     batch::{Batch, BatchTicket},
-    providers::anthropic::Anthropic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -64,12 +66,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if !valid {
         return Err("usage: batch_classification <submit|poll|collect|cancel> STATE_DIRECTORY; or recover STATE_DIRECTORY PROVIDER_JOB_ID".into());
     }
+    let (provider, provider_name, default_model) = batch_support::provider()?;
     let scope = std::env::var("BATCH_SCOPE")
-        .unwrap_or_else(|_| "classification-example/anthropic-default".into());
-    let batch = Batch::new(Anthropic::from_env()?, scope.clone());
+        .unwrap_or_else(|_| format!("classification-example/{provider_name}-default"));
+    let batch = Batch::new(provider, scope.clone());
     let directory = Path::new(&args[1]);
     if args[0] == "submit" {
-        let model_id = std::env::var("BATCH_MODEL").unwrap_or_else(|_| "claude-sonnet-5".into());
+        let model_id = std::env::var("BATCH_MODEL").unwrap_or_else(|_| default_model.into());
         let model = Model::from(model_id.as_str());
         let items = [
             (

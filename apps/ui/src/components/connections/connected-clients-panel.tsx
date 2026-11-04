@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 
 // External AI clients (Claude, ChatGPT, Cursor, ...) the viewer approved to act

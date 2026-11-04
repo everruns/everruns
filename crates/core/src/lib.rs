@@ -112,6 +112,10 @@ pub mod error_reporter;
 // once, so one incident reports as one incident (EVE-1071).
 pub mod database_failure;
 
+// Bounds how often one call site reports a failure that keeps repeating, so a
+// datastore outage cannot exhaust the embedder's error budget (EVE-1328).
+pub mod report_throttle;
+
 // Observability implementations live behind the opt-in `otel`/`braintrust` host features
 // (EVE-651, EVE-876): exporter listeners (Braintrust, OpenTelemetry), the
 // CompositeEventListener fan-out, and OpenTelemetry/OTLP initialization. They
@@ -183,6 +187,7 @@ pub use everruns_contracts::runtime::channel;
 pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
+pub use everruns_contracts::runtime::completion_check;
 pub use everruns_contracts::runtime::conversation;
 pub mod permissions;
 pub use everruns_contracts::runtime::resource_names;
@@ -478,20 +483,22 @@ pub use events::{
     ContextCompactionSkippedData, Event, EventBuilder, EventContext, EventData, EventRequest,
     FILE_WRITTEN, FileWrittenData, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
     LlmCompactionInfo, LlmCostComponent, LlmGenerationData, LlmGenerationMetadata,
-    LlmGenerationOutput, LlmRetryInfo, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
+    LlmGenerationOutput, LlmRetryInfo, MAX_REACTION_EMOJI_BYTES, MESSAGE_REACTION_ADDED,
+    MESSAGE_REACTION_REMOVED, MessageReactionData, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
     OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED, OUTPUT_MESSAGE_STARTED,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM, REASON_RECOVERED, REASON_STARTED,
-    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReasonCompletedData,
-    ReasonItemData, ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED,
-    SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED,
-    SessionActivatedData, SessionIdledData, SessionModelChangedData, SessionStartedData,
-    SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS,
-    TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
-    TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolOutputDeltaData,
-    ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
-    TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReactionActor,
+    ReactionActorKind, ReasonCompletedData, ReasonItemData, ReasonRecoveredData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode,
+    SESSION_ACTIVATED, SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED,
+    SESSION_TITLE_UPDATED, SessionActivatedData, SessionIdledData, SessionModelChangedData,
+    SessionStartedData, SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED,
+    TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+    TURN_SEALED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
+    TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    normalize_reaction_emoji,
 };
 pub use finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,

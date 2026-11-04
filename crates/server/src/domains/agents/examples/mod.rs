@@ -247,6 +247,8 @@ impl Command for AdoptAgentExample {
         }
 
         let req = CreateAgentRequest {
+            owner_agent_id: None,
+            completion_check: Default::default(),
             localizations: crate::harnesses::localizations::for_builtin(seed.name),
             service_virtual_user_id: None,
             id: None,

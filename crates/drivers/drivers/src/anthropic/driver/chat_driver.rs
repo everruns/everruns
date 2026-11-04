@@ -402,7 +402,11 @@ impl AnthropicChatDriver {
             max_tokens,
             temperature,
             system,
-            stream: true,
+            // Keep long decodes on SSE: the Messages API limits long-running
+            // non-streamed requests. Never lower the caller's token budget.
+            stream: !(config.prefer_non_streaming
+                && !config.limits.needs_incremental_events()
+                && max_tokens <= 8192),
             tools,
             tool_choice,
             thinking,
@@ -430,6 +434,21 @@ impl AnthropicChatDriver {
 
 #[async_trait]
 impl ChatDriver for AnthropicChatDriver {
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<everruns_contracts::driver_registry::LlmResponse> {
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        self.chat_completion(endpoint, messages, &config).await
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
         Some(self)
@@ -450,6 +469,10 @@ impl ChatDriver for AnthropicChatDriver {
             max_tokens_from_profile,
         } = self.prepare_request(endpoint, messages, config)?;
         let request_messages = Arc::new(request.messages.clone());
+        let thread = Arc::new(Mutex::new(message_threads::Exchange::new(
+            config,
+            request.context_management.is_some(),
+        )));
 
         // Share the (possibly fallback-mutated) request across reconnect
         // attempts: the classify closure mutates it for the one-shot max_tokens
@@ -462,25 +485,37 @@ impl ChatDriver for AnthropicChatDriver {
         // response body" flake). Header-phase retries (429/5xx, transient send
         // failures, and the max_tokens fallback) are handled inside the
         // per-attempt send.
-        let (event_stream, retry_metadata) =
-            connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", |attempts| {
-                self.send_messages_request(
-                    endpoint,
-                    Arc::clone(&request),
-                    SendMessagesOptions {
-                        needs_interleaved_thinking,
-                        wants_million_context,
-                        wants_cache_diagnostics,
-                        conversation_betas: &conversation_betas,
-                        wants_server_compaction,
-                        max_tokens_from_profile,
-                        model: &config.model,
-                        extra_headers: &config.extra_headers,
-                    },
-                    attempts,
+        let send = |attempts| {
+            self.send_messages_request(
+                endpoint,
+                Arc::clone(&request),
+                SendMessagesOptions {
+                    needs_interleaved_thinking,
+                    wants_million_context,
+                    wants_cache_diagnostics,
+                    conversation_betas: &conversation_betas,
+                    wants_server_compaction,
+                    max_tokens_from_profile,
+                    model: &config.model,
+                    extra_headers: &config.extra_headers,
+                },
+                attempts,
+                &thread,
+            )
+        };
+        let native_json = !request.lock().unwrap().stream;
+        let (event_stream, retry_metadata) = if native_json {
+            let (response, retries) = send(0).await?;
+            let message: Value = response.json().await.map_err(|error| {
+                AgentLoopError::llm_kind(
+                    everruns_contracts::llm_error::LlmErrorKind::MalformedResponse,
+                    format!("Invalid Anthropic JSON response: {error}"),
                 )
-            })
-            .await?;
+            })?;
+            (non_streaming::message_frames(message)?, retries)
+        } else {
+            connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", send).await?
+        };
         if wants_server_compaction {
             server_compaction::record_confirmation(endpoint, &config.model);
         }
@@ -488,7 +523,14 @@ impl ChatDriver for AnthropicChatDriver {
         // fallback rewrote it: the same value `send_messages_request` sent.
         let captured_request = config
             .capture_request
-            .then(|| serde_json::to_value(&*request.lock().unwrap()).ok())
+            .then(|| {
+                let sent = thread.lock().unwrap().sent_body.clone();
+                if sent.is_null() {
+                    serde_json::to_value(&*request.lock().unwrap()).ok()
+                } else {
+                    Some(sent)
+                }
+            })
             .flatten();
 
         let model = config.model.clone();
@@ -520,6 +562,7 @@ impl ChatDriver for AnthropicChatDriver {
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
+            let thread = Arc::clone(&thread);
             let request_messages = Arc::clone(&request_messages);
             let input_tokens = Arc::clone(&input_tokens);
             let output_tokens = Arc::clone(&output_tokens);
@@ -975,6 +1018,11 @@ impl ChatDriver for AnthropicChatDriver {
                                 // stop (`max_tokens`, `refusal`, none at all)
                                 // discards what the model started: count it.
                                 let stop = raw_stop_reason.lock().unwrap().clone();
+                                thread.lock().unwrap().complete(
+                                    response_id.lock().unwrap().as_deref(),
+                                    stop.as_deref(),
+                                    &content,
+                                );
                                 let tool_calls_dropped = if stop.as_deref() == Some("tool_use") {
                                     0
                                 } else {
@@ -1036,9 +1084,12 @@ impl ChatDriver for AnthropicChatDriver {
                                     metadata
                                 })))
                             }
-                            "error" => Ok(LlmStreamEvent::Error(
-                                format!("Anthropic stream error: {}", event.data).into(),
-                            )),
+                            "error" => {
+                                thread.lock().unwrap().invalidate();
+                                Ok(LlmStreamEvent::Error(
+                                    format!("Anthropic stream error: {}", event.data).into(),
+                                ))
+                            },
                             "ping" => {
                                 // Keep-alive ping, ignore
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1049,9 +1100,10 @@ impl ChatDriver for AnthropicChatDriver {
                             }
                         }
                     }
-                    Err(e) => Ok(LlmStreamEvent::Error(
-                        format!("Stream error: {}", e).into(),
-                    )),
+                    Err(e) => {
+                        thread.lock().unwrap().invalidate();
+                        Ok(LlmStreamEvent::Error(format!("Stream error: {}", e).into()))
+                    },
                 }
             }
         }));

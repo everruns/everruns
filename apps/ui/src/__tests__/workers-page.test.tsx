@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import WorkersPage from "@/app/(main)/durable/workers/page";
@@ -243,7 +243,7 @@ describe("WorkersPage", () => {
   // ============================================
 
   describe("Worker Actions", () => {
-    it("calls drain mutation after confirmation", () => {
+    it("calls drain mutation after confirmation", async () => {
       const mockDrainMutate = jest.fn();
       mockUseDrainWorker.mockReturnValue({
         mutate: mockDrainMutate,
@@ -255,7 +255,7 @@ describe("WorkersPage", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /^Drain$/i }));
       expect(mockConfirm).toHaveBeenCalled();
-      expect(mockDrainMutate).toHaveBeenCalledWith("w-active-1");
+      await waitFor(() => expect(mockDrainMutate).toHaveBeenCalledWith("w-active-1"));
     });
 
     it("does not drain when confirmation is cancelled", () => {
@@ -305,3 +305,8 @@ describe("WorkersPage", () => {
     });
   });
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

@@ -81,6 +81,12 @@ pub struct ProvisionedSlackApp {
     /// created before an organization could connect more than one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
+    /// The health issue whose fixer started the install in flight, so the
+    /// callback returns the browser to that issue instead of the channel
+    /// editor. Set only by the server, alongside `install_state`, and spent
+    /// with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_return_issue: Option<uuid::Uuid>,
 }
 
 /// Hand-written for the same reason as `SlackAppCredentials`: the derived one
@@ -125,6 +131,12 @@ pub enum SlackProvisioningError {
     /// surface; it never carries our token.
     #[error("Slack rejected the request: {0}")]
     Rejected(String),
+    /// Slack refused the call and said which parts were wrong, as
+    /// `apps.manifest.create` does for `invalid_manifest`. `problems` is
+    /// Slack's own list, each `pointer: message`; without it the person sees
+    /// only "invalid_manifest" and cannot tell which field to change.
+    #[error("Slack rejected the request: {code} ({})", problems.join("; "))]
+    RejectedWithProblems { code: String, problems: Vec<String> },
     /// The call did not complete — network, timeout, unparseable body.
     #[error("Could not reach Slack: {0}")]
     Unreachable(String),

@@ -340,6 +340,24 @@ impl TxPool {
             .filter(|slot| slot.pool == pool_identity(&self.pool))
     }
 
+    /// Try a lock on the current request transaction, never an implicit one.
+    /// Unlike ordinary queries this must fail closed when there is no matching
+    /// scope or a savepoint holds its connection: a pool fallback would release
+    /// the lock before the operation it is supposed to protect.
+    pub(crate) async fn try_advisory_xact_lock(&self, key: &str) -> Result<bool, sqlx::Error> {
+        let slot = self.slot().ok_or_else(|| {
+            sqlx::Error::Protocol("advisory lock requires a matching request transaction".into())
+        })?;
+        let mut guard = slot.lock().await.ok_or_else(|| {
+            sqlx::Error::Protocol("advisory lock cannot bypass an open savepoint".into())
+        })?;
+        let connection = guard.as_mut().ok_or_else(closed)?;
+        sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1::text, 0))")
+            .bind(key)
+            .fetch_one(&mut **connection)
+            .await
+    }
+
     /// Begin a transaction of its own on the pool, outside any command
     /// transaction: for lock guards whose lifetime is their holder's.
     pub async fn begin_detached(

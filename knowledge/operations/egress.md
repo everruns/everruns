@@ -142,10 +142,16 @@ Requests can set:
 - `platform_default`, sign when the platform has an egress signer configured.
 - `required`, fail if the platform cannot sign the request.
 
-V1 keeps the request shape provider-neutral. The concrete signer can implement
-HTTP Message Signatures, vendor-specific signatures, or both. Existing fetchkit
-bot-auth signing should move behind the egress service rather than remain a
-capability-local signing path.
+The concrete signer is Web Bot Auth (RFC 9421 HTTP Message Signatures with
+the `draft-ietf-webbotauth-httpsig-protocol` profile), owned by the direct
+egress service so every opted-in caller signs the same way with one key:
+[`crates/core/src/host/web_bot_auth.rs`](../../crates/core/src/host/web_bot_auth.rs).
+`web_fetch` and the Bashkit shell ask for `platform_default`; fetchkit and
+Bashkit no longer sign on their own. The server publishes the matching signed
+key directory at `/.well-known/http-message-signatures-directory`. Format
+choices that track the verifier ecosystem (string `Signature-Agent`, covered
+components) are recorded at the top of that file. Operator setup:
+[Request Signing](../../docs/sre/request-signing.md).
 
 ## Future Egress Gateway
 

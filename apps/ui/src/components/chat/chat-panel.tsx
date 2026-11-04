@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { usePageDraftTools } from "@/components/chat-mode/use-page-draft-tools";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +27,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
+import { useChatDraft } from "@/hooks/use-chat-draft";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
@@ -47,7 +52,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 interface ParsedSystemCommand {
@@ -198,7 +203,7 @@ export function ChatPanel({
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [draftSending, setDraftSending] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue, draftRecoveryError] = useChatDraft(chatSends.storageKey);
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
@@ -666,6 +671,7 @@ export function ChatPanel({
           <SessionTranscript
             showRunCards={showRunCards}
             collapseWorkLog={collapseWorkLog}
+            runRequests
             // Playground sessions cannot be forked, so they get no Branch or rating.
             messageActions={!!session && session.source !== "playground"}
             emptyState={
@@ -685,6 +691,15 @@ export function ChatPanel({
             }
             footer={
               <>
+                {(chatSends.recoveryError || draftRecoveryError) && (
+                  <div className="mt-4" role="alert">
+                    <ChatErrorAlert
+                      message={ui(
+                        "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.",
+                      )}
+                    />
+                  </div>
+                )}
                 {submitError && (
                   <div className="mt-4">
                     <ChatErrorAlert message={submitError} />

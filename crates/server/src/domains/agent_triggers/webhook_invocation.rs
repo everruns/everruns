@@ -11,7 +11,7 @@ use crate::domains::agent_triggers::record::AgentTriggerType;
 use crate::domains::common::CommandError;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::storage::StorageBackend;
+use crate::storage::{AgentRow, AgentTriggerRow, StorageBackend};
 use chrono::Utc;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -48,6 +48,35 @@ pub async fn invoke_webhook_agent_trigger(
         .await?
         .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
         .ok_or_else(|| CommandError::not_found("Agent"))?;
+    dispatch_webhook(
+        db,
+        encryption,
+        session_service,
+        message_service,
+        &trigger_row,
+        &agent,
+        req,
+        None,
+        request_id,
+    )
+    .await
+}
+
+/// Hand one webhook request to its trigger through the shared pipeline. A
+/// manual fire (`manual`) presents its event as the request and takes the
+/// same path, with its own event id when the trigger has no id template.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn dispatch_webhook(
+    db: &Arc<StorageBackend>,
+    encryption: Option<&Arc<crate::storage::EncryptionService>>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    trigger_row: &AgentTriggerRow,
+    agent: &AgentRow,
+    req: WebhookTriggerInvocationRequest,
+    manual: Option<&super::manual::ManualFire>,
+    request_id: Option<String>,
+) -> Result<events::TriggerEventOutcome, CommandError> {
     let trigger = q::row_to_trigger(
         trigger_row.clone(),
         parse_agent_id(&agent.public_id)?,
@@ -72,6 +101,7 @@ pub async fn invoke_webhook_agent_trigger(
     } else {
         None
     };
+    let source = super::manual::source_name(manual, "webhook");
     let legacy_app = webhook_context
         .as_ref()
         .map(|context| {
@@ -100,7 +130,7 @@ pub async fn invoke_webhook_agent_trigger(
             "type": "webhook",
         },
         "invocation": {
-            "source": "webhook",
+            "source": source,
             "triggered_at": Utc::now().to_rfc3339(),
         },
         "payload": req
@@ -118,9 +148,16 @@ pub async fn invoke_webhook_agent_trigger(
             .as_deref()
             .map(|template| render_message_template(template, &context))
     };
+    // On a manual fire without an explicit id, the trigger's id template
+    // still applies, so replaying an event the trigger already saw dedupes.
+    let event_id = match manual {
+        Some(fire) if fire.explicit_id => Some(fire.event_id.clone()),
+        _ => render_optional(&config.event_id_template)
+            .or_else(|| super::manual::event_id(manual, None)),
+    };
     let event = events::TriggerEvent {
-        source: "webhook",
-        event_id: render_optional(&config.event_id_template),
+        source,
+        event_id,
         event_type: None,
         subject: render_optional(&config.subject_template),
         context: context.clone(),
@@ -130,8 +167,8 @@ pub async fn invoke_webhook_agent_trigger(
         session_service,
         message_service,
         events::TriggerEventRoute {
-            trigger: &trigger_row,
-            agent: &agent,
+            trigger: trigger_row,
+            agent,
             message_template: &config.message,
             session_mode: config.session_mode,
             filter: config.filter.as_ref(),

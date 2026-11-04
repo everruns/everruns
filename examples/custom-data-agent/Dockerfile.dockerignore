@@ -1,0 +1,14 @@
+.git
+**/target
+work
+.local
+local
+**/node_modules
+**/.next
+**/dist
+**/.env*
+.env*
+**/*.token
+**/*.sqlite
+**/*.sqlite-*
+**/*.log

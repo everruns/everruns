@@ -37,6 +37,13 @@ export function resourceWrite(
 ): PageResource | undefined {
   if (!["PATCH", "PUT"].includes(method.toUpperCase())) return;
   const path = endpoint.split("?")[0];
+  if (path === "/v1/tracing/defaults" && org)
+    return { kind: "tracing_policy", id: org, label: "Tracing" };
+  const tracing = path.match(/^\/v1\/agents\/([^/]+)\/tracing$/);
+  if (tracing) return { kind: "tracing_policy", id: tracing[1], label: "Tracing" };
+  const destination = path.match(/^\/v1\/tracing\/destinations\/([^/]+)$/);
+  if (destination)
+    return { kind: "tracing_destination", id: destination[1], label: "Tracing destination" };
   const account = path.match(/^\/v1\/orgs\/[^/]+\/organization-connections\/([^/]+)$/);
   if (account)
     return { kind: "organization_account", id: account[1], label: "Organization account" };
@@ -86,6 +93,7 @@ export function formResource(type: string, id?: string, formId?: string): PageRe
     type === "model_defaults" && formId === "decision_model"
       ? "organization_decision"
       : (aliases[type] ?? type);
+  if (kind === "tracing_policy") return { kind, id, label: "Tracing" };
   if (kind === "organization_account") return { kind, id, label: "Organization account" };
   if (kind === "user_profile") return { kind, id, label: "Account profile" };
   if (kind === "organization_network" || kind === "organization_decision")

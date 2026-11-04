@@ -1,6 +1,13 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useState, useCallback } from "react";
@@ -101,10 +108,12 @@ function TargetBadge({ target }: { target?: EvalTarget }) {
 }
 
 function CaseCard({
+  evalId,
   evalCase,
   onDelete,
   deleting,
 }: {
+  evalId: string;
   evalCase: EvalCase;
   onDelete: (id: string) => void;
   deleting: boolean;
@@ -114,7 +123,16 @@ function CaseCard({
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{evalCase.name}</CardTitle>
+          <CardTitle className="text-base">
+            <Link href={`/evals/${evalId}/cases/${evalCase.id}`} className="hover:underline">
+              {evalCase.name}
+            </Link>
+            {evalCase.simulated_user && (
+              <Badge variant="outline" className="ml-2 align-middle font-normal">
+                {ui("Simulated user")}
+              </Badge>
+            )}
+          </CardTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -192,6 +210,8 @@ function RunRow({
   selected?: boolean;
   onToggleSelect?: (runId: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <div className="flex items-center gap-3">
@@ -210,7 +230,7 @@ function RunRow({
             <div className="flex items-center gap-4">
               <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
               <span className="text-sm text-muted-foreground">
-                {new Date(run.created_at).toLocaleString()}
+                {new Date(run.created_at).toLocaleString(displayLocale)}
               </span>
               <span className="text-xs text-muted-foreground">
                 {ui("by")} {run.triggered_by}
@@ -356,16 +376,23 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
           <div className="space-y-2">
             <Label>{ui("Scorers")}</Label>
             <div className="flex gap-2">
-              <select
-                value={scorerType}
-                onChange={(e) => setScorerType(e.target.value as typeof scorerType)}
-                className="border rounded px-2 py-1 text-sm bg-background"
+              <SharedSelect
+                value={String(scorerType)}
+                onValueChange={(selection) => setScorerType(selection as typeof scorerType)}
               >
-                <option value="contains">{ui("contains")}</option>
-                <option value="not_contains">not_contains</option>
-                <option value="regex">{ui("regex")}</option>
-                <option value="tool_called">tool_called</option>
-              </select>
+                <SharedSelectTrigger
+                  className="border rounded px-2 py-1 text-sm bg-background"
+                  aria-label="Scorer type"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value="contains">{ui("contains")}</SharedSelectItem>
+                  <SharedSelectItem value="not_contains">not_contains</SharedSelectItem>
+                  <SharedSelectItem value="regex">{ui("regex")}</SharedSelectItem>
+                  <SharedSelectItem value="tool_called">tool_called</SharedSelectItem>
+                </SharedSelectContent>
+              </SharedSelect>
               <Input
                 placeholder={ui("Value (comma-separated for multiple)")}
                 value={scorerValue}
@@ -571,6 +598,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
                 {cases.map((c) => (
                   <CaseCard
                     key={c.id}
+                    evalId={evalId}
                     evalCase={c}
                     onDelete={handleDeleteCase}
                     deleting={deleteCase.isPending}

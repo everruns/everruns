@@ -63,6 +63,10 @@ export const collectionDraftSchema = z.strictObject({
   indexer: draftText,
   rules: draftText,
 });
+export const tracingRoutingDraftSchema = z.strictObject({
+  mode: z.enum(["inherit", "add", "replace", "off"]),
+  destination_ids: z.array(z.string().uuid()).max(8),
+});
 export const sourceDraftSchema = z.strictObject({
   kind: z.enum(["github", "git"]),
   coordinates: draftText.refine(

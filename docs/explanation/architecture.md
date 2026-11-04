@@ -16,7 +16,7 @@ A running Everruns deployment is two kinds of process plus PostgreSQL:
 
 ![Platform Overview](../images/architecture/platform-overview.svg)
 
-The control plane can run as several instances behind a load balancer (set `EXPECTED_INSTANCES` so per-instance SSE connection limits are divided across them). Workers scale horizontally: add more for throughput, remove some to save cost. PostgreSQL is the only required piece of stateful infrastructure; Valkey and NATS are optional. [Physical Architecture](/advanced/physical-architecture/) describes each deployable component, which ones are required, and how they connect.
+The control plane can run as several instances behind a load balancer (set `EXPECTED_INSTANCES` so per-instance SSE connection limits are divided across them). Workers scale horizontally: add more for throughput, remove some to save cost. PostgreSQL is the only required piece of stateful infrastructure for a single control-plane instance. Running several needs NATS, which carries live chat events between them; without it they fall back to polling PostgreSQL and report themselves degraded. Valkey is optional. [Physical Architecture](/advanced/physical-architecture/) describes each deployable component, which ones are required, and how they connect.
 
 ## Why a separate worker tier?
 

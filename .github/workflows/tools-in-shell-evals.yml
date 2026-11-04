@@ -45,6 +45,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: evals/tools-in-shell
           shared-key: tools-in-shell-evals
       - name: Check formatting

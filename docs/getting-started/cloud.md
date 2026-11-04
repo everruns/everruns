@@ -1,15 +1,15 @@
 ---
-title: Everruns Cloud quickstart
-description: Sign up for Everruns Cloud, use the built-in model provider with starter credit, create a token, and connect from the SDK, CLI, or an AI tool.
+title: Everruns Demo quickstart
+description: Try the hosted demo with available promotional credit or your own provider keys, create a token, and connect from the SDK, CLI, or an AI tool.
 sidebar:
-  label: Everruns Cloud
+  label: Everruns Demo
 appliesTo: [cloud]
 ---
 
-[Everruns Cloud](https://app.everruns.com) runs the Everruns Platform for you:
+[Everruns Demo](https://app.everruns.com) runs the Everruns Platform for you:
 the API, the workers, the database, and the UI. You create agents and sessions;
-Everruns operates the infrastructure. It includes a built-in model provider, so
-you can run an agent before you have any provider API keys.
+Everruns operates the infrastructure. Explore with available promotional
+credit for built-in models, or connect your own provider keys.
 
 This page takes you from sign-up to a first agent turn, then explains how
 credit works.
@@ -17,13 +17,30 @@ credit works.
 ## 1. Sign up
 
 Open [app.everruns.com](https://app.everruns.com) and sign in. Verify your email
-address when asked. When you create your first organization, it receives **$5
-of starter credit**.
+address when asked. Open **Settings** > **Billing** to see any available
+promotional credit. Credit purchases and top-ups are
+unavailable.
 
-The starter credit is granted once per user account, on that user's first
-organization, and needs a verified email. Creating more organizations does not
-grant more. Starter credit is spent before any credit you buy and expires after
-90 days.
+## Manage your Everruns ID
+
+Open **Settings** > **Profile** > **Manage your Everruns ID**, or visit
+[id.everruns.com/account](https://id.everruns.com/account), to manage sign-in
+methods, security, sign-in sessions, and personal connections across your
+organizations.
+
+Passkeys are an optional second factor after your password or Google sign-in.
+In **Security**, choose **Add a passkey** and follow your browser's native
+prompt. Compatible browsers can use Apple Passwords, a mobile credential
+manager, a password manager, or a security key. Save the recovery codes shown
+after enrollment; each code works once after primary sign-in. Keep a backup
+passkey or recovery codes so losing a device does not lock you out.
+
+**Sessions** shows signed-in devices, activity, and, for new sign-ins, masked IP
+addresses and approximate sign-in locations. Ending an ID session leaves an
+app's separate session valid until its own expiry. **Connections** lists your
+ID-linked apps, approved AI clients, personal MCP servers, service connections,
+credentials, and API tokens, with revoke controls and recorded usage. Unknown
+usage is shown as unavailable.
 
 ## 2. Use the built-in provider
 
@@ -56,7 +73,7 @@ export EVERRUNS_API_KEY=evr_pat_...
 export EVERRUNS_API_URL=https://app.everruns.com/api
 ```
 
-Newer SDK releases default to Everruns Cloud; setting `EVERRUNS_API_URL` keeps
+Newer SDK releases default to Everruns Demo; setting `EVERRUNS_API_URL` keeps
 older ones pointed at it too. Then run one turn:
 
 ```python
@@ -83,7 +100,7 @@ The message starts a turn; the answer arrives as events. The
 
 ### CLI
 
-The [CLI](/features/cli/) uses Everruns Cloud by default, so there is no URL to
+The [CLI](/features/cli/) uses Everruns Demo by default, so there is no URL to
 configure:
 
 ```bash
@@ -99,27 +116,22 @@ paste a token you created in step 3.
 
 ### AI tools
 
-The `everruns` plugin connects Claude Code, Codex, and Cursor to Everruns Cloud
+The `everruns` plugin connects Claude Code, Codex, and Cursor to Everruns Demo
 over MCP, at `https://app.everruns.com/mcp`. It signs in with OAuth on first
 use, so it needs no token. See [Use in AI Tools](/getting-started/use-in-ai-tools/).
 
 ## Credit and the spend cap
 
-Everruns Cloud is prepaid. There is no subscription.
+The demo has no subscriptions, credit purchases, top-ups, or paid overage.
 
 - **Balance.** **Settings** > **Billing** shows the organization's available
-  credit, how much of it is starter credit and how much was purchased, and how
-  much is held by work that is still running. Every member of the organization
-  can see it.
-- **Top up.** Organization owners and admins buy more credit from the same page.
-  Payment goes through Stripe Checkout, and the credit appears once Stripe
-  confirms the payment.
-- **Spend cap.** Each model call reserves enough credit to cover its worst case
-  before it runs, and is charged for actual usage when it finishes. When the
-  balance reaches zero, the built-in provider refuses new calls, so turns that
-  use it stop until someone tops up. A call that was already running when the
-  credit ran out is still charged in full, so the balance can end slightly
-  below zero; the next call is refused.
+  credit and amounts held by work that is still running.
+  Every organization member can see the balance. Historical purchased credit
+  and refund records remain visible when present.
+- **Built-in models.** Requests use the organization's available credit.
+  When no credit is available, use your own provider keys or self-host
+  Everruns to continue exploring. Work already in flight can still settle
+  against its reservation.
 
 This credit is separate from [budgets](/advanced/budgets/). A budget is a limit
 you set on a session or an agent; credit is what pays for the built-in provider.

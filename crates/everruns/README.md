@@ -126,17 +126,16 @@ Every driver declares the environment variables its vendor's SDK reads, so a
 shell that already works with that vendor already configures the driver:
 
 ```rust
-use everruns::{Agent, Model, OpenAI};
+use everruns::{Anthropic, Bedrock, OpenAI};
 
 // OPENAI_API_KEY, and OPENAI_BASE_URL when set.
 let openai = OpenAI::from_env()?;
 
-// ANTHROPIC_API_KEY. Every driver module has the same entry point.
-let anthropic = everruns::drivers::anthropic::from_env("anthropic")?;
+// ANTHROPIC_API_KEY.
+let anthropic = Anthropic::from_env()?;
 
-// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION — a driver is not
-// limited to one key.
-let bedrock = everruns::drivers::bedrock::from_env("bedrock")?;
+// AWS default credential chain: environment, profile, SSO or IAM role.
+let bedrock = Bedrock::default_chain();
 ```
 
 There is no Everruns naming scheme: the names belong to the drivers. A driver
@@ -233,9 +232,13 @@ opt-in.
 
 | Feature | Adds |
 | --- | --- |
-| `openai` | OpenAI Responses API provider configuration |
-| `chatgpt` | Personal ChatGPT plan driver and open-source OAuth helpers through `everruns::drivers::chatgpt` |
-| `codex` | Legacy Codex driver through `everruns::drivers::codex` |
+| `openai` | `OpenAI` (Responses or Chat Completions via `.api(OpenAIApi::...)`) and `AzureOpenAI` |
+| `mistral` | `Mistral` (Chat Completions or Responses via `.api(MistralApi::...)`) |
+| `groq`, `fireworks` | `Groq` and `Fireworks` provider configuration |
+| `meta`, `vercel`, `cloudflare`, `mai` | `Meta`, `Vercel`, `Cloudflare` and `Mai` provider configuration |
+| `anthropic`, `gemini`, `openrouter` | `Anthropic`, `Gemini` and `OpenRouter` provider configuration |
+| `chatgpt` | `ChatGpt` with host-owned authentication; OAuth helpers through `everruns::drivers::chatgpt` |
+| `codex` | `Codex` with host-owned authentication; legacy driver through `everruns::drivers::codex` |
 | `bedrock` | AWS Bedrock provider configuration: static keys, or the AWS default credential chain for IAM roles |
 | `typesafe` | TypeSafe decisions provider and the `jev` capability |
 | `bashkit` | Sandboxed shell execution |

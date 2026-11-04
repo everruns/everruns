@@ -15,3 +15,4 @@
 * [TC012: Operational page context](TC012_operational_context.md) - Verify visible status projections, platform authorization and manual action boundaries.
 
 * [TC013: Shared saved review and guarded Undo](TC013_shared_saved_review.md) - Verify diffs, saved inverses, concurrent edits, atomic batches and private account history.
+* [TC014: Every page and new UI coverage](TC014_page_coverage_matrix.md) - Verify the route and field matrix, permission boundaries, new Knowledge/localization interfaces and protected overlays.

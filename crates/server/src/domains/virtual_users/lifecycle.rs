@@ -149,6 +149,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    completion_check: Default::default(),
                     localizations: Default::default(),
                     public_id,
                     name: "service-mcp-agent".to_string(),

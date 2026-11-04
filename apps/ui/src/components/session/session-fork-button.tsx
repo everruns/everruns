@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GitFork, Loader2 } from "lucide-react";
@@ -9,7 +9,6 @@ import Link from "next/link";
 import { useForkSession } from "@/hooks/use-sessions";
 import { CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
-import { useLocale } from "@/providers/locale-provider";
 
 export function SessionForkButton({
   sessionId,
@@ -18,6 +17,7 @@ export function SessionForkButton({
   className,
   agentId,
   platformChat = false,
+  onForked,
 }: {
   sessionId: string;
   sessionTitle: string | null;
@@ -25,6 +25,7 @@ export function SessionForkButton({
   className?: string;
   agentId?: string;
   platformChat?: boolean;
+  onForked?: (sessionId: string) => void;
 }) {
   const ui = useUiTranslations();
   const router = useRouter();
@@ -50,7 +51,8 @@ export function SessionForkButton({
         },
       },
       {
-        onSuccess: (session) => router.push(`/chats/${session.id}`),
+        onSuccess: (session) =>
+          onForked ? onForked(session.id) : router.push(`/chats/${session.id}`),
         onError: (error) =>
           setForkError(error instanceof Error ? error.message : t("fork_session_error")),
       },

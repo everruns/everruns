@@ -41,7 +41,7 @@ const full = read("llms-full.txt");
 const small = read("llms-small.txt");
 
 const htmlPages = findFiles(distRoot, "index.html").filter(
-  (file) => !readFileSync(file, "utf8").includes('<meta http-equiv="refresh"')
+  (file) => path.relative(distRoot, file) !== "previews/generative-ui/index.html" && !readFileSync(file, "utf8").includes('<meta http-equiv="refresh"')
 );
 const markdownPages = findFiles(distRoot, "index.md");
 check(

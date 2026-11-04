@@ -5,8 +5,9 @@ A [serve](../../../crates/serve) app streamed to CopilotKit or any
 `POST /v1/channels/assistant/ag-ui`, the same route shape as an Everruns endpoint, so
 a front end moves between the two by base URL alone. The `deploy` tool needs
 approval, which the client sees as an interrupt. The agent runs on
-`openai/gpt-6.1-sol`: set `OPENAI_API_KEY` (or a host's `SERVE_GATEWAY_URL` /
-`OPENROUTER_API_KEY`).
+`openai/gpt-6.1-sol`: set `OPENAI_API_KEY` or `OPENROUTER_API_KEY`.
+Optional `OPENAI_BASE_URL` selects a compatible Responses API endpoint when
+used with `OPENAI_API_KEY`.
 
 ```sh
 cargo run -p serve-example-ag-ui              # dev server on :3000

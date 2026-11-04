@@ -18,15 +18,7 @@
 "use client";
 
 import { AgentIcon } from "@/components/icons/facet-icons";
-import {
-  CalendarClock,
-  Loader2,
-  MessageSquare,
-  RefreshCw,
-  Sparkles,
-  UserMinus,
-  UserPlus,
-} from "lucide-react";
+import { Loader2, MessageSquare, RefreshCw, Sparkles, UserMinus, UserPlus } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type {
@@ -48,14 +40,22 @@ import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
 import { AutomaticUpdate } from "@/components/chat/automatic-update";
+import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
+import { messageOrigin, ORIGIN_LABEL_KEY } from "@/lib/message-origin";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageReplyActions } from "@/components/chat/message-reply-actions";
+import {
+  MessageReactionButton,
+  MessageReactionChips,
+  UserMessageReactions,
+} from "@/components/chat/message-reactions";
 import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
 import { TraceLink } from "@/components/chat/trace-link";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
 import { WorkLogNarration } from "@/components/chat/work-log-narration";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import { ContinueTurnButton } from "@/components/costs/continue-turn-button";
 import { ToolErrorDisclosureProvider } from "@/components/chat/tool-error-disclosure";
 import {
   getReasoningMultiIterationTurnIds,
@@ -115,7 +115,7 @@ import { ModelChangeDivider } from "@/components/chat/model-change-divider";
 import { getFullText, type ToolCallContent } from "@/components/chat/tool-call-utils";
 import type { ApprovalToolContext } from "@/components/chat/approval-tool-activity";
 import { useMembers } from "@/hooks/use-members";
-import { useLocale } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import {
   getRuntimeErrorFromOutputMessage,
   getRuntimeErrorFromTurnFailed,
@@ -189,6 +189,7 @@ interface ChatMessageListProps {
   /** Sends the event stream does not carry yet; each gets a user block and status row. */
   pendingSends?: PendingSend[];
   onRetrySend?: (clientId: string) => void;
+  onDiscardSend?: (clientId: string) => void;
   /** Show Good / Bad and "Branch into new chat" on agent replies (chat threads). */
   messageActions?: boolean;
   /** The session reports a running turn. */
@@ -308,10 +309,14 @@ export const ChatMessageList = memo(function ChatMessageList({
   streamingWork = null,
   pendingSends = EMPTY_PENDING_SENDS,
   onRetrySend,
+  onDiscardSend,
   sessionActive = false,
   messageActions = false,
 }: ChatMessageListProps) {
+  const askAction = (error?: { code?: string | null }) =>
+    error?.code === "budget_paused" ? <ContinueTurnButton sessionId={sessionId} /> : undefined;
   const { locale, displayLocale, t } = useLocale();
+  const ui = useUiTranslations();
   const { data: providers } = useProviders();
   const { data: agents } = useAgents();
   const approvalCalls = useMemo(() => {
@@ -1016,8 +1021,12 @@ export const ChatMessageList = memo(function ChatMessageList({
           className="flex items-center justify-end gap-2 text-sm text-destructive"
           data-testid="turn-not-delivered"
         >
-          <span>{t("turn_not_delivered")}</span>
-          {onRetrySend && (
+          <span>
+            {send.retryExpired
+              ? ui("Retry window expired. Review this conversation before sending again.")
+              : t("turn_not_delivered")}
+          </span>
+          {onRetrySend && !send.retryExpired && (
             <Button
               type="button"
               variant="ghost"
@@ -1027,6 +1036,17 @@ export const ChatMessageList = memo(function ChatMessageList({
             >
               <RefreshCw className="mr-1 h-3.5 w-3.5" />
               {t("turn_retry_send")}
+            </Button>
+          )}
+          {onDiscardSend && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => onDiscardSend(send.clientId)}
+            >
+              {ui("Discard")}
             </Button>
           )}
         </div>,
@@ -1124,6 +1144,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     retryable={isRetryableRuntimeError(
                       getRuntimeErrorFromTurnFailed(turnFailedData),
                     )}
+                    action={askAction(getRuntimeErrorFromTurnFailed(turnFailedData))}
                   />
                 );
               }
@@ -1229,6 +1250,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     key={event.id}
                     message={textContent}
                     retryable={isRetryableRuntimeError(outputError)}
+                    action={askAction(outputError)}
                   />
                 );
               }
@@ -1248,18 +1270,26 @@ export const ChatMessageList = memo(function ChatMessageList({
                     turnId: event.context?.turn_id,
                   })
                 : null;
-              const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
-              // Platform-injected task updates (a thread finished, asked, or failed),
-              // not words the person typed.
-              const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
+              // Words the platform wrote, not the person: a schedule run, a
+              // trigger, a thread update, a notice (knowledge/execution/message-origin.md).
+              const origin = isUser ? messageOrigin(data.message?.metadata) : null;
+              if (origin?.kind === "reaction") return null; // shown as chips instead
+              const isTaskWake = origin?.kind === "task_wake";
               const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
               // What a coordinator sent this thread, shown without the worker's instructions.
               const coordinatorMessage =
-                isUser && !isTaskWake && textContent ? parseCoordinatorMessage(textContent) : null;
+                isUser && !origin && textContent ? parseCoordinatorMessage(textContent) : null;
               const isToolOnlyMessage =
                 !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
-              if (isTaskWake) {
+              if (origin) {
+                const run = origin.run;
+                const detail =
+                  run?.number === undefined
+                    ? undefined
+                    : run.limit === undefined
+                      ? t("origin_run_number", { number: run.number })
+                      : t("origin_run", { number: run.number, limit: run.limit });
                 return (
                   <div
                     key={`user-${getClientMessageId(event) ?? event.id}`}
@@ -1268,14 +1298,16 @@ export const ChatMessageList = memo(function ChatMessageList({
                     id={data.message?.id ? `message-${data.message.id}` : undefined}
                   >
                     <AutomaticUpdate
-                      label={t("automatic_update")}
+                      label={t(ORIGIN_LABEL_KEY[origin.kind])}
+                      icon={ORIGIN_ICON[origin.kind]}
                       headline={
                         taskUpdate
                           ? t(`task_update_${taskUpdate.kind}` as const, {
                               title: taskUpdate.title,
                             })
-                          : undefined
+                          : origin.name
                       }
+                      detail={detail}
                       body={taskUpdate ? taskUpdate.body : textContent}
                       trailing={<MessageInfoIcon event={event} />}
                     />
@@ -1306,7 +1338,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               return (
                 <div
                   key={isUser ? `user-${getClientMessageId(event) ?? event.id}` : event.id}
-                  className={`chat-transcript-row space-y-2 ${isUser ? "scroll-mt-4" : ""}`}
+                  className={`chat-transcript-row space-y-2 ${isUser ? "group/user-row scroll-mt-4" : ""}`}
                   data-message-anchor={isUser ? event.id : undefined}
                   id={isUser ? `message-${data.message?.id}` : undefined}
                 >
@@ -1316,12 +1348,6 @@ export const ChatMessageList = memo(function ChatMessageList({
                       {isUser ? (
                         <div className={chatSurfaceStyles.userMessage}>
                           {showPageContext && <MessagePageContext value={pageContext} />}
-                          {isScheduleTriggered && (
-                            <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                              <CalendarClock className="h-3 w-3" />
-                              <span>{t("scheduled")}</span>
-                            </div>
-                          )}
                           {coordinatorMessage && (
                             <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                               <MessageSquare className="h-3 w-3" />
@@ -1377,6 +1403,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                               </div>
                             )}
                           </div>
+                          <MessageReactionChips messageId={data.message?.id} />
                           <div
                             className={cn(
                               chatSurfaceStyles.agentActions,
@@ -1394,6 +1421,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                                 sessionActive={sessionActive}
                               />
                             )}
+                            <MessageReactionButton messageId={data.message?.id} />
                             <MessageInfoIcon event={event} />
                             {genTraceUrl && (
                               <TraceLink href={genTraceUrl} label={t("trace_view_message")} />
@@ -1403,6 +1431,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                       )}
                     </div>
                   )}
+                  {isUser && <UserMessageReactions messageId={data.message?.id} />}
 
                   {toolCalls.length > 0 && (
                     <div className="space-y-1">

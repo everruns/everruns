@@ -13,8 +13,8 @@
 // Task reads are keyed by the task's owning session, so callers pass
 // `sessionId` (the task's `session_id`).
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ListTodo, MessageSquare } from "lucide-react";

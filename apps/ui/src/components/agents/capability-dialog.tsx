@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
@@ -23,7 +23,7 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { capabilitySelectable, rolloutFlagMap } from "@/lib/capability-availability";

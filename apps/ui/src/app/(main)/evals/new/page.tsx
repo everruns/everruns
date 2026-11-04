@@ -4,17 +4,17 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { evalCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { TagInput } from "@/components/ui/tag-input";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCreateEval, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { ModelPicker } from "@/components/models/model-picker";
 import { AgentSelect } from "@/components/agent/agent-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
@@ -22,7 +22,7 @@ import type { EvalTarget, CreateEvalRequest } from "@/lib/api/types";
 
 type TargetType = "session" | "app";
 
-export default function NewEvalPage() {
+function NewEvalForm() {
   const ui = useUiTranslations();
   usePageTitle(ui("New Eval"), ui("Evals"));
   const router = useRouter();
@@ -34,12 +34,13 @@ export default function NewEvalPage() {
   });
   const [targetType, setTargetType] = useState<TargetType>("session");
   const [harnessId, setHarnessId] = useState("");
-  const [agentId, setAgentId] = useState("");
+  // `?agent=` preselects the agent, from an agent's Evals tab.
+  const searchParams = useSearchParams();
+  const [agentId, setAgentId] = useState(searchParams.get("agent") ?? "");
   const [appId, setAppId] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [modelId, setModelId] = useState("");
   const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
 
   const chatDraft = usePageFormDraft({
     schema: evalCreateDraftSchema,
@@ -87,25 +88,6 @@ export default function NewEvalPage() {
       setTags(nextTags);
     },
   });
-
-  const handleAddTag = () => {
-    const tag = tagInput.trim();
-    if (tag && !tags.includes(tag)) {
-      setTags([...tags, tag]);
-      setTagInput("");
-    }
-  };
-
-  const handleRemoveTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
-  };
-
-  const handleTagKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAddTag();
-    }
-  };
 
   const buildTarget = (): EvalTarget | undefined => {
     switch (targetType) {
@@ -277,29 +259,17 @@ export default function NewEvalPage() {
 
             <div className="space-y-2">
               <Label>{ui("Tags (optional)")}</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder={ui("Add a tag...")}
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={handleTagKeyDown}
-                />
-                <Button type="button" variant="outline" onClick={handleAddTag}>
-                  {ui("Add")}
-                </Button>
-              </div>
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {tags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="flex items-center gap-1">
-                      {tag}
-                      <button type="button" onClick={() => handleRemoveTag(tag)}>
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              <TagInput
+                value={tags.join(", ")}
+                onChange={(value) =>
+                  setTags(
+                    value
+                      .split(",")
+                      .map((tag) => tag.trim())
+                      .filter(Boolean),
+                  )
+                }
+              />
             </div>
 
             <div className="flex gap-4">
@@ -320,5 +290,13 @@ export default function NewEvalPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function NewEvalPage() {
+  return (
+    <Suspense>
+      <NewEvalForm />
+    </Suspense>
   );
 }

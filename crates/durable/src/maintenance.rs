@@ -228,7 +228,7 @@ impl StaleTaskReaper {
         {
             Ok(result) => Some(result),
             Err(error) => {
-                error!(%error, "Failed to reclaim stale tasks");
+                crate::report_throttle::report_repeated_failure!(error, %error, "Failed to reclaim stale tasks");
                 self.handler.reap_failed(&error);
                 None
             }

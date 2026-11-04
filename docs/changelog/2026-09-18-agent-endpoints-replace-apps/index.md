@@ -10,11 +10,12 @@ release: "0.30.0"
 links:
   docs: [/features/channels/, /features/agent-triggers/]
   prs: [everruns/everruns#3698, everruns/everruns#3624, everruns/everruns#3627, everruns/everruns#3621, everruns/everruns#3618, everruns/everruns#3607]
-visual: "Agent Integrations tab with endpoint rows and the suspend switch (/agents/<id>, Integrations tab); crop to the endpoints section"
 ---
 
 The App abstraction is retired. Endpoints (Slack, webhook, AG-UI, A2A, public chat
 and others) and triggers now belong to the agent.
+
+![Agent Integrations tab with channel rows, publish switches and the switch for all channels](./agent-integrations-channels@2x.png)
 
 **In the UI:** an agent's **Integrations** tab lists its endpoints and triggers,
 each with its own publish switch and real endpoint URL, plus a switch to suspend

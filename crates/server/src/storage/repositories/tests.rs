@@ -13,6 +13,7 @@ static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn disabled_background_pool_adds_no_connections() {
     let config = DatabasePoolConfig {
         background_max_connections: 0,
+        relaxed_max_connections: 0,
         ..DatabasePoolConfig::default()
     };
     assert_eq!(config.total_max_connections(), config.max_connections);

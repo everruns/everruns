@@ -122,11 +122,11 @@ pub fn json_to_proto_struct(value: &serde_json::Value) -> Struct {
 
 /// Whether senders fill the `bytes *_json` siblings instead of the Struct fields.
 ///
-/// Rollout switch: receivers already prefer the bytes and fall back to the
-/// Struct, but a receiver built before the bytes fields existed sees only the
-/// Struct. Flip this once every server and worker reads the bytes; then the
-/// Struct fields and this switch can go.
-pub const SEND_JSON_BYTES: bool = false;
+/// Rollout switch: receivers prefer the bytes and fall back to the Struct. A
+/// receiver built before the bytes fields existed (before 0.50) sees only the
+/// Struct, so a server and its workers must both run 0.50 or later. The
+/// Struct fields and this switch go once no such receiver is supported.
+pub const SEND_JSON_BYTES: bool = true;
 
 /// Encode a value as JSON bytes for a `*_json` field.
 ///

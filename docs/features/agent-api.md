@@ -24,8 +24,8 @@ Every route on this page is relative to the agent base URL. The channel's page i
 
 **In the console:**
 
-1. Open the Agent and select the **Integrations** tab.
-2. Select **Add channel**, choose **Agent API**, adjust its settings and select **Save channel**.
+1. Open the Agent and select the **Channels and triggers** tab.
+2. Select **Add channel**, choose **Agent API**, adjust its settings and select **Create channel**.
 3. Select **Publish**. A channel serves traffic only while it is live, its Agent is active and the Agent's exposures are not suspended. See [Channel lifecycle](/features/channels/#channel-lifecycle).
 4. On the channel page, select **Create key** in the **Agent keys** card and copy the secret. It is shown once.
 
@@ -182,7 +182,7 @@ Set `org_members` to `true` to let members of your organization call the Agent w
 
 ## Channel settings
 
-Set these in the channel's `channel_config`, or in the console form. Unknown fields are rejected.
+Set these in the channel's `channel_config`, or in the console form. Unknown fields are rejected. In the console, `daily_spend_limit_usd` is the **Each person, per day** field under **Spending**, next to the shared channel budget.
 
 | Setting | Default | Values and effect |
 |---|---|---|
@@ -190,7 +190,6 @@ Set these in the channel's `channel_config`, or in the console form. Unknown fie
 | `tool_activity_text` | `Working...` | The text a tool start shows under `activity`. |
 | `errors` | `public` | `public`: a failed turn reports only one of the [public error codes](#errors-and-status-codes). `detailed`: the internal error and code, for key-authenticated developers. |
 | `session_binding` | `per_user` | `per_user` or `session_per_invocation`. Either way each caller has its own sessions; sessions are never shared between callers. |
-| `tool_approvals` | `operator` | Who answers tool calls the Agent's approval gate holds back. `operator`: someone with access to the Agent in Everruns decides, and the caller sees only that a call waits. `caller`: the caller sees the tool and its arguments and decides through [`tool-approvals`](#questions-and-tool-approvals). |
 | `rate_limit_per_minute` | none | Requests per minute per caller and client IP. Unset or `0` turns the channel's own limit off; the global API limit still applies. |
 | `daily_spend_limit_usd` | none | The most one caller (a key acting as itself, or one end user) may spend on this Agent per UTC day, up to 1,000,000. Past it, starting a session or sending a message answers `429` until the next UTC day; reads still work and a running turn finishes. |
 | `cors_origins` | none | Up to 20 browser origins, such as `https://app.example.com`, whose pages may call this channel's routes. Write each exactly as a browser sends it: `https` (or `http` for `localhost`, `127.0.0.1` and `[::1]`), no path, no trailing slash, no default port. These origins reach only this channel's routes, never the management API. |
@@ -422,7 +421,7 @@ When the Agent asks a question with [`ask_user`](/capabilities/ask-user/), or it
 
 `tool_call_id` is optional when only one question set waits. `status` is `answered` (the default) or `declined`. Each answer names the question `id`, the chosen option labels in `selected`, and free text in `other_text` for a `text` question or a choice that allows another answer. The response is `{"status", "answered_by", "session_status"}` and the turn resumes. A question that asks for a credential (`kind: "secret"`) cannot be answered over this API, only declined; a person completes it in Everruns. Answers that do not match what was asked answer `400`; a session that is not waiting, or a set already answered, answers `409`.
 
-**Approve tool calls** with `POST /sessions/{session_id}/tool-approvals`, on a channel whose `tool_approvals` is `caller`:
+**Approve tool calls** with `POST /sessions/{session_id}/tool-approvals`. The Agent's approval settings decide which calls wait; the caller using the Agent answers them, and sees the tool, its arguments and risk to decide:
 
 ```json
 {
@@ -435,16 +434,23 @@ When the Agent asks a question with [`ask_user`](/capabilities/ask-user/), or it
 }
 ```
 
-`decision` is `allow`, `allow_always` (this call and later calls of the same tool in this session), `reject` or `reject_always`. A pending request of the same batch that is left out is settled as not approved; silence never approves. The response lists how each request was settled in `resolved` (`tool_call_id`, `tool`, `outcome`) with the session `status`. When `tool_approvals` is `operator`, approvals show `answerable: false` without the tool name, arguments or risk, and this route answers `403`. A request that expired or was already answered answers `409`.
+`decision` is `allow`, `allow_always` (this call and later calls of the same tool in this session), `reject` or `reject_always`. A pending request of the same batch that is left out is settled as not approved; silence never approves. The response lists how each request was settled in `resolved` (`tool_call_id`, `tool`, `outcome`) with the session `status`. A request that expired or was already answered answers `409`.
 
 ## Safe retries
 
 `POST /sessions` and `POST /sessions/{session_id}/messages` accept an `Idempotency-Key` header of 1 to 255 printable ASCII characters. A retry with the same key and the same request within 24 hours returns the first response with `Idempotent-Replayed: true` instead of starting a second session or sending the message twice.
 
-- The same key on a different request answers `422` with `idempotency_key_reused`.
+- Reusing a completed key for a different request answers `422` with `idempotency_key_reused`.
 - A retry while the first request is still running answers `409` with `idempotency_key_in_progress`.
 - Keys belong to the caller, so two applications or two end users never collide on one key.
 - Only a success is remembered. A failed request frees its key, so you can fix the request and retry with the same key.
+
+A keyed message admission and its replay response commit together. If the server stops
+before that commit, neither is accepted; retry the same key after reconnecting.
+If the commit succeeded but its response was lost, the retry returns that response.
+Session creation can run external startup work and retains its lease contract.
+Pending claims written by older servers also retain their original lease during
+an upgrade, so they can continue returning `409` until that lease expires.
 
 ## Errors and status codes
 
@@ -454,7 +460,7 @@ Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details (`
 |---|---|
 | `400` | Invalid body or query (bad `limit` or `page_token`, non-text content, `metadata`), a credential in a question answer, `/runtime-auth` with a key and no `End-User`, or a retired `api_endpoint` request shape (`api_endpoint_retired`) |
 | `401` | Missing or invalid credential, including a token none of the channel's `auth_methods` accepts, or a personal access token when `org_members` is off |
-| `403` | The channel is not live, its Agent is inactive or its exposures are suspended (`This agent is not available`); `End-User` not allowed; a read-only personal access token (`insufficient_scope`); or `tool-approvals` on an `operator` channel |
+| `403` | The channel is not live, its Agent is inactive or its exposures are suspended (`This agent is not available`); `End-User` not allowed; or a read-only personal access token (`insufficient_scope`) |
 | `404` | No such `api` channel, or a session that is not the caller's |
 | `409` | Nothing to answer, an answer already given, or an `Idempotency-Key` still in progress |
 | `422` | An `Idempotency-Key` reused for a different request |

@@ -1,4 +1,5 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 // The session Trace tab: control strip, turn rail, virtualized turn list and
 // inspector. See knowledge/ui/session-trace.md.
@@ -8,7 +9,7 @@
 // view, the error filter and the selected step live in the URL so a debugging
 // link can be shared.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -45,7 +46,9 @@ import {
   stepHoldingSequence,
   stepKey,
   type TraceView as View,
+  reactionsByTurn,
 } from "./trace-model";
+import { useMessageReactionList } from "@/hooks/use-message-reactions";
 import { TraceSearch } from "./trace-search";
 import { TurnRail } from "./turn-rail";
 import { DreamingTrace } from "./dreaming-trace";
@@ -75,6 +78,8 @@ export interface TraceViewProps {
 }
 
 export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const router = useRouter();
   const pathname = usePathname();
@@ -130,6 +135,11 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     [data.turns, collapsed],
   );
   const lifecycle = useTraceLifecycle(sessionId, openTurns, showLifecycle);
+  const reactionList = useMessageReactionList(sessionId);
+  const turnReactions = useMemo(
+    () => reactionsByTurn(data.turns, reactionList.data),
+    [data.turns, reactionList.data],
+  );
 
   const rows = useMemo(
     () =>
@@ -176,16 +186,32 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   }, [data.loading, rows.length, pending, virtualizer, linkedFailure]);
 
   // Scroll to a turn (or a step in it) once its rows exist.
+  //
+  // Decision: the scroll waits one frame. When a far jump replaces the loaded
+  // window, the list's height changes in the same commit; scrolling before the
+  // browser lays that out leaves the reader where they were, clamped to the
+  // old height, so a minimap click looked like it did nothing.
+  const scrollFrameRef = useRef<number | null>(null);
   useEffect(() => {
     if (!pending) return;
     const headerIndex = rows.findIndex((r) => r.key === `t${pending.turn}`);
     if (headerIndex === -1) return;
     const stepIndex =
       pending.step !== undefined ? rowIndexOfStep(rows, pending.turn, pending.step) : -1;
-    if (stepIndex !== -1) virtualizer.scrollToIndex(stepIndex, { align: "center" });
-    else virtualizer.scrollToIndex(headerIndex, { align: "start" });
+    if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      if (stepIndex !== -1) virtualizer.scrollToIndex(stepIndex, { align: "center" });
+      else virtualizer.scrollToIndex(headerIndex, { align: "start" });
+    });
     setPending(null);
   }, [pending, rows, virtualizer]);
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    },
+    [],
+  );
 
   // Live: refresh the tail when new trace events arrive and the tail is loaded.
   const lastLoaded = data.turns[data.turns.length - 1]?.turn ?? 0;
@@ -337,6 +363,16 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   }, [overview.data, data.turns, firstLoaded, tailLoaded]);
 
   const activeTurn = (childStep ? null : selectedStep?.turn) ?? batch?.turn ?? null;
+  // Turns with rows on screen, for the minimap's "in view" marker.
+  const visibleItems = virtualizer.getVirtualItems();
+  const scrollTop = virtualizer.scrollOffset ?? 0;
+  const viewportHeight = virtualizer.scrollRect?.height ?? 0;
+  const visibleTurns = new Set<number>();
+  for (const item of visibleItems) {
+    if (item.end <= scrollTop || item.start >= scrollTop + viewportHeight) continue;
+    const row = rows[item.index];
+    if (row && row.type !== "unloaded") visibleTurns.add(row.turn.turn);
+  }
   const totals = overview.data;
 
   return (
@@ -354,7 +390,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
               </span>
               {failedTurn.ended_at && (
                 <span className="ml-3 text-xs text-muted-foreground">
-                  {new Date(failedTurn.ended_at).toLocaleString()}
+                  {new Date(failedTurn.ended_at).toLocaleString(displayLocale)}
                 </span>
               )}
               <p className="mt-1 break-words">
@@ -371,44 +407,21 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         </div>
       )}
       <div className="flex flex-wrap items-center gap-3 border-b bg-card px-6 py-3">
-        <div role="radiogroup" aria-label={ui("View")} className="flex border">
-          {VIEWS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={view === option.value}
-              onClick={() => setParams({ view: option.value === "all" ? null : option.value })}
-              className={cn(
-                "h-7 px-3 text-xs font-medium",
-                view === option.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <div role="radiogroup" aria-label={ui("Message format")} className="flex border">
-          {([false, true] as const).map((plain) => (
-            <button
-              key={String(plain)}
-              type="button"
-              role="radio"
-              aria-checked={plainText === plain}
-              onClick={() => setParams({ text: plain ? "plain" : null })}
-              className={cn(
-                "h-7 px-3 text-xs font-medium",
-                plainText === plain
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              {plain ? ui("Plain text") : ui("Markdown")}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={ui("View")}
+          value={view}
+          onValueChange={(value) => setParams({ view: value === "all" ? null : value })}
+          options={VIEWS}
+        />
+        <SegmentedControl
+          label={ui("Message format")}
+          value={plainText ? "plain" : "markdown"}
+          onValueChange={(value) => setParams({ text: value === "plain" ? "plain" : null })}
+          options={[
+            { value: "markdown", label: ui("Markdown") },
+            { value: "plain", label: ui("Plain text") },
+          ]}
+        />
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
             checked={errorsOnly}
@@ -444,6 +457,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             overview={overview.data}
             turns={data.turns}
             activeTurn={activeTurn}
+            visibleTurns={visibleTurns}
             onJump={jump}
             onScrollTo={(turn) => {
               const index = rows.findIndex((r) => r.key === `t${turn}`);
@@ -456,6 +470,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
 
         <div
           ref={scrollRef}
+          data-trace-list="true"
           className="min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5"
           onScroll={(e) => {
             const el = e.currentTarget;
@@ -516,6 +531,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                     {row.type === "turn" && (
                       <TurnHeader
                         turn={row.turn}
+                        reactions={turnReactions.get(row.turn.turn)?.prompt}
                         collapsed={row.collapsed}
                         showScale
                         onToggle={() =>
@@ -625,7 +641,12 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                       />
                     )}
                     {row.type === "empty" && <EmptyTurnRow />}
-                    {row.type === "footer" && <TurnFooter turn={row.turn} />}
+                    {row.type === "footer" && (
+                      <TurnFooter
+                        turn={row.turn}
+                        reactions={turnReactions.get(row.turn.turn)?.reply}
+                      />
+                    )}
                   </div>
                 );
               })}

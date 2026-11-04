@@ -7,13 +7,14 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui, api]
 release: "0.21.0"
-visual: "Provider detail page at /settings/providers/{providerId} with the Advanced card showing two custom headers and the Prompt cache diagnostics toggle; crop to the Advanced card"
 links:
   docs: [/providers/]
   prs: [everruns/everruns#3232, everruns/everruns#3240]
 ---
 
 A provider connection now has request options that apply to every call through it, such as a header a gateway requires.
+
+![Provider Advanced card with two custom headers and Prompt cache diagnostics turned on](./provider-advanced-headers@2x.png)
 
 **In the UI:** open a provider in **Settings → Providers** and use the **Advanced** card to add **Custom headers** or turn on **Prompt cache diagnostics**.
 

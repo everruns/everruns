@@ -250,41 +250,15 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         session_id: SessionId,
         timeout_secs: Option<u64>,
     ) -> Result<String> {
-        let timeout = std::time::Duration::from_secs(timeout_secs.unwrap_or(120));
-        let start = std::time::Instant::now();
-        let poll_interval = std::time::Duration::from_millis(500);
-
-        loop {
-            let session = self
-                .get_session_by_id(session_id)
-                .await?
-                .ok_or_else(|| AgentLoopError::store("Session not found"))?;
-
-            match session.status {
-                crate::core::session::SessionExecutionState::Idle => {
-                    if let Some(status) = self.latest_terminal_turn_status(session_id).await? {
-                        return Ok(status);
-                    }
-                    // Session status flips to idle independently from terminal
-                    // turn-event persistence. Keep polling until the event lands
-                    // so callers can distinguish successful and failed idle turns.
-                }
-                crate::core::session::SessionExecutionState::WaitingForToolResults => {
-                    return Ok("waiting_for_tool_results".to_string());
-                }
-                crate::core::session::SessionExecutionState::Paused => {
-                    return Ok("paused".to_string());
-                }
-                crate::core::session::SessionExecutionState::Started
-                | crate::core::session::SessionExecutionState::Active => {}
-            }
-
-            if start.elapsed() > timeout {
-                return Ok(format!("timeout (last status: {:?})", session.status));
-            }
-
-            tokio::time::sleep(poll_interval).await;
-        }
+        self.execute_runtime_lookup(
+            "wait_session_idle",
+            serde_json::json!({
+                "session_id": session_id.to_string(),
+                "timeout_secs": timeout_secs.unwrap_or(120),
+            }),
+        )
+        .await?
+        .ok_or_else(|| everruns_contracts::error::AgentLoopError::store("Session not found"))
     }
 
     // =========================================================================

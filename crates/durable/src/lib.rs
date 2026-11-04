@@ -63,6 +63,8 @@ mod update_field;
 // `/proc` readings for the worker pool's backpressure and the bench reports.
 // Not part of the API.
 pub(crate) mod sysstat;
+// Bounds repeated failure reports per call site (EVE-1328).
+pub(crate) mod report_throttle;
 pub mod task_events;
 pub mod worker;
 pub mod workflow;

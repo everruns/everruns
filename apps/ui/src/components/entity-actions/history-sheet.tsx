@@ -14,8 +14,8 @@
 //   are shown after the restore.
 // See knowledge/execution/change-reasons-and-manager-context.md (UI).
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useMemo, useState } from "react";
 import { HistoryResourceKind } from "@/hooks/history-resource-kind";
 import Link from "next/link";
@@ -126,7 +126,10 @@ function HistorySheetContents({
         onOpenChange(next);
       }}
     >
-      <DrawerContent className="gap-0 overflow-y-auto p-0 sm:max-w-3xl">
+      <DrawerContent
+        chatProtected="Resource history"
+        className="gap-0 overflow-y-auto p-0 sm:max-w-3xl"
+      >
         <DrawerHeader className="border-b p-5 pr-12">
           <DrawerTitle>{ui("History")}</DrawerTitle>
           <DrawerDescription>
@@ -508,7 +511,7 @@ function RestoreDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent>
+      <DialogContent chatProtected="Restore resource revision">
         <form
           className="space-y-4"
           onSubmit={(event) => {

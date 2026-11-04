@@ -1,8 +1,12 @@
 "use client";
 import { localizedEntityDescription } from "@/lib/entity-localization";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
 import { EntityStatus } from "@/components/ui/entity-status";
@@ -25,7 +29,7 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { getDisplayName, getEntityNameClassName } from "@/lib/entity-lifecycle";
 import { formatCountLabel } from "@/lib/formatting";

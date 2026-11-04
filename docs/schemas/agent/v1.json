@@ -37,6 +37,15 @@
         "explicit"
       ]
     },
+    "CompletionCheck": {
+      "type": "string",
+      "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+      "enum": [
+        "off",
+        "unattended",
+        "always"
+      ]
+    },
     "ConversationStarter": {
       "type": "object",
       "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
@@ -181,6 +190,13 @@
       "type": "object",
       "description": "Authored values only: no organisation, agent, model, harness or channel IDs.",
       "properties": {
+        "agents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Manifest"
+          },
+          "description": "Agents bundled with this one, each a complete definition. Folders and\narchives keep them in `.agents/agents/<name>/`; text formats inline them."
+        },
         "capabilities": {
           "type": "array",
           "items": {
@@ -204,6 +220,17 @@
             {
               "$ref": "#/definitions/Communication",
               "description": "How the agent talks: `direct` (its text is the reply) or `explicit`\n(its text is working notes; it talks through `send_message`).\nOmission means `direct`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completion_check": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/CompletionCheck",
+              "description": "When a finishing turn gets a completion check: `off`, `unattended`\n(sessions started by triggers and schedules) or `always`. Omission\nmeans `unattended`."
             },
             {
               "type": "null"
@@ -289,6 +316,16 @@
           "propertyNames": {
             "type": "string"
           }
+        },
+        "members": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Other agents, by name, that this agent can hand work to. Agents bundled\nunder `.agents/agents/` are found without listing them here; an explicit\nempty list turns that discovery off."
         },
         "model": {
           "oneOf": [

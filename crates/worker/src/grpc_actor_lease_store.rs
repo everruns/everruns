@@ -8,9 +8,12 @@ use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_internal_protocol::proto;
 use uuid::Uuid;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use crate::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, DetachedCallKey, LeasedActor,
-    SessionActorStore,
+    ActorJournal, ActorLeaseRenewal, ActorLeaseStore, ActorRelease, ActorRenewal, DetachedCallKey,
+    LeasedActor, SessionActorStore,
 };
 use crate::grpc_adapters::{
     GrpcClient, grpc_missing_field, grpc_status_to_error, proto_event_to_core, uuid_to_proto,
@@ -35,11 +38,37 @@ fn fence_from_wire(fence: i64) -> Result<u64> {
 #[derive(Clone)]
 pub struct GrpcActorLeaseStore {
     client: GrpcClient,
+    /// Set once the control plane answers `RenewActorLeases` with
+    /// UNIMPLEMENTED (a server from before batched renewal): renewals then go
+    /// one per call, as before.
+    no_batch_renewal: Arc<AtomicBool>,
 }
 
 impl GrpcActorLeaseStore {
     pub fn new(client: GrpcClient) -> Self {
-        Self { client }
+        Self {
+            client,
+            no_batch_renewal: Arc::default(),
+        }
+    }
+
+    /// Renew each lease with its own call, concurrently.
+    async fn renew_one_by_one(
+        &self,
+        holder: &str,
+        ttl: std::time::Duration,
+        leases: &[ActorLeaseRenewal],
+    ) -> Vec<Result<Option<ActorRenewal>>> {
+        futures::future::join_all(leases.iter().map(|lease| {
+            self.renew_actor_lease(
+                lease.session_id,
+                holder,
+                lease.fence,
+                ttl,
+                lease.consumed_seq,
+            )
+        }))
+        .await
     }
 }
 
@@ -223,6 +252,52 @@ impl SessionActorStore for GrpcActorLeaseStore {
         }))
     }
 
+    async fn renew_actor_leases(
+        &self,
+        holder: &str,
+        ttl: std::time::Duration,
+        leases: &[ActorLeaseRenewal],
+    ) -> Result<Vec<Result<Option<ActorRenewal>>>> {
+        if leases.len() == 1 || self.no_batch_renewal.load(Ordering::Relaxed) {
+            return Ok(self.renew_one_by_one(holder, ttl, leases).await);
+        }
+        let request = proto::RenewActorLeasesRequest {
+            holder: holder.to_string(),
+            ttl_ms: ttl_ms(ttl),
+            leases: leases
+                .iter()
+                .map(|lease| {
+                    Ok(proto::ActorLeaseRenewal {
+                        session_id: Some(uuid_to_proto(lease.session_id.uuid())),
+                        fence: fence_to_wire(lease.fence)?,
+                        consumed_seq: lease.consumed_seq,
+                    })
+                })
+                .collect::<Result<_>>()?,
+        };
+        let response = match self.client.inner.client().renew_actor_leases(request).await {
+            Ok(response) => response.into_inner(),
+            Err(status) if status.code() == tonic::Code::Unimplemented => {
+                self.no_batch_renewal.store(true, Ordering::Relaxed);
+                return Ok(self.renew_one_by_one(holder, ttl, leases).await);
+            }
+            Err(status) => return Err(grpc_status_to_error(status)),
+        };
+        if response.leases.len() != leases.len() {
+            return Err(AgentLoopError::store(format!(
+                "gRPC response error: {} renewals for {} leases",
+                response.leases.len(),
+                leases.len()
+            )));
+        }
+        Ok(response
+            .leases
+            .into_iter()
+            .zip(leases)
+            .map(|(renewed, lease)| renewal_from_wire(renewed, lease.session_id))
+            .collect())
+    }
+
     async fn release_actor(
         &self,
         session_id: SessionId,
@@ -250,6 +325,39 @@ impl SessionActorStore for GrpcActorLeaseStore {
         } else {
             ActorRelease::LeaseLost
         })
+    }
+
+    async fn hand_off_actor(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: u64,
+        consumed_inbox_seq: i64,
+    ) -> Result<Option<ActorRelease>> {
+        let response = match self
+            .client
+            .inner
+            .client()
+            .hand_off_actor(proto::ReleaseActorRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                holder: holder.to_string(),
+                fence: fence_to_wire(fence)?,
+                consumed_inbox_seq,
+            })
+            .await
+        {
+            Ok(response) => response.into_inner(),
+            // A server from before hand-off: the lease expires instead.
+            Err(status) if status.code() == tonic::Code::Unimplemented => return Ok(None),
+            Err(status) => return Err(grpc_status_to_error(status)),
+        };
+        Ok(Some(if response.released {
+            ActorRelease::Released {
+                still_runnable: true,
+            }
+        } else {
+            ActorRelease::LeaseLost
+        }))
     }
 
     async fn read_actor_journal(
@@ -280,6 +388,23 @@ impl SessionActorStore for GrpcActorLeaseStore {
             head_sequence: response.head_sequence,
         })
     }
+}
+
+/// One lease's answer in a batched renewal, as a single renewal reports it.
+fn renewal_from_wire(
+    renewed: proto::RenewedActorLease,
+    session_id: SessionId,
+) -> Result<Option<ActorRenewal>> {
+    if renewed.session_not_found {
+        return Err(AgentLoopError::SessionNotFound(session_id));
+    }
+    let renewal = renewed
+        .renewal
+        .ok_or_else(|| grpc_missing_field("renewed lease renewal"))?;
+    Ok(renewal.held.then_some(ActorRenewal {
+        inbox_seq: renewal.inbox_seq,
+        cancel_inbox_seq: cancel_target(renewal.cancel_requested, renewal.cancel_inbox_seq),
+    }))
 }
 
 /// The inbox position a reported cancel targets. A control plane that predates

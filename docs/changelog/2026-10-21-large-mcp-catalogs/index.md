@@ -12,9 +12,7 @@ links:
 ---
 
 Everruns discovers every MCP catalog page and searches server/tool descriptions
-and parameter schemas within current access. Bounded `tool_search` reveals selected schemas as the
-agent needs them. Run selected operations through native tools, the session
-shell, or both:
+and parameter schemas within current access. Bounded `tool_search` reveals selected schemas on demand. Run selected operations through native tools, the shell, or both:
 
 ```json
 {
@@ -48,3 +46,7 @@ results with incidental matches. See [Large MCP catalogs and tool surfaces](/fea
 
 Verbose schemas no longer bury name matches. Exact names also accept spaces,
 hyphens or underscores. Byte-omitted candidates include names for exact refinement.
+
+## Update 2026-10-31
+
+Unicode [word matching](/changelog/2026-10-31-unicode-tool-discovery/) added.

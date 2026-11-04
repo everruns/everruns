@@ -79,6 +79,14 @@ index. Name, description, schema and source context remain distinct retrieval
 fields so verbose schemas and shared envelope terms cannot dilute distinctive
 names. Complete names written with spaces or hyphens resolve like underscore
 spellings; canonical MCP namespace separators remain intact.
+Indexed text and queries share NFC normalization and locale-independent Unicode
+word segmentation, including dictionary boundaries for uninterrupted Chinese,
+Japanese and Thai text. Combining marks remain part of words. ASCII identifier
+splitting is unchanged; exact-name aliases also recognize canonical Unicode
+equivalence without changing invocation identities. This is lexical retrieval,
+not translation, accent removal or compatibility-character folding. Hosted and
+legacy search retain their own matching behavior.
+
 For an owned operation, the index also recognizes an unqualified exact alias
 by stripping only its declared owner ID prefix, after normalizing that ID's
 hyphens to underscores: owner `platform` can match

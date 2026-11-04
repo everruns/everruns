@@ -52,6 +52,7 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
         // usage assertions distinguish "reported" from "defaulted to zero".
         let billed: u32 = request.texts.iter().map(|t| t.chars().count() as u32).sum();
         Ok(EmbedResponse {
+            response_id: None,
             embeddings,
             usage_tokens: Some(billed),
             actual_cost_usd: Some(0.0001),
@@ -62,12 +63,14 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
 fn test_driver_registry() -> Arc<DriverRegistry> {
     let mut registry = DriverRegistry::new();
     registry.register_descriptor(DriverDescriptor {
+        apis: Vec::new(),
         id: DriverId::external("test-embeddings"),
         display_name: "Test Embeddings".into(),
         services: vec![ServiceKind::Embeddings],
         credential_schema: CredentialFormSchema::empty(),
         base_url_env: None,
         oauth: None,
+        recommended_models: None,
         chat: None,
         provider: None,
         embeddings: Some(Arc::new(|_config| {

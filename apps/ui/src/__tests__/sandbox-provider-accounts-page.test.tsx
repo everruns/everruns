@@ -88,3 +88,8 @@ describe("Sandbox Provider Accounts", () => {
     expect(screen.queryByText("Brave Search")).not.toBeInTheDocument();
   });
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

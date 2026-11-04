@@ -10,6 +10,7 @@ pub mod caller_resolution;
 pub mod cli_auth;
 pub mod config;
 pub mod jwt;
+pub(crate) mod mcp_app;
 pub mod mcp_grant_guard;
 pub mod mcp_oauth;
 pub mod middleware;

@@ -166,6 +166,12 @@ optional `threshold`.
 Gemini, OpenAI Completions, models reached through gateways that don't
 implement hosted search, and any other provider.
 
+Bounded search and CLI `tools search` normalize Unicode accents and segment
+multilingual words. For example, `仓库` matches `搜索仓库问题`, and composed
+`café` matches the same word written with a combining acute accent. This is
+same-language lexical matching, not translation or accent removal. Exact name
+matches retain canonical invocation names and current access checks.
+
 For large MCP catalogs, `tool_search` can use bounded schema disclosure. Set
 `bounded: true`; the optional `max_active_tools`, `max_active_bytes`, and
 `max_result_bytes` settings adjust the built-in limits for active native schemas

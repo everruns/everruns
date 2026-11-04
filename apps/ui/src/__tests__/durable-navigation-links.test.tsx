@@ -83,3 +83,8 @@ test("workflow task and DLQ tabs name icon-only workflow links by destination", 
   fireEvent.click(screen.getByRole("button", { name: "Dead Letter Queue 1" }));
   expectWorkflowLink("View workflow workflow_dlq", "workflow_dlq");
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

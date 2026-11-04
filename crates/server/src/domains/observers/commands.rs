@@ -1,8 +1,11 @@
 use super::service::{OBSERVER_MANAGE, OBSERVER_VIEW, ObserverService};
-use super::types::{CreateObserverRequest, ListObserversQuery, UpdateObserverRequest};
+use super::types::{
+    BackfillObserverRequest, CreateObserverRequest, ListObserversQuery, QualitySummaryQuery,
+    ReviewScoreRequest, UpdateObserverRequest,
+};
 use crate::domains::common::*;
-use crate::domains::observers::record::{Observer, TraceScore};
-use everruns_contracts::typed_id::{ObserverId, SessionId};
+use crate::domains::observers::record::{BackfillResult, Observer, QualitySummary, TraceScore};
+use everruns_contracts::typed_id::{AgentId, ObserverId, SessionId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -210,6 +213,9 @@ pub struct ListObserverScores {
     pub limit: i64,
     #[serde(default)]
     pub offset: i64,
+    /// Only unreviewed completed scores, failures first (the review queue).
+    #[serde(default, deserialize_with = "deserialize_bool_lenient")]
+    pub review_queue: bool,
 }
 
 const fn default_scores_limit() -> i64 {
@@ -245,10 +251,151 @@ impl Command for ListObserverScores {
                 &ctx.caller,
                 &observer_id.to_string(),
                 session_id,
+                self.review_queue,
                 self.limit,
                 self.offset,
             )
             .await?
+            .ok_or_else(|| CommandError::not_found("Observer"))
+    }
+}
+
+// ============================================
+// Review a score
+// ============================================
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct ReviewObserverScore {
+    /// Observer's prefixed public identifier.
+    pub observer_id: String,
+    /// Score's prefixed public identifier.
+    pub score_id: String,
+    #[serde(flatten)]
+    pub req: ReviewScoreRequest,
+}
+
+#[command(
+    name = "review_observer_score",
+    category = "observers",
+    description = "Record whether an observer's score was right.",
+    method = "POST",
+    path = "/v1/observers/{observer_id}/scores/{score_id}/review",
+    policy = OBSERVER_MANAGE,
+    cli = CliRoute::new(&["observers", "scores"], "review").with_examples(&[CliExample::new("Mark a failing score as a grader mistake", "everruns observers scores review --observer-id observer_01h9 --score-id score_01h9 --agrees false --note 'The answer cited the refund policy' --reason 'Calibrate the grounded judge'")]),
+    http = plain,
+    request_body(ReviewScoreRequest),
+    responses((status = 404, description = "Observer or completed score not found")),
+)]
+impl Command for ReviewObserverScore {
+    type Output = TraceScore;
+
+    async fn execute(self, ctx: &Ctx) -> Result<TraceScore, CommandError> {
+        let observer_id = parse_observer_id(&self.observer_id)?;
+        service(ctx)
+            .review_score(
+                &ctx.caller,
+                &observer_id.to_string(),
+                &self.score_id,
+                self.req,
+            )
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Score"))
+    }
+}
+
+// ============================================
+// Backfill
+// ============================================
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct BackfillObserver {
+    /// Observer's prefixed public identifier.
+    pub observer_id: String,
+    #[serde(flatten)]
+    pub req: BackfillObserverRequest,
+}
+
+#[command(
+    name = "backfill_observer",
+    category = "observers",
+    description = "Score past production traffic with an observer.",
+    method = "POST",
+    path = "/v1/observers/{observer_id}/backfill",
+    policy = OBSERVER_MANAGE,
+    cli = CliRoute::new(&["observers"], "backfill").with_examples(&[CliExample::new("Score the last day of traffic with a new observer", "everruns observers backfill --observer-id observer_01h9 --since-hours 24 --reason 'Baseline the new rubric'")]),
+    http = plain,
+    request_body(BackfillObserverRequest),
+    responses((status = 404, description = "Observer not found")),
+)]
+impl Command for BackfillObserver {
+    type Output = BackfillResult;
+
+    async fn execute(self, ctx: &Ctx) -> Result<BackfillResult, CommandError> {
+        let observer_id = parse_observer_id(&self.observer_id)?;
+        service(ctx)
+            .backfill(&ctx.caller, &observer_id.to_string(), self.req)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Observer"))
+    }
+}
+
+// ============================================
+// Live quality summary
+// ============================================
+
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
+pub struct GetObserverSummary {
+    /// Window in days (1–90). Defaults to 7.
+    pub days: Option<u32>,
+    /// Only scores of this agent.
+    pub agent_id: Option<String>,
+    /// Only scores of this observer.
+    pub observer_id: Option<String>,
+}
+
+impl CommandSchema for GetObserverSummary {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<QualitySummaryQuery>()
+    }
+}
+
+#[command(
+    name = "get_observer_summary",
+    category = "observers",
+    description = "Live quality by agent, observer and day.",
+    method = "GET",
+    path = "/v1/observers/summary",
+    policy = OBSERVER_VIEW,
+    cli = CliRoute::new(&["observers"], "summary").with_examples(&[CliExample::new("See how one agent's production answers scored this week", "everruns observers summary --agent-id agent_01h9 --days 7")]),
+    http = plain,
+    params(QualitySummaryQuery),
+    responses((status = 404, description = "Observer not found")),
+)]
+impl Command for GetObserverSummary {
+    type Output = QualitySummary;
+
+    async fn execute(self, ctx: &Ctx) -> Result<QualitySummary, CommandError> {
+        let agent_id = self
+            .agent_id
+            .as_deref()
+            .map(|id| {
+                id.parse::<AgentId>()
+                    .map(|a| a.uuid())
+                    .map_err(|e| CommandError::bad_request(format!("Invalid agent ID: {e}")))
+            })
+            .transpose()?;
+        let observer_id = self
+            .observer_id
+            .as_deref()
+            .map(parse_observer_id)
+            .transpose()?
+            .map(|id| id.to_string());
+        service(ctx)
+            .summary(&ctx.caller, self.days, agent_id, observer_id.as_deref())
+            .await
+            .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Observer"))
     }
 }

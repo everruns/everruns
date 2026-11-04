@@ -7,6 +7,7 @@ import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
 
 function Drawer({ ...props }: DialogPrimitive.Root.Props) {
   const mode = usePageChatMode();
@@ -43,11 +44,13 @@ function DrawerContent({
   showCloseButton = true,
   side = "right",
   scopeToPage = true,
+  chatProtected,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   side?: "left" | "right";
   scopeToPage?: boolean;
+  chatProtected?: string;
 }) {
   const ui = useUiTranslations();
   const mode = usePageChatMode();
@@ -71,6 +74,7 @@ function DrawerContent({
         )}
         {...props}
       >
+        {chatProtected && <ManualPageContext label={chatProtected} />}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close

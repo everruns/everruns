@@ -29,6 +29,8 @@
 //! # let _ = accepts_plan;
 //! ```
 
+/// What the engine does when a provider refuses a request for lack of credits.
+pub mod credit_shortfall;
 /// Bounded background consolidation over host-owned Memory and durable stores.
 pub mod dreaming;
 mod execution;

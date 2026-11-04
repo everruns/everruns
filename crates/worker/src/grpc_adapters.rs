@@ -44,6 +44,7 @@ mod connect;
 mod event_batch;
 mod history_cache;
 mod load_messages;
+mod provider_config;
 mod shared_client;
 use checkpoint_availability::CheckpointAvailability;
 pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
@@ -51,7 +52,7 @@ pub use shared_client::SharedClient;
 mod mcp_definitions;
 use mcp_definitions::proto_mcp_tool_def_to_tool_definition;
 mod definition_reads;
-use definition_reads::proto_agent_to_definition;
+use definition_reads::{proto_agent_to_definition, proto_tool_definitions};
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
@@ -83,9 +84,8 @@ pub struct GrpcClient {
 impl GrpcClient {
     /// Set session status (started, active, idle).
     ///
-    /// Acknowledgement only (EVE-882): the wire response still carries the
-    /// stored record for older workers, but status mutation exposes no
-    /// session record to the caller.
+    /// Acknowledgement only (EVE-882): the response carries no session
+    /// record.
     pub async fn set_session_status(
         &self,
         org_id: i64,
@@ -243,26 +243,7 @@ impl GrpcClient {
             .await
             .map_err(grpc_status_to_error)?
             .into_inner();
-        if !response.found {
-            return Ok(None);
-        }
-        let provider_type = response
-            .provider_type
-            .parse()
-            .unwrap_or_else(|_| unreachable!());
-        // A connection with no options (or an older server that does not send
-        // the field) yields the empty options, which changes nothing.
-        let request_options = non_empty_string(response.request_options_json)
-            .and_then(|json| serde_json::from_str(&json).ok())
-            .unwrap_or_default();
-        let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
-            everruns_contracts::runtime_provider::ProviderKey::new(provider_id),
-            provider_type,
-        );
-        config.api_key = non_empty_string(response.api_key);
-        config.base_url = non_empty_string(response.base_url);
-        config.request_options = request_options;
-        Ok(Some(config))
+        Ok(provider_config::from_response(provider_id, response))
     }
 
     /// Get MCP server info by name prefix (for MCP tool execution)
@@ -678,46 +659,6 @@ impl GrpcOrgAdapter {
             Err(error) if error.kind == 3 => Ok(None),
             Err(error) => Err(grpc_command_error_to_error(error)),
         }
-    }
-
-    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
-        const TURN_COMPLETED: &str = "turn.completed";
-        const TURN_FAILED: &str = "turn.failed";
-        const TURN_CANCELLED: &str = "turn.cancelled";
-        const TURN_SEALED: &str = "turn.sealed";
-
-        let response: serde_json::Value = self
-            .execute_platform_command(
-                "list_events",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "types": [TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED, TURN_SEALED],
-                    "limit": 1,
-                    "order_desc": true,
-                }),
-            )
-            .await?;
-
-        let Some(event_type) = response
-            .get("data")
-            .and_then(|data| data.as_array())
-            .and_then(|events| events.first())
-            .and_then(|event| event.get("type"))
-            .and_then(|event_type| event_type.as_str())
-        else {
-            return Ok(None);
-        };
-
-        let status = match event_type {
-            TURN_COMPLETED => Some("completed"),
-            TURN_FAILED => Some("failed"),
-            TURN_CANCELLED => Some("cancelled"),
-            // A sealed turn is terminal but distinct from a failure: surface it
-            // as "sealed" so the parent agent can decide what to do next.
-            TURN_SEALED => Some("sealed"),
-            _ => None,
-        };
-        Ok(status.map(str::to_string))
     }
 }
 
@@ -1282,7 +1223,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSe
         tags: proto_session.tags,
         model_id: model_id.map(|u| u.into()),
         capabilities,
-        tools: vec![],
+        tools: proto_tool_definitions(&proto_session.tools, "session")?,
         mcp_servers: Default::default(),
         system_prompt: proto_session.system_prompt.clone(),
         initial_files: serde_json::from_str(&proto_session.initial_files_json).unwrap_or_default(),
@@ -1302,10 +1243,10 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSe
         status,
         usage: None, // Usage not tracked in worker context
         parent_session_id,
-        // Fork lineage is API-read-time metadata, not carried over gRPC.
-        forked_from_session_id: None,
+        forked_from_session_id: None, // API read-time lineage, not carried over gRPC.
         blueprint_id: proto_session.blueprint_id,
         blueprint_config,
+        unattended: proto_session.unattended.unwrap_or(false),
     })
 }
 

@@ -7,14 +7,15 @@
 
 import type { Capability, CapabilityLocalization } from "@/lib/api/types";
 import { localeCandidates } from "@/lib/entity-localization";
-import { uiMessages } from "@/lib/ui-messages";
+import { getSupportedLocale } from "./locale-registry";
+import { uiMessagesByLocale } from "@/lib/ui-messages";
 
 // Category values remain stable for filtering/API use; only product labels
 // have catalog entries. Tenant-defined categories fall back verbatim.
 export function localizedCapabilityCategory(category: string, locale: string): string {
-  return localeCandidates(locale).includes("uk")
-    ? (uiMessages[`Capability category: ${category}`] ?? category)
-    : category;
+  return (
+    uiMessagesByLocale[getSupportedLocale(locale)]?.[`Capability category: ${category}`] ?? category
+  );
 }
 
 function localizedField<K extends keyof CapabilityLocalization>(
@@ -85,7 +86,10 @@ function mergeNode(schema: Record<string, unknown>, overlay: OverlayNode): Recor
     const labels = overlay.enum_labels;
     if (Array.isArray(merged.oneOf)) {
       merged.oneOf = merged.oneOf.map((option) =>
-        isRecord(option) && "const" in option && labels[String(option.const)] !== undefined
+        isRecord(option) &&
+        "const" in option &&
+        Object.hasOwn(labels, String(option.const)) &&
+        typeof labels[String(option.const)] === "string"
           ? { ...option, title: labels[String(option.const)] }
           : option,
       );
@@ -94,7 +98,10 @@ function mergeNode(schema: Record<string, unknown>, overlay: OverlayNode): Recor
       // plain enums so localized labels still render.
       merged.oneOf = merged.enum.map((value) => ({
         const: value,
-        title: labels[String(value)] ?? String(value),
+        title:
+          Object.hasOwn(labels, String(value)) && typeof labels[String(value)] === "string"
+            ? labels[String(value)]
+            : String(value),
       }));
       delete merged.enum;
     }

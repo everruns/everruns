@@ -27,6 +27,15 @@ path = "src/bin/egress_proxy.rs"
 name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
+# Local benchmark fixture uses the production dependency graph, without the
+# additional features/dev-dependencies activated by a Cargo bench target.
+# Runtime images copy an explicit binary list and do not include this utility.
+[[bin]]
+name = "chat-capacity-fixture"
+path = "src/bin/chat_capacity_fixture.rs"
+test = false
+bench = false
+
 [features]
 # Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
@@ -69,6 +78,8 @@ chrono-tz = "0.10"
 dotenvy.workspace = true
 clap.workspace = true
 jsonwebtoken.workspace = true
+# Validates `json_schema` eval scorers (already linked through everruns-core).
+jsonschema = { version = "0.60.1", default-features = false }
 rand.workspace = true
 sha2.workspace = true
 hmac.workspace = true
@@ -96,14 +107,14 @@ cron = "0.17"
 inventory.workspace = true
 everruns-server-macros = { path = "../server-macros" }
 libc = "0.2"
-postgresql_embedded = { version = "0.21", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
+postgresql_embedded = { version = "0.22", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
 moka.workspace = true
 zip = { version = "9", default-features = false, features = ["deflate"] }
 urlencoding = "2"
 git2.workspace = true
 tempfile.workspace = true
 mime_guess = "2"
-markkit = { version = "0.1.1", default-features = false, features = ["html", "docx", "spreadsheet"] }
+markkit = { version = "0.3.1", default-features = false, features = ["html", "docx", "spreadsheet"] }
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
 http-body-util = "0.1"
@@ -116,8 +127,8 @@ aws-lc-rs = "1"
 
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
-bashkit = { version = "0.20.1", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
-bashkit-scripted-tool = { version = "0.20.1", default-features = false, features = ["jq", "python"] }
+bashkit = { version = "0.20.2", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
+bashkit-scripted-tool = { version = "0.20.2", default-features = false, features = ["jq", "python"] }
 
 everruns-contracts = { workspace = true, default-features = false, features = ["http", "sqlx"] }
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
@@ -157,7 +168,6 @@ everruns-sdk.workspace = true
 everruns-test-support = { path = "../test-support", default-features = false }
 # Template tests check the `github` capability enforces template settings.
 wiremock = "0.6"
-jsonschema = { version = "0.58.1", default-features = false }
 flate2.workspace = true
 tar.workspace = true
 # Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).
@@ -178,4 +188,9 @@ harness = false
 # (`benches/knowledge_catalog.rs`). Run weekly by `durable-bench.yml`.
 [[bench]]
 name = "knowledge_catalog"
+harness = false
+
+# Single-message retrieval scaling; isolated database, explicit benchmark runs.
+[[bench]]
+name = "message_lookup"
 harness = false

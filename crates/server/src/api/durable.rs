@@ -145,7 +145,7 @@ impl AppState {
                         let health = match s.get_system_health().await {
                             Ok(h) => h,
                             Err(e) => {
-                                tracing::error!("Metrics sampler: failed to get health: {}", e);
+                                everruns_core::report_repeated_failure!(error, error = %e, "Metrics sampler: failed to get health");
                                 continue;
                             }
                         };
@@ -991,7 +991,7 @@ pub async fn get_health(
 ) -> ApiResult<HealthResponse> {
     let store = state.get_store()?;
     let health = store.get_system_health().await.map_err(|e| {
-        tracing::error!("Failed to get system health: {}", e);
+        everruns_core::report_repeated_failure!(error, error = %e, "Failed to get system health");
         ErrorResponse::new("Internal server error".to_string())
             .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
@@ -2038,7 +2038,7 @@ pub async fn stream_durable_sse(
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Ok(Sse::new(stream).keep_alive(keep_alive))
+    Ok(Sse::new(super::sse::end_on_shutdown(stream, &config)).keep_alive(keep_alive))
 }
 
 /// GET /v1/durable/workflows/:workflow_id/sse - Stream workflow state (SSE)
@@ -2297,7 +2297,7 @@ pub async fn stream_workflow_sse(
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Ok(Sse::new(stream).keep_alive(keep_alive))
+    Ok(Sse::new(super::sse::end_on_shutdown(stream, &config)).keep_alive(keep_alive))
 }
 
 fn disconnecting_event(reason: DisconnectReason, config: &SseStreamConfig) -> SseEvent {

@@ -11,9 +11,8 @@
  */
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
-import { useLocale } from "@/providers/locale-provider";
 
 export interface ChatNavAnchor {
   id: string;

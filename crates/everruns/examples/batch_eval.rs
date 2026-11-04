@@ -5,39 +5,51 @@
 //! Unlike batch_classification, this short example keeps its ticket in memory;
 //! restarting it submits another job. Use the persisted example for recovery.
 
+mod batch_support;
+
 use everruns::{
-    Model, Provider,
-    batch::{Batch, BatchStatus},
-    providers::anthropic::Anthropic,
+    LlmCallConfig,
+    batch::{Batch, BatchRequest, BatchStatus},
+    llm::{Message, MessageRole},
 };
 use std::{error::Error, time::Duration};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let provider: Provider = Anthropic::from_env()?.into();
-    let model = Model::from("claude-sonnet-5");
+    let (provider, provider_name, default_model) = batch_support::provider()?;
+    let scope = std::env::var("BATCH_SCOPE")
+        .unwrap_or_else(|_| format!("capital-eval/{provider_name}-default"));
+    let client = Batch::new(provider, scope);
+    let mut config =
+        LlmCallConfig::new(std::env::var("BATCH_MODEL").unwrap_or_else(|_| default_model.into()));
+    config.max_tokens = Some(64);
     let cases = [
         ("france", "France", "Paris"),
         ("japan", "Japan", "Tokyo"),
         ("italy", "Italy", "Rome"),
     ];
-    let mut submission = Batch::new(provider.clone(), "capital-eval/anthropic-default");
-    for (id, country, _) in cases {
-        submission = submission.request(
-            id,
-            model
-                .completion()
-                .system("Answer with only the capital city name, no punctuation.")
-                .user(format!("What is the capital of {country}?"))
-                .max_tokens(64),
-        )?;
-    }
-    let ticket = submission.submit().await?;
+    let requests = cases
+        .iter()
+        .map(|(id, country, _)| BatchRequest {
+            id: (*id).into(),
+            messages: vec![
+                Message::text(
+                    MessageRole::System,
+                    "Answer with only the capital city name, no punctuation.",
+                ),
+                Message::text(
+                    MessageRole::User,
+                    format!("What is the capital of {country}?"),
+                ),
+            ],
+            config: config.clone(),
+        })
+        .collect();
+    let ticket = client.submit_requests(requests).await?;
     println!(
         "Submitted {}. Waiting for offline processing...",
         ticket.job_id()
     );
-    let client = Batch::new(provider, "capital-eval/anthropic-default");
     while client.poll(&ticket).await? != BatchStatus::Ended {
         tokio::time::sleep(Duration::from_secs(60)).await;
     }

@@ -69,7 +69,8 @@ macro_rules! step_select {
     () => {
         "s.turn_no, s.step_no, s.kind, s.status, s.start_sequence, s.end_sequence, \
          s.started_at, s.duration_ms, s.name, s.target, s.result, s.narration, s.tool_call_id, \
-         s.model, s.input_tokens, s.output_tokens, s.message_count, s.requested_tool_call_ids"
+         s.model, s.input_tokens, s.output_tokens, s.message_count, s.requested_tool_call_ids, \
+         s.retry_attempts, s.retry_wait_ms"
     };
 }
 

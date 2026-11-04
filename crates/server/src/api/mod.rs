@@ -39,6 +39,7 @@ pub mod dispatch;
 pub mod durable;
 pub mod evals;
 pub mod events;
+pub mod external_agents;
 pub mod feature_flags;
 pub mod files;
 pub mod github_apps;
@@ -80,6 +81,7 @@ pub mod public;
 pub mod question_answers;
 pub mod reporting;
 pub mod resolver;
+pub mod run_requests;
 pub mod sandbox_templates;
 pub mod schedules;
 pub mod search_providers;
@@ -115,3 +117,5 @@ pub mod workspaces;
 pub use common::{ErrorResponse, ListResponse, PaginatedResponse};
 
 pub mod runtime_auth;
+
+pub mod tracing_destinations;

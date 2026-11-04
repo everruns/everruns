@@ -33,7 +33,9 @@
 //!   if it keeps hanging, the poison guard) takes over.
 //! - Poison guard: a lease that finds more attempts than the threshold (each
 //!   lease counts one; any release resets the count) seals the turn instead of
-//!   running it, so a turn that kills its worker cannot loop forever.
+//!   running it, so a turn that kills its worker cannot loop forever. A
+//!   closed turn still owed its `session.idled` gets it first: the guard
+//!   only stops running, never skips the idle a finished turn is owed.
 //! - The poison guard counts holder deaths, not failures to reach the control
 //!   plane (EVE-1301). Every lease that ended on a retryable error used to
 //!   count like a crash, so a database blip that spanned three leases (chaos
@@ -52,6 +54,13 @@
 //!   with its own counter). That report fails in the very outage it reports,
 //!   so a blip would still count; the retry waits the blip out instead, and
 //!   needs no schema or protocol change.
+//! - Hand-off: a draining holder (`SessionActorDriver::with_hand_off`) stops
+//!   the turn at its next step boundary through the inbox
+//!   (`TurnInbox::should_hand_off`), after at least one step, with that
+//!   step's events stored, and gives the lease back with the actor still
+//!   runnable. The next holder folds the log like after a crash, but without
+//!   waiting out a TTL and without a cut-off call to rerun. A store that
+//!   cannot hand off lets the lease expire instead.
 //! - Cancel: the holder records it (single writer; the server does not when
 //!   a live holder runs the actor). The drive is dropped first, and the
 //!   cancel is recorded only while the turn is still open in the log, so a
@@ -96,6 +105,9 @@ enum Finish {
     /// Release ownership while preserving the retry checkpoint and alarm.
     /// An intentional wait bypasses the control-plane failure retry loop.
     Park,
+    /// The holder is draining: the turn stopped between steps with its events
+    /// stored; give the lease back with the actor still runnable.
+    HandOff,
     /// Keep the lease until it expires: lost, or a stall.
     Expire,
     /// A retryable failure the drive stopped on, its queued events stored or
@@ -178,6 +190,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         let renewer = AbortOnDrop(everruns_contracts::rt::spawn(renew_loop(
             lease.clone(),
             self.renew_poke.clone(),
+            self.renew_epoch,
         )));
         // A retryable failure runs the turn again on this lease, off the
         // poison guard's count (module notes).
@@ -229,6 +242,20 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 }
                 Err(error) => {
                     tracing::warn!(session_id = %actor.session_id, error = %error, "Actor release failed; the lease will expire");
+                }
+            },
+            Ok(Finish::HandOff) if !lease.is_lost() => match lease.hand_off().await {
+                Ok(Some(ActorRelease::Released { .. })) => {
+                    tracing::info!(session_id = %actor.session_id, "Actor handed off between steps");
+                }
+                Ok(Some(ActorRelease::LeaseLost)) => {
+                    tracing::warn!(session_id = %actor.session_id, "Actor lease lost before hand-off");
+                }
+                Ok(None) => {
+                    tracing::info!(session_id = %actor.session_id, "Store cannot hand off; the lease will expire and the turn resumes from the log");
+                }
+                Err(error) => {
+                    tracing::warn!(session_id = %actor.session_id, error = %error, "Actor hand-off failed; the lease will expire");
                 }
             },
             Ok(Finish::Retry(error)) => {
@@ -390,6 +417,22 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             lease.advance(sequence);
         }
 
+        // The latest turn is closed. Its holder may have died between the
+        // turn's terminal event and `session.idled` (chaos harness: the
+        // session stayed `active` with nothing running). Idle it here,
+        // idempotently (the log says whether the idle is still owed), and
+        // ahead of the poison guard: the deaths that poison a lease are
+        // usually that same turn's, and a guard that finds no open turn and
+        // no fresh input seals nothing, so it released the session `active`
+        // with no actor runnable (production, 2026-10-29).
+        if open.is_none()
+            && let Some((turn_id, input_message_id)) = unidled_turn(&tail)
+        {
+            RuntimeSessionLifecycle::new(setup.clone(), org_id, session_id)
+                .emit_session_idled(turn_id, input_message_id, None, None)
+                .await?;
+        }
+
         if poisoned {
             self.seal(lease, &setup, org_id, open, actor.next_input_seq)
                 .await?;
@@ -397,18 +440,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         }
 
         let Some(turn) = open else {
-            // The latest turn is closed. Its holder may have died between the
-            // turn's terminal event and `session.idled` (chaos harness: the
-            // session stayed `active` with nothing running), and before a
-            // renew committed the cursor over its input (the input would run
-            // a second turn). Finish both here, idempotently: the log says
-            // whether the idle and the input are still owed.
-            let closed = unidled_turn(&tail);
-            if let Some((turn_id, input_message_id)) = closed {
-                RuntimeSessionLifecycle::new(setup.clone(), org_id, session_id)
-                    .emit_session_idled(turn_id, input_message_id, None, None)
-                    .await?;
-            }
+            // Its holder may also have died before a renew committed the
+            // cursor over its input (the input would run a second turn): the
+            // log says whether the input is still owed.
             let mut fresh = lease.fresh_input(actor.next_input_seq).await?;
             if let Some(found) = fresh
                 && closed_input(&tail) == Some(found.message_id)
@@ -486,13 +520,18 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         if turn.is_answered() {
             let drive = self.open_drive(&setup, org_id, &turn).await?;
             let lifecycle = RuntimeSessionLifecycle::new(setup.clone(), org_id, session_id);
+            let completion = turn.completed_data(chrono::Utc::now());
+            let iterations = completion.iterations;
+            let usage = completion.usage.clone();
             lifecycle
-                .turn_completed(
+                .emit_turn_completed(turn.input_message_id(), completion)
+                .await?;
+            lifecycle
+                .emit_session_idled(
                     turn.turn_id(),
                     turn.input_message_id(),
-                    turn.reasons(),
-                    turn.usage().cloned(),
-                    None,
+                    Some(iterations),
+                    usage,
                 )
                 .await?;
             lifecycle
@@ -572,6 +611,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             host,
             drive: &drive,
             parked: Default::default(),
+            hand_off: &self.hand_off,
         };
         let (mut lost, mut cancel) = (lease.lost(), lease.cancel());
         enum Stopped {
@@ -649,6 +689,10 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             {
                 lease.turn_stored();
                 Finish::Park
+            }
+            (Stopped::Done(Err(error)), Ok(())) if crate::host::is_handed_off(&error) => {
+                lease.turn_stored();
+                Finish::HandOff
             }
             (Stopped::Done(Err(error)), Ok(())) if error.is_non_retryable() => {
                 lease.turn_stored();

@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useState } from "react";
@@ -60,10 +64,16 @@ function scoreStatusVariant(status: string): "default" | "secondary" | "destruct
 }
 
 function scorerSummary(scorer: ObserverScorerConfig): string {
+  const scope =
+    scorer.scope === "session"
+      ? "conversation · "
+      : scorer.scope === "tool"
+        ? `tool${scorer.tools?.length ? ` (${scorer.tools.join(", ")})` : ""} · `
+        : "";
   if (scorer.method === "llm_judge") {
-    return `llm_judge (pass ≥ ${scorer.pass_threshold})`;
+    return `${scope}llm_judge (pass ≥ ${scorer.pass_threshold})`;
   }
-  return describeRule(scorer.rule);
+  return `${scope}${describeRule(scorer.rule)}`;
 }
 
 function ConfigurationTab({
@@ -134,7 +144,7 @@ function ConfigurationTab({
             <p className="mb-1 text-xs font-medium text-muted-foreground">{ui("Sampling rate")}</p>
             <p>
               {Math.round(observer.sampling_rate * 100)}
-              {ui("% of matching turns")}
+              {ui("% of matching answers, conversations and tool calls")}
             </p>
           </div>
         </CardContent>
@@ -165,6 +175,8 @@ function ConfigurationTab({
 }
 
 function ScoreRow({ score }: { score: TraceScore }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const reason = score.reason ?? score.error_message ?? "";
   const truncated = reason.length > 80 ? `${reason.slice(0, 80)}…` : reason;
@@ -189,7 +201,7 @@ function ScoreRow({ score }: { score: TraceScore }) {
         {truncated || "—"}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {new Date(score.created_at).toLocaleString()}
+        {new Date(score.created_at).toLocaleString(displayLocale)}
       </TableCell>
       <TableCell>
         <Link href={`/sessions/${score.session_id}/trace`} className="text-primary hover:underline">

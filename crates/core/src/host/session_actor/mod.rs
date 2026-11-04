@@ -3,6 +3,8 @@
 
 mod inbox;
 mod lease;
+mod renewals;
+pub use renewals::BatchedRenewals;
 pub mod store;
 #[cfg(test)]
 mod tests;
@@ -172,6 +174,12 @@ pub struct SessionActorDriver<H: ActorHosts> {
     store: Arc<dyn SessionActorStore>,
     config: SessionActorConfig,
     renew_poke: Arc<Notify>,
+    /// The clock the renewers' periodic renewals line up on, so the holder's
+    /// running turns share a batch ([`BatchedRenewals`]).
+    renew_epoch: everruns_contracts::rt::Instant,
+    /// Set when the holder drains: running turns stop at their next step
+    /// boundary and hand the lease back (see `turn.rs`).
+    hand_off: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<H: ActorHosts> SessionActorDriver<H> {
@@ -185,12 +193,32 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             store,
             config,
             renew_poke: Arc::new(Notify::new()),
+            renew_epoch: everruns_contracts::rt::Instant::now(),
+            hand_off: Default::default(),
         }
+    }
+
+    /// Share the holder's drain flag. Once it is set, every running turn
+    /// finishes the step it is in, stores it, and hands its lease back so
+    /// another holder resumes the turn from the log at once; a turn leased
+    /// after that hands off after its first step.
+    pub fn with_hand_off(mut self, hand_off: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.hand_off = hand_off;
+        self
     }
 
     /// Wake the renewer on a cancellation notification.
     pub fn with_renew_poke(mut self, poke: Arc<Notify>) -> Self {
         self.renew_poke = poke;
+        self
+    }
+
+    /// Line the periodic renewals up on the holder's clock rather than this
+    /// driver's start. A holder that runs one driver per lease passes one
+    /// epoch to all of them (and one [`BatchedRenewals`] store), so its
+    /// running turns renew in the same batch.
+    pub fn with_renew_epoch(mut self, epoch: everruns_contracts::rt::Instant) -> Self {
+        self.renew_epoch = epoch;
         self
     }
 }

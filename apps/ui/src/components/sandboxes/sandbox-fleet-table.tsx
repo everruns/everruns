@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import type { SandboxFleetItem } from "@/lib/api/sandboxes";

@@ -66,6 +66,48 @@ to `ReasonAtom: starting LLM call`) p50 under 200ms. Tracking issue: EVE-415.
 
 ## Architecture
 
+### Authenticated chat capacity qualification
+
+The first-class [chat capacity benchmark](../../scripts/capacity/README.md) owns
+reproducible Console Chat, Agent API and Work Chat qualification. These are
+separate profiles because command admission, runtime identity exchange and BFF
+background traffic have different costs. It uses simulated models exclusively;
+real authentication, persistence, workers, local file tools and SSE remain in the
+path. The local fixture provisions disposable data and synthetic identities rather
+than depending on cloud infrastructure or paid providers.
+
+The qualification target is 1,000 connected identities under stepped load and a
+30-minute soak, plus separately reported simultaneous-turn and recovery cases.
+Admission latency, correlated `turn.completed`, durable exactly-once input audit,
+stream delivery, arrival scheduling and independently sampled resource pressure
+are separate success bars. A small smoke or transport-only fixture cannot establish
+1,000-user capacity. Raw samples, source revision and topology must accompany a
+capacity claim; co-located generators limit conclusions to the measured machine.
+Commands, workload defaults and gates live with the benchmark, not in this concept.
+Local generators synchronize the end of measurement before any journal audit;
+verification traffic must not compete with another generator's measured workload.
+Stream error accounting uses that global measurement window. Setup failures
+remain gated; disconnects during later verification remain separate diagnostics.
+
+Qualification also verifies persisted output size, file-tool rounds and pacing.
+A successful tiny simulator fallback must not silently reduce the offered load.
+Requested fault injections must execute during measurement and recover their
+streams; an unexecuted reconnect or restart cannot pass as recovery evidence.
+
+Recovery qualification includes admission, not only running turns. The
+[Agent API retry contract](../integrations/agent-execution-api.md#admission-retries)
+and [transactional commands](../execution/command-tree.md) tie the claim and
+replay response to the operation's commit. Legacy pending claims can still outlive
+the recovery budget during an upgrade; preserve that failure in the report rather
+than clearing claims or changing the gate.
+
+Keep SSE for the three current chat surfaces. Offline drafts, durable command
+identities and replay cursors provide recovery independently of transport choice.
+A WebSocket proposal must demonstrate a bidirectional requirement or a controlled
+transport bottleneck; a platform capacity failure alone is insufficient evidence.
+
+### Existing API session benchmarks
+
 Single benchmark binary at `crates/server/benches/load_test.rs`. Uses `everruns-sdk` for agent operations and raw `reqwest` for session creation (SDK lacks `harness_id`) and SSE streaming.
 
 ### Turn Completion via SSE
@@ -283,7 +325,7 @@ Realistic turns stay open for seconds, so reaching a given turn rate needs many 
 
 ## Load Testing a Hosted Deployment, and Baselines
 
-The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears.
+The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears. The [local stress bench](#local-stress-bench) adds a fourth that needs no deployment.
 
 1. **`turn_latency` bench (local).** Statements per turn is the number to compare between commits. It is stable run to run, unlike wall time.
 2. **Local stack under a driver.** A release build of the agent dev stack, driven by many concurrent sessions over the public API with `scripts/load-test.py`. An instant llmsim model with no marker measures platform overhead; scenario markers measure capacity under realistic turns. This shows where queueing starts (worker slots, the per-IP API limit) before touching production.
@@ -300,6 +342,14 @@ older `research-3-tools` scenario still selects arbitrary read tools; use it
 only with an offered tool set whose generated placeholder arguments are valid.
 Changing the tool mix changes the workload, so keep both mix and revision with
 results rather than comparing the two as equivalent baselines.
+
+`luna-agent`, `sol-agent` and `muse-agent` play those same tool rounds with
+first-token delay and streaming speed measured from GPT-6 Luna, GPT-6.1 Sol and
+Muse Spark 1.3 Contributor, so a mix can ask how capacity changes when agents
+wait on a slower or faster model. `long-tool` runs two 25 s shell commands
+(the virtual shell caps a command at 30 s), which holds a turn and its tool slot
+open the way builds and test runs do. A reply that is only tool calls also takes
+model time: the first-token delay plus the arguments written as tokens.
 
 The driver checks the model's provider is llmsim before creating work, waits
 for a successful SSE response before sending messages, reports p50/p95/p99
@@ -342,6 +392,56 @@ Baselines to start from (numbers, not targets):
 | Chaos harness, 200 sessions, low-memory release build | 2026-10-12, actor cutover | pickup p50/p95 102/604 ms without kills and 94/496 ms with them (1.3 s/3.2 s while the per-org lease cap held work back; main 53/462 ms); recovery 21 s after a worker kill, 20 s after a server kill; about 475 statements per turn |
 
 Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
+
+## Local Stress Bench
+
+`scripts/stress/` (`just stress`) answers "what does one agent turn cost the
+platform, and which settings change it" without production. The October 2026
+capacity work found each wall on the hosted deployment first, one deploy per
+experiment. Most of what those fixes changed (commits, WAL and statements per
+turn, CPU per turn) costs the same locally, so the bench measures them in
+minutes and sweeps settings with no deploy and no risk to users. Production
+stays the final check after a deploy.
+
+- **Topology.** Release binaries in the deployment's shape: two API servers and
+  two gRPC workers by default, through the chaos harness's `Topology`. The
+  bench starts its own PostgreSQL (with `pg_stat_statements`, `track=all`),
+  NATS with JetStream and Valkey, so it can restart PostgreSQL between sweep
+  points with different settings. Every point gets a fresh database.
+- **Load.** The hosted mix (`luna-agent=3,sol-agent=2,muse-agent=2,long-tool=1`,
+  three messages, 5 s think) through `scripts/load-test.py`, one driver process
+  per server, so one Python event loop never caps the run.
+- **Per turn.** Commits, WAL KB and syncs, statements and their execution time,
+  and CPU milliseconds of PostgreSQL, the servers and the workers, from counter
+  deltas over the run. Overhead per model call and pickup come from the
+  persisted events, with the same definitions as the hosted runs. Database load
+  is sampled from `pg_stat_activity` twice a second, as average and peak active
+  sessions split by wait event, the shape RDS Performance Insights reports.
+- **Warm-up.** One session and turn run before anything is measured. The first
+  session on a fresh database creates the user's principals; hundreds of
+  sessions starting together all miss that read and queue on one row lock, a
+  first-use cost a long-lived database never pays. Background work is then
+  measured idle for `--idle-seconds` and subtracted from the per-turn numbers.
+- **Prod-shaped mode.** `--cpus postgres=0,server=1-2,worker=3` pins each role
+  with `taskset`. `--fsync-delay-ms` preloads a shim (`fsync_delay.c`) that
+  delays every PostgreSQL `fsync` and `fdatasync`, so commits pay a
+  network-disk flush the way RDS does. `--prod-shaped` sets both: a quarter of
+  the cores for PostgreSQL, half for the servers, the rest for the workers, and
+  a 1 ms flush. The 1 ms is an assumption, not measured from RDS. Tune it until
+  the bench's WAL wait share matches Performance Insights before reading
+  absolute latencies from it. Ratios between sweep points are the reliable
+  output.
+- **Sweeps.** `--sweep env:KEY=a,b` (server and worker environment),
+  `--sweep pg:KEY=a,b` (PostgreSQL settings) and `--sweep arg:NAME=a,b` (bench
+  arguments such as `servers` or `fsync-delay-ms`). Repeated axes form a grid.
+  Results go to `target/stress/<time>/results.jsonl` and a Markdown table.
+
+Each run is one machine, so absolute throughput tracks its cores, not
+production's. Compare per-turn costs and the ratios between points, and keep
+`cpus`, `fsync_delay_ms`, the mix and the revision with each result. The bench
+exits non-zero when a turn fails or a driver reports errors.
+`scripts/test-stress-bench.sh` covers sweep parsing, turn accounting and the
+fsync shim without binaries.
 
 ## Chaos Harness
 

@@ -10,12 +10,13 @@ release: "0.30.0"
 links:
   docs: [/advanced/budgets/, /how-to/enforce-a-budget/]
   prs: [everruns/everruns#3719, everruns/everruns#3623, everruns/everruns#3625]
-visual: "Agent Integrations tab with an endpoint row expanded showing its budget (/agents/<id>, Integrations); crop to the budget card"
 ---
 
 Sessions now record the endpoint they arrived through, and budgets can target an
 agent endpoint. Existing App budgets were converted to one budget per endpoint
 with the same limit and balance.
+
+![Channel budget on an expanded Agent API channel with its limit, soft limit and UTC reset](./endpoint-budget@2x.png)
 
 **In the UI:** with the `app_budgets` feature flag on, the agent's
 **Integrations** tab manages agent and endpoint budgets, showing the period, its

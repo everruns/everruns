@@ -1,5 +1,6 @@
 use super::*;
 use chrono::TimeZone;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::{EventContext, OUTPUT_MESSAGE_DELTA};
 
 fn at(ms: i64) -> DateTime<Utc> {
@@ -32,19 +33,11 @@ fn tool(ms: i64, duration: u64) -> Observation<'static> {
     }
 }
 
+/// Replay `events` up to the last one, which ends the turn.
 fn run(events: &[Observation<'_>]) -> (Vec<PhaseGap>, Option<TurnLatency>) {
-    let mut tracker = TurnLatencyTracker::default();
-    let session = SessionId::new();
-    let mut gaps = Vec::new();
-    let mut last = None;
-    for event in events {
-        let (gap, latency) = tracker.observe(session, event);
-        gaps.extend(gap);
-        if latency.is_some() {
-            last = latency;
-        }
-    }
-    (gaps, last)
+    let (end, turn) = events.split_last().expect("a terminal event");
+    let outcome = terminal_outcome(end.event_type).expect("terminal");
+    summarize(turn, outcome, end.ts)
 }
 
 /// A turn with one tool call: input -> reason (LLM asks for a tool) -> act ->
@@ -152,25 +145,6 @@ fn parallel_tools_never_make_overhead_negative() {
     assert_eq!(latency.expect("summary").overhead_ms, 0);
 }
 
-#[test]
-fn finished_turns_free_their_session_state() {
-    let mut tracker = TurnLatencyTracker::default();
-    let session = SessionId::new();
-    tracker.observe(session, &obs(TURN_STARTED, 0));
-    assert_eq!(tracker.tracked(), 1);
-    tracker.observe(session, &obs(TURN_COMPLETED, 10));
-    assert_eq!(tracker.tracked(), 0);
-}
-
-#[test]
-fn tracked_sessions_are_bounded() {
-    let mut tracker = TurnLatencyTracker::default();
-    for _ in 0..MAX_TRACKED_SESSIONS + 10 {
-        tracker.observe(SessionId::new(), &obs(TURN_STARTED, 0));
-    }
-    assert!(tracker.tracked() <= MAX_TRACKED_SESSIONS);
-}
-
 /// The listener reads durations straight from the typed event payloads.
 #[test]
 fn observation_reads_llm_and_tool_durations_from_events() {
@@ -197,12 +171,9 @@ fn observation_reads_llm_and_tool_durations_from_events() {
     assert_eq!(o.llm_duration_ms, Some(1_200));
     assert_eq!(o.ttft_ms, Some(250));
 
-    let listener = TurnLatencyListener::new();
-    let types = listener.event_types().expect("filtered");
-    assert!(types.contains(&TURN_COMPLETED));
     assert!(
-        !types.contains(&OUTPUT_MESSAGE_DELTA),
-        "token deltas must not reach the listener"
+        !TURN_EVENT_TYPES.contains(&OUTPUT_MESSAGE_DELTA),
+        "token deltas are not read back"
     );
 }
 
@@ -231,4 +202,78 @@ fn uuid_v7_time_reads_v7_ids_only() {
         DateTime::from_timestamp(1_800_000_000, 123_000_000)
     );
     assert_eq!(uuid_v7_time(uuid::Uuid::new_v4()), None);
+}
+
+/// The load-test shape: a worker spread the turn's events over several server
+/// replicas, so the replica that sees `turn.completed` saw nothing else. The
+/// breakdown is replayed from storage and still counts the model time.
+#[tokio::test]
+async fn a_turn_whose_events_this_replica_never_saw_is_replayed_from_storage() {
+    use crate::storage::{CreateEventRow, CreateSessionRow, StorageBackend};
+    use everruns_contracts::typed_id::{PrincipalId, TurnId};
+
+    let db = Arc::new(StorageBackend::test_database());
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            owner_principal_id: PrincipalId::from_seed(1),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .id;
+    let turn = TurnId::new();
+    let other_turn = TurnId::new();
+    let store = |turn: &TurnId, event_type: &str, ms: i64, data: serde_json::Value| {
+        let db = db.clone();
+        let row = CreateEventRow {
+            session_id: session,
+            event_type: event_type.to_string(),
+            ts: at(ms),
+            context: serde_json::json!({ "turn_id": turn.to_string() }),
+            data,
+            metadata: None,
+            tags: None,
+        };
+        async move { db.create_event(row).await.unwrap() }
+    };
+    let generation = |duration: u64| {
+        serde_json::json!({
+            "messages": [],
+            "output": {},
+            "metadata": { "model": "llmsim", "success": true, "duration_ms": duration }
+        })
+    };
+    // An earlier turn in the same session is not mixed in.
+    store(&other_turn, TURN_STARTED, -5_000, serde_json::json!({})).await;
+    store(&other_turn, LLM_GENERATION, -4_000, generation(900)).await;
+    store(&turn, TURN_STARTED, 0, serde_json::json!({})).await;
+    store(&turn, REASON_STARTED, 100, serde_json::json!({})).await;
+    store(&turn, LLM_GENERATION, 2_100, generation(2_000)).await;
+    store(&turn, REASON_COMPLETED, 2_150, serde_json::json!({})).await;
+
+    let mut end = Event::new(
+        session,
+        EventContext::empty(),
+        everruns_core::events::deserialize_event_data(TURN_COMPLETED, serde_json::json!({})),
+    );
+    end.event_type = TURN_COMPLETED.to_string();
+    end.ts = at(2_200);
+    end.context.turn_id = Some(turn);
+
+    let (gaps, latency) = TurnLatencyListener::new(db)
+        .replay(&end)
+        .await
+        .expect("a breakdown");
+    assert_eq!(latency.llm_ms, 2_000);
+    assert_eq!(latency.llm_calls, 1);
+    assert_eq!(latency.turn_ms, 2_200);
+    assert_eq!(latency.overhead_ms, 200);
+    assert_eq!(
+        gaps,
+        vec![PhaseGap {
+            phase: "reason",
+            ms: 100
+        }]
+    );
 }

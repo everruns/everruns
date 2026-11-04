@@ -1,9 +1,18 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows, useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, AlertTriangle, Pause, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,6 +57,7 @@ import { ExecutionDensity } from "./execution-density";
 import { WorkerGrid, groupWorkers } from "./worker-grid";
 import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
+import { MonitoringTimelineView } from "./timeline";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const ui = useUiTranslations();
@@ -95,9 +105,17 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   );
 }
 
+const MONITORING_TABS = ["execution", "timeline", "workers", "actors", "metrics"];
+
 function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
-  const [tab, setTab] = useState("execution");
+  // `?tab=timeline` lets Home link straight to the history it summarises.
+  const requestedTab = useSearchParams().get("tab");
+  const [tab, setTab] = useState(
+    requestedTab && MONITORING_TABS.includes(requestedTab) ? requestedTab : "execution",
+  );
   const [view, setView] = useState("flow");
   const [groupSize, setGroupSize] = useState(8);
   const [groupId, setGroupId] = useState<string | null>(null);
@@ -318,6 +336,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           aria-label={ui("Monitoring sections")}
           items={[
             { value: "execution", label: ui("Execution") },
+            { value: "timeline", label: ui("Timeline") },
             { value: "workers", label: ui("Workers"), disabled: !!replay },
             { value: "actors", label: ui("Actors"), disabled: !!replay },
             { value: "metrics", label: ui("Metrics") },
@@ -339,45 +358,61 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 </Button>
               ))}
             </div>
+          ) : tab === "timeline" ? (
+            <span className="text-xs text-muted-foreground">
+              {ui("Recorded history, kept permanently")}
+            </span>
           ) : tab === "workers" ? (
             <label className="text-xs text-muted-foreground">
               {ui("Group size")}{" "}
-              <select
-                aria-label={ui("Worker group size")}
-                value={groupSize}
-                onChange={(e) => {
-                  setGroupSize(Number(e.target.value));
+              <SharedSelect
+                value={String(groupSize)}
+                onValueChange={(selection) => {
+                  setGroupSize(Number(selection));
                   setGroupId(null);
                 }}
-                className="ml-2 border bg-background px-3 py-1.5 text-foreground"
               >
-                <option value={1}>{ui("Individual workers")}</option>
-                <option value={8}>{ui("8 workers")}</option>
-                <option value={32}>{ui("32 workers")}</option>
-              </select>
+                <SharedSelectTrigger
+                  aria-label={ui("Worker group size")}
+                  className="ml-2 border bg-background px-3 py-1.5 text-foreground"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value={String(1)}>{ui("Individual workers")}</SharedSelectItem>
+                  <SharedSelectItem value={String(8)}>{ui("8 workers")}</SharedSelectItem>
+                  <SharedSelectItem value={String(32)}>{ui("32 workers")}</SharedSelectItem>
+                </SharedSelectContent>
+              </SharedSelect>
             </label>
           ) : tab === "actors" ? (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-muted-foreground">
                 {worker ? ui("Holder {value0}", { value0: worker }) : ui("All holders")}
               </span>
-              <select
-                aria-label={ui("Actor phase filter")}
-                value={phase ?? ""}
+              <SharedSelect
+                value={String(phase ?? "")}
                 disabled={paused}
-                onChange={(e) => {
-                  setPhase(e.target.value || null);
+                onValueChange={(selection) => {
+                  setPhase(selection || null);
                   setOffset(0);
                 }}
-                className="border bg-background px-3 py-1.5"
               >
-                <option value="">{ui("All phases")}</option>
-                {phases.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+                <SharedSelectTrigger
+                  aria-label={ui("Actor phase filter")}
+                  className="border bg-background px-3 py-1.5"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value="">{ui("All phases")}</SharedSelectItem>
+                  {phases.map((p) => (
+                    <SharedSelectItem key={p.key} value={String(p.key)}>
+                      {p.label}
+                    </SharedSelectItem>
+                  ))}
+                </SharedSelectContent>
+              </SharedSelect>
               {worker && (
                 <Button
                   variant="ghost"
@@ -397,7 +432,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           <span className="text-xs text-muted-foreground">
             {data
               ? ui("{value0} snapshot", {
-                  value0: new Date(data.generated_at).toLocaleTimeString(),
+                  value0: new Date(data.generated_at).toLocaleTimeString(displayLocale),
                 })
               : ui("Waiting for a snapshot")}
           </span>
@@ -422,8 +457,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           <span>
             {replay ? ui("Replay") : ui("Paused")} {ui("· observed history")}
           </span>
-          <input
-            type="range"
+          <Slider
             aria-label={ui("Replay time")}
             className="min-w-32 flex-1 accent-accent"
             min={0}
@@ -436,15 +470,17 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             }}
           />
           <span>
-            {new Date(history[0].at).toLocaleTimeString()} –{" "}
-            {new Date(history.at(-1)!.at).toLocaleTimeString()}
+            {new Date(history[0].at).toLocaleTimeString(displayLocale)} –{" "}
+            {new Date(history.at(-1)!.at).toLocaleTimeString(displayLocale)}
           </span>
           <Button variant="ghost" size="sm" onClick={resume}>
             {ui("Return to live")}
           </Button>
         </div>
       )}
-      {!data ? (
+      {tab === "timeline" ? (
+        <MonitoringTimelineView scope={scope} />
+      ) : !data ? (
         snapshot.error ? (
           <EmptyState
             icon={<AlertTriangle />}

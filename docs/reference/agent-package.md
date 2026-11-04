@@ -95,6 +95,7 @@ table, rather than to the agent.
 | `parallel_tool_calls` | Boolean | Runtime default; explicitly allow or disable concurrent independent calls. |
 | `max_output_tokens` | Integer | Provider default; caps output tokens per model response (at least 1, clamped to the model's limit). |
 | `communication` | String | `direct`; `explicit` makes assistant text private notes and the agent talks through `send_message`. See [Explicit communication](/features/explicit-communication/). |
+| `completion_check` | String | `unattended`: trigger and schedule sessions check a finishing turn and continue it automatically when it announced work it did not do. `always` checks chat too; `off` never checks. See [Agent Triggers](/features/agent-triggers/#completion-check). |
 | `tools` | Array of tool tables | Empty; only client-side tool schemas, requiring executable host bindings. |
 | `intro_markdown` | String | Optional Platform introduction displayed before a conversation. |
 | `short_description` | String | Optional short Platform discovery text. |

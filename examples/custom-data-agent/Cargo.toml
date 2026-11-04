@@ -1,0 +1,23 @@
+[package]
+name = "everruns-custom-data-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["openai"] }
+everruns-core = { workspace = true, default-features = false }
+everruns-contracts = { workspace = true, default-features = false }
+everruns-internal-protocol = { path = "../../crates/internal-protocol" }
+tonic.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+uuid.workspace = true
+rusqlite = { version = "0.39", features = ["bundled"] }
+
+[lints]
+workspace = true

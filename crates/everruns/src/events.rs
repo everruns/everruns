@@ -76,7 +76,7 @@ pub struct SessionEventPage {
 ///   not covered by this crate's stability guarantees.
 ///
 /// Envelope fields — timestamp, optional persisted sequence, correlation
-/// context, metadata, and tags — are complete on both. For
+/// context and tags — are complete on both; reviewed metadata contains only public provenance. For
 /// streaming delta events, the redundant `data.accumulated` prefix is
 /// omitted from both to keep buffered stream memory proportional to output size
 /// rather than quadratic in it. Incremental text and reasoning remain in the
@@ -309,8 +309,8 @@ impl SessionEvent {
 
     /// The event envelope as JSON, carrying the reviewed `data` projection.
     ///
-    /// Envelope fields — timestamp, sequence, correlation context, metadata,
-    /// tags — are complete. `data` holds the same reviewed projection as
+    /// Timestamp, sequence, correlation context and tags are complete;
+    /// metadata contains only reviewed public provenance. `data` holds the same reviewed projection as
     /// [`data`](Self::data) rather than the raw internal payload, so a new
     /// internal field cannot become part of this crate's public surface, or
     /// reach whatever an application forwards these envelopes to, without
@@ -386,6 +386,9 @@ impl SessionEvent {
         // Kept whole before `raw` is narrowed to the reviewed projection, so
         // `canonical_json` can still hand back everything the runtime emitted.
         let canonical = raw.clone();
+        if let Some(metadata) = raw.get_mut("metadata") {
+            *metadata = everruns_contracts::public_metadata::event(metadata);
+        }
         let turn_id = event.context.turn_id.map(|id| id.to_string());
         let kind = match event.event_type.as_str() {
             events::INPUT_MESSAGE => match &event.data {

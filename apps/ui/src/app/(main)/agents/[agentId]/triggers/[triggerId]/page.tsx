@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 import { z } from "zod";
@@ -11,16 +11,32 @@ import { usePolicies } from "@/hooks/use-policies";
 
 import { use, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarClock, Check, GitPullRequest, Pencil, Play, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  Check,
+  GitPullRequest,
+  Pencil,
+  Play,
+  Radio,
+  Trash2,
+  Webhook,
+} from "lucide-react";
+import Link from "next/link";
 import { useAgent } from "@/hooks/use-agents";
 import {
+  useAgentTriggerRuns,
   useAgentTriggers,
   useCreateAgentTrigger,
   useDeleteAgentTrigger,
   useRunAgentTrigger,
   useUpdateAgentTrigger,
 } from "@/hooks/use-agent-triggers";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { TriggerSetupGuidance } from "@/components/agents/integrations/trigger-setup-guidance";
+import { lastUsedLabel } from "@/components/agents/channels/channel-summary";
+import { triggerSummary } from "@/components/agents/trigger-list";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -29,6 +45,7 @@ import {
   EMPTY_TRIGGER_FORM,
   isTriggerFormValid,
   TriggerFormFields,
+  scheduleTriggerDraftSchema,
   type TriggerConfig,
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
@@ -60,17 +77,48 @@ const githubDraftSchema = z.strictObject({
   session_mode: z.enum(["per_thread", "shared_session", "session_per_invocation"]),
   enabled: z.boolean(),
 });
-const scheduleDraftSchema = z.strictObject({
-  message: z.string(),
-  cron_expression: z.string(),
-  timezone: z.string(),
-  session_mode: z.enum(["shared_session", "session_per_invocation"]),
-  enabled: z.boolean(),
-});
+const scheduleDraftSchema = scheduleTriggerDraftSchema;
 
-/// Full-page trigger editor, matching the channel editors rather than the
-/// dialog the inline panel still uses for quick edits (EVE-1009). `new` creates;
-/// any other id edits that trigger.
+/// Full-page trigger page, matching the channel pages (EVE-1009). `new` creates;
+/// any other id shows and edits that trigger, and is the trigger's view URL.
+///
+/// Decision: webhook is a trigger type, not a channel type (EVE-1006). A
+/// webhook has no peer waiting for a reply, which is what a trigger is, so it
+/// is created here (`?type=webhook`) and New channel no longer offers it.
+
+type TriggerKind = "schedule" | "webhook" | "github" | "mcp_event";
+
+const NEW_TRIGGER_KINDS: { kind: TriggerKind; label: string }[] = [
+  { kind: "schedule", label: "Schedule" },
+  { kind: "webhook", label: "Webhook" },
+  { kind: "github", label: "GitHub" },
+];
+
+function newWebhookToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function ScheduleRuns({ agentId, triggerId }: { agentId: string; triggerId: string }) {
+  const ui = useUiTranslations();
+  const { data: runs = [], isLoading } = useAgentTriggerRuns(agentId, triggerId);
+  if (isLoading) return <p className="text-sm text-muted-foreground">{ui("Loading runs…")}</p>;
+  if (runs.length === 0)
+    return <p className="text-sm text-muted-foreground">{ui("No runs yet.")}</p>;
+  return (
+    <ul className="flex flex-col gap-1.5 text-sm">
+      {runs.slice(0, 10).map((run) => (
+        <li key={run.id} className="flex items-center justify-between gap-3">
+          <Badge variant={run.status === "completed" ? "success" : "outline"}>{run.status}</Badge>
+          <span className="text-muted-foreground tabular-nums">
+            {lastUsedLabel(run.scheduled_at)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 export default function AgentTriggerPage({
   params,
 }: {
@@ -97,9 +145,18 @@ export default function AgentTriggerPage({
 
   const trigger = isNew ? undefined : triggers.find((candidate) => candidate.id === triggerId);
   const returnHref = `/agents/${agentId}?tab=integrations`;
-  const isGithub = trigger
-    ? trigger.trigger_type === "github"
-    : searchParams?.get("type") === "github";
+  const requestedKind = searchParams?.get("type");
+  const kind: TriggerKind = trigger
+    ? (trigger.trigger_type as TriggerKind)
+    : requestedKind === "github" || requestedKind === "webhook"
+      ? requestedKind
+      : "schedule";
+  const isGithub = kind === "github";
+  const isWebhook = kind === "webhook";
+  const isMcpEvent = kind === "mcp_event";
+  // New webhooks get a generated token; an existing one keeps its token unless
+  // a new one is entered.
+  const [webhookToken, setWebhookToken] = useState(() => (isNew ? newWebhookToken() : ""));
 
   const adopted = !!usePageChatMode();
   const seededTrigger = useRef<string | undefined>(undefined);
@@ -126,7 +183,7 @@ export default function AgentTriggerPage({
     }
     const config = trigger.config as TriggerConfig;
     setForm({
-      cron_expression: config.cron_expression,
+      cron_expression: config.cron_expression ?? EMPTY_TRIGGER_FORM.cron_expression,
       timezone: config.timezone ?? "UTC",
       session_mode: config.session_mode ?? "shared_session",
       message: config.message,
@@ -208,7 +265,7 @@ export default function AgentTriggerPage({
     formId: "schedule",
     values: scheduleValues,
     dirty: isNew || JSON.stringify(scheduleValues) !== JSON.stringify(savedSchedule),
-    enabled: draftEnabled && !isGithub,
+    enabled: draftEnabled && kind === "schedule",
     apply: setForm,
   });
   const chatDraft = isGithub ? githubDraft : scheduleDraft;
@@ -245,6 +302,42 @@ export default function AgentTriggerPage({
           });
         }
         router.push(returnHref);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Unable to save trigger.");
+      }
+      return;
+    }
+    if (isMcpEvent) return;
+    if (isWebhook) {
+      if (!form.message.trim() || (!trigger && !webhookToken.trim())) {
+        setError("Enter a message and a token.");
+        return;
+      }
+      setError(null);
+      const token = webhookToken.trim() ? { token: webhookToken.trim() } : {};
+      try {
+        if (trigger) {
+          await updateTrigger.mutateAsync({
+            triggerId: trigger.id,
+            request: {
+              message: form.message,
+              session_mode: form.session_mode,
+              enabled: form.enabled,
+              ...token,
+            },
+          });
+          router.push(returnHref);
+        } else {
+          const created = await createTrigger.mutateAsync({
+            trigger_type: "webhook",
+            message: form.message,
+            session_mode: form.session_mode,
+            enabled: form.enabled,
+            ...token,
+          });
+          // Its page shows the URL to call; the token was shown before saving.
+          router.push(`/agents/${agentId}/triggers/${created.id}`);
+        }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Unable to save trigger.");
       }
@@ -288,9 +381,27 @@ export default function AgentTriggerPage({
   }
 
   const agentName = getDisplayName(agent, displayLocale);
-  const title = isNew ? "New trigger" : "Trigger";
-  const enabled = isGithub ? githubForm.enabled : form.enabled;
-  const formValid = isGithub ? isGitHubFormValid(githubForm) : isTriggerFormValid(form);
+  const title = isNew ? "New trigger" : trigger ? triggerSummary(trigger).title : "Trigger";
+  const enabled = isGithub ? githubForm.enabled : isMcpEvent ? !!trigger?.enabled : form.enabled;
+  const formValid = isGithub
+    ? isGitHubFormValid(githubForm)
+    : isWebhook
+      ? !!form.message.trim() && (!!trigger || !!webhookToken.trim())
+      : isMcpEvent
+        ? false
+        : isTriggerFormValid(form);
+  const kindLabel = isGithub
+    ? ui("GitHub")
+    : isWebhook
+      ? ui("Webhook")
+      : isMcpEvent
+        ? ui("MCP event")
+        : ui("Schedule");
+  const mcpConfig = (trigger?.config ?? {}) as {
+    server?: string;
+    event?: string;
+    message?: string;
+  };
 
   return (
     <PageContainer>
@@ -304,7 +415,17 @@ export default function AgentTriggerPage({
       />
 
       <PageMasthead
-        icon={isGithub ? <GitPullRequest /> : <CalendarClock />}
+        icon={
+          isGithub ? (
+            <GitPullRequest />
+          ) : isWebhook ? (
+            <Webhook />
+          ) : isMcpEvent ? (
+            <Radio />
+          ) : (
+            <CalendarClock />
+          )
+        }
         title={title}
         badges={
           <>
@@ -324,6 +445,10 @@ export default function AgentTriggerPage({
             <>
               {githubEventsLabel(githubForm.events)} · {agentName}
             </>
+          ) : isWebhook || isMcpEvent ? (
+            <>
+              {kindLabel} · {agentName}
+            </>
           ) : (
             // Read-only surfaces always render the cadence, never the raw cron.
             <>
@@ -333,20 +458,22 @@ export default function AgentTriggerPage({
         }
         actions={
           <>
-            <Button
-              type="submit"
-              form="trigger-edit-form"
-              disabled={
-                chatDraft.blocked ||
-                !formValid ||
-                createTrigger.isPending ||
-                updateTrigger.isPending
-              }
-            >
-              <Check className="size-4" />
-              {createTrigger.isPending || updateTrigger.isPending ? ui("Saving...") : ui("Save")}
-            </Button>
-            {trigger && !isGithub && (
+            {!isMcpEvent && (
+              <Button
+                type="submit"
+                form="trigger-edit-form"
+                disabled={
+                  chatDraft.blocked ||
+                  !formValid ||
+                  createTrigger.isPending ||
+                  updateTrigger.isPending
+                }
+              >
+                <Check className="size-4" />
+                {createTrigger.isPending || updateTrigger.isPending ? ui("Saving...") : ui("Save")}
+              </Button>
+            )}
+            {trigger && kind === "schedule" && (
               <Button
                 type="button"
                 variant="outline"
@@ -373,12 +500,71 @@ export default function AgentTriggerPage({
       >
         <PageColumns>
           <PageMain>
+            {isNew && (
+              <nav aria-label={ui("Trigger type")} className="flex flex-wrap gap-2">
+                {NEW_TRIGGER_KINDS.map((option) => (
+                  <Link
+                    key={option.kind}
+                    href={`/agents/${agentId}/triggers/new?type=${option.kind}`}
+                    aria-current={option.kind === kind ? "page" : undefined}
+                    className={buttonVariants({
+                      variant: option.kind === kind ? "default" : "outline",
+                      size: "sm",
+                    })}
+                  >
+                    {ui(option.label)}
+                  </Link>
+                ))}
+              </nav>
+            )}
             <Card>
               <CardHeader>
-                <CardTitle>{isGithub ? ui("GitHub") : ui("Schedule")}</CardTitle>
+                <CardTitle>{kindLabel}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isGithub ? (
+                {isMcpEvent ? (
+                  <div className="space-y-2 text-sm">
+                    <p>
+                      {ui("Starts when {value0} sends {value1}.", {
+                        value0: mcpConfig.server ?? "",
+                        value1: mcpConfig.event ?? "",
+                      })}
+                    </p>
+                    <p className="text-muted-foreground">{mcpConfig.message}</p>
+                    <p className="text-muted-foreground">
+                      {ui("MCP event triggers are created and changed through the API and CLI.")}
+                    </p>
+                  </div>
+                ) : isWebhook ? (
+                  <>
+                    <TriggerFormFields value={form} onChange={setForm} hideSchedule />
+                    <div className="space-y-2">
+                      <Label htmlFor="webhook-token">{ui("Token")}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="webhook-token"
+                          value={webhookToken}
+                          onChange={(event) => setWebhookToken(event.target.value)}
+                          placeholder={trigger ? ui("Leave empty to keep the current token") : ""}
+                          autoComplete="off"
+                          className="font-mono"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setWebhookToken(newWebhookToken())}
+                        >
+                          {ui("Generate")}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {ui(
+                          "Copy it now: it is not shown again. Callers send it as Authorization: Bearer <token> or X-Everruns-Webhook-Token.",
+                        )}
+                      </p>
+                    </div>
+                  </>
+                ) : isGithub ? (
                   <GitHubTriggerForm
                     agentId={agentId}
                     value={githubForm}
@@ -396,9 +582,29 @@ export default function AgentTriggerPage({
                 {error && <p className="text-sm text-destructive">{error}</p>}
               </CardContent>
             </Card>
+            {trigger && (kind === "schedule" || isWebhook) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{ui("Set up")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TriggerSetupGuidance trigger={trigger} />
+                </CardContent>
+              </Card>
+            )}
           </PageMain>
 
           <PageRail>
+            {trigger && kind === "schedule" && (
+              <Card className="h-fit">
+                <CardHeader>
+                  <CardTitle>{ui("Recent runs")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ScheduleRuns agentId={agentId} triggerId={trigger.id} />
+                </CardContent>
+              </Card>
+            )}
             {trigger && (
               <Card className="h-fit border-destructive/50">
                 <CardHeader>

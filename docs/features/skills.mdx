@@ -22,7 +22,7 @@ slug: features/skills
 
 ## Three-stage disclosure
 
-1. **Discovery** (~100 tokens per skill): names and descriptions appear in the system prompt under `<available_skills>`.
+1. **Discovery**: a bounded inventory of names and descriptions arrives as a user-role conversation update. Changes append a new snapshot; unchanged inventories add no new update. Use `list_skills` for the full current catalog.
 2. **Activation** (under 5,000 tokens): full SKILL.md instructions load when the agent calls `activate_skill`.
 3. **Resources**: bundled files mount at `/workspace/.agents/skills/{name}/` and are read with the normal filesystem tools.
 
@@ -36,6 +36,32 @@ This keeps thousands of skills available to an agent without burning context on 
 | Registry skills | Organization-wide, in the [Skills Registry](#skills-registry) | Shared across agents; managed via API |
 
 The built-in `skills` capability handles discovery and activation for both. Registry skills appear in the capability system as virtual capabilities (`skill:{uuid}`) that mount the skill into `/.agents/skills/{name}/`, where the `skills` capability finds it alongside workspace skills.
+
+## Optional local inspection
+
+In source builds containing this feature, set the `skills` capability config to:
+
+```json
+{
+  "report_only_inspection": true
+}
+```
+
+The default is `false`. `list_skills` and `activate_skill` then include an
+`inspection` report for the raw `SKILL.md`, including its catalog metadata.
+Reports identify heuristic matches by rule and line number and bind them to a
+SHA-256 content hash, version, session namespace, observed scope/path, and inspection ruleset.
+Activation re-reads the skill before reusing an inspected result.
+
+Framework embedders can also call
+`ScopedSkillsCapability::new(config).with_report_only_inspection()`.
+This addition is not in the published `0.49.0` crate.
+
+Inspection runs locally and only reports findings. It does not block activation,
+delete files, run commands, contact external scanners, or approve actions.
+It is heuristic, not guaranteed injection protection: an empty report does not
+prove safety. Referenced files and substituted arguments are outside this scan;
+scope/path identify the observed source, not an authenticated publisher.
 
 ## Skills Registry
 

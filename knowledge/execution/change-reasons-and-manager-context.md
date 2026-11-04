@@ -166,6 +166,11 @@ organization history and manager notes. An organization role cannot grant access
 to another account's revisions. Account export includes that journal and account
 deletion erases it. Organization account names and Sandbox Template metadata keep
 credential and execution payloads out of their snapshots.
+Sandbox builds and artifact cleanup are operational state. Applying a built
+snapshot resolves the parent template before checking its manager context and
+recording the application with the original caller and invocation intent through
+the existing revision path's metadata-only journal. Execution settings stay in
+immutable template revisions; install scripts never enter entity history.
 
 Secrets enter history only as markers under `$secrets`: set or not, plus an
 HMAC fingerprint keyed from the primary encryption key, so a leaked row reveals

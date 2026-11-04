@@ -1,85 +1,24 @@
 "use client";
 
-import { useLocale, useUiTranslations } from "@/providers/locale-provider";
-import { getDisplayName } from "@/lib/entity-lifecycle";
-import { useAgentSource } from "@/hooks/use-agent-source";
-import { useMemo, useState } from "react";
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
-import { useResumeAgentExposures, useSuspendAgentExposures } from "@/hooks/use-agents";
 import {
   isTriggerChannel,
   useAgentChannels,
   usePublishAgentChannel,
-  useTriggerAgentChannel,
 } from "@/hooks/use-agent-channels";
-import { useAgentTriggers } from "@/hooks/use-agent-triggers";
 import { usePolicies } from "@/hooks/use-policies";
-import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { buttonVariants } from "@/components/ui/button";
-import { ChannelRow } from "@/components/agents/channels/channel-row";
-import { MiniTimeline } from "@/components/apps/mini-timeline";
-import { type StatStripStats } from "@/components/apps/stat-strip";
-import { ChannelDetailsPanel } from "@/components/agents/integrations/channel-details-panel";
-import { AgentGitHubSection } from "@/components/agents/agent-github-card";
+import { ChannelList } from "@/components/agents/channels/channel-list";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
-import {
-  PageControlStrip,
-  StatCard,
-  StatGrid,
-  PageColumns,
-  PageMain,
-  PageRail,
-  RailSection,
-} from "@/components/layout";
+import { PageColumns, PageMain, PageRail, RailSection } from "@/components/layout";
 import type { Agent } from "@/lib/api/types";
-import type { AgentChannelRow } from "@/hooks/use-agent-channels";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
-
-function buildStats(
-  channels: AgentChannelRow[],
-  triggerCount: number,
-  suspended: boolean,
-): StatStripStats {
-  const live = channels.filter(
-    ({ channel }) => channel.enabled && channel.status === "live",
-  ).length;
-  // Triggers come from two places while the migration is in flight: native
-  // agent triggers, and the schedule channels that predate them. Counting only
-  // the latter reported "0 triggers" for an agent that plainly had one.
-  const scheduleChannels = channels.filter(({ channel }) => isTriggerChannel(channel)).length;
-  const triggers = triggerCount + scheduleChannels;
-  const doors = channels.length - scheduleChannels;
-
-  let health: string;
-  let healthSub: string;
-  if (suspended) {
-    health = "Disabled";
-    healthSub = "All channels are paused. Publish settings are kept.";
-  } else if (channels.length === 0) {
-    health = "Not exposed";
-    healthSub = "No channels configured";
-  } else if (live === channels.length) {
-    health = "Healthy";
-    healthSub = `${live} of ${channels.length} channels live`;
-  } else {
-    health = "Needs attention";
-    healthSub = `${live} of ${channels.length} channels live`;
-  }
-
-  return {
-    health,
-    healthSub,
-    invocations24h: 0,
-    invocationSub: `${triggers} ${pluralize(triggers, "trigger")} · ${doors} ${pluralize(doors, "channel")}`,
-    successRate: null,
-    successSub: "Run metrics pending backend aggregation",
-    timeline: [],
-  };
-}
 
 export function AgentIntegrationsPanel({
   agent,
@@ -90,97 +29,65 @@ export function AgentIntegrationsPanel({
   initialChannelId?: string | null;
 }) {
   const ui = useUiTranslations();
-  const { displayLocale } = useLocale();
   const { channels, isLoading } = useAgentChannels(agent.id);
-  const { data: triggers = [] } = useAgentTriggers(agent.id);
   const { can: canAgent } = usePolicies("agents");
   const { can: canBudget } = usePolicies("budgets");
-  const suspendExposures = useSuspendAgentExposures();
-  const resumeExposures = useResumeAgentExposures();
   const publishEndpoint = usePublishAgentChannel(agent.id);
-  const triggerEndpoint = useTriggerAgentChannel(agent.id);
-  const [expandedId, setExpandedId] = useState<string | null>(initialChannelId);
-  // A later visit with a different `?channel=` opens that row. Collapsing the
-  // current one does not fight the address until the id changes.
-  const [openedChannel, setOpenedChannel] = useState(initialChannelId);
-  if (initialChannelId && initialChannelId !== openedChannel) {
-    setOpenedChannel(initialChannelId);
-    setExpandedId(initialChannelId);
-  }
-
-  const sourceQuery = useAgentSource(agent.id);
-  const sourceOwns = (channel: { channel_config: unknown }) => {
-    const name = (channel.channel_config as { package_name?: string })?.package_name;
-    return (
-      !!name &&
-      (sourceQuery.isLoading ||
-        sourceQuery.isError ||
-        (sourceQuery.data?.mode !== "two_way" &&
-          !!sourceQuery.data?.managed_channels.includes(name)))
-    );
-  };
-  const suspended = agent.exposures_suspended ?? false;
-  const canManage = canAgent("agent.manage") && !isReadOnlyStatus(agent.status);
-  const canDangerous = canAgent("agent.dangerous") && !isReadOnlyStatus(agent.status);
+  const readOnly = isReadOnlyStatus(agent.status);
+  const canManage = canAgent("agent.manage") && !readOnly;
+  const canDangerous = canAgent("agent.dangerous") && !readOnly;
   const canViewBudgets = canBudget("budget.view");
   const canManageBudgets = canBudget("budget.manage");
 
-  const stats = useMemo(
-    () => buildStats(channels, triggers.length, suspended),
-    [channels, suspended, triggers.length],
-  );
-
   const doors = channels.filter(({ channel }) => !isTriggerChannel(channel));
-  const scheduleEndpoints = channels.filter(({ channel }) => isTriggerChannel(channel));
-  const githubTriggerCount = triggers.filter((trigger) => trigger.trigger_type === "github").length;
+  const publishedDoors = doors.filter(
+    ({ channel }) => channel.enabled && channel.status === "live",
+  ).length;
+  // Schedules created as channels before schedules became triggers are listed
+  // with the triggers and open on their channel page.
+  const scheduleChannels = channels
+    .filter(({ channel }) => isTriggerChannel(channel))
+    .map(({ channel }) => channel);
+  // Channels and schedules open on their own page; an old `?channel=` link
+  // lands there.
+  const router = useRouter();
+  const linkedChannelId = channels.some(({ channel }) => channel.id === initialChannelId)
+    ? initialChannelId
+    : null;
+  useEffect(() => {
+    if (linkedChannelId) router.replace(`/agents/${agent.id}/channels/${linkedChannelId}`);
+  }, [agent.id, linkedChannelId, router]);
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">{ui("Integrations")}</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{ui("Channels and triggers")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ui("Manage how this agent connects and runs.")}
+          {ui("How people and software reach this agent, and when it starts on its own.")}
         </p>
       </div>
-      <PageControlStrip>
-        <StatGrid className="gap-4">
-          <StatCard label={ui("Health")} value={stats.health} hint={stats.healthSub} />
-          <StatCard
-            label={ui("Invocations · 24h")}
-            value={String(stats.invocations24h)}
-            hint={stats.invocationSub}
-          />
-          <StatCard
-            label={ui("Success rate")}
-            value={stats.successRate === null ? "No runs" : `${stats.successRate.toFixed(1)}%`}
-            hint={stats.successSub}
-          />
-          <StatCard label={ui("Activity")} hint="Run metrics pending backend aggregation">
-            {stats.timeline.length > 0 ? (
-              <MiniTimeline runs={stats.timeline} />
-            ) : (
-              <div className="flex h-8 items-center" aria-label={ui("Activity unavailable")}>
-                <span className="h-px w-full bg-border" />
-              </div>
-            )}
-          </StatCard>
-        </StatGrid>
-      </PageControlStrip>
-
       <PageColumns>
         <PageMain className="gap-6">
           <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0 flex-[1_1_20rem]">
                 <h3 className="text-lg font-semibold tracking-tight">{ui("Channels")}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {ui("How callers reach this agent")}
+                  {doors.length === 0
+                    ? ui("Where people and software reach this agent.")
+                    : ui(
+                        "Where people and software reach this agent. {value0}, {value1} published.",
+                        {
+                          value0: `${doors.length} ${pluralize(doors.length, "channel")}`,
+                          value1: publishedDoors,
+                        },
+                      )}
                 </p>
               </div>
               {canManage && (
                 <Link
                   href={`/agents/${agent.id}/channels/new`}
-                  className={buttonVariants({ size: "sm" })}
+                  className={buttonVariants({ variant: "outline" })}
                 >
                   <Plus className="size-4" />
                   {ui("Add channel")}
@@ -191,134 +98,59 @@ export function AgentIntegrationsPanel({
             {isLoading ? (
               <p className="text-sm text-muted-foreground">{ui("Loading channels…")}</p>
             ) : doors.length === 0 ? (
-              <Card>
-                <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {ui("This agent is not reachable from outside.")}
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {doors.map(({ channel }) => (
-                  <ChannelRow
-                    key={channel.id}
-                    channel={channel}
-                    expanded={expandedId === channel.id}
-                    onToggle={() =>
-                      setExpandedId((current) => (current === channel.id ? null : channel.id))
-                    }
-                    usePanel={
-                      <div className="space-y-4">
-                        <ChannelDetailsPanel
-                          agentId={agent.id}
-                          agentName={getDisplayName(agent, displayLocale)}
-                          agentDescription={agent.description}
-                          channel={channel}
-                          configureHref={
-                            canManage && !sourceOwns(channel)
-                              ? `/agents/${agent.id}/channels/${channel.id}`
-                              : undefined
-                          }
-                        />
-                        {canViewBudgets && (
-                          <div className="border-t pt-4">
-                            <BudgetPanel
-                              subjectType="agent_channel"
-                              subjectId={channel.id}
-                              title={ui("Channel budget")}
-                              canManage={canManageBudgets}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    }
-                    configureHref={
-                      canManage && !sourceOwns(channel)
-                        ? `/agents/${agent.id}/channels/${channel.id}`
-                        : undefined
-                    }
-                    onPublishChange={
-                      canDangerous
-                        ? (publish) => publishEndpoint.mutate({ channelId: channel.id, publish })
-                        : undefined
-                    }
-                    publishPending={publishEndpoint.isPending}
-                  />
-                ))}
+              <div className="flex flex-col items-center border bg-card px-6 py-10 text-center">
+                <h4 className="text-base font-semibold">{ui("Nobody can reach this agent yet")}</h4>
+                <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
+                  {ui("Add a channel to give people a chat, or give your code an address to call.")}
+                </p>
+                {canManage && (
+                  <div className="mt-5 flex flex-wrap justify-center gap-2">
+                    <Link
+                      href={`/agents/${agent.id}/channels/new?kind=work_chat`}
+                      className={buttonVariants({ variant: "outline" })}
+                    >
+                      {ui("Add Work Chat")}
+                    </Link>
+                    <Link
+                      href={`/agents/${agent.id}/channels/new?kind=api`}
+                      className={buttonVariants({ variant: "outline" })}
+                    >
+                      {ui("Add Agent API")}
+                    </Link>
+                    <Link
+                      href={`/agents/${agent.id}/channels/new`}
+                      className={buttonVariants({ variant: "ghost" })}
+                    >
+                      {ui("See all channel types")}
+                    </Link>
+                  </div>
+                )}
               </div>
+            ) : (
+              <ChannelList
+                channels={doors.map(({ channel }) => channel)}
+                hrefFor={(channel) => `/agents/${agent.id}/channels/${channel.id}`}
+                onPublishChange={
+                  canDangerous
+                    ? (channel, publish) =>
+                        publishEndpoint.mutate({ channelId: channel.id, publish })
+                    : undefined
+                }
+                publishPending={publishEndpoint.isPending}
+              />
             )}
           </section>
 
-          <AgentGitHubSection
+          <AgentTriggersPanel
             agentId={agent.id}
-            avatar={agent.avatar}
-            githubTriggerCount={githubTriggerCount}
+            scheduleChannels={scheduleChannels}
+            readOnly={readOnly}
           />
-
-          <AgentTriggersPanel agentId={agent.id}>
-            {scheduleEndpoints.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {scheduleEndpoints.map(({ channel }) => (
-                  <ChannelRow
-                    key={channel.id}
-                    channel={channel}
-                    expanded={expandedId === channel.id}
-                    onToggle={() =>
-                      setExpandedId((current) => (current === channel.id ? null : channel.id))
-                    }
-                    configureHref={
-                      canManage && !sourceOwns(channel)
-                        ? `/agents/${agent.id}/channels/${channel.id}`
-                        : undefined
-                    }
-                    onPublishChange={
-                      canDangerous
-                        ? (publish) => publishEndpoint.mutate({ channelId: channel.id, publish })
-                        : undefined
-                    }
-                    publishPending={publishEndpoint.isPending}
-                    onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
-                    usePanel={
-                      canViewBudgets ? (
-                        <BudgetPanel
-                          subjectType="agent_channel"
-                          subjectId={channel.id}
-                          title={ui("Channel budget")}
-                          canManage={canManageBudgets}
-                        />
-                      ) : undefined
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </AgentTriggersPanel>
         </PageMain>
 
         <PageRail>
-          <RailSection label={ui("All channels")}>
-            <div className="flex items-center justify-between gap-3">
-              <label htmlFor="channels-enabled" className="text-sm font-medium">
-                {ui("Enabled")}
-              </label>
-              <Switch
-                id="channels-enabled"
-                checked={!suspended}
-                onCheckedChange={(enabled) =>
-                  enabled ? resumeExposures.mutate(agent.id) : suspendExposures.mutate(agent.id)
-                }
-                disabled={!canManage || suspendExposures.isPending || resumeExposures.isPending}
-              />
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">
-              {ui(
-                "Off pauses every channel on this agent. Publish on each channel stays as it is.",
-              )}
-            </p>
-          </RailSection>
           {canViewBudgets && (
-            <RailSection label={ui("Agent budget")}>
+            <RailSection label={ui("Costs and usage policies")}>
               <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
             </RailSection>
           )}

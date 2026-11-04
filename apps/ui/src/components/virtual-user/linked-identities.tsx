@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useOrg } from "@/providers/org-provider";
@@ -12,6 +13,7 @@ interface Binding {
   management_user_id?: string | null;
 }
 export function LinkedIdentities({ identityId }: { identityId: string }) {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const client = useQueryClient();
@@ -49,9 +51,11 @@ export function LinkedIdentities({ identityId }: { identityId: string }) {
               variant="outline"
               size="sm"
               disabled={unlink.isPending}
-              onClick={() => {
+              onClick={async () => {
                 if (
-                  confirm("Unlink this identity? Its current runtime credentials will be revoked.")
+                  await requestConfirmation(
+                    "Unlink this identity? Its current runtime credentials will be revoked.",
+                  )
                 )
                   unlink.mutate(binding.id);
               }}

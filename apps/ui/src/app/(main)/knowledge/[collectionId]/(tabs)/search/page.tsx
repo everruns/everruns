@@ -18,6 +18,7 @@ import {
   useKnowledgeCollection,
 } from "@/components/knowledge/use-knowledge";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useKnowledgeSearchRows } from "@/components/knowledge/use-knowledge-page-context";
 import { searchKnowledge, type KnowledgeResults } from "@/lib/api/knowledge";
 
 export default function KnowledgeSearchPage({
@@ -35,6 +36,7 @@ export default function KnowledgeSearchPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useChatPageFilters({ search: query });
+  useKnowledgeSearchRows(results, { loading: busy, error: !!error });
   const c = collection.data;
 
   if (c?.indexing === "off") {

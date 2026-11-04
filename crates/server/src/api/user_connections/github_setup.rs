@@ -28,6 +28,7 @@ pub async fn github_authorize(
         },
         jar,
         params.get("return_to").cloned(),
+        params.get("popup").is_some_and(|value| value == "true"),
     )
     .await
 }
@@ -39,6 +40,7 @@ pub(super) async fn github_authorize_inner(
     authority: OAuthAuthority,
     jar: CookieJar,
     return_to: Option<String>,
+    popup: bool,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     let config = state
         .auth_config
@@ -65,7 +67,7 @@ pub(super) async fn github_authorize_inner(
         session_id: None,
         agent_id: None,
         virtual_user_id: Some(VirtualUserId::from_uuid(authority.target_id).to_string()),
-        popup: false,
+        popup,
         code_verifier: String::new(),
         github_installation_id: None,
     };
@@ -106,6 +108,17 @@ pub(super) async fn begin_installation(
     let jar = jar.add(github_setup_cookie(&pending)?);
     let auth_url = GitHubAppService::new(config).installation_url(&pending.state);
     Ok((jar, Redirect::to(&auth_url.url)))
+}
+
+/// Where the browser goes after a successful setup: a popup reports back to
+/// its opener (the agent's Sync dialog) and closes; a full page returns to
+/// `return_to` as before.
+fn setup_done_redirect(state: &AppState, pending: &PendingOAuthState) -> String {
+    if pending.popup {
+        return finalize_oauth_redirect(&state.auth_config, &pending.return_to, "github", true);
+    }
+    let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
+    format!("{}{}", frontend_url, pending.return_to)
 }
 
 pub(super) fn new_setup_state() -> String {
@@ -241,11 +254,7 @@ pub async fn github_callback(
         })?;
 
     store_org_link(&state, &authority, result).await?;
-    let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
-    Ok((
-        jar,
-        Redirect::to(&format!("{}{}", frontend_url, pending.return_to)),
-    ))
+    Ok((jar, Redirect::to(&setup_done_redirect(&state, &pending))))
 }
 
 /// The return leg of a person's sign-in: exchange the code for their user
@@ -330,9 +339,5 @@ async fn person_sign_in(
         })
         .await
         .map_err(|e| sanitized_internal_error("GitHub sign-in", &e))?;
-    let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
-    Ok((
-        jar,
-        Redirect::to(&format!("{}{}", frontend_url, pending.return_to)),
-    ))
+    Ok((jar, Redirect::to(&setup_done_redirect(state, &pending))))
 }

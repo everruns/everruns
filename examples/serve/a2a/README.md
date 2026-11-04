@@ -11,8 +11,9 @@ Two agents talking over [A2A](https://a2a-protocol.org) 1.0:
   `external_a2a`), then drafts from them.
 
 Both run on `gpt-6.1-sol` through OpenAI: set `OPENAI_API_KEY` for both
-processes. The researcher's model goes through serve's gateway, so a host's
-`SERVE_GATEWAY_URL` or `OPENROUTER_API_KEY` takes precedence there.
+processes. For the Serve researcher, an explicit `OPENAI_BASE_URL` selects
+a compatible Responses API endpoint with that key; otherwise, a configured
+`OPENROUTER_API_KEY` takes precedence over direct OpenAI.
 
 ```sh
 cargo run -p serve-example-a2a --bin researcher                 # dev server on :3000

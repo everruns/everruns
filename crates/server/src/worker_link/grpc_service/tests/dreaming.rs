@@ -48,7 +48,7 @@ async fn standalone_runtime_reads_obey_dreaming_adoption_and_revocation() {
             .await
             .unwrap();
         let agent = service
-            .get_agent(Request::new(GetAgentRequest {
+            .get_agent(trusted_request(GetAgentRequest {
                 org_id: org,
                 agent_id: Some(proto::Uuid {
                     value: agent_id.uuid().to_string(),
@@ -65,7 +65,7 @@ async fn standalone_runtime_reads_obey_dreaming_adoption_and_revocation() {
         );
         assert_eq!(has_dreaming(&agent.capabilities), enabled);
         let harness = service
-            .get_harness(Request::new(GetHarnessRequest {
+            .get_harness(trusted_request(GetHarnessRequest {
                 org_id: org,
                 harness_id: Some(proto::Uuid {
                     value: harness.id.uuid().to_string(),
@@ -82,7 +82,7 @@ async fn standalone_runtime_reads_obey_dreaming_adoption_and_revocation() {
         );
         assert_eq!(has_dreaming(&harness.capabilities), enabled);
         let session = service
-            .get_session(Request::new(GetSessionRequest {
+            .get_session(trusted_request(GetSessionRequest {
                 org_id: org,
                 session_id: Some(proto::Uuid {
                     value: session_id.uuid().to_string(),

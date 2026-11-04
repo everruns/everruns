@@ -1,6 +1,6 @@
 use super::{SlackProvisioningResult, malformed_response};
 use crate::channels::slack::events::{
-    build_agent_description, build_long_description, build_short_description, truncate_chars,
+    build_agent_description, build_app_name, build_long_description, build_short_description,
     truncate_display_name,
 };
 
@@ -25,7 +25,7 @@ pub(super) fn patch(
             return Err(malformed_response("apps.manifest.export"));
         }
     }
-    manifest["display_information"]["name"] = truncate_chars(name, 35).into();
+    manifest["display_information"]["name"] = build_app_name(name).into();
     manifest["display_information"]["description"] =
         build_short_description(name, description).into();
     manifest["display_information"]["long_description"] =
@@ -52,6 +52,10 @@ pub(super) fn patch(
 mod tests {
     use super::super::tests::{provisioner, stored};
     use super::*;
+    use crate::channels::slack::events::{
+        SLACK_AGENT_DESC_MAX_BYTES, SLACK_LONG_DESC_MAX_BYTES, SLACK_LONG_DESC_MIN,
+        SLACK_SHORT_DESC_MAX_BYTES,
+    };
     use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
@@ -141,32 +145,24 @@ mod tests {
                     .count(),
                 35
             );
-            // Slack counts the short description in bytes: 46 three-byte chars.
-            assert_eq!(
-                manifest["display_information"]["description"]
-                    .as_str()
-                    .unwrap()
-                    .len(),
-                138
-            );
-            assert_eq!(
-                manifest["display_information"]["long_description"]
-                    .as_str()
-                    .unwrap()
-                    .chars()
-                    .count(),
-                4000
-            );
+            // One unbroken word, so it is cut by bytes: 39 three-byte chars and
+            // an ellipsis fit under the cap.
+            let short = manifest["display_information"]["description"]
+                .as_str()
+                .unwrap();
+            assert!(short.len() <= SLACK_SHORT_DESC_MAX_BYTES, "{short}");
+            assert_eq!(short, format!("{}…", "描".repeat(39)));
+            let long = manifest["display_information"]["long_description"]
+                .as_str()
+                .unwrap();
+            assert!(long.len() <= SLACK_LONG_DESC_MAX_BYTES, "{}", long.len());
+            assert!(long.chars().count() >= SLACK_LONG_DESC_MIN);
             assert!(manifest["features"].get("agent_view").is_none());
             if surface.is_some() {
-                assert_eq!(
-                    manifest["features"]["assistant_view"]["assistant_description"]
-                        .as_str()
-                        .unwrap()
-                        .chars()
-                        .count(),
-                    300
-                );
+                let agent = manifest["features"]["assistant_view"]["assistant_description"]
+                    .as_str()
+                    .unwrap();
+                assert!(agent.len() <= SLACK_AGENT_DESC_MAX_BYTES, "{agent}");
                 assert_eq!(
                     manifest["features"]["assistant_view"]["suggested_prompts"],
                     json!([{"title":"Keep"}])

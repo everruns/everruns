@@ -1,15 +1,7 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { Memory } from "@/lib/api/types";
 
 interface ArchiveMemoryDialogProps {
@@ -28,29 +20,16 @@ export function ArchiveMemoryDialog({
   onArchive,
 }: ArchiveMemoryDialogProps) {
   const ui = useUiTranslations();
-  async function handleArchive() {
-    await onArchive();
-    onOpenChange(false);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{ui("Archive Memory")}</DialogTitle>
-          <DialogDescription>
-            {memory ? ui("Archive {value0}?", { value0: memory.name }) : ui("Archive this memory?")}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            {ui("Cancel")}
-          </Button>
-          <Button variant="destructive" onClick={handleArchive} disabled={isPending || !memory}>
-            {ui("Archive")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={ui("Archive Memory")}
+      description={memory ? `Archive ${memory.name}?` : ui("Archive this memory?")}
+      confirmLabel={ui("Archive")}
+      isPending={isPending}
+      disabled={!memory}
+      onConfirm={onArchive}
+    />
   );
 }

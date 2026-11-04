@@ -4,7 +4,7 @@
 // group, so it renders without login. It fetches the sanitized public endpoint
 // (no auth) and reuses the same matrix/transcript components as the authed view.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicEvalRun } from "@/lib/api/evals";
@@ -96,6 +96,8 @@ function PublicResultRow({ result, index }: { result: PublicEvalCaseResult; inde
 }
 
 export default function SharedEvalRunPage({ params }: { params: Promise<{ token: string }> }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { token } = use(params);
   const { data, isLoading, isError } = useQuery({
@@ -143,7 +145,7 @@ export default function SharedEvalRunPage({ params }: { params: Promise<{ token:
           )}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ui("Read-only shared view ·")} {new Date(data.created_at).toLocaleString()}
+          {ui("Read-only shared view ·")} {new Date(data.created_at).toLocaleString(displayLocale)}
         </p>
       </div>
 
@@ -172,7 +174,7 @@ export default function SharedEvalRunPage({ params }: { params: Promise<{ token:
               <p className="text-2xl font-bold">
                 {(
                   data.summary.total_input_tokens + data.summary.total_output_tokens
-                ).toLocaleString()}
+                ).toLocaleString(displayLocale)}
               </p>
             </CardContent>
           </Card>

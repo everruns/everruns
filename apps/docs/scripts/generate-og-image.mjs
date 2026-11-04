@@ -3,7 +3,9 @@
 //   2. Per API operation    → public/og/api/operations/{operationId}.png
 //   3. Per docs page        → public/og/{slug}.png
 //   4. Changelog index      → public/og/changelog.png, listing the latest releases
-//   5. Changelog entries    → public/og/changelog/{folder}.png, with date and products
+//   5. Changelog entries    → public/og/changelog/{folder}.png, illustrated by
+//      significance (scripts/lib/social-card.mjs): the entry's own social.svg,
+//      else generated Facet-icon art; minor entries get a plain card
 //      Product pages        → public/og/changelog/{product}.png, the latest entries
 //
 // Cards follow the docs redesign: flat navy, the gold mark, Geist type, square
@@ -18,6 +20,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { JSON_SCHEMA, load } from "js-yaml";
+
+import { artImageRefs, iconIllustration, parseFacetIcons, pickIcons, placeArt, socialCardSvg, validateArt } from "./lib/social-card.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -286,17 +290,75 @@ function productsLine(products) {
   return (products ?? []).map((p) => PRODUCTS[p] ?? p).join(" · ");
 }
 
-async function changelogEntryCard(folder, fm) {
-  const title = String(fm.title ?? folder);
-  const { svg, bottom } = titleBlock(title, String(fm.description ?? ""), { y: 228 });
-  const meta = `<text x="${PAD}" y="160" font-family="${MONO}" font-size="20" fill="${SILVER}">${escXml(
-    `${formatDate(fm.date)}  ·  ${productsLine(fm.products)}`,
-  )}</text>`;
-  void bottom;
-  await svgToPng(
-    frame(`${meta}\n  ${svg}`, { eyebrow: fm.kind === "release" ? "Release" : "Changelog", url: "everruns.com/docs/changelog" }),
-    path.join(root, `public/og/changelog/${folder}.png`),
+const FACET_ICONS = parseFacetIcons(
+  readFileSync(path.join(repoRoot, "apps/ui/src/components/icons/facet-icon-data.ts"), "utf8"),
+);
+const KIND_LABELS = {
+  feature: "Feature",
+  improvement: "Improvement",
+  fix: "Fix",
+  breaking: "Breaking change",
+  deprecation: "Deprecation",
+  incident: "Incident",
+};
+// Products with their own mark: an entry only about one of them shows its logo.
+const PRODUCT_MARKS = ["yolop", "mira", "bashkit"];
+
+function productMark(products) {
+  const list = products ?? [];
+  if (list.length !== 1 || !PRODUCT_MARKS.includes(list[0])) return undefined;
+  const file = path.join(root, `src/assets/changelog/products/${list[0]}.svg`);
+  return existsSync(file) ? readFileSync(file, "utf8") : undefined;
+}
+
+/** Inlines the images an entry's social.svg references, so the card is self-contained. */
+async function artImages(svg, dir) {
+  const images = {};
+  for (const ref of artImageRefs(svg)) {
+    const file = path.resolve(dir, ref);
+    if (!file.startsWith(repoRoot + path.sep) || !existsSync(file)) {
+      throw new Error(`social.svg image ${ref} is not a file in the repository`);
+    }
+    images[ref] = /\.svg$/i.test(file)
+      ? `data:image/svg+xml;base64,${readFileSync(file).toString("base64")}`
+      : `data:image/png;base64,${(await sharp(file).resize(512, 512, { fit: "inside", withoutEnlargement: true }).png().toBuffer()).toString("base64")}`;
+  }
+  return images;
+}
+
+/**
+ * The entry's illustration, by significance: its own social.svg when it has one,
+ * nothing for minor entries (a plain card), generated Facet art otherwise.
+ */
+async function entryIllustration(folder, fm) {
+  const dir = path.join(repoRoot, "docs/changelog", folder);
+  const artPath = path.join(dir, "social.svg");
+  if (existsSync(artPath)) {
+    const svg = readFileSync(artPath, "utf8");
+    const problems = validateArt(svg);
+    if (problems.length) throw new Error(`changelog/${folder}/social.svg: ${problems.join("; ")}`);
+    return placeArt(svg, await artImages(svg, dir));
+  }
+  if (fm.significance === "minor" && fm.kind !== "release") return "";
+  const links = [...(fm.links?.docs ?? [])].map(String);
+  const { hero, satellites } = pickIcons(
+    { icons: fm.icons, title: String(fm.title ?? ""), description: String(fm.description ?? ""), links, kind: fm.kind },
+    FACET_ICONS,
   );
+  return iconIllustration({ seed: folder, hero, satellites, mark: productMark(fm.products), icons: FACET_ICONS });
+}
+
+async function changelogEntryCard(folder, fm) {
+  const isRelease = fm.kind === "release";
+  const svg = socialCardSvg({
+    eyebrow: isRelease ? "Changelog · Release" : `Changelog · ${KIND_LABELS[fm.kind] ?? "Update"}`,
+    title: String(fm.title ?? folder),
+    description: String(fm.description ?? ""),
+    meta: [`${formatDate(fm.date)} · ${productsLine(fm.products)}`],
+    url: "everruns.com/docs/changelog",
+    illustration: await entryIllustration(folder, fm),
+  });
+  await svgToPng(svg, path.join(root, `public/og/changelog/${folder}.png`));
 }
 
 /** "Everruns 0.47.0: Codex session reliability" → { name: "Everruns 0.47.0", note: "Codex session reliability" } */

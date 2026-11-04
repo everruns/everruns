@@ -726,3 +726,131 @@ async fn a_deadline_task_for_a_replaced_park_does_nothing() {
             .is_empty()
     );
 }
+
+/// An agent the first session handed work to (agents using agents): a child
+/// session in the same run, parked on its own approval request.
+async fn parked_child(server: &TestServer, first: SessionId) -> (SessionId, Vec<String>) {
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("implement-{}", Uuid::now_v7().simple()),
+                "display_name": "Implement",
+                "system_prompt": "You implement the change you are given",
+                "capabilities": [{ "ref": "tool_approval", "config": { "mode": "normal" } }],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let row = server
+        .db
+        .get_agent_by_public_id(TEST_ORG_ID, &agent.public_id.to_string())
+        .await
+        .expect("read agent")
+        .expect("agent exists");
+    let lead = server
+        .db
+        .get_session_unscoped(first)
+        .await
+        .expect("read first session")
+        .expect("first session exists");
+    let child = server
+        .db
+        .create_session(everruns_server::storage::CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            agent_id: Some(row.id),
+            owner_principal_id: lead.owner_principal_id,
+            resolved_owner_user_id: lead.resolved_owner_user_id,
+            parent_session_id: Some(first),
+            ..Default::default()
+        })
+        .await
+        .expect("create child session");
+    set_waiting(server, child.id).await;
+    let ids = park_on(
+        server,
+        child.id,
+        &[send_email("toolu_7", "cfo@example.com")],
+    )
+    .await;
+    (child.id, ids)
+}
+
+/// A request from another agent in the run shows and is answered on the
+/// first session, the one the person talks to; the asking agent resumes.
+#[tokio::test]
+async fn another_agents_approval_is_answered_on_the_first_session() {
+    let Fixture { server, resumes } = fixture().await;
+    let first = parked_session(&server).await;
+    let (child, ids) = parked_child(&server, first).await;
+
+    let listed = server
+        .get(&format!("/v1/sessions/{first}/run-requests"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    let requests = listed["requests"].as_array().unwrap();
+    assert_eq!(requests.len(), 1, "{listed}");
+    assert_eq!(requests[0]["session_id"], child.to_string());
+    assert_eq!(requests[0]["agent"]["name"], "Implement");
+    assert_eq!(requests[0]["tool_call"]["id"], ids[0]);
+    assert_eq!(requests[0]["tool_call"]["name"], "approve_tool_call");
+
+    // Only the first session asks; the child's own list stays empty.
+    let own = server
+        .get(&format!("/v1/sessions/{child}/run-requests"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    assert_eq!(own["requests"], json!([]));
+
+    let response = post_decisions(
+        &server,
+        first,
+        json!([{ "tool_call_id": ids[0], "decision": "allow" }]),
+    )
+    .await
+    .assert_status(StatusCode::OK)
+    .json_value();
+    assert_eq!(response["resolved"][0]["outcome"], "allow");
+    assert_eq!(
+        resumes.load(Ordering::SeqCst),
+        1,
+        "the asking agent resumes"
+    );
+    let completed = events_of(&server, child, "tool.completed").await;
+    assert_eq!(completed.last().unwrap()["tool_call_id"], ids[0]);
+    assert!(
+        events_of(&server, first, "tool.completed").await.is_empty(),
+        "nothing is recorded on the first session"
+    );
+}
+
+/// The first session cannot answer for a request no agent in its run made,
+/// and an agent in the middle of a run does not route answers.
+#[tokio::test]
+async fn answers_reach_only_requests_the_run_made() {
+    let Fixture { server, resumes } = fixture().await;
+    let first = parked_session(&server).await;
+    let (_child, _ids) = parked_child(&server, first).await;
+
+    post_decisions(
+        &server,
+        first,
+        json!([{ "tool_call_id": "tool_approval_toolu_unknown", "decision": "allow" }]),
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+
+    // Another run's first session does not reach this run's agent.
+    let other = parked_session(&server).await;
+    post_decisions(
+        &server,
+        other,
+        json!([{ "tool_call_id": "tool_approval_toolu_7", "decision": "allow" }]),
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+    assert_eq!(resumes.load(Ordering::SeqCst), 0);
+}

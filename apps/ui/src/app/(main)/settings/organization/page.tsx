@@ -459,6 +459,7 @@ export default function OrganizationPage() {
               >
                 <ModelPicker
                   id="default-model"
+                  organizationDefault
                   value={defaultModelId}
                   onChange={(value) => {
                     if (settings.adopted) {

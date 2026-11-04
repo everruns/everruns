@@ -26,7 +26,9 @@
       "zod": "4.6.7",
       "@modelcontextprotocol/sdk": "1.32.2",
       "ip-address": "10.7.4",
-      "body-parser": "2.4.0"
+      "body-parser": "2.4.0",
+      "qs": "6.16.1",
+      "fast-uri": "3.1.9"
     },
     "patchedDependencies": {
       "zod@4.6.7": "patches/zod@4.6.7.patch",

@@ -1,233 +1,509 @@
-// Eval run execution — background task that drives eval cases through sessions.
+// Eval run execution: one durable task per case result.
 //
-// Design: Each eval case creates a real session, sends conversation + post messages,
-// waits for turn completion, runs scorers, and records results. Bounded concurrency
-// prevents overwhelming the system. This is NOT a durable workflow — it's a fire-and-forget
-// background task. If the server crashes mid-run, the run stays "running" and can be
-// manually cancelled. Durable execution is a future enhancement.
+// Decision: each (case, trial) result is its own durable task on the server's
+// eval pool (`EVAL_CASE_ACTIVITY`), claimed by one replica. A deploy or crash
+// leaves a stale claim that the server's reaper hands to another replica, and
+// the task resumes the same session instead of starting over: it counts the
+// user messages already in the session and the turns that already settled,
+// then carries on. This replaced a fire-and-forget task in the API process
+// that left runs stuck at "running" after any restart.
+//
+// Decision: the run is finished by whichever case task settles last. The
+// summary is rebuilt from the stored rows (summary.rs) and written with a
+// conditional update, so concurrent finishers agree and a cancelled run stays
+// cancelled.
+//
+// Decision: without a durable store (in-memory dev mode) the same case
+// function runs on local tasks with bounded concurrency. Same behavior,
+// weaker delivery: a restart loses in-flight cases.
+//
+// Decision: waiting polls the session's settled-turn count. Turn events are
+// persisted by whichever replica the worker reports to, so an in-process
+// listener cannot see them all; a 1 s poll on an indexed count is cheap.
 
+use crate::domains::evals::graders::{GradeInput, GraderUsage, Graders};
+use crate::domains::evals::multistep::{
+    Line, SimulatedUser, SimulatorTurn, Speaker, ToolFixture, fixture_answers, fixture_tools,
+    transcript_text,
+};
 use crate::domains::evals::record::*;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
+use crate::domains::tool_results::types::ClientToolResult;
 use crate::storage::StorageBackend;
 use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
-use everruns_core::message::{TextAnnotation, VerificationStatus};
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::time::Instant;
+use everruns_core::events::{
+    CONVERSATION_MESSAGE, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED, TOOL_CALL_REQUESTED,
+    TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+};
+use everruns_core::message::TextAnnotation;
+use everruns_durable::{ActivityOptions, TaskDefinition, WorkflowEventStore};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-const MAX_CONCURRENCY: usize = 5;
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
-const MAX_POLL_DURATION: std::time::Duration = std::time::Duration::from_secs(600);
+/// Durable activity type of one eval case result.
+pub const EVAL_CASE_ACTIVITY: &str = "eval_case";
+/// Cases one replica runs at once by default (`EVAL_MAX_CONCURRENT_CASES`).
+const DEFAULT_CONCURRENCY: usize = 8;
+const POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// Upper bound on one case's wall time, whatever the case asks for.
+const MAX_CASE_DURATION: Duration = Duration::from_secs(600);
+const DEFAULT_CASE_TIMEOUT_SECS: u64 = 120;
+/// A queued case may wait this long for a free slot before the queue gives up.
+const SCHEDULE_TO_START: Duration = Duration::from_secs(24 * 3600);
 
 /// Context needed to execute an eval run.
 pub struct EvalRunContext {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
-    /// LLM judge for judged scorers (e.g. `citation_judged`). `None` when the
-    /// deployment has no model provider stack; judged scorers then report the
-    /// judge as unavailable rather than erroring the run.
-    pub judge: Option<Arc<dyn crate::domains::observers::JudgeClient>>,
+    /// Scoring services shared with observers. Model-backed scorers report
+    /// themselves unavailable when the deployment has no model stack.
+    pub graders: Graders,
+    /// Durable queue for case tasks, set once the server's store exists.
+    /// Unset means local execution (dev mode, tests).
+    pub queue: OnceLock<Arc<dyn WorkflowEventStore + Send + Sync>>,
 }
 
-/// Spawn the eval run execution in the background.
-pub fn spawn_eval_run(ctx: Arc<EvalRunContext>, org_id: i64, run_id: Uuid) {
-    // It reads the run row, so it starts once that commits.
+/// One case result to execute: the payload of an `eval_case` task.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EvalCaseTask {
+    pub org_id: i64,
+    pub run_id: Uuid,
+    pub result_id: Uuid,
+}
+
+/// Start a run once the transaction that created it commits.
+pub fn dispatch_eval_run(ctx: Arc<EvalRunContext>, org_id: i64, run_id: Uuid) {
     crate::storage::transaction::spawn_after_commit(async move {
-        if let Err(e) = execute_eval_run(ctx.clone(), org_id, run_id).await {
-            tracing::error!(run_id = %run_id, error = %e, "Eval run failed");
-            // Mark run as failed so it doesn't stay "running" indefinitely
+        if let Err(e) = start_run(ctx.clone(), org_id, run_id).await {
+            tracing::error!(run_id = %run_id, error = %e, "Eval run failed to start");
             if let Err(update_err) = ctx.db.update_eval_run_status(run_id, "failed", None).await {
-                tracing::error!(
-                    run_id = %run_id, error = %update_err,
-                    "Failed to mark eval run as failed"
-                );
+                tracing::error!(run_id = %run_id, error = %update_err, "Failed to mark eval run as failed");
             }
         }
     });
 }
 
-async fn execute_eval_run(ctx: Arc<EvalRunContext>, org_id: i64, run_id: Uuid) -> Result<()> {
-    // Mark run as running
+async fn start_run(ctx: Arc<EvalRunContext>, org_id: i64, run_id: Uuid) -> Result<()> {
     ctx.db
         .update_eval_run_status(run_id, "running", None)
         .await?;
-
-    let case_results = ctx.db.list_eval_case_results(run_id).await?;
-    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
-
-    let mut handles = Vec::with_capacity(case_results.len());
-
-    for case_result in case_results {
-        let ctx = ctx.clone();
-        let sem = semaphore.clone();
-
-        let handle = tokio::spawn(async move {
-            let _permit = sem.acquire().await.expect("semaphore closed");
-            execute_single_case(
-                ctx,
-                org_id,
-                case_result.id,
-                case_result.eval_case_id,
-                &case_result.target,
-            )
-            .await
-        });
-        handles.push(handle);
+    let results = ctx.db.list_eval_case_results(run_id).await?;
+    if results.is_empty() {
+        finalize_run_if_complete(&ctx, run_id).await?;
+        return Ok(());
     }
+    let tasks: Vec<EvalCaseTask> = results
+        .iter()
+        .map(|r| EvalCaseTask {
+            org_id,
+            run_id,
+            result_id: r.id,
+        })
+        .collect();
 
-    // Collect all results
-    let mut total = 0u32;
-    let mut passed = 0u32;
-    let mut failed = 0u32;
-    let mut errored = 0u32;
-    let mut total_score = 0.0f64;
-    let mut total_turns = 0.0f64;
-    let mut total_latency = 0u64;
-    let mut total_input_tokens = 0u64;
-    let mut total_output_tokens = 0u64;
-
-    for handle in handles {
-        total += 1;
-        match handle.await {
-            Ok(Ok(metrics)) => {
-                total_score += metrics.avg_score;
-                total_turns += metrics.turns as f64;
-                total_latency += metrics.latency_ms;
-                total_input_tokens += metrics.input_tokens;
-                total_output_tokens += metrics.output_tokens;
-                if metrics.passed {
-                    passed += 1;
-                } else {
-                    failed += 1;
-                }
-            }
-            Ok(Err(e)) => {
-                tracing::error!(error = %e, "Eval case execution errored");
-                errored += 1;
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "Eval case task panicked");
-                errored += 1;
-            }
+    if let Some(queue) = ctx.queue.get() {
+        for task in &tasks {
+            enqueue_case(queue.as_ref(), &ctx, task).await?;
         }
+        return Ok(());
     }
 
-    let summary = RunSummary {
-        total,
-        passed,
-        failed,
-        errored,
-        pass_rate: if total > 0 {
-            passed as f64 / total as f64
-        } else {
-            0.0
-        },
-        avg_score: if total > 0 {
-            total_score / total as f64
-        } else {
-            0.0
-        },
-        avg_turns: if total > 0 {
-            total_turns / total as f64
-        } else {
-            0.0
-        },
-        avg_latency_ms: if total > 0 {
-            total_latency / total as u64
-        } else {
-            0
-        },
-        total_input_tokens,
-        total_output_tokens,
-    };
-
-    ctx.db
-        .update_eval_run_status(run_id, "completed", Some(serde_json::to_value(&summary)?))
-        .await?;
-
-    tracing::info!(
-        run_id = %run_id,
-        total, passed, failed, errored,
-        pass_rate = summary.pass_rate,
-        "Eval run completed"
-    );
-
+    // Local fallback: bounded concurrency on this process.
+    let semaphore = Arc::new(Semaphore::new(concurrency_from_env()));
+    for task in tasks {
+        let (ctx, sem) = (ctx.clone(), semaphore.clone());
+        tokio::spawn(async move {
+            let _permit = sem.acquire().await.expect("semaphore closed");
+            run_case_task(&ctx, &task).await;
+        });
+    }
     Ok(())
 }
 
-struct CaseMetrics {
-    passed: bool,
-    avg_score: f64,
-    turns: u32,
-    latency_ms: u64,
-    input_tokens: u64,
-    output_tokens: u64,
+async fn enqueue_case(
+    queue: &(dyn WorkflowEventStore + Send + Sync),
+    ctx: &EvalRunContext,
+    task: &EvalCaseTask,
+) -> Result<()> {
+    // The task may outlive the case's own timeout by the time it takes to
+    // create the session and score, never by more than this margin.
+    let timeout = case_timeout(ctx, task).await + Duration::from_secs(300);
+    queue
+        .enqueue_task(TaskDefinition {
+            workflow_id: None,
+            activity_id: format!("{EVAL_CASE_ACTIVITY}:{}", task.result_id),
+            activity_type: EVAL_CASE_ACTIVITY.to_string(),
+            input: serde_json::to_value(task)?,
+            options: ActivityOptions::default()
+                .with_schedule_to_start_timeout(SCHEDULE_TO_START)
+                .with_start_to_close_timeout(timeout),
+        })
+        .await?;
+    Ok(())
 }
 
-async fn execute_single_case(
+async fn case_timeout(ctx: &EvalRunContext, task: &EvalCaseTask) -> Duration {
+    let secs = match ctx.db.get_eval_case_result(task.result_id).await {
+        Ok(Some(result)) => match ctx.db.get_eval_case(result.eval_case_id).await {
+            Ok(Some(case)) => case.timeout_seconds.map(|v| v.max(1) as u64),
+            _ => None,
+        },
+        _ => None,
+    };
+    Duration::from_secs(secs.unwrap_or(DEFAULT_CASE_TIMEOUT_SECS)).min(MAX_CASE_DURATION)
+}
+
+fn concurrency_from_env() -> usize {
+    std::env::var("EVAL_MAX_CONCURRENT_CASES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|n: &usize| *n > 0)
+        .unwrap_or(DEFAULT_CONCURRENCY)
+}
+
+/// Start this replica's eval case pool over the durable store and route new
+/// runs to it. Also re-queues pending cases of runs that were left running,
+/// e.g. by a version without durable case tasks; a duplicate task for a case
+/// another replica already holds finds it claimed and does nothing.
+pub async fn start_case_pool(
+    store: Arc<dyn WorkflowEventStore + Send + Sync>,
     ctx: Arc<EvalRunContext>,
-    org_id: i64,
-    result_id: Uuid,
-    case_id: Uuid,
-    target_json: &Option<serde_json::Value>,
-) -> Result<CaseMetrics> {
-    let start = Instant::now();
+) -> Option<JoinHandle<()>> {
+    use everruns_durable::{WorkerPool, WorkerPoolConfig};
 
-    // Mark case as running
-    ctx.db
-        .update_eval_case_result(
-            result_id,
-            UpdateEvalCaseResultRow {
-                status: Some("running".to_string()),
-                ..Default::default()
-            },
-        )
-        .await?;
-
-    let result = execute_case_inner(&ctx, org_id, result_id, case_id, target_json).await;
-
-    let latency_ms = start.elapsed().as_millis() as u64;
-
-    match result {
-        Ok(mut metrics) => {
-            metrics.latency_ms = latency_ms;
-            Ok(metrics)
+    if ctx.queue.set(store.clone()).is_err() {
+        tracing::warn!("Eval case pool started twice; keeping the first");
+        return None;
+    }
+    let config = WorkerPoolConfig::new(vec![EVAL_CASE_ACTIVITY.to_string()])
+        .with_worker_id(format!("server-evals-{}", Uuid::now_v7()))
+        .with_worker_group("server-evals")
+        .with_max_concurrency(concurrency_from_env())
+        // The server's stale-task reaper (durable_reaper.rs) owns reclaim.
+        .without_stale_reclaim();
+    let pool = WorkerPool::new(store.clone(), config);
+    let handler_ctx = ctx.clone();
+    pool.register_handler(EVAL_CASE_ACTIVITY, move |task| {
+        let ctx = handler_ctx.clone();
+        async move {
+            match serde_json::from_value::<EvalCaseTask>(task.input) {
+                Ok(task) => run_case_task(&ctx, &task).await,
+                Err(error) => tracing::warn!(%error, "Malformed eval case task"),
+            }
+            Ok(serde_json::Value::Null)
         }
-        Err(e) => {
-            // Mark case as errored
+    });
+    if let Err(error) = pool.start().await {
+        tracing::error!(%error, "Failed to start eval case pool");
+        return None;
+    }
+
+    match ctx.db.list_pending_eval_case_tasks().await {
+        Ok(pending) => {
+            for (org_id, run_id, result_id) in pending {
+                let task = EvalCaseTask {
+                    org_id,
+                    run_id,
+                    result_id,
+                };
+                if let Err(error) = enqueue_case(store.as_ref(), &ctx, &task).await {
+                    tracing::warn!(%result_id, %error, "Failed to re-queue eval case");
+                }
+            }
+        }
+        Err(error) => tracing::warn!(%error, "Failed to list pending eval cases"),
+    }
+
+    tracing::info!("Eval case pool started");
+    Some(tokio::spawn(async move {
+        let _pool = pool;
+        std::future::pending::<()>().await
+    }))
+}
+
+/// Execute one case result, then finish the run if it was the last. Never
+/// returns an error: failures are recorded on the result.
+pub async fn run_case_task(ctx: &EvalRunContext, task: &EvalCaseTask) {
+    if let Err(error) = run_case_task_inner(ctx, task).await {
+        tracing::error!(result_id = %task.result_id, %error, "Eval case task failed");
+    }
+    if let Err(error) = finalize_run_if_complete(ctx, task.run_id).await {
+        tracing::error!(run_id = %task.run_id, %error, "Failed to finish eval run");
+    }
+}
+
+async fn run_case_task_inner(ctx: &EvalRunContext, task: &EvalCaseTask) -> Result<()> {
+    let Some(run) = ctx.db.get_eval_run_by_id(task.run_id).await? else {
+        return Ok(());
+    };
+    if run.org_id != task.org_id || !matches!(run.status.as_str(), "pending" | "running") {
+        return Ok(());
+    }
+    let Some(result) = ctx.db.get_eval_case_result(task.result_id).await? else {
+        return Ok(());
+    };
+    if result.eval_run_id != run.id {
+        return Ok(());
+    }
+    match result.status.as_str() {
+        // Fresh: take it, unless the run's money is already spent. Losing
+        // the race means another task has it.
+        "pending" => {
+            if let Some(reason) = run_budget_spent(ctx, &run).await? {
+                record_case_error(ctx, result.id, "skipped", &reason, 0, None).await?;
+                return Ok(());
+            }
+            if !ctx.db.claim_eval_case_result(result.id).await? {
+                return Ok(());
+            }
+        }
+        // Reclaimed after a crash or deploy: resume below.
+        "running" => {}
+        _ => return Ok(()),
+    }
+
+    let start = Instant::now();
+    let outcome = match run_caller(ctx, &run).await {
+        Ok(caller) => {
+            execute_case_inner(
+                ctx,
+                &caller,
+                result.id,
+                result.eval_case_id,
+                &result.target,
+                result.session_id,
+                run.model_override.as_deref(),
+            )
+            .await
+        }
+        Err(error) => Err(CaseError::Failed(error)),
+    };
+    let latency_ms = start.elapsed().as_millis() as i64;
+    // What the case's agent spent, recorded on every outcome that ran a
+    // session so the run's cost covers failed and stopped cases too.
+    let session_cost = match ctx.db.get_eval_case_result(result.id).await? {
+        Some(row) => match row.session_id {
+            Some(session) => Some(ctx.db.eval_session_cost_usd(run.org_id, session).await?),
+            None => None,
+        },
+        None => None,
+    };
+
+    match outcome {
+        Ok(output) => {
+            let mut metadata = serde_json::json!({ "cost_usd": session_cost.unwrap_or(0.0) });
+            if let Some(usage) = &output.grader_usage {
+                metadata["grader_usage"] = serde_json::to_value(usage)?;
+            }
+            if let Some(simulation) = &output.simulation {
+                metadata["simulated_user"] = serde_json::to_value(simulation)?;
+            }
             ctx.db
                 .update_eval_case_result(
-                    result_id,
+                    result.id,
                     UpdateEvalCaseResultRow {
-                        status: Some("errored".to_string()),
-                        error_message: Some(e.to_string()),
-                        latency_ms: Some(latency_ms as i64),
+                        latency_ms: Some(latency_ms),
+                        metadata: Some(metadata),
                         ..Default::default()
                     },
                 )
                 .await?;
-            Err(e)
         }
+        Err(CaseError::Cancelled) => {}
+        Err(CaseError::Timeout) => {
+            let reason = "Case timeout exceeded";
+            record_case_error(ctx, result.id, "timeout", reason, latency_ms, session_cost).await?;
+        }
+        // Stopped for money, not because the agent failed: skipped, not errored.
+        Err(CaseError::BudgetSpent(reason)) => {
+            record_case_error(ctx, result.id, "skipped", &reason, latency_ms, session_cost).await?;
+        }
+        Err(CaseError::Failed(e)) => {
+            let reason = e.to_string();
+            record_case_error(ctx, result.id, "errored", &reason, latency_ms, session_cost).await?;
+        }
+    }
+    Ok(())
+}
+
+/// The role recorded for a run started by a credential without a person;
+/// `None` when a person started it (their live membership is used instead).
+pub(crate) fn started_by_role(caller: &everruns_core::Caller) -> Option<String> {
+    caller.user_id.is_none().then(|| caller.role.to_string())
+}
+
+/// Whose authority a run's cases use.
+///
+/// A run a person started runs as that person, resolved again for every case
+/// so a member removed mid-run stops getting sessions. A run started by a
+/// credential without a person runs with the role it had, never as the
+/// internal caller. Only runs created before this was recorded fall back to
+/// the internal caller.
+async fn run_caller(
+    ctx: &EvalRunContext,
+    run: &crate::storage::EvalRunRow,
+) -> Result<everruns_core::Caller> {
+    if let Some(user_id) = run.started_by_user_id {
+        return crate::auth::caller_resolution::caller_for_user(&ctx.db, run.org_id, user_id)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("the person who started this run can no longer run it: {error}")
+            });
+    }
+    let Some(role) = run.started_by_role.as_deref() else {
+        return Ok(everruns_core::Caller::internal(run.org_id));
+    };
+    Ok(everruns_core::Caller {
+        org_id: run.org_id,
+        org_public_id: everruns_core::org_public_id_from_internal(run.org_id),
+        user_id: None,
+        role: role.parse().unwrap_or(everruns_core::OrgRole::Member),
+        is_platform_user: false,
+        is_internal: false,
+        read_only: false,
+    })
+}
+
+async fn record_case_error(
+    ctx: &EvalRunContext,
+    result_id: Uuid,
+    status: &str,
+    message: &str,
+    latency_ms: i64,
+    session_cost: Option<f64>,
+) -> Result<()> {
+    ctx.db
+        .update_eval_case_result(
+            result_id,
+            UpdateEvalCaseResultRow {
+                status: Some(status.to_string()),
+                error_message: Some(message.to_string()),
+                latency_ms: Some(latency_ms),
+                metadata: session_cost.map(|cost| serde_json::json!({ "cost_usd": cost })),
+                ..Default::default()
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+/// Why a run with a spending cap may start no more cases: its `eval_run`
+/// budget is exhausted or paused. `None` for a run without a cap.
+async fn run_budget_spent(
+    ctx: &EvalRunContext,
+    run: &crate::storage::EvalRunRow,
+) -> Result<Option<String>> {
+    let Some(limit) = run.max_cost_usd else {
+        return Ok(None);
+    };
+    let budgets = ctx
+        .db
+        .list_budgets(run.org_id, Some("eval_run"), Some(&run.public_id))
+        .await?;
+    let spent = budgets
+        .iter()
+        .any(|b| matches!(b.status.as_str(), "exhausted" | "paused") || b.balance <= 0.0);
+    Ok(spent.then(|| budget_spent_reason(limit)))
+}
+
+fn budget_spent_reason(limit: f64) -> String {
+    format!("Stopped: the run's budget of ${limit:.2} is spent")
+}
+
+/// Stop before sending more work when a budget the case session spends from
+/// (the run's cap, or the session's, user's or org's) is spent. The loop gate
+/// would end the turn anyway; stopping here records why.
+async fn ensure_budget_left(
+    ctx: &EvalRunContext,
+    sctx: &SessionCtx,
+) -> std::result::Result<(), CaseError> {
+    let check = crate::domains::budgets::BudgetService::new(ctx.db.clone())
+        .check_budgets_for_session(sctx.org_id, &sctx.session_id.to_string(), None)
+        .await;
+    match check.action.as_str() {
+        "stop" | "pause" => Err(CaseError::BudgetSpent(format!(
+            "Stopped: {}",
+            check.message.as_deref().unwrap_or("a budget is spent")
+        ))),
+        _ => Ok(()),
     }
 }
 
+/// Finish a running run when none of its results is still pending or running.
+pub async fn finalize_run_if_complete(ctx: &EvalRunContext, run_id: Uuid) -> Result<bool> {
+    let Some(run) = ctx.db.get_eval_run_by_id(run_id).await? else {
+        return Ok(false);
+    };
+    if run.status != "running" {
+        return Ok(false);
+    }
+    let results = ctx.db.list_eval_case_results(run_id).await?;
+    if results
+        .iter()
+        .any(|r| matches!(r.status.as_str(), "pending" | "running"))
+    {
+        return Ok(false);
+    }
+    let cases = ctx.db.list_eval_cases(run.eval_id).await?;
+    let summary = crate::domains::evals::summary::build_run_summary(
+        &cases,
+        &results,
+        run.trials.max(1) as u32,
+    );
+    let completed = ctx
+        .db
+        .complete_eval_run_once(run_id, serde_json::to_value(&summary)?)
+        .await?;
+    if completed {
+        tracing::info!(
+            run_id = %run_id,
+            total = summary.total,
+            passed = summary.passed,
+            pass_rate = summary.pass_rate,
+            "Eval run completed"
+        );
+    }
+    Ok(completed)
+}
+
+/// Why a case stopped without a score.
+enum CaseError {
+    /// The run was cancelled; the result is already marked skipped.
+    Cancelled,
+    /// The case ran past its timeout.
+    Timeout,
+    /// A budget the case spends from ran out; the reason says which.
+    BudgetSpent(String),
+    Failed(anyhow::Error),
+}
+
+impl<E: Into<anyhow::Error>> From<E> for CaseError {
+    fn from(e: E) -> Self {
+        CaseError::Failed(e.into())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn execute_case_inner(
     ctx: &EvalRunContext,
-    org_id: i64,
+    caller: &everruns_core::Caller,
     result_id: Uuid,
     case_id: Uuid,
     target_json: &Option<serde_json::Value>,
-) -> Result<CaseMetrics> {
-    // Load case
+    existing_session: Option<Uuid>,
+    run_model_override: Option<&str>,
+) -> std::result::Result<CaseOutput, CaseError> {
+    let org_id = caller.org_id;
     let case_row = ctx
         .db
         .get_eval_case(case_id)
@@ -240,11 +516,27 @@ async fn execute_case_inner(
     let artifact_specs: Option<Vec<ArtifactSpec>> =
         case_row.artifacts.map(serde_json::from_value).transpose()?;
     let scorers: Vec<Scorer> = serde_json::from_value(case_row.scorers)?;
-    let timeout_secs = case_row.timeout_seconds.map(|v| v as u64).unwrap_or(120);
-    let case_deadline = Instant::now()
-        + std::time::Duration::from_secs(timeout_secs.min(MAX_POLL_DURATION.as_secs()));
+    let simulated_user: Option<SimulatedUser> = case_row
+        .simulated_user
+        .map(serde_json::from_value)
+        .transpose()?;
+    let fixtures: Vec<ToolFixture> = case_row
+        .tool_fixtures
+        .map(serde_json::from_value)
+        .transpose()?
+        .unwrap_or_default();
+    // Fail before creating a session, not after the scripted messages.
+    if simulated_user.is_some() && ctx.graders.simulator().is_none() {
+        return Err(
+            anyhow::anyhow!("this deployment has no model to play the simulated user").into(),
+        );
+    }
+    let timeout_secs = case_row
+        .timeout_seconds
+        .map(|v| v.max(1) as u64)
+        .unwrap_or(DEFAULT_CASE_TIMEOUT_SECS);
+    let case_deadline = Instant::now() + Duration::from_secs(timeout_secs).min(MAX_CASE_DURATION);
 
-    // Resolve target
     let target: EvalTarget = target_json
         .as_ref()
         .map(|v| serde_json::from_value(v.clone()))
@@ -270,106 +562,185 @@ async fn execute_case_inner(
                     .ok_or_else(|| anyhow::anyhow!("harness '{name}' not found"))?;
                 h.id.uuid()
             } else {
-                anyhow::bail!("eval target must specify harness_id or harness_name");
+                return Err(
+                    anyhow::anyhow!("eval target must specify harness_id or harness_name").into(),
+                );
             };
             (
                 hid,
                 agent_id.as_ref().map(|a| a.uuid()),
-                model_id.clone(),
+                // The run's model override beats the target's model.
+                run_model_override
+                    .map(str::to_string)
+                    .or_else(|| model_id.clone()),
                 system_prompt.clone(),
                 *max_iterations,
             )
         }
         EvalTarget::App { .. } => {
-            anyhow::bail!("App targets not yet supported in eval execution");
+            return Err(anyhow::anyhow!("App targets are not supported in eval execution").into());
         }
         EvalTarget::External { .. } => {
-            anyhow::bail!("External targets are imported results and are not executable");
+            return Err(anyhow::anyhow!(
+                "External targets are imported results and are not executable"
+            )
+            .into());
         }
     };
 
-    // Internal caller bypasses policy checks (eval execution is system-initiated)
-    let caller = everruns_core::Caller::internal(org_id);
-
-    // Create session
-    let session = ctx
-        .session_service
-        .create(
-            &caller,
-            harness_id,
-            agent_id,
-            agent_id.map(everruns_contracts::typed_id::AgentId::from_uuid),
-            crate::domains::sessions::record::SessionSource::Eval,
-            CreateSessionRequest {
-                playground_user_id: None,
-                source: None,
-                workspace_id: None,
-                harness_id: None, // Already resolved
-                harness_name: None,
-                agent_id: None,
-                agent_name: None,
-                virtual_user_id: None,
-                title: Some(format!("Eval: {}", case_row.name)),
-                goal: None,
-                locale: None,
-                tags: vec!["eval".to_string()],
-                model_id: model_id.and_then(|m| m.parse().ok()),
-                capabilities: vec![],
-                sandbox: None,
-                tools: vec![],
-                mcp_servers: Default::default(),
-                system_prompt,
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations,
-                parallel_tool_calls: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                budget_root_session_id: None,
-                seed: everruns_core::SessionSeedMode::Fresh,
-                fork_up_to_sequence: None,
-            },
-        )
-        .await?;
-
-    let session_uuid = session.id.uuid();
-    let session_id = session.id;
-
-    // Record session_id on case result
-    ctx.db
-        .update_eval_case_result(
-            result_id,
-            UpdateEvalCaseResultRow {
-                session_id: Some(session_uuid),
-                ..Default::default()
-            },
-        )
-        .await?;
+    // A reclaimed task resumes its session; a fresh one creates it.
+    let session_uuid = match existing_session {
+        Some(id) => id,
+        None => {
+            let session = ctx
+                .session_service
+                .create(
+                    caller,
+                    harness_id,
+                    agent_id,
+                    agent_id.map(everruns_contracts::typed_id::AgentId::from_uuid),
+                    crate::domains::sessions::record::SessionSource::Eval,
+                    CreateSessionRequest {
+                        playground_user_id: None,
+                        source: None,
+                        workspace_id: None,
+                        harness_id: None, // Already resolved
+                        harness_name: None,
+                        agent_id: None,
+                        agent_name: None,
+                        virtual_user_id: simulated_user
+                            .as_ref()
+                            .and_then(|user| user.virtual_user_id.as_deref())
+                            .map(str::parse)
+                            .transpose()
+                            .map_err(|_| {
+                                anyhow::anyhow!("simulated_user.virtual_user_id is not valid")
+                            })?,
+                        title: Some(format!("Eval: {}", case_row.name)),
+                        goal: None,
+                        locale: None,
+                        tags: vec!["eval".to_string()],
+                        model_id: model_id.and_then(|m| m.parse().ok()),
+                        capabilities: vec![],
+                        sandbox: None,
+                        tools: fixture_tools(&fixtures),
+                        mcp_servers: Default::default(),
+                        system_prompt,
+                        initial_files: vec![],
+                        // Client-side calls park the turn only for a client
+                        // that declared it answers them; the runner answers
+                        // fixture calls, so it declares that, as a session
+                        // configured with client tools does.
+                        hints: (!fixtures.is_empty()).then(|| {
+                            std::collections::HashMap::from([(
+                                "setup_connection".to_string(),
+                                serde_json::json!(true),
+                            )])
+                        }),
+                        network_access: None,
+                        max_iterations,
+                        parallel_tool_calls: None,
+                        parent_session_id: None,
+                        forked_from_session_id: None,
+                        budget_root_session_id: None,
+                        seed: everruns_core::SessionSeedMode::Fresh,
+                        fork_up_to_sequence: None,
+                    },
+                )
+                .await?;
+            let session_uuid = session.id.uuid();
+            ctx.db
+                .update_eval_case_result(
+                    result_id,
+                    UpdateEvalCaseResultRow {
+                        session_id: Some(session_uuid),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            session_uuid
+        }
+    };
+    let session_id = SessionId::from_uuid(session_uuid);
 
     let sctx = SessionCtx {
         org_id,
+        user_id: caller.user_id,
+        result_id,
         session_uuid,
         session_id,
         harness_id,
         agent_id,
         case_deadline,
+        fixtures,
     };
 
-    // Send conversation messages
-    let mut turn_count = 0u32;
-    for msg in &conversation {
-        send_message_and_wait(ctx, &sctx, &msg.content).await?;
-        turn_count += 1;
+    let messages: Vec<&EvalInputMessage> =
+        conversation.iter().chain(post.iter().flatten()).collect();
+    let mut sent_total = messages.len();
+
+    // Resume point: messages already delivered, and wait out the turn of the
+    // last one if it had not settled when the previous owner stopped.
+    let sent = count_events_of(ctx, session_id, &[INPUT_MESSAGE]).await?;
+    if sent > 0 {
+        wait_for_settled_turns(ctx, &sctx, sent).await?;
+    }
+    for (index, msg) in messages.iter().enumerate().skip(sent) {
+        ensure_run_active(ctx, result_id).await?;
+        ensure_budget_left(ctx, &sctx).await?;
+        send_message(ctx, &sctx, &msg.content).await?;
+        wait_for_settled_turns(ctx, &sctx, index + 1).await?;
     }
 
-    // Send post messages (if any)
-    if let Some(post_msgs) = &post {
-        for msg in post_msgs {
-            send_message_and_wait(ctx, &sctx, &msg.content).await?;
-            turn_count += 1;
+    // The simulated user carries on where the script stops. A resumed case
+    // counts the simulated messages it already sent.
+    let mut simulation = None;
+    if let (Some(user), Some(simulator)) = (&simulated_user, ctx.graders.simulator()) {
+        sent_total = sent_total.max(sent);
+        let mut summary = SimulationSummary {
+            model: None,
+            turns: sent_total.saturating_sub(messages.len()) as u32,
+            ended: SimulationEnd::TurnLimit,
+        };
+        while summary.turns < user.turn_limit() {
+            ensure_run_active(ctx, result_id).await?;
+            ensure_budget_left(ctx, &sctx).await?;
+            if Instant::now() >= sctx.case_deadline {
+                return Err(CaseError::Timeout);
+            }
+            let lines = conversation_lines(ctx, session_id).await?;
+            let reply = simulator
+                .next(org_id, user, &lines)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("no model available to play the simulated user"))?;
+            // Spend counts toward the run's cap as it happens, like grading.
+            crate::domains::budgets::BudgetService::new(ctx.db.clone())
+                .meter_grading(
+                    session_id,
+                    result_id,
+                    reply.input_tokens,
+                    reply.output_tokens,
+                    reply.cost_usd,
+                )
+                .await;
+            summary.model = Some(reply.model);
+            match reply.turn {
+                SimulatorTurn::Done => {
+                    summary.ended = SimulationEnd::Done;
+                    break;
+                }
+                SimulatorTurn::Say(text) => {
+                    send_message(ctx, &sctx, &text).await?;
+                    sent_total += 1;
+                    summary.turns += 1;
+                    wait_for_settled_turns(ctx, &sctx, sent_total).await?;
+                }
+            }
         }
+        simulation = Some(summary);
     }
+    ensure_run_active(ctx, result_id).await?;
+    let turn_count = sent_total as u32;
 
     // Collect events for scoring using filtered queries to avoid 10k row cap
     // What the agent said: its text, or the messages it sent in explicit
@@ -383,10 +754,16 @@ async fn execute_case_inner(
         .list_events(session_id, None, None, &msg_filter, &[], None, None)
         .await?;
 
-    let tool_filter = vec!["tool.completed".to_string()];
+    let tool_filter = vec![TOOL_COMPLETED.to_string()];
     let tool_events = ctx
         .db
         .list_events(session_id, None, None, &tool_filter, &[], None, None)
+        .await?;
+    // Arguments ride on the call, not on its completion.
+    let call_filter = vec![TOOL_STARTED.to_string(), TOOL_CALL_REQUESTED.to_string()];
+    let call_events = ctx
+        .db
+        .list_events(session_id, None, None, &call_filter, &[], None, None)
         .await?;
 
     let turn_filter = vec![TURN_COMPLETED.to_string()];
@@ -403,36 +780,46 @@ async fn execute_case_inner(
 
     // Extract tool calls
     let tool_calls = extract_tool_calls(&tool_events);
+    let tool_arguments = extract_tool_arguments(&tool_events, &call_events);
+    // Multistep cases show judges and decisions the whole conversation.
+    let transcript = if simulation.is_some() || messages.len() > 1 {
+        transcript_text(&conversation_lines(ctx, session_id).await?)
+    } else {
+        String::new()
+    };
 
     // Extract token usage
     let (input_tokens, output_tokens) = extract_token_usage(&turn_events);
 
     // Run scorers
-    let scores = run_scorers(
-        &scorers,
-        &final_assistant_content,
-        &final_annotations,
-        &tool_calls,
-        turn_count,
-        ctx,
-        org_id,
-        session_uuid,
-    )
-    .await;
+    let input_message = messages.last().map(|m| m.content.as_str()).unwrap_or("");
+    let grade_input = GradeInput {
+        input_message,
+        final_answer: &final_assistant_content,
+        annotations: &final_annotations,
+        tool_calls: &tool_calls,
+        tool_arguments: &tool_arguments,
+        transcript: &transcript,
+        turns: turn_count,
+        tokens: input_tokens + output_tokens,
+        session_id: Some(session_uuid),
+    };
+    let (scores, grader_usage) = run_scorers(&ctx.graders, org_id, &scorers, &grade_input).await;
     let all_passed = scores.iter().all(|s| s.pass);
+    // Grading spends from the same budgets as the agent, the run's cap first.
+    if let Some(usage) = &grader_usage {
+        crate::domains::budgets::BudgetService::new(ctx.db.clone())
+            .meter_grading(
+                session_id,
+                result_id,
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cost_usd,
+            )
+            .await;
+    }
 
     // Calculate weighted average score
-    let total_weight: f64 = scorers.iter().map(scorer_weight).sum();
-    let weighted_sum: f64 = scores
-        .iter()
-        .zip(scorers.iter())
-        .map(|(score, scorer)| score.value * scorer_weight(scorer))
-        .sum();
-    let avg_score = if total_weight > 0.0 {
-        weighted_sum / total_weight
-    } else {
-        0.0
-    };
     let artifacts = collect_case_artifacts(&ctx.db, session_uuid, artifact_specs.as_deref()).await;
 
     let status = if all_passed { "passed" } else { "failed" };
@@ -443,6 +830,8 @@ async fn execute_case_inner(
             UpdateEvalCaseResultRow {
                 status: Some(status.to_string()),
                 scores: Some(serde_json::to_value(&scores)?),
+                // What grading cost is written with the agent's cost by the
+                // caller, so judge and decision spend is visible per case.
                 turns: Some(turn_count as i32),
                 latency_ms: None, // Set by caller
                 input_tokens: Some(input_tokens as i64),
@@ -453,14 +842,299 @@ async fn execute_case_inner(
         )
         .await?;
 
-    Ok(CaseMetrics {
-        passed: all_passed,
-        avg_score,
-        turns: turn_count,
-        latency_ms: 0, // Set by caller
-        input_tokens,
-        output_tokens,
+    Ok(CaseOutput {
+        grader_usage,
+        simulation,
     })
+}
+
+/// What a case that ran to grading reports back, besides its result row.
+struct CaseOutput {
+    grader_usage: Option<GraderUsage>,
+    simulation: Option<SimulationSummary>,
+}
+
+/// How a simulated conversation went, recorded on the result: a score is a
+/// statement about the agent and simulator pair.
+#[derive(Debug, Clone, serde::Serialize)]
+struct SimulationSummary {
+    /// The simulator's model, `None` when it never answered.
+    model: Option<String>,
+    /// Messages the simulator sent.
+    turns: u32,
+    ended: SimulationEnd,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SimulationEnd {
+    /// The simulator said the goal was met or will not be.
+    Done,
+    /// It reached its turn limit first.
+    TurnLimit,
+}
+
+struct SessionCtx {
+    org_id: i64,
+    user_id: Option<Uuid>,
+    result_id: Uuid,
+    session_uuid: Uuid,
+    session_id: SessionId,
+    harness_id: Uuid,
+    agent_id: Option<Uuid>,
+    case_deadline: Instant,
+    /// Tool fixtures the runner answers while it waits.
+    fixtures: Vec<ToolFixture>,
+}
+
+async fn count_events_of(
+    ctx: &EvalRunContext,
+    session_id: SessionId,
+    types: &[&str],
+) -> Result<usize> {
+    let filter: Vec<String> = types.iter().map(|t| t.to_string()).collect();
+    Ok(ctx
+        .db
+        .list_events(session_id, None, None, &filter, &[], None, None)
+        .await?
+        .len())
+}
+
+/// Stop when the run was cancelled under this case (its result is skipped).
+async fn ensure_run_active(
+    ctx: &EvalRunContext,
+    result_id: Uuid,
+) -> std::result::Result<(), CaseError> {
+    match ctx.db.get_eval_case_result(result_id).await? {
+        Some(result) if result.status == "running" => Ok(()),
+        _ => Err(CaseError::Cancelled),
+    }
+}
+
+async fn send_message(ctx: &EvalRunContext, sctx: &SessionCtx, content: &str) -> Result<()> {
+    let msg_ctx = CreateMessageContext {
+        runtime_subject_principal_id: None,
+        org_id: sctx.org_id,
+        user_id: sctx.user_id,
+        harness_id: sctx.harness_id,
+        agent_id: sctx.agent_id,
+        session_id: sctx.session_uuid,
+        event_metadata: None,
+        request_id: None,
+    };
+    let msg_req = CreateMessageRequest {
+        message: InputMessage {
+            role: crate::domains::messages::types::MessageRole::User,
+            content: vec![everruns_core::InputContentPart::text(content)],
+        },
+        addressed_participant_id: None,
+        controls: Some(everruns_core::Controls {
+            hints: Some(std::collections::HashMap::from([(
+                "output_streaming".to_string(),
+                serde_json::json!(false),
+            )])),
+            ..Default::default()
+        }),
+        metadata: None,
+        tags: None,
+        external_actor: None,
+        client_message_id: None,
+    };
+    ctx.message_service.create(msg_ctx, msg_req).await?;
+    Ok(())
+}
+
+/// Wait until the session has `expected` settled turns (completed, failed or
+/// cancelled), one per user message. The `expected`-th turn decides: failed
+/// or cancelled stops the case.
+async fn wait_for_settled_turns(
+    ctx: &EvalRunContext,
+    sctx: &SessionCtx,
+    expected: usize,
+) -> std::result::Result<(), CaseError> {
+    let filter = vec![
+        TURN_COMPLETED.to_string(),
+        TURN_FAILED.to_string(),
+        TURN_CANCELLED.to_string(),
+    ];
+    let mut polls = 0u32;
+    loop {
+        // A cancelled run stops its cases within a few seconds.
+        if polls % 5 == 4 {
+            ensure_run_active(ctx, sctx.result_id).await?;
+        }
+        polls += 1;
+        let settled = ctx
+            .db
+            .list_events(sctx.session_id, None, None, &filter, &[], None, None)
+            .await?;
+        if settled.len() >= expected {
+            let event = &settled[expected - 1];
+            return match event.event_type.as_str() {
+                TURN_COMPLETED => Ok(()),
+                TURN_CANCELLED => Err(anyhow::anyhow!("Turn was cancelled").into()),
+                _ => {
+                    let error = event.data.get("error");
+                    let error_msg = error
+                        .and_then(|e| e.as_str())
+                        .or_else(|| {
+                            error
+                                .and_then(|e| e.get("message"))
+                                .and_then(|m| m.as_str())
+                        })
+                        .or_else(|| event.data.get("message").and_then(|m| m.as_str()))
+                        .unwrap_or("turn failed");
+                    // The loop gate ended the turn: a budget ran out.
+                    let code = event.data.get("error_code").and_then(|c| c.as_str());
+                    if code.is_some_and(|c| c.starts_with("budget_")) {
+                        return Err(CaseError::BudgetSpent(format!("Stopped: {error_msg}")));
+                    }
+                    Err(anyhow::anyhow!("Turn failed: {error_msg}").into())
+                }
+            };
+        }
+        if Instant::now() >= sctx.case_deadline {
+            return Err(CaseError::Timeout);
+        }
+        if !sctx.fixtures.is_empty() {
+            answer_fixture_calls(ctx, sctx).await?;
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
+}
+
+/// Answer the agent's open calls to fixture tools with their canned
+/// responses. Idempotent: calls with a completion are skipped, and a claim
+/// that loses (the turn moved on) is a no-op.
+async fn answer_fixture_calls(ctx: &EvalRunContext, sctx: &SessionCtx) -> Result<()> {
+    let requested = ctx
+        .db
+        .list_events(
+            sctx.session_id,
+            None,
+            None,
+            &[TOOL_CALL_REQUESTED.to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await?;
+    let calls = requested_calls(&requested);
+    if calls.is_empty() {
+        return Ok(());
+    }
+    let completed = ctx
+        .db
+        .list_events(
+            sctx.session_id,
+            None,
+            None,
+            &[TOOL_COMPLETED.to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await?;
+    let answered: HashSet<String> = completed
+        .iter()
+        .filter_map(|e| e.data.get("tool_call_id").and_then(|v| v.as_str()))
+        .map(String::from)
+        .collect();
+    let results: Vec<ClientToolResult> = fixture_answers(&sctx.fixtures, &calls, &answered)
+        .into_iter()
+        .map(|(tool_call_id, answer)| match answer {
+            Ok(result) => ClientToolResult {
+                tool_call_id,
+                result: Some(result),
+                error: None,
+            },
+            Err(error) => ClientToolResult {
+                tool_call_id,
+                result: None,
+                error: Some(error),
+            },
+        })
+        .collect();
+    if results.is_empty() {
+        return Ok(());
+    }
+    ctx.message_service
+        .submit_tool_results(sctx.org_id, sctx.session_id, &results)
+        .await?;
+    Ok(())
+}
+
+/// `(tool_call_id, tool_name)` of every client-side call the agent asked for.
+fn requested_calls(events: &[crate::storage::EventRow]) -> Vec<(String, String)> {
+    events
+        .iter()
+        .flat_map(|e| {
+            e.data
+                .get("tool_calls")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter_map(|call| {
+            Some((
+                call.get("id")?.as_str()?.to_string(),
+                call.get("name")?.as_str()?.to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// The conversation so far, from the session's events: what the user sent
+/// and what the agent said, consecutive lines of one speaker joined.
+async fn conversation_lines(ctx: &EvalRunContext, session_id: SessionId) -> Result<Vec<Line>> {
+    let filter = vec![
+        INPUT_MESSAGE.to_string(),
+        OUTPUT_MESSAGE_COMPLETED.to_string(),
+        CONVERSATION_MESSAGE.to_string(),
+    ];
+    let events = ctx
+        .db
+        .list_events(session_id, None, None, &filter, &[], None, None)
+        .await?;
+    Ok(lines_from_events(&events))
+}
+
+pub(crate) fn lines_from_events(events: &[crate::storage::EventRow]) -> Vec<Line> {
+    let mut lines: Vec<Line> = Vec::new();
+    for event in events {
+        let (speaker, text) = if event.event_type == INPUT_MESSAGE {
+            let text = event
+                .data
+                .pointer("/message/content")
+                .and_then(|c| c.as_array())
+                .map(|parts| {
+                    parts
+                        .iter()
+                        .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
+                        .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+            (Speaker::User, text)
+        } else {
+            match everruns_core::conversation::said_in_event(&event.event_type, &event.data) {
+                Some(text) => (Speaker::Agent, text),
+                None => continue,
+            }
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        match lines.last_mut() {
+            Some(last) if last.speaker == speaker => {
+                last.text.push_str("\n\n");
+                last.text.push_str(&text);
+            }
+            _ => lines.push(Line { speaker, text }),
+        }
+    }
+    lines
 }
 
 async fn collect_case_artifacts(
@@ -505,88 +1179,6 @@ async fn collect_case_artifacts(
     }
 
     (!artifacts.is_empty()).then_some(artifacts)
-}
-
-struct SessionCtx {
-    org_id: i64,
-    session_uuid: Uuid,
-    session_id: SessionId,
-    harness_id: Uuid,
-    agent_id: Option<Uuid>,
-    case_deadline: Instant,
-}
-
-async fn send_message_and_wait(
-    ctx: &EvalRunContext,
-    sctx: &SessionCtx,
-    content: &str,
-) -> Result<()> {
-    // Get current latest sequence via count (no row materialization)
-    let last_seq = ctx.db.count_events(sctx.session_id, &[]).await.unwrap_or(0) as i32;
-
-    // Send message
-    let msg_ctx = CreateMessageContext {
-        runtime_subject_principal_id: None,
-        org_id: sctx.org_id,
-        user_id: None,
-        harness_id: sctx.harness_id,
-        agent_id: sctx.agent_id,
-        session_id: sctx.session_uuid,
-        event_metadata: None,
-        request_id: None,
-    };
-    let msg_req = CreateMessageRequest {
-        message: InputMessage {
-            role: crate::domains::messages::types::MessageRole::User,
-            content: vec![everruns_core::InputContentPart::text(content)],
-        },
-        addressed_participant_id: None,
-        controls: None,
-        metadata: None,
-        tags: None,
-        external_actor: None,
-        client_message_id: None,
-    };
-    ctx.message_service.create(msg_ctx, msg_req).await?;
-
-    // Poll for turn completion against the case-level deadline
-    loop {
-        if Instant::now() >= sctx.case_deadline {
-            anyhow::bail!("Case timeout exceeded");
-        }
-
-        tokio::time::sleep(POLL_INTERVAL).await;
-
-        let turn_filter = vec![TURN_COMPLETED.to_string(), TURN_FAILED.to_string()];
-        let new_events = ctx
-            .db
-            .list_events(
-                sctx.session_id,
-                Some(last_seq),
-                None,
-                &turn_filter,
-                &[],
-                None,
-                None,
-            )
-            .await?;
-
-        for event in &new_events {
-            if event.event_type == TURN_COMPLETED {
-                return Ok(());
-            }
-            if event.event_type == TURN_FAILED {
-                let error_msg = event
-                    .data
-                    .get("error")
-                    .and_then(|e| e.get("message"))
-                    .and_then(|m| m.as_str())
-                    .or_else(|| event.data.get("message").and_then(|m| m.as_str()))
-                    .unwrap_or("turn failed");
-                anyhow::bail!("Turn failed: {error_msg}");
-            }
-        }
-    }
 }
 
 pub(crate) fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
@@ -643,7 +1235,50 @@ pub(crate) fn extract_tool_calls(events: &[crate::storage::EventRow]) -> Vec<Str
         .collect()
 }
 
-fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
+/// Argument JSON of each completed call, in `extract_tool_calls` order, read
+/// from the matching `tool.started` or `tool.call_requested`. Empty text for
+/// a call whose arguments are not in the trace.
+pub(crate) fn extract_tool_arguments(
+    completed: &[crate::storage::EventRow],
+    calls: &[crate::storage::EventRow],
+) -> Vec<String> {
+    let mut arguments: HashMap<String, String> = HashMap::new();
+    for event in calls {
+        let found: Vec<serde_json::Value> = match event.event_type.as_str() {
+            TOOL_STARTED => event.data.get("tool_call").cloned().into_iter().collect(),
+            _ => event
+                .data
+                .get("tool_calls")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
+        };
+        for call in found {
+            if let (Some(id), Some(args)) = (
+                call.get("id").and_then(|v| v.as_str()),
+                call.get("arguments"),
+            ) {
+                arguments.insert(id.to_string(), args.to_string());
+            }
+        }
+    }
+    completed
+        .iter()
+        .filter(|e| {
+            e.event_type == TOOL_COMPLETED
+                && e.data.get("tool_name").and_then(|n| n.as_str()).is_some()
+        })
+        .map(|e| {
+            e.data
+                .get("tool_call_id")
+                .and_then(|v| v.as_str())
+                .and_then(|id| arguments.get(id).cloned())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+pub(crate) fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
     let mut input = 0u64;
     let mut output = 0u64;
     for event in events {
@@ -663,335 +1298,35 @@ fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
     (input, output)
 }
 
-fn scorer_weight(scorer: &Scorer) -> f64 {
-    match scorer {
-        Scorer::Contains { weight, .. } => *weight,
-        Scorer::NotContains { weight, .. } => *weight,
-        Scorer::Regex { weight, .. } => *weight,
-        Scorer::ToolCalled { weight, .. } => *weight,
-        Scorer::ToolNotCalled { weight, .. } => *weight,
-        Scorer::ToolCallCount { weight, .. } => *weight,
-        Scorer::TurnsWithin { weight, .. } => *weight,
-        Scorer::FileContains { weight, .. } => *weight,
-        Scorer::JsonSchema { weight, .. } => *weight,
-        Scorer::CitationFaithful { weight, .. } => *weight,
-        Scorer::CitationJudged { weight, .. } => *weight,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
+/// Grade every scorer of a case. A scorer that cannot run records a failing
+/// score with the reason; it never errors the case. Returns the scores in
+/// scorer order and the model usage of grading, when any.
 async fn run_scorers(
+    graders: &Graders,
+    org_id: i64,
     scorers: &[Scorer],
-    final_content: &str,
-    annotations: &[TextAnnotation],
-    tool_calls: &[String],
-    turns: u32,
-    ctx: &EvalRunContext,
-    org_id: i64,
-    session_uuid: Uuid,
-) -> Vec<Score> {
+    input: &GradeInput<'_>,
+) -> (Vec<Score>, Option<GraderUsage>) {
     let mut scores = Vec::with_capacity(scorers.len());
+    let mut usage: Option<GraderUsage> = None;
     for scorer in scorers {
-        let score = run_single_scorer(
-            scorer,
-            final_content,
-            annotations,
-            tool_calls,
-            turns,
-            ctx,
-            org_id,
-            session_uuid,
-        )
-        .await;
-        scores.push(score);
-    }
-    scores
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn run_single_scorer(
-    scorer: &Scorer,
-    final_content: &str,
-    annotations: &[TextAnnotation],
-    tool_calls: &[String],
-    turns: u32,
-    ctx: &EvalRunContext,
-    org_id: i64,
-    session_uuid: Uuid,
-) -> Score {
-    if let Some(score) =
-        crate::domains::evals::scoring::score_rule(scorer, final_content, tool_calls, turns)
-    {
-        return score;
-    }
-    match scorer {
-        Scorer::CitationFaithful {
-            min_citations,
-            pass_threshold,
-            ..
-        } => score_citation_faithful(annotations, *min_citations, *pass_threshold),
-        Scorer::CitationJudged {
-            rubric,
-            model_id,
-            pass_threshold,
-            ..
-        } => {
-            score_citation_judged(
-                ctx,
-                org_id,
-                final_content,
-                annotations,
-                rubric.as_deref(),
-                *model_id,
-                *pass_threshold,
-            )
-            .await
-        }
-        Scorer::FileContains { path, text, .. } => {
-            let file = ctx.db.get_session_file(session_uuid, path).await;
-            let pass = match file {
-                Ok(Some(f)) => {
-                    let content_str = f
-                        .content
-                        .as_deref()
-                        .and_then(|bytes| std::str::from_utf8(bytes).ok())
-                        .unwrap_or("");
-                    content_str.contains(text.as_str())
+        match graders.grade(org_id, scorer, input).await {
+            Ok(graded) => {
+                if let Some(spent) = graded.usage {
+                    usage.get_or_insert_with(GraderUsage::default).add(&spent);
                 }
-                _ => false,
-            };
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: if pass {
-                    format!("File '{path}' contains '{text}'")
-                } else {
-                    format!("File '{path}' does not contain '{text}' or not found")
-                },
+                scores.push(graded.score);
             }
+            Err(error) => scores.push(error.into_score()),
         }
-        // score_rule covers every other variant.
-        _ => unreachable!("score_rule handles all non-file scorer rules"),
     }
-}
-
-/// Grade citation faithfulness from the answer's annotations: coverage (enough
-/// citations) plus faithfulness (fraction verified `entailed`). Verdicts are
-/// stamped by the `citation_verification` capability; without it, citations
-/// are unverified and score 0 — the reason string says so.
-fn score_citation_faithful(
-    annotations: &[TextAnnotation],
-    min_citations: u32,
-    pass_threshold: f64,
-) -> Score {
-    let total = annotations.len();
-    if total < min_citations as usize {
-        return Score {
-            pass: false,
-            value: 0.0,
-            reason: format!("{total} citations (min {min_citations})"),
-        };
-    }
-    if total == 0 {
-        // min_citations is 0 here, so coverage is satisfied vacuously.
-        return Score {
-            pass: true,
-            value: 1.0,
-            reason: "no citations required or present".to_string(),
-        };
-    }
-    let with_verdict = annotations.iter().filter(|a| a.verified.is_some()).count();
-    let entailed = annotations
-        .iter()
-        .filter(|a| {
-            a.verified
-                .as_ref()
-                .is_some_and(|v| v.status == VerificationStatus::Entailed)
-        })
-        .count();
-    let fraction = entailed as f64 / total as f64;
-    let pass = fraction >= pass_threshold;
-    let reason = if with_verdict == 0 {
-        format!(
-            "{entailed}/{total} citations entailed — none verified (enable citation_verification)"
-        )
-    } else {
-        format!(
-            "{entailed}/{total} citations entailed ({with_verdict} verified); \
-             faithfulness {fraction:.2} (threshold {pass_threshold:.2})"
-        )
-    };
-    Score {
-        pass,
-        value: fraction,
-        reason,
-    }
-}
-
-const CITATION_JUDGE_RUBRIC: &str = "You are judging citation faithfulness. Each numbered item is a CLAIM the agent \
-     made and the SOURCE it cited. Decisions whether each SOURCE actually supports its \
-     CLAIM. `value` is the fraction of items whose source supports the claim \
-     (1.0 = all supported, 0.0 = none). Penalize claims whose source is unrelated \
-     or contradicts them.";
-
-/// Grade citation faithfulness with the org's LLM judge, reusing the observer
-/// judge (`observers::judge::JudgeClient`). Fails open to a clear reason when no
-/// judge/model is available so a judge outage never errors the whole run.
-async fn score_citation_judged(
-    ctx: &EvalRunContext,
-    org_id: i64,
-    final_content: &str,
-    annotations: &[TextAnnotation],
-    rubric: Option<&str>,
-    model_id: Option<everruns_contracts::typed_id::ModelId>,
-    pass_threshold: f64,
-) -> Score {
-    if annotations.is_empty() {
-        return Score {
-            pass: true,
-            value: 1.0,
-            reason: "no citations to judge".to_string(),
-        };
-    }
-    let Some(judge) = ctx.judge.as_ref() else {
-        return Score {
-            pass: false,
-            value: 0.0,
-            reason: "citation judge unavailable (no model provider)".to_string(),
-        };
-    };
-    let evidence = crate::domains::observers::TurnEvidence {
-        input_message: String::new(),
-        final_answer: build_citation_pairs(final_content, annotations),
-        tool_names: Vec::new(),
-    };
-    let rubric = rubric.unwrap_or(CITATION_JUDGE_RUBRIC);
-    match judge.judge(org_id, model_id, rubric, &evidence).await {
-        Ok(Some(result)) => Score {
-            pass: result.value >= pass_threshold,
-            value: result.value,
-            reason: result.reasoning,
-        },
-        Ok(None) => Score {
-            pass: false,
-            value: 0.0,
-            reason: "no judge model configured for org".to_string(),
-        },
-        Err(e) => Score {
-            pass: false,
-            value: 0.0,
-            reason: format!("citation judge error: {e}"),
-        },
-    }
-}
-
-/// Render each annotation as a numbered CLAIM/SOURCE pair for the judge. The
-/// claim is the answer span the citation is attached to; the source is the
-/// cited snippet (and uri).
-fn build_citation_pairs(text: &str, annotations: &[TextAnnotation]) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let mut out = String::new();
-    for (i, ann) in annotations.iter().enumerate() {
-        let claim: String = chars
-            .get(ann.start..ann.end.min(chars.len()))
-            .map(|s| s.iter().collect())
-            .unwrap_or_default();
-        let source = ann.source.snippet.as_deref().unwrap_or("(no snippet)");
-        out.push_str(&format!(
-            "[{}] CLAIM: {}\n    SOURCE ({}): {}\n",
-            i + 1,
-            claim.trim(),
-            ann.source.uri,
-            source.trim(),
-        ));
-    }
-    out
+    (scores, usage)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::storage::{CreateSessionFileRow, StorageBackend};
-    use everruns_core::message::{AnnotationSource, VerificationVerdict};
-
-    fn verified_annotation(status: VerificationStatus) -> TextAnnotation {
-        TextAnnotation {
-            start: 0,
-            end: 5,
-            origin: "citation_retrieval".to_string(),
-            source: AnnotationSource {
-                uri: "u".to_string(),
-                title: None,
-                snippet: None,
-                location: None,
-            },
-            external_id: None,
-            verified: Some(VerificationVerdict {
-                status,
-                score: Some(0.9),
-            }),
-        }
-    }
-
-    #[test]
-    fn citation_faithful_passes_when_all_entailed() {
-        let anns = vec![
-            verified_annotation(VerificationStatus::Entailed),
-            verified_annotation(VerificationStatus::Entailed),
-        ];
-        let score = score_citation_faithful(&anns, 1, 0.8);
-        assert!(score.pass);
-        assert!((score.value - 1.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn citation_faithful_fails_below_threshold() {
-        let anns = vec![
-            verified_annotation(VerificationStatus::Entailed),
-            verified_annotation(VerificationStatus::Unsupported),
-        ];
-        let score = score_citation_faithful(&anns, 1, 0.8);
-        assert!(!score.pass);
-        assert!((score.value - 0.5).abs() < 1e-9);
-    }
-
-    #[test]
-    fn citation_faithful_fails_on_insufficient_coverage() {
-        let anns = vec![verified_annotation(VerificationStatus::Entailed)];
-        let score = score_citation_faithful(&anns, 3, 0.5);
-        assert!(!score.pass);
-        assert_eq!(score.value, 0.0);
-    }
-
-    #[test]
-    fn citation_faithful_notes_missing_verdicts() {
-        let mut ann = verified_annotation(VerificationStatus::Entailed);
-        ann.verified = None;
-        let score = score_citation_faithful(&[ann], 1, 0.8);
-        assert!(!score.pass);
-        assert!(score.reason.contains("enable citation_verification"));
-    }
-
-    #[test]
-    fn citation_pairs_render_claim_and_source() {
-        let text = "The sky is blue. Grass is green.";
-        let anns = vec![TextAnnotation {
-            start: 0,
-            end: 16,
-            origin: "citation_retrieval".to_string(),
-            source: AnnotationSource {
-                uri: "doc://a".to_string(),
-                title: None,
-                snippet: Some("The sky appears blue due to Rayleigh scattering.".to_string()),
-                location: None,
-            },
-            external_id: None,
-            verified: None,
-        }];
-        let pairs = build_citation_pairs(text, &anns);
-        assert!(pairs.contains("[1] CLAIM: The sky is blue."));
-        assert!(pairs.contains("SOURCE (doc://a): The sky appears blue"));
-    }
 
     #[tokio::test]
     async fn collect_case_artifacts_reads_named_files() {

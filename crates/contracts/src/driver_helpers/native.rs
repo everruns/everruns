@@ -171,6 +171,18 @@ fn streaming_http_client(read_timeout: Duration) -> reqwest::Client {
     })
 }
 
+/// Shared timeouts and TLS setup for a transport whose proxy owns destination DNS.
+/// The caller must validate the destination before using this builder and disable
+/// redirects. Do not expose its client to callers who could skip that validation.
+pub(crate) fn proxy_streaming_http_client_builder() -> reqwest::ClientBuilder {
+    crate::install_default_crypto_provider();
+    reqwest::Client::builder()
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .read_timeout(HTTP_STREAM_READ_TIMEOUT)
+        .pool_idle_timeout(HTTP_STREAM_POOL_IDLE_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+}
+
 /// Process-wide HTTP client shared by non-streaming request/response drivers
 /// (embeddings, vector store). Uses an overall request timeout because these
 /// reads are bounded and must not hang forever.

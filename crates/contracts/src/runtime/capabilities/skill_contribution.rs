@@ -151,7 +151,7 @@ impl SkillContribution {
 /// Reconstruct a canonical SKILL.md document from stored fields.
 #[expect(
     clippy::expect_used,
-    reason = "serializing a `&str` to YAML cannot fail"
+    reason = "serializing a `&str` to JSON cannot fail"
 )]
 pub fn reconstruct_skill_md(
     name: &str,
@@ -160,11 +160,8 @@ pub fn reconstruct_skill_md(
     user_invocable: bool,
     disable_model_invocation: bool,
 ) -> String {
-    // YAML serialization preserves escapes and line breaks in supplied metadata.
-    let safe_description = serde_yaml::to_string(description)
-        .expect("a string is serializable")
-        .trim_end_matches('\n')
-        .to_string();
+    // A JSON quoted scalar is valid YAML and preserves escapes and line breaks.
+    let safe_description = serde_json::to_string(description).expect("a string is serializable");
     let invocable_line = if user_invocable {
         String::new()
     } else {

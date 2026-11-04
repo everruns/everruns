@@ -2,6 +2,7 @@ use crate::auth::config::AuthConfig;
 use crate::background::supervised_task::TaskSupervisor;
 use crate::domains::health_issues::service::SlackHealthService;
 use crate::domains::system::doctor::{self, DoctorEnv, DoctorExtensions, SystemDoctor, instances};
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::http::StatusCode;
 use axum::{Json, extract::State};
@@ -12,15 +13,38 @@ use std::sync::Arc;
 
 #[derive(Serialize)]
 pub(super) struct HealthResponse {
+    /// `ok`, or `degraded` while the server runs below its configuration
+    /// (live session events polled from PostgreSQL). Still HTTP 200: a
+    /// restart would not fix it, and liveness must not restart healthy pods.
     status: &'static str,
     version: &'static str,
     auth_mode: String,
+    /// How live session events reach clients: `nats`, `in_memory` (one
+    /// server only) or `polling`.
+    event_delivery: &'static str,
 }
 
 #[derive(Clone)]
 pub(super) struct HealthState {
     pub(super) auth_mode: String,
     pub(super) db: Arc<StorageBackend>,
+    event_delivery: &'static str,
+    degraded: bool,
+}
+
+impl HealthState {
+    pub(super) fn new(
+        auth_config: &AuthConfig,
+        db: &Arc<StorageBackend>,
+        event_delivery: &EventDelivery,
+    ) -> Self {
+        Self {
+            auth_mode: format!("{:?}", auth_config.mode),
+            db: db.clone(),
+            event_delivery: event_delivery.backend_name(),
+            degraded: event_delivery.is_degraded(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -86,12 +110,14 @@ pub(super) fn routes(state: HealthState) -> axum::Router {
         .with_state(state)
 }
 
-/// `GET /health`: liveness plus the build version and auth mode.
+/// `GET /health`: liveness plus the build version, auth mode and event
+/// delivery backend.
 async fn endpoint(State(state): State<HealthState>) -> Json<HealthResponse> {
     Json(HealthResponse {
-        status: "ok",
+        status: if state.degraded { "degraded" } else { "ok" },
         version: env!("CARGO_PKG_VERSION"),
         auth_mode: state.auth_mode.clone(),
+        event_delivery: state.event_delivery,
     })
 }
 
@@ -118,6 +144,50 @@ pub(super) async fn start(
     );
     supervisor.track(
         "active_turn_limit_health_sweep",
-        crate::domains::health_issues::active_turns::spawn_sweep(db),
+        crate::domains::health_issues::active_turns::spawn_sweep(db.clone()),
     );
+    supervisor.track(
+        "background_work_health_sweep",
+        crate::domains::health_issues::background_work::spawn_sweep(db),
+    );
+}
+
+/// What grades sessions with the org's models: Observers scoring when
+/// Observers are on, and the built-in session classifiers, which every
+/// deployment runs (they report themselves unavailable without a decision
+/// model).
+pub(super) fn start_session_graders(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+    graders: crate::domains::evals::graders::Graders,
+    observer_wake: Option<Arc<tokio::sync::Notify>>,
+    sample_sessions: bool,
+) {
+    if let Some(decisions) = graders.decisions() {
+        supervisor.track(
+            "session_classifier_sweep",
+            crate::domains::health_issues::classifiers::spawn_sweep(
+                db.clone(),
+                decisions,
+                sample_sessions,
+            ),
+        );
+    }
+    if let Some(inspector) = graders.inspector() {
+        supervisor.track(
+            "finding_inspector_sweep",
+            crate::domains::health_issues::inspector::spawn_sweep(db.clone(), inspector),
+        );
+    }
+    if let Some(observer_wake) = observer_wake {
+        supervisor.track(
+            "observer_scoring",
+            crate::domains::observers::spawn_observer_worker(
+                crate::domains::observers::ObserverWorkerDeps { db, graders },
+                observer_wake,
+                crate::domains::observers::ObserverWorkerConfig::default(),
+            ),
+        );
+        tracing::info!("Observers enabled: scoring worker started");
+    }
 }

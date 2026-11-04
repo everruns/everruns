@@ -1,4 +1,11 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
@@ -59,7 +66,11 @@ export function AvatarPresetDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && close()}>
-      <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-3xl" showCloseButton={!saving}>
+      <DialogContent
+        chatProtected="Agent avatar"
+        className="flex max-h-[90dvh] flex-col sm:max-w-3xl"
+        showCloseButton={!saving}
+      >
         <DialogHeader>
           <DialogTitle>{ui("Choose an avatar")}</DialogTitle>
           <DialogDescription>
@@ -104,20 +115,26 @@ export function AvatarPresetDialog({
               </button>
             )}
           </div>
-          <select
-            aria-label={ui("Avatar family")}
-            value={family}
-            onChange={(event) => setFamily(event.target.value)}
+          <SharedSelect
+            value={String(family)}
+            onValueChange={(selection) => setFamily(selection)}
             disabled={saving}
-            className="h-8 border border-input bg-background px-2 text-sm"
           >
-            <option value="">{ui("All families")}</option>
-            {[...new Set(presets.map((p) => p.family))].map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+            <SharedSelectTrigger
+              aria-label={ui("Avatar family")}
+              className="h-8 border border-input bg-background px-2 text-sm"
+            >
+              <SharedSelectValue />
+            </SharedSelectTrigger>
+            <SharedSelectContent>
+              <SharedSelectItem value="">{ui("All families")}</SharedSelectItem>
+              {[...new Set(presets.map((p) => p.family))].map((name) => (
+                <SharedSelectItem key={name} value={String(name)}>
+                  {name}
+                </SharedSelectItem>
+              ))}
+            </SharedSelectContent>
+          </SharedSelect>
         </div>
         <p className="text-xs text-muted-foreground" role="status">
           {catalog.isLoading

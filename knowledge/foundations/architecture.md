@@ -302,6 +302,13 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
    - Background loops take `StorageBackend::for_background()`, which routes their whole call graph onto the reserved
      pool without changing a query. Request handlers keep the request pool.
    - `DATABASE_BACKGROUND_POOL_MAX=0` puts background work back on the request pool, as a config-only rollback.
+   - A third small pool (`DATABASE_RELAXED_POOL_MAX`, default 4) commits with `synchronous_commit = off`: it does not
+     wait for the WAL flush. Only writes whose loss in a database crash is harmless use it: the reporting projector's
+     fact upserts and outbox completions (WAL order means a lost fact also loses its completion, so the row is
+     projected again). Lease renewals and the outbox enqueue after an event write set the same option per statement
+     on the request pool (the bounded repair job re-enqueues a lost outbox row). Chat events and messages keep waiting
+     for the flush. Reason: at 500 agents RDS spent most of its time on WAL flush waits
+     (load test 2026-10-29). `0` puts this work on the background pool.
    - Sizes and defaults live in `crates/server/src/storage/repositories/mod.rs`.
 
 ### Database Conventions
@@ -324,6 +331,24 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 4. **Event Streaming**: SSE for real-time event delivery via PostgreSQL-backed durable events plus `EventDelivery` push channels
 
 See [knowledge/operations/durable-execution-engine.md](../operations/durable-execution-engine.md) for the durable engine architecture.
+
+Single-message reads at turn startup resolve the session-scoped message ID through
+an expression index on message events. They must not load the conversation window:
+that repeats JSON transfer and parsing on every turn and hides older inputs behind
+the history safety cap. The [retriever](../../crates/server/src/storage/runtime/message.rs)
+retains legacy event-envelope support and skips malformed duplicate records in log
+order. In-process workers also resolve their event-derived tool-result IDs through
+the event primary key; generated tool-result IDs in the runtime/gRPC projection
+remain unstored.
+The [lookup regressions](../../crates/server/src/storage/runtime/message.rs) and
+[benchmark](../../crates/server/benches/message_lookup.rs) cover the history boundary, formats, isolation and retrieval cost at increasing depth.
+
+### Customer-hosted custom execution
+
+Custom agent implementations use a separate, opt-in, agent-scoped service, never
+an internal fleet credential. The control plane retains intake, actor leases and
+canonical event fan-out. See [Custom workers](../operations/custom-workers.md)
+for authority, persistent routing, recovery responsibilities and isolation limits.
 
 ### Worker ↔ Control-Plane Communication
 
@@ -809,7 +834,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 | Task claiming (SKIP LOCKED) | Naturally partitions work |
 | Worker registration | Database-backed, any server can serve any worker |
 | PgListener (task_available) | Each instance runs its own listener; all receive NOTIFY |
-| PgListener (event_available) | Same; SSE clients on any instance see all events |
+| Live session events | NATS carries them across instances; without NATS, in-memory delivery covers a single instance only, and a server that expects others (`EXPECTED_INSTANCES` > 1) or cannot reach its configured NATS polls PostgreSQL instead and reports `degraded` in `/health` and the doctor |
 | Rate limiting (Valkey) | Shared sliding-window counters when `VALKEY_URL` set |
 
 ### Configuration (`EXPECTED_INSTANCES`)
@@ -817,7 +842,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
 
 - **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
-- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
+- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX + DATABASE_RELAXED_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
 - **Metrics**: Each instance maintains its own ring buffer. The `/v1/durable/metrics/timeseries` response includes `instance_count` when >1.
 
 ### Load Balancer Requirements

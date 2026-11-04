@@ -83,7 +83,6 @@ pub(crate) fn routes(host: &Arc<Host>, mut router: Router<Arc<Host>>) -> Router<
         .inner
         .agents
         .iter()
-        .filter(|agent| !agent.sub)
         .map(|agent| agent.name.clone())
         .collect();
     for agent in agents {
@@ -106,8 +105,7 @@ pub(crate) fn routes(host: &Arc<Host>, mut router: Router<Arc<Host>>) -> Router<
                 endpoint,
             );
     }
-    // Static agent paths win over these; a subagent or an unknown name lands
-    // here.
+    // Static agent paths win over these; an unknown name lands here.
     router
         .route("/v1/channels/{name}/a2a", post(unknown))
         .route("/v1/e/{name}/a2a", post(unknown))

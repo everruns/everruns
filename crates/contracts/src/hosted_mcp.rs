@@ -169,6 +169,13 @@ impl ChatDriver for HostedMcpDriver {
         self.inner.list_models(endpoint).await
     }
 
+    async fn credit_status(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<crate::provider_limit::CreditStatus>> {
+        self.inner.credit_status(endpoint).await
+    }
+
     fn supports_compact(&self) -> bool {
         self.inner.supports_compact()
     }
