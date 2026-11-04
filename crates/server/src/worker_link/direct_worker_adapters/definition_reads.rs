@@ -112,6 +112,10 @@ impl DirectWorkerAdapters {
         Ok(Some({
             // Parse capabilities from JSON
             Session {
+                mcp_creator: r
+                    .mcp_creator
+                    .clone()
+                    .and_then(|v| serde_json::from_value(v).ok()),
                 source: crate::domains::sessions::record::SessionSource::from(r.source.as_str()),
                 run_summary: r.run_summary.clone(),
                 last_turn_status: r.last_turn_status.clone(),

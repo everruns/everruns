@@ -27,6 +27,7 @@ impl Fixture {
     async fn session(&self) -> SessionId {
         self.db
             .create_session(CreateSessionRow {
+                mcp_creator: None,
                 playground_user_id: None,
                 source: everruns_server::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,

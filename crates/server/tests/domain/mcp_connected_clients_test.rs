@@ -142,6 +142,10 @@ async fn approve(router: &Router, client_id: &str, cookie: &str) -> String {
     );
     let (status, _, html) = send(router, Method::GET, &path, None, Some(cookie)).await;
     assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("self-declared name"));
+    assert!(html.contains("Selected redirect host"));
+    assert!(html.contains("Localhost does not verify"));
+    assert!(html.contains("not read-only"));
     let marker = r#"name="csrf_token" value=""#;
     let start = html.find(marker).unwrap() + marker.len();
     let csrf = &html[start..start + html[start..].find('"').unwrap()];
@@ -339,4 +343,57 @@ async fn connected_clients_require_a_session() {
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn unsupported_scope_cannot_be_presented_or_approved_as_narrow_access() {
+    let Harness { router, .. } = harness();
+    let cookie = register_user(
+        &router,
+        &format!("scope-{}@example.com", uuid::Uuid::now_v7()),
+    )
+    .await;
+    let client_id = register_client(&router).await;
+    let path = format!(
+        "/oauth/authorize?response_type=code&client_id={client_id}&redirect_uri={REDIRECT_URI}&scope=mcp:read&state=s1&code_challenge={CODE_CHALLENGE}&code_challenge_method=S256"
+    );
+    let (status, _, _) = send(&router, Method::GET, &path, None, Some(&cookie)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, _, html) = send(
+        &router,
+        Method::GET,
+        &path.replace("mcp:read", "mcp"),
+        None,
+        Some(&cookie),
+    )
+    .await;
+    let marker = r#"name="csrf_token" value=""#;
+    let start = html.find(marker).unwrap() + marker.len();
+    let csrf = &html[start..start + html[start..].find('"').unwrap()];
+    let form = format!(
+        "client_id={client_id}&redirect_uri={REDIRECT_URI}&response_type=code&code_challenge={CODE_CHALLENGE}&code_challenge_method=S256&state=s1&scope=mcp:read&csrf_token={csrf}"
+    );
+    let (status, _, _) = send(
+        &router,
+        Method::POST,
+        "/oauth/authorize",
+        Some(("application/x-www-form-urlencoded", form)),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, _, body) = send(
+        &router,
+        Method::GET,
+        "/v1/user/connected-clients",
+        None,
+        Some(&cookie),
+    )
+    .await;
+    assert!(
+        serde_json::from_str::<Value>(&body).unwrap()["data"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }

@@ -20,6 +20,22 @@ Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so ext
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
 
+### Client trust and attribution
+
+The authorization page shows the selected redirect host and the access you are
+granting. Client names are self-declared; a familiar name or localhost callback
+does not verify an application's publisher. The `mcp` scope permits reading and
+changing data and running agents across your accessible organizations. Runs can
+incur costs. Narrower OAuth scopes are not currently supported.
+
+A session's information tooltip identifies the MCP client that created it.
+Each user input records its own client, visible beside the message and in its
+information tooltip. Change history also identifies the client. A later client
+or web message does not inherit the original client's attribution. Older
+sessions and credentials without a grant have no inferred client identity.
+Names remain labeled as self-declared; client and grant IDs distinguish clients
+with the same name. Manage or revoke connections in **Settings > AI clients**.
+
 ### Skills for MCP clients
 
 The endpoint serves public workflow guidance through the official

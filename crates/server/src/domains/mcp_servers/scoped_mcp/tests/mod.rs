@@ -456,6 +456,7 @@ pub(crate) fn test_session(
 ) -> Session {
     let session_id = SessionId::new();
     Session {
+        mcp_creator: None,
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),

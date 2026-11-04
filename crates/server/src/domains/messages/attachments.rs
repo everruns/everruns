@@ -179,6 +179,7 @@ mod tests {
 
     async fn session(db: &StorageBackend, org_id: i64) -> Uuid {
         db.create_session(crate::storage::CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

@@ -99,6 +99,12 @@ impl ChangeSurface {
 /// derived by the server; the reason is caller text and never authoritative.
 #[derive(Debug, Clone, Default)]
 pub struct ChangeIntent {
+    /// Authenticated MCP actor and client, captured before command-shell work
+    /// crosses task boundaries. Never populated from invocation parameters.
+    pub mcp_client: Option<(
+        uuid::Uuid,
+        crate::auth::mcp_attribution::McpClientAttribution,
+    )>,
     /// Optional compare-and-swap guard supplied by a reviewed browser save.
     /// It never supplies actor/session attribution or changes permissions.
     pub expected_change: Option<String>,
@@ -162,6 +168,9 @@ impl ChangeIntent {
         let Some(outer) = outer else {
             return self;
         };
+        if self.mcp_client.is_none() {
+            self.mcp_client = outer.mcp_client.clone();
+        }
         if self.reason.is_none() {
             self.reason = outer.reason.clone();
         }

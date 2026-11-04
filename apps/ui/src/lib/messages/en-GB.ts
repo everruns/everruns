@@ -1,5 +1,11 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "Via MCP: {name} (self-declared)": "Via MCP: {name} (self-declared)",
+  "Client ID": "Client ID",
+  "Grant ID": "Grant ID",
+  "Session created via MCP": "Session created via MCP",
+  "Sent via MCP": "Sent via MCP",
+
   "The model declined this request.": "The model declined this request.",
   "Model declined request": "Model declined request",
   "Open in Everruns": "Open in Everruns",

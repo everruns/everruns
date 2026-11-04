@@ -11,7 +11,8 @@ tags:
 # Connected AI Clients
 
 > Status: **Accepted** (2026-10-09). Phase 1 built (grants, revoke with the cached `/mcp`
-> check, `last_used_at`, Connected AI clients panel); phases 2 and 3 not built yet.
+> check, `last_used_at`, Connected AI clients panel). Phase 2 now records inbound
+> client provenance and clarifies consent; phase 3 permission selection remains separate.
 
 ## The problem
 
@@ -73,20 +74,41 @@ at most every few minutes per grant, so the list stays cheap to keep current.
 
 ### 3. Attribution
 
-MCP requests made with a grant add `via_client_id` and the client's name to
-the `ChangeIntent`. Change history and the audit log then show "by Alice
-via Cursor", not just "via MCP".
+The authenticated server resolves the registered client only after checking
+its audience-bound token and live grant. Registration names remain self-declared;
+neither a name, a redirect domain, nor MCP `clientInfo` verifies a publisher.
+Consent identifies the selected callback host and explains that a localhost
+callback reaches software on the device without authenticating that software.
 
-### 4. Permissions
+A session keeps its creator separately from each input message's client. The
+input event identifies the start, steering, or resume of a turn; a later client
+or the web UI never inherits the creator's identity. Background execution does
+not retain ambient inbound request attribution. Legacy tokens, PATs and sessions
+without recorded provenance stay unattributed rather than guessing from names.
+Forks retain copied message history but record their own creator.
 
-There are two choices, made on the consent page and changeable later:
+The immutable creator column is set inside the session creation service. Input
+provenance lives in server-owned event metadata (`mcp_client`), never in caller-owned
+message metadata. Lookalike legacy message keys remain untrusted. Command contexts
+carry attribution through scripted MCP execution, and entity history and audit
+record it alongside the human actor. Public conversation projections expose only
+the reviewed client and grant identifiers and the self-declared name. No bearer
+token, refresh token, secret, or callback query is copied into provenance.
+
+Implementation: [request context](../../crates/server/src/auth/mcp_attribution.rs),
+[message intake](../../crates/server/src/domains/messages/service/mod.rs), and
+[session creation](../../crates/server/src/domains/sessions/service/create.rs).
+
+### 4. Permissions (planned phase 3)
+
+The planned consent and Manage UI will offer two choices:
 
 | Choice | Options | Enforced at |
 |---|---|---|
 | Access | **Read only**: `query`, `discover`, `me`, read-only commands, `resources/*`. **Read and run**: everything, including `execute` mutations, `agent_run` and `session_send_message` | MCP tool dispatch, using the command's `read_only()` flag. `agent_run` and messaging count as writes because they spend money and act |
 | Organizations | All my organizations, or selected ones | `McpResolvedOrg` and the per-call `organization_id` override |
 
-A client may request `mcp:read` instead of `mcp`. The consent page starts
+After phase 3, a client may request `mcp:read` instead of `mcp`. The consent page will start
 from what the client asked for, and the user can only lower it. Personal access
 tokens keep their own page and full access. Giving them the same choices is a
 follow-up.
@@ -135,3 +157,22 @@ Each phase is one PR and ships on its own.
   on the consent page or later in Manage.
 - A new grant covers **all organizations** by default, with "selected
   organizations" as an option.
+
+## Remaining authorization work
+
+Current inbound OAuth supports only full `mcp` access across the user's current
+memberships. Unsupported scopes, including `mcp:read`, are rejected before consent
+or approval; blank scope retains the existing `mcp` default. Consent and token
+responses describe effective authority, not arbitrary requested strings.
+
+Permission selection remains phase 3. The existing PAT read-only gate and domain
+command policies are useful building blocks, but OAuth grant enforcement must also
+cover organization overrides, tasks, resources, events, interactive replies, and
+refresh/reapproval without widening a narrowed grant. Exposing a selector before
+those checks exist would misrepresent consent.
+
+Inbound CIMD remains a separate authorization-server change. Outbound support in
+[runtime MCP](runtime-mcp.md) does not enable it. Before fetching an inbound client
+metadata URL, define allowed origins and implement pinned egress, redirect and
+size limits, client-id/document matching, bounded cache behavior, and metadata
+change handling. The current DCR flow continues without adding that SSRF surface.

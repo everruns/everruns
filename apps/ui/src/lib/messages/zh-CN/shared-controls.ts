@@ -1,4 +1,10 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Via MCP: {name} (self-declared)": "通过 MCP：{name}（自行声明）",
+  "Client ID": "客户端 ID",
+  "Grant ID": "授权 ID",
+  "Session created via MCP": "通过 MCP 创建的会话",
+  "Sent via MCP": "通过 MCP 发送",
+
   "Open in Everruns": "在 Everruns 中打开",
   Expand: "展开",
   "This content could not be displayed.": "无法显示此内容。",

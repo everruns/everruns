@@ -122,6 +122,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
 
     let session_row = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
@@ -475,6 +476,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
 
     let session_row = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

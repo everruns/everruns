@@ -177,6 +177,7 @@ async fn create_session(
     user_id: Uuid,
 ) -> SessionId {
     db.create_session(CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: everruns_server::domains::sessions::record::SessionSource::Api,
         workspace_id: None,

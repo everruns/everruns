@@ -408,6 +408,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     let missing_owner_id = PrincipalId::new();
     let missing_reference_session = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

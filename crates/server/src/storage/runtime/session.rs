@@ -114,6 +114,10 @@ impl DbSessionStore {
                 let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
 
                 Ok(Some(Session {
+                    mcp_creator: row
+                        .mcp_creator
+                        .clone()
+                        .and_then(|v| serde_json::from_value(v).ok()),
                     playground_user_id: row.playground_user_id,
                     source: SessionSource::from(row.source.as_str()),
                     run_summary: row.run_summary.clone(),

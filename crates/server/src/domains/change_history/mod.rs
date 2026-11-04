@@ -144,7 +144,12 @@ pub async fn agent_session_intent(
 
 /// `ctx` for commands MCP `execute` runs (and `/v1/commands`, which overrides).
 pub fn on_surface(ctx: Ctx) -> Ctx {
-    ctx.with_change_intent(ChangeIntent::on(ChangeSurface::Mcp))
+    let mut intent = ChangeIntent::on(ChangeSurface::Mcp);
+    intent.mcp_client = ctx
+        .caller
+        .user_id
+        .zip(crate::auth::mcp_attribution::for_user(ctx.caller.user_id));
+    ctx.with_change_intent(intent)
 }
 
 /// `ctx` for commands the Platform capability runs inside `session`.
@@ -448,6 +453,7 @@ impl PendingChange {
                         initial.actor_user_id = None;
                         initial.via_session_id = None;
                         initial.via_agent_id = None;
+                        initial.mcp_client = None;
                         initial.surface = "internal".into();
                         initial.idempotency_key = None;
                         initial.restored_from_revision = None;
@@ -534,6 +540,11 @@ impl PendingChange {
             (_, action) => action,
         };
         Some(NewEntityChange {
+            mcp_client: self
+                .intent
+                .mcp_client
+                .filter(|(user, _)| Some(*user) == ctx.caller.user_id)
+                .map(|(_, v)| serde_json::json!(v)),
             org_id: ctx.org_id(),
             entity_kind: self.kind.as_str().to_string(),
             entity_ref: entity_ref.clone(),

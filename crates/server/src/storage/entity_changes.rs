@@ -8,6 +8,7 @@ use uuid::Uuid;
 /// One change to record.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewEntityChange {
+    pub mcp_client: Option<serde_json::Value>,
     pub org_id: i64,
     pub entity_kind: String,
     pub entity_ref: String,
@@ -63,6 +64,7 @@ pub struct StoredEntityChange {
 /// A recorded change.
 #[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct EntityChangeRow {
+    pub mcp_client: Option<serde_json::Value>,
     pub id: Uuid,
     pub org_id: i64,
     pub entity_kind: String,
@@ -87,6 +89,7 @@ impl EntityChangeRow {
     pub fn from_new(id: Uuid, created_at: DateTime<Utc>, change: NewEntityChange) -> Self {
         Self {
             id,
+            mcp_client: change.mcp_client,
             org_id: change.org_id,
             entity_kind: change.entity_kind,
             entity_ref: change.entity_ref,

@@ -179,6 +179,7 @@ impl Fixture {
         let session = self
             .db
             .create_session(CreateSessionRow {
+                mcp_creator: None,
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
