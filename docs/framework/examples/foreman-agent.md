@@ -75,8 +75,8 @@ cargo run -p everruns-foreman-agent --bin foreman -- demo
 foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
-Both are real runs — same worker, same decision service, same credentials. The only
-difference is who chose the repository and the job:
+Both commands use the same worker, decision service, and credentials. They differ
+in the repository and job they use:
 
 | Command | Repository | Job | Needs |
 | --- | --- | --- | --- |
@@ -94,14 +94,9 @@ and the only thing that touches it is the worker. It will be modified.
 
 ## One supervisor
 
-There is one, and it is always real: a `Decisions`, a budget, one request, nine
-answers. There is no offline mode and no second supervisor with fabricated
-numbers — every run asks a vendor the nine questions. CI cannot, so the test
-suite substitutes a different `DecisionsService`, the Framework's own seam for
-answering typed questions without a vendor, rather than adding a branch to the
-supervisor. The stub receives the observation as JSON exactly as a vendor's
-service does and answers from a table keyed by what is on the floor, so the test
-exercises the whole request path rather than bypassing it.
+The supervisor uses `Decisions` to ask a model nine questions in one request,
+within a fixed budget. Every run requires provider credentials; there is no
+offline mode.
 
 ## The supervisor runs the tests itself
 

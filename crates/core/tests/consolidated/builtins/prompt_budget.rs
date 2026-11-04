@@ -57,7 +57,7 @@ async fn soft_approval_prompt_within_budget() {
 }
 
 /// Raised for the `secret` and `text` question kinds. Their guidance is
-/// load-bearing rather than advisory: it directs open answers through the
+/// enforced rather than advisory: it directs open answers through the
 /// structured path and credentials through the safe collection path.
 #[tokio::test]
 async fn ask_user_prompt_within_budget() {

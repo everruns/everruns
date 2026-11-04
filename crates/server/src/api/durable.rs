@@ -1723,7 +1723,7 @@ struct WorkflowSnapshot {
 /// ## Connection Cycling
 ///
 /// Connections are automatically cycled every 10 minutes. Before closing, the server sends
-/// a `disconnecting` event so clients can reconnect seamlessly.
+/// a `disconnecting` event so clients can reconnect.
 ///
 /// ## Retry Hints
 ///
@@ -2055,7 +2055,7 @@ pub async fn stream_durable_sse(
 /// ## Connection Cycling
 ///
 /// Connections are automatically cycled every 10 minutes. Before closing, the server sends
-/// a `disconnecting` event so clients can reconnect seamlessly.
+/// a `disconnecting` event so clients can reconnect.
 ///
 /// ## Retry Hints
 ///

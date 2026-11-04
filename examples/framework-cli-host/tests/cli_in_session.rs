@@ -91,7 +91,7 @@ async fn run_with_shell(
 
 #[tokio::test]
 async fn a_mutating_command_changes_application_state() {
-    // The load-bearing assertion: `scale` really ran. A simulated final
+    // Verify that `scale` really ran. A simulated final
     // message could claim anything, but only the builtin can move this number.
     let fleet = Fleet::with_demo_services();
     assert_eq!(fleet.replicas("api"), Some(2));
