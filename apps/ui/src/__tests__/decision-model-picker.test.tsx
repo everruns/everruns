@@ -82,13 +82,22 @@ jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn() }),
 }));
 jest.mock("@/components/models/model-icon", () => ({ ModelIcon: () => null }));
-jest.mock("@/components/ui/select", () => ({
-  Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectValue: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
-    <div data-testid={value}>{children}</div>
+jest.mock("@/components/ui/combobox", () => ({
+  Combobox: ({
+    options,
+    valueLabel,
+  }: {
+    options: { value: string; label: string }[];
+    valueLabel?: string;
+  }) => (
+    <div>
+      {valueLabel}
+      {options.map((option) => (
+        <div key={option.value} data-testid={option.value}>
+          {option.label}
+        </div>
+      ))}
+    </div>
   ),
 }));
 test("chat selectors exclude decision and embedding models", () => {

@@ -1,10 +1,11 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 // Files tab: the collection as a filesystem, in the same tree and viewer a
 // session's Filesystem tab uses. The selected file is the `?file=` query param,
 // so Search results and shared links open straight to it.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 import { use, useReducer, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -46,6 +47,9 @@ export default function KnowledgeFilesPage({
 }: {
   params: Promise<{ collectionId: string }>;
 }) {
+  const { displayLocale } = useLocale();
+
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const { collectionId } = use(params);
   const router = useRouter();
@@ -181,8 +185,8 @@ export default function KnowledgeFilesPage({
           {error}
         </p>
       )}
-      <div className="flex h-[calc(100dvh-20rem)] min-h-[520px] flex-col overflow-hidden border bg-card md:flex-row">
-        <div className="h-64 shrink-0 overflow-hidden border-b bg-card/50 md:h-auto md:w-72 md:border-r md:border-b-0">
+      <div className="flex h-[calc(100dvh-20rem)] min-h-[520px] flex-col overflow-hidden border bg-card @min-[48rem]/page-main:flex-row">
+        <div className="h-64 shrink-0 overflow-hidden border-b bg-card/50 @min-[48rem]/page-main:h-auto @min-[48rem]/page-main:w-72 @min-[48rem]/page-main:border-r @min-[48rem]/page-main:border-b-0">
           <FileBrowser
             key={source.key}
             source={source}
@@ -241,8 +245,8 @@ export default function KnowledgeFilesPage({
                     className="h-7 w-7 text-destructive"
                     disabled={busy}
                     title={ui("Delete")}
-                    onClick={() => {
-                      if (!window.confirm(`Delete ${selected.path}?`)) return;
+                    onClick={async () => {
+                      if (!(await requestConfirmation(`Delete ${selected.path}?`))) return;
                       run(async () => {
                         await deleteKnowledgeFile(collectionId, selected.path);
                         select(null);
@@ -267,7 +271,7 @@ export default function KnowledgeFilesPage({
                     {selectedRow.version?.created_at && (
                       <span>
                         {ui("Updated {value0}", {
-                          value0: formatRelativeTime(selectedRow.version.created_at),
+                          value0: formatRelativeTime(selectedRow.version.created_at, displayLocale),
                         })}
                       </span>
                     )}

@@ -35,10 +35,11 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | Group | What it manages |
 |---|---|
 | [`agents`](/reference/cli/agents/) | Agent definitions and their configuration |
-| [`budgets`](/reference/cli/budgets/) | Spending limits for sessions, agents, users and organizations. |
+| [`budgets`](/reference/cli/budgets/) | Usage policies: limits on what sessions, agents, people and the organization use. |
 | [`capabilities`](/reference/cli/capabilities/) | Capabilities agents can use, including declarative ones you define. |
 | [`connections`](/reference/cli/connections/) | Your LLM provider API keys |
 | [`context`](/reference/cli/context/) | Notes managers keep about an entity, read by agents that manage it. |
+| [`costs`](/reference/cli/costs/) | What usage cost the organization, its price list and cost settings. |
 | [`credential-bindings`](/reference/cli/credential-bindings/) | Declare, list and revoke write-only credential bindings. |
 | [`docker`](/reference/cli/docker/) | Run Everruns on this machine with Docker |
 | [`durable`](/reference/cli/durable/) | Durable scheduled tasks and their executions. |
@@ -64,11 +65,13 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`resources`](/reference/cli/resources/) | Access to credentials and connections. |
 | [`sandbox-targets`](/reference/cli/sandbox-targets/) | Sandbox providers this deployment offers. |
 | [`sandbox-template-metadata`](/reference/cli/sandbox-template-metadata/) | Sandbox Template names and descriptions, without execution settings. |
+| [`sandbox-templates`](/reference/cli/sandbox-templates/) | Reusable sandbox configurations and their provider snapshots. |
 | [`sandboxes`](/reference/cli/sandboxes/) | Sandboxes across providers: state, history, usage. |
 | [`sessions`](/reference/cli/sessions/) | Running and archived sessions, their state and participants |
 | [`skills`](/reference/cli/skills/) | Skill packages and their content. |
 | [`system`](/reference/cli/system/) | Server status. |
 | [`tasks`](/reference/cli/tasks/) | Background tasks across every session in the organization. |
+| [`tracing`](/reference/cli/tracing/) | Customer tracing destinations and routing. |
 | [`user`](/reference/cli/user/) | Your own account settings. |
 | [`users`](/reference/cli/users/) | People in the current organization. |
 | [`virtual-users`](/reference/cli/virtual-users/) | Runtime accounts for consumers or services. |

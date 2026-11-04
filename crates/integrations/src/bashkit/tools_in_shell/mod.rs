@@ -77,13 +77,17 @@ const SUPERSEDED: &[&str] = &[
     "claude_tool_search",
 ];
 
-/// Behaviour contract only; discover the current inventory with `tools --help`
-/// or search it with `tools search`.
+/// Static behavior contract only. Inventory and descriptions stay in the
+/// runtime catalog so this prompt remains stable as MCP tools change.
 const SYSTEM_PROMPT: &str = "Most tools are not in your direct tool list: call them from the \
-`bash` tool with the `tools` command (`tools --help` lists them, input is one JSON object, output \
-is JSON). Prefer one script that chains several calls and prints only what you need over a series \
-of separate tool calls. A call that needs approval stops the script and reports what ran; after \
-the answer, write a new script for what is left and never rerun the stopped one.";
+`bash` tool with the `tools` command (input is one JSON object, output is JSON). For a task, \
+search first with `tools search <words>`; it finds operations by name, description, and server \
+description, then returns runnable command lines. This is the supported CLI discovery command; \
+there is no `tools list` command. `tools --help` and `tools <server> --help` are bounded browsing \
+aids and may omit entries on large catalogs. A call that needs approval stops \
+the script and reports what ran; after the answer, write a new script for what is left and never \
+rerun the stopped one. Prefer one script that chains several calls and prints only what you need \
+over a series of separate tool calls.";
 
 /// Capability plugins this module contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
@@ -202,8 +206,10 @@ one turn instead of a chain of tool calls.
                 "<capability id=\"{TOOLS_IN_SHELL_CAPABILITY_ID}\">\n\
                  Native tool calls and the shell `tools` command can reach the same operations. \
                  Use native calls for one-off structured work; use `tools` inside `bash` to batch \
-                 calls, filter results with `jq`, and return only what you need. Run `tools --help` \
-                 to discover shell commands and `tools <name> --help` for input schemas. \
+                 calls, filter results with `jq`, and return only what you need. Search shell \
+                 operations first with `tools search <words>`; use bounded `tools --help` output to \
+                 browse, and `tools <server> <tool> --help` for one input schema. Native \
+                 `tool_search` is a separate discovery route when exposed. \
                  A call that needs approval stops the script; after the answer, write a new script \
                  for what is left and never rerun the stopped one.\n</capability>"
             ))

@@ -9,7 +9,7 @@ Agent triggers let an Agent start work without a user message. A trigger belongs
 | `trigger_type` | Fires when | Set up |
 |---|---|---|
 | `schedule` | A cron expression matches | This page |
-| `webhook` | An external system calls the trigger's token-authenticated URL | API (`token`, optional `filter`, `rate_limit_per_minute`) |
+| `webhook` | An external system calls the trigger's token-authenticated URL | **Add trigger** → **Webhook**, or API (`token`, optional `filter`, `rate_limit_per_minute`) |
 | `github` | A GitHub event reaches the Agent's GitHub App, such as a pull request | [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/) |
 | `mcp_event` | One of the Agent's MCP servers emits a subscribed event | [MCP Events](/features/mcp/) |
 
@@ -18,7 +18,7 @@ The rest of this page covers schedule triggers.
 ## Create a trigger in the UI
 
 1. Open the agent.
-2. Select the **Integrations** tab.
+2. Select the **Channels and triggers** tab.
 3. Select **Add trigger**.
 4. Choose a preset or enter a 5-field cron expression (or a 7-field expression whose year is `*`), then enter an IANA timezone. In 5-field cron, weekdays count 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. A 7-field expression counts weekdays 1-7 from Sunday, so its Monday through Friday is `2-6` (or `MON-FRI`). The editor shows the schedule in human-readable form and previews the next eight runs. The default timezone is `UTC`.
 5. Choose a session mode:
@@ -27,19 +27,42 @@ The rest of this page covers schedule triggers.
 6. Enter the message that starts the run. Messages may use `{{...}}` template values from the agent, trigger, and invocation context.
 7. Leave **Enabled** on to activate the schedule, then select **Create trigger**.
 
-The trigger card shows the schedule in human-readable form, its timezone, message, session mode, enabled state, and recent run outcomes.
+The **Triggers** table lists every trigger with its schedule in human-readable form, whether it is on, and when it last ran. Select a row to open the trigger's page, `/agents/{agent_id}/triggers/{trigger_id}`, with its settings, setup and recent run outcomes. API, CLI and MCP responses for a trigger include that page as `view_url`.
 
 ## Operate and test a trigger
 
-From the **Triggers** section of the **Integrations** tab you can:
+From a trigger's row menu on the **Channels and triggers** tab you can select **Run now**, **Turn off** or **Turn on**, and **Delete**. On the trigger's page you can also edit its schedule, timezone, session mode and message, and see its most recent durable execution outcomes.
 
-- enable or disable the recurring schedule;
-- edit its schedule, timezone, session mode, message, or enabled state;
-- select **Run now** to start one invocation immediately;
-- inspect the most recent durable execution outcomes; or
-- delete the trigger.
+**Pause agent** in the Agent's **⋯** menu stops every trigger and schedule of the Agent, along with its channels, until you resume it. A scheduled run while paused is recorded as failed with `Agent is paused`.
 
 **Run now** uses the same execution path as a scheduled run. The trigger must be enabled.
+
+### Fire a trigger with an event
+
+To test a webhook, GitHub or MCP event trigger, or to run one again on an event it already saw, fire it with an `event`. The event takes the trigger's real path: its filter, message, session routing and delivery log apply as they would to a real delivery, and the delivery is recorded with source `manual`.
+
+```bash
+# A GitHub trigger, on an existing pull request: the server reads it through the
+# agent's GitHub connection and the run continues that pull request's session.
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 \
+  --event '{"repository":"acme/api","pull_request":12}' --reason 'Review this pull request'
+
+# A webhook trigger, with the body and headers a sender would post.
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 \
+  --event '{"payload":{"ticket":7},"headers":{"x-source":"test"}}' --reason 'Test the ticket message'
+```
+
+An `event` holds:
+
+| Field | Applies to | Meaning |
+|---|---|---|
+| `payload` | all | The event as its source sends it: a webhook body, a GitHub event payload, an MCP event's `data`, or extra context a schedule message reads as `{{payload.*}}` |
+| `name` | GitHub, MCP event | The GitHub event (`pull_request`, `issue_comment`); for MCP, the trigger's event |
+| `headers` | webhook | Request headers, seen as `{{webhook.headers.*}}` |
+| `repository`, `pull_request`, `action` | GitHub | A pull request to build the `pull_request` event from, instead of a `payload` |
+| `id` | all | Idempotency key. Leave it out to always run; repeat an id to test deduplication |
+
+The response's `status` is `dispatched`, `filtered` (with the `reason`: the condition the event missed) or `duplicate`. An event the trigger does not listen to, or a field that does not apply to its type, is refused with an explanation.
 
 ## API
 
@@ -52,7 +75,7 @@ Agent triggers are managed below `/v1/agents/{agent_id}/triggers`:
 | `GET` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Get one trigger |
 | `PATCH` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Update provided fields |
 | `DELETE` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Delete a trigger |
-| `POST` | `/v1/agents/{agent_id}/triggers/{trigger_id}/trigger` | Run it now |
+| `POST` | `/v1/agents/{agent_id}/triggers/{trigger_id}/trigger` | Run it now, optionally on an `event` |
 | `GET` | `/v1/agents/{agent_id}/triggers/{trigger_id}/runs` | List recent outcomes |
 
 Schedule create requests accept `trigger_type: "schedule"`, `cron_expression`, `timezone`, `session_mode`, `message`, and `enabled`. `GET /v1/agents/{agent_id}/triggers/{trigger_id}/deliveries` lists recent deliveries, including ones that were filtered out or deduplicated. See the [API reference](/api/) for current request and response schemas.
@@ -134,6 +157,25 @@ Agent triggers, webhook triggers, and session schedules solve different problems
 - use an **agent trigger** when an agent should wake itself on a recurring schedule;
 - use a **webhook trigger** when an external HTTP request should invoke an Agent; and
 - use a **session schedule** when the current conversation should continue later.
+
+## Completion check
+
+A trigger or schedule session has nobody watching it, so a turn that ends on
+"Submitting the review now" without making the call would be lost. By default
+(`completion_check: "unattended"`), when such a turn used tools and is about to
+finish, the agent's own model reviews whether the request was done. If the work
+is still in progress, an automatic continuation is added to the same turn and
+the agent carries on. It is labeled as automatic, never as the person's words,
+and is bounded per input in turns, tokens and time.
+
+Set it on the agent:
+
+```json
+{ "completion_check": "always" }
+```
+
+`always` checks chat sessions too; `off` never checks. Each review records a
+[`turn.completion_checked`](/event-reference/#turncompletion_checked) event.
 
 ## See also
 

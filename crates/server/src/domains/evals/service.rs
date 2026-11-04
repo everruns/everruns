@@ -4,9 +4,11 @@
 // Decision: EvalTarget replaces harness_id + agent_id. Resolution: run → case → eval → org default.
 
 use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
+use crate::domains::evals::convert::{case_row_to_case, run_row_to_run};
 use crate::domains::evals::limits::EvalLimits;
+use crate::domains::evals::multistep::{create_parts, select_cases, update_parts};
 use crate::domains::evals::record::*;
-use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
+use crate::domains::evals::runner::{EvalRunContext, dispatch_eval_run};
 use crate::domains::evals::types::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
     EvalRunShareLink, ExternalScoreStatus, ImportEvalCaseEntry, ImportEvalRunRequest,
@@ -80,23 +82,8 @@ pub const EVAL_IMPORT: Policy = Policy {
 
 pub struct EvalService {
     db: Arc<StorageBackend>,
-    run_context: Option<Arc<EvalRunContext>>,
+    pub(crate) run_context: Option<Arc<EvalRunContext>>,
     limits: EvalLimits,
-}
-
-/// Validates an EvalTarget if present. Returns error on invalid combinations.
-fn validate_target(target: &Option<EvalTarget>) -> Result<()> {
-    if let Some(EvalTarget::Session {
-        harness_id,
-        harness_name,
-        ..
-    }) = target
-        && harness_id.is_some()
-        && harness_name.is_some()
-    {
-        anyhow::bail!("harness_id and harness_name are mutually exclusive in eval target");
-    }
-    Ok(())
 }
 
 impl EvalService {
@@ -111,6 +98,10 @@ impl EvalService {
     pub fn with_limits(mut self, limits: EvalLimits) -> Self {
         self.limits = limits;
         self
+    }
+
+    pub fn limits(&self) -> EvalLimits {
+        self.limits
     }
 
     pub fn with_run_context(mut self, ctx: Arc<EvalRunContext>) -> Self {
@@ -249,6 +240,8 @@ impl EvalService {
             .map(serde_json::to_value)
             .transpose()?;
 
+        validate_scorers(&req.scorers)?;
+        let (simulated_user, tool_fixtures) = create_parts(&req)?;
         let input = CreateEvalCaseRow {
             public_id: case_public_id.to_string(),
             name: req.name,
@@ -262,6 +255,8 @@ impl EvalService {
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
             position: req.position.unwrap_or(case_count as i32),
+            simulated_user,
+            tool_fixtures,
         };
 
         let row = self.db.create_eval_case(eval.id, input).await?;
@@ -321,9 +316,11 @@ impl EvalService {
 
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
-        let post_json = req.post.map(serde_json::to_value).transpose()?;
+        let post_json = req.post.as_ref().map(serde_json::to_value).transpose()?;
+        let (simulated_user, tool_fixtures) = update_parts(&req, &case)?;
         let artifacts_json = req.artifacts.map(serde_json::to_value).transpose()?;
 
+        req.scorers.as_deref().map(validate_scorers).transpose()?;
         let input = UpdateEvalCaseRow {
             name: req.name,
             description: req.description,
@@ -336,6 +333,8 @@ impl EvalService {
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
             position: req.position,
+            simulated_user,
+            tool_fixtures,
         };
 
         let row = self.db.update_eval_case(case.id, input).await?;
@@ -375,6 +374,7 @@ impl EvalService {
         req: CreateEvalRunRequest,
     ) -> Result<EvalRun> {
         validate_target(&req.target)?;
+        let trials = validate_run_bounds(req.trials, req.max_cost_usd)?;
 
         let eval = self
             .db
@@ -386,6 +386,10 @@ impl EvalService {
         let run_public_id = EvalRunId::from_uuid(run_uuid);
 
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
+        let case_ids = match &req.case_ids {
+            Some(ids) => Some(select_cases(&self.db.list_eval_cases(eval.id).await?, ids)?),
+            None => None,
+        };
 
         let input = CreateEvalRunRow {
             public_id: run_public_id.to_string(),
@@ -394,6 +398,11 @@ impl EvalService {
             model_override: req.model_override,
             filter_tags: None, // Phase 2: tag-based partial runs
             triggered_by: "user".to_string(),
+            trials: trials as i32,
+            started_by_user_id: caller.user_id,
+            started_by_role: crate::domains::evals::runner::started_by_role(caller),
+            max_cost_usd: req.max_cost_usd,
+            case_ids,
         };
 
         // Load eval-level target for resolution
@@ -429,7 +438,7 @@ impl EvalService {
 
         // Dispatch background execution if run context is available
         if let Some(run_ctx) = &self.run_context {
-            spawn_eval_run(run_ctx.clone(), caller.org_id, run_row.id);
+            dispatch_eval_run(run_ctx.clone(), caller.org_id, run_row.id);
         }
 
         Ok(run_row_to_run(run_row, vec![]))
@@ -618,6 +627,11 @@ impl EvalService {
             .db
             .update_eval_run_status(run_row.id, "cancelled", None)
             .await?;
+        // Queued case tasks see the skipped status and do nothing; a case
+        // already talking to its session stops at its next message.
+        self.db
+            .skip_unfinished_eval_case_results(run_row.id)
+            .await?;
         Ok(updated.map(|r| run_row_to_run(r, vec![])))
     }
 
@@ -780,8 +794,7 @@ impl EvalService {
         if req.evals.is_empty() {
             return Err(BadRequestError::new("import must include at least one eval").into());
         }
-        // THREAT[TM-DOS-025]: Reject import fan-out before allocating result vectors or
-        // opening per-eval storage transactions.
+        // THREAT[TM-DOS-025]: Reject import fan-out before allocating or opening transactions.
         if req.evals.len() > self.limits.max_evals_per_import {
             return Err(BadRequestError::new(format!(
                 "import exceeds the limit of {} evals",
@@ -937,17 +950,9 @@ impl EvalService {
         for draft in drafts {
             if let Some(case_id) = by_name.get(&draft.name).cloned() {
                 let req = UpdateEvalCaseRequest {
-                    name: None,
                     description: Some(draft.description),
-                    target: None,
-                    tags: None,
                     conversation: Some(draft.conversation),
-                    post: None,
-                    artifacts: None,
-                    scorers: None,
-                    max_turns: None,
-                    timeout_seconds: None,
-                    position: None,
+                    ..Default::default()
                 };
                 let case = self
                     .update_case(caller, eval_public_id, &case_id, req)
@@ -960,17 +965,11 @@ impl EvalService {
                 let req = CreateEvalCaseRequest {
                     name: draft.name,
                     description: Some(draft.description),
-                    target: None,
                     tags: Some(vec!["atif-import".to_string()]),
                     conversation: draft.conversation,
-                    post: None,
-                    artifacts: None,
                     // ATIF carries no assertion semantics; imported cases start
                     // unscored and users attach scorers afterwards.
-                    scorers: vec![],
-                    max_turns: None,
-                    timeout_seconds: None,
-                    position: None,
+                    ..Default::default()
                 };
                 let case = self.create_case(caller, eval_public_id, req).await?;
                 created += 1;
@@ -1163,7 +1162,9 @@ impl EvalService {
         case_rows: &[crate::storage::EvalCaseRow],
         result_rows: &[crate::storage::EvalCaseResultRow],
     ) -> Result<()> {
-        let summary = build_run_summary(case_rows, result_rows);
+        let trials = result_rows.iter().map(|r| r.trial + 1).max().unwrap_or(1) as u32;
+        let summary =
+            crate::domains::evals::summary::build_run_summary(case_rows, result_rows, trials);
         self.db
             .update_eval_run_status(run_id, "completed", Some(serde_json::to_value(summary)?))
             .await?;
@@ -1205,69 +1206,13 @@ impl EvalService {
             tags: row.tags,
             status: EvalStatus::from(row.status.as_str()),
             case_count,
+            version: row.version.max(1) as u32,
             last_run: last_run_view,
             created_at: row.created_at,
             updated_at: row.updated_at,
             archived_at: row.archived_at,
             deleted_at: row.deleted_at,
         })
-    }
-}
-
-fn case_row_to_case(row: crate::storage::EvalCaseRow) -> EvalCase {
-    let target: Option<EvalTarget> = row
-        .target
-        .as_ref()
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-    EvalCase {
-        public_id: row
-            .public_id
-            .parse()
-            .unwrap_or_else(|_| EvalCaseId::from_uuid(row.id)),
-        internal_id: row.id,
-        name: row.name,
-        description: row.description,
-        target,
-        tags: row.tags,
-        conversation: serde_json::from_value(row.conversation).unwrap_or_default(),
-        post: row.post.and_then(|v| serde_json::from_value(v).ok()),
-        artifacts: row.artifacts.and_then(|v| serde_json::from_value(v).ok()),
-        scorers: serde_json::from_value(row.scorers).unwrap_or_default(),
-        max_turns: row.max_turns.map(|v| v as u32),
-        timeout_seconds: row.timeout_seconds.map(|v| v as u32),
-        position: row.position,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    }
-}
-
-fn run_row_to_run(row: crate::storage::EvalRunRow, results: Vec<EvalCaseResult>) -> EvalRun {
-    let target: Option<EvalTarget> = row
-        .target
-        .as_ref()
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-    EvalRun {
-        public_id: row
-            .public_id
-            .parse()
-            .unwrap_or_else(|_| EvalRunId::from_uuid(row.id)),
-        internal_id: row.id,
-        org_id: row.org_id,
-        target,
-        model_override: row.model_override,
-        filter_tags: row.filter_tags,
-        status: EvalRunStatus::from(row.status.as_str()),
-        source: EvalRunSource::from(row.source.as_str()),
-        attribution: row.attribution,
-        triggered_by: row.triggered_by,
-        started_at: row.started_at,
-        completed_at: row.completed_at,
-        summary: row.summary.and_then(|s| serde_json::from_value(s).ok()),
-        results,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
     }
 }
 
@@ -1427,6 +1372,7 @@ fn result_row_to_result(
         target,
         target_snapshot,
         status: CaseResultStatus::from(row.status.as_str()),
+        trial: row.trial.max(0) as u32,
         scores: row.scores,
         metadata: row.metadata,
         turns: row.turns.map(|v| v as u32),
@@ -1503,72 +1449,7 @@ fn resolve_external_score_status(
     }
 }
 
-fn build_run_summary(
-    case_rows: &[crate::storage::EvalCaseRow],
-    result_rows: &[crate::storage::EvalCaseResultRow],
-) -> RunSummary {
-    let total = result_rows.len() as u32;
-    let mut passed = 0u32;
-    let mut failed = 0u32;
-    let mut errored = 0u32;
-    let mut total_score = 0.0f64;
-    let mut total_turns = 0.0f64;
-    let mut total_latency = 0u64;
-    let mut total_input_tokens = 0u64;
-    let mut total_output_tokens = 0u64;
-
-    for result in result_rows {
-        let status = CaseResultStatus::from(result.status.as_str());
-        match status {
-            CaseResultStatus::Passed => passed += 1,
-            CaseResultStatus::Failed => failed += 1,
-            CaseResultStatus::Errored | CaseResultStatus::Timeout => errored += 1,
-            CaseResultStatus::Pending | CaseResultStatus::Running | CaseResultStatus::Skipped => {}
-        }
-
-        if matches!(status, CaseResultStatus::Passed | CaseResultStatus::Failed) {
-            total_score += case_result_avg_score(
-                result,
-                case_rows.iter().find(|case| case.id == result.eval_case_id),
-            );
-            total_turns += result.turns.unwrap_or_default() as f64;
-            total_latency += result.latency_ms.unwrap_or_default() as u64;
-            total_input_tokens += result.input_tokens.unwrap_or_default() as u64;
-            total_output_tokens += result.output_tokens.unwrap_or_default() as u64;
-        }
-    }
-
-    RunSummary {
-        total,
-        passed,
-        failed,
-        errored,
-        pass_rate: if total > 0 {
-            passed as f64 / total as f64
-        } else {
-            0.0
-        },
-        avg_score: if total > 0 {
-            total_score / total as f64
-        } else {
-            0.0
-        },
-        avg_turns: if total > 0 {
-            total_turns / total as f64
-        } else {
-            0.0
-        },
-        avg_latency_ms: if total > 0 {
-            total_latency / total as u64
-        } else {
-            0
-        },
-        total_input_tokens,
-        total_output_tokens,
-    }
-}
-
-/// Accumulates a `RunSummary` for an imported run. Mirrors `build_run_summary`
+/// Accumulates a `RunSummary` for an imported run. Mirrors `summary::build_run_summary`
 /// but reads the import request directly. `total` counts executed cases
 /// (passed/failed/errored); skipped cases are excluded from all tallies.
 #[derive(Default)]
@@ -1631,6 +1512,12 @@ impl ImportSummaryAcc {
             },
             total_input_tokens: self.total_input_tokens,
             total_output_tokens: self.total_output_tokens,
+            // Imported runs carry one result per case.
+            trials: 1,
+            cases: total,
+            cases_passed_every_trial: self.passed,
+            cases_passed_any_trial: self.passed,
+            total_cost_usd: None,
         }
     }
 }
@@ -1647,55 +1534,6 @@ fn import_case_avg_score(case: &ImportEvalCaseEntry) -> f64 {
         return 0.0;
     }
     applicable.iter().sum::<f64>() / applicable.len() as f64
-}
-
-fn case_result_avg_score(
-    result: &crate::storage::EvalCaseResultRow,
-    case_row: Option<&crate::storage::EvalCaseRow>,
-) -> f64 {
-    let Some(scores) = result
-        .scores
-        .clone()
-        .and_then(|value| serde_json::from_value::<Vec<Score>>(value).ok())
-    else {
-        return 0.0;
-    };
-    if scores.is_empty() {
-        return 0.0;
-    }
-
-    let scorers = case_row
-        .and_then(|case| serde_json::from_value::<Vec<Scorer>>(case.scorers.clone()).ok())
-        .unwrap_or_default();
-    if scorers.len() == scores.len() {
-        let total_weight: f64 = scorers.iter().map(scorer_weight).sum();
-        if total_weight > 0.0 {
-            let weighted_sum: f64 = scores
-                .iter()
-                .zip(scorers.iter())
-                .map(|(score, scorer)| score.value * scorer_weight(scorer))
-                .sum();
-            return weighted_sum / total_weight;
-        }
-    }
-
-    scores.iter().map(|score| score.value).sum::<f64>() / scores.len() as f64
-}
-
-fn scorer_weight(scorer: &Scorer) -> f64 {
-    match scorer {
-        Scorer::Contains { weight, .. } => *weight,
-        Scorer::NotContains { weight, .. } => *weight,
-        Scorer::Regex { weight, .. } => *weight,
-        Scorer::ToolCalled { weight, .. } => *weight,
-        Scorer::ToolNotCalled { weight, .. } => *weight,
-        Scorer::ToolCallCount { weight, .. } => *weight,
-        Scorer::TurnsWithin { weight, .. } => *weight,
-        Scorer::FileContains { weight, .. } => *weight,
-        Scorer::JsonSchema { weight, .. } => *weight,
-        Scorer::CitationFaithful { weight, .. } => *weight,
-        Scorer::CitationJudged { weight, .. } => *weight,
-    }
 }
 
 #[cfg(test)]
@@ -1757,6 +1595,8 @@ mod tests {
                     max_turns: None,
                     timeout_seconds: None,
                     position: i as i32,
+                    simulated_user: None,
+                    tool_fixtures: None,
                 },
             )
             .await
@@ -1781,6 +1621,7 @@ mod tests {
         let run_req = CreateEvalRunRequest {
             target: None,
             model_override: None,
+            ..Default::default()
         };
 
         let mut tasks = Vec::new();
@@ -1850,6 +1691,7 @@ mod tests {
                 run_id: run_id.into(),
                 metadata: None,
             },
+            experiment: None,
             evals: vec![ImportEvalGroup {
                 name: "coding".into(),
                 description: Some("imported".into()),
@@ -2096,6 +1938,7 @@ mod tests {
         let run_req = CreateEvalRunRequest {
             target: None,
             model_override: None,
+            ..Default::default()
         };
 
         let err = svc

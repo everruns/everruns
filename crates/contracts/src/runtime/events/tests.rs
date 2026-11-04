@@ -783,3 +783,102 @@ fn captured_request_bodies_drop_inline_media_and_publish_without_replay_state() 
     assert!(!text.contains("do-not-publish"), "{text}");
     assert!(text.contains("visible"));
 }
+
+#[test]
+fn public_messages_allow_only_reviewed_metadata_and_preserve_replay() {
+    let mut message = message_with_replay_state();
+    message.metadata = Some(
+        serde_json::from_value(json!({
+            "model": "test-model", "reasoning_effort": "high",
+            "everruns_client_message_id": "client-1", "source": "schedule",
+            "everruns_origin": "task_wake", "error_code": "provider_rate_limited",
+            "error_fields": {"retry_after": 7, "internal": "CANARY"},
+            "initiator": {"type": "user", "user_id": "user-1", "secret": "CANARY"},
+            "page_context": {"route": "/agents", "internal": "CANARY"},
+            "custom": {"customer_reference": "order-1"},
+            "tool_changes": {"system_prompt": "CANARY", "baseline": [{"secret": "CANARY"}]},
+            "everruns_script_run": {"stdin": "CANARY"},
+            "future_internal": {"nested": "CANARY"}
+        }))
+        .unwrap(),
+    );
+    let stored = serde_json::to_value(&message).unwrap();
+    for data in [
+        EventData::InputMessage(InputMessageData::new(message.clone())),
+        EventData::OutputMessageCompleted(OutputMessageCompletedData::new(message.clone())),
+        EventData::LlmGeneration(LlmGenerationData {
+            request_body: None,
+            messages: vec![message.clone()],
+            tools: Vec::new(),
+            output: LlmGenerationOutput {
+                text: Some("answer".into()),
+                tool_calls: Vec::new(),
+            },
+            metadata: generation_metadata(),
+        }),
+    ] {
+        let public = serde_json::to_value(data.into_public()).unwrap();
+        assert!(!public.to_string().contains("CANARY"), "{public}");
+    }
+    let public = serde_json::to_value(message.clone().into_public()).unwrap();
+    assert_eq!(public["metadata"]["model"], "test-model");
+    assert_eq!(
+        public["metadata"]["error_fields"],
+        json!({"retry_after": 7})
+    );
+    assert_eq!(
+        public["metadata"]["initiator"],
+        json!({"type":"user","user_id":"user-1"})
+    );
+    assert_eq!(
+        public["metadata"]["page_context"],
+        json!({"route":"/agents"})
+    );
+    assert_eq!(
+        public["metadata"]["custom"],
+        json!({"customer_reference":"order-1"})
+    );
+    assert_eq!(serde_json::to_value(&message).unwrap(), stored);
+    assert_eq!(
+        serde_json::to_value(message.clone().into_public().into_public()).unwrap(),
+        public
+    );
+}
+
+#[test]
+fn public_execution_json_matches_typed_event_metadata_boundary() {
+    for data in [
+        EventData::InputMessage(InputMessageData::new(RuntimeMessage::user("hi"))),
+        EventData::OutputMessageCompleted(OutputMessageCompletedData::new(
+            RuntimeMessage::assistant("hi"),
+        )),
+        EventData::LlmGeneration(LlmGenerationData {
+            request_body: None,
+            messages: vec![RuntimeMessage::user("hi")],
+            tools: Vec::new(),
+            output: LlmGenerationOutput {
+                text: Some("answer".into()),
+                tool_calls: Vec::new(),
+            },
+            metadata: generation_metadata(),
+        }),
+    ] {
+        let event = Event::new(SessionId::new(), EventContext::empty(), data)
+            .with_metadata(json!({"initiator":{"type":"user","user_id":"u1","source":"CANARY"},"authority":"CANARY"}));
+        let mut raw = serde_json::to_value(&event).unwrap();
+        for pointer in ["/data/message", "/data/messages/0"] {
+            if let Some(message) = raw.pointer_mut(pointer) {
+                message["metadata"] = json!({"model":"test","unknown":"CANARY","tool_changes":{"system_prompt":"CANARY"}});
+            }
+        }
+        if event.event_type == "llm.generation" {
+            raw["data"]["metadata"]["tool_changes"] = json!({"system_prompt":"CANARY"});
+        }
+        let typed: Event = serde_json::from_value(raw.clone()).unwrap();
+        let typed = serde_json::to_value(typed.into_public()).unwrap();
+        let wire = crate::execution_api::public_event(&raw);
+        assert!(!wire.to_string().contains("CANARY"), "{wire}");
+        assert_eq!(wire, typed);
+        assert!(raw.to_string().contains("CANARY"));
+    }
+}

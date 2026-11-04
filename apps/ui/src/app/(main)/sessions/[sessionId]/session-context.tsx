@@ -18,6 +18,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { isChatThread } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
+import { AuthContext } from "@/providers/auth-provider";
+import { chatRecoveryKey } from "@/lib/chat-recovery";
 import { useLocale } from "@/providers/locale-provider";
 import type {
   Agent,
@@ -153,6 +155,7 @@ export function SessionProvider({
 }: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
+  const auth = useContext(AuthContext);
   const webmcp = useWebMcp();
   const { locale } = useLocale();
   const org = currentOrg?.public_id;
@@ -223,6 +226,7 @@ export function SessionProvider({
   );
   const chatSends = useChatSends({
     sessionId,
+    storageKey: auth?.user?.id && org ? chatRecoveryKey(auth.user.id, org, sessionId) : undefined,
     events,
     send: sendChat,
     cancel: cancelTurnRequest,
@@ -531,6 +535,7 @@ export function SessionProvider({
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    costUsd: 0,
     hasLlmEvents: false,
   });
 
@@ -544,6 +549,7 @@ export function SessionProvider({
       outputTokens: 0,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      costUsd: 0,
       hasLlmEvents: false,
     };
   }
@@ -577,6 +583,12 @@ export function SessionProvider({
         acc.outputTokens += llmData.metadata.usage.output_tokens;
         acc.cacheReadTokens += llmData.metadata.usage.cache_read_tokens ?? 0;
         acc.cacheCreationTokens += llmData.metadata.usage.cache_creation_tokens ?? 0;
+        // Same precedence the server uses for a call's recorded cost.
+        acc.costUsd +=
+          llmData.metadata.usage.effective_cost_usd ??
+          llmData.metadata.usage.actual_cost_usd ??
+          llmData.metadata.usage.estimated_cost_usd ??
+          0;
       }
 
       if (eventSequence != null) {
@@ -594,6 +606,7 @@ export function SessionProvider({
         output_tokens: acc.outputTokens,
         cache_read_tokens: acc.cacheReadTokens > 0 ? acc.cacheReadTokens : undefined,
         cache_creation_tokens: acc.cacheCreationTokens > 0 ? acc.cacheCreationTokens : undefined,
+        effective_cost_usd: acc.costUsd > 0 ? acc.costUsd : undefined,
       };
     }
 

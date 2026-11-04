@@ -16,12 +16,12 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use mira::subject::summarize_events;
+use crate::everruns_usage::summarize_events;
 use mira::{ErrorKind, RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 
-/// Default harness that carries the `platform` capability.
+/// Canonical managed Agent; other configured names select custom harnesses.
 const DEFAULT_HARNESS: &str = "platform-chat";
 
 pub struct EverrunsServerSubject {
@@ -149,9 +149,14 @@ impl EverrunsServerSubject {
             "title": format!("Mira eval: {}", sample.id),
             "tags": ["mira", "platform-capability"],
         });
-        // A case about one agent's capabilities (the `user_mcp` tools of
-        // Platform Chat) talks to that agent rather than the bare harness.
-        if let Some(agent) = sample.metadata.get("agent_name").and_then(Value::as_str) {
+        // The canonical operator moved from a harness to a managed Agent.
+        // Never silently qualify the retired harness instead of what ships.
+        if let Some(agent) = sample
+            .metadata
+            .get("agent_name")
+            .and_then(Value::as_str)
+            .or_else(|| (self.harness == DEFAULT_HARNESS).then_some(DEFAULT_HARNESS))
+        {
             body = json!({
                 "agent_name": agent,
                 "title": format!("Mira eval: {}", sample.id),
@@ -351,12 +356,23 @@ impl EverrunsServerSubject {
 #[async_trait::async_trait]
 impl Subject for EverrunsServerSubject {
     async fn run(&self, sample: &Sample, cx: &RunCx) -> Transcript {
+        if sample
+            .metadata
+            .get("surface_comparison")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            return Transcript::infra_error("surface-comparison fixtures require EVERRUNS_EVAL_MODE=offline; matched fixture surfaces are offline-only; hosted Platform Chat uses its managed capability configuration".to_string());
+        }
+        if std::env::var("EVERRUNS_EVAL_SURFACE").is_ok() {
+            return Transcript::infra_error("EVERRUNS_EVAL_SURFACE selects an offline comparison; set EVERRUNS_EVAL_MODE=offline".to_string());
+        }
         let started = Instant::now();
 
-        if let Some(server) = sample.metadata.get("ensure_catalog_mcp") {
-            if let Err(e) = self.ensure_catalog_mcp(server).await {
-                return Transcript::infra_error(format!("register catalog MCP server: {e}"));
-            }
+        if let Some(server) = sample.metadata.get("ensure_catalog_mcp")
+            && let Err(e) = self.ensure_catalog_mcp(server).await
+        {
+            return Transcript::infra_error(format!("register catalog MCP server: {e}"));
         }
         // A turn that parks on a card (tool approval, Connect) ends here
         // instead of timing out; approvals are answered when the case asks.
@@ -470,13 +486,12 @@ impl Subject for EverrunsServerSubject {
                 if let Some(final_text) = extract_final_response(&events) {
                     transcript.final_response = final_text;
                 }
-                let (usage, _tools) = summarize_events(&events);
-                transcript.usage = usage;
-                if transcript.error.is_none() {
-                    if let Some(error) = extract_terminal_error(&events) {
-                        transcript.error_kind = classify(&error);
-                        transcript.error = Some(error);
-                    }
+                summarize_events(&events).apply_to(&mut transcript);
+                if transcript.error.is_none()
+                    && let Some(error) = extract_terminal_error(&events)
+                {
+                    transcript.error_kind = classify(&error);
+                    transcript.error = Some(error);
                 }
                 transcript.events = events;
                 crate::scorers::record_friction(&mut transcript);
@@ -489,13 +504,13 @@ impl Subject for EverrunsServerSubject {
             }
         }
 
-        if sample.metadata.contains_key("expect_scheduled_agent") {
-            if let Some(name) = &resource_name {
-                let state = self.capture_scheduled_agent_state(&session_id, name).await;
-                transcript
-                    .metadata
-                    .insert("platform_state".to_string(), state);
-            }
+        if sample.metadata.contains_key("expect_scheduled_agent")
+            && let Some(name) = &resource_name
+        {
+            let state = self.capture_scheduled_agent_state(&session_id, name).await;
+            transcript
+                .metadata
+                .insert("platform_state".to_string(), state);
         }
 
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
@@ -617,6 +632,94 @@ fn classify(message: &str) -> ErrorKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn hosted_session_creation_targets_the_managed_agent_and_preserves_overrides() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut bytes = Vec::new();
+                let header_end = loop {
+                    let mut buffer = [0; 4096];
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(position) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                        break position + 4;
+                    }
+                };
+                let headers = std::str::from_utf8(&bytes[..header_end]).unwrap();
+                assert!(headers.starts_with("POST /v1/sessions "));
+                let length: usize = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|length| length.trim().parse().unwrap())
+                    })
+                    .unwrap();
+                while bytes.len() < header_end + length {
+                    let mut buffer = [0; 4096];
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                }
+                requests.push(
+                    serde_json::from_slice::<Value>(&bytes[header_end..header_end + length])
+                        .unwrap(),
+                );
+                let response = r#"{"id":"session_mock"}"#;
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            }
+            requests
+        });
+        let mut subject = EverrunsServerSubject {
+            base_url: format!("http://{address}"),
+            api_key: "test".into(),
+            harness: DEFAULT_HARNESS.into(),
+            poll_interval: Duration::from_millis(1),
+            turn_timeout: Duration::from_secs(5),
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap(),
+            model_cache: OnceCell::new(),
+        };
+        let mut sample = mira::Dataset::from_jsonl_str(crate::DATASET)
+            .unwrap()
+            .samples
+            .remove(0);
+        let cx = RunCx::new(mira::Target::new("default", "everruns", ""));
+        for (harness, agent) in [
+            (DEFAULT_HARNESS, None),
+            ("custom-harness", None),
+            ("custom-harness", Some("assigned-agent")),
+        ] {
+            subject.harness = harness.into();
+            sample.metadata.remove("agent_name");
+            if let Some(agent) = agent {
+                sample.metadata.insert("agent_name".into(), json!(agent));
+            }
+            assert_eq!(
+                subject.create_session(&sample, &cx).await.unwrap(),
+                "session_mock"
+            );
+        }
+        let requests = server.join().unwrap();
+        assert_eq!(requests[0]["agent_name"], "platform-chat");
+        assert!(requests[0].get("harness_name").is_none());
+        assert_eq!(requests[1]["harness_name"], "custom-harness");
+        assert!(requests[1].get("agent_name").is_none());
+        assert_eq!(requests[2]["agent_name"], "assigned-agent");
+        assert!(requests[2].get("harness_name").is_none());
+    }
 
     #[test]
     fn budget_is_inclusive_and_reports_first_exceeded_limit() {

@@ -254,6 +254,7 @@ Implementations must be best-effort: a slow or failing reporter must never propa
 - `ServerContext::error_reporter` is always a `SharedErrorReporter` (never `None`) so custom routes, middleware, and background tasks can report into the same sink without branching.
 - OSS internals report on well-known failure points (for example, stale-task reclamation errors). Reports from recurring background tasks are detached on a `tokio::spawn` so a stalled vendor endpoint cannot stall operational recovery.
 - No OSS code references Sentry, Datadog, or any other vendor type.
+- Failures that repeat on every request or poll tick (datastore timeouts, pool exhaustion, a fail-open rate-limit backend) are bounded per call site by [`report_throttle`](../../crates/core/src/report_throttle.rs): the first occurrence is reported at once, then at most one report per interval carrying `suppressed_since_last_report`. Suppressed occurrences stay in the logs at `info`, so a wrapper that turns `warn` and `error` events into vendor issues sees a bounded count through an outage (EVE-1328).
 
 ### Worker hook
 

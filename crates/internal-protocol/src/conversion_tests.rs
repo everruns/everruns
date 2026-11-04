@@ -140,7 +140,7 @@ fn test_external_actor_proto_roundtrip() {
     };
 
     let proto_message = schema_message_to_proto(&message);
-    assert!(proto_message.external_actor.is_some());
+    assert!(proto_message.external_actor.is_some() || proto_message.external_actor_json.is_some());
 
     let schema_message = proto_message_to_schema(proto_message).unwrap();
     let roundtripped = schema_message.external_actor.unwrap();

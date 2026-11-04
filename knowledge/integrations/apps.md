@@ -60,7 +60,7 @@ A channel accepts traffic only when:
 - the channel status is `live`
 - the channel is enabled
 - the owning agent status is `active`
-- the owning agent does not have exposures suspended
+- the owning agent is not paused (`exposures_suspended`)
 
 ## Permanent route aliases
 

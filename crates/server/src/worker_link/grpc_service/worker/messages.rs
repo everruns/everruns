@@ -338,37 +338,17 @@ impl WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let message_id = parse_uuid(req.message_id.as_ref())?;
 
-        // Load message events and find the one matching message_id
-        let events = self
-            .event_service
-            .list_message_events(session_id)
-            .await
-            .map_err(|e| internal_status("Failed to list messages", e))?;
+        let message = crate::storage::runtime::message::retrieve_message(
+            &self.db,
+            session_id.into(),
+            message_id.into(),
+        )
+        .await
+        .map_err(|e| internal_status("Failed to load message", e))?;
 
-        for event in events {
-            let message = match event_to_message(&event) {
-                Some(m) => m,
-                None => {
-                    tracing::warn!(
-                        "Failed to extract message from event {}: type={}",
-                        event.id,
-                        event.event_type
-                    );
-                    continue;
-                }
-            };
-
-            if message.id.uuid() != message_id {
-                continue;
-            }
-
-            return Ok(Response::new(GetMessageResponse {
-                message: Some(message_to_proto(&message)),
-            }));
-        }
-
-        // Message not found
-        Ok(Response::new(GetMessageResponse { message: None }))
+        Ok(Response::new(GetMessageResponse {
+            message: message.as_ref().map(message_to_proto),
+        }))
     }
 
     pub(crate) async fn handle_load_messages(

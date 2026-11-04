@@ -1,6 +1,8 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -79,6 +81,8 @@ function WorkflowRow({
   workflow: DurableWorkflow;
   onCancel: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -97,9 +101,15 @@ function WorkflowRow({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(workflow.created_at), { addSuffix: true })}
+              {formatDistanceToNow(
+                new Date(workflow.created_at),
+                { addSuffix: true },
+                displayLocale,
+              )}
             </TooltipTrigger>
-            <TooltipContent>{new Date(workflow.created_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(workflow.created_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -108,9 +118,15 @@ function WorkflowRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(workflow.started_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(workflow.started_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(workflow.started_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(workflow.started_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -122,9 +138,15 @@ function WorkflowRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(workflow.completed_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(workflow.completed_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(workflow.completed_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(workflow.completed_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -161,6 +183,8 @@ function WorkflowRow({
 }
 
 function TaskRow({ task }: { task: DurableTask }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -206,9 +230,11 @@ function TaskRow({ task }: { task: DurableTask }) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(task.scheduled_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(task.scheduled_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(task.scheduled_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(task.scheduled_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -231,6 +257,8 @@ function TaskRow({ task }: { task: DurableTask }) {
 }
 
 function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string) => void }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -261,9 +289,9 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(entry.dead_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>{new Date(entry.dead_at).toLocaleString(displayLocale)}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -295,6 +323,7 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
 }
 
 export default function WorkflowsPage() {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Workflows"), ui("Durable"));
   const [activeTab, setActiveTab] = useState<TabValue>("workflows");
@@ -367,23 +396,23 @@ export default function WorkflowsPage() {
 
   if (isLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workflows")}</h1>
+          <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (workflowsError) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workflows")}</h1>
+          <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -398,26 +427,26 @@ export default function WorkflowsPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
-  const handleCancel = (workflowId: string) => {
-    if (confirm("Are you sure you want to cancel this workflow?")) {
+  const handleCancel = async (workflowId: string) => {
+    if (await requestConfirmation("Are you sure you want to cancel this workflow?")) {
       cancelMutation.mutate(workflowId);
     }
   };
 
-  const handleRequeue = (dlqId: string) => {
-    if (confirm("Are you sure you want to requeue this task?")) {
+  const handleRequeue = async (dlqId: string) => {
+    if (await requestConfirmation("Are you sure you want to requeue this task?")) {
       requeueMutation.mutate(dlqId);
     }
   };
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Workflows")}</h1>
+        <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Tab Navigation */}
@@ -660,6 +689,6 @@ export default function WorkflowsPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -8,6 +8,7 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - 'evals/mcp-scale/**'
+      - 'evals/common/**'
       - 'crates/contracts/**'
       - 'crates/core/**'
       - 'crates/everruns/**'
@@ -21,6 +22,7 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - 'evals/mcp-scale/**'
+      - 'evals/common/**'
       - 'crates/contracts/**'
       - 'crates/core/**'
       - 'crates/everruns/**'
@@ -57,6 +59,7 @@ jobs:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: evals/mcp-scale
           shared-key: mcp-scale-evals
       - name: Check formatting

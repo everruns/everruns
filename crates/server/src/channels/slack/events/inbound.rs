@@ -327,7 +327,11 @@ pub(crate) fn event_matches_slack_scope(
     }
 
     if let Some(expected_channel_id) = slack_config.channel_id.as_deref()
-        && event.channel.as_deref() != Some(expected_channel_id)
+        && event
+            .channel
+            .as_deref()
+            .or(event.item.as_ref().and_then(|item| item.channel.as_deref()))
+            != Some(expected_channel_id)
     {
         return false;
     }

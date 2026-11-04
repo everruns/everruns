@@ -380,6 +380,19 @@ impl Lease {
             .await
     }
 
+    /// Hand the lease back mid-turn, leaving the actor runnable (see
+    /// `SessionActorStore::hand_off_actor`).
+    pub(crate) async fn hand_off(&self) -> Result<Option<ActorRelease>> {
+        self.store
+            .hand_off_actor(
+                self.session_id,
+                &self.holder,
+                self.fence,
+                self.committed_cursor(),
+            )
+            .await
+    }
+
     /// The first event of the tail (the latest `turn.started`, when a turn is
     /// open): enough to name the turn without reading the rest of it.
     pub(crate) fn read_tail_head(
@@ -530,12 +543,18 @@ impl Lease {
 /// cancel landed), until it is lost, its stall watchdog fires, or this task
 /// is aborted.
 ///
+/// Decision: the periodic renewals land on multiples of the period counted
+/// from `epoch`, the holder's clock, not from when each lease was taken. A
+/// holder's running turns then renew together and share one batched store
+/// call (`renewals`). The first renewal comes at most a period after the
+/// lease was taken, as before, and sometimes sooner.
+///
 /// Decision: after a failed renew the next one comes after a tenth of the TTL,
 /// not a third. The lease is lost once no renew succeeds for a whole TTL (the
 /// control plane hands the session on then, so the turn must stop by then);
 /// retrying sooner lets a short control-plane blip end inside that window
 /// instead of costing the turn and the model call it was waiting on.
-pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
+pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>, epoch: Instant) {
     let period = lease.ttl / 3;
     let retry = lease.ttl / 10;
     let mut failing = false;
@@ -549,7 +568,7 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
         let wait = if failing {
             retry.min(lease.ttl.saturating_sub(lease.since_renewed()))
         } else {
-            period
+            until_next_tick(epoch, period)
         };
         tokio::select! {
             _ = everruns_contracts::rt::sleep(wait) => {}
@@ -594,4 +613,12 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
             return;
         }
     }
+}
+
+/// Time from now to the next multiple of `period` after `epoch`.
+pub(super) fn until_next_tick(epoch: Instant, period: Duration) -> Duration {
+    let period_nanos = period.as_nanos().max(1);
+    let elapsed = Instant::now().saturating_duration_since(epoch).as_nanos();
+    let into = elapsed % period_nanos;
+    Duration::from_nanos(u64::try_from(period_nanos - into).unwrap_or(u64::MAX))
 }

@@ -1,5 +1,8 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  Discard: "Відкинути",
+  "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.":
+    "Сховище відновлення недоступне. Залиште цю вкладку відкритою та скопіюйте ненадісланий текст перед виходом.",
   result: "результат",
   "Result:": "Результат:",
   results: "результати",
@@ -169,4 +172,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Work across every session used to live at": "Працюйте на кожному занятті, на якому раніше жили",
   yes: "так",
   "Your subchats for managing Everruns.": "Ваші субчати для керування Everruns.",
+  "Retry window expired. Review this conversation before sending again.":
+    "Термін повторної спроби минув. Перегляньте цю розмову перед повторним надсиланням.",
 };

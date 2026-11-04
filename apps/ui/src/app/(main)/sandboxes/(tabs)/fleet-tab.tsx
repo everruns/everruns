@@ -1,4 +1,5 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -37,7 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { SandboxDetailDrawer } from "@/components/sandboxes/sandbox-detail-drawer";
 import { providerLabel } from "@/components/sandboxes/sandbox-display";
 import { SandboxFleetSummary } from "@/components/sandboxes/sandbox-fleet-summary";
@@ -198,31 +198,15 @@ export function SandboxFleetTab() {
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div role="radiogroup" aria-label={ui("View")} className="inline-flex border">
-            {(
-              [
-                ["table", "Table", Rows3],
-                ["timeline", "Timeline", ChartGantt],
-              ] as const
-            ).map(([value, label, Icon]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={view === value}
-                onClick={() => update({ view: value === "timeline" ? "timeline" : null })}
-                className={cn(
-                  "inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                  view === value
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="icon-sharp size-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={ui("View")}
+            value={view}
+            onValueChange={(value) => update({ view: value === "timeline" ? "timeline" : null })}
+            options={[
+              { value: "table", label: ui("Table"), icon: <Rows3 className="size-4" /> },
+              { value: "timeline", label: ui("Timeline"), icon: <ChartGantt className="size-4" /> },
+            ]}
+          />
           <SearchInput
             value={search}
             onChange={(event) => {

@@ -56,6 +56,7 @@ everruns-internal-protocol = { path = "../internal-protocol" }
 
 chrono.workspace = true
 async-trait.workspace = true
+futures.workspace = true
 reqwest.workspace = true
 base64.workspace = true
 hostname = "0.4"

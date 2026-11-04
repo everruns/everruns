@@ -10,7 +10,6 @@ release: "0.48.0"
 links:
   docs: [/features/ui/#chat-and-threads]
   prs: [everruns/everruns#4502, everruns/everruns#4494, everruns/everruns#4480]
-visual: "Chat with an agent reply showing Good, Bad and Branch into new chat actions and a Worked for status row (/chat), cropped to two messages"
 ---
 
 **In the UI:** each agent reply in Chat has **Good** and **Bad** ratings, kept
@@ -18,6 +17,8 @@ per person, and **Branch into new chat**, which copies the conversation up to
 the end of that reply's turn. Every message you send shows one status row
 (Sending, Queued, Thinking, Working, Worked for) and **Retry** if it was not
 delivered.
+
+![Agent reply with copy, Good, Bad and Branch into new chat actions under a Worked for row](./chat-feedback-branch@2x.png)
 
 **In code:** `POST /v1/sessions/{id}/messages` accepts an optional
 `client_message_id`. Sending the same one again returns the stored message

@@ -15,6 +15,23 @@ package everruns.internal;
 
 import "google/protobuf/struct.proto";
 
+// Restricted, opt-in customer-worker boundary. These credentials never grant
+// access to WorkerService. All reads and writes require a live session lease.
+service CustomWorkerService {
+    rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
+    rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
+    rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    rpc ReadJournal(CustomWorkerJournalRequest) returns (ReadActorJournalResponse);
+    // The CP namespaces turn/span identities; the returned event carries the
+    // canonical ids. One recorded input owns one custom turn.
+    rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
+}
+
+message CustomWorkerJournalRequest {
+    ReadActorJournalRequest journal = 1;
+    ActorFence actor_fence = 2;
+}
+
 // Service for workers to communicate with control plane
 service WorkerService {
     // === Batched operations (latency optimized) ===
@@ -177,7 +194,16 @@ service WorkerService {
     // see knowledge/operations/durable-execution-engine.md ("Session actors (runnable index)").
     rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
     rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
+    // Several of one holder's leases in one call and one statement: a worker
+    // coalesces the renewals of its running turns. A server without it
+    // answers UNIMPLEMENTED and the worker renews one lease per call.
+    rpc RenewActorLeases(RenewActorLeasesRequest) returns (RenewActorLeasesResponse);
     rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    // A draining worker gives the lease back between steps of a running turn:
+    // like ReleaseActor, but the actor stays runnable so another worker resumes
+    // the turn from the log at once instead of after the lease TTL. A server
+    // without it answers UNIMPLEMENTED and the worker lets the lease expire.
+    rpc HandOffActor(ReleaseActorRequest) returns (ReleaseActorResponse);
     rpc ReadActorJournal(ReadActorJournalRequest) returns (ReadActorJournalResponse);
     // Detached tool calls: a call a holder took off its turn so the turn
     // parks while the call runs (knowledge/execution/detached-tool-calls.md).
@@ -379,6 +405,9 @@ message Agent {
     optional string communication = 17;
     // Server-resolved custom tool definitions, including org-gated client tools.
     repeated string tools = 18;
+    // When a finishing turn gets a completion check: "unattended" (absent),
+    // "off" or "always".
+    optional string completion_check = 19;
 }
 
 message GetAgentRequest {
@@ -465,6 +494,12 @@ message Session {
     optional string blueprint_config_json = 24;
     optional bool parallel_tool_calls = 25;
     optional string goal = 26;
+    // Session-level client-side tools (each a JSON-encoded ToolDefinition),
+    // additive to the agent's tools. Without them a worker-run turn never
+    // offers the session's client tools to the model.
+    repeated string tools = 27;
+    // No person is watching: a trigger or schedule started the session.
+    optional bool unattended = 28;
 }
 
 message GetSessionRequest {
@@ -485,6 +520,7 @@ message SetSessionStatusRequest {
 }
 
 message SetSessionStatusResponse {
+    // Unset: a status write is acknowledged only (EVE-882).
     Session session = 1;
 }
 
@@ -1108,6 +1144,8 @@ message GetDefaultProviderCredentialsResponse {
     // the JSON of ProviderRequestOptions. Empty when the connection configures
     // none, so an older worker simply sends no options.
     string request_options_json = 5;
+    // Connection-level chat API selected by the provider owner.
+    string api = 7;
     string decision_binding_json = 6;
 }
 
@@ -1349,6 +1387,33 @@ message RenewActorLeaseResponse {
     bool cancel_requested = 3;
     // See LeasedActor.cancel_inbox_seq.
     optional int64 cancel_inbox_seq = 4;
+}
+
+message RenewActorLeasesRequest {
+    string holder = 1;
+    // 0 = the server default (10 s).
+    uint32 ttl_ms = 2;
+    repeated ActorLeaseRenewal leases = 3;
+}
+
+message ActorLeaseRenewal {
+    Uuid session_id = 1;
+    int64 fence = 2;
+    // See RenewActorLeaseRequest.consumed_seq.
+    int64 consumed_seq = 3;
+}
+
+message RenewActorLeasesResponse {
+    // One per requested lease, in request order.
+    repeated RenewedActorLease leases = 1;
+}
+
+message RenewedActorLease {
+    // As RenewActorLease answers; held false when the lease is lost.
+    RenewActorLeaseResponse renewal = 1;
+    // The session was deleted (its actor row went with it): stop the turn
+    // quietly, as RenewActorLease's NOT_FOUND says.
+    bool session_not_found = 2;
 }
 
 message ReleaseActorRequest {

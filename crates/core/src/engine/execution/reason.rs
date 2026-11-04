@@ -3,7 +3,7 @@
 
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 use web_time::Instant;
@@ -37,11 +37,8 @@ use crate::engine::tool_types::{ToolCall, ToolDefinition};
 use crate::engine::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::engine::{ErrorDisclosure, UserFacingError, UserFacingErrorContext};
 use crate::engine::{
-    durability::DurableToolResultStore,
-    durability::PartialStreamStore,
-    file_services::{FileResolver, ResolvedFile},
-    image_services::ImageResolver,
-    image_services::ResolvedImage,
+    durability::DurableToolResultStore, durability::PartialStreamStore,
+    file_services::FileResolver, image_services::ImageResolver,
 };
 use everruns_contracts::durable_retry;
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
@@ -49,6 +46,7 @@ use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 mod background_call;
 mod causal;
 mod compaction;
+mod context_updates;
 mod error_policy;
 mod facts;
 mod file_resolution;
@@ -326,6 +324,18 @@ impl ReasonAtom {
         prior: partial_recovery::PriorStream,
     ) -> Result<ReasonResult> {
         let prior_usage = assembled.cumulative_usage();
+        // Transport demand is resolved from host/session defaults and the
+        // triggering input, never inferred from whether an SSE socket is open.
+        let output_streaming = assembled
+            .messages
+            .iter()
+            .find(|message| message.id == context.input_message_id)
+            .and_then(|message| message.controls.as_ref())
+            .and_then(|controls| controls.hints.as_ref())
+            .and_then(|hints| hints.get("output_streaming"))
+            .and_then(serde_json::Value::as_bool)
+            .or(assembled.snapshot.output_streaming)
+            .unwrap_or(!assembled.runtime_agent.communication.is_explicit());
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let model_with_provider = assembled.model;
@@ -528,19 +538,9 @@ impl ReasonAtom {
             facts::interleave_facts(context_messages, render_facts, supports_clear_at);
         let mut context_messages = context_messages;
 
-        // 9d. Prepend conversation context (e.g. hierarchical AGENTS.md) as
-        // the leading user-role message.
-        //
-        // Project instructions ride here: model-visible on every turn and
-        // re-resolved alongside the system prompt, but never folded into the
-        // cached system prompt. Untrusted workspace content must stay below
-        // harness safety instructions in the instruction hierarchy, and file
-        // edits must not invalidate the cache-stable system prefix.
-        if let Some(context) = runtime_agent.conversation_context.as_ref()
-            && !context.is_empty()
-        {
-            context_messages.insert(0, RuntimeMessage::user(context.clone()));
-        }
+        // 9d. Replay reference-data changes at their recorded positions.
+        let context_updates = context_updates::apply(&mut context_messages, &runtime_agent);
+        let volatile_suffix_len = context_updates.volatile_suffix_len(volatile_suffix_len);
 
         // 10. Resolve images from image_file references (if any)
         //
@@ -732,6 +732,10 @@ impl ReasonAtom {
         // seam allows the finalized output so blocked tokens are never emitted
         // or persisted as output.message.delta events.
         let buffer_output_deltas = !post_output_providers.is_empty();
+        // Keep inspecting provider tokens for armed streaming guardrails and
+        // native async tools; suppressing delivery must not change execution.
+        llm_config.prefer_non_streaming =
+            !output_streaming && armed_guardrails.is_empty() && self.native_async.is_none();
         // Allocate the public message id before the first lifecycle event so
         // started/delta/replaced/completed can be grouped without turn-level
         // heuristics. Each reasoning iteration reaches this point separately.
@@ -860,7 +864,7 @@ impl ReasonAtom {
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let has_provider_executed_tools =
             hosted_tools::has_provider_executed_tools(&llm_config.driver_options);
-        let (retry_config, mut stream_retry_metadata, mut retry_started_at) =
+        let (retry_config, mut stream_retry_metadata, mut retry_started_at, mut last_failure) =
             durable_retry::restore(
                 &format!("{}/{}", context.turn_id, iteration),
                 &self.provider_retry_config,
@@ -883,46 +887,41 @@ impl ReasonAtom {
             pending_delta,
             mut tripped,
         ) = 'stream_attempt: loop {
-            let stream_result = if let Some(remaining) =
-                remaining_retry_time(&retry_config, retry_started_at)
-            {
-                match everruns_contracts::rt::timeout(
-                    remaining,
-                    chat_driver.chat_completion_stream(
-                        &crate::engine::ProviderEndpoint::default(),
-                        llm_messages_for_call.clone(),
-                        &llm_config,
-                    ),
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_) => {
-                        compaction_lifecycle.fail_if(provider_managed).await;
-                        let error = AgentLoopError::llm_kind(
-                            crate::engine::error::LlmErrorKind::Unavailable,
-                            format!(
-                                "provider retry time budget exhausted after {} retries over {:.1}s; the turn is safe to resume",
-                                stream_retry_metadata.attempts,
-                                retry_config.max_retry_elapsed.as_secs_f64()
-                            ),
-                        )
-                        .with_retry_metadata(&stream_retry_metadata);
-                        failed_generation
-                            .emit(&error.to_string(), None, &stream_retry_metadata)
-                            .await;
-                        return Err(error);
-                    }
-                }
-            } else {
-                chat_driver
-                    .chat_completion_stream(
-                        &crate::engine::ProviderEndpoint::default(),
-                        llm_messages_for_call.clone(),
-                        &llm_config,
+            let stream_result =
+                if let Some(remaining) = remaining_retry_time(&retry_config, retry_started_at) {
+                    match everruns_contracts::rt::timeout(
+                        remaining,
+                        chat_driver.chat_completion_stream(
+                            &crate::engine::ProviderEndpoint::default(),
+                            llm_messages_for_call.clone(),
+                            &llm_config,
+                        ),
                     )
                     .await
-            };
+                    {
+                        Ok(result) => result,
+                        Err(_) => {
+                            compaction_lifecycle.fail_if(provider_managed).await;
+                            let error = durable_retry::budget_exhausted(
+                                &stream_retry_metadata,
+                                retry_started_at,
+                                last_failure.as_deref(),
+                            );
+                            failed_generation
+                                .emit(&error, None, &stream_retry_metadata)
+                                .await;
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    chat_driver
+                        .chat_completion_stream(
+                            &crate::engine::ProviderEndpoint::default(),
+                            llm_messages_for_call.clone(),
+                            &llm_config,
+                        )
+                        .await
+                };
             let stream_result = stream_result.map_err(|error| {
                 if has_provider_executed_tools {
                     durable_retry::without_retry(error)
@@ -1035,7 +1034,7 @@ impl ReasonAtom {
                         )
                         .with_retry_metadata(&stream_retry_metadata);
                         failed_generation
-                            .emit(&error.to_string(), None, &stream_retry_metadata)
+                            .emit(&error, None, &stream_retry_metadata)
                             .await;
                         return Err(error);
                     };
@@ -1050,6 +1049,7 @@ impl ReasonAtom {
                         "ReasonAtom: transient provider failure before stream, retrying"
                     );
                     stream_retry_metadata.record_retry(wait_duration, None);
+                    last_failure = everruns_contracts::retry_failure::retained(&e);
                     everruns_contracts::rt::sleep(wait_duration).await;
                     continue 'stream_attempt;
                 }
@@ -1208,7 +1208,7 @@ impl ReasonAtom {
                             continue;
                         }
                         // Track time-to-first-token on first non-empty delta
-                        if time_to_first_token_ms.is_none() {
+                        if time_to_first_token_ms.is_none() && !llm_config.prefer_non_streaming {
                             let ttft = llm_start.elapsed().as_millis() as u64;
                             time_to_first_token_ms = Some(ttft);
                             tracing::info!(
@@ -1218,7 +1218,9 @@ impl ReasonAtom {
                             );
                         }
                         text.push_str(&delta);
-                        pending_delta.push_str(&delta);
+                        if output_streaming {
+                            pending_delta.push_str(&delta);
+                        }
 
                         // Run output guardrails on the new accumulated text.
                         // Cheap by contract — runs in the streaming hot path.
@@ -1244,7 +1246,8 @@ impl ReasonAtom {
                         }
 
                         // Emit batched delta if interval elapsed
-                        if !buffer_output_deltas
+                        if output_streaming
+                            && !buffer_output_deltas
                             && batch_due(last_delta_emit, DELTA_BATCH_INTERVAL_MS)
                             && !pending_delta.is_empty()
                         {
@@ -1292,6 +1295,9 @@ impl ReasonAtom {
                             termination = StreamTermination::GuardrailBlocked(t);
                             break;
                         }
+                        if !output_streaming {
+                            pending_thinking_delta.clear();
+                        }
                         tracing::debug!(
                             session_id = %session_id,
                             delta_len = delta.len(),
@@ -1300,7 +1306,8 @@ impl ReasonAtom {
                         );
 
                         // Emit batched thinking delta if interval elapsed
-                        if batch_due(last_thinking_delta_emit, DELTA_BATCH_INTERVAL_MS)
+                        if output_streaming
+                            && batch_due(last_thinking_delta_emit, DELTA_BATCH_INTERVAL_MS)
                             && !pending_thinking_delta.is_empty()
                         {
                             if let Err(e) = self
@@ -1426,7 +1433,8 @@ impl ReasonAtom {
                         // Emit any remaining pending delta before completing,
                         // unless a post-generation guardrail must first inspect
                         // the finalized assistant text.
-                        if !buffer_output_deltas
+                        if output_streaming
+                            && !buffer_output_deltas
                             && !pending_delta.is_empty()
                             && let Err(e) = self
                                 .event_emitter
@@ -1451,7 +1459,8 @@ impl ReasonAtom {
                         }
 
                         // Emit any remaining pending thinking delta before completing
-                        if !pending_thinking_delta.is_empty()
+                        if output_streaming
+                            && !pending_thinking_delta.is_empty()
                             && let Err(e) = self
                                 .event_emitter
                                 .emit(EventRequest::new(
@@ -1503,7 +1512,8 @@ impl ReasonAtom {
                                 retry_config.max_retries,
                             )
                         {
-                            let error = AgentLoopError::llm_kind(err.kind(), err.to_string());
+                            // Keep status and code for the retained cause.
+                            let error = err.clone().into_agent_error();
                             if text.is_empty() {
                                 return Err(durable_retry::retryable_start(error));
                             }
@@ -1538,7 +1548,9 @@ impl ReasonAtom {
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);
                             reserve_retry_wait(&retry_config, &mut retry_started_at, proposed)
                         });
-                        let has_partial_output = compaction_started_at.is_none()
+                        let has_partial_output = err.kind()
+                            != crate::engine::error::LlmErrorKind::Refusal
+                            && compaction_started_at.is_none()
                             && (!tool_calls.is_empty()
                                 || !text.is_empty() && !matches!(retry_wait, Some(Some(_))));
 
@@ -1586,22 +1598,20 @@ impl ReasonAtom {
                                 "ReasonAtom: transient stream error before output, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
+                            last_failure = everruns_contracts::retry_failure::retained_stream(&err);
                             everruns_contracts::rt::sleep(wait_duration).await;
                             stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;
                         }
 
+                        let error = err.into_agent_error();
                         failed_generation
-                            .emit(
-                                &err.to_string(),
-                                time_to_first_token_ms,
-                                &stream_retry_metadata,
-                            )
+                            .emit(&error, time_to_first_token_ms, &stream_retry_metadata)
                             .await;
                         if compaction_started_at.is_some() {
                             compaction_lifecycle.fail().await;
                         }
-                        return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
+                        return Err(error);
                     }
                     // `LlmStreamEvent` is `#[non_exhaustive]`: ignore kinds this build does
                     // not know so the turn keeps streaming (unreachable in-workspace).
@@ -1760,7 +1770,8 @@ impl ReasonAtom {
 
         // Release buffered text only after post-generation guardrails allow it.
         // If they block, the replacement path below emits only sanitized text.
-        if buffer_output_deltas
+        if output_streaming
+            && buffer_output_deltas
             && tripped.is_none()
             && !pending_delta.is_empty()
             && let Err(e) = self
@@ -1879,7 +1890,6 @@ impl ReasonAtom {
             meta,
             !finalized_tool_calls.is_empty(),
         );
-        let served = meta.and_then(|m| m.response_model.clone());
         let truncation = truncation_gate.decide(&outcome);
         let mut generation_data = outcome
             .apply(LlmGenerationData::success_with_retry(
@@ -1896,7 +1906,7 @@ impl ReasonAtom {
                 response_id.clone(),
                 generation_outcome::retry_info(meta),
             ))
-            .with_response_model(served)
+            .with_response_model(meta.and_then(|m| m.response_model.clone()))
             .with_provider_id(Some(model_with_provider.provider.to_string()))
             .with_truncation_gate(truncation.label())
             .with_tool_changes(tool_changes.record.clone());
@@ -1904,11 +1914,12 @@ impl ReasonAtom {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }
 
-        if let Some(request_options) =
-            build_request_options(&llm_config, &model_with_provider.provider_type.to_string())
-        {
-            generation_data = generation_data.with_request_options(request_options);
-        }
+        generation_data = observability::with_completed_request_options(
+            generation_data,
+            &llm_config,
+            model_with_provider.provider_type.as_str(),
+            meta,
+        );
 
         if let Err(e) = self
             .event_emitter
@@ -1951,6 +1962,7 @@ impl ReasonAtom {
         );
         truncation.stamp(&mut metadata);
         tool_changes.stamp(&mut metadata);
+        context_updates.stamp(&mut metadata);
 
         // 18. Store and emit output.message.completed event with metadata and usage.
         // Apply capability-owned response filters before persisting/returning
@@ -2139,91 +2151,6 @@ impl ReasonAtom {
         );
 
         Ok(result)
-    }
-
-    /// Resolve image_file references to actual image data
-    ///
-    /// This method extracts all image_file IDs from the messages and resolves
-    /// them to base64-encoded image data using the configured ImageResolver.
-    ///
-    /// # Returns
-    ///
-    /// A HashMap mapping image IDs to ResolvedImage data. If no ImageResolver
-    /// is configured, or if resolution fails for some images, those images
-    /// will simply be missing from the map (and converted to placeholder text).
-    async fn resolve_images(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedImage> {
-        let mut resolved = HashMap::new();
-
-        // Check if we have an image resolver
-        let resolver = match &self.image_resolver {
-            Some(r) => r,
-            None => return resolved,
-        };
-
-        // Collect all unique image_file IDs from all messages
-        let image_ids: Vec<Uuid> = messages
-            .iter()
-            .flat_map(crate::engine::llm_conversions::extract_image_file_ids)
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        if image_ids.is_empty() {
-            return resolved;
-        }
-
-        tracing::debug!(
-            image_count = image_ids.len(),
-            "ReasonAtom: resolving image_file references"
-        );
-
-        // One batch: a turn can reference many screenshots, and a remote
-        // worker would otherwise pay a round trip per image.
-        match resolver.resolve_images(&image_ids).await {
-            Ok(images) => {
-                for image_id in &image_ids {
-                    if !images.contains_key(image_id) {
-                        tracing::warn!(
-                            image_id = %image_id,
-                            "ReasonAtom: image not found during resolution"
-                        );
-                    }
-                }
-                resolved = images;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "ReasonAtom: failed to resolve images"
-                );
-            }
-        }
-
-        tracing::debug!(
-            resolved_count = resolved.len(),
-            "ReasonAtom: image resolution complete"
-        );
-
-        resolved
-    }
-
-    async fn resolve_files(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedFile> {
-        let Some(resolver) = &self.file_resolver else {
-            return HashMap::new();
-        };
-
-        let file_ids: Vec<Uuid> = messages
-            .iter()
-            .flat_map(crate::engine::llm_conversions::extract_file_ids)
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        if file_ids.is_empty() {
-            return HashMap::new();
-        }
-
-        file_resolution::resolve_files_one_by_one(resolver.as_ref(), file_ids).await
     }
 }
 

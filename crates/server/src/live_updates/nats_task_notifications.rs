@@ -21,12 +21,16 @@ use crate::live_updates::task_notifications::{TaskNotificationPayload, WorkerSub
 /// NATS subject prefix for task availability notifications
 const NATS_TASK_SUBJECT_PREFIX: &str = "task.available";
 
-fn activity_type_from_message(subject: &str, payload: &[u8], prefix: &str) -> String {
-    std::str::from_utf8(payload)
+/// The wake-up a message carries: its body (an activity type, optionally
+/// naming one worker), or the subject's activity type for an empty body.
+fn payload_from_message(subject: &str, payload: &[u8], prefix: &str) -> TaskNotificationPayload {
+    match std::str::from_utf8(payload)
         .ok()
-        .filter(|activity_type| !activity_type.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| subject.strip_prefix(prefix).unwrap_or(subject).to_string())
+        .filter(|raw| !raw.is_empty())
+    {
+        Some(raw) => TaskNotificationPayload::parse(raw),
+        None => TaskNotificationPayload::parse(subject.strip_prefix(prefix).unwrap_or(subject)),
+    }
 }
 
 /// NATS-backed task notification broadcaster.
@@ -114,6 +118,13 @@ impl NatsTaskNotificationBroadcaster {
 
     /// Publish a task notification to NATS (called when a task is enqueued)
     pub async fn notify_task_available(&self, activity_type: &str) {
+        self.notify_task_available_to(activity_type, None).await;
+    }
+
+    /// Publish a wake-up for `activity_type`, for one worker's subscriptions
+    /// only when `target_worker` names one. The subject stays the activity
+    /// type's; the body carries the target.
+    pub async fn notify_task_available_to(&self, activity_type: &str, target_worker: Option<&str>) {
         // Sanitize activity_type: NATS subjects cannot contain spaces, *, >, or .
         let sanitized: String = activity_type
             .chars()
@@ -128,7 +139,12 @@ impl NatsTaskNotificationBroadcaster {
         let subject = format!("{NATS_TASK_SUBJECT_PREFIX}.{sanitized}");
         if let Err(e) = self
             .nats_client
-            .publish(subject, activity_type.as_bytes().to_vec().into())
+            .publish(
+                subject,
+                TaskNotificationPayload::encode(activity_type, target_worker)
+                    .into_bytes()
+                    .into(),
+            )
             .await
         {
             warn!(
@@ -183,15 +199,14 @@ impl NatsTaskNotificationBroadcaster {
                     msg = subscription.next() => {
                         match msg {
                             Some(msg) => {
-                                let activity_type =
-                                    activity_type_from_message(&msg.subject, &msg.payload, &prefix);
+                                let payload =
+                                    payload_from_message(&msg.subject, &msg.payload, &prefix);
 
-                                debug!(activity_type = %activity_type, "NATS task notification received");
-
-                                let payload = TaskNotificationPayload {
-                                    activity_type,
-                                    pending_count: 0,
-                                };
+                                debug!(
+                                    activity_type = %payload.activity_type,
+                                    target_worker = ?payload.target_worker,
+                                    "NATS task notification received"
+                                );
                                 let _ = sender.send(payload);
                             }
                             None => {
@@ -219,24 +234,36 @@ impl Drop for NatsTaskNotificationBroadcaster {
 
 #[cfg(test)]
 mod tests {
-    use super::activity_type_from_message;
+    use super::payload_from_message;
 
     #[test]
     fn uses_payload_activity_type_when_available() {
-        let activity_type = activity_type_from_message(
+        let payload = payload_from_message(
             "task.available.email_send_batch",
             b"email.send batch",
             "task.available.",
         );
 
-        assert_eq!(activity_type, "email.send batch");
+        assert_eq!(payload.activity_type, "email.send batch");
+        assert_eq!(payload.target_worker, None);
     }
 
     #[test]
     fn falls_back_to_subject_suffix_when_payload_invalid() {
-        let activity_type =
-            activity_type_from_message("task.available.foo", &[0xFF], "task.available.");
+        let payload = payload_from_message("task.available.foo", &[0xFF], "task.available.");
 
-        assert_eq!(activity_type, "foo");
+        assert_eq!(payload.activity_type, "foo");
+    }
+
+    #[test]
+    fn a_body_naming_a_worker_targets_it() {
+        let payload = payload_from_message(
+            "task.available.session_actor",
+            b"session_actor@worker-1",
+            "task.available.",
+        );
+
+        assert_eq!(payload.activity_type, "session_actor");
+        assert_eq!(payload.target_worker.as_deref(), Some("worker-1"));
     }
 }

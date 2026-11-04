@@ -3,8 +3,8 @@
 // Create, edit, key, header and archive dialogs for the org MCP catalog
 // (Settings > Organization > MCP catalog).
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { useEffect, useState } from "react";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";

@@ -1,4 +1,7 @@
 import { UK_COUNT_FORMS } from "./count-messages";
+import { countLocalizations } from "./count-localizations";
+import { getSupportedLocale } from "./locale-registry";
+import { uiMessagesByLocale } from "./ui-messages";
 /**
  * Formatting utilities for displaying numbers, dates, and durations.
  * Centralized to avoid duplication across components.
@@ -18,6 +21,8 @@ export function pluralize(count: number, singular: string, plural?: string, loca
     const form = new Intl.PluralRules("uk").select(count);
     return UK_COUNT_FORMS[singular][form === "one" ? 0 : form === "few" ? 1 : 2];
   }
+  const forms = countLocalizations[getSupportedLocale(locale)]?.[singular];
+  if (forms) return forms[new Intl.PluralRules(locale).select(count) === "one" ? 0 : 1];
   if (count === 1) return singular;
   return plural ?? `${singular}s`;
 }
@@ -84,8 +89,11 @@ export function formatRelativeTime(dateString: string, locale?: string): string 
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (locale?.toLowerCase().split("-")[0] === "uk") {
-    if (diffSecs < 60) return "щойно";
+  if (locale && getSupportedLocale(locale) !== "en") {
+    if (diffSecs < 60)
+      return getSupportedLocale(locale) === "uk"
+        ? "щойно"
+        : (uiMessagesByLocale[getSupportedLocale(locale)]?.["just now"] ?? "just now");
     const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
     if (diffMins < 60) return format.format(-diffMins, "minute");
     if (diffHours < 24) return format.format(-diffHours, "hour");
@@ -118,7 +126,11 @@ export function formatShortDate(dateString: string, locale?: string): string {
  * Format a Date as relative distance from now (e.g., "5 minutes ago", "in 2 hours").
  * Handles both past and future dates when addSuffix is true.
  */
-export function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
+export function formatDistanceToNow(
+  date: Date,
+  options?: { addSuffix?: boolean },
+  locale?: string,
+): string {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const seconds = Math.floor(Math.abs(diff) / 1000);
@@ -126,6 +138,22 @@ export function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean 
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
+  if (locale) {
+    const [value, unit] =
+      days > 0
+        ? ([days, "day"] as const)
+        : hours > 0
+          ? ([hours, "hour"] as const)
+          : minutes > 0
+            ? ([minutes, "minute"] as const)
+            : ([seconds, "second"] as const);
+    return options?.addSuffix
+      ? new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(
+          diff < 0 ? value : -value,
+          unit,
+        )
+      : new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "long" }).format(value);
+  }
   let result = "";
   if (days > 0) {
     result = `${days} day${days > 1 ? "s" : ""}`;

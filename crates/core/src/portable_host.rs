@@ -73,6 +73,8 @@ mod script_run;
 #[cfg(feature = "actor-runtime")]
 #[path = "host/session_actor/mod.rs"]
 pub mod session_actor;
+#[path = "host/turn_completion_check.rs"]
+mod turn_completion_check;
 #[path = "host/turn_loop.rs"]
 mod turn_loop;
 #[path = "host/turn_resume.rs"]
@@ -145,7 +147,11 @@ pub use turn_backend::{
     InProcessBackend, TurnBackend, TurnBackendFactory, TurnInput, TurnRequest, TurnScope,
     TurnTicket,
 };
-pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, turn_entry_plan};
+pub use turn_completion_check::{COMPLETION_REVIEW_PURPOSE, REVIEW_TIMEOUT};
+pub use turn_loop::{
+    PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, handed_off, is_handed_off,
+    turn_entry_plan,
+};
 pub use turn_resume::{
     InterruptedToolCalls, OpenTurn, TurnLogFold, WaitsOnPerson, WaitsOnPersonFn,
     interrupted_tool_calls, resume_entry_plan, resume_open_turn, resume_plan_from_log,

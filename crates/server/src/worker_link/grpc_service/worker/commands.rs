@@ -399,8 +399,8 @@ impl WorkerServiceImpl {
 /// shared gRPC test file does not accumulate transport plumbing.
 #[cfg(test)]
 pub(crate) mod test_support {
+    use crate::worker_link::grpc_service::tests::trusted_request;
     use crate::worker_link::grpc_service::*;
-    use tonic::Request;
 
     /// Run one registered command over the gRPC command transport and return its
     /// JSON result, failing the test on a domain error rather than swallowing it.
@@ -410,7 +410,7 @@ pub(crate) mod test_support {
         params: serde_json::Value,
     ) -> serde_json::Value {
         let response = service
-            .execute_command(Request::new(ExecuteCommandRequest {
+            .execute_command(trusted_request(ExecuteCommandRequest {
                 runtime_view: false,
                 input_message_id: None,
                 platform_session_id: None,

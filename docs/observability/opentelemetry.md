@@ -7,6 +7,10 @@ sidebar:
 
 Everruns turns every agent run into an OpenTelemetry trace and exports it over OTLP. Spans carry two attribute vocabularies at once, the [OpenTelemetry Gen-AI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai/tree/main/docs/gen-ai) and the [OpenInference conventions](https://arize-ai.github.io/openinference/spec/semantic_conventions.html), so one endpoint feeds general-purpose backends such as Grafana Tempo, Jaeger, and Datadog as well as LLM-native ones such as Arize Phoenix and Langfuse.
 
+For organization and agent setup in the UI, use
+[Customer tracing destinations](/observability/destinations/). The environment
+configuration below controls the deployment's separate platform exporter.
+
 ## What You Get
 
 - **A trace per turn**: an `invoke_agent` root span named after your agent, with model calls, tool runs, and reasoning phases nested underneath

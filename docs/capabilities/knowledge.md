@@ -78,6 +78,12 @@ Uploads and downloads stream in bounded segments. Content uses the configured S3
 
 Organization search accounts reference encrypted, write-only organization service credentials. A revoked or invalid selected credential fails closed; it never falls back to the deployment account. Embedding provider credentials are configured separately in the model catalog.
 
+Embedding usage preserves the serving provider account for background indexing
+and query-time calls, so host-managed usage stays distinct from your own keys.
+Deployment-owned index backends can also record the resource quantities reported
+by the search provider. Your hosting service controls the prices and credit
+policy; self-hosted Knowledge does not require a billing service.
+
 ## Current bounds
 
 File catalogs paginate at up to 500 rows; pass `tree=true` to list one folder at a time (its files plus one entry per subfolder). Agent directory listings cap at 500 children, file reads at 1 MiB, extraction at 8 MiB, and exact grep at 5 MiB of scanned content, 5,000 candidate files and a 512 KiB per-file ceiling. Streamed originals have a 1 TiB per-file transfer ceiling; this is a safety limit, not a tested capacity claim. Git fetching streams shallow snapshot packs directly into the object store, with the existing 512 MiB pack limit. A synthetic million-file catalog and bounded streamed-original fixture qualify catalog/transfer behavior; these do not establish end-to-end terabyte indexing throughput. Source refresh is explicit. Retained versions currently have no automatic expiry; monitor content storage and keep it with database backups. Additional source adapters and document extractors can use the same collection boundary.

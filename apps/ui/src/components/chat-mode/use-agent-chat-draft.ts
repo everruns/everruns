@@ -52,6 +52,13 @@ export function useAgentChatDraft({
   const current = useRef({ agentId, updatedAt, draft, writable, blocked: savedBlocked, beginEdit });
   const version = useRef({ signature: "", revision: "" });
   const optimistic = useRef<PageDraftSnapshot<AgentDraftPatch> | null>(null);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useLayoutEffect(() => {
     current.current = { agentId, updatedAt, draft, writable, blocked: savedBlocked, beginEdit };
     optimistic.current = null;
@@ -68,6 +75,7 @@ export function useAgentChatDraft({
         starters: state.draft.starters,
         initial_files: state.draft.files,
         network_access: state.draft.networkAccess ?? {},
+        localizations: state.draft.localizations ?? {},
       };
       const signature = JSON.stringify([
         state.agentId,
@@ -92,7 +100,7 @@ export function useAgentChatDraft({
       };
     }
     function bound(token: string) {
-      if (token !== binding || current.current.agentId !== agentId)
+      if (!mounted.current || token !== binding || current.current.agentId !== agentId)
         throw new Error(
           "The Agent page has changed. Ask the user to send a message from the current page.",
         );
@@ -123,20 +131,24 @@ export function useAgentChatDraft({
       // Reserve the new revision before scheduling React updates. A duplicate or
       // second patch in the same batch cannot reuse the preceding revision.
       optimistic.current = next;
-      const { capabilities, starters, initial_files, network_access, ...fields } = changes;
+      const { capabilities, starters, initial_files, network_access, localizations, ...fields } =
+        changes;
       for (const [key, value] of Object.entries(fields))
         state.draft.setField(key as keyof AgentDraftFields, value);
       if (capabilities !== undefined) state.draft.setCapabilities(capabilities);
       if (starters !== undefined) state.draft.setStarters(starters);
       if (initial_files !== undefined) state.draft.setFiles(initial_files);
       if (network_access !== undefined) state.draft.setNetworkAccess(network_access);
+      if (localizations !== undefined) state.draft.setLocalizations(localizations);
       state.beginEdit();
       return structuredClone(next);
     }
     return {
       binding,
       describe: () => {
-        const { binding, revision, dirty, writable } = snapshot();
+        if (!mounted.current)
+          return { binding, revision: version.current.revision, dirty: false, writable: false };
+        const { revision, dirty, writable } = snapshot();
         return { binding, revision, dirty, writable };
       },
       read: bound,

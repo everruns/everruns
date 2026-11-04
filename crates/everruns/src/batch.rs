@@ -1,7 +1,8 @@
 //! Stability: alpha — explicit provider-native offline completions.
 //!
 //! Build a [`Batch`] with one provider and a stable application tenant/account
-//! scope. Submit independent [`Completion`] values made with bare model IDs,
+//! scope. Submit message lists with [`Batch::submit_requests`] or independent
+//! [`Completion`] values made with bare model IDs,
 //! persist the returned [`BatchTicket`], then reconstruct a client to poll,
 //! collect or cancel it. No Engine, worker, streaming, or tool execution is involved.
 //!
@@ -60,7 +61,8 @@ impl std::fmt::Debug for BatchTicket {
 /// One provider/account's batch client and submission builder.
 ///
 /// `scope` is a trusted application tenant/account identifier, not an API key.
-/// Requests are sent only by [`submit`](Self::submit). Dropping the client or
+/// Requests are sent only by [`submit`](Self::submit) or
+/// [`submit_requests`](Self::submit_requests). Dropping the client or
 /// ticket never cancels a provider job. There are no background tasks or retries.
 pub struct Batch {
     provider: Provider,
@@ -146,11 +148,51 @@ impl Batch {
     /// retrying creation can incur duplicate work and charges.
     pub async fn submit(mut self) -> Result<BatchTicket, BatchError> {
         let requests = std::mem::take(&mut self.requests);
+        self.submit_batch(requests).await
+    }
+
+    /// Submit an explicit list of requests using the shared provider-message
+    /// type ([`crate::llm::Message`]), the same contract core's conversion helpers return.
+    /// Each request owns its messages and [`crate::LlmCallConfig`]; the client
+    /// supplies the provider, credentials and tenant/account scope.
+    ///
+    /// Reuses the builder's validation, submission and ticket path. The client
+    /// remains available to poll, collect or cancel. Buffered builder requests
+    /// cannot be mixed with this method: call [`Self::submit`] for those.
+    /// Uncertain submissions must be reconciled before another creation attempt.
+    pub async fn submit_requests(
+        &self,
+        requests: Vec<BatchRequest>,
+    ) -> Result<BatchTicket, BatchError> {
+        if !self.requests.is_empty() {
+            return Err(BatchError::InvalidRequest(
+                "submit_requests cannot be combined with buffered builder requests",
+            ));
+        }
+        self.submit_batch(requests).await
+    }
+
+    async fn submit_batch(&self, requests: Vec<BatchRequest>) -> Result<BatchTicket, BatchError> {
         let driver = self.driver()?;
         if requests.is_empty() {
             return Err(BatchError::InvalidRequest("batch has no requests"));
         }
-        let request_ids = requests.iter().map(|r| r.id.clone()).collect();
+        if requests.len() > MAX_REQUESTS {
+            return Err(BatchError::InvalidRequest("too many batch requests"));
+        }
+        let mut seen = HashSet::with_capacity(requests.len());
+        let mut request_ids = Vec::with_capacity(requests.len());
+        for request in &requests {
+            if !valid_id(&request.id) || !seen.insert(&request.id) {
+                return Err(BatchError::InvalidRequest(
+                    "invalid or duplicate request ID",
+                ));
+            }
+            if request.messages.is_empty() {
+                return Err(BatchError::InvalidRequest("batch request has no messages"));
+            }
+            request_ids.push(request.id.clone());
+        }
         let job_id = driver
             .submit(
                 self.provider.endpoint(),
@@ -261,9 +303,10 @@ impl Batch {
             return Err(BatchError::NotReady);
         }
         let results = driver
-            .collect(
+            .collect_for_requests(
                 self.provider.endpoint(),
                 &ticket.job_id,
+                &ticket.request_ids,
                 self.timeout,
                 self.max_response_bytes,
             )

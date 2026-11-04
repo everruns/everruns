@@ -1,0 +1,13 @@
+.git
+.local
+work
+target
+**/node_modules
+**/.next
+**/.astro
+**/.git
+.env*
+**/*.log
+
+**/.env*
+**/.local

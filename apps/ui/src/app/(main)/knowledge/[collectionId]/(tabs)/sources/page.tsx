@@ -3,7 +3,7 @@
 // Sources tab: where a collection's files come from and where each source is
 // mounted in its tree. "Refresh sources" in the page header syncs them all.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { use, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageMain } from "@/components/layout";
@@ -33,6 +33,7 @@ import {
   useRefreshKnowledge,
 } from "@/components/knowledge/use-knowledge";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useKnowledgeSourceRows } from "@/components/knowledge/use-knowledge-page-context";
 import { formatRelativeTime } from "@/lib/formatting";
 import type { KnowledgeSource } from "@/lib/api/knowledge";
 
@@ -56,6 +57,8 @@ export default function KnowledgeSourcesPage({
 }: {
   params: Promise<{ collectionId: string }>;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { collectionId } = use(params);
   const collection = useKnowledgeCollection(collectionId);
@@ -63,6 +66,10 @@ export default function KnowledgeSourcesPage({
   const refresh = useRefreshKnowledge();
   const [connecting, setConnecting] = useState(false);
   const c = collection.data;
+  useKnowledgeSourceRows(c?.sources ?? [], {
+    loading: collection.isLoading,
+    error: !!collection.error,
+  });
   usePageTitle(ui("Sources"), c?.name ?? ui("Knowledge"));
   const canConnect = canManage && !!c && !isBuiltinCollection(c);
 
@@ -109,7 +116,9 @@ export default function KnowledgeSourcesPage({
                   />
                 </TableCell>
                 <TableCell className="align-top text-muted-foreground">
-                  {source.last_synced_at ? formatRelativeTime(source.last_synced_at) : ui("Never")}
+                  {source.last_synced_at
+                    ? formatRelativeTime(source.last_synced_at, displayLocale)
+                    : ui("Never")}
                 </TableCell>
               </TableRow>
             ))}

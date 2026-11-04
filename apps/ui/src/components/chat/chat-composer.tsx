@@ -9,7 +9,7 @@
  */
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { AtSign, ImagePlus, Loader2, Mic, MicOff, Send, StopCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,7 +42,6 @@ import type {
 } from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 import { useEffect, useRef, useState } from "react";
-import { useLocale } from "@/providers/locale-provider";
 
 export function ChatComposer({
   commands,

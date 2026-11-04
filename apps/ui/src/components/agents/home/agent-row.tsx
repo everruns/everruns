@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import Link from "next/link";
 import { useId } from "react";
 import { CalendarClock, Webhook, Zap } from "lucide-react";
@@ -59,7 +59,10 @@ function channelTone(agent: Agent, channel: AgentChannelSummary): { tone: DotTon
   return { tone: "draft", text: "Draft, not accepting traffic" };
 }
 
-const EMPTY_BUCKETS = Array.from({ length: 24 }, () => ({ runs: 0, failed: 0 }));
+const EMPTY_BUCKETS = Array.from({ length: 24 }, () => ({
+  runs: 0,
+  failed: 0,
+}));
 
 /**
  * One agent: who it is, what it is doing now, how it is reached, and how the
@@ -72,7 +75,10 @@ export function AgentRow({
   attention,
   activityGeneratedAt,
   activityWindowStart,
+  nested = false,
 }: {
+  /** Created as part of the agent listed above it. */
+  nested?: boolean;
   agent: Agent;
   activity: AgentActivity | undefined;
   attention: AttentionItem[];
@@ -91,7 +97,13 @@ export function AgentRow({
   const failed = activity?.failed ?? 0;
 
   return (
-    <li className="grid gap-x-6 gap-y-3 px-4 py-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_9rem] lg:items-center">
+    <li
+      data-nested={nested || undefined}
+      className={cn(
+        "grid gap-x-6 gap-y-3 px-4 py-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_9rem] lg:items-center",
+        nested && "border-l-2 border-l-border pl-10",
+      )}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <AgentAvatar
           avatar={agent.avatar}
@@ -146,7 +158,10 @@ export function AgentRow({
                   key={channel.id}
                   href={agentChannelHref(agent.id, channel.id)}
                   className="inline-flex items-center gap-1.5 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-                  title={ui("{value0} · {value1}", { value0: label, value1: state.text })}
+                  title={ui("{value0} · {value1}", {
+                    value0: label,
+                    value1: state.text,
+                  })}
                   aria-label={ui("{value0} channel, {value1}", {
                     value0: label,
                     value1: state.text,
@@ -167,7 +182,10 @@ export function AgentRow({
                   // Triggers have no id in this summary; order is stable (oldest first).
                   key={`${trigger.trigger_type}-${index}`}
                   className="inline-flex items-center gap-1.5"
-                  title={ui("{value0} trigger · {value1}", { value0: label, value1: text })}
+                  title={ui("{value0} trigger · {value1}", {
+                    value0: label,
+                    value1: text,
+                  })}
                 >
                   <Icon className="size-3.5" aria-hidden="true" />
                   {label}

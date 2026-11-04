@@ -6,6 +6,24 @@ fn definition(kind: &str) -> ToolDefinition {
 }
 
 #[test]
+fn declared_capability_context_round_trips_and_does_not_follow_a_new_owner() {
+    for kind in ["builtin", "client_side"] {
+        let described = definition(kind)
+            .with_hints(ToolHints::default().with_metadata(json!({"extension":"kept"})))
+            .with_capability_context("minerals", Some("Minerals"), "Scandium prospecting");
+        let restored: ToolDefinition =
+            serde_json::from_value(serde_json::to_value(&described).unwrap()).unwrap();
+        assert_eq!(
+            restored.hints().capability_description.as_deref(),
+            Some("Scandium prospecting")
+        );
+        assert_eq!(restored.hints().metadata, Some(json!({"extension":"kept"})));
+        let reassigned = restored.with_capability_attribution("other", Some("Other"));
+        assert!(reassigned.hints().capability_description.is_none());
+    }
+}
+
+#[test]
 fn tool_variants_have_complete_literal_wire_defaults_and_effective_policies() {
     for kind in ["builtin", "client_side"] {
         let tool = definition(kind);

@@ -57,21 +57,9 @@ use tools::{
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[
     everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless_computer_use",
-        label: "Browserless computer use",
-        description: "Let agents operate a remote browser through Browserless computer use.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-    everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless_browser_use",
-        label: "Browserless browser use",
-        description: "Let agents work in a Browserless browser through the page structure, element refs and tabs.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-    everruns_contracts::runtime::FeatureFlagDefinition {
         name: "browserless",
         label: "Browserless",
-        description: "Connect your own Browserless account for browser tools.",
+        description: "Connect your own Browserless account for browser tools. Enables the computer use and browser use capabilities.",
         grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },
 ];
@@ -82,17 +70,18 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
         feature_flag: None,
         factory: || Box::new(BrowserlessCapability),
     },
-    // Computer use ships behind the `browserless_computer_use` feature flag.
+    // Computer use and browser use ship behind the single `browserless` flag;
+    // agents pick the surface per capability (`computer_use` vs `browser_use`).
     // The native OpenAI and Anthropic adapters are in with soft approval only,
     // no hard gate (EVE-1133); promote the flag once the native OpenAI path is
     // verified live.
     IntegrationPlugin {
-        feature_flag: Some("browserless_computer_use"),
+        feature_flag: Some("browserless"),
         factory: || Box::new(computer::BrowserlessComputerUseCapability),
     },
-    // Browser use (the `browser` tool, EVE-1133) ships behind its own flag.
+    // Browser use (the `browser` tool, EVE-1133) shares the `browserless` flag.
     IntegrationPlugin {
-        feature_flag: Some("browserless_browser_use"),
+        feature_flag: Some("browserless"),
         factory: || Box::new(browser_use::BrowserUseCapability),
     },
 ];

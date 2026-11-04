@@ -4,6 +4,7 @@ import { HealthIssueDetails } from "@/components/health/health-issue-details";
 import type { HealthIssue } from "@/lib/api/types";
 const check = jest.fn();
 const snooze = jest.fn();
+const runFixer = jest.fn();
 let mockManaged = false;
 let mockAuthenticated = true;
 jest.mock("@/providers/auth-provider", () => ({
@@ -21,12 +22,12 @@ jest.mock("@/hooks/use-health-issues", () => ({
     isPending: false,
     error: null,
   }),
+  useRunHealthFixer: () => ({ mutateAsync: runFixer, isPending: false }),
 }));
 jest.mock("@/lib/api/agent-channels", () => ({
   getAgentChannel: jest.fn(() =>
     Promise.resolve({ channel_config: { slack_app_provisioned: mockManaged, team_id: "T1" } }),
   ),
-  beginSlackInstall: jest.fn(),
 }));
 const issue: HealthIssue = {
   id: "00000000-0000-7000-8000-000000000001",
@@ -45,6 +46,16 @@ const issue: HealthIssue = {
   notification_id: null,
   snoozed_until: null,
   href: "/settings/health?issue=1",
+  fixers: [],
+};
+const fixer = {
+  kind: "slack.add_permissions",
+  label: "Fix in Slack",
+  steps: ["Everruns adds reactions:write to the Support app in Slack."],
+  effect: "consent",
+  undoable: false,
+  needs_provider_admin: true,
+  unavailable_reason: null,
 };
 function mount(value = issue, canManage = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -71,10 +82,31 @@ test("manual repair explains reinstall and token update; check and snooze remain
   fireEvent.click(screen.getByRole("button", { name: "Remind me tomorrow" }));
   expect(snooze).toHaveBeenCalledWith(issue.id);
 });
-test("managed installation offers Slack consent", async () => {
+test("a declared fixer explains its steps and runs by kind", async () => {
   mockManaged = true;
-  mount();
-  expect(await screen.findByRole("button", { name: "Reconnect Slack" })).toBeInTheDocument();
+  runFixer.mockResolvedValue({
+    status: "consent",
+    consent_url: "https://evil.example/oauth",
+    returns_automatically: true,
+    issue,
+  });
+  mount({ ...issue, fixers: [fixer] });
+  expect(screen.getByText(/adds reactions:write to the Support app/)).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Open integration settings" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Fix in Slack" }));
+  expect(runFixer).toHaveBeenCalledWith({ id: issue.id, kind: "slack.add_permissions" });
+  // A consent URL outside the provider allowlist is never followed.
+  expect(await screen.findByRole("alert")).toHaveTextContent(/unexpected approval page/);
+});
+test("an unavailable fixer says why and keeps the manual steps", async () => {
+  mount({
+    ...issue,
+    fixers: [{ ...fixer, unavailable_reason: "Connect this Slack workspace first." }],
+  });
+  expect(screen.getByText("Fix not available yet")).toBeInTheDocument();
+  expect(screen.getByText("Connect this Slack workspace first.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Fix in Slack" })).toBeDisabled();
+  expect(await screen.findByText(/reinstall the existing app/)).toBeInTheDocument();
 });
 test("viewers see escalation and cannot reconnect", () => {
   mount(issue, false);

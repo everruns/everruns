@@ -6,8 +6,12 @@
 // size; editing turns the same pane into the selector, so add, reorder, and
 // configure happen where the list was.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { Pencil, Shield } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +26,7 @@ import {
   localizedCapabilityName,
 } from "@/lib/capability-localization";
 import { pluralize } from "@/lib/formatting";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 
 interface HarnessCapabilitiesPaneProps {

@@ -42,6 +42,9 @@ pub(crate) fn canonical_ref(kind: EntityKind, reference: &str) -> String {
         |id| {
             let prefix = match kind {
                 EntityKind::OrganizationNetwork | EntityKind::OrganizationDecision => Some("org"),
+                // Organization defaults and agent overrides share a kind, never an identity.
+                EntityKind::TracingPolicy if reference.starts_with("org_") => Some("org"),
+                EntityKind::TracingPolicy => Some("agent"),
                 _ => kind.id_prefix(),
             };
             prefix.map_or_else(

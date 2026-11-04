@@ -360,6 +360,7 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
             })
             .collect();
         Ok(EmbedResponse {
+            response_id: None,
             embeddings,
             usage_tokens: Some(0),
             actual_cost_usd: None,
@@ -370,12 +371,14 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
 fn test_driver_registry() -> Arc<DriverRegistry> {
     let mut registry = DriverRegistry::new();
     registry.register_descriptor(DriverDescriptor {
+        apis: Vec::new(),
         id: DriverId::external("test-embeddings"),
         display_name: "Test Embeddings".into(),
         services: vec![ServiceKind::Embeddings],
         credential_schema: CredentialFormSchema::empty(),
         base_url_env: None,
         oauth: None,
+        recommended_models: None,
         chat: None,
         provider: None,
         embeddings: Some(Arc::new(|_config| {

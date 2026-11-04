@@ -1,0 +1,1922 @@
+{
+  "batches": [
+    {
+      "command": [
+        "/workspace/everruns/evals/platform-capability/target/debug/platform_capability",
+        "--run",
+        "--tag",
+        "surface-comparison",
+        "--runs-report",
+        "/tmp/platform-surfaces-2026-10-23/cli-round-1.jsonl"
+      ],
+      "elapsed_seconds": 132.79108333587646,
+      "executed": 8,
+      "exit_code": 0,
+      "passed": 8,
+      "raw_line_count": 8,
+      "raw_line_start": 1,
+      "report_sha256": "a3bbdca5afa42c29715dbe762692c7327801bbafae1761b840f754a67453e191",
+      "round": 1,
+      "source_report_name": "cli-round-1.jsonl",
+      "surface": "cli"
+    },
+    {
+      "command": [
+        "/workspace/everruns/evals/platform-capability/target/debug/platform_capability",
+        "--run",
+        "--tag",
+        "surface-comparison",
+        "--runs-report",
+        "/tmp/platform-surfaces-2026-10-23/native-eager-round-1.jsonl"
+      ],
+      "elapsed_seconds": 126.57623529434204,
+      "executed": 8,
+      "exit_code": 0,
+      "passed": 8,
+      "raw_line_count": 8,
+      "raw_line_start": 9,
+      "report_sha256": "6007f0f1498c68b288eb7b35305d66615e59f1a72e27813fb160801763309fd2",
+      "round": 1,
+      "source_report_name": "native-eager-round-1.jsonl",
+      "surface": "native-eager"
+    },
+    {
+      "command": [
+        "/workspace/everruns/evals/platform-capability/target/debug/platform_capability",
+        "--run",
+        "--tag",
+        "surface-comparison",
+        "--runs-report",
+        "/tmp/platform-surfaces-2026-10-23/native-eager-round-2.jsonl"
+      ],
+      "elapsed_seconds": 111.62030506134033,
+      "executed": 8,
+      "exit_code": 0,
+      "passed": 8,
+      "raw_line_count": 8,
+      "raw_line_start": 17,
+      "report_sha256": "98c8b2fadda5aae9f2027ecdbea7f42cc17db0f3376edd8d94ea694c70ff61c6",
+      "round": 2,
+      "source_report_name": "native-eager-round-2.jsonl",
+      "surface": "native-eager"
+    },
+    {
+      "command": [
+        "/workspace/everruns/evals/platform-capability/target/debug/platform_capability",
+        "--run",
+        "--tag",
+        "surface-comparison",
+        "--runs-report",
+        "/tmp/platform-surfaces-2026-10-23/cli-round-2.jsonl"
+      ],
+      "elapsed_seconds": 133.4853811264038,
+      "executed": 8,
+      "exit_code": 0,
+      "passed": 8,
+      "raw_line_count": 8,
+      "raw_line_start": 25,
+      "report_sha256": "2bc1cdf062c28079950967061e0038740c3b1af3b8129132819324b07ca1e9d7",
+      "round": 2,
+      "source_report_name": "cli-round-2.jsonl",
+      "surface": "cli"
+    },
+    {
+      "command": [
+        "/workspace/everruns/evals/platform-capability/target/debug/platform_capability",
+        "--run",
+        "--tag",
+        "surface-comparison",
+        "--runs-report",
+        "/tmp/platform-surfaces-2026-10-23/cli-round-3.jsonl"
+      ],
+      "elapsed_seconds": 136.03160548210144,
+      "executed": 8,
+      "exit_code": 0,
+      "passed": 8,
+      "raw_line_count": 8,
+      "raw_line_start": 33,
+      "report_sha256": "2dcb9ae30abf3064be408003b6af01e30d57275c38c962a374d59ce7b013bdfb",
+      "round": 3,
+      "source_report_name": "cli-round-3.jsonl",
+      "surface": "cli"
+    },
+    {
+      "command": [
+        "/workspace/everruns/evals/platform-capability/target/debug/platform_capability",
+        "--run",
+        "--tag",
+        "surface-comparison",
+        "--runs-report",
+        "/tmp/platform-surfaces-2026-10-23/native-eager-round-3.jsonl"
+      ],
+      "elapsed_seconds": 100.96649408340454,
+      "executed": 8,
+      "exit_code": 0,
+      "passed": 8,
+      "raw_line_count": 8,
+      "raw_line_start": 41,
+      "report_sha256": "fb826c44e2e260db3fd5b266762e6456308b6eae70e1480d561fd3746bef1d25",
+      "round": 3,
+      "source_report_name": "native-eager-round-3.jsonl",
+      "surface": "native-eager"
+    }
+  ],
+  "binary_sha256": "295ba6e561189c382b0f78323fbe1eb6a3ab639036b07e2810782107e4da2a5f",
+  "by_surface": {
+    "cli": {
+      "first_tool_bytes": [
+        1205.0
+      ],
+      "first_tool_counts": [
+        1.0
+      ],
+      "max_request_input": 8387.0,
+      "mean_duration_ms": 16747.208333333332,
+      "mean_input_tokens": 21732.375,
+      "mean_model_calls": 6.791666666666667,
+      "passed": 24,
+      "total_input_tokens": 521577.0,
+      "total_operations": 146.0,
+      "trials": 24,
+      "usage": {
+        "cache_read_tokens": 200284,
+        "cost_usd": 0.039793068,
+        "input_tokens": 321293,
+        "output_tokens": 36316,
+        "reasoning_tokens": 17601
+      }
+    },
+    "native-eager": {
+      "first_tool_bytes": [
+        505177.0
+      ],
+      "first_tool_counts": [
+        344.0
+      ],
+      "max_request_input": 129298.0,
+      "mean_duration_ms": 14069.666666666666,
+      "mean_input_tokens": 399468.1666666667,
+      "mean_model_calls": 3.125,
+      "passed": 24,
+      "total_input_tokens": 9587236.0,
+      "total_operations": 74.0,
+      "trials": 24,
+      "usage": {
+        "cache_read_tokens": 5353145,
+        "cost_usd": 0.43816339000000004,
+        "input_tokens": 4234091,
+        "output_tokens": 20240,
+        "reasoning_tokens": 11118
+      }
+    }
+  },
+  "cache_limit": "observational reuse; no cold-cache isolation or causal cache claim",
+  "case_means": [
+    {
+      "case": "surface-batch-update",
+      "mean_duration_ms": 13392.333333333334,
+      "mean_input_tokens": 23206.333333333332,
+      "mean_model_calls": 7.333333333333333,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-confirmed-create",
+      "mean_duration_ms": 20348.333333333332,
+      "mean_input_tokens": 27061.0,
+      "mean_model_calls": 8,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-context-conflict",
+      "mean_duration_ms": 14397,
+      "mean_input_tokens": 17231.0,
+      "mean_model_calls": 6,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-credential-refusal",
+      "mean_duration_ms": 26989,
+      "mean_input_tokens": 30095.333333333332,
+      "mean_model_calls": 8,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "mean_duration_ms": 26945.666666666668,
+      "mean_input_tokens": 36526.0,
+      "mean_model_calls": 9.333333333333334,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-read-agents",
+      "mean_duration_ms": 7960,
+      "mean_input_tokens": 9307.0,
+      "mean_model_calls": 4.666666666666667,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-read-three-families",
+      "mean_duration_ms": 12826,
+      "mean_input_tokens": 13303.333333333334,
+      "mean_model_calls": 5,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-update-description",
+      "mean_duration_ms": 11119.333333333334,
+      "mean_input_tokens": 17129.0,
+      "mean_model_calls": 6,
+      "passed": 3,
+      "surface": "cli",
+      "trials": 3
+    },
+    {
+      "case": "surface-batch-update",
+      "mean_duration_ms": 21692.333333333332,
+      "mean_input_tokens": 641293.6666666666,
+      "mean_model_calls": 5,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    },
+    {
+      "case": "surface-confirmed-create",
+      "mean_duration_ms": 18030.333333333332,
+      "mean_input_tokens": 553793.3333333334,
+      "mean_model_calls": 4.333333333333333,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    },
+    {
+      "case": "surface-context-conflict",
+      "mean_duration_ms": 11332,
+      "mean_input_tokens": 383021.6666666667,
+      "mean_model_calls": 3,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    },
+    {
+      "case": "surface-credential-refusal",
+      "mean_duration_ms": 17574.666666666668,
+      "mean_input_tokens": 340534.6666666667,
+      "mean_model_calls": 2.6666666666666665,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "mean_duration_ms": 12671.333333333334,
+      "mean_input_tokens": 255468.33333333334,
+      "mean_model_calls": 2,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    },
+    {
+      "case": "surface-read-agents",
+      "mean_duration_ms": 7636.333333333333,
+      "mean_input_tokens": 254954.0,
+      "mean_model_calls": 2,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    },
+    {
+      "case": "surface-read-three-families",
+      "mean_duration_ms": 8091.666666666667,
+      "mean_input_tokens": 255306.0,
+      "mean_model_calls": 2,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    },
+    {
+      "case": "surface-update-description",
+      "mean_duration_ms": 15528.666666666666,
+      "mean_input_tokens": 511373.6666666667,
+      "mean_model_calls": 4,
+      "passed": 3,
+      "surface": "native-eager",
+      "trials": 3
+    }
+  ],
+  "cases": [
+    {
+      "case": "surface-read-agents",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 8436,
+      "metrics": {
+        "friction.calls": 4.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 1.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 5.0,
+        "platform.first_input_tokens": 1032.0,
+        "platform.first_request_bytes": 2537.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 5.0,
+        "platform.operations": 1.0,
+        "platform.peak_input_tokens": 2678.0,
+        "platform.peak_request_bytes": 16907.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 9956.0,
+        "platform.usage_calls": 5.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 1461,
+        "cost_usd": 0.000977222,
+        "input_tokens": 8495,
+        "output_tokens": 624,
+        "reasoning_tokens": 252
+      }
+    },
+    {
+      "case": "surface-read-three-families",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 10452,
+      "metrics": {
+        "friction.calls": 4.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 1.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 5.0,
+        "platform.first_input_tokens": 1044.0,
+        "platform.first_request_bytes": 2576.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 5.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 3881.0,
+        "platform.peak_request_bytes": 22683.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 12746.0,
+        "platform.usage_calls": 5.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 3125,
+        "cost_usd": 0.00118975,
+        "input_tokens": 9621,
+        "output_tokens": 1107,
+        "reasoning_tokens": 484
+      }
+    },
+    {
+      "case": "surface-update-description",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 9590,
+      "metrics": {
+        "friction.calls": 5.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 6.0,
+        "platform.first_input_tokens": 1046.0,
+        "platform.first_request_bytes": 2601.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 6.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 4211.0,
+        "platform.peak_request_bytes": 24876.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 16902.0,
+        "platform.usage_calls": 6.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 9510,
+        "cost_usd": 0.00093042,
+        "input_tokens": 7392,
+        "output_tokens": 861,
+        "reasoning_tokens": 334
+      }
+    },
+    {
+      "case": "surface-batch-update",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 12812,
+      "metrics": {
+        "friction.calls": 6.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 3.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 7.0,
+        "platform.first_input_tokens": 1051.0,
+        "platform.first_request_bytes": 2616.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 7.0,
+        "platform.operations": 9.0,
+        "platform.peak_input_tokens": 4773.0,
+        "platform.peak_request_bytes": 28470.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 21389.0,
+        "platform.usage_calls": 7.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 10263,
+        "cost_usd": 0.001371526,
+        "input_tokens": 11126,
+        "output_tokens": 1192,
+        "reasoning_tokens": 453
+      }
+    },
+    {
+      "case": "surface-confirmed-create",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 19743,
+      "metrics": {
+        "friction.calls": 5.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 7.0,
+        "platform.first_input_tokens": 1040.0,
+        "platform.first_request_bytes": 2589.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 7.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 4810.0,
+        "platform.peak_request_bytes": 36135.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 21349.0,
+        "platform.usage_calls": 7.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 7191,
+        "cost_usd": 0.0018165820000000002,
+        "input_tokens": 14158,
+        "output_tokens": 1932,
+        "reasoning_tokens": 1297
+      }
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 27523,
+      "metrics": {
+        "friction.calls": 8.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 4.0,
+        "friction.rejected": 1.0,
+        "platform.actual_cost_calls": 9.0,
+        "platform.first_input_tokens": 1052.0,
+        "platform.first_request_bytes": 2643.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 9.0,
+        "platform.operations": 18.0,
+        "platform.peak_input_tokens": 8387.0,
+        "platform.peak_request_bytes": 46709.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 41406.0,
+        "platform.usage_calls": 9.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 8328,
+        "cost_usd": 0.0038582559999999996,
+        "input_tokens": 33078,
+        "output_tokens": 2669,
+        "reasoning_tokens": 1201
+      }
+    },
+    {
+      "case": "surface-context-conflict",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 19523,
+      "metrics": {
+        "friction.calls": 6.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 1.0,
+        "platform.actual_cost_calls": 7.0,
+        "platform.first_input_tokens": 1057.0,
+        "platform.first_request_bytes": 2645.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 7.0,
+        "platform.operations": 6.0,
+        "platform.peak_input_tokens": 5128.0,
+        "platform.peak_request_bytes": 31337.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 23252.0,
+        "platform.usage_calls": 7.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 10647,
+        "cost_usd": 0.001539794,
+        "input_tokens": 12605,
+        "output_tokens": 1290,
+        "reasoning_tokens": 647
+      }
+    },
+    {
+      "case": "surface-credential-refusal",
+      "comparison_round": 1,
+      "comparison_surface": "cli",
+      "duration_ms": 24603,
+      "metrics": {
+        "friction.calls": 7.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 3.0,
+        "friction.rejected": 1.0,
+        "platform.actual_cost_calls": 8.0,
+        "platform.first_input_tokens": 1051.0,
+        "platform.first_request_bytes": 2615.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 8.0,
+        "platform.operations": 5.0,
+        "platform.peak_input_tokens": 6447.0,
+        "platform.peak_request_bytes": 40471.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 31243.0,
+        "platform.usage_calls": 8.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 11144,
+        "cost_usd": 0.002502788,
+        "input_tokens": 20099,
+        "output_tokens": 2353,
+        "reasoning_tokens": 1231
+      }
+    },
+    {
+      "case": "surface-read-agents",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 9166,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127329.0,
+        "platform.first_request_bytes": 506408.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 1.0,
+        "platform.peak_input_tokens": 127687.0,
+        "platform.peak_request_bytes": 509022.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 255016.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 226,
+        "cost_usd": 0.025551652,
+        "input_tokens": 254790,
+        "output_tokens": 361,
+        "reasoning_tokens": 208
+      }
+    },
+    {
+      "case": "surface-read-three-families",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 10856,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127341.0,
+        "platform.first_request_bytes": 506447.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 127967.0,
+        "platform.peak_request_bytes": 510535.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 255308.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 226,
+        "cost_usd": 0.025608852,
+        "input_tokens": 255082,
+        "output_tokens": 501,
+        "reasoning_tokens": 210
+      }
+    },
+    {
+      "case": "surface-update-description",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 12567,
+      "metrics": {
+        "platform.actual_cost_calls": 3.0,
+        "platform.first_input_tokens": 127343.0,
+        "platform.first_request_bytes": 506472.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 3.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128097.0,
+        "platform.peak_request_bytes": 514290.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 383204.0,
+        "platform.usage_calls": 3.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 254547,
+        "cost_usd": 0.013509594,
+        "input_tokens": 128657,
+        "output_tokens": 674,
+        "reasoning_tokens": 386
+      }
+    },
+    {
+      "case": "surface-batch-update",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 27095,
+      "metrics": {
+        "platform.actual_cost_calls": 6.0,
+        "platform.first_input_tokens": 127348.0,
+        "platform.first_request_bytes": 506487.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 6.0,
+        "platform.operations": 10.0,
+        "platform.peak_input_tokens": 129298.0,
+        "platform.peak_request_bytes": 523267.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 770255.0,
+        "platform.usage_calls": 6.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 255398,
+        "cost_usd": 0.052277896000000004,
+        "input_tokens": 514857,
+        "output_tokens": 1407,
+        "reasoning_tokens": 599
+      }
+    },
+    {
+      "case": "surface-confirmed-create",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 19430,
+      "metrics": {
+        "platform.actual_cost_calls": 4.0,
+        "platform.first_input_tokens": 127337.0,
+        "platform.first_request_bytes": 506460.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 4.0,
+        "platform.operations": 2.0,
+        "platform.peak_input_tokens": 128111.0,
+        "platform.peak_request_bytes": 515596.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 510996.0,
+        "platform.usage_calls": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 127556,
+        "cost_usd": 0.038751112000000004,
+        "input_tokens": 383440,
+        "output_tokens": 760,
+        "reasoning_tokens": 530
+      }
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 12561,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127349.0,
+        "platform.first_request_bytes": 506514.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128105.0,
+        "platform.peak_request_bytes": 512000.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 255454.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 127330,
+        "cost_usd": 0.01327586,
+        "input_tokens": 128124,
+        "output_tokens": 1044,
+        "reasoning_tokens": 478
+      }
+    },
+    {
+      "case": "surface-context-conflict",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 12812,
+      "metrics": {
+        "platform.actual_cost_calls": 3.0,
+        "platform.first_input_tokens": 127354.0,
+        "platform.first_request_bytes": 506516.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 3.0,
+        "platform.operations": 2.0,
+        "platform.peak_input_tokens": 127886.0,
+        "platform.peak_request_bytes": 512511.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 382959.0,
+        "platform.usage_calls": 3.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 127571,
+        "cost_usd": 0.025933742000000003,
+        "input_tokens": 255388,
+        "output_tokens": 699,
+        "reasoning_tokens": 437
+      }
+    },
+    {
+      "case": "surface-credential-refusal",
+      "comparison_round": 1,
+      "comparison_surface": "native-eager",
+      "duration_ms": 21660,
+      "metrics": {
+        "platform.actual_cost_calls": 3.0,
+        "platform.first_input_tokens": 127348.0,
+        "platform.first_request_bytes": 506486.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 3.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128302.0,
+        "platform.peak_request_bytes": 516015.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 383290.0,
+        "platform.usage_calls": 3.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 339,
+        "cost_usd": 0.038572778,
+        "input_tokens": 382951,
+        "output_tokens": 1385,
+        "reasoning_tokens": 912
+      }
+    },
+    {
+      "case": "surface-read-agents",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 4673,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127329.0,
+        "platform.first_request_bytes": 506408.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 1.0,
+        "platform.peak_input_tokens": 127585.0,
+        "platform.peak_request_bytes": 508961.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 254914.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 254434,
+        "cost_usd": 0.000614068,
+        "input_tokens": 480,
+        "output_tokens": 286,
+        "reasoning_tokens": 183
+      }
+    },
+    {
+      "case": "surface-read-three-families",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 4420,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127341.0,
+        "platform.first_request_bytes": 506447.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 127961.0,
+        "platform.peak_request_bytes": 510537.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 255302.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 254434,
+        "cost_usd": 0.000680468,
+        "input_tokens": 868,
+        "output_tokens": 424,
+        "reasoning_tokens": 122
+      }
+    },
+    {
+      "case": "surface-update-description",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 19843,
+      "metrics": {
+        "platform.actual_cost_calls": 4.0,
+        "platform.first_input_tokens": 127343.0,
+        "platform.first_request_bytes": 506472.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 4.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128281.0,
+        "platform.peak_request_bytes": 517783.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 511424.0,
+        "platform.usage_calls": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 127571,
+        "cost_usd": 0.038814641999999996,
+        "input_tokens": 383853,
+        "output_tokens": 871,
+        "reasoning_tokens": 539
+      }
+    },
+    {
+      "case": "surface-batch-update",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 20973,
+      "metrics": {
+        "platform.actual_cost_calls": 5.0,
+        "platform.first_input_tokens": 127348.0,
+        "platform.first_request_bytes": 506487.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 5.0,
+        "platform.operations": 7.0,
+        "platform.peak_input_tokens": 128976.0,
+        "platform.peak_request_bytes": 520374.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 641384.0,
+        "platform.usage_calls": 5.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 382645,
+        "cost_usd": 0.02690239,
+        "input_tokens": 258739,
+        "output_tokens": 1316,
+        "reasoning_tokens": 712
+      }
+    },
+    {
+      "case": "surface-confirmed-create",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 19307,
+      "metrics": {
+        "platform.actual_cost_calls": 5.0,
+        "platform.first_input_tokens": 127337.0,
+        "platform.first_request_bytes": 506460.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 5.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128242.0,
+        "platform.peak_request_bytes": 516639.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 639188.0,
+        "platform.usage_calls": 5.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 382261,
+        "cost_usd": 0.026627022,
+        "input_tokens": 256927,
+        "output_tokens": 849,
+        "reasoning_tokens": 474
+      }
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 15014,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127349.0,
+        "platform.first_request_bytes": 506514.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128182.0,
+        "platform.peak_request_bytes": 512022.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 255531.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 254690,
+        "cost_usd": 0.00082348,
+        "input_tokens": 841,
+        "output_tokens": 1150,
+        "reasoning_tokens": 581
+      }
+    },
+    {
+      "case": "surface-context-conflict",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 9517,
+      "metrics": {
+        "platform.actual_cost_calls": 3.0,
+        "platform.first_input_tokens": 127354.0,
+        "platform.first_request_bytes": 506516.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 3.0,
+        "platform.operations": 2.0,
+        "platform.peak_input_tokens": 127908.0,
+        "platform.peak_request_bytes": 512461.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 382862.0,
+        "platform.usage_calls": 3.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 381907,
+        "cost_usd": 0.000983714,
+        "input_tokens": 955,
+        "output_tokens": 622,
+        "reasoning_tokens": 340
+      }
+    },
+    {
+      "case": "surface-credential-refusal",
+      "comparison_round": 2,
+      "comparison_surface": "native-eager",
+      "duration_ms": 17213,
+      "metrics": {
+        "platform.actual_cost_calls": 3.0,
+        "platform.first_input_tokens": 127348.0,
+        "platform.first_request_bytes": 506486.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 3.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128239.0,
+        "platform.peak_request_bytes": 516012.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 383439.0,
+        "platform.usage_calls": 3.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 127571,
+        "cost_usd": 0.026067741999999998,
+        "input_tokens": 255868,
+        "output_tokens": 1129,
+        "reasoning_tokens": 676
+      }
+    },
+    {
+      "case": "surface-read-agents",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 7677,
+      "metrics": {
+        "friction.calls": 3.0,
+        "friction.help_reads": 2.0,
+        "friction.other": 0.0,
+        "friction.real": 1.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 4.0,
+        "platform.first_input_tokens": 1032.0,
+        "platform.first_request_bytes": 2537.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 4.0,
+        "platform.operations": 1.0,
+        "platform.peak_input_tokens": 2683.0,
+        "platform.peak_request_bytes": 16254.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 7674.0,
+        "platform.usage_calls": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 1348,
+        "cost_usd": 0.000765096,
+        "input_tokens": 6326,
+        "output_tokens": 649,
+        "reasoning_tokens": 344
+      }
+    },
+    {
+      "case": "surface-read-three-families",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 11892,
+      "metrics": {
+        "friction.calls": 3.0,
+        "friction.help_reads": 2.0,
+        "friction.other": 0.0,
+        "friction.real": 1.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 4.0,
+        "platform.first_input_tokens": 1044.0,
+        "platform.first_request_bytes": 2576.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 4.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 3798.0,
+        "platform.peak_request_bytes": 20589.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 10010.0,
+        "platform.usage_calls": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 4932,
+        "cost_usd": 0.000708464,
+        "input_tokens": 5078,
+        "output_tokens": 954,
+        "reasoning_tokens": 430
+      }
+    },
+    {
+      "case": "surface-update-description",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 11673,
+      "metrics": {
+        "friction.calls": 5.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 6.0,
+        "platform.first_input_tokens": 1046.0,
+        "platform.first_request_bytes": 2601.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 6.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 4196.0,
+        "platform.peak_request_bytes": 25364.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 16587.0,
+        "platform.usage_calls": 6.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 6069,
+        "cost_usd": 0.001264738,
+        "input_tokens": 10518,
+        "output_tokens": 1004,
+        "reasoning_tokens": 456
+      }
+    },
+    {
+      "case": "surface-batch-update",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 14688,
+      "metrics": {
+        "friction.calls": 7.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 4.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 8.0,
+        "platform.first_input_tokens": 1051.0,
+        "platform.first_request_bytes": 2616.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 8.0,
+        "platform.operations": 10.0,
+        "platform.peak_input_tokens": 5109.0,
+        "platform.peak_request_bytes": 32661.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 26956.0,
+        "platform.usage_calls": 8.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 12552,
+        "cost_usd": 0.0017377039999999999,
+        "input_tokens": 14404,
+        "output_tokens": 1361,
+        "reasoning_tokens": 509
+      }
+    },
+    {
+      "case": "surface-confirmed-create",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 25077,
+      "metrics": {
+        "friction.calls": 7.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 4.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 9.0,
+        "platform.first_input_tokens": 1040.0,
+        "platform.first_request_bytes": 2589.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 9.0,
+        "platform.operations": 5.0,
+        "platform.peak_input_tokens": 5857.0,
+        "platform.peak_request_bytes": 45522.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 34029.0,
+        "platform.usage_calls": 9.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 12537,
+        "cost_usd": 0.002643074,
+        "input_tokens": 21492,
+        "output_tokens": 2344,
+        "reasoning_tokens": 1398
+      }
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 25444,
+      "metrics": {
+        "friction.calls": 8.0,
+        "friction.help_reads": 4.0,
+        "friction.other": 0.0,
+        "friction.real": 3.0,
+        "friction.rejected": 1.0,
+        "platform.actual_cost_calls": 9.0,
+        "platform.first_input_tokens": 1052.0,
+        "platform.first_request_bytes": 2643.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 9.0,
+        "platform.operations": 18.0,
+        "platform.peak_input_tokens": 5783.0,
+        "platform.peak_request_bytes": 32863.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 33087.0,
+        "platform.usage_calls": 9.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 14984,
+        "cost_usd": 0.002322268,
+        "input_tokens": 18103,
+        "output_tokens": 2410,
+        "reasoning_tokens": 813
+      }
+    },
+    {
+      "case": "surface-context-conflict",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 11831,
+      "metrics": {
+        "friction.calls": 5.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 6.0,
+        "platform.first_input_tokens": 1057.0,
+        "platform.first_request_bytes": 2645.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 6.0,
+        "platform.operations": 4.0,
+        "platform.peak_input_tokens": 4043.0,
+        "platform.peak_request_bytes": 24831.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 15616.0,
+        "platform.usage_calls": 6.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 5429,
+        "cost_usd": 0.0012245580000000002,
+        "input_tokens": 10187,
+        "output_tokens": 975,
+        "reasoning_tokens": 477
+      }
+    },
+    {
+      "case": "surface-credential-refusal",
+      "comparison_round": 2,
+      "comparison_surface": "cli",
+      "duration_ms": 25071,
+      "metrics": {
+        "friction.calls": 6.0,
+        "friction.help_reads": 4.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 7.0,
+        "platform.first_input_tokens": 1051.0,
+        "platform.first_request_bytes": 2615.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 7.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 5308.0,
+        "platform.peak_request_bytes": 32505.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 24912.0,
+        "platform.usage_calls": 7.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 12070,
+        "cost_usd": 0.00176914,
+        "input_tokens": 12842,
+        "output_tokens": 2304,
+        "reasoning_tokens": 1323
+      }
+    },
+    {
+      "case": "surface-read-agents",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 7767,
+      "metrics": {
+        "friction.calls": 4.0,
+        "friction.help_reads": 2.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 5.0,
+        "platform.first_input_tokens": 1032.0,
+        "platform.first_request_bytes": 2537.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 5.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 3003.0,
+        "platform.peak_request_bytes": 18046.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 10291.0,
+        "platform.usage_calls": 5.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 6069,
+        "cost_usd": 0.0005477380000000001,
+        "input_tokens": 4222,
+        "output_tokens": 567,
+        "reasoning_tokens": 227
+      }
+    },
+    {
+      "case": "surface-read-three-families",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 16134,
+      "metrics": {
+        "friction.calls": 5.0,
+        "friction.help_reads": 4.0,
+        "friction.other": 0.0,
+        "friction.real": 1.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 6.0,
+        "platform.first_input_tokens": 1044.0,
+        "platform.first_request_bytes": 2576.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 6.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 4959.0,
+        "platform.peak_request_bytes": 30122.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 17154.0,
+        "platform.usage_calls": 6.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 5188,
+        "cost_usd": 0.001531376,
+        "input_tokens": 11966,
+        "output_tokens": 1622,
+        "reasoning_tokens": 825
+      }
+    },
+    {
+      "case": "surface-update-description",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 12095,
+      "metrics": {
+        "friction.calls": 5.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 6.0,
+        "platform.first_input_tokens": 1046.0,
+        "platform.first_request_bytes": 2601.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 6.0,
+        "platform.operations": 4.0,
+        "platform.peak_input_tokens": 4510.0,
+        "platform.peak_request_bytes": 27912.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 17898.0,
+        "platform.usage_calls": 6.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 7334,
+        "cost_usd": 0.001305468,
+        "input_tokens": 10564,
+        "output_tokens": 1172,
+        "reasoning_tokens": 594
+      }
+    },
+    {
+      "case": "surface-batch-update",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 12677,
+      "metrics": {
+        "friction.calls": 6.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 3.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 7.0,
+        "platform.first_input_tokens": 1051.0,
+        "platform.first_request_bytes": 2616.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 7.0,
+        "platform.operations": 8.0,
+        "platform.peak_input_tokens": 4790.0,
+        "platform.peak_request_bytes": 31365.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 21274.0,
+        "platform.usage_calls": 7.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 10135,
+        "cost_usd": 0.00138257,
+        "input_tokens": 11139,
+        "output_tokens": 1242,
+        "reasoning_tokens": 518
+      }
+    },
+    {
+      "case": "surface-confirmed-create",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 16225,
+      "metrics": {
+        "friction.calls": 6.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 3.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 8.0,
+        "platform.first_input_tokens": 1040.0,
+        "platform.first_request_bytes": 2589.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 8.0,
+        "platform.operations": 4.0,
+        "platform.peak_input_tokens": 4689.0,
+        "platform.peak_request_bytes": 34261.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 25805.0,
+        "platform.usage_calls": 8.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 6280,
+        "cost_usd": 0.00225446,
+        "input_tokens": 19525,
+        "output_tokens": 1447,
+        "reasoning_tokens": 722
+      }
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 27870,
+      "metrics": {
+        "friction.calls": 9.0,
+        "friction.help_reads": 4.0,
+        "friction.other": 0.0,
+        "friction.real": 5.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 10.0,
+        "platform.first_input_tokens": 1052.0,
+        "platform.first_request_bytes": 2643.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 10.0,
+        "platform.operations": 24.0,
+        "platform.peak_input_tokens": 5479.0,
+        "platform.peak_request_bytes": 36655.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 35085.0,
+        "platform.usage_calls": 10.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 14954,
+        "cost_usd": 0.0024920080000000004,
+        "input_tokens": 20131,
+        "output_tokens": 2245,
+        "reasoning_tokens": 723
+      }
+    },
+    {
+      "case": "surface-context-conflict",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 11837,
+      "metrics": {
+        "friction.calls": 4.0,
+        "friction.help_reads": 3.0,
+        "friction.other": 0.0,
+        "friction.real": 1.0,
+        "friction.rejected": 0.0,
+        "platform.actual_cost_calls": 5.0,
+        "platform.first_input_tokens": 1057.0,
+        "platform.first_request_bytes": 2645.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 5.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 4005.0,
+        "platform.peak_request_bytes": 22976.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 12825.0,
+        "platform.usage_calls": 5.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 4661,
+        "cost_usd": 0.001030322,
+        "input_tokens": 8164,
+        "output_tokens": 1023,
+        "reasoning_tokens": 498
+      }
+    },
+    {
+      "case": "surface-credential-refusal",
+      "comparison_round": 3,
+      "comparison_surface": "cli",
+      "duration_ms": 31293,
+      "metrics": {
+        "friction.calls": 8.0,
+        "friction.help_reads": 5.0,
+        "friction.other": 0.0,
+        "friction.real": 2.0,
+        "friction.rejected": 1.0,
+        "platform.actual_cost_calls": 9.0,
+        "platform.first_input_tokens": 1051.0,
+        "platform.first_request_bytes": 2615.0,
+        "platform.first_tool_bytes": 1205.0,
+        "platform.first_tool_count": 1.0,
+        "platform.model_calls": 9.0,
+        "platform.operations": 2.0,
+        "platform.peak_input_tokens": 6078.0,
+        "platform.peak_request_bytes": 43567.0,
+        "platform.peak_tool_bytes": 1205.0,
+        "platform.peak_tool_count": 1.0,
+        "platform.total_input_tokens": 34131.0,
+        "platform.usage_calls": 9.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 14073,
+        "cost_usd": 0.0026277460000000002,
+        "input_tokens": 20058,
+        "output_tokens": 2969,
+        "reasoning_tokens": 1845
+      }
+    },
+    {
+      "case": "surface-read-agents",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 9070,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127329.0,
+        "platform.first_request_bytes": 506408.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 1.0,
+        "platform.peak_input_tokens": 127603.0,
+        "platform.peak_request_bytes": 508996.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 254932.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 226,
+        "cost_usd": 0.025533652,
+        "input_tokens": 254706,
+        "output_tokens": 313,
+        "reasoning_tokens": 176
+      }
+    },
+    {
+      "case": "surface-read-three-families",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 8999,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127341.0,
+        "platform.first_request_bytes": 506447.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 127967.0,
+        "platform.peak_request_bytes": 510527.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 255308.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 254434,
+        "cost_usd": 0.000709468,
+        "input_tokens": 874,
+        "output_tokens": 566,
+        "reasoning_tokens": 213
+      }
+    },
+    {
+      "case": "surface-update-description",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 14176,
+      "metrics": {
+        "platform.actual_cost_calls": 5.0,
+        "platform.first_input_tokens": 127343.0,
+        "platform.first_request_bytes": 506472.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 5.0,
+        "platform.operations": 4.0,
+        "platform.peak_input_tokens": 128418.0,
+        "platform.peak_request_bytes": 518472.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 639493.0,
+        "platform.usage_calls": 5.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 637237,
+        "cost_usd": 0.0016822739999999999,
+        "input_tokens": 2256,
+        "output_tokens": 911,
+        "reasoning_tokens": 538
+      }
+    },
+    {
+      "case": "surface-batch-update",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 17009,
+      "metrics": {
+        "platform.actual_cost_calls": 4.0,
+        "platform.first_input_tokens": 127348.0,
+        "platform.first_request_bytes": 506487.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 4.0,
+        "platform.operations": 6.0,
+        "platform.peak_input_tokens": 128541.0,
+        "platform.peak_request_bytes": 517772.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 512242.0,
+        "platform.usage_calls": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 256452,
+        "cost_usd": 0.026287104,
+        "input_tokens": 255790,
+        "output_tokens": 976,
+        "reasoning_tokens": 440
+      }
+    },
+    {
+      "case": "surface-confirmed-create",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 15354,
+      "metrics": {
+        "platform.actual_cost_calls": 4.0,
+        "platform.first_input_tokens": 127337.0,
+        "platform.first_request_bytes": 506460.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 4.0,
+        "platform.operations": 2.0,
+        "platform.peak_input_tokens": 128291.0,
+        "platform.peak_request_bytes": 517126.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 511196.0,
+        "platform.usage_calls": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 382404,
+        "cost_usd": 0.013826007999999999,
+        "input_tokens": 128792,
+        "output_tokens": 910,
+        "reasoning_tokens": 649
+      }
+    },
+    {
+      "case": "surface-destructive-refusal",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 10439,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127349.0,
+        "platform.first_request_bytes": 506514.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 3.0,
+        "platform.peak_input_tokens": 128071.0,
+        "platform.peak_request_bytes": 512009.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 255420.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 254562,
+        "cost_usd": 0.000789724,
+        "input_tokens": 858,
+        "output_tokens": 974,
+        "reasoning_tokens": 334
+      }
+    },
+    {
+      "case": "surface-context-conflict",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 11667,
+      "metrics": {
+        "platform.actual_cost_calls": 3.0,
+        "platform.first_input_tokens": 127354.0,
+        "platform.first_request_bytes": 506516.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 3.0,
+        "platform.operations": 2.0,
+        "platform.peak_input_tokens": 128254.0,
+        "platform.peak_request_bytes": 515695.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 383244.0,
+        "platform.usage_calls": 3.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 381779,
+        "cost_usd": 0.001121858,
+        "input_tokens": 1465,
+        "output_tokens": 1059,
+        "reasoning_tokens": 759
+      }
+    },
+    {
+      "case": "surface-credential-refusal",
+      "comparison_round": 3,
+      "comparison_surface": "native-eager",
+      "duration_ms": 13851,
+      "metrics": {
+        "platform.actual_cost_calls": 2.0,
+        "platform.first_input_tokens": 127348.0,
+        "platform.first_request_bytes": 506486.0,
+        "platform.first_tool_bytes": 505177.0,
+        "platform.first_tool_count": 344.0,
+        "platform.model_calls": 2.0,
+        "platform.operations": 1.0,
+        "platform.peak_input_tokens": 127527.0,
+        "platform.peak_request_bytes": 508863.0,
+        "platform.peak_tool_bytes": 505177.0,
+        "platform.peak_tool_count": 344.0,
+        "platform.total_input_tokens": 254875.0,
+        "platform.usage_calls": 2.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 127345,
+        "cost_usd": 0.01321829,
+        "input_tokens": 127530,
+        "output_tokens": 1053,
+        "reasoning_tokens": 622
+      }
+    }
+  ],
+  "current_source_commit": "a6b4825af5d98d48babf161368f6c4dc2e2bb4b1",
+  "execution_environment": "Each study serial; independent MCP qualification overlapped part of the comparison. No controlled latency/cache isolation.",
+  "model": "meta/muse-spark-1.3-contributor",
+  "qualification": {
+    "executed": 48,
+    "infrastructure_errors": 0,
+    "passed": 48,
+    "skipped": 0,
+    "trials_per_case_and_surface": 3
+  },
+  "report": {
+    "encoding": "verbatim source JSONL batches concatenated in manifest order",
+    "path": "surfaces-2026-10-23-live.jsonl.gz",
+    "rows": 48,
+    "sha256": "68649778239021182d3abcdae22edd5044980c1c98f9aac9386982af0c9ad2b4"
+  },
+  "schedule": "serial; 3 rounds of 8 matched cases per arm; arm order alternates",
+  "separate_diagnostic": {
+    "excluded_reason": "The old heuristic classified mutation --help followed by a semicolon as execute; fixture audit showed only reads and unchanged state. Corrected scoring uses executor audit. Dataset unchanged; the entire matrix was rerun.",
+    "original_passed": 7,
+    "path": "surfaces-2026-10-23-scorer-diagnostic.jsonl.gz",
+    "prior_provenance": {
+      "batches": [
+        {
+          "command": [
+            "/workspace/everruns/evals/platform-capability/target/debug/platform_capability",
+            "--run",
+            "--tag",
+            "surface-comparison",
+            "--runs-report",
+            "/tmp/platform-surfaces-2026-10-23/cli-round-1.jsonl"
+          ],
+          "elapsed_seconds": 129.9917209148407,
+          "executed": 8,
+          "exit_code": 1,
+          "passed": 7,
+          "report": "/tmp/platform-surfaces-2026-10-23/cli-round-1.jsonl",
+          "report_sha256": "f7be6dc35771fd447785d9d05b2bd9840c92596603ca69cddeba16a02f19ef59",
+          "round": 1,
+          "surface": "cli"
+        }
+      ],
+      "binary_sha256": "a13c4a1b6275effe726e7e04fedb67fd6443ae3e0675e2927d8ae84087dfcea6",
+      "cache_limit": "observational reuse; no cold-cache isolation or causal cache claim",
+      "model": "meta/muse-spark-1.3-contributor",
+      "schedule": "serial; 3 rounds of 8 matched cases per arm; arm order alternates",
+      "sources": {
+        "crates/cli-contract/commands.json": "b0543eaead0cb7ca326cbe64bfe3a4b9d40a43d762e4f3411d732df52fe42b13",
+        "evals/common/everruns_usage.rs": "bc4c08c2b5c28d85cbff969d571c96c100cde5626917b42e0b50f6860681bfd7",
+        "evals/platform-capability/Cargo.lock": "71c481623d91031378884b02792d0308d53b0b409a132df37c0fb89b0ff49832",
+        "evals/platform-capability/Cargo.toml": "b8b509fdbaed70f4c2131a9f7f6f69dc2f2484e4e297c7ea39a9bce5386ab90f",
+        "evals/platform-capability/catalog.json": "e5839e79766cf0d0afdba29915f5d3ad13051c41e754fd134b8ac6f111ab7622",
+        "evals/platform-capability/dataset.jsonl": "ee20c9c02b4ae1b236e96c59224d4dd2edcec37186a034b4afb3d52ff842ffcb",
+        "evals/platform-capability/harness.json": "54d9d926254904df9075e0182263c433cdb4d33e2f9653ee1cd5c02eb7cbcff9",
+        "evals/platform-capability/help.json": "a3c8f4a78a0c0bc8c89746795074e1506a3f66dbafcdcc87441ebb0e4f923412",
+        "evals/platform-capability/src/control_plane.rs": "84d55cd35af0358f3f796f3621759e93d8a90614a940abebf13b3c865f245199",
+        "evals/platform-capability/src/friction.rs": "e9e95fc4465267bbcdcd5001146847bfda156eff0e7e9b094f79ddafa1d11ab3",
+        "evals/platform-capability/src/main.rs": "45d1d40e014cf75a0d1e810eae20cfc4315c39fa43de9efe519a41383175ca03",
+        "evals/platform-capability/src/offline.rs": "bfb873c20d756457b12c4edb3ded4dc2f1e35d66c2d781621b00c692d5aa8c72",
+        "evals/platform-capability/src/scorers.rs": "9d99e342d8a3da91452b98fc11b72108c5dbcb90d434b534eef3d4a829040f58",
+        "evals/platform-capability/src/subject.rs": "e475fad130166abf0bb071395ea21a6d98396214fa456c0a2bb68c59732a2878"
+      },
+      "subject": "in-process control plane; real schemas/parser/Bashkit; synthetic state",
+      "warmup": "separate one-case CLI and native-eager successful smoke runs preceded measurement"
+    },
+    "sha256": "c216122c8adcdd9d4204639aee5a34e97b3fa934f7a035efc9e55d3606a3a305",
+    "trials": 8
+  },
+  "source_commit_note": "Platform comparison source files match the recorded hashes at this commit; executable was built from identical file contents before the commit.",
+  "sources": {
+    "crates/cli-contract/commands.json": "b0543eaead0cb7ca326cbe64bfe3a4b9d40a43d762e4f3411d732df52fe42b13",
+    "evals/common/everruns_usage.rs": "bc4c08c2b5c28d85cbff969d571c96c100cde5626917b42e0b50f6860681bfd7",
+    "evals/platform-capability/Cargo.lock": "71c481623d91031378884b02792d0308d53b0b409a132df37c0fb89b0ff49832",
+    "evals/platform-capability/Cargo.toml": "b8b509fdbaed70f4c2131a9f7f6f69dc2f2484e4e297c7ea39a9bce5386ab90f",
+    "evals/platform-capability/catalog.json": "e5839e79766cf0d0afdba29915f5d3ad13051c41e754fd134b8ac6f111ab7622",
+    "evals/platform-capability/dataset.jsonl": "ee20c9c02b4ae1b236e96c59224d4dd2edcec37186a034b4afb3d52ff842ffcb",
+    "evals/platform-capability/harness.json": "54d9d926254904df9075e0182263c433cdb4d33e2f9653ee1cd5c02eb7cbcff9",
+    "evals/platform-capability/help.json": "a3c8f4a78a0c0bc8c89746795074e1506a3f66dbafcdcc87441ebb0e4f923412",
+    "evals/platform-capability/src/control_plane.rs": "84d55cd35af0358f3f796f3621759e93d8a90614a940abebf13b3c865f245199",
+    "evals/platform-capability/src/friction.rs": "e9e95fc4465267bbcdcd5001146847bfda156eff0e7e9b094f79ddafa1d11ab3",
+    "evals/platform-capability/src/main.rs": "45d1d40e014cf75a0d1e810eae20cfc4315c39fa43de9efe519a41383175ca03",
+    "evals/platform-capability/src/offline.rs": "c0f1326e198b62ab1778250b4e1ed746658c14f6acafeb537c6d3c808f08df8c",
+    "evals/platform-capability/src/scorers.rs": "111583178431bcfe29279acc9ad9e12f539ef6861587231d1cf07775449682a7",
+    "evals/platform-capability/src/subject.rs": "e475fad130166abf0bb071395ea21a6d98396214fa456c0a2bb68c59732a2878"
+  },
+  "subject": "in-process control plane; real schemas/parser/Bashkit; synthetic state",
+  "usage_convention": "everruns-disjoint-v1; uncached input plus separate cache reads",
+  "warmup": "separate one-case CLI and native-eager successful smoke runs preceded measurement"
+}

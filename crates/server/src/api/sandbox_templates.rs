@@ -110,6 +110,7 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub auth: AuthState,
+    pub encryption: Option<Arc<crate::storage::EncryptionService>>,
 }
 
 impl AppState {
@@ -122,14 +123,23 @@ impl AppState {
             db,
             session_service,
             auth,
+            encryption: None,
         }
+    }
+
+    pub fn with_encryption(
+        mut self,
+        encryption: Option<Arc<crate::storage::EncryptionService>>,
+    ) -> Self {
+        self.encryption = encryption;
+        self
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
         Ctx::minimal(
             Caller::from(org),
             self.db.clone(),
-            None,
+            self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
         .with_session_service(self.session_service.clone())
@@ -144,6 +154,12 @@ impl_dispatchable!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .command::<crate::domains::sandbox_templates::builds::commands::StartSandboxTemplateBuild>()
+        .command::<crate::domains::sandbox_templates::builds::commands::ListSandboxTemplateBuilds>()
+        .command::<crate::domains::sandbox_templates::builds::commands::GetSandboxTemplateBuild>()
+        .command::<crate::domains::sandbox_templates::builds::commands::CancelSandboxTemplateBuild>()
+        .command::<crate::domains::sandbox_templates::builds::commands::ApplySandboxTemplateBuild>()
+        .command::<crate::domains::sandbox_templates::builds::commands::DiscardSandboxTemplateBuild>()
         .command::<crate::domains::sandbox_templates::metadata::GetSandboxTemplateMetadata>()
         .command::<crate::domains::sandbox_templates::metadata::UpdateSandboxTemplateMetadata>()
         // Org-wide Sandbox fleet (domains/sandboxes).

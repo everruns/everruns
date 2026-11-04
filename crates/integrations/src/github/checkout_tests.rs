@@ -304,3 +304,109 @@ fn reads_shas_from_the_script_output() {
     assert_eq!(output_value(&stdout, "head_sha"), Some(HEAD));
     assert_eq!(output_value(&stdout, "base_sha"), None);
 }
+
+#[tokio::test]
+async fn without_a_sandbox_it_copies_the_head_into_session_files() {
+    use everruns_core::host::InMemorySessionFileStore;
+    use wiremock::matchers::path_regex;
+
+    let server = github().await;
+    let archive = super::checkout_files::test_archive(&[
+        ("AGENTS.md", b"# rules\n"),
+        ("src/lib.rs", b"pub fn x() {}\n"),
+        ("logo.png", b"\x89PNG\0"),
+    ]);
+    Mock::given(method("GET"))
+        .and(path_regex(format!("^/repos/acme/app/tarball/{HEAD}$")))
+        .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(archive))
+        .mount(&server)
+        .await;
+    let resolver = Arc::new(RecordingResolver {
+        // Files mode never hands the token on, so no installation evidence is needed.
+        unverified: true,
+        ..Default::default()
+    });
+    let store: Arc<dyn everruns_contracts::runtime::session_files::SessionFileSystem> =
+        Arc::new(InMemorySessionFileStore::default());
+    let session = SessionId::new();
+    // A file from an earlier checkout that the new head no longer has.
+    store
+        .write_file(session, "/workspace/app/stale.rs", "old", "text")
+        .await
+        .unwrap();
+    let context = ToolContext::with_file_store(session, store.clone())
+        .with_connection_resolver(resolver.clone());
+
+    let result = tool(&server)
+        .execute_with_context(json!({"repo": "acme/app", "number": 7}), &context)
+        .await;
+    let ToolExecutionResult::Success(value) = result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(value["mode"], "files");
+    assert_eq!(value["head_sha"], HEAD);
+    assert_eq!(value["files_written"], 2);
+    assert_eq!(value["skipped"]["binary"], 1);
+    let agents = store
+        .read_file(session, "/workspace/app/AGENTS.md")
+        .await
+        .unwrap()
+        .expect("AGENTS.md copied");
+    assert_eq!(agents.content.as_deref(), Some("# rules\n"));
+    assert!(
+        store
+            .read_file(session, "/workspace/app/stale.rs")
+            .await
+            .unwrap()
+            .is_none(),
+        "earlier checkout replaced"
+    );
+    assert!(!value.to_string().contains(TOKEN));
+
+    // A narrow refresh replaces only what it names.
+    let result = tool(&server)
+        .execute_with_context(
+            json!({"repo": "acme/app", "number": 7, "paths": ["src"]}),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(value) = result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(value["files_written"], 1);
+    assert!(
+        store
+            .read_file(session, "/workspace/app/AGENTS.md")
+            .await
+            .unwrap()
+            .is_some(),
+        "files outside `paths` stay"
+    );
+}
+
+#[tokio::test]
+async fn files_mode_rejects_bad_paths_before_a_token() {
+    use everruns_core::host::InMemorySessionFileStore;
+    let resolver = Arc::new(RecordingResolver::default());
+    let context = ToolContext::with_file_store(
+        SessionId::new(),
+        Arc::new(InMemorySessionFileStore::default()),
+    )
+    .with_connection_resolver(resolver.clone());
+    for arguments in [
+        json!({"repo": "acme/app", "number": 7, "paths": "src"}),
+        json!({"repo": "acme/app", "number": 7, "paths": ["../etc"]}),
+        json!({"repo": "acme/app", "number": 7, "paths": [""]}),
+        json!({"repo": "acme/app", "number": 7, "max_file_kib": 0}),
+    ] {
+        let result = CheckoutGitHubPullRequestTool::default()
+            .execute_with_context(arguments.clone(), &context)
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(_)),
+            "{arguments}: {result:?}"
+        );
+    }
+    assert!(resolver.requests.lock().unwrap().is_empty());
+}

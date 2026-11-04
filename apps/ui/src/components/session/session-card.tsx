@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useFormattingLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { SessionIcon } from "@/components/icons/facet-icons";
 import { Info, Loader2, Zap, Pin, PinOff, CalendarClock, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
-import { useLocale } from "@/providers/locale-provider";
+
 import type { Session, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import type { SessionExportFormat } from "@/lib/api/sessions";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
@@ -70,10 +74,12 @@ function truncateToLines(text: string, lines: number = 2): string {
  * Styled to match MessageInfoIcon component.
  */
 function SessionInfoIcon({ session }: { session: Session }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
-  const formattedCreatedAt = new Date(session.created_at).toLocaleString();
+  const formattedCreatedAt = new Date(session.created_at).toLocaleString(displayLocale);
   const formattedStartedAt = session.started_at
-    ? new Date(session.started_at).toLocaleString()
+    ? new Date(session.started_at).toLocaleString(displayLocale)
     : null;
   const tagList = joinTags(session.tags);
 
@@ -262,14 +268,17 @@ export function SessionCard({
         {session.last_message_at ? (
           <time
             dateTime={session.last_message_at}
-            title={new Date(session.last_message_at).toLocaleString()}
+            title={new Date(session.last_message_at).toLocaleString(displayLocale)}
           >
             {ui("Last message")} {formatRelativeTime(session.last_message_at, displayLocale)}
           </time>
         ) : (
           <span>{ui("No messages yet")}</span>
         )}
-        <time dateTime={session.created_at} title={new Date(session.created_at).toLocaleString()}>
+        <time
+          dateTime={session.created_at}
+          title={new Date(session.created_at).toLocaleString(displayLocale)}
+        >
           {ui("Created")} {formatRelativeTime(session.created_at, displayLocale)}
         </time>
         {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
@@ -290,7 +299,7 @@ export function SessionCard({
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-destructive">
               {failure.count} {ui("failed")} {failure.count === 1 ? ui("turn") : ui("turns")} ·{" "}
-              {new Date(failure.at).toLocaleString()}
+              {new Date(failure.at).toLocaleString(displayLocale)}
               {failure.count > 1 && " · latest failure"}
             </p>
             <p className="mt-1 line-clamp-2 break-words" title={failure.error ?? undefined}>

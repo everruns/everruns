@@ -44,7 +44,12 @@ test("updates validate and show the diff before applying the same file", async (
     <AgentImportDialog file={file} agents={[agent]} onClose={onClose} onImported={onImported} />,
   );
   await waitFor(() => expect(screen.getByLabelText("Import destination")).toBeEnabled());
-  fireEvent.change(screen.getByLabelText("Import destination"), { target: { value: "triage" } });
+  fireEvent.click(screen.getByLabelText("Import destination"));
+  fireEvent.pointerDown(await screen.findByRole("option", { name: /Update.*Triage/i }), {
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.click(await screen.findByRole("option", { name: /Update.*Triage/i }));
   fireEvent.click(await screen.findByRole("tab", { name: "Changes" }));
   expect(screen.getByText("instructions")).toBeInTheDocument();
   expect(inspect).toHaveBeenCalledWith(file, "validate", "triage");

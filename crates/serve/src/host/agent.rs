@@ -1,12 +1,12 @@
-//! Ordinary Agent registration, tool composition and child session calls.
+//! Ordinary Agent registration, tool composition and members.
 use super::*;
 
 impl Host {
     // --- Agent assembly -------------------------------------------------------
 
     /// Turn a discovered agent into an `everruns::Agent`. Its approvals and
-    /// questions are parked under `surface` when given (a subagent's show on
-    /// its parent session), else under the session that asks.
+    /// questions are parked under `surface` when given, else under the
+    /// session that asks.
     pub(crate) fn build_agent(
         &self,
         entry: &AgentEntry,
@@ -51,6 +51,7 @@ impl Host {
         };
         let mut builder = everruns::Agent::builder()
             .name(&entry.name)
+            .description(agent_description(entry))
             .model(model)
             .instructions(instructions);
         if self.engine.has_session_hosting() {
@@ -82,10 +83,16 @@ impl Host {
         for tool in self.app.tools_for(entry) {
             builder = builder.tool(self.function_tool(tool, entry.name.clone()));
         }
-        if !entry.sub {
-            for sub in self.app.inner.agents.iter().filter(|agent| agent.sub) {
-                builder = builder.tool(self.subagent_tool(sub));
-            }
+        // Members are hand-off targets of the Framework's Agents capability
+        // (`spawn_agent`): each runs as its own session in this agent's run,
+        // on this agent's host. Discovery rejects unknown names, self
+        // membership and members that lead others.
+        for name in &spec.members {
+            let member = self
+                .app
+                .agent(name)
+                .ok_or_else(|| anyhow!("agent `{}`: unknown member `{name}`", entry.name))?;
+            builder = builder.member(self.build_agent_with(member, None, None, None)?);
         }
         for connection in &self.app.inner.connections {
             let Some(mcp) = &connection.value.mcp else {
@@ -150,137 +157,15 @@ impl Host {
             Approval::When(predicate) => function.needs_approval(predicate),
         }
     }
+}
 
-    /// `ask_<name>`: run a subagent to completion on a task and return its
-    /// answer. The child session's tool activity is reported as progress on
-    /// the parent call, and its approvals and questions surface on the parent
-    /// session.
-    fn subagent_tool(&self, sub: &AgentEntry) -> FunctionTool {
-        let description = sub
-            .spec
-            .description
-            .clone()
-            .or_else(|| (!sub.doc.is_empty()).then(|| sub.doc.to_string()))
-            .unwrap_or_else(|| format!("Delegate a task to the {} subagent.", sub.name));
-        let me = self.me.clone();
-        let sub = sub.clone();
-        let tool = FunctionTool::with_context(
-            format!("ask_{}", sub.name),
-            description,
-            json!({
-                "type": "object",
-                "properties": { "task": { "type": "string", "description": "What the subagent should do, with all context it needs." } },
-                "required": ["task"],
-            }),
-            move |call: ToolCallContext, args: Value| {
-                let (me, sub) = (me.clone(), sub.clone());
-                async move {
-                    let Some(host) = me.upgrade() else {
-                        return Ok::<_, String>(ToolResponse::error("host is shutting down"));
-                    };
-                    let task = args
-                        .get("task")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string();
-                    let parent = call.session_id().to_string();
-                    let agent = match host.build_agent(&sub, Some(parent.clone()), true) {
-                        Ok(agent) => agent,
-                        Err(err) => return Ok(ToolResponse::error(format!("{err:#}"))),
-                    };
-                    // A child session on the host's own engine, persisted in
-                    // the same store as its parent.
-                    let child = if host.engine.has_session_hosting() {
-                        let identity = format!(
-                            "serve-child:{}:{}:{}",
-                            call.turn_id().unwrap_or_default(),
-                            call.tool_call_id(),
-                            sub.name
-                        );
-                        let child_id = SessionId::from_uuid(uuid::Uuid::new_v5(
-                            &call.session_id().uuid(),
-                            identity.as_bytes(),
-                        ));
-                        match host
-                            .engine
-                            .create_registered_with_metadata(
-                                child_id,
-                                &everruns::hosting::AgentBuild::new(&sub.name, &host.build_id),
-                                json!({"parent_session_id":parent}),
-                            )
-                            .await
-                        {
-                            Ok(child) => {
-                                let _ = host.store.insert_session(&SessionRow {
-                                    id: child.id(),
-                                    agent: sub.name.clone(),
-                                    build_id: host.build_id.clone(),
-                                    title: None,
-                                    tags: Vec::new(),
-                                    hints: None,
-                                    metadata: Some(json!({"parent_session_id":parent})),
-                                    created_at: now(),
-                                    updated_at: now(),
-                                });
-                                host.go_live(&child.id(), child.clone());
-                                child
-                            }
-                            Err(error) => return Ok(ToolResponse::error(error.to_string())),
-                        }
-                    } else {
-                        match &sub.spec.package {
-                            Some(package) => match package.create(&host.engine, agent) {
-                                Ok(child) => child,
-                                Err(err) => return Ok(ToolResponse::error(err.to_string())),
-                            },
-                            None => host.engine.create(agent),
-                        }
-                    };
-                    let hosted = host.engine.has_session_hosting();
-                    drop(host);
-                    let mut events = child.events();
-                    let run = async {
-                        if hosted {
-                            let message = everruns::MessageId::from_uuid(uuid::Uuid::new_v5(
-                                &child.session_id().uuid(),
-                                b"serve-child-input",
-                            ));
-                            child
-                                .send_with_id(message, task.as_str())
-                                .await?
-                                .wait()
-                                .await
-                        } else {
-                            child.send_and_wait(task.as_str()).await
-                        }
-                    };
-                    tokio::pin!(run);
-                    let turn = loop {
-                        tokio::select! {
-                            turn = &mut run => break turn,
-                            event = events.recv() => {
-                                if let Ok(Some(event)) = event
-                                    && let Some(line) = child_progress(&sub.name, &event)
-                                {
-                                    call.progress(line).await;
-                                }
-                            }
-                        }
-                    };
-                    Ok(match turn {
-                        Ok(turn) if turn.success => ToolResponse::text(turn.response),
-                        Ok(turn) => ToolResponse::error(turn.error.unwrap_or(turn.response)),
-                        Err(err) => ToolResponse::error(err.to_string()),
-                    })
-                }
-            },
-        );
-        // A recovered call rejoins its deterministic child/admission instead
-        // of creating duplicate child work after an uncertain tool outcome.
-        if self.engine.has_session_hosting() {
-            tool.idempotent()
-        } else {
-            tool
-        }
-    }
+/// What an agent does: its description, else its doc comment. A lead sees it
+/// next to the member's name as when to hand work to it.
+fn agent_description(member: &AgentEntry) -> String {
+    member
+        .spec
+        .description
+        .clone()
+        .or_else(|| (!member.doc.is_empty()).then(|| member.doc.to_string()))
+        .unwrap_or_else(|| format!("The {} agent.", member.name))
 }

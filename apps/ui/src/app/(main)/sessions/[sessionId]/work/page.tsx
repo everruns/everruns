@@ -9,8 +9,8 @@
 // controls. A recording cannot be steered, so they land here as inert rows —
 // scheduled work is background work.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import Link from "next/link";

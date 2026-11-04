@@ -49,6 +49,26 @@ Use `OpenAI::new(key)` when the host already owns an explicitly resolved
 credential. Never put credentials in a model id, log them as model identity, or
 select provider behavior with vendor-specific detection.
 
+## Provider configurations and API selection
+
+Use typed provider configurations from `everruns` and enable the matching Cargo
+feature: `Anthropic`, `Gemini`, `OpenRouter`, `Mistral`, `Groq`, `Fireworks`,
+`Meta`, `Vercel`, `Cloudflare`, `Mai`, `TypeSafe`, `AzureOpenAI`, `Bedrock`,
+`ChatGpt` and `Codex`. Each configuration converts into `Provider`; credential
+requirements remain specific to the vendor. TypeSafe supplies decisions rather
+than chat. ChatGPT and Codex take host-owned authentication.
+
+OpenAI and Mistral select the chat protocol on the connection:
+
+```rust
+use everruns::{OpenAI, OpenAIApi, Mistral, MistralApi};
+let openai = OpenAI::from_env()?.api(OpenAIApi::ChatCompletions);
+let mistral = Mistral::from_env()?.api(MistralApi::Responses);
+```
+
+Defaults remain OpenAI Responses and Mistral Chat Completions. Shared call
+configuration carries model and generation settings, not vendor API switches.
+
 ## Explicit assembly
 
 Applications with their own driver can use the shared boundary directly:

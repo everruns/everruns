@@ -104,6 +104,12 @@ Unpinned actions remain fine in jobs that never see the token; pinning is scoped
 
 ## Residual risks
 
+- **Build artifacts.** A dependency build script can serialize its environment into cached
+  compiler output without the workflow explicitly printing it. The workspace dependency fix
+  for [RUSTSEC-2026-0418](https://github.com/rustsec/advisory-db/blob/main/crates/libz-sys/RUSTSEC-2026-0418.md)
+  prevents that known path in future builds; it does not erase earlier output. Log scanning
+  does not establish that caches are free of credentials. Historical exposure remains
+  unassessed; any cache removal or credential remediation is a separate operational action.
 - **Detection latency.** The sweep is hourly. It is scheduled rather than `workflow_run`-triggered
   because that trigger needs a literal list of workflow names, which goes stale silently when one is
   renamed or added.

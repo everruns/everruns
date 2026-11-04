@@ -7,7 +7,7 @@
 name = "everruns-platform-capability"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.94.0"
 description = "Mira eval study: evaluates the everruns platform capability"
 publish = false
 
@@ -18,15 +18,21 @@ path = "src/main.rs"
 [dependencies]
 mira-eval = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
 # The real contract, so an offline run parses a command line with the same
 # clap::Command the server builds rather than an approximation of it.
 everruns-cli-contract = { path = "../../crates/cli-contract" }
+# Production lexical retrieval, including current-scope filtering and source
+# metadata. Keep the eval's selection/transport adapter separate from the index.
+everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["runtime"] }
 async-trait = "0.1"
 # The real shell, so the v2 arm runs the model's script rather than a splitter's
 # guess at it: loops, pipes, redirection and `jq` are the interpreter's, and
 # `everruns` is a builtin in it exactly as the harness ships it.
-bashkit = { version = "0.20.1", default-features = false, features = ["cpython", "jq", "tzdata", "aws-lc-rs"] }
+bashkit = { version = "0.20.2", default-features = false, features = ["cpython", "jq", "tzdata", "aws-lc-rs"] }
+
+# Validate both adapters against the captured canonical operation schema.
+jsonschema = { version = "0.26", default-features = false }

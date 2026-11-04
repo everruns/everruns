@@ -178,9 +178,13 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
 }));
 
 // Import after mocks
-import SessionLayout from "@/app/(main)/sessions/[sessionId]/layout";
+import SessionLayout, * as sessionLayoutRoute from "@/app/(main)/sessions/[sessionId]/layout";
 
 describe("SessionLayout", () => {
+  it("keeps reusable components outside the route module exported through hosted shims", () => {
+    expect(Object.keys(sessionLayoutRoute)).toEqual(["default"]);
+  });
+
   beforeEach(() => {
     mockPush.mockReset();
     mockPathname.mockReturnValue("/sessions/ses-abc12345/trace");

@@ -11,6 +11,7 @@ fn test_proto_agent_includes_capability_ids() {
     // Create an Agent with capabilities
     let id = Uuid::now_v7();
     let mut agent = crate::domains::agents::record::Agent {
+        completion_check: Default::default(),
         localizations: Default::default(),
         is_built_in: false,
         avatar: None,
@@ -29,6 +30,7 @@ fn test_proto_agent_includes_capability_ids() {
         harness_id: everruns_contracts::typed_id::HarnessId::new(),
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec!["slack:thread:123.456".to_string()],
         capabilities: vec![
             AgentCapabilityConfig::new("tools:read_file"),
@@ -319,7 +321,15 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         tags: vec![],
         model_id: None,
         capabilities: vec![AgentCapabilityConfig::new("session")],
-        tools: vec![],
+        tools: vec![
+            serde_json::from_value(serde_json::json!({
+                "type": "client_side",
+                "name": "create_ticket",
+                "description": "Open a helpdesk ticket.",
+                "parameters": {"type": "object"},
+            }))
+            .unwrap(),
+        ],
         system_prompt: None,
         initial_files: vec![],
         hints: None,
@@ -358,4 +368,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
     // The bad entry is dropped; the valid capability survives.
     assert_eq!(schema_session.capabilities.len(), 1);
     assert_eq!(schema_session.capabilities[0].capability_id(), "session");
+    // Session client-side tools cross the worker protocol intact.
+    assert_eq!(schema_session.tools.len(), 1);
+    assert_eq!(schema_session.tools[0].name(), "create_ticket");
 }

@@ -2,12 +2,16 @@ import type { TraceEventRef, TraceItem, TraceStep, TraceTurn } from "@/lib/api/t
 import {
   batchKey,
   buildRows,
+  errorCodeLabel,
   fillGap,
   isSimulatedResult,
   formatDuration,
   lifecycleEvents,
   mergeTurns,
   parseStepKey,
+  parseTraceError,
+  reactionsByTurn,
+  retrySummary,
   rowIndexOfStep,
   searchSnippet,
   selectableKeys,
@@ -288,5 +292,95 @@ describe("isSimulatedResult", () => {
     expect(isSimulatedResult("200 OK")).toBe(false);
     expect(isSimulatedResult('{"status":"dry_run"}')).toBe(false);
     expect(isSimulatedResult(undefined)).toBe(false);
+  });
+});
+
+describe("parseTraceError", () => {
+  const raw =
+    "LLM error: provider 'provider_01a1': OpenAI Responses API error (402 Payment Required): " +
+    '{"error":{"message":"This request requires more credits.","code":402}}';
+
+  it("leads with the provider's message, source and status", () => {
+    expect(parseTraceError({ error: raw })).toEqual({
+      message: "This request requires more credits.",
+      source: "OpenAI Responses API",
+      status: "402 Payment Required",
+      body: { error: { message: "This request requires more credits.", code: 402 } },
+    });
+  });
+
+  it("keeps an error it cannot split as it is", () => {
+    expect(parseTraceError("404 Not Found")).toEqual({
+      message: "404 Not Found",
+      source: undefined,
+      status: undefined,
+      body: undefined,
+    });
+    expect(parseTraceError(raw.slice(0, 120))?.message).toBe(raw.slice(0, 120));
+  });
+
+  it("returns nothing for a value that is not an error", () => {
+    expect(parseTraceError({ text: "hi" })).toBeNull();
+    expect(parseTraceError("  ")).toBeNull();
+  });
+});
+
+describe("error classification", () => {
+  it("labels known failure codes and leaves the generic one unlabeled", () => {
+    expect(errorCodeLabel("provider_quota_exhausted")).toBe("Provider account out of funds");
+    expect(errorCodeLabel("provider_unavailable")).toBe("Provider down");
+    expect(errorCodeLabel("model_refusal")).toBe("Model declined request");
+    expect(errorCodeLabel("processing_error")).toBeNull();
+    expect(errorCodeLabel(undefined)).toBeNull();
+  });
+
+  it("summarizes retries only when there were any", () => {
+    expect(retrySummary({ retry_attempts: 3, retry_wait_ms: 42_000 })).toBe(
+      "Retried 3× · waited 42s",
+    );
+    expect(retrySummary({ retry_attempts: 0, retry_wait_ms: 0 })).toBeNull();
+    expect(retrySummary({})).toBeNull();
+  });
+});
+
+describe("reactionsByTurn", () => {
+  const thumbs = (count = 1) => ({ emoji: "👍", count, me: false, agent: false, actors: [] });
+  const turns = [
+    { ...turn(1, []), start_sequence: 2, end_sequence: 10 },
+    { ...turn(2, []), start_sequence: 12, end_sequence: 20 },
+  ];
+
+  it("puts a reply's reactions on the turn it was written in", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_a", author: "agent", sequence: 15, reactions: [thumbs()] },
+    ]);
+    expect(map.get(2)?.reply.map((r) => r.emoji)).toEqual(["👍"]);
+    expect(map.get(2)?.prompt).toEqual([]);
+    expect(map.has(1)).toBe(false);
+  });
+
+  it("puts a user message's reactions on the turn it starts", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_u", author: "user", sequence: 11, reactions: [thumbs()] },
+    ]);
+    expect(map.get(2)?.prompt.map((r) => r.emoji)).toEqual(["👍"]);
+  });
+
+  it("skips messages it cannot place", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_x", author: "agent", sequence: 11, reactions: [thumbs()] },
+      { message_id: "message_y", author: "user", sequence: 30, reactions: [thumbs()] },
+      { message_id: "message_z", reactions: [thumbs()] },
+    ]);
+    expect(map.size).toBe(0);
+  });
+
+  it("adds up the same emoji on two replies of one turn", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_a", author: "agent", sequence: 4, reactions: [thumbs()] },
+      { message_id: "message_b", author: "agent", sequence: 8, reactions: [thumbs(2)] },
+    ]);
+    expect(map.get(1)?.reply).toHaveLength(1);
+    expect(map.get(1)?.reply[0].count).toBe(3);
   });
 });

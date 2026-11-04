@@ -2,7 +2,13 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   workers: 1,
-  use: { browserName: "chromium", viewport: { width: 1440, height: 1000 } },
+  timeout: 90000,
+  use: {
+    browserName: "chromium",
+    deviceScaleFactor: 2,
+    colorScheme: "light",
+    viewport: { width: 1440, height: 1000 },
+  },
   webServer: [
     { command: "pnpm exec tsx e2e/fixture-api.ts", port: 9141, reuseExistingServer: false },
     {

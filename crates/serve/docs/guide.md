@@ -58,12 +58,15 @@ fn analyst() -> Agent {
 }
 ```
 
-- **Model strings** are `provider/model`, and the host's gateway resolves them.
-  Locally, the resolution order is `SERVE_GATEWAY_URL`, then
-  `OPENROUTER_API_KEY`, then `OPENAI_API_KEY` (for `openai/…` models only).
+- **Model strings** are `provider/model`, and the host resolves their provider.
+  For `openai/…`, an explicit `OPENAI_BASE_URL` and `OPENAI_API_KEY` pair selects
+  a compatible Responses API endpoint. Serve strips only the first `openai/`
+  prefix; an endpoint-specific model such as `openai/vendor/model` is sent as
+  `vendor/model`. Otherwise, `OPENROUTER_API_KEY` routes model IDs unchanged,
+  followed by `OPENAI_API_KEY` for direct OpenAI models.
   `bedrock/<model-id>` (for example `bedrock/us.anthropic.claude-sonnet-4-6`,
   a Bedrock model id or inference profile) goes straight to Amazon Bedrock,
-  ahead of the gateway, when `AWS_REGION` or `AWS_DEFAULT_REGION` is set and
+  ahead of the API-key routes, when `AWS_REGION` or `AWS_DEFAULT_REGION` is set and
   serve is built with its `bedrock` feature (on by default in
   `everruns-serve-agentcore`). Credentials come from the AWS default chain:
   an IAM role (AgentCore or ECS task role, instance profile), SSO or a profile,
@@ -217,19 +220,34 @@ A five-field cron is interpreted in UTC. Awaiting `start_session` runs the
 first turn and delivers its reply. In `dev`, you can fire a schedule
 immediately with `curl -X POST localhost:3000/dev/schedules/weekly`.
 
-## 8. Subagents
+## 8. Agents that use other agents
 
 ```rust
+/// Answers revenue questions.
+#[agent(default)]
+fn analyst() -> Agent {
+    Agent::builder()
+        .model("openai/gpt-6.1-sol")
+        .member("reviewer") // another #[agent] of this app
+        .build()
+}
+
 /// Reviews a SQL query before it is shared.
-#[agent(sub)]
+#[agent]
 fn reviewer() -> Agent { … }
 ```
 
-The other agents get an `ask_reviewer { task }` tool. It runs the subagent to
-completion in a child session on the same engine and returns the answer. The
-child's tool calls and progress are reported as `tool.progress` events of the
-`ask_reviewer` call on the parent session, and its approvals and questions
-wait on the parent session.
+`.member("reviewer")` gives the analyst the `spawn_agent` tool with the
+reviewer as a target, described by its doc comment (or `.description(…)`).
+Work handed to the reviewer runs as its own session in the analyst's run, on
+the same engine, in the foreground or as a background task, and the answer
+comes back to the analyst. The reviewer stays an agent of the app in its own
+right: it has its own sessions, Agent API and channels.
+
+Members nest one level: discovery refuses a member that is not an agent of
+the app, the agent itself, or a member with members of its own. A member's
+approvals and questions wait on the member's own session; the child session
+id is in the analyst's `spawn_agent` result.
 
 ## 9. Evals
 

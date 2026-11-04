@@ -13,7 +13,7 @@ describe("i18n locale helpers", () => {
   });
 
   it("falls back to English UI copy for unsupported locales", () => {
-    expect(getSupportedLocale("fr-FR")).toBe("en");
+    expect(getSupportedLocale("ja-JP")).toBe("en");
     expect(formatMessage("en", "no_messages_yet")).toBe("No messages yet");
   });
 

@@ -77,6 +77,20 @@ impl Modify for SdkMetadata {
                 operation.deprecated = Some(Deprecated::True);
             }
         }
+        // Pause agent replaced "suspend exposures"; the old routes stay as aliases.
+        for path in [
+            "/v1/agents/{agent_id}/exposures/suspend",
+            "/v1/agents/{agent_id}/exposures/resume",
+        ] {
+            if let Some(operation) = openapi
+                .paths
+                .paths
+                .get_mut(path)
+                .and_then(|item| item.post.as_mut())
+            {
+                operation.deprecated = Some(Deprecated::True);
+            }
+        }
         let Some(components) = openapi.components.as_mut() else {
             return;
         };
@@ -149,6 +163,15 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::virtual_user_connections::create_api_key_connection,
         api::virtual_user_connections::delete_connection,
         api::virtual_user_connections::verify_connection,
+        api::tracing_destinations::list_destinations,
+        api::tracing_destinations::create_destination,
+        api::tracing_destinations::update_destination,
+        api::tracing_destinations::delete_destination,
+        api::tracing_destinations::test_destination,
+        api::tracing_destinations::get_defaults,
+        api::tracing_destinations::save_defaults,
+        api::tracing_destinations::get_agent_routing,
+        api::tracing_destinations::save_agent_routing,
         api::organization_connections::list_connections,
         api::organization_connections::create_connection,
         api::organization_connections::update_connection,
@@ -196,8 +219,14 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::health_issues::get_health_issue,
         api::health_issues::check_health_issue,
         api::health_issues::snooze_health_issue,
+        api::health_issues::dismiss_health_issue,
         api::agent_channels::get_agent_chat_features,
         api::agent_api::work_chat::get_work_chat_config,
+        api::agent_api::work_chat::get_work_chat_by_host,
+        api::agent_api::work_chat::experience::update_work_chat_conversation,
+        api::agent_api::work_chat::experience::share_work_chat_conversation,
+        api::agent_api::work_chat::experience::revoke_work_chat_share,
+        api::agent_api::work_chat::experience::read_work_chat_share,
         api::agent_api::work_chat::resolve_work_chat_main,
         api::agent_api::work_chat::list_work_chat_tasks,
         api::agent_api::work_chat::get_work_chat_files,
@@ -211,6 +240,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_channels::publish_agent_channel,
         api::agent_channels::unpublish_agent_channel,
         api::agent_channels::trigger_agent_channel,
+        api::external_agents::get_external_agent,
+        api::external_agents::register_external_agent,
+        api::external_agents::disable_external_agent,
         api::agent_keys::list_agent_keys,
         api::agent_keys::create_agent_key,
         api::agent_keys::rotate_agent_key,
@@ -225,6 +257,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_api::agent_api_stream_events,
         api::agent_api::agent_api_answer_questions,
         api::agent_api::agent_api_submit_tool_approvals,
+        api::agent_api::reactions::agent_api_add_reaction,
+        api::agent_api::reactions::agent_api_remove_reaction,
+        api::agent_api::reactions::agent_api_list_reactions,
         api::sessions::create_session,
         api::sessions::ensure_platform_chat,
         api::sessions::fork_session,
@@ -364,6 +399,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::monitoring::list_fleet_monitoring_actors,
         api::monitoring::get_monitoring_actor,
         api::monitoring::get_fleet_monitoring_actor,
+        api::monitoring::timeline::get_monitoring_timeline,
+        api::monitoring::timeline::get_fleet_monitoring_timeline,
+        api::monitoring::timeline::get_monitoring_timeline_window,
+        api::monitoring::timeline::get_fleet_monitoring_timeline_window,
         api::durable::get_health,
         api::durable::get_metrics_timeseries,
         api::durable::cancel_workflow,
@@ -385,6 +424,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::durable::force_close_circuit_breaker,
         api::durable::delete_circuit_breaker,
         api::system::run_system_doctor,
+        api::system::list_platform_detections,
         api::schedules::create_schedule,
         api::schedules::list_schedules,
         api::schedules::get_schedule,
@@ -420,6 +460,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::get_latest_health_check,
         api::agents::upsert_agent,
         api::agents::copy_agent,
+        api::agents::pause_agent,
+        api::agents::resume_agent,
         api::agents::suspend_agent_exposures,
         api::agents::resume_agent_exposures,
         // LLM Providers - additional
@@ -525,6 +567,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::mcp_url_consent::submit_elicitation_consent,
         api::question_answers::submit_question_answers,
         api::tool_approvals::submit_tool_approvals,
+        api::run_requests::get_run_requests,
         api::credentials::list,
         api::credentials::create,
         api::credentials::set_value,
@@ -667,6 +710,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             crate::domains::agent_triggers::record::TriggerEventFilter,
             crate::domains::agent_triggers::record::TriggerFilterCondition,
             domains::agent_triggers::TriggerAgentTriggerOutput,
+            domains::agent_triggers::ManualTriggerEvent,
+            domains::agent_triggers::ManualFireStatus,
+            api::agent_triggers::FireAgentTriggerRequest,
             ListResponse<Agent>,
             PaginatedResponse<Session>,
             ListResponse<api::messages::Message>,
@@ -696,6 +742,14 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::monitoring::MonitoringActorDetail,
             api::monitoring::MonitoringLeaseEvent,
             api::monitoring::MonitoringStep,
+            api::monitoring::MonitoringTimeline,
+            api::monitoring::TimelineBucket,
+            api::monitoring::TimelineWorkerLoad,
+            api::monitoring::TimelineSummary,
+            api::monitoring::TimelineMarker,
+            api::monitoring::MonitoringTimelineWindow,
+            api::monitoring::TimelineRank,
+            api::monitoring::TimelineFailure,
             ListResponse<CapabilityInfo>,
             domains::capabilities::types::GuardrailsDryRunRequest,
             domains::capabilities::types::GuardrailsDryRunHit,
@@ -754,6 +808,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             everruns_contracts::runtime::web_search::SearchFallbackMode,
             crate::domains::sandbox_templates::record::SandboxTemplate,
             crate::domains::sandbox_templates::record::SandboxTemplateRevision,
+            crate::domains::sandbox_templates::builds::record::SandboxBuildRequest,
+            crate::domains::sandbox_templates::builds::record::SandboxBuildProvenance,
+            crate::domains::sandbox_templates::builds::record::SandboxTemplateBuild,
+            crate::domains::sandbox_templates::builds::record::SandboxBuildStatus,
             crate::domains::sandbox_templates::record::SandboxPolicyMode,
             api::session_sandbox::SessionSandboxStatusValue,
             api::session_sandbox::ManageSessionSandboxRequest,
@@ -785,6 +843,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::tool_approvals::ToolApprovalAnswer,
             api::tool_approvals::ToolApprovalDecision,
             api::tool_approvals::ToolApprovalResolution,
+            crate::domains::sessions::run_requests::RunRequestsResponse,
+            crate::domains::sessions::run_requests::RunRequest,
+            crate::domains::sessions::run_requests::RunRequestToolCall,
+            crate::domains::sessions::run_requests::RequestingAgent,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,

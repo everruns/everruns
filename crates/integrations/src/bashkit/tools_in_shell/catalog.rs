@@ -12,9 +12,10 @@ use std::sync::Arc;
 
 use everruns_contracts::runtime::mcp_deferred::deferred_mcp_server_prefix;
 use everruns_contracts::runtime::mcp_server::parse_mcp_tool_name;
-use everruns_contracts::runtime::tool_catalog::ToolSearchIndex;
+use everruns_contracts::runtime::tool_catalog::{ToolSearchIndex, ToolSearchSource};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::Tool;
+use everruns_contracts::tool_types::{ToolDefinition, ToolHints};
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -25,6 +26,10 @@ use everruns_contracts::runtime::tool_surface::{ToolSurface, ToolSurfacePlan};
 const MAX_CATALOG_TOOLS: usize = 10_000;
 const MAX_CATALOG_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PENDING_LOADS_PER_SEARCH: usize = 8;
+const MAX_HELP_ENTRIES: usize = 64;
+const MAX_HELP_BYTES: usize = 12 * 1024;
+const MAX_HELP_LINE_BYTES: usize = 256;
+const HELP_OMISSION_RESERVE_BYTES: usize = 160;
 
 /// One tool reachable from the shell.
 #[derive(Clone)]
@@ -37,6 +42,8 @@ pub(crate) struct Entry {
     /// The command word as typed (`list-pulls`).
     pub command: String,
     pub tool: Arc<dyn Tool>,
+    /// Registry owner context survives a deferred-load index rebuild.
+    pub hints: ToolHints,
     /// Deferred children are authorized through their listed parent placeholder.
     pub scope_parent: Option<String>,
 }
@@ -61,6 +68,7 @@ pub(crate) struct Pending {
     pub source: String,
     /// The placeholder tool, whose description says what the server is for.
     pub placeholder: Arc<dyn Tool>,
+    pub hints: ToolHints,
 }
 
 /// Every tool the shell may call, in a stable order, plus the deferred
@@ -101,6 +109,9 @@ impl Catalog {
                 let Some(tool) = registry.get(name) else {
                     continue;
                 };
+                let Some(definition) = registry.tool_definition(name) else {
+                    continue;
+                };
                 if context
                     .visible_tool_names
                     .as_ref()
@@ -123,6 +134,7 @@ impl Catalog {
                         prefix: prefix.to_string(),
                         source: spell(prefix),
                         placeholder: tool.clone(),
+                        hints: definition.hints().clone(),
                     });
                     continue;
                 }
@@ -136,6 +148,7 @@ impl Catalog {
                     source,
                     command,
                     tool: tool.clone(),
+                    hints: definition.hints().clone(),
                     scope_parent: None,
                 });
             }
@@ -252,6 +265,7 @@ impl Catalog {
                 source: Some(spell(&server)),
                 command: spell(&tool_name),
                 tool,
+                hints: definition.hints().clone(),
                 scope_parent: Some(parent_name.clone()),
             });
         }
@@ -284,11 +298,11 @@ impl Catalog {
         let definitions: Vec<_> = self
             .entries
             .iter()
-            .map(|entry| entry.tool.to_definition())
+            .map(|entry| with_hints(entry.tool.to_definition(), &entry.hints))
             .chain(
                 self.pending
                     .iter()
-                    .map(|pending| pending.placeholder.to_definition()),
+                    .map(|pending| with_hints(pending.placeholder.to_definition(), &pending.hints)),
             )
             .collect();
         if !definitions.is_empty() {
@@ -331,36 +345,69 @@ impl Catalog {
         let mut out = String::from(
             "tools: call the agent's tools from the shell. Input is one JSON object; \
              output is JSON on stdout.\n\n\
+             Discovery: search by intent first with `tools search <words>`; it returns \
+             runnable command lines. There is no `tools list` command. Use help to browse a small \
+             catalog or inspect one tool.\n\n\
              Usage:\n  tools <server> <tool> '{\"key\":\"value\"}'\n  \
              tools <tool> '{...}'\n  jq -n '{key: 1}' | tools <tool>\n  \
              tools <tool> key=value --other-key value\n  \
              tools search <words>\n  tools <server> --help\n  tools <tool> --help\n  \
              tools plan < script.sh   (list a script's calls and their risk; runs nothing)\n",
         );
+        let mut remaining_entries = MAX_HELP_ENTRIES;
+        let mut remaining_bytes = MAX_HELP_BYTES
+            .saturating_sub(out.len())
+            .saturating_sub(HELP_OMISSION_RESERVE_BYTES);
+        let top: Vec<&Entry> = self.entries.iter().filter(|e| e.source.is_none()).collect();
         let sources = self.sources();
+        let mut omitted_servers = 0;
+        let mut omitted_tools = 0;
         if !sources.is_empty() || !self.pending.is_empty() {
             out.push_str("\nServers:\n");
+            remaining_bytes = remaining_bytes.saturating_sub("\nServers:\n".len());
+            let source_count = sources.len() + self.pending.len();
+            let mut rows = Vec::with_capacity(source_count);
             for (source, count) in sources {
                 let noun = if count == 1 { "tool" } else { "tools" };
-                out.push_str(&format!("  {source}  ({count} {noun})\n"));
+                rows.push(format!("  {source}  ({count} {noun})"));
             }
             for pending in &self.pending {
-                out.push_str(&format!(
-                    "  {}  (not loaded; `tools {} --help` loads it)\n",
+                rows.push(format!(
+                    "  {}  (not loaded; `tools {} --help` loads it)",
                     pending.source, pending.source
                 ));
             }
+            omitted_servers = append_help_rows(
+                &mut out,
+                &rows,
+                &mut remaining_entries,
+                &mut remaining_bytes,
+            );
         }
-        let top: Vec<&Entry> = self.entries.iter().filter(|e| e.source.is_none()).collect();
         if !top.is_empty() {
             out.push_str("\nTools:\n");
-            for entry in top {
-                out.push_str(&format!(
-                    "  {}  {}\n",
-                    entry.command,
-                    first_sentence(entry.tool.description())
-                ));
-            }
+            remaining_bytes = remaining_bytes.saturating_sub("\nTools:\n".len());
+            let rows: Vec<_> = top
+                .iter()
+                .map(|entry| {
+                    format!(
+                        "  {}  {}",
+                        entry.command,
+                        first_sentence(entry.tool.description())
+                    )
+                })
+                .collect();
+            omitted_tools = append_help_rows(
+                &mut out,
+                &rows,
+                &mut remaining_entries,
+                &mut remaining_bytes,
+            );
+        }
+        if omitted_servers > 0 || omitted_tools > 0 {
+            let note = omission_note(omitted_servers, omitted_tools);
+            debug_assert!(out.len() + note.len() <= MAX_HELP_BYTES);
+            out.push_str(&note);
         }
         if self.entries.is_empty() && self.pending.is_empty() {
             out.push_str("\nNo tools are available from the shell in this session.\n");
@@ -371,24 +418,43 @@ impl Catalog {
     /// `tools <server> --help`.
     pub fn source_help(&self, source: &str) -> String {
         let wanted = normalize(source);
-        let mut out = String::new();
-        for entry in self
+        let entries: Vec<_> = self
             .entries
             .iter()
             .filter(|e| e.source.as_deref().is_some_and(|s| normalize(s) == wanted))
-        {
-            if out.is_empty() {
-                out.push_str(&format!(
-                    "Tools on {}. Run `tools {} <tool> --help` for one tool's input.\n\n",
-                    entry.source.as_deref().unwrap_or(source),
-                    entry.source.as_deref().unwrap_or(source),
-                ));
-            }
-            out.push_str(&format!(
-                "  {}  {}\n",
-                entry.command,
-                first_sentence(entry.tool.description())
-            ));
+            .collect();
+        if entries.is_empty() {
+            return String::new();
+        }
+
+        let source = entries[0].source.as_deref().unwrap_or(source);
+        let header = bounded_line(&format!(
+            "Tools on {source}. Run `tools {source} <tool> --help` for one tool's input."
+        ));
+        let mut out = format!("{header}\n\n");
+        // Collecting complete rows keeps truncation on line boundaries and
+        // makes the omission count accurate even for large MCP servers.
+        let rows: Vec<_> = entries
+            .iter()
+            .map(|entry| {
+                format!(
+                    "  {}  {}",
+                    entry.command,
+                    first_sentence(entry.tool.description())
+                )
+            })
+            .collect();
+        let mut count = MAX_HELP_ENTRIES;
+        let mut bytes = MAX_HELP_BYTES
+            .saturating_sub(out.len())
+            .saturating_sub(HELP_OMISSION_RESERVE_BYTES);
+        let omitted = append_help_rows(&mut out, &rows, &mut count, &mut bytes);
+        if omitted > 0 {
+            let note = format!(
+                "  ... {omitted} more omitted from this server; use `tools search <words>` to find operations.\n"
+            );
+            debug_assert!(out.len() + note.len() <= MAX_HELP_BYTES);
+            out.push_str(&note);
         }
         out
     }
@@ -413,31 +479,89 @@ impl Catalog {
             .collect()
     }
 
-    /// Authorized servers whose metadata matched, but whose operation did not.
+    /// Authorized sources whose metadata matched.
     /// These are browse suggestions, never operation matches.
-    pub fn source_matches(&self, query: &str, limit: usize) -> Vec<String> {
+    pub fn source_matches(&self, query: &str, limit: usize) -> Vec<ToolSearchSource> {
         if query.trim().is_empty() {
             return Vec::new();
         }
         let Some(index) = &self.search_index else {
             return Vec::new();
         };
-        let mut sources = Vec::new();
-        for hit in index.search(query, limit, |name| self.searchable_names.contains(name)) {
-            if !hit.server_match || hit.tool_match {
-                continue;
-            }
-            let source = parse_mcp_tool_name(&hit.name)
-                .map(|(server, _)| spell(&server))
-                .or_else(|| deferred_mcp_server_prefix(&hit.name).map(spell));
-            if let Some(source) = source
-                && !sources.contains(&source)
-            {
-                sources.push(source);
-            }
-        }
-        sources
+        index.search_sources(query, limit, |name| self.searchable_names.contains(name))
     }
+}
+
+fn with_hints(mut definition: ToolDefinition, hints: &ToolHints) -> ToolDefinition {
+    match &mut definition {
+        ToolDefinition::Builtin(tool) => tool.hints = hints.clone(),
+        ToolDefinition::ClientSide(tool) => tool.hints = hints.clone(),
+    }
+    definition
+}
+
+/// Append complete, byte-bounded rows. Every row is shortened at a UTF-8
+/// boundary before accounting, so help stays valid text and names remain
+/// recognizable without dumping a whole large catalog into context.
+fn append_help_rows(
+    out: &mut String,
+    rows: &[String],
+    remaining_entries: &mut usize,
+    remaining_bytes: &mut usize,
+) -> usize {
+    let mut shown = 0;
+    for row in rows {
+        if *remaining_entries == 0 {
+            break;
+        }
+        let row = bounded_line(row);
+        let cost = row.len() + 1;
+        if cost > *remaining_bytes {
+            break;
+        }
+        out.push_str(&row);
+        out.push('\n');
+        *remaining_bytes -= cost;
+        *remaining_entries -= 1;
+        shown += 1;
+    }
+    rows.len() - shown
+}
+
+fn omission_note(omitted_servers: usize, omitted_tools: usize) -> String {
+    let server_label = if omitted_servers == 1 {
+        "server entry"
+    } else {
+        "server entries"
+    };
+    let tool_label = if omitted_tools == 1 {
+        "top-level tool"
+    } else {
+        "top-level tools"
+    };
+    let details = match (omitted_servers > 0, omitted_tools > 0) {
+        (true, true) => {
+            format!("{omitted_servers} {server_label} and {omitted_tools} {tool_label}")
+        }
+        (true, false) => format!("{omitted_servers} {server_label}"),
+        (false, true) => format!("{omitted_tools} {tool_label}"),
+        (false, false) => return String::new(),
+    };
+    format!("  ... {details} omitted; use `tools search <words>` to find operations.\n")
+}
+
+pub(super) fn bounded_line(line: &str) -> String {
+    if line.len() <= MAX_HELP_LINE_BYTES {
+        return line.to_string();
+    }
+    let limit = MAX_HELP_LINE_BYTES - '…'.len_utf8();
+    let boundary = line
+        .char_indices()
+        .map(|(i, _)| i)
+        .take_while(|i| *i <= limit)
+        .last()
+        .unwrap_or(0);
+    format!("{}…", &line[..boundary])
 }
 
 fn entry_bytes(entry: &Entry) -> usize {
@@ -549,6 +673,105 @@ mod tests {
     use everruns_contracts::runtime::tool_surface::ToolSurfaceMode;
     use everruns_contracts::tool_types::ToolDefinition;
 
+    fn catalog_for_source(count: usize) -> Catalog {
+        let entries: Vec<_> = (0..count)
+            .map(|index| {
+                let tool_name = format!("mcp_telemetry__event_{index:04}");
+                Entry {
+                    command: format!("event-{index:04}"),
+                    source: Some("telemetry".into()),
+                    tool: Arc::new(NamedTool(tool_name.clone())),
+                    hints: ToolHints::default(),
+                    tool_name,
+                    scope_parent: None,
+                }
+            })
+            .collect();
+        Catalog {
+            searchable_names: entries
+                .iter()
+                .map(|entry| entry.tool_name.clone())
+                .collect(),
+            entries,
+            pending: Vec::new(),
+            search_index: None,
+            surface_plan: ToolSurfacePlan::for_mode(ToolSurfaceMode::Cli),
+            visible_tool_names: None,
+        }
+    }
+
+    #[test]
+    fn root_help_bounds_a_catalog_with_many_servers() {
+        let mut catalog = catalog_for_source(2_000);
+        for (index, entry) in catalog.entries.iter_mut().enumerate() {
+            entry.source = Some(format!("server-{index:04}{}", "x".repeat(157)));
+        }
+        for name in ["top_one", "top_two"] {
+            catalog.searchable_names.insert(name.to_string());
+            catalog.entries.push(Entry {
+                tool_name: name.to_string(),
+                source: None,
+                command: name.replace('_', "-"),
+                tool: Arc::new(NamedTool(name.to_string())),
+                hints: ToolHints::default(),
+                scope_parent: None,
+            });
+        }
+        let output = catalog.root_help();
+
+        assert!(output.len() <= MAX_HELP_BYTES, "{} bytes", output.len());
+        assert!(output.contains("omitted; use `tools search"), "{output}");
+        assert!(output.contains("tools search <words>"), "{output}");
+        assert!(
+            output.contains("1 top-level tool omitted"),
+            "the final note must account for the omitted top-level section: {output}"
+        );
+    }
+
+    #[test]
+    fn large_server_help_is_bounded_and_points_to_search() {
+        let catalog = catalog_for_source(2_000);
+        let output = catalog.source_help("telemetry");
+
+        assert!(output.len() <= MAX_HELP_BYTES, "{} bytes", output.len());
+        assert!(
+            output.contains("event-0000"),
+            "first entry should remain visible"
+        );
+        assert!(
+            output.contains("more omitted"),
+            "omissions must be explicit"
+        );
+        assert!(
+            output.contains("tools search <words>"),
+            "help should teach search"
+        );
+        assert!(
+            !output.contains("event-1999"),
+            "the full catalog must not be dumped"
+        );
+    }
+
+    #[test]
+    fn small_server_help_still_lists_every_operation() {
+        let catalog = catalog_for_source(2);
+        let output = catalog.source_help("telemetry");
+
+        assert!(output.contains("event-0000"), "{output}");
+        assert!(output.contains("event-0001"), "{output}");
+        assert!(!output.contains("omitted"), "{output}");
+        assert!(output.len() <= MAX_HELP_BYTES);
+    }
+
+    #[test]
+    fn help_line_limit_preserves_unicode_boundaries() {
+        let output = bounded_line(&"é".repeat(MAX_HELP_LINE_BYTES));
+
+        assert!(output.len() <= MAX_HELP_LINE_BYTES);
+        assert!(output.ends_with('…'));
+        assert!(std::str::from_utf8(output.as_bytes()).is_ok());
+    }
+
     struct NamedTool(String);
 
     #[async_trait]
@@ -584,6 +807,7 @@ mod tests {
                 source: None,
                 command: format!("existing-{index}"),
                 tool: parent.clone(),
+                hints: ToolHints::default(),
                 scope_parent: None,
             })
             .collect::<Vec<_>>();
@@ -597,6 +821,7 @@ mod tests {
                 prefix: "docs".into(),
                 source: "docs".into(),
                 placeholder: parent,
+                hints: ToolHints::default(),
             }],
             search_index: None,
             surface_plan: ToolSurfacePlan::for_mode(ToolSurfaceMode::Cli),

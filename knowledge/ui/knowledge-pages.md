@@ -61,6 +61,22 @@ its files plus one entry per subfolder. The query is a loose index scan over the
 holds, so the root of a very large collection lists as fast as a small folder. Without it,
 the tree would have to page the whole recursive catalog into the browser.
 
+### Page-aware Chat follows each tab
+
+The adopted workspace shares [the page-aware Chat contract](chat-mode.md).
+Collection settings, source connection and search-account metadata keep their
+typed drafts; explicit submit controls persist them. Clean settings follow server
+refreshes, while dirty work is preserved and conflicting saves are blocked.
+JSON formatting alone does not leave a saved collection dirty. A selected-field
+history inverse preserves every other current collection setting, including
+indexing, model/account selection and path rules, even though the update command
+replaces the complete definition.
+Displayed collection/source/search state and visible tree entries have bounded
+metadata projections, without file bodies, search excerpts, credential bindings or
+raw source errors. File-write and upload controls stay manual. A split workspace
+stacks the file browser according to the available page pane, independent of the
+outer viewport.
+
 ### Lifecycle is a dot and a label
 
 Sync, indexing and extraction state use the shared `EntityStatus` dot and label

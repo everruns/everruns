@@ -2,6 +2,7 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { collectionDraftSchema } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -19,6 +20,25 @@ import {
 } from "@/lib/api/knowledge";
 
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
+
+// The server canonicalizes object keys. Formatting alone must not keep a saved
+// form dirty and block saved-change Undo; invalid JSON still stays a dirty draft.
+function comparableRules(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), (_key, value) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, value[key]]),
+          )
+        : value,
+    );
+  } catch {
+    return text;
+  }
+}
+
 export function CollectionForm({
   initial,
   onSave,
@@ -71,6 +91,23 @@ export function CollectionForm({
       2,
     ),
   };
+  const apply = (next: typeof values) => {
+    setName(next.name);
+    setDescription(next.description);
+    setMode(next.mode);
+    setModel(next.model);
+    setIndexer(next.indexer);
+    setRules(next.rules);
+  };
+  const comparableValues = { ...values, rules: comparableRules(values.rules) };
+  const comparableSavedValues = { ...savedValues, rules: comparableRules(savedValues.rules) };
+  usePageFormPrefill({
+    identity: initial?.id ?? "new",
+    open: !!initial,
+    values: comparableValues,
+    saved: comparableSavedValues,
+    apply,
+  });
   const chatDraft = usePageFormDraft({
     schema: collectionDraftSchema,
     values,
@@ -79,17 +116,10 @@ export function CollectionForm({
     formId: "settings",
     label: initial?.name ?? "New collection",
     baseline: String(initial?.revision ?? "new"),
-    dirty: JSON.stringify(values) !== JSON.stringify(savedValues),
+    dirty: JSON.stringify(comparableValues) !== JSON.stringify(comparableSavedValues),
     writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
     readonlyFields: initial?.name === "everruns-docs" ? ["name"] : [],
-    apply: (next) => {
-      setName(next.name);
-      setDescription(next.description);
-      setMode(next.mode);
-      setModel(next.model);
-      setIndexer(next.indexer);
-      setRules(next.rules);
-    },
+    apply,
   });
   return (
     <form

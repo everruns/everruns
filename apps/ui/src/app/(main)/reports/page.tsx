@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
@@ -39,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PageBody, PageHeader, PageShell } from "@/components/layout";
+import { PageMain, PageMasthead, PageContainer } from "@/components/layout";
 import {
   useBackfillReporting,
   useCreateSavedReport,
@@ -134,6 +134,8 @@ function defaultQuery(dataset: DatasetCatalogEntry | undefined, days = 7): Repor
 }
 
 export default function ReportsPage() {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   usePageTitle(ui("Reports"));
   const { hasRole } = useOrg();
@@ -308,23 +310,23 @@ export default function ReportsPage() {
 
   if (catalog.isLoading) {
     return (
-      <PageShell fullWidth>
-        <PageHeader title={ui("Reports")} />
-        <PageBody>
+      <PageContainer fullWidth>
+        <PageMasthead title={ui("Reports")} />
+        <PageMain>
           <div className="grid gap-4 md:grid-cols-4">
             {[...Array(4)].map((_, index) => (
               <Skeleton key={index} className="h-28" />
             ))}
           </div>
           <Skeleton className="h-96" />
-        </PageBody>
-      </PageShell>
+        </PageMain>
+      </PageContainer>
     );
   }
 
   return (
-    <PageShell fullWidth>
-      <PageHeader
+    <PageContainer fullWidth>
+      <PageMasthead
         title={ui("Reports")}
         description={ui("Org-scoped analytics from reporting projections.")}
         actions={
@@ -357,14 +359,16 @@ export default function ReportsPage() {
         }
       />
 
-      <PageBody className="space-y-6">
+      <PageMain className="gap-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">{ui("Rows")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-semibold">{activeRows.length.toLocaleString()}</div>
+              <div className="text-2xl font-semibold">
+                {activeRows.length.toLocaleString(displayLocale)}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {ui("Limit")} {query?.limit ?? 100}
               </p>
@@ -392,7 +396,9 @@ export default function ReportsPage() {
                 {freshnessLabel(activeResult?.freshness_lag_ms)}
               </div>
               <p className="text-xs text-muted-foreground">
-                {activeResult?.as_of ? new Date(activeResult.as_of).toLocaleTimeString() : "-"}
+                {activeResult?.as_of
+                  ? new Date(activeResult.as_of).toLocaleTimeString(displayLocale)
+                  : "-"}
               </p>
             </CardContent>
           </Card>
@@ -403,7 +409,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">
-                  {(diagnostics.data?.outbox.pending ?? 0).toLocaleString()}
+                  {(diagnostics.data?.outbox.pending ?? 0).toLocaleString(displayLocale)}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {diagnostics.data?.outbox.failed ?? 0} {ui("failed,")}{" "}
@@ -676,7 +682,7 @@ export default function ReportsPage() {
             )}
           </aside>
         </section>
-      </PageBody>
-    </PageShell>
+      </PageMain>
+    </PageContainer>
   );
 }

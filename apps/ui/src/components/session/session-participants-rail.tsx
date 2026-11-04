@@ -9,8 +9,8 @@
  */
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import { Loader2, LogOut, User, UserPlus } from "lucide-react";

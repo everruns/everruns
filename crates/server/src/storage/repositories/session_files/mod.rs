@@ -821,6 +821,13 @@ impl Database {
         old_path: &str,
         new_path: &str,
     ) -> Result<Option<SessionFileRow>> {
+        anyhow::ensure!(
+            old_path != "/"
+                && new_path != "/"
+                && old_path != new_path
+                && !new_path.starts_with(&format!("{old_path}/")),
+            "Invalid move destination"
+        );
         // Blob keys are addressed by file id (not path), so a move only rewrites
         // path metadata — the object and its sidecar pointer are untouched.
         let mut tx = self.pool.begin().await?;
@@ -831,6 +838,7 @@ impl Database {
             SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             FROM workspace_files
             WHERE workspace_id = $1 AND path = $2
+            FOR UPDATE
             "#,
         )
         .bind(session_id)
@@ -842,24 +850,48 @@ impl Database {
             return Ok(None);
         };
 
+        // A directory's destination must be absent even when its parent row is
+        // implicit. Never merge trees or relocate a readonly descendant.
+        let (blocked,): (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM workspace_files WHERE workspace_id = $1 AND
+             ((path = $2 OR starts_with(path, $2 || '/')) OR
+              (is_readonly AND (path = $3 OR starts_with(path, $3 || '/')))))",
+        )
+        .bind(session_id)
+        .bind(new_path)
+        .bind(old_path)
+        .fetch_one(&mut *tx)
+        .await?;
+        anyhow::ensure!(
+            !blocked,
+            "Destination exists or source contains readonly files"
+        );
+
         if source.is_directory {
             // Move all children by replacing the prefix
             let old_prefix = format!("{}/", old_path);
             let new_prefix = format!("{}/", new_path);
 
-            sqlx::query(
+            // THREAT[TM-FS-005]: inspect the rows actually moved, including a
+            // child marked readonly after the preflight check. An error rolls
+            // back the entire tree; never commit a partial protected move.
+            let readonly = sqlx::query_scalar::<_, bool>(
                 r#"
-                UPDATE workspace_files
-                SET path = $3 || substring(path from $4)
-                WHERE workspace_id = $1 AND path LIKE $2
+                WITH moved AS (
+                    UPDATE workspace_files
+                    SET path = $3 || substring(path from char_length($2) + 1)
+                    WHERE workspace_id = $1 AND starts_with(path, $2)
+                    RETURNING is_readonly
+                )
+                SELECT COALESCE(bool_or(is_readonly), FALSE) FROM moved
                 "#,
             )
             .bind(session_id)
-            .bind(format!("{}%", old_prefix))
+            .bind(&old_prefix)
             .bind(&new_prefix)
-            .bind((old_prefix.len() + 1) as i32)
-            .execute(&mut *tx)
+            .fetch_one(&mut *tx)
             .await?;
+            anyhow::ensure!(!readonly, "Cannot move readonly descendants");
         }
 
         // Move the file/directory itself

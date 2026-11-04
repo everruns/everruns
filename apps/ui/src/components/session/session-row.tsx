@@ -8,8 +8,8 @@
 // the one that earns its place — on a failed run it replaces the work summary,
 // because on a failing run nothing else on the row matters.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import Link from "next/link";
 import { cn, shortenId } from "@/lib/utils";
 import { formatDurationCompact, formatRelativeTime, formatTokens } from "@/lib/formatting";

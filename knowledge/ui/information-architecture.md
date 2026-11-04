@@ -54,7 +54,7 @@ authoring is the activity that brings the user to the page.
 
 | Group | Assertion |
 |---|---|
-| **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. |
+| **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. [Home](org-home.md) sits above Chat in this group without becoming the landing route. |
 | **Operational** | Recordings and external exposure: Sessions and Exposures. |
 | **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
 | **Library** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
@@ -213,6 +213,15 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   and moving a route between groups needs no page-level change. The group is a label, not a
   link, there is no group index page to point at, and inventing one would add a hop nobody
   wants. Pages outside a labelled section (Chats, Settings) take no prefix.
+
+## Navigation loading
+
+Page navigation keeps the current content visible until the destination is ready.
+Do not put a generic loading boundary at the main route group: it replaces known
+titles, breadcrumbs and controls with skeletons, making even cached pages feel
+slow. Sidebar links show pending feedback while the selected item continues to
+identify the displayed page. Data loading boundaries belong inside persistent
+layouts, such as the session header, or around page data alone.
 
 ## Dismissed options
 

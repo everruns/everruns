@@ -1,11 +1,15 @@
 //! Backend localization helpers for deterministic platform-authored strings.
 //!
 //! Decisions:
-//! - Keep locale fallback simple: Ukrainian (`uk*`) or default English.
+//! - Resolve supported language tags with exact boundaries; unknown languages use English.
 //! - Centralize string catalogs here so backend-authored copy stays externalized
 //!   as we add more locales.
 //! - Allowed locale and timezone lists are the single source of truth for the
 //!   backend. The UI mirrors these lists.
+
+#[path = "localization/activity.rs"]
+mod activity;
+pub use activity::runtime_text;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -250,21 +254,41 @@ pub fn is_allowed_timezone(tz: &str) -> bool {
 pub enum BackendLocale {
     En,
     Uk,
+    Fr,
+    De,
+    Es,
+    Zh,
 }
 
 pub fn resolve_backend_locale(locale: Option<&str>) -> BackendLocale {
-    // Only inspect the ASCII language prefix; do not allocate or pull a full
-    // Unicode tag-search iterator into size-constrained Engine deployments.
-    if locale.map(str::trim).is_some_and(|tag| {
-        let bytes = tag.as_bytes();
-        bytes
-            .get(..2)
-            .is_some_and(|language| language.eq_ignore_ascii_case(b"uk"))
-            && matches!(bytes.get(2), None | Some(b'-' | b'_'))
-    }) {
-        BackendLocale::Uk
-    } else {
-        BackendLocale::En
+    let tag = locale.unwrap_or("en").trim().as_bytes();
+    if !matches!(tag.get(2), None | Some(b'-' | b'_')) {
+        return BackendLocale::En;
+    }
+    match tag.get(..2) {
+        Some(language) if language.eq_ignore_ascii_case(b"uk") => BackendLocale::Uk,
+        Some(language) if language.eq_ignore_ascii_case(b"fr") => BackendLocale::Fr,
+        Some(language) if language.eq_ignore_ascii_case(b"de") => BackendLocale::De,
+        Some(language) if language.eq_ignore_ascii_case(b"es") => BackendLocale::Es,
+        Some(language) if language.eq_ignore_ascii_case(b"zh") => {
+            // A Simplified Chinese catalog must not masquerade as Traditional Chinese.
+            let lower = locale
+                .unwrap_or_default()
+                .trim()
+                .replace('_', "-")
+                .to_ascii_lowercase();
+            if ["zh-hant", "zh-tw", "zh-hk", "zh-mo"].iter().any(|prefix| {
+                lower == *prefix
+                    || lower
+                        .strip_prefix(prefix)
+                        .is_some_and(|rest| rest.starts_with('-'))
+            }) {
+                BackendLocale::En
+            } else {
+                BackendLocale::Zh
+            }
+        }
+        _ => BackendLocale::En,
     }
 }
 
@@ -291,6 +315,30 @@ pub fn cancellation_strings(locale: Option<&str>) -> &'static CancellationString
             no_turn_running: "Наразі нічого не виконується",
             cancellation_reason: "Користувач попросив скасувати виконання",
             cancellation_message: "Користувач попросив скасувати роботу.",
+        },
+        BackendLocale::Fr => &CancellationStrings {
+            turn_cancelled: "Tour annulé avec succès",
+            no_turn_running: "Aucun tour en cours",
+            cancellation_reason: "Annulation demandée par l’utilisateur",
+            cancellation_message: "L’utilisateur a demandé l’annulation du travail.",
+        },
+        BackendLocale::De => &CancellationStrings {
+            turn_cancelled: "Ausführung erfolgreich abgebrochen",
+            no_turn_running: "Derzeit läuft keine Ausführung",
+            cancellation_reason: "Abbruch vom Benutzer angefordert",
+            cancellation_message: "Der Benutzer hat den Abbruch der Arbeit angefordert.",
+        },
+        BackendLocale::Es => &CancellationStrings {
+            turn_cancelled: "Turno cancelado correctamente",
+            no_turn_running: "No hay ningún turno en curso",
+            cancellation_reason: "El usuario solicitó la cancelación",
+            cancellation_message: "El usuario solicitó cancelar el trabajo.",
+        },
+        BackendLocale::Zh => &CancellationStrings {
+            turn_cancelled: "已成功取消本轮执行",
+            no_turn_running: "当前没有正在执行的轮次",
+            cancellation_reason: "用户请求取消",
+            cancellation_message: "用户请求取消工作。",
         },
     }
 }
@@ -325,10 +373,54 @@ const UK_STRINGS: BackendStrings = BackendStrings {
     completed_tool_batch_many: "Пакет інструментів завершено з {count} проблемами",
 };
 
+const FR_STRINGS: BackendStrings = BackendStrings {
+    working: "En cours",
+    current_directory: "répertoire actuel",
+    and_more_actions: "et {count} autres actions",
+    with_issues_one: " avec 1 problème",
+    with_issues_many: " avec {count} problèmes",
+    completed_tool_batch_one: "Lot d’outils terminé avec 1 problème",
+    completed_tool_batch_many: "Lot d’outils terminé avec {count} problèmes",
+};
+
+const DE_STRINGS: BackendStrings = BackendStrings {
+    working: "In Bearbeitung",
+    current_directory: "aktuelles Verzeichnis",
+    and_more_actions: "und {count} weitere Aktionen",
+    with_issues_one: " mit 1 Problem",
+    with_issues_many: " mit {count} Problemen",
+    completed_tool_batch_one: "Werkzeugstapel mit 1 Problem abgeschlossen",
+    completed_tool_batch_many: "Werkzeugstapel mit {count} Problemen abgeschlossen",
+};
+
+const ES_STRINGS: BackendStrings = BackendStrings {
+    working: "Trabajando",
+    current_directory: "directorio actual",
+    and_more_actions: "y {count} acciones más",
+    with_issues_one: " con 1 problema",
+    with_issues_many: " con {count} problemas",
+    completed_tool_batch_one: "Lote de herramientas completado con 1 problema",
+    completed_tool_batch_many: "Lote de herramientas completado con {count} problemas",
+};
+
+const ZH_STRINGS: BackendStrings = BackendStrings {
+    working: "正在处理",
+    current_directory: "当前目录",
+    and_more_actions: "以及另外 {count} 个操作",
+    with_issues_one: "，有 1 个问题",
+    with_issues_many: "，有 {count} 个问题",
+    completed_tool_batch_one: "工具批次已完成，有 1 个问题",
+    completed_tool_batch_many: "工具批次已完成，有 {count} 个问题",
+};
+
 pub fn backend_strings(locale: Option<&str>) -> &'static BackendStrings {
     match resolve_backend_locale(locale) {
         BackendLocale::En => &EN_STRINGS,
         BackendLocale::Uk => &UK_STRINGS,
+        BackendLocale::Fr => &FR_STRINGS,
+        BackendLocale::De => &DE_STRINGS,
+        BackendLocale::Es => &ES_STRINGS,
+        BackendLocale::Zh => &ZH_STRINGS,
     }
 }
 
@@ -358,7 +450,11 @@ pub fn format_completed_tool_batch(locale: Option<&str>, error_count: u32) -> St
 
 pub fn format_more_actions(locale: Option<&str>, count: usize) -> String {
     match resolve_backend_locale(locale) {
-        BackendLocale::En => backend_strings(locale)
+        BackendLocale::En
+        | BackendLocale::Fr
+        | BackendLocale::De
+        | BackendLocale::Es
+        | BackendLocale::Zh => backend_strings(locale)
             .and_more_actions
             .replace("{count}", &count.to_string()),
         BackendLocale::Uk => {
@@ -378,7 +474,34 @@ pub fn localized_tool_display_name(
     locale: Option<&str>,
 ) -> Option<String> {
     if resolve_backend_locale(locale) != BackendLocale::Uk {
-        return fallback_display_name.map(ToOwned::to_owned);
+        let source = match tool_name {
+            "bash" => "Shell",
+            "read_file" | "session_read_file" => "Read file",
+            "read_many_files" => "Read files",
+            "list_directory" | "list_files" => "List files",
+            "grep_files" => "Search files",
+            "search" | "search_web" => "Search web",
+            name if name.ends_with("__search") => "Search",
+            "write_file" => "Write file",
+            "edit_file" | "replace_in_file" => "Edit file",
+            "append_file" => "Append to file",
+            "move_file" => "Move file",
+            "delete_file" => "Delete file",
+            "mkdir" => "Create directory",
+            "stat_file" => "File information",
+            "secret_store" => "Secret Store",
+            "kv_store" => "Key Value Store",
+            "spawn_agent" => "Start agent",
+            "write_todos" => "Task list",
+            "setup_connection" => "Set up connection",
+            _ => return fallback_display_name.map(ToOwned::to_owned),
+        };
+        let translated = runtime_text(locale, source);
+        return if translated != source {
+            Some(translated.to_string())
+        } else {
+            fallback_display_name.map(ToOwned::to_owned)
+        };
     }
 
     let localized = match tool_name {
@@ -467,7 +590,7 @@ mod display_localization_tests {
         for locale in ["uk", "uk-UA", "UK_ua", " uk-UA "] {
             assert_eq!(resolve_backend_locale(Some(locale)), BackendLocale::Uk);
         }
-        for locale in ["", "u", "ukulele", "ukrainian", "uké", "éuk-UA", "de"] {
+        for locale in ["", "u", "ukulele", "ukrainian", "uké", "éuk-UA", "ja"] {
             assert_eq!(resolve_backend_locale(Some(locale)), BackendLocale::En);
         }
         assert_eq!(resolve_backend_locale(None), BackendLocale::En);
@@ -496,8 +619,53 @@ mod display_localization_tests {
             "Виконання успішно скасовано"
         );
         assert_eq!(
-            cancellation_strings(Some("de")).turn_cancelled,
+            cancellation_strings(Some("ja")).turn_cancelled,
             "Turn cancelled successfully"
         );
+    }
+}
+
+#[cfg(test)]
+mod additional_locale_tests {
+    use super::*;
+
+    #[test]
+    fn activity_preserves_instruction_filenames() {
+        for locale in ["fr", "de", "es", "zh-CN", "en-GB"] {
+            assert!(runtime_text(Some(locale), "Read AGENTS.md").contains("AGENTS.md"));
+        }
+    }
+
+    #[test]
+    fn regional_language_tags_resolve_without_prefix_false_positives() {
+        for (tag, expected) in [
+            ("fr-CA", BackendLocale::Fr),
+            ("DE_at", BackendLocale::De),
+            ("es-MX", BackendLocale::Es),
+            ("zh-Hans-CN", BackendLocale::Zh),
+            ("en-GB", BackendLocale::En),
+            ("french", BackendLocale::En),
+            ("zh-Hant-TW", BackendLocale::En),
+            ("constructor", BackendLocale::En),
+        ] {
+            assert_eq!(resolve_backend_locale(Some(tag)), expected, "{tag}");
+        }
+    }
+
+    #[test]
+    fn cancellation_and_activity_are_translated_before_arguments_are_added() {
+        for (locale, notice, reading) in [
+            ("fr-CA", "Tour annulé avec succès", "Lecture de"),
+            ("de-DE", "Ausführung erfolgreich abgebrochen", "Lese"),
+            ("es-MX", "Turno cancelado correctamente", "Leyendo"),
+            ("zh-CN", "已成功取消本轮执行", "正在读取"),
+        ] {
+            assert_eq!(cancellation_strings(Some(locale)).turn_cancelled, notice);
+            assert_eq!(runtime_text(Some(locale), "Reading"), reading);
+            assert_eq!(
+                runtime_text(Some(locale), "Customer document {name}"),
+                "Customer document {name}"
+            );
+        }
     }
 }

@@ -15,6 +15,8 @@ pub mod codex;
 pub mod fireworks;
 #[cfg(feature = "gemini")]
 pub mod gemini;
+#[cfg(feature = "groq")]
+pub mod groq;
 #[cfg(feature = "mai")]
 pub mod mai;
 #[cfg(feature = "meta")]
@@ -27,6 +29,23 @@ pub mod openai;
 pub mod openrouter;
 #[cfg(feature = "vercel")]
 pub mod vercel;
+
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(feature = "openai", feature = "groq", feature = "mistral")
+))]
+mod file_batch;
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(
+        feature = "openai",
+        feature = "gemini",
+        feature = "mistral",
+        feature = "fireworks",
+        feature = "groq"
+    )
+))]
+mod native_batch;
 
 // Re-export core types for convenience.
 pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
@@ -53,6 +72,7 @@ pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
         feature = "cloudflare",
         feature = "fireworks",
         feature = "gemini",
+        feature = "groq",
         feature = "mai",
         feature = "meta",
         feature = "mistral",
@@ -77,6 +97,8 @@ pub fn register_drivers(registry: &mut DriverRegistry) {
     fireworks::register_driver(registry);
     #[cfg(feature = "gemini")]
     gemini::register_driver(registry);
+    #[cfg(feature = "groq")]
+    groq::register_driver(registry);
     #[cfg(feature = "mai")]
     mai::register_driver(registry);
     #[cfg(feature = "meta")]

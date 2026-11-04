@@ -10,9 +10,11 @@
 //   the public API listener. Workers already reach that address with the same
 //   TLS and bearer token, so no deployment needs a new address, port or
 //   network rule, and the route is never exposed through the public edge.
-// - The path is HMAC-signed with WORKER_GRPC_AUTH_TOKEN over kind, id, org and
-//   expiry, so a worker can only fetch what the server just handed out and the
-//   tenant check stays on the server.
+// - Legacy paths are HMAC-signed with WORKER_GRPC_AUTH_TOKEN over kind, id,
+//   org and expiry. Holders of that shared worker key can mint paths within
+//   the existing trusted-worker boundary. Journal-only assignment scopes are
+//   refused before signature or body processing. Missing or ambiguous server
+//   authority also fails closed.
 // - Uploads go the other way on the same server: a worker POSTs a generated
 //   image as raw bytes (`blob_wire`), authorized by the worker bearer token
 //   like the gRPC call it replaces, which also named its org.
@@ -20,11 +22,11 @@
 use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{StatusCode, header},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use everruns_internal_protocol::blob_wire::{
@@ -131,7 +133,56 @@ pub fn routes(state: AppState) -> Router {
                 crate::api::images::MAX_IMAGE_SIZE + 1024 * 1024,
             )),
         )
+        // A journal reader has no byte authority, even for a valid legacy URL.
+        // Run before extractors: do not buffer an upload or touch storage first.
+        .layer(axum::middleware::from_fn_with_state(
+            state.db.clone(),
+            require_blob_authority,
+        ))
         .with_state(state)
+}
+
+async fn require_blob_authority(
+    State(db): State<Arc<StorageBackend>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    use crate::worker_link::grpc_service::authority::{self, WorkerAuthority};
+    match authority::resolve(request.extensions()) {
+        Ok(authority @ (WorkerAuthority::LegacyWorker | WorkerAuthority::Development)) => {
+            // Read-link authentication must reject invalid signatures without
+            // any database access. The handler checks the floor before lookup.
+            if matches!(
+                *request.method(),
+                axum::http::Method::GET | axum::http::Method::HEAD
+            ) {
+                return next.run(request).await;
+            }
+            if let Err(error) = authority::admit_ingress(&db, authority).await {
+                return ingress_error(error).into_response();
+            }
+            next.run(request).await
+        }
+        Ok(WorkerAuthority::ActorJournal(_) | WorkerAuthority::VerifiedJournal(_)) => (
+            StatusCode::FORBIDDEN,
+            "Worker assignment does not permit blob access",
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            "Worker authority context required",
+        )
+            .into_response(),
+    }
+}
+
+fn ingress_error(error: tonic::Status) -> (StatusCode, &'static str) {
+    let status = if error.code() == tonic::Code::PermissionDenied {
+        StatusCode::FORBIDDEN
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, "Worker byte authority unavailable")
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,8 +194,14 @@ pub struct UploadQuery {
 async fn upload_image(
     State(state): State<AppState>,
     Query(query): Query<UploadQuery>,
+    Extension(authority): Extension<crate::worker_link::grpc_service::authority::WorkerAuthority>,
     body: Bytes,
 ) -> Result<Json<UploadedImage>, (StatusCode, &'static str)> {
+    // A body admitted before cutover may arrive later. Refuse before decoding
+    // or storing it once its legacy authority is no longer accepted.
+    crate::worker_link::grpc_service::authority::admit_ingress(&state.db, &authority)
+        .await
+        .map_err(ingress_error)?;
     let (head, data) =
         decode_image_upload(&body).ok_or((StatusCode::BAD_REQUEST, "Malformed image upload"))?;
     if data.len() > crate::api::images::MAX_IMAGE_SIZE {
@@ -218,9 +275,13 @@ async fn get_blob(
     State(state): State<AppState>,
     Path((kind, id)): Path<(String, Uuid)>,
     Query(query): Query<SignedQuery>,
+    Extension(authority): Extension<crate::worker_link::grpc_service::authority::WorkerAuthority>,
 ) -> Result<Response, (StatusCode, &'static str)> {
     let kind = BlobKind::parse(&kind).ok_or((StatusCode::NOT_FOUND, "Unknown blob kind"))?;
     validate_signature(&state.signing_secret, kind, id, &query)?;
+    crate::worker_link::grpc_service::authority::admit_ingress(&state.db, &authority)
+        .await
+        .map_err(ingress_error)?;
 
     let internal = |error: anyhow::Error| {
         tracing::error!(%id, kind = kind.as_str(), error = %error, "Failed to load blob for worker");
@@ -313,13 +374,17 @@ mod tests {
         let app = routes(AppState {
             db,
             signing_secret: "secret".into(),
-        });
+        })
+        .layer(axum::Extension(
+            crate::worker_link::grpc_service::authority::WorkerAuthority::Development,
+        ));
         let id = Uuid::new_v4();
         let expires = chrono::Utc::now().timestamp() + 60;
-        for uri in [
-            format!("/internal/blobs/images/{id}?org_id=1&expires={expires}&sig=bad"),
-            format!("/internal/blobs/videos/{id}?org_id=1&expires={expires}&sig=bad"),
+        for (kind, expected) in [
+            ("images", StatusCode::FORBIDDEN),
+            ("videos", StatusCode::NOT_FOUND),
         ] {
+            let uri = format!("/internal/blobs/{kind}/{id}?org_id=1&expires={expires}&sig=bad");
             let response = app
                 .clone()
                 .oneshot(
@@ -330,7 +395,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_ne!(response.status(), StatusCode::OK);
+            assert_eq!(response.status(), expected);
         }
     }
 }

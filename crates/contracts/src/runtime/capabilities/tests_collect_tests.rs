@@ -950,3 +950,98 @@ async fn collector_seeds_native_routes_before_bounded_disclosure_policy() {
         })
     );
 }
+
+#[tokio::test]
+async fn declarative_and_plugin_mcp_owner_context_is_rederived_in_both_collection_paths() {
+    for id in ["declarative:retail", "plugin:retail"] {
+        let registry = CapabilityRegistry::new();
+        let config = |description: &str, display_name: Option<&str>| {
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(id),
+                serde_json::json!({
+                    "name":"retail", "display_name":display_name, "description":description,
+                    "system_prompt":"Never searchable private instructions",
+                    "mcp_servers":{"gateway":{
+                        "url":"https://example.com/mcp", "actsAs":"none", "description":"Server context",
+                        "capability_context":{"id":"forged", "name":"Forged", "description":"Stale"}
+                    }}
+                }),
+            )
+        };
+        let first = config("Cobalt warehouse", Some("Retail operations"));
+        let simple = collect_capability_mcp_servers(std::slice::from_ref(&first), &registry);
+        let full = collect_capabilities_with_configs(&[first], &registry, &test_ctx()).await;
+        assert_eq!(simple, full.mcp_servers);
+        let owner = simple["gateway"].capability_context.as_ref().unwrap();
+        assert_eq!(
+            (
+                owner.id.as_str(),
+                owner.name.as_str(),
+                owner.description.as_str()
+            ),
+            (id, "Retail operations", "Cobalt warehouse")
+        );
+        assert_eq!(
+            simple["gateway"].description.as_deref(),
+            Some("Server context")
+        );
+        let replacement = config("Fresh geothermal records", None);
+        let next = collect_capability_mcp_servers(std::slice::from_ref(&replacement), &registry);
+        let next_full =
+            collect_capabilities_with_configs(&[replacement], &registry, &test_ctx()).await;
+        assert_eq!(next, next_full.mcp_servers);
+        let owner = next["gateway"].capability_context.as_ref().unwrap();
+        assert_eq!(owner.name, "retail");
+        assert_eq!(owner.description, "Fresh geothermal records");
+        assert!(collect_capability_mcp_servers(&[], &registry).is_empty());
+        assert!(
+            collect_capabilities_with_configs(&[], &registry, &test_ctx())
+                .await
+                .mcp_servers
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+async fn registered_mcp_owner_context_tracks_current_capability_and_explicit_server_override() {
+    struct Owner(&'static str);
+    impl Capability for Owner {
+        fn id(&self) -> &str {
+            "retail"
+        }
+        fn name(&self) -> &str {
+            "Retail operations"
+        }
+        fn description(&self) -> &str {
+            self.0
+        }
+        fn mcp_servers(&self) -> crate::runtime::CapabilityMcpServers {
+            serde_json::from_value(serde_json::json!({"gateway": {
+                "url":"https://example.com/mcp", "actsAs":"none", "description":"Server context"
+            }}))
+            .unwrap()
+        }
+    }
+    let mut registry = CapabilityRegistry::new();
+    let configs = vec![AgentCapabilityConfig::new(CapabilityId::new("retail"))];
+    for description in ["Cobalt warehouse", "Fresh geothermal records"] {
+        registry.register(Owner(description));
+        let simple = collect_capability_mcp_servers(&configs, &registry);
+        let full = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        assert_eq!(simple, full.mcp_servers);
+        let owner = simple["gateway"].capability_context.as_ref().unwrap();
+        assert_eq!(owner.id, "retail");
+        assert_eq!(owner.name, "Retail operations");
+        assert_eq!(owner.description, description);
+        let explicit = crate::runtime::ScopedMcpServers::from([(
+            "gateway".into(),
+            crate::runtime::ScopedMcpServer {
+                url: "https://replacement.example/mcp".into(),
+                ..Default::default()
+            },
+        )]);
+        let replaced = crate::runtime::merge_scoped_mcp_servers(&simple, &explicit);
+        assert!(replaced["gateway"].capability_context.is_none());
+    }
+}

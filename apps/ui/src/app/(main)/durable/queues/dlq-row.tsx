@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -19,6 +19,8 @@ export function DlqRow({
   onRequeue: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -62,9 +64,9 @@ export function DlqRow({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(entry.dead_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>{new Date(entry.dead_at).toLocaleString(displayLocale)}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>

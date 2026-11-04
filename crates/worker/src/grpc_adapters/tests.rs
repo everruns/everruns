@@ -35,6 +35,33 @@ fn mcp_search_metadata_is_optional_for_older_servers() {
 }
 
 #[test]
+fn mcp_search_metadata_preserves_capability_description_alongside_server_context() {
+    let metadata = serde_json::json!({
+        "mcp_server":{"name":"alpha", "description":"Borehole records"},
+        "capability":{"id":"minerals", "name":"Minerals", "description":"Scandium prospecting"}
+    });
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__inspect".into(),
+        description: "Inspect records".into(),
+        capability_id: "minerals".into(),
+        capability_name: "Minerals".into(),
+        search_metadata: Some(everruns_internal_protocol::json_to_proto_struct(&metadata)),
+        ..Default::default()
+    });
+    assert_eq!(
+        definition.hints().capability_description.as_deref(),
+        Some("Scandium prospecting")
+    );
+    let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&[definition]);
+    for query in ["borehole", "scandium"] {
+        let hits = index.search(query, 8, |_| true);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].server_match);
+        assert!(!hits[0].tool_match);
+    }
+}
+
+#[test]
 fn worker_parses_the_neutral_capability_reference_shape() {
     // EVE-873: worker resolution consumes the same `{"ref", "config"}`
     // representation the Framework serializes and the control plane
@@ -333,4 +360,33 @@ fn harness_transport_projection_enforces_lifecycle_before_execution() {
             "legacy status {status} must keep its active fallback"
         );
     }
+}
+
+#[test]
+fn session_client_tools_reach_the_worker() {
+    // A worker-run turn offers the session's client-side tools to the model
+    // only if they survive the session read.
+    let tool = serde_json::json!({
+        "type": "client_side",
+        "name": "create_ticket",
+        "description": "Open a helpdesk ticket.",
+        "parameters": {"type": "object", "properties": {}},
+    });
+    let proto_session = proto::Session {
+        id: Some(uuid_to_proto(Uuid::new_v4())),
+        harness_id: Some(uuid_to_proto(Uuid::new_v4())),
+        status: "idle".into(),
+        tools: vec![tool.to_string()],
+        ..Default::default()
+    };
+    let session = proto_session_to_session(proto_session).unwrap();
+    assert_eq!(session.tools.len(), 1);
+    assert_eq!(session.tools[0].name(), "create_ticket");
+
+    let invalid = proto::Session {
+        id: Some(uuid_to_proto(Uuid::new_v4())),
+        tools: vec!["not json".into()],
+        ..Default::default()
+    };
+    assert!(proto_session_to_session(invalid).is_err());
 }

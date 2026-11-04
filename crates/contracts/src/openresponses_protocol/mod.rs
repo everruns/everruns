@@ -45,12 +45,15 @@ use crate::user_facing_error::{is_provider_quota_message, is_usage_limit_message
 // Split out of one 6000-line file. Every item keeps its visibility, so the
 // module's public surface is unchanged.
 mod background;
+mod batch_codec;
 mod chat_driver;
 mod citations;
 mod completion_contract;
 mod computer;
 mod hosted_tools;
 mod input;
+mod non_streaming;
+mod refusal;
 mod streaming;
 mod tool_changes;
 mod websocket;
@@ -114,6 +117,11 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// is serialized and before it is sent; either may return an error to abort the
 /// request (e.g. failed routing validation).
 pub trait OpenResponsesRequestExtension: Send + Sync {
+    /// Plan-backed and other stream-only routes opt out of JSON transport.
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
     /// Whether a rejected stateful continuation may be retried as a repaired
     /// stateless transcript. Extensions with provider-owned pending work must
     /// opt out so the fallback cannot discard or repeat that work.
@@ -170,6 +178,7 @@ pub struct OpenResponsesProtocolChatDriver {
     native_prompt_cache_options: bool,
     background_mode: bool,
     required_completion: bool,
+    plaintext_reasoning_provider: Option<&'static str>,
     websocket: websocket::WebSocketPolicy,
     inline_tool_changes: tool_changes::InlineToolChangeHosts,
 }
@@ -193,9 +202,17 @@ impl OpenResponsesProtocolChatDriver {
             native_prompt_cache_options: false,
             background_mode: false,
             required_completion: false,
+            plaintext_reasoning_provider: None,
             websocket: Default::default(),
             inline_tool_changes: Default::default(),
         }
+    }
+
+    /// Preserve and replay plaintext reasoning for an endpoint that explicitly
+    /// exposes it. OpenAI's default encrypted-only handling remains unchanged.
+    pub fn with_plaintext_reasoning(mut self, provider: &'static str) -> Self {
+        self.plaintext_reasoning_provider = Some(provider);
+        self
     }
 
     /// Reject truncated streams and gateway-only terminal frames.
@@ -679,8 +696,17 @@ impl OpenResponsesProtocolChatDriver {
     }
 
     fn function_tool(tool: &ToolDefinition, defer_loading: Option<bool>) -> ResponsesTool {
-        let strict_parameters =
-            crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters());
+        Self::function_tool_mode(tool, defer_loading, true)
+    }
+
+    fn function_tool_mode(
+        tool: &ToolDefinition,
+        defer_loading: Option<bool>,
+        normalize: bool,
+    ) -> ResponsesTool {
+        let strict_parameters = normalize
+            .then(|| crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters()))
+            .flatten();
         ResponsesTool::Function {
             r#type: "function".to_string(),
             name: tool.name().to_string(),
@@ -848,22 +874,35 @@ impl OpenResponsesProtocolChatDriver {
     fn build_prompt_cache_key(
         config: &LlmCallConfig,
         _input_items: &[ResponsesInputItem],
-        instructions: &Option<String>,
-        tools: &Option<Vec<ResponsesTool>>,
+        _instructions: &Option<String>,
+        _tools: &Option<Vec<ResponsesTool>>,
     ) -> Option<String> {
-        let prompt_cache = config.prompt_cache.as_ref().filter(|cfg| cfg.enabled)?;
+        // Send the routing key unless caching is explicitly turned off. Gateway
+        // providers cache implicitly whether or not the agent has Prompt Caching:
+        // Meta's Muse (direct or through OpenRouter) caches a ~10k-token prompt
+        // without a key but misses every time from ~100k tokens up, while the
+        // same 126k and 379k prompts are fully cached once they carry one
+        // (probed 2026-11-01). Without the key a long session re-reads its
+        // whole history at full price on every call.
+        let strategy = match config.prompt_cache.as_ref() {
+            Some(cache) if !cache.enabled => return None,
+            Some(cache) => cache.strategy,
+            None => crate::driver_registry::PromptCacheStrategy::default(),
+        };
         let cache_family = config
             .metadata
             .get("session_id")
             .or_else(|| config.metadata.get("agent_id"))
             .or_else(|| config.metadata.get("harness_id"))
             .or_else(|| config.metadata.get("org_id"));
+        // The key only routes requests to a cache; the provider still matches
+        // the prefix. Instructions and tools stay out so a tool reveal or a
+        // prompt note keeps the session on the cache that holds everything
+        // before the change.
         let fingerprint = json!({
-            "strategy": prompt_cache.strategy,
+            "strategy": strategy,
             "model": config.model,
             "cache_family": cache_family,
-            "instructions": instructions,
-            "tools": tools,
         });
         let payload = serde_json::to_vec(&fingerprint).ok()?;
         let digest = hex::encode(Sha256::digest(payload));
@@ -1177,6 +1216,15 @@ impl OpenResponsesProtocolChatDriver {
         supports_phases: bool,
         inline: Option<tool_changes::InlineToolChanges>,
     ) -> (Option<String>, Vec<ResponsesInputItem>) {
+        Self::build_input_with_reasoning(messages, supports_phases, inline, None)
+    }
+
+    fn build_input_with_reasoning(
+        messages: &[Message],
+        supports_phases: bool,
+        inline: Option<tool_changes::InlineToolChanges>,
+        plaintext_provider: Option<&str>,
+    ) -> (Option<String>, Vec<ResponsesInputItem>) {
         // Accumulate all system messages into `instructions`. Multiple system
         // messages legitimately occur in one request — the agent system prompt
         // plus, e.g., infinity context's hidden-history notice or compaction's
@@ -1213,6 +1261,19 @@ impl OpenResponsesProtocolChatDriver {
                 // encrypted content, are dropped rather than reconstructed —
                 // a synthesized id is not one the API can resolve.
                 for item in &msg.reasoning {
+                    if let Some(provider) = plaintext_provider {
+                        if item.provider == provider
+                            && let Some(id) = &item.item_id
+                            && let Some(crate::reasoning::ReasoningText::Plain { text }) =
+                                &item.text
+                        {
+                            input_items.push(ResponsesInputItem::ProviderItem(json!({
+                                "type": "reasoning", "id": id, "summary": [],
+                                "content": [{"type": "reasoning_text", "text": text}],
+                            })));
+                        }
+                        continue;
+                    }
                     // Reasoning replay tokens are provider-specific. Never send
                     // another provider's artifact to the Responses API.
                     if item.provider != "openai" {

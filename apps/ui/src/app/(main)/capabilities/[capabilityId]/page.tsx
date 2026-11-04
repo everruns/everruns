@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { use } from "react";
 import { useCapability, useCapabilities, usePageTitle } from "@/hooks";
@@ -29,7 +33,7 @@ import {
   localizedCapabilityName,
 } from "@/lib/capability-localization";
 import { capabilityTurnedOff, rolloutFlagMap } from "@/lib/capability-availability";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";

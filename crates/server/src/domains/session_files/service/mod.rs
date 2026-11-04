@@ -28,6 +28,7 @@ mod filesystem;
 pub(super) mod knowledge_mounts;
 use knowledge_mounts::KnowledgeRoute;
 mod mounts;
+mod rename;
 mod search;
 pub mod streaming;
 
@@ -877,54 +878,6 @@ impl WorkspaceFileService {
         } else {
             self.db.delete_session_file(session_id, &path).await
         }
-    }
-
-    /// Move/rename a file or directory
-    pub async fn move_file(
-        &self,
-        session_id: Uuid,
-        req: MoveFileInput,
-    ) -> Result<Option<SessionFile>> {
-        self.restore_virtual_mounts(session_id).await?;
-        let src_path = Self::normalize_path(&req.src_path);
-        let dst_path = Self::normalize_path(&req.dst_path);
-
-        Self::validate_path(&dst_path)?;
-
-        // A move or copy that crosses a Memory mount boundary cannot be one
-        // storage statement, so it is read + write (+ delete) through this same
-        // service. Directories are refused rather than walked: a recursive
-        // cross-store copy is not what any caller needs today.
-        if self
-            .crosses_memory_mount(session_id, &src_path, &dst_path)
-            .await
-        {
-            return self
-                .transfer_across_memory_mount(session_id, &src_path, &dst_path, true)
-                .await;
-        }
-
-        // Check source exists
-        let source = self.db.get_session_file_info(session_id, &src_path).await?;
-        if source.is_none() {
-            return Err(anyhow!("Source not found: {}", src_path));
-        }
-
-        // Check destination doesn't exist
-        if self.db.session_file_exists(session_id, &dst_path).await? {
-            return Err(anyhow!("Destination already exists: {}", dst_path));
-        }
-
-        // Ensure destination parent exists
-        if let Some(parent) = FileInfo::parent_path(&dst_path) {
-            self.ensure_directory_exists(session_id, &parent).await?;
-        }
-
-        let row = self
-            .db
-            .move_session_file(session_id, &src_path, &dst_path)
-            .await?;
-        Ok(row.map(Self::row_to_session_file))
     }
 
     /// Copy a file

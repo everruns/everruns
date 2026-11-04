@@ -239,9 +239,25 @@ impl DurableScheduler {
                     "skipping trigger due to max_concurrent limit"
                 );
                 // Skip this trigger but still update next_trigger_at
-                self.skip_and_update_next(schedule).await?;
+                self.skip_and_update_next(schedule, "max_concurrent limit reached")
+                    .await?;
                 return Ok(());
             }
+        }
+
+        // Decision: an activity schedule whose last task is still unclaimed
+        // skips its trigger. Its tasks share one input, so a second copy adds
+        // nothing, and without this a schedule no worker pool claims (a job
+        // retired in code whose schedule row lives on) enqueued one task per
+        // trigger until the standalone queue hit its global cap and every
+        // other schedule failed with it (prod, 2026-11-01).
+        if schedule.target_type == ScheduleTargetType::Activity
+            && self.store.last_scheduled_task_pending(schedule.id).await?
+        {
+            debug!("skipping trigger: the previous task is still pending");
+            self.skip_and_update_next(schedule, "previous task still pending")
+                .await?;
+            return Ok(());
         }
 
         // Get scheduled_at time (or now if missing)
@@ -371,7 +387,11 @@ impl DurableScheduler {
     }
 
     /// Skip current trigger and update next trigger time
-    async fn skip_and_update_next(&self, schedule: &ScheduleRow) -> Result<(), SchedulerError> {
+    async fn skip_and_update_next(
+        &self,
+        schedule: &ScheduleRow,
+        reason: &str,
+    ) -> Result<(), SchedulerError> {
         let scheduled_at = schedule.next_trigger_at.unwrap_or_else(Utc::now);
 
         // Create execution record (it will be in Running status initially)
@@ -382,14 +402,14 @@ impl DurableScheduler {
 
         // Mark as skipped
         self.store
-            .skip_schedule_execution(execution_id, "max_concurrent limit reached")
+            .skip_schedule_execution(execution_id, reason)
             .await?;
 
         // Update next trigger time
         let next = self.calculate_next_trigger(schedule)?;
         self.store.update_next_trigger(schedule.id, next).await?;
 
-        debug!(%next, "skipped trigger due to max_concurrent, updated next trigger");
+        debug!(%next, reason, "skipped trigger, updated next trigger");
 
         Ok(())
     }
@@ -551,6 +571,82 @@ mod tests {
 
         let stats = store.get_schedule_stats(schedule_id).await.unwrap();
         assert_eq!(stats.total_executions, 1);
+    }
+
+    #[tokio::test]
+    async fn an_activity_schedule_holds_one_unclaimed_task() {
+        use crate::persistence::{TaskQueue, WorkerInfo, WorkerRegistry};
+
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let schedule_id = store
+            .create_schedule(CreateScheduleRow {
+                name: "unclaimed".to_string(),
+                description: None,
+                cron_expression: "0 * * * * * *".to_string(),
+                timezone: "UTC".to_string(),
+                target_type: ScheduleTargetType::Activity,
+                target_name: "nobody_claims_this".to_string(),
+                target_input: serde_json::json!({}),
+                enabled: true,
+                max_concurrent: None,
+                catch_up_missed: false,
+                max_catch_up: None,
+                retry_policy: None,
+                next_trigger_at: Some(Utc::now() - chrono::Duration::seconds(10)),
+            })
+            .await
+            .unwrap();
+        let scheduler = DurableScheduler::with_defaults(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            "test-scheduler-1".to_string(),
+        );
+        let fire = || async {
+            store
+                .update_next_trigger(schedule_id, Utc::now() - chrono::Duration::seconds(1))
+                .await
+                .unwrap();
+            scheduler.process_due_schedules().await.unwrap();
+        };
+
+        fire().await;
+        fire().await;
+        fire().await;
+        let stats = store.get_schedule_stats(schedule_id).await.unwrap();
+        assert_eq!(stats.total_executions, 3);
+        assert_eq!(stats.skipped_executions, 2, "triggers while the task waits");
+        assert!(
+            store
+                .last_scheduled_task_pending(schedule_id)
+                .await
+                .unwrap()
+        );
+
+        // Once a worker takes the task, the next trigger enqueues again.
+        store
+            .register_worker(WorkerInfo::new("worker", vec!["nobody_claims_this"]))
+            .await
+            .unwrap();
+        let claimed = store
+            .claim_queue_tasks("worker", None, &["nobody_claims_this".to_string()], 10)
+            .await
+            .unwrap();
+        assert_eq!(claimed.len(), 1, "only one task was ever enqueued");
+        assert!(
+            !store
+                .last_scheduled_task_pending(schedule_id)
+                .await
+                .unwrap()
+        );
+
+        fire().await;
+        let stats = store.get_schedule_stats(schedule_id).await.unwrap();
+        assert_eq!(stats.skipped_executions, 2);
+        assert!(
+            store
+                .last_scheduled_task_pending(schedule_id)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]

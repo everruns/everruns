@@ -25,6 +25,12 @@ import {
 import type { AnchorHTMLAttributes } from "react";
 import "./streamdown-message.css";
 
+// This tree-only plugin publishes unified 10 types; Streamdown uses unified 11.
+// It reads neither the processor nor VFile, whose types differ across versions.
+const githubAlertsPlugin = remarkGithubAlerts as NonNullable<
+  StreamdownProps["remarkPlugins"]
+>[number];
+
 // Lazy-load the mermaid plugin to avoid pulling the full mermaid dependency
 // (~2 MB) into the initial client bundle. The plugin loads once and is cached.
 let mermaidCache: DiagramPlugin | null = null;
@@ -146,7 +152,7 @@ export function StreamdownMessage({
       <Streamdown
         plugins={plugins}
         isAnimating={isAnimating}
-        remarkPlugins={[remarkGfm, remarkGithubAlerts]}
+        remarkPlugins={[remarkGfm, githubAlertsPlugin]}
         components={components}
         skipHtml={skipHtml}
       >

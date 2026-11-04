@@ -8,12 +8,13 @@ import type { DoctorReport } from "@/lib/api/types";
 
 const SYSTEM_DOCTOR_KEY = ["system", "doctor"] as const;
 
-export function useSystemDoctor() {
+export function useSystemDoctor(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: SYSTEM_DOCTOR_KEY,
     queryFn: () => getSystemDoctor(false),
     refetchInterval: 60_000,
     retry: false,
+    enabled: options.enabled ?? true,
   });
 }
 

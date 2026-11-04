@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 /**
  * My MCP servers: MCP servers a person added for themselves, from the
@@ -13,7 +14,7 @@
  * authorized is hidden. See knowledge/integrations/user-mcp-servers.md.
  */
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
@@ -92,6 +93,9 @@ function removeWarning(server: UserMcpServer) {
 }
 
 function ServerRow({ identityId, server }: { identityId: string; server: UserMcpServer }) {
+  const { displayLocale } = useLocale();
+
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const update = useUpdateUserMcpServer(identityId);
   const remove = useRemoveUserMcpServer(identityId);
@@ -126,7 +130,8 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
             {server.connection.connected_at && (
               <>
                 {" "}
-                {ui("· Signed in")} {new Date(server.connection.connected_at).toLocaleDateString()}
+                {ui("· Signed in")}{" "}
+                {new Date(server.connection.connected_at).toLocaleDateString(displayLocale)}
               </>
             )}
           </div>
@@ -204,8 +209,8 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
           size="sm"
           className="text-destructive"
           disabled={remove.isPending}
-          onClick={() => {
-            if (confirm(removeWarning(server))) {
+          onClick={async () => {
+            if (await requestConfirmation(removeWarning(server))) {
               remove.mutate(server.id);
             }
           }}
@@ -238,6 +243,8 @@ function SignInOnlyRow({
   identityId: string;
   connection: UserMcpConnection;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const revoke = useDeleteUserConnection();
   const add = useAddUserMcpServer(identityId);
@@ -258,7 +265,7 @@ function SignInOnlyRow({
         </div>
         <div className="truncate text-sm text-muted-foreground">
           {host(connection.server_url)} {ui("· Signed in")}{" "}
-          {new Date(connection.connected_at).toLocaleDateString()}
+          {new Date(connection.connected_at).toLocaleDateString(displayLocale)}
         </div>
         {add.error && <p className="text-sm text-destructive">{add.error.message}</p>}
       </div>

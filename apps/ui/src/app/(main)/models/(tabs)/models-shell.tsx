@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 // Library → Models: models, the providers that serve them, and org defaults.
 //
@@ -71,6 +72,7 @@ type Selection =
   | { kind: "choose"; provider: Provider };
 
 export function ModelsShell({ children }: { children?: ReactNode }) {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Models"));
   const queryClient = useQueryClient();
@@ -177,7 +179,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
   };
 
   const handleDelete = async (modelId: string) => {
-    if (!confirm("Are you sure you want to delete this model?")) return;
+    if (!(await requestConfirmation("Are you sure you want to delete this model?"))) return;
     await run("Failed to delete model", () => deleteModel.mutateAsync(modelId));
   };
 

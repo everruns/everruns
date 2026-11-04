@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { SessionCredentialsDialog } from "@/components/credentials/session-credentials-dialog";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
@@ -21,14 +25,14 @@ import {
 import { IconTile, PageBreadcrumb, SectionTabs } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { downloadSessionExport } from "@/lib/session-export";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
 import {
   getDisplayName,
   getEntityReferenceClassName,
   getEntityReferenceLabel,
 } from "@/lib/entity-lifecycle";
-import { formatCompactNumber, formatTokens } from "@/lib/formatting";
+import { formatCompactNumber, formatCostUsd, formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
 import { sessionOutcome } from "@/lib/session-outcome";
 import {
@@ -40,6 +44,7 @@ import {
   MessageSquare,
   ShieldCheck,
   Sparkles,
+  Users,
   Waypoints,
   Workflow,
   Zap,
@@ -50,7 +55,7 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey = "trace" | "approvals" | "work" | "events" | "files" | "cost";
+export type SessionNavKey = "trace" | "approvals" | "agents" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -61,6 +66,9 @@ export interface SessionNavItem {
 }
 
 export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
+  const { displayLocale } = useLocale();
+  const cost = usage.effective_cost_usd ?? usage.actual_cost_usd ?? usage.estimated_cost_usd;
+
   const ui = useUiTranslations();
   return (
     <TooltipProvider>
@@ -68,25 +76,26 @@ export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
         <TooltipTrigger>
           <Badge variant="outline" className="cursor-help gap-1">
             <Zap className="icon-sharp h-3 w-3" />
+            {cost != null ? `${formatCostUsd(cost)} · ` : ""}
             {formatTokens(usage.input_tokens)} / {formatTokens(usage.output_tokens)}
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
             <dt className="text-muted-foreground">{ui("Input")}</dt>
-            <dd>{usage.input_tokens.toLocaleString()}</dd>
+            <dd>{usage.input_tokens.toLocaleString(displayLocale)}</dd>
             <dt className="text-muted-foreground">{ui("Output")}</dt>
-            <dd>{usage.output_tokens.toLocaleString()}</dd>
+            <dd>{usage.output_tokens.toLocaleString(displayLocale)}</dd>
             {(usage.cache_read_tokens ?? 0) > 0 && (
               <>
                 <dt className="text-muted-foreground">{ui("Cache read")}</dt>
-                <dd>{usage.cache_read_tokens!.toLocaleString()}</dd>
+                <dd>{usage.cache_read_tokens!.toLocaleString(displayLocale)}</dd>
               </>
             )}
             {(usage.cache_creation_tokens ?? 0) > 0 && (
               <>
                 <dt className="text-muted-foreground">{ui("Cache created")}</dt>
-                <dd>{usage.cache_creation_tokens!.toLocaleString()}</dd>
+                <dd>{usage.cache_creation_tokens!.toLocaleString(displayLocale)}</dd>
               </>
             )}
           </dl>
@@ -193,6 +202,7 @@ export function buildSessionNavigation({
   eventCount,
   fileCount,
   activeScheduleCount,
+  inRun,
 }: {
   basePath: string;
   features: Set<string>;
@@ -204,6 +214,8 @@ export function buildSessionNavigation({
   fileCount?: number;
   /** Enabled schedules. A session that still has one keeps the Work tab. */
   activeScheduleCount?: number;
+  /** Another agent handed this session its work. */
+  inRun?: boolean;
 }): SessionNavItem[] {
   const hasFeature = (feature: string) => features.has(feature);
   // Work covers subagents, leased resources and the schedules this session
@@ -214,6 +226,9 @@ export function buildSessionNavigation({
     (taskCount ?? 0) > 0 ||
     (activeScheduleCount ?? 0) > 0;
   const hasFiles = sessionShowsFiles(features, fileCount);
+  // Agents shows the whole run: on a session that can hand work to other
+  // agents, and on one another agent handed work to.
+  const hasAgents = hasFeature("agent_handoffs") || !!inRun;
 
   return [
     {
@@ -231,6 +246,16 @@ export function buildSessionNavigation({
       href: `${basePath}/approvals`,
       icon: ShieldCheck,
     },
+    ...(hasAgents
+      ? [
+          {
+            key: "agents" as const,
+            label: "Agents",
+            href: `${basePath}/agents`,
+            icon: Users,
+          },
+        ]
+      : []),
     ...(hasWork
       ? [
           {
@@ -284,12 +309,16 @@ function SessionRecordingActions({
   sessionTitle,
   sessionTags,
   platformChat,
+  credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   agentId?: string;
   sessionTitle: string | null;
   sessionTags: string[];
   platformChat: boolean;
+  credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
   const ui = useUiTranslations();
   const { locale } = useLocale();
@@ -303,9 +332,10 @@ function SessionRecordingActions({
         sessionTags={sessionTags}
         agentId={agentId}
         platformChat={platformChat}
+        onForked={onForked}
       />
 
-      <SessionCredentialsDialog sessionId={sessionId} />
+      {credentialsAction ?? <SessionCredentialsDialog sessionId={sessionId} />}
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
@@ -352,6 +382,8 @@ export function SessionHeader({
   sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Sessions",
+  credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   session: Session;
@@ -368,6 +400,8 @@ export function SessionHeader({
   sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
+  credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
   const { displayLocale } = useDisplayLocale();
   const ui = useUiTranslations();
@@ -448,6 +482,8 @@ export function SessionHeader({
             sessionTitle={session.title ?? null}
             sessionTags={session.tags ?? []}
             platformChat={agent?.name === "platform-chat"}
+            credentialsAction={credentialsAction}
+            onForked={onForked}
           />
         </div>
       </div>

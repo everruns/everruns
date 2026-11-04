@@ -1,5 +1,7 @@
 //! Effective Agent features, shared by publication and hosted execution.
-use super::record::work_chat::{ChatFeatures, WorkChatConfig};
+use super::record::work_chat::{
+    ChatFeatures, WorkChatConfig, WorkChatMembership, normalize_member_email,
+};
 use crate::domains::common::CommandError;
 use crate::storage::StorageBackend;
 use everruns_contracts::typed_id::{AgentId, HarnessId};
@@ -56,6 +58,53 @@ pub async fn features(
         }
     }
     Ok(result)
+}
+
+/// Whether a verified deployment identity may use this chat.
+///
+/// THREAT[TM-WEB-025]: an unverified email is not an identity. Organization
+/// users match the identity provider's subject to `users.external_id`, or a
+/// verified email to a verified member account.
+pub async fn identity_admitted(
+    db: &StorageBackend,
+    org_id: i64,
+    config: &WorkChatConfig,
+    subject: &str,
+    email: Option<&str>,
+) -> anyhow::Result<bool> {
+    let email = email.map(normalize_member_email);
+    match config.membership {
+        WorkChatMembership::Open => Ok(true),
+        WorkChatMembership::Invites => Ok(email.is_some_and(|email| {
+            config.member_email.as_deref() == Some(email.as_str())
+                || config.invites.iter().any(|invited| invited == &email)
+        })),
+        WorkChatMembership::OrgUsers => org_user(db, org_id, subject, email.as_deref()).await,
+    }
+}
+
+async fn org_user(
+    db: &StorageBackend,
+    org_id: i64,
+    subject: &str,
+    email: Option<&str>,
+) -> anyhow::Result<bool> {
+    if !subject.is_empty()
+        && let Some(user) = db.get_user_by_external_id(subject).await?
+        && db.is_organization_member(org_id, user.id).await?
+    {
+        return Ok(true);
+    }
+    let Some(email) = email else {
+        return Ok(false);
+    };
+    let Some(user) = db.get_user_by_email(email).await? else {
+        return Ok(false);
+    };
+    if !user.email_verified {
+        return Ok(false);
+    }
+    db.is_organization_member(org_id, user.id).await
 }
 
 pub async fn validate(

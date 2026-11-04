@@ -6,6 +6,7 @@ import { Settings, Zap } from "lucide-react";
 
 jest.mock("next/link", () => ({
   __esModule: true,
+  useLinkStatus: () => ({ pending: mockNavigationPending }),
   default: ({
     children,
     prefetch,
@@ -18,6 +19,8 @@ jest.mock("next/link", () => ({
     </a>
   ),
 }));
+
+let mockNavigationPending = false;
 
 // Mock next/navigation
 const mockPathname = jest.fn();
@@ -146,6 +149,7 @@ jest.mock("@/hooks/use-policies", () => ({
 
 describe("Sidebar", () => {
   beforeEach(() => {
+    mockNavigationPending = false;
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
       chat_threads: false,
@@ -414,6 +418,22 @@ describe("Sidebar", () => {
     expect(sessions.className).not.toContain("border-l-primary");
   });
 
+  it("shows navigation feedback while keeping the current route selected", () => {
+    mockNavigationPending = true;
+    mockPathname.mockReturnValue("/agents");
+    render(<Sidebar />);
+
+    expect(screen.getAllByRole("status")[0]).toHaveTextContent("Loading page");
+    expect(screen.getByRole("link", { name: /^Agents/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /^Harnesses/ })).not.toHaveAttribute("aria-current");
+  });
+
+  it("does not show navigation feedback when links are idle", () => {
+    render(<Sidebar />);
+
+    expect(screen.queryByText("Loading page")).not.toBeInTheDocument();
+  });
+
   it("disables automatic viewport prefetch for every sidebar navigation link", () => {
     render(<Sidebar />);
 
@@ -505,8 +525,10 @@ describe("Sidebar", () => {
 
     const navigation = screen.getByRole("navigation");
     const links = within(navigation).getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/chats");
-    expect(links[1]).toHaveAttribute("href", "/chats/sess_1");
+    // Home sits above Chat; the thread list hangs under Chat.
+    expect(links[0]).toHaveAttribute("href", "/home");
+    expect(links[1]).toHaveAttribute("href", "/chats");
+    expect(links[2]).toHaveAttribute("href", "/chats/sess_1");
   });
 
   it("hides System navigation items by default (collapsed)", () => {

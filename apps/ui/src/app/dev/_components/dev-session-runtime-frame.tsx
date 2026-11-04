@@ -4,7 +4,7 @@ import {
   SessionContext,
   type SessionContextValue,
 } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { SessionLayoutContent } from "@/app/(main)/sessions/[sessionId]/layout";
+import { SessionLayoutContent } from "@/components/session/session-layout-content";
 
 export function DevSessionRuntimeFrame({
   contextValue,

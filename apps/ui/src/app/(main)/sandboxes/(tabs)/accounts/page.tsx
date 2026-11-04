@@ -1,6 +1,7 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { ProviderAccountIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
@@ -23,6 +24,9 @@ import { EmptyState, PageMain } from "@/components/layout";
 // Provider accounts tab. The page header and tabs come from the shell
 // (../sandboxes-shell.tsx).
 export default function SandboxProviderAccountsPage() {
+  const { displayLocale } = useLocale();
+
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Provider accounts"), ui("Sandboxes"));
   const connections = useOrganizationConnections();
@@ -114,9 +118,9 @@ export default function SandboxProviderAccountsPage() {
                           aria-label={ui("Disconnect {value0}", { value0: account.name })}
                           onClick={async () => {
                             if (
-                              !window.confirm(
+                              !(await requestConfirmation(
                                 `Disconnect ${account.name}? Templates using this account must be changed first.`,
-                              )
+                              ))
                             )
                               return;
                             try {
@@ -133,7 +137,7 @@ export default function SandboxProviderAccountsPage() {
                     }
                     footer={
                       <EntityCardFooter
-                        meta={`Connected ${new Date(account.connected_at).toLocaleDateString()}`}
+                        meta={`Connected ${new Date(account.connected_at).toLocaleDateString(displayLocale)}`}
                       />
                     }
                   >

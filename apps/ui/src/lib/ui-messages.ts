@@ -1,4 +1,23 @@
+import { messages as channelsAndTriggers } from "./messages/uk/channels-and-triggers";
+import { messages as sandboxBuilds } from "./messages/uk/sandbox-builds";
+import { messages as externalWorker } from "./messages/uk/external-agent";
+import { messages as agentCost } from "./messages/uk/agent-cost";
+import { messages as sharedControls } from "./messages/uk/shared-controls";
+import { messages as tracing } from "./messages/uk/tracing";
+import { messages as healthFixers } from "./messages/uk/health-fixers";
+import { messages as backgroundLimits } from "./messages/uk/background-limits";
+import { messages as monitoringTimeline } from "./messages/uk/monitoring-timeline";
+import { messages as orgHome } from "./messages/uk/org-home";
+import { messages as runRequests } from "./messages/uk/run-requests";
+import { messages as costs } from "./messages/uk/costs";
+import { messages as evals } from "./messages/uk/evals";
+import { messages as evalCases } from "./messages/uk/eval-cases";
+import { messages as zh } from "./messages/zh-CN";
+import { messages as es } from "./messages/es";
+import { messages as de } from "./messages/de";
+import { messages as fr } from "./messages/fr";
 // Product-owned source messages are gettext-style IDs. Never pass user content.
+import { messages as britishMessages } from "./messages/en-GB";
 import { messages as catalog0 } from "./messages/uk/agents-01";
 import { messages as catalog1 } from "./messages/uk/agents-02";
 import { messages as catalog2 } from "./messages/uk/agents-03";
@@ -22,6 +41,7 @@ import { messages as catalog18 } from "./messages/uk/settings-02";
 
 export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null) as Record<string, string>,
+  sandboxBuilds,
   catalog0,
   catalog1,
   catalog2,
@@ -42,4 +62,28 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   catalog17,
   catalog18,
   catalog19,
+  tracing,
+  healthFixers,
+  sharedControls,
+  agentCost,
+  externalWorker,
+  backgroundLimits,
+  monitoringTimeline,
+  orgHome,
+  runRequests,
+  costs,
+  evals,
+  evalCases,
+  channelsAndTriggers,
 );
+
+/** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */
+export const uiMessagesByLocale: Readonly<Record<string, Readonly<Record<string, string>>>> =
+  Object.assign(Object.create(null), {
+    uk: uiMessages,
+    fr,
+    de,
+    es,
+    "zh-CN": zh,
+    "en-GB": Object.assign(Object.create(null), britishMessages),
+  });

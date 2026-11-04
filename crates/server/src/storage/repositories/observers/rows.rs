@@ -19,6 +19,8 @@ pub struct ObserverRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
+    /// Pass-rate alert (`ObserverAlert`), when set.
+    pub alert: Option<serde_json::Value>,
 }
 
 /// Input for creating an observer
@@ -30,6 +32,7 @@ pub struct CreateObserverRow {
     pub match_config: serde_json::Value,
     pub sampling_rate: f64,
     pub scorers: serde_json::Value,
+    pub alert: Option<serde_json::Value>,
 }
 
 /// Input for updating an observer
@@ -41,6 +44,8 @@ pub struct UpdateObserverRow {
     pub sampling_rate: Option<f64>,
     pub scorers: Option<serde_json::Value>,
     pub status: Option<String>,
+    /// `Some(None)` clears the alert.
+    pub alert: Option<Option<serde_json::Value>>,
 }
 
 /// Trace score row from database. Pending rows double as the scoring queue.
@@ -67,6 +72,10 @@ pub struct TraceScoreRow {
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// `turn`, `session` or `tool`.
+    pub scope: String,
+    /// A person's review of this score (`ScoreReview`).
+    pub review: Option<serde_json::Value>,
 }
 
 /// Input for enqueueing a trace score (one per matched scorer).
@@ -79,6 +88,11 @@ pub struct CreateTraceScoreRow {
     pub turn_id: String,
     pub agent_id: Option<Uuid>,
     pub harness_id: Option<Uuid>,
+    /// `turn`, `session` or `tool`.
+    pub scope: String,
+    /// Not claimed before this time (a session score waits for the
+    /// conversation to settle).
+    pub not_before: Option<DateTime<Utc>>,
 }
 
 /// Terminal result written back by the scoring worker.
@@ -101,6 +115,47 @@ pub struct CompleteTraceScoreRow {
 pub struct ListTraceScoresParams {
     pub observer_id: Uuid,
     pub session_id: Option<Uuid>,
+    /// Only completed scores no person has reviewed, failing ones first.
+    pub review_queue: bool,
     pub limit: i64,
     pub offset: i64,
+}
+
+/// Completed-score counts for live-quality summaries.
+#[derive(Debug, Clone, FromRow)]
+pub struct ScoreSummaryRow {
+    /// Grouping key: an agent id, an observer id or a day, by query.
+    pub key: Option<String>,
+    pub scored: i64,
+    pub passed: i64,
+    pub sessions: i64,
+}
+
+/// One observer's pass rate over a window, for its alert.
+#[derive(Debug, Clone, FromRow)]
+pub struct ObserverWindowRow {
+    pub scored: i64,
+    pub passed: i64,
+}
+
+/// How `summarize_trace_scores` groups.
+#[derive(Debug, Clone, Copy)]
+pub enum ScoreGroup {
+    Total,
+    Agent,
+    Observer,
+    Day,
+    /// `<agent uuid>|<YYYY-MM-DD>`, for per-agent trends.
+    AgentDay,
+}
+
+/// One past event a backfill can score, with its session's attributes.
+#[derive(Debug, Clone, FromRow)]
+pub struct BackfillEventRow {
+    pub session_id: Uuid,
+    pub event_type: String,
+    pub data: serde_json::Value,
+    pub agent_id: Option<Uuid>,
+    pub harness_id: Option<Uuid>,
+    pub tags: Option<Vec<String>>,
 }

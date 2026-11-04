@@ -7,7 +7,7 @@ sidebar:
 
 When an AI agent fetches web content, the receiving server has no way to distinguish it from an anonymous scraper. **Request signing** solves this by attaching a cryptographic signature to every outbound HTTP request, letting target servers verify who is making the request and choose to grant or deny access based on that identity.
 
-Everruns implements the [Web Bot Authentication Architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture) (draft-meunier) using Ed25519 signatures over [RFC 9421 HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421).
+Everruns implements [Web Bot Auth](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/), the IETF working-group profile of [RFC 9421 HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421), using Ed25519 signatures.
 
 ## Background
 
@@ -20,7 +20,7 @@ Traditional bot identification relies on `User-Agent` strings, which are trivial
 RFC 9421 defines a general mechanism for signing HTTP messages. A sender selects components of the request (method, authority, specific headers) and signs them with a private key. The signature and a description of what was signed are transmitted as structured headers:
 
 ```
-Signature: sig=:base64url-encoded-signature:
+Signature: sig=:base64-encoded-signature:
 Signature-Input: sig=("@authority");created=1735689600;expires=1735689900;
                   keyid="JWK-thumbprint";alg="ed25519";nonce="random";
                   tag="web-bot-auth"
@@ -28,22 +28,22 @@ Signature-Input: sig=("@authority");created=1735689600;expires=1735689900;
 
 The receiving server reconstructs the same signature base from the request, fetches the sender's public key, and verifies the signature. Replay attacks are prevented by the `created`/`expires` window and random `nonce`.
 
-### Web Bot Authentication Architecture
+### Web Bot Auth
 
-The [draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture) builds on RFC 9421 specifically for bot identification:
+The [Web Bot Auth draft](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/) builds on RFC 9421 specifically for bot identification:
 
 - **Algorithm**: Ed25519 (fast, small keys, no parameter choices)
 - **Covered components**: `@authority` (the target domain) at minimum
 - **Key identity**: [JWK Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) (SHA-256 hash of the canonical public key representation)
 - **Signature tag**: `"web-bot-auth"`, distinguishes bot-auth signatures from other uses of RFC 9421
-- **Discovery**: optional `Signature-Agent` header points to a FQDN where the bot's public keys can be found
+- **Discovery**: the `Signature-Agent` header names the https URL where the bot's public keys can be found
 
 ### Key Discovery
 
-The companion [draft-meunier-http-message-signatures-directory](https://datatracker.ietf.org/doc/html/draft-meunier-http-message-signatures-directory) defines how target servers find a bot's public keys:
+The same draft defines how target servers find a bot's public keys:
 
 ```
-GET https://<signature-agent-fqdn>/.well-known/http-message-signatures-directory
+GET <signature-agent-origin>/.well-known/http-message-signatures-directory
 ```
 
 This returns a [JSON Web Key Set (JWKS)](https://www.rfc-editor.org/rfc/rfc7517#section-5) containing the bot's Ed25519 public keys. The target server uses the `kid` field to match the key against the `keyid` in the incoming signature.
@@ -52,58 +52,53 @@ This returns a [JSON Web Key Set (JWKS)](https://www.rfc-editor.org/rfc/rfc7517#
 
 ## How It Works in Everruns
 
-Request signing is implemented as a server-wide feature. When enabled, **every outbound HTTP request** made by the `web_fetch` tool is signed.
+Request signing is a server-wide feature owned by the egress layer, the part of Everruns every outbound tenant request passes through. When it is configured, requests made by the `web_fetch` tool and by `curl` in the Bashkit shell are signed. Each redirect hop is signed for its own host. Other outbound traffic, such as LLM providers, MCP servers and sandbox networking, is not signed.
+
+Everruns follows the IETF working-group draft [draft-ietf-webbotauth-httpsig-protocol](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/) and stays compatible with Cloudflare's verifier.
 
 ### Signing (outbound)
 
-The signing pipeline is handled by [fetchkit](https://github.com/everruns/fetchkit), the library powering the `web_fetch` capability:
-
-1. Agent calls `web_fetch` with a URL
-2. fetchkit builds the HTTP request
-3. If bot-auth is configured, fetchkit signs the request:
-   - Covers `@authority` and optionally `signature-agent`
-   - Generates a random nonce
-   - Sets `created` and `expires` timestamps
-   - Signs with Ed25519, attaches `Signature` and `Signature-Input` headers
-4. If signing fails (clock error, etc.), the request proceeds unsigned with a warning logged, signing never blocks requests
-5. The request is sent to the target server
+1. A tool builds a request and asks the egress layer for platform signing.
+2. The egress layer applies the deployment's network policy. Refused requests are never signed.
+3. For an `https://` request, it adds three headers:
+   - `Signature-Agent`: the deployment's origin as a quoted string, for example `"https://app.example.com"`.
+   - `Signature-Input`: covers `@method`, `@authority`, `@path` and `signature-agent`, with `created`, `expires` (5 minutes by default), `keyid`, `alg="ed25519"`, a random `nonce` and `tag="web-bot-auth"`.
+   - `Signature`: the Ed25519 signature, encoded as standard base64.
+4. Plain `http://` requests are sent unsigned, because a signature on an unencrypted connection can be replayed by anyone on the path. A request that already carries its own `Signature` header keeps it.
 
 ### Key directory (inbound)
 
-Everruns serves the public key at `/.well-known/http-message-signatures-directory`. This endpoint:
+Everruns serves its public keys at `/.well-known/http-message-signatures-directory`. This endpoint:
 
-- Is **public** (no authentication required)
-- Returns a JWKS containing the server's Ed25519 public key
-- Derives the key at startup from the same seed used for signing
+- is **public** and needs no authentication
+- returns a JWKS with media type `application/http-message-signatures-directory+json`
+- signs the response once per key, covering `@authority;req` and `Content-Digest`, with `tag="http-message-signatures-directory"`, so the key set cannot be re-served under another host
+- is cacheable for a day and allows cross-origin reads
 
 Example response:
 
-```json
-{
-  "keys": [
-    {
-      "kty": "OKP",
-      "crv": "Ed25519",
-      "x": "base64url-encoded-public-key",
-      "kid": "JWK-thumbprint-matching-keyid-in-signatures"
-    }
-  ]
-}
+```http
+HTTP/1.1 200 OK
+Content-Type: application/http-message-signatures-directory+json
+Cache-Control: public, max-age=86400
+Content-Digest: sha-256=:...:
+Signature-Input: binding0=("@authority";req "content-digest");created=...;expires=...;keyid="...";tag="http-message-signatures-directory"
+Signature: binding0=:...:
+
+{"keys":[{"kty":"OKP","crv":"Ed25519","kid":"<JWK thumbprint>","x":"<public key>","use":"sig"}]}
 ```
 
 ### What target servers see
 
-A signed request arrives with three additional headers:
-
 | Header | Purpose |
 |--------|---------|
 | `Signature` | The Ed25519 signature over the covered components |
-| `Signature-Input` | Describes what was signed: components, timestamps, key ID, algorithm, nonce |
-| `Signature-Agent` | FQDN where the bot's public keys can be discovered (optional) |
+| `Signature-Input` | What was signed: components, timestamps, key ID, algorithm, nonce, tag |
+| `Signature-Agent` | Quoted https origin whose well-known directory holds the key |
 
-Target servers that support web-bot-auth can:
+Target servers that support Web Bot Auth can:
 1. Extract the `keyid` from `Signature-Input`
-2. Fetch the public key from the `Signature-Agent` FQDN's well-known endpoint
+2. Fetch the directory from the `Signature-Agent` origin's well-known path
 3. Verify the signature
 4. Apply access policies based on the verified identity
 
@@ -117,7 +112,7 @@ If you operate a server that receives requests from Everruns agents, here's how 
 
 1. **Check the tag**: parse `Signature-Input` and confirm `tag="web-bot-auth"`. Ignore signatures with other tags.
 2. **Check timestamps**: reject if `created` is in the future or `expires` is in the past. A 5-minute clock skew tolerance is reasonable.
-3. **Fetch the public key**: extract the `Signature-Agent` FQDN and fetch `https://<fqdn>/.well-known/http-message-signatures-directory`. Find the key matching the `keyid` from `Signature-Input`. Cache the JWKS (keys rotate infrequently).
+3. **Fetch the public key**: take the `Signature-Agent` origin (strip the surrounding quotes) and fetch `<origin>/.well-known/http-message-signatures-directory`. Find the key matching the `keyid` from `Signature-Input`. Cache the JWKS (keys rotate infrequently).
 4. **Reconstruct the signature base**: build the canonical representation per [RFC 9421 Section 2.5](https://www.rfc-editor.org/rfc/rfc9421#section-2.5) using the covered components listed in `Signature-Input`.
 5. **Verify**: use Ed25519 to verify the signature against the reconstructed base and the fetched public key.
 
@@ -147,9 +142,11 @@ def verify_bot_auth(request) -> bool:
     if params["created"] > now + 300 or params["expires"] < now:
         return False  # expired or future-dated
 
-    # 3. Fetch public key from Signature-Agent FQDN
-    agent_fqdn = request.headers.get("signature-agent", "")
-    jwks_url = f"https://{agent_fqdn}/.well-known/http-message-signatures-directory"
+    # 3. Fetch public key from the Signature-Agent origin ("https://...")
+    agent_origin = request.headers.get("signature-agent", "").strip('"')
+    if not agent_origin.startswith("https://"):
+        return False
+    jwks_url = f"{agent_origin}/.well-known/http-message-signatures-directory"
     jwks = httpx.get(jwks_url).json()
     key_data = next(k for k in jwks["keys"] if k.get("kid") == params["keyid"])
     public_key_bytes = base64.urlsafe_b64decode(key_data["x"] + "==")
@@ -186,9 +183,10 @@ async function verifyBotAuth(request) {
   if (params.created > now + 300 || params.expires < now) return false;
 
   // Fetch public key
-  const fqdn = request.headers["signature-agent"];
+  const origin = (request.headers["signature-agent"] || "").replace(/^"|"$/g, "");
+  if (!origin.startsWith("https://")) return false;
   const res = await fetch(
-    `https://${fqdn}/.well-known/http-message-signatures-directory`
+    `${origin}/.well-known/http-message-signatures-directory`
   );
   const jwks = await res.json();
   const jwk = jwks.keys.find((k) => k.kid === params.keyid);
@@ -210,17 +208,16 @@ async function verifyBotAuth(request) {
 
 ## Configuration
 
-Request signing is configured via environment variables. Set them before starting the server.
+Request signing is configured with environment variables. Set the same values on the server and on every worker: workers sign, and the server publishes the directory.
 
 ### Environment variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `BOT_AUTH_SIGNING_KEY_SEED` | yes | – | Base64url-encoded 32-byte Ed25519 seed |
-| `BOT_AUTH_AGENT_FQDN` | no | – | FQDN for the `Signature-Agent` header |
-| `BOT_AUTH_VALIDITY_SECS` | no | `300` | Signature validity window in seconds |
-
-When `BOT_AUTH_SIGNING_KEY_SEED` is not set, signing is disabled and no crypto code runs at request time.
+| `BOT_AUTH_SIGNING_KEY_SEED` | yes | – | Base64url-encoded 32-byte Ed25519 seed. Unset disables signing and serves an empty directory. |
+| `BOT_AUTH_SIGNATURE_AGENT_URL` | no | `PUBLIC_APP_URL` | https origin that serves the key directory, sent as `Signature-Agent`. Signing stays off when neither is set. |
+| `BOT_AUTH_PUBLISHED_KEY_SEEDS` | no | – | Comma-separated seeds listed in the directory but not used to sign, for key rotation |
+| `BOT_AUTH_VALIDITY_SECS` | no | `300` | Request signature lifetime in seconds |
 
 ### Generate a signing key
 
@@ -228,21 +225,36 @@ When `BOT_AUTH_SIGNING_KEY_SEED` is not set, signing is disabled and no crypto c
 python3 -c "import os, base64; print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode())"
 ```
 
+Keep the seed in your secret store. Anyone holding it can sign as your deployment.
+
 ### Enable signing
 
 ```bash
 export BOT_AUTH_SIGNING_KEY_SEED="your-base64url-seed-here"
-export BOT_AUTH_AGENT_FQDN="bot.yourcompany.com"
+export BOT_AUTH_SIGNATURE_AGENT_URL="https://agents.yourcompany.com"
 ```
 
-Then start the server. All `web_fetch` requests will be signed, and the public key will be available at `https://bot.yourcompany.com/.well-known/http-message-signatures-directory`.
+The origin must route `/.well-known/http-message-signatures-directory` to the Everruns server, outside any bot challenge, so verifiers can always fetch it.
 
 ### Verify it's working
 
 ```bash
-# Check the key directory endpoint
-curl -s http://localhost:9301/.well-known/http-message-signatures-directory | jq .
+curl -si https://agents.yourcompany.com/.well-known/http-message-signatures-directory
 ```
+
+The response should list one key and carry `Signature` and `Signature-Input` headers.
+
+### Register with Cloudflare
+
+Sites behind Cloudflare treat signed requests as a verified bot only after registration. In the Cloudflare dashboard, open the Bot Submission Form, choose **Request Signature** as the verification method, and enter your directory URL. See [Cloudflare's Web Bot Auth guide](https://developers.cloudflare.com/bots/reference/bot-verification/web-bot-auth/).
+
+### Rotate the key
+
+1. Generate a new seed and add it to `BOT_AUTH_PUBLISHED_KEY_SEEDS`. Deploy, then wait at least a day so verifiers refresh their cached directory.
+2. Swap the seeds: the new seed becomes `BOT_AUTH_SIGNING_KEY_SEED`, the old one moves to `BOT_AUTH_PUBLISHED_KEY_SEEDS`. Deploy.
+3. After another day, remove the old seed.
+
+If a seed leaks, skip the waiting: replace it and remove the old one right away. Verifiers stop accepting the old key once their cached directory expires.
 
 ## Standards
 
@@ -253,9 +265,8 @@ curl -s http://localhost:9301/.well-known/http-message-signatures-directory | jq
 | [RFC 7638, JWK Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) | How the `keyid` is computed from the public key |
 | [RFC 7517, JSON Web Key (JWK)](https://www.rfc-editor.org/rfc/rfc7517) | Format of the keys in the JWKS response |
 | [RFC 8037, Ed25519 in JOSE](https://www.rfc-editor.org/rfc/rfc8037) | Ed25519 key representation in JWK format |
-| [draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture) | Bot-specific profile of RFC 9421 (algorithm, tag, covered components) |
-| [draft-meunier-http-message-signatures-directory](https://datatracker.ietf.org/doc/html/draft-meunier-http-message-signatures-directory) | Well-known endpoint for public key discovery |
+| [draft-ietf-webbotauth-httpsig-protocol](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/) | Web Bot Auth: the bot profile of RFC 9421, `Signature-Agent`, and the key directory. Replaces the earlier draft-meunier architecture and directory drafts |
 
 ## See Also
 
-- [fetchkit](https://github.com/everruns/fetchkit), The library implementing the signing client
+- [Cloudflare: Web Bot Auth for bot operators](https://developers.cloudflare.com/bots/reference/bot-verification/web-bot-auth/)

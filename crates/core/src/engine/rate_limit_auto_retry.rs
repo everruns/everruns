@@ -101,6 +101,8 @@ impl LlmErrorHook for RateLimitAutoRetryHook {
                 None,
                 Some(scheduled_at),
                 "UTC".to_string(),
+                // One-shot: fires once, on the default schedule budget.
+                Default::default(),
             )
             .await
         {
@@ -111,7 +113,9 @@ impl LlmErrorHook for RateLimitAutoRetryHook {
                     scheduled_at = %scheduled_at,
                     "rate_limit_auto_retry: scheduled retry after provider rate limit"
                 );
-                LlmErrorHookOutcome::noop().with_error_field("auto_retry", true)
+                LlmErrorHookOutcome::noop()
+                    .with_error_field("auto_retry", true)
+                    .with_retry_schedule(schedule.id)
             }
             Err(_) => {
                 tracing::warn!(
@@ -140,6 +144,7 @@ mod tests {
         existing: Mutex<Vec<SessionSchedule>>,
         created: Mutex<Vec<(String, Option<DateTime<Utc>>)>>,
         active: u32,
+        created_id: Mutex<Option<ScheduleId>>,
     }
 
     fn schedule(
@@ -167,6 +172,11 @@ mod tests {
             created_at,
             updated_at: created_at,
             deleted_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
+            stop_reason: None,
+            budget: None,
         }
     }
 
@@ -184,7 +194,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((description.clone(), scheduled_at));
-            Ok(schedule(session_id, &description, Utc::now(), 0))
+            let created = schedule(session_id, &description, Utc::now(), 0);
+            *self.created_id.lock().unwrap() = Some(created.id);
+            Ok(created)
         }
 
         async fn cancel_schedule(
@@ -254,6 +266,8 @@ mod tests {
             outcome.extra_error_fields.get("auto_retry"),
             Some(&json!(true))
         );
+        assert_eq!(outcome.retry_schedule_id, *store.created_id.lock().unwrap());
+        assert!(outcome.retry_schedule_id.is_some());
         let created = store.created.lock().unwrap();
         assert_eq!(created.len(), 1);
         assert_eq!(created[0].0, RATE_LIMIT_RETRY_PROMPT);
@@ -357,6 +371,9 @@ mod tests {
             Some(&json!(true))
         );
         assert!(store.created.lock().unwrap().is_empty());
+        // The description can be agent-controlled. Only a newly created retry
+        // receives continuation proof, never an existing matching schedule.
+        assert!(outcome.retry_schedule_id.is_none());
     }
 
     #[tokio::test]

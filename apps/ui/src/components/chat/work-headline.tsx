@@ -5,11 +5,11 @@
  */
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import type { ReactNode } from "react";
 import { useLiveWorkReport } from "@/hooks/use-turn-work-report";
 import { workReportStatus } from "@/components/chat/work-report-parts";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 
 export function WorkHeadline({

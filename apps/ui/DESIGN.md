@@ -329,3 +329,19 @@ primary marker and a faint primary tint, with section spacing instead of repeate
   stay in sync.
 - **Don't** create lookalike domain examples from lower-level primitives; render
   the real domain component.
+
+
+## Shared interaction patterns
+
+Use `Combobox` for searchable resource selection and `Select` for short fixed lists.
+Domain pickers own eligibility and fetching, not popup mechanics. Use `ResourceMultiSelect`
+for multiple resource bindings, `TagInput` for tags, `Slider` for ranges and `SegmentedControl`
+for local view choices. Name every control and preserve unavailable saved selections.
+
+Standard pages compose `page-layout.tsx`; the older page-shell API is retired. Use `Field`
+for labels/hints/errors, `Pagination` for numbered lists, `ConfirmDialog` for destructive
+requests and `Button loading` for pending operations. Confirmation hosts live inside the page
+Chat context so dialogs continue to mask manual-only interactions. Public guidance and examples
+live in [Components](../../docs/design-system/components.mdx) and
+[Page layouts](../../docs/design-system/layouts.mdx); interactive production examples live at
+`/dev/ui-components`.

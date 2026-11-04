@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 import httpx
 
+from capacity.test_capacity import CapacityTests, StreamTests
+
 spec = importlib.util.spec_from_file_location("load_test", Path(__file__).with_name("load-test.py"))
 driver = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(driver)

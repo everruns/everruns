@@ -1,6 +1,8 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -56,6 +58,8 @@ function WorkerRow({
   onDrain: (id: string) => void;
   onResume: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const loadPercentage =
     worker.max_concurrency > 0 ? (worker.current_load / worker.max_concurrency) * 100 : 0;
@@ -138,7 +142,9 @@ function WorkerRow({
       </TableCell>
       <TableCell>
         <div className="text-sm">
-          <p className="text-success">{(worker.tasks_completed ?? 0).toLocaleString()}</p>
+          <p className="text-success">
+            {(worker.tasks_completed ?? 0).toLocaleString(displayLocale)}
+          </p>
           {(worker.tasks_failed ?? 0) > 0 && (
             <p className="text-xs text-destructive">
               {worker.tasks_failed} {ui("failed")}
@@ -153,9 +159,15 @@ function WorkerRow({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(worker.last_heartbeat_at), { addSuffix: true })}
+              {formatDistanceToNow(
+                new Date(worker.last_heartbeat_at),
+                { addSuffix: true },
+                displayLocale,
+              )}
             </TooltipTrigger>
-            <TooltipContent>{new Date(worker.last_heartbeat_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(worker.last_heartbeat_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -178,6 +190,7 @@ function WorkerRow({
 }
 
 export default function WorkersPage() {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Workers"), ui("Durable"));
   const { data, isLoading, error, refetch } = useWorkers();
@@ -198,9 +211,9 @@ export default function WorkersPage() {
   );
   if (isLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
+          <PageMasthead title={ui("Workers")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-4">
@@ -210,15 +223,15 @@ export default function WorkersPage() {
           </div>
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
+          <PageMasthead title={ui("Workers")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -235,7 +248,7 @@ export default function WorkersPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -275,8 +288,12 @@ export default function WorkersPage() {
     },
   ];
 
-  const handleDrain = (workerId: string) => {
-    if (confirm(`Are you sure you want to drain worker ${workerId.slice(0, 12)}...?`)) {
+  const handleDrain = async (workerId: string) => {
+    if (
+      await requestConfirmation(
+        `Are you sure you want to drain worker ${workerId.slice(0, 12)}...?`,
+      )
+    ) {
       drainMutation.mutate(workerId);
     }
   };
@@ -286,9 +303,9 @@ export default function WorkersPage() {
   };
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
+        <PageMasthead title={ui("Workers")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Summary Stats */}
@@ -359,6 +376,6 @@ export default function WorkersPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

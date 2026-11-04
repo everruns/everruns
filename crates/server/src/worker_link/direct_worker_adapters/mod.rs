@@ -8,6 +8,7 @@ mod internal_commands;
 use image_store::DirectImageArtifactStore;
 pub(crate) mod mcp;
 mod message_projection;
+mod provider_config;
 mod user_mcp;
 
 // Direct implementation of WorkerAdapters for in-process worker
@@ -511,12 +512,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()> {
         let id = SessionId::from_uuid(session_id);
-        let update = UpdateSession {
-            status: Some(status.to_string()),
-            ..Default::default()
-        };
         self.db
-            .update_session(org_id, id, update)
+            .set_session_status(org_id, id, status)
             .await
             .inspect_err(|e| tracing::error!("Failed to update session status: {e}"))
             .map_err(|_| store_error("Failed to update session status"))?;
@@ -563,8 +560,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Uuid,
         message_id: Uuid,
     ) -> Result<Option<RuntimeMessage>> {
-        let messages = self.load_messages(session_id).await?;
-        Ok(messages.into_iter().find(|m| m.id == message_id))
+        message_projection::get_message(&self.db, session_id, message_id).await
     }
 
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>> {
@@ -661,16 +657,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .map_err(|_| {
                 store_error("Provider is unavailable for this session's runtime identity")
             })?;
-        Ok(resolved.map(|value| {
-            let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
-                provider.clone(),
-                string_to_provider_type(&value.provider_type),
-            );
-            config.api_key = value.api_key;
-            config.base_url = value.base_url;
-            config.request_options = value.request_options;
-            config
-        }))
+        Ok(resolved.map(|value| provider_config::into_config(provider.clone(), value)))
     }
 
     async fn get_provider_config(
@@ -686,16 +673,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tracing::error!(%error, "Failed to resolve provider");
                 store_error("Failed to resolve provider")
             })?;
-        Ok(resolved.map(|value| {
-            let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
-                provider.clone(),
-                string_to_provider_type(&value.provider_type),
-            );
-            config.api_key = value.api_key;
-            config.base_url = value.base_url;
-            config.request_options = value.request_options;
-            config
-        }))
+        Ok(resolved.map(|value| provider_config::into_config(provider.clone(), value)))
     }
 
     // =========================================================================

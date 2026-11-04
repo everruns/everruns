@@ -1,6 +1,8 @@
 //! MCP server configurations contributed by capabilities.
 
-use crate::runtime::mcp_server::{McpServerActsAs, ScopedMcpServer, ScopedMcpServers};
+use crate::runtime::mcp_server::{
+    McpCapabilityContext, McpServerActsAs, ScopedMcpServer, ScopedMcpServers,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -97,6 +99,29 @@ pub fn capability_mcp_servers_to_scoped(servers: &CapabilityMcpServers) -> Scope
         .collect()
 }
 
+/// Clone contributions and derive their owner context from the current capability.
+/// Authored server descriptions and transport configuration stay unchanged.
+pub fn capability_mcp_servers_to_scoped_with_context(
+    servers: &CapabilityMcpServers,
+    id: &str,
+    name: &str,
+    description: &str,
+) -> ScopedMcpServers {
+    let context = McpCapabilityContext {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        description: description.to_owned(),
+    };
+    servers
+        .iter()
+        .map(|(name, server)| {
+            let mut server = server.as_scoped().clone();
+            server.capability_context = Some(context.clone());
+            (name.clone(), server)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +154,58 @@ mod tests {
                 json!({"type":"http","url":"https://example.com/mcp","actsAs":wire_name})
             );
         }
+    }
+
+    #[test]
+    fn runtime_owner_context_is_cloned_rederived_and_absent_from_authored_wire() {
+        let source: CapabilityMcpServer = serde_json::from_value(json!({
+            "url":"https://example.com/mcp", "actsAs":"none",
+            "description":"Server context", "headers":{"X-Route":"inventory"},
+            "capability_context":{"id":"forged", "name":"Forged", "description":"secret"}
+        }))
+        .unwrap();
+        assert!(source.capability_context.is_none());
+        let authored = serde_json::to_value(source.as_scoped()).unwrap();
+        let servers = CapabilityMcpServers::from([("gateway".into(), source)]);
+        let scoped = capability_mcp_servers_to_scoped_with_context(
+            &servers,
+            "owner",
+            "Inventory",
+            "Cobalt warehouse",
+        );
+        let context = scoped["gateway"].capability_context.as_ref().unwrap();
+        assert_eq!(context.id, "owner");
+        assert_eq!(context.name, "Inventory");
+        assert_eq!(context.description, "Cobalt warehouse");
+        assert_eq!(
+            scoped["gateway"].clone().capability_context.as_ref(),
+            Some(context)
+        );
+        assert_eq!(
+            scoped["gateway"].description.as_deref(),
+            Some("Server context")
+        );
+        assert!(servers["gateway"].capability_context.is_none());
+        assert_eq!(serde_json::to_value(&scoped["gateway"]).unwrap(), authored);
+        let reloaded: ScopedMcpServer = serde_json::from_value(authored).unwrap();
+        assert!(reloaded.capability_context.is_none());
+        let stale = CapabilityMcpServers::from([(
+            "gateway".into(),
+            CapabilityMcpServer::new(scoped["gateway"].clone(), McpServerActsAs::None),
+        )]);
+        let updated = capability_mcp_servers_to_scoped_with_context(
+            &stale,
+            "replacement",
+            "Replacement",
+            "Updated metadata",
+        );
+        assert_eq!(
+            updated["gateway"].capability_context.as_ref().unwrap().id,
+            "replacement"
+        );
+        assert_eq!(
+            updated["gateway"].description,
+            scoped["gateway"].description
+        );
     }
 }

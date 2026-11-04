@@ -151,10 +151,10 @@ The first build takes a few minutes. Then the app prints what it found:
   listen   http://localhost:3000
 ```
 
-`→ openai` says the model goes to OpenAI with your key. If it says
-`simulator`, `OPENAI_API_KEY` is not set in this shell. A set
-`OPENROUTER_API_KEY` or `SERVE_GATEWAY_URL` takes precedence over
-`OPENAI_API_KEY`; see [Try it](/framework/serve/#try-it).
+`→ openai` says the model uses your OpenAI key and, if set, `OPENAI_BASE_URL`.
+`→ openrouter` uses `OPENROUTER_API_KEY`. An explicit OpenAI URL/key pair takes
+precedence for `openai/…` models. `simulator` means no real provider route is
+configured; see [Try it](/framework/serve/#try-it).
 
 `cargo run` with no command is `dev`: sessions are kept in SQLite under
 `.serve/`, the terminal shows each turn as it happens, and edits to

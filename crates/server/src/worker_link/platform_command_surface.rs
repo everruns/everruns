@@ -97,11 +97,16 @@ fn discover(
                     (score > 0).then_some((score, entry))
                 })
                 .collect::<Vec<_>>();
+            // Among equal scores, the shorter name is the more general
+            // operation (`list_agents` before `list_agent_source_accounts`), so
+            // a new specialised command cannot push the canonical ones out of
+            // the bounded result below.
             scored.sort_by_key(|(score, entry)| {
                 (
                     std::cmp::Reverse(*score),
                     std::cmp::Reverse(entry.read_only),
                     entry.category,
+                    entry.name.len(),
                     entry.name,
                 )
             });

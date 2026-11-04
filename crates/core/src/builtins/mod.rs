@@ -58,6 +58,8 @@ pub mod openui;
 pub mod output_truncation;
 pub mod parallel_tool_calls;
 pub use native_async_tools::NativeAsyncToolsCapability;
+pub mod artifact_inspection;
+mod claude_message_threads;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
@@ -135,6 +137,9 @@ pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapabil
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
 pub use channel_context::{CHANNEL_CONTEXT_CAPABILITY_ID, ChannelContextCapability};
+pub use claude_message_threads::{
+    CLAUDE_MESSAGE_THREADS_CAPABILITY_ID, ClaudeMessageThreadsCapability,
+};
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionStep,
@@ -334,6 +339,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(ToolSearchCapability::new()),
         Arc::new(AutoToolSearchCapability::new()),
         Arc::new(PromptCachingCapability::new()),
+        Arc::new(ClaudeMessageThreadsCapability),
         Arc::new(ParallelToolCallsCapability),
         Arc::new(OutputTruncationCapability),
         Arc::new(NativeAsyncToolsCapability),
@@ -354,7 +360,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 33] = [
+    const RUNTIME_IDS: [&str; 34] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -375,6 +381,7 @@ mod bundle_tests {
         "tool_search",
         "auto_tool_search",
         "prompt_caching",
+        "claude_message_threads",
         "parallel_tool_calls",
         "output_truncation",
         "native_async_tools",

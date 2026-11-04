@@ -6,7 +6,6 @@ import { ChannelUsePanel } from "@/components/agents/channel-use-panel";
 import { A2aSetupGuidance } from "@/components/agents/integrations/a2a-setup-guidance";
 import { AgUiSetupGuidance } from "@/components/agents/integrations/ag-ui-setup-guidance";
 import { FcpSetupGuidance } from "@/components/agents/integrations/fcp-setup-guidance";
-import { SlackChannelConfiguration } from "./slack-channel-configuration";
 import { VoiceTalkButton } from "@/components/agents/channels/voice-talk-button";
 import type {
   A2aChannelConfig,
@@ -136,11 +135,6 @@ export function ChannelDetailsPanel({
   channel: AgentChannel;
   configureHref?: string;
 }) {
-  if (channel.channel_type === "slack") {
-    return (
-      <SlackChannelConfiguration agentId={agentId} channel={channel} canManage={!!configureHref} />
-    );
-  }
   return (
     <div className="space-y-6">
       <ChannelSetupGuidance

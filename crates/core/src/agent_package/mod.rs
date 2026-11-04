@@ -47,6 +47,10 @@ pub const MAX_FILE_BYTES: usize = 1024 * 1024;
 pub const MAX_FILES: usize = 100;
 pub const MAX_CHANNELS: usize = 32;
 pub const MAX_INITIAL_BYTES: usize = 5 * 1024 * 1024;
+/// Bundled agents per package.
+pub const MAX_MEMBERS: usize = 32;
+/// Folder that holds bundled agents, one folder or Markdown file each.
+pub const MEMBERS_DIR: &str = ".agents/agents";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
@@ -251,6 +255,11 @@ pub struct Manifest {
     /// Omission means `direct`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub communication: Option<crate::conversation::Communication>,
+    /// When a finishing turn gets a completion check: `off`, `unattended`
+    /// (sessions started by triggers and schedules) or `always`. Omission
+    /// means `unattended`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_check: Option<crate::completion_check::CompletionCheck>,
     /// Tool schemas whose executable implementations must be bound by the host.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(deserialize_with = "tools")]
@@ -275,6 +284,16 @@ pub struct Manifest {
         alias = "environments"
     )]
     pub sandbox_policy: Option<Value>,
+    /// Other agents, by name, that this agent can hand work to. Agents bundled
+    /// under `.agents/agents/` are found without listing them here; an explicit
+    /// empty list turns that discovery off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub members: Option<Vec<String>>,
+    /// Agents bundled with this one, each a complete definition. Folders and
+    /// archives keep them in `.agents/agents/<name>/`; text formats inline them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(no_recursion))]
+    pub agents: Vec<Manifest>,
 }
 
 fn strict_object(value: &Value, fields: &[&str], path: &str) -> std::result::Result<(), String> {
@@ -506,14 +525,13 @@ impl AgentPackage {
                     let (end, after) =
                         end.ok_or_else(|| error("frontmatter", "missing closing ---"))?;
                     body = Some(trimmed[after..].to_string());
-                    serde_yaml::from_str(&trimmed[start..end])
-                        .map_err(|e| error("frontmatter", e))?
+                    parse_yaml(&trimmed[start..end]).map_err(|e| error("frontmatter", e))?
                 } else {
                     serde_json::json!({"name": "agent", "instructions": content})
                 }
             }
             Format::Json => serde_json::from_str(content).map_err(|e| error("json", e))?,
-            Format::Yaml => serde_yaml::from_str(content).map_err(|e| error("yaml", e))?,
+            Format::Yaml => parse_yaml(content).map_err(|e| error("yaml", e))?,
             Format::Toml => serde_json::to_value(
                 toml::from_str::<toml::Value>(content).map_err(|e| error("toml", e))?,
             )
@@ -863,6 +881,51 @@ impl AgentPackage {
         if bytes > MAX_INITIAL_BYTES {
             fail("files".into(), "decoded content exceeds 5 MiB");
         }
+        // Decision: one level. A bundled agent hands work to no one, which
+        // matches the runtime rule that hand-offs start only from the first
+        // session of a run.
+        let mut names = BTreeSet::new();
+        for (i, name) in m.members.iter().flatten().enumerate() {
+            if !valid_name(name) {
+                fail(format!("members[{i}]"), "expected an agent name");
+            } else if name == &m.name {
+                fail(format!("members[{i}]"), "an agent cannot list itself");
+            } else if !names.insert(name.as_str()) {
+                fail(format!("members[{i}]"), "duplicate agent");
+            }
+        }
+        if m.agents.len() > MAX_MEMBERS {
+            fail("agents".into(), "at most 32 bundled agents");
+        }
+        for agent in &m.agents {
+            let path = format!("agents.{}", agent.name);
+            if agent.name == m.name {
+                fail(
+                    path.clone(),
+                    "a bundled agent cannot reuse this agent's name",
+                );
+            } else if !names.insert(agent.name.as_str()) {
+                fail(path.clone(), "duplicate agent name");
+            }
+            if !agent.agents.is_empty() || agent.members.as_ref().is_some_and(|m| !m.is_empty()) {
+                fail(
+                    path.clone(),
+                    "a bundled agent cannot have agents of its own",
+                );
+            }
+            let member = Self {
+                manifest: agent.clone(),
+                legacy_id: None,
+                legacy_model_id: None,
+                legacy_harness_id: None,
+                files_declared: true,
+            };
+            if let Err(PackageError(errors)) = member.files() {
+                for error in errors {
+                    fail(format!("{path}.{}", error.path), &error.message);
+                }
+            }
+        }
         if diagnostics.is_empty() {
             Ok(())
         } else {
@@ -924,11 +987,11 @@ impl AgentPackage {
                     .as_object_mut()
                     .ok_or_else(|| error("manifest", "expected an object"))?
                     .remove("instructions");
-                let yaml = serde_yaml::to_string(&value).map_err(|e| error("yaml", e))?;
+                let yaml = serde_saphyr::to_string(&value).map_err(|e| error("yaml", e))?;
                 Ok(format!("---\n{yaml}---\n{}", manifest.instructions))
             }
             Format::Json => serde_json::to_string_pretty(&value).map_err(|e| error("json", e)),
-            Format::Yaml => serde_yaml::to_string(&value).map_err(|e| error("yaml", e)),
+            Format::Yaml => serde_saphyr::to_string(&value).map_err(|e| error("yaml", e)),
             Format::Toml => toml::to_string_pretty(&manifest).map_err(|e| error("toml", e)),
         }
     }
@@ -1098,6 +1161,20 @@ struct PackageCapabilityReference {
     /// Configuration validated against the destination capability schema.
     #[serde(default)]
     config: Value,
+}
+
+// THREAT[TM-DOS-052]: retain parser budgets for untrusted YAML.
+// Keep YAML 1.2 scalar and literal merge-key semantics, with bounded parsing and
+// no source snippets in errors. Optional include/interpolation features stay off.
+fn parse_yaml(content: &str) -> std::result::Result<serde_json::Value, serde_saphyr::Error> {
+    serde_saphyr::from_str_with_options(
+        content,
+        serde_saphyr::options! {
+            strict_booleans: true,
+            merge_keys: serde_saphyr::MergeKeyPolicy::AsOrdinary,
+            with_snippet: false,
+        },
+    )
 }
 
 #[cfg(test)]

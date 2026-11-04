@@ -78,7 +78,10 @@ async fn work_chat_multi_chat_needs_no_coordination_and_rejects_unauthenticated_
         .assert_success()
         .json();
     assert_eq!(bootstrap["interface_mode"], "multi_chat");
+    assert_eq!(bootstrap["membership"], "open");
+    assert!(bootstrap.get("models").is_none());
     assert_eq!(bootstrap["features"]["threads"], false);
+    assert!(bootstrap["logo"].is_null(), "no avatar yet");
     call(
         &server,
         Method::POST,
@@ -92,6 +95,68 @@ async fn work_chat_multi_chat_needs_no_coordination_and_rejects_unauthenticated_
         bootstrap.get("execution").is_none(),
         "No provider secrets in public bootstrap"
     );
+}
+
+#[tokio::test]
+async fn work_chat_config_uses_the_agent_avatar() {
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    server
+        .put(
+            &format!("/v1/agents/{}/avatar/preset", channel.agent_id),
+            json!({"preset_id": "familiars-patch"}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let bootstrap: Value = server
+        .get(&format!("/v1/channels/{}/chat/config", channel.channel_id))
+        .await
+        .assert_success()
+        .json();
+    let logo = bootstrap["logo"].as_str().expect("agent avatar");
+    assert!(logo.starts_with("/v1/avatars/avatar_"), "{logo}");
+    assert!(logo.ends_with("/circle-64.png"), "{logo}");
+}
+
+#[tokio::test]
+async fn work_chat_public_url_is_not_the_channel_id() {
+    unsafe { std::env::set_var("CHAT_DOMAIN", "chat.example") };
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let bootstrap: Value = server
+        .get(&format!("/v1/channels/{}/chat/config", channel.channel_id))
+        .await
+        .assert_success()
+        .json();
+    let url = bootstrap["public_url"].as_str().expect("public url");
+    let label = url
+        .strip_prefix("https://")
+        .and_then(|rest| rest.strip_suffix(".chat.example"))
+        .expect(url);
+    assert_eq!(label.len(), 10, "{url}");
+    assert!(
+        !channel.channel_id.contains(label),
+        "public host {label} is inside {}",
+        channel.channel_id
+    );
+    let via_host: Value = server
+        .get(&format!("/v1/work-chat/hosts/{label}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(via_host["channel_id"], channel.channel_id);
+    assert_eq!(via_host["public_url"], url);
+    let hex = channel.channel_id.trim_start_matches("appchan_");
+    server
+        .get(&format!("/v1/work-chat/hosts/{hex}"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get(&format!("/v1/work-chat/hosts/{}", hex.to_ascii_uppercase()))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -268,7 +333,7 @@ async fn work_chat_worker_link_delegates_only_inside_the_consumer_tree() {
         everruns_server::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
     );
     let request = |name: &str, params: Value| {
-        tonic::Request::new(proto::ExecuteCommandRequest {
+        let mut request = tonic::Request::new(proto::ExecuteCommandRequest {
             name: name.into(),
             api_version: "v1".into(),
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -277,7 +342,11 @@ async fn work_chat_worker_link_delegates_only_inside_the_consumer_tree() {
             input_message_id: Some(uuid_to_proto_uuid(input)),
             params_json: serde_json::to_vec(&params).unwrap(),
             ..Default::default()
-        })
+        });
+        request.extensions_mut().insert(
+            everruns_server::worker_link::grpc_service::authority::WorkerAuthority::Development,
+        );
+        request
     };
     let created = service
         .execute_command(request(
@@ -671,6 +740,13 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
             (Method::POST, format!("{base}/chat/main"), Some(json!({}))),
             (
                 Method::POST,
+                format!("{base}/sessions/{id}/settings"),
+                Some(json!({"title":"Denied"})),
+            ),
+            (Method::POST, format!("{base}/sessions/{id}/share"), None),
+            (Method::DELETE, format!("{base}/sessions/{id}/share"), None),
+            (
+                Method::POST,
                 format!("{base}/sessions/{id}/files"),
                 Some(json!({"path":"/workspace/member.md","content":"hello"})),
             ),
@@ -687,4 +763,472 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
             assert_eq!(body["code"], "insufficient_scope", "{path}: {body}");
         }
     }
+}
+
+#[tokio::test]
+async fn work_chat_organizes_owned_conversations_and_revokes_read_only_links() {
+    use everruns_contracts::typed_id::SessionId;
+    use everruns_core::events::{EventRequest, InputMessageData};
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let alice = consumer_token(&server, &channel, "publisher").await;
+    let bob = consumer_token(&server, &channel, "reader").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&alice),
+        Some(json!({})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let id = session["id"].as_str().unwrap();
+    let path = format!("{base}/sessions/{id}");
+    for (method, suffix, body) in [
+        (Method::POST, "settings", json!({"title":"stolen"})),
+        (Method::POST, "share", json!({})),
+        (Method::DELETE, "share", json!({})),
+    ] {
+        call(
+            &server,
+            method,
+            &format!("{path}/{suffix}"),
+            Some(&bob),
+            Some(body),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    }
+    let settings: Value = call(
+        &server,
+        Method::POST,
+        &format!("{path}/settings"),
+        Some(&alice),
+        Some(json!({"title":"Migration timeline","pinned":true,"archived":true})),
+    )
+    .await
+    .assert_success()
+    .json();
+    assert_eq!(settings["title"], "Migration timeline");
+    assert_eq!(settings["pinned"], true);
+    assert_eq!(settings["archived"], true);
+    let ordinary: Value = call(
+        &server,
+        Method::GET,
+        &format!("{base}/sessions"),
+        Some(&alice),
+        None,
+    )
+    .await
+    .assert_success()
+    .json();
+    assert!(ordinary["data"].as_array().unwrap().is_empty());
+    let archived: Value = call(
+        &server,
+        Method::GET,
+        &format!("{base}/sessions?include_archived=true"),
+        Some(&alice),
+        None,
+    )
+    .await
+    .assert_success()
+    .json();
+    assert_eq!(archived["data"][0]["id"], id);
+    call(
+        &server,
+        Method::POST,
+        &format!("{path}/messages"),
+        Some(&alice),
+        Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Continue"}]}})),
+    )
+    .await
+    .assert_status(StatusCode::CONFLICT);
+    call(
+        &server,
+        Method::POST,
+        &format!("{path}/settings"),
+        Some(&alice),
+        Some(json!({"archived":false})),
+    )
+    .await
+    .assert_success();
+    let sid: SessionId = id.parse().unwrap();
+    let event = EventRequest::new(
+        sid,
+        Default::default(),
+        InputMessageData::new(everruns_core::RuntimeMessage::user(
+            "Show the migration timeline",
+        )),
+    );
+    server.event_service.emit(event).await.unwrap();
+    let link: Value = call(
+        &server,
+        Method::POST,
+        &format!("{path}/share"),
+        Some(&alice),
+        Some(json!({})),
+    )
+    .await
+    .assert_success()
+    .json();
+    let url = format!("{base}/chat/shared/{}", link["token"].as_str().unwrap());
+    let public: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(public["title"], "Migration timeline");
+    assert!(
+        public["data"]
+            .to_string()
+            .contains("Show the migration timeline")
+    );
+    assert!(!public.to_string().contains(id));
+    assert!(public.get("pending_questions").is_none());
+    assert!(public.get("files").is_none());
+    call(
+        &server,
+        Method::GET,
+        &path,
+        Some(link["token"].as_str().unwrap()),
+        None,
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+    call(
+        &server,
+        Method::DELETE,
+        &format!("{path}/share"),
+        Some(&alice),
+        None,
+    )
+    .await
+    .assert_success();
+    server.get(&url).await.assert_status(StatusCode::NOT_FOUND);
+    call(&server,Method::POST,&format!("{path}/messages"),Some(&alice),Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hi"}]},"controls":{"model_id":everruns_contracts::typed_id::ModelId::new()}}))).await.assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn work_chat_uses_the_agent_model() {
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    let model = everruns_contracts::typed_id::ModelId::new();
+    server
+        .patch(
+            &format!(
+                "/v1/agents/{}/channels/{}",
+                channel.agent_id, channel.channel_id
+            ),
+            json!({"channel_config":{"interface_mode":"multi_chat","allowed_model_ids":[model],"execution":{"visibility":"full"}}}),
+        )
+        .await
+        .assert_success();
+    let saved: Value = server
+        .get(&format!(
+            "/v1/agents/{}/channels/{}",
+            channel.agent_id, channel.channel_id
+        ))
+        .await
+        .assert_success()
+        .json();
+    assert!(saved["channel_config"].get("allowed_model_ids").is_none());
+    publish(&server, &channel).await.assert_success();
+    let token = consumer_token(&server, &channel, "model-user").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let config: Value = server
+        .get(&format!("{base}/chat/config"))
+        .await
+        .assert_success()
+        .json();
+    assert!(config.get("models").is_none());
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&token),
+        Some(json!({})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let id = session["id"].as_str().unwrap();
+    call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions/{id}/messages"),
+        Some(&token),
+        Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"controls":{"model_id":model}})),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+    let sent: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions/{id}/messages"),
+        Some(&token),
+        Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"controls":{"reasoning":{"effort":"high"}}})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    assert!(sent["controls"].get("model_id").is_none_or(Value::is_null));
+    assert_eq!(sent["controls"]["reasoning"]["effort"], "high");
+}
+
+#[tokio::test]
+async fn work_chat_shared_pages_advance_past_oversized_messages() {
+    use everruns_contracts::typed_id::SessionId;
+    use everruns_core::events::{EventRequest, InputMessageData};
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let token = consumer_token(&server, &channel, "large-report-reader").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&token),
+        Some(json!({})),
+    )
+    .await
+    .assert_success()
+    .json();
+    let id = session["id"].as_str().unwrap();
+    let session_id: SessionId = id.parse().unwrap();
+    for number in 1..=101 {
+        let text = if number == 101 {
+            "oversized-marker".repeat(20000)
+        } else {
+            format!("Record {number}")
+        };
+        server
+            .event_service
+            .emit(EventRequest::new(
+                session_id,
+                Default::default(),
+                InputMessageData::new(everruns_core::RuntimeMessage::user(text)),
+            ))
+            .await
+            .unwrap();
+    }
+    let link: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions/{id}/share"),
+        Some(&token),
+        None,
+    )
+    .await
+    .assert_success()
+    .json();
+    let url = format!("{base}/chat/shared/{}", link["token"].as_str().unwrap());
+    let page: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(page["data"].as_array().unwrap().len(), 99);
+    assert!(!page.to_string().contains("oversized-marker"));
+    let before = page["before"]
+        .as_i64()
+        .expect("a skipped large message retains the page position");
+    let older: Value = server
+        .get(&format!("{url}?before={before}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(older["data"].as_array().unwrap().len(), 1);
+    assert!(older["data"].to_string().contains("Record 1"));
+    assert!(older["before"].is_null());
+}
+
+#[tokio::test]
+async fn work_chat_message_submission_fits_worker_thread_stack() {
+    let server = std::sync::Arc::new(TestServer::in_memory().await);
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let token = consumer_token(&server, &channel, "small-stack-consumer").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&token),
+        Some(json!({})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let path = format!(
+        "{base}/sessions/{}/messages",
+        session["id"].as_str().unwrap()
+    );
+    let request_server = server.clone();
+    let response = tokio::task::spawn_blocking(move || {
+        std::thread::Builder::new()
+            .name("work-chat-http-stack".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+                    .block_on(async {
+                        call(&request_server, Method::POST, &path, Some(&token),
+                            Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Render a report"}]},"controls":{"reasoning":{"effort":"low"}}})))
+                            .await
+                    })
+            }).unwrap().join().unwrap()
+    }).await.unwrap();
+    response.assert_status(StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn work_chat_membership_chooses_who_can_sign_in() {
+    use everruns_server::domains::agent_channels::record::work_chat::WorkChatConfig;
+    use everruns_server::domains::agent_channels::work_chat::identity_admitted;
+    use everruns_server::storage::CreateUserRow;
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    let url = format!(
+        "/v1/agents/{}/channels/{}",
+        channel.agent_id, channel.channel_id
+    );
+    let missing = server
+        .patch(
+            &url,
+            json!({"channel_config":{"interface_mode":"multi_chat","membership":"invites","execution":{"visibility":"full"}}}),
+        )
+        .await;
+    let missing = missing.assert_status(StatusCode::BAD_REQUEST);
+    assert!(missing.text().contains("email"), "{}", missing.text());
+    server
+        .patch(
+            &url,
+            json!({"channel_config":{"interface_mode":"multi_chat","membership":"external_oidc","execution":{"visibility":"full"}}}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    server
+        .patch(
+            &url,
+            json!({"channel_config":{
+                "interface_mode":"multi_chat",
+                "membership":"invites",
+                "member_email":"Owner@Example.com",
+                "invites":["A@Example.com","a@example.com","owner@example.com"],
+                "execution":{"visibility":"full"}
+            }}),
+        )
+        .await
+        .assert_success();
+    let saved: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(saved["channel_config"]["membership"], "invites");
+    assert_eq!(saved["channel_config"]["member_email"], "owner@example.com");
+    assert_eq!(saved["channel_config"]["invites"], json!(["a@example.com"]));
+    server
+        .patch(
+            &url,
+            json!({"channel_config":{"interface_mode":"multi_chat","membership":"org_users","member_email":"Owner@Example.com","invites":["a@example.com"],"execution":{"visibility":"full"}}}),
+        )
+        .await
+        .assert_success();
+    let saved: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(saved["channel_config"]["membership"], "org_users");
+    assert!(saved["channel_config"].get("member_email").is_none());
+    assert!(saved["channel_config"].get("invites").is_none());
+
+    async fn person(
+        server: &TestServer,
+        email: &str,
+        verified: bool,
+        external_id: Option<&str>,
+        member: bool,
+    ) {
+        let id = server
+            .db
+            .create_user(CreateUserRow {
+                email: email.to_string(),
+                name: email.to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: verified,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: external_id.map(str::to_string),
+            })
+            .await
+            .unwrap()
+            .id;
+        if member {
+            server
+                .db
+                .ensure_membership(id, everruns_core::DEFAULT_ORG_ID, "member")
+                .await
+                .unwrap();
+        }
+    }
+    person(&server, "member@example.com", true, None, true).await;
+    person(&server, "outsider@example.com", true, None, false).await;
+    person(&server, "unverified@example.com", false, None, true).await;
+    person(
+        &server,
+        "linked@example.com",
+        false,
+        Some("idp-subject"),
+        true,
+    )
+    .await;
+    let org: WorkChatConfig = serde_json::from_value(json!({"membership":"org_users"})).unwrap();
+    let invites: WorkChatConfig = serde_json::from_value(json!({
+        "membership":"invites",
+        "member_email":"owner@example.com",
+        "invites":["a@example.com"]
+    }))
+    .unwrap();
+    let open = WorkChatConfig::default();
+    async fn admit(
+        server: &TestServer,
+        config: &WorkChatConfig,
+        subject: &str,
+        email: Option<&str>,
+    ) -> bool {
+        identity_admitted(
+            &server.db,
+            everruns_core::DEFAULT_ORG_ID,
+            config,
+            subject,
+            email,
+        )
+        .await
+        .unwrap()
+    }
+    assert!(admit(&server, &open, "anyone", None).await);
+    assert!(admit(&server, &org, "no-such-subject", Some("member@example.com")).await);
+    assert!(admit(&server, &org, "idp-subject", None).await);
+    assert!(
+        !admit(
+            &server,
+            &org,
+            "no-such-subject",
+            Some("outsider@example.com")
+        )
+        .await
+    );
+    assert!(
+        !admit(
+            &server,
+            &org,
+            "no-such-subject",
+            Some("unverified@example.com")
+        )
+        .await
+    );
+    assert!(!admit(&server, &org, "no-such-subject", None).await);
+    assert!(
+        admit(
+            &server,
+            &invites,
+            "owner-subject",
+            Some("Owner@Example.com")
+        )
+        .await
+    );
+    assert!(admit(&server, &invites, "guest", Some("a@example.com")).await);
+    assert!(!admit(&server, &invites, "guest", Some("member@example.com")).await);
+    assert!(!admit(&server, &invites, "guest", None).await);
 }

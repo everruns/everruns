@@ -409,7 +409,8 @@ Each step is one PR and leaves `main` working.
 3. **Anthropic driver** renders changes inline and Session Trace shows them;
    profile flag for verified families; live tests once the key has credit.
    Done: the request side; Session Trace listing each call's change
-   (`llm.generation` carries it as `metadata.tool_changes`; a cache reset is
+   (stored `llm.generation` carries it as `metadata.tool_changes`, withheld
+   from public event responses while Trace retains its name summary; a cache reset is
    blamed on tools only when the provider body's tools changed); and the live
    cache test, which widened the flag to Opus 5 and 4.8, Haiku 5.5 and Fable
    5.1 (see the 2026-10-12 driver results above).
@@ -480,6 +481,15 @@ Each step is one PR and leaves `main` working.
    from 24/24 to 0/24: against a property-less stub it sends every number,
    boolean and object as a JSON string and never recovers. A per-model default
    would need a profile flag; until someone asks, agents opt in.
+
+## Mutable skill inventories
+
+Skill discovery uses a separate append-only reference-data path, independent
+of provider-specific inline tool support. Static discovery instructions stay
+in the system prompt; changed catalogs become user-role updates recorded on
+completed answers and replayed at their original positions. See
+[Skills Registry](../project/skills-registry.md#cache-stable-inventory-disclosure)
+for freshness, removal, restart and history-reduction semantics.
 
 ## Open questions
 

@@ -1,6 +1,15 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
+import { z } from "zod";
+
+export const scheduleTriggerDraftSchema = z.strictObject({
+  message: z.string().max(256 * 1024),
+  cron_expression: z.string().max(256),
+  timezone: z.string().max(128),
+  session_mode: z.enum(["shared_session", "session_per_invocation"]),
+  enabled: z.boolean(),
+});
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
 import { Label } from "@/components/ui/label";
@@ -42,20 +51,25 @@ export function TriggerFormFields({
   value,
   onChange,
   idPrefix = "trigger",
+  hideSchedule = false,
 }: {
   value: TriggerFormState;
   onChange: (next: TriggerFormState) => void;
   idPrefix?: string;
+  /** Webhook triggers share these fields but have no schedule. */
+  hideSchedule?: boolean;
 }) {
   const ui = useUiTranslations();
   return (
     <>
-      <CronInput
-        value={value.cron_expression}
-        timezone={value.timezone ?? "UTC"}
-        onChange={(cron_expression) => onChange({ ...value, cron_expression })}
-        onTimezoneChange={(timezone) => onChange({ ...value, timezone })}
-      />
+      {!hideSchedule && (
+        <CronInput
+          value={value.cron_expression}
+          timezone={value.timezone ?? "UTC"}
+          onChange={(cron_expression) => onChange({ ...value, cron_expression })}
+          onTimezoneChange={(timezone) => onChange({ ...value, timezone })}
+        />
+      )}
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-session-mode`}>{ui("Session mode")}</Label>
         <Select

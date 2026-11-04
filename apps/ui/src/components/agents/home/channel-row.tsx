@@ -1,7 +1,7 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale as useDisplayLocale } from "@/providers/locale-provider";
+
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { ChannelIcon } from "@/components/agents/channels/channel-icon";

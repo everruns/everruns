@@ -340,52 +340,6 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             decisions: None,
         }),
 
-        "gemini-2.0-flash" => Some(ModelProfile {
-            name: "Gemini 2.0 Flash".into(),
-            family: "gemini-2.0-flash".into(),
-            description: None,
-            release_date: Some("2025-02-05".into()),
-            last_updated: Some("2025-02-05".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2024-08-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 0.10,
-                output: 0.40,
-                cache_read: Some(0.025),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 1_048_576,
-                input: None,
-                output: 8_192,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![
-                    Modality::Text,
-                    Modality::Image,
-                    Modality::Audio,
-                    Modality::Video,
-                ],
-                output: vec![Modality::Text, Modality::Image],
-            }),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-            supports_server_compaction: false,
-            model_card_url: None,
-            decisions: None,
-        }),
-
         _ => None,
     }
 }

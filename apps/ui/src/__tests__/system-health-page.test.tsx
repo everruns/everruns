@@ -1,9 +1,24 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import SystemHealthPage from "@/app/(main)/system/health/page";
 import type { DoctorReport } from "@/lib/api/types";
+import { renderHook } from "@testing-library/react";
+import {
+  PageViewRegistryContext,
+  usePageViewRegistry,
+} from "@/components/chat-mode/page-view-state";
 
 const mockRefresh = jest.fn();
 let mockReport: DoctorReport | undefined;
+let mockPlatformAccess = false;
+let mockPolicyLoading = false;
+let mockPolicyError = false;
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({
+    can: () => mockPlatformAccess,
+    isLoading: mockPolicyLoading,
+    error: mockPolicyError ? new Error("policy unavailable") : null,
+  }),
+}));
 
 jest.mock("@/hooks", () => ({
   usePageTitle: () => {},
@@ -51,6 +66,9 @@ const report: DoctorReport = {
 describe("System → Health", () => {
   beforeEach(() => {
     mockReport = report;
+    mockPlatformAccess = false;
+    mockPolicyLoading = false;
+    mockPolicyError = false;
     mockRefresh.mockClear();
   });
 
@@ -75,4 +93,46 @@ describe("System → Health", () => {
     render(<SystemHealthPage />);
     expect(screen.getByText("Could not load the health report")).toBeInTheDocument();
   });
+
+  it.each(["allowed", "denied", "loading", "error"])(
+    "projects only bounded health status with platform policy %s",
+    (state) => {
+      const allowed = state === "allowed";
+      mockPlatformAccess = state !== "denied";
+      mockPolicyLoading = state === "loading";
+      mockPolicyError = state === "error";
+      const registry = renderHook(() => usePageViewRegistry("/system/health"));
+      render(
+        <PageViewRegistryContext.Provider value={registry.result.current.registry}>
+          <SystemHealthPage />
+        </PageViewRegistryContext.Provider>,
+      );
+      const data = registry.result.current.read("/system/health");
+      expect(data.sections).toHaveLength(2);
+      if (allowed)
+        expect(data.sections[1]).toMatchObject({
+          rows: [
+            {
+              id: "database.migrations",
+              area: "database",
+              title: "Migrations applied",
+              status: "problem",
+            },
+            {
+              id: "database.reachable",
+              area: "database",
+              title: "Database reachable",
+              status: "ok",
+            },
+            { id: "messaging.nats", area: "messaging", title: "NATS", status: "info" },
+          ],
+        });
+      else
+        data.sections.forEach((s) =>
+          expect(s).toMatchObject({ rows: [], load_state: "unavailable" }),
+        );
+      expect(JSON.stringify(data)).not.toContain("3 ms");
+      expect(JSON.stringify(data)).not.toContain("Run everruns-migrate");
+    },
+  );
 });

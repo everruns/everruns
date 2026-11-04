@@ -7,6 +7,13 @@ sidebar:
 
 Everruns emits structured events for every agent turn, model calls, tool invocations, retries, token usage, latency. The integrations in this section forward those signals to observability platforms so you can monitor agents in production, evaluate prompt changes, and debug failures with full trace context.
 
+## Connect your organization and agents
+
+Use **Settings → Organization → Tracing** to connect multiple Braintrust projects
+and OpenTelemetry collectors. Choose organization defaults, then customize each
+agent from **More → Tracing**. See [Customer tracing destinations](/observability/destinations/)
+for setup, privacy controls, routing, and delivery troubleshooting.
+
 ## Investigate failed turns
 
 In the platform UI, each agent's activity chart covers the last 24 hours, with

@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useCallback, useState } from "react";
@@ -105,6 +105,8 @@ function AttributionBadge({ run }: { run: EvalRun }) {
 }
 
 function ResultRow({ result, columns }: { result: EvalCaseResult; columns: number }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   const scores = normalizeScores(result.scores);
@@ -155,10 +157,10 @@ function ResultRow({ result, columns }: { result: EvalCaseResult; columns: numbe
           {result.latency_ms ? formatDuration(result.latency_ms) : "-"}
         </td>
         <td className="py-3 px-4 text-sm text-muted-foreground">
-          {result.input_tokens != null ? result.input_tokens.toLocaleString() : "-"}
+          {result.input_tokens != null ? result.input_tokens.toLocaleString(displayLocale) : "-"}
         </td>
         <td className="py-3 px-4 text-sm text-muted-foreground">
-          {result.output_tokens != null ? result.output_tokens.toLocaleString() : "-"}
+          {result.output_tokens != null ? result.output_tokens.toLocaleString(displayLocale) : "-"}
         </td>
         <td className="py-3 px-4">
           {scores.length > 0 && (
@@ -196,6 +198,8 @@ export default function EvalRunDetailPage({
 }: {
   params: Promise<{ evalId: string; runId: string }>;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { evalId, runId } = use(params);
   const { data: ev } = useEval(evalId);
@@ -268,11 +272,13 @@ export default function EvalRunDetailPage({
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             <span>
               {ui("Started:")}{" "}
-              {run.started_at ? new Date(run.started_at).toLocaleString() : ui("Pending")}
+              {run.started_at
+                ? new Date(run.started_at).toLocaleString(displayLocale)
+                : ui("Pending")}
             </span>
             {run.completed_at && (
               <span>
-                {ui("Completed:")} {new Date(run.completed_at).toLocaleString()}
+                {ui("Completed:")} {new Date(run.completed_at).toLocaleString(displayLocale)}
               </span>
             )}
             <span>
@@ -328,13 +334,13 @@ export default function EvalRunDetailPage({
             <CardContent className="pt-4">
               <p className="text-xs text-muted-foreground">{ui("Total Tokens")}</p>
               <p className="text-2xl font-bold">
-                {(
-                  run.summary.total_input_tokens + run.summary.total_output_tokens
-                ).toLocaleString()}
+                {(run.summary.total_input_tokens + run.summary.total_output_tokens).toLocaleString(
+                  displayLocale,
+                )}
               </p>
               <p className="text-xs text-muted-foreground">
-                {run.summary.total_input_tokens.toLocaleString()} {ui("in /")}{" "}
-                {run.summary.total_output_tokens.toLocaleString()} {ui("out")}
+                {run.summary.total_input_tokens.toLocaleString(displayLocale)} {ui("in /")}{" "}
+                {run.summary.total_output_tokens.toLocaleString(displayLocale)} {ui("out")}
               </p>
             </CardContent>
           </Card>

@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { use } from "react";
 import { Archive, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -110,7 +114,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
             <span>
               {ui("Created")}{" "}
               <span className="text-foreground">
-                {new Date(skill.created_at).toLocaleDateString()}
+                {new Date(skill.created_at).toLocaleDateString(displayLocale)}
               </span>
             </span>
           </>
@@ -166,7 +170,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-muted-foreground">{ui("Updated")}</dt>
                 <dd className="text-foreground">
-                  {new Date(skill.updated_at).toLocaleDateString()}
+                  {new Date(skill.updated_at).toLocaleDateString(displayLocale)}
                 </dd>
               </div>
             </dl>

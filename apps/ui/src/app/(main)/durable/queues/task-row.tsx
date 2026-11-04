@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -29,6 +29,8 @@ export function getTaskStatusIcon(status: TaskStatus) {
 }
 
 export function TaskRow({ task }: { task: DurableTask }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -88,9 +90,11 @@ export function TaskRow({ task }: { task: DurableTask }) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(task.created_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(task.created_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(task.created_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>

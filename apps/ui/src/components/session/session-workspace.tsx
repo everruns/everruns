@@ -12,7 +12,7 @@
 // also had a filesystem. A sandbox or storage session never opened this tab,
 // so the values (and the sandbox's files) were unreachable.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Clock, File, Key, Lock } from "lucide-react";
 import type { FileInfo, KeyValueInfo, ListResponse, SecretInfo } from "@/lib/api/types";
@@ -42,6 +42,8 @@ function useSessionStorage(sessionId: string) {
 }
 
 function StoragePanel({ sessionId }: { sessionId: string }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { data, isLoading } = useSessionStorage(sessionId);
 
@@ -70,7 +72,7 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
                       </Badge>
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
-                        {new Date(entry.updated_at).toLocaleString()}
+                        {new Date(entry.updated_at).toLocaleString(displayLocale)}
                       </span>
                     </div>
                     <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-sm">
@@ -101,7 +103,7 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
                     </Badge>
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      {new Date(secret.updated_at).toLocaleString()}
+                      {new Date(secret.updated_at).toLocaleString(displayLocale)}
                     </span>
                   </div>
                 ))}

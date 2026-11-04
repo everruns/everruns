@@ -23,7 +23,9 @@ Four capabilities provide it:
 Use `auto_tool_search` unless you know the model and want one mechanism
 explicitly. It is what the [Worker](/built-ins/harnesses/worker/) harness
 uses. Do not combine `auto_tool_search` with any of the other three on the same
-agent; it already provides all three paths.
+agent; it already provides all three paths. An explicit `tool_search` with
+`bounded: true` overrides inherited automatic or hosted search, so an Agent can
+enforce a bounded catalog on a Worker harness.
 
 All four capabilities have category Optimization, no features, and no
 dependencies.
@@ -163,6 +165,12 @@ optional `threshold`.
 `tool_search` implements tool search entirely client-side, so it works with
 Gemini, OpenAI Completions, models reached through gateways that don't
 implement hosted search, and any other provider.
+
+Bounded search and CLI `tools search` normalize Unicode accents and segment
+multilingual words. For example, `仓库` matches `搜索仓库问题`, and composed
+`café` matches the same word written with a combining acute accent. This is
+same-language lexical matching, not translation or accent removal. Exact name
+matches retain canonical invocation names and current access checks.
 
 For large MCP catalogs, `tool_search` can use bounded schema disclosure. Set
 `bounded: true`; the optional `max_active_tools`, `max_active_bytes`, and

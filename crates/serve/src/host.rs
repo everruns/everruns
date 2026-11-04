@@ -42,9 +42,8 @@ use anyhow::anyhow;
 use everruns::approval::{ApprovalDecision, ToolApprover};
 use everruns::ask_user::{Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, Status};
 use everruns::{
-    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent,
-    SessionEventKind, SessionId, ToolCall, ToolCallContext, ToolDefinition, ToolResponse,
-    TurnHandle,
+    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent, SessionId,
+    ToolCall, ToolCallContext, ToolDefinition, TurnHandle,
 };
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};
@@ -530,7 +529,6 @@ impl Host {
             Some(name) => self
                 .app
                 .agent(name)
-                .filter(|entry| !entry.sub)
                 .ok_or_else(|| ApiError::NotFound(format!("agent {name}")))?,
             None => self.app.default_agent().ok_or_else(|| {
                 ApiError::BadRequest(
@@ -1274,23 +1272,6 @@ impl Host {
     }
 }
 
-/// A subagent's tool activity, as a progress line on the parent call.
-fn child_progress(sub: &str, event: &SessionEvent) -> Option<String> {
-    match &event.kind {
-        SessionEventKind::ToolStarted { tool_name, .. } => Some(format!("{sub}: {tool_name}")),
-        SessionEventKind::ToolCompleted {
-            tool_name, success, ..
-        } => Some(format!(
-            "{sub}: {tool_name} {}",
-            if *success { "done" } else { "failed" }
-        )),
-        SessionEventKind::ToolProgress {
-            tool_name, message, ..
-        } => Some(format!("{sub}: {tool_name}: {message}")),
-        _ => None,
-    }
-}
-
 fn load_asset(asset: &crate::registry::AssetRegistration, hot: bool) -> String {
     if hot && let Ok(text) = std::fs::read_to_string(asset.disk) {
         return text;
@@ -1413,9 +1394,8 @@ impl AskUser for Gate {
 use everruns::hosting::validate_question_answers as validate_answers;
 
 /// The event envelope the wire API sends: the complete canonical envelope,
-/// with reasoning replay state stripped the way the everruns server's public
-/// projection does (opaque provider parts dropped; reasoning signatures and
-/// encrypted payloads removed).
+/// with runtime metadata and reasoning replay state projected the way the
+/// everruns server's public responses are.
 pub(crate) fn wire_json(event: &SessionEvent) -> Value {
     everruns_contracts::execution_api::public_event(event.canonical_json())
 }

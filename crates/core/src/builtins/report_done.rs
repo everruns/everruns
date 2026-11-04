@@ -56,7 +56,7 @@ impl Tool for ReportDoneTool {
     }
 
     fn description(&self) -> &str {
-        "Report finished work once, at the end of substantial work, before your final reply. Lead the summary with the result, say how you checked it, and link what you produced. Use outcome failed when you could not do it, and say why."
+        "Report finished work once, at the end of substantial work, before your final reply. Lead the summary with the result, say how you checked it, and link what you produced. Use outcome failed when requested work is blocked, incomplete or unverified, and say why. Do not report done merely because the turn is ending; state any pending human step explicitly."
     }
 
     fn parameters_schema(&self) -> Value {

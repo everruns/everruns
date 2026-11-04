@@ -329,16 +329,18 @@ mod tests {
         }
     }
 
-    /// One SSE body both backends can answer with: the Open Responses shape
-    /// the shipped driver parses.
-    fn completed_sse_body(model: &str) -> String {
-        format!(
-            "data: {{\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}}\n\n\
-             data: {{\"type\":\"response.completed\",\"sequence_number\":2,\"response\":\
-             {{\"id\":\"resp-utility\",\"object\":\"response\",\"created_at\":0,\
-             \"model\":\"{model}\",\"status\":\"completed\",\"output\":[],\
-             \"usage\":{{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}}}}\n\n"
-        )
+    /// Completion-only utility calls use the native Open Responses JSON body.
+    fn completed_response(model: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": "resp-utility", "object": "response", "created_at": 0,
+            "model": model, "status": "completed",
+            "output": [{
+                "type": "message", "id": "msg-utility", "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "ok", "annotations": []}]
+            }],
+            "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        })
     }
 
     /// The deployment's model has to reach the wire, on whichever backend the
@@ -366,11 +368,7 @@ mod tests {
             Mock::given(method("POST"))
                 .and(path(mock_path))
                 .and(header("authorization", "Bearer sk-deployment-owned"))
-                .respond_with(
-                    ResponseTemplate::new(200)
-                        .insert_header("content-type", "text/event-stream")
-                        .set_body_string(completed_sse_body(model)),
-                )
+                .respond_with(ResponseTemplate::new(200).set_body_json(completed_response(model)))
                 .expect(1)
                 .mount(&server)
                 .await;
@@ -398,6 +396,7 @@ mod tests {
             assert_eq!(requests.len(), 1);
             let body = requests[0].body_json::<Value>().unwrap();
             assert_eq!(body["model"], model);
+            assert_eq!(body["stream"], Value::Bool(false));
             // No tools, no tool search, no previous response id: a utility
             // request stays the bounded internal call TM-LLM-021 describes.
             assert!(body.get("tools").is_none());

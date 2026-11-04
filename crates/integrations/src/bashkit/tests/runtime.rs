@@ -49,3 +49,78 @@ async fn embedded_python_runtime_executes_through_the_bash_tool() {
     assert_eq!(output["exit_code"], 0, "{output:?}");
     assert_eq!(output["stdout"], "42\n");
 }
+
+// The command-backed worker returns directory listings rather than SessionFile
+// values from read_file. Empty directory existence must come from metadata.
+#[tokio::test]
+async fn recursive_copy_preserves_children_under_an_empty_directory() {
+    let (context, _) = create_context_with_mock_store();
+    let result = BashTool::default()
+        .execute_with_context(
+            json!({"commands": r#"
+set -e
+mkdir -p /workspace/source/alpha /workspace/source/beta /workspace/destination
+printf first > /workspace/source/alpha/SKILL.md
+printf second > /workspace/source/beta/SKILL.md
+cp -r /workspace/source/* /workspace/destination/
+cat /workspace/destination/alpha/SKILL.md
+cat /workspace/destination/beta/SKILL.md
+"#}),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(output) = result else {
+        panic!("expected shell result, got {result:?}");
+    };
+    assert_eq!(output["exit_code"], 0, "{output:?}");
+    assert_eq!(output["stdout"], "firstsecond");
+    assert_eq!(output["stderr"], "");
+}
+
+#[tokio::test]
+async fn recursive_copy_into_empty_directory_keeps_the_source_name() {
+    let (context, _) = create_context_with_mock_store();
+    let result = BashTool::default()
+        .execute_with_context(
+            json!({"commands": r#"
+set -e
+mkdir -p /workspace/source/references /workspace/destination
+printf guide > /workspace/source/SKILL.md
+printf detail > /workspace/source/references/details.md
+cp -r /workspace/source /workspace/destination/
+cat /workspace/destination/source/SKILL.md
+cat /workspace/destination/source/references/details.md
+"#}),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(output) = result else {
+        panic!("expected shell result, got {result:?}");
+    };
+    assert_eq!(output["exit_code"], 0, "{output:?}");
+    assert_eq!(output["stdout"], "guidedetail");
+    assert_eq!(output["stderr"], "");
+}
+
+#[tokio::test]
+async fn embedded_python_copies_files_into_an_empty_workspace_directory() {
+    let (context, _) = create_context_with_mock_store();
+    let result = BashTool::default()
+        .execute_with_context(
+            json!({"commands": r#"
+set -e
+mkdir -p /workspace/python-source /workspace/python-target
+printf payload > /workspace/python-source/input.txt
+python3 -c 'import shutil; shutil.copytree("/workspace/python-source", "/workspace/python-target", dirs_exist_ok=True)'
+cat /workspace/python-target/input.txt
+"#}),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(output) = result else {
+        panic!("expected shell result, got {result:?}");
+    };
+    assert_eq!(output["exit_code"], 0, "{output:?}");
+    assert_eq!(output["stdout"], "payload");
+    assert_eq!(output["stderr"], "");
+}

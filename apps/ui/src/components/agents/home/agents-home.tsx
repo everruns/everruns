@@ -1,7 +1,8 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 // Agents home: the Agents page as the place where a team
@@ -59,6 +60,7 @@ import {
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { formatCompactNumber, pluralize } from "@/lib/formatting";
 import type { AgentActivity, AgentActivityTotals, ChannelActivity } from "@/lib/api/types";
+import { nestUnderOwners } from "@/lib/agents-home";
 import { cn } from "@/lib/utils";
 import { AgentRow } from "./agent-row";
 import { ChannelRow } from "./channel-row";
@@ -93,7 +95,11 @@ export function AgentsHome() {
   const [search, setSearch] = useState("");
   const [agentTab, setAgentTab] = useState<AgentTab>("all");
   const [channelTab, setChannelTab] = useState<ChannelTab>("all");
-  useChatPageFilters({ search, tab: view, status: view === "channels" ? channelTab : agentTab });
+  useChatPageFilters({
+    search,
+    tab: view,
+    status: view === "channels" ? channelTab : agentTab,
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -339,20 +345,23 @@ export function AgentsHome() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex border" role="tablist" aria-label={ui("View")}>
-              <ViewButton
-                active={view === "agents"}
-                onClick={() => setView("agents")}
-                icon={<AgentIcon className="size-4" />}
-                label={ui("Agents")}
-              />
-              <ViewButton
-                active={view === "channels"}
-                onClick={() => setView("channels")}
-                icon={<Radio className="size-4" />}
-                label={ui("Channels")}
-              />
-            </div>
+            <SegmentedControl
+              label={ui("View")}
+              value={view}
+              onValueChange={(value) => setView(value as View)}
+              options={[
+                {
+                  value: "agents",
+                  label: ui("Agents"),
+                  icon: <AgentIcon className="size-4" />,
+                },
+                {
+                  value: "channels",
+                  label: ui("Channels"),
+                  icon: <Radio className="size-4" />,
+                },
+              ]}
+            />
             <SearchInput
               placeholder={view === "agents" ? ui("Search agents…") : ui("Search channels…")}
               value={search}
@@ -390,7 +399,11 @@ export function AgentsHome() {
                 onValueChange={(value) => setChannelTab(value as ChannelTab)}
                 items={[
                   { value: "all", label: ui("All"), count: channelCounts.all },
-                  { value: "live", label: ui("Live"), count: channelCounts.live },
+                  {
+                    value: "live",
+                    label: ui("Live"),
+                    count: channelCounts.live,
+                  },
                   {
                     value: "draft",
                     label: ui("Draft"),
@@ -418,10 +431,11 @@ export function AgentsHome() {
               <EmptyState icon={<AgentIcon />} title={ui("No agents match your filters.")} />
             ) : (
               <ul className="divide-y border bg-card">
-                {visibleAgents.map((agent) => (
+                {nestUnderOwners(visibleAgents).map(({ agent, nested }) => (
                   <AgentRow
                     key={agent.id}
                     agent={agent}
+                    nested={nested}
                     activity={activityById.get(agent.id)}
                     attention={attentionByAgent.get(agent.id) ?? []}
                     activityGeneratedAt={activity?.generated_at}
@@ -446,7 +460,7 @@ export function AgentsHome() {
                   description={
                     channels.length === 0
                       ? ui(
-                          "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them.",
+                          "Add a channel from an agent's Channels and triggers tab. New channels start as drafts and take no traffic until you publish them.",
                         )
                       : undefined
                   }
@@ -477,34 +491,6 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt>{label}</dt>
       <dd className="font-medium text-foreground">{value}</dd>
     </div>
-  );
-}
-
-function ViewButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-8 items-center gap-2 px-3 text-[13px] font-medium first:border-r",
-        active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
 

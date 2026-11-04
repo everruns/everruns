@@ -1,0 +1,29 @@
+# Standalone workspace: this crate is intentionally detached from the everruns
+# workspace so it does not pull mira-eval into the main build. It drives a
+# running server over HTTP and links no Everruns crates, so a run measures
+# whatever server it points at; start the stack from the working tree to
+# measure a change.
+[workspace]
+
+[package]
+name = "everruns-prompt-cache-growth-evals"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.0"
+description = "Mira eval study: prompt cache reuse as a hosted session grows"
+publish = false
+
+[[bin]]
+name = "prompt_cache_growth"
+path = "src/main.rs"
+
+[dependencies]
+mira-eval = "0.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+serde_json = "1"
+async-trait = "0.1"
+
+# Keep the target small: line tables are enough for a panic backtrace.
+[profile.dev]
+debug = "line-tables-only"

@@ -94,7 +94,39 @@ pub(super) fn principal_from_claims(
         identity_realm: format!("{issuer}#{authority_hex}"),
         issuer,
         subject: subject.to_string(),
+        email: verified_email(claims),
     })
+}
+
+/// An email the token itself marks confirmed. Unverified addresses are not identities.
+fn verified_email(claims: &Value) -> Option<String> {
+    if !claim_flag(claims, "email_verified") && !claim_flag(claims, "email_confirmed") {
+        return None;
+    }
+    let email = claims.get("email").and_then(Value::as_str)?.trim();
+    if !plausible_email(email) {
+        return None;
+    }
+    Some(email.to_ascii_lowercase())
+}
+
+fn claim_flag(claims: &Value, name: &str) -> bool {
+    match claims.get(name) {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::String(value)) => value.eq_ignore_ascii_case("true"),
+        _ => false,
+    }
+}
+
+pub(super) fn plausible_email(email: &str) -> bool {
+    let mut parts = email.split('@');
+    let local = parts.next().unwrap_or_default();
+    let domain = parts.next().unwrap_or_default();
+    parts.next().is_none()
+        && !local.is_empty()
+        && !domain.is_empty()
+        && domain.contains('.')
+        && !email.chars().any(|c| c.is_whitespace())
 }
 
 /// Verify a bearer JWT against an already fetched key set.
@@ -123,6 +155,7 @@ pub(super) fn verify_jwt_with_jwks(
             issuer: AGENTID_ISSUER.to_string(),
             subject: subject.to_string(),
             identity_realm: AGENTID_ISSUER.to_string(),
+            email: None,
         });
     }
     let claims = decode_verified_claims(token, issuer, jwks, requirements, false)?;

@@ -28,6 +28,8 @@ pub enum EntityKind {
     OrganizationDecision,
     UserProfile,
     OrganizationAccount,
+    TracingPolicy,
+    TracingDestination,
     SandboxTemplate,
     Agent,
     Harness,
@@ -70,6 +72,8 @@ impl EntityKind {
         Self::OrganizationDecision,
         Self::UserProfile,
         Self::OrganizationAccount,
+        Self::TracingPolicy,
+        Self::TracingDestination,
         Self::SandboxTemplate,
         Self::Agent,
         Self::Harness,
@@ -110,6 +114,8 @@ impl EntityKind {
             Self::OrganizationDecision => "organization_decision",
             Self::UserProfile => "user_profile",
             Self::OrganizationAccount => "organization_account",
+            Self::TracingPolicy => "tracing_policy",
+            Self::TracingDestination => "tracing_destination",
             Self::SandboxTemplate => "sandbox_template",
             Self::Agent => "agent",
             Self::Harness => "harness",
@@ -158,7 +164,10 @@ impl EntityKind {
         Some(match self {
             Self::Organization => "org",
             Self::OrganizationNetwork | Self::OrganizationDecision => return None,
-            Self::UserProfile | Self::OrganizationAccount => return None,
+            Self::UserProfile
+            | Self::OrganizationAccount
+            | Self::TracingPolicy
+            | Self::TracingDestination => return None,
             Self::SandboxTemplate => "sbxtpl",
             Self::Agent => "agent",
             Self::Harness => "harness",
@@ -213,6 +222,9 @@ impl EntityKind {
             Self::OrganizationAccount => {
                 &organizations::provider_accounts::ORG_PROVIDER_ACCOUNTS_VIEW
             }
+            Self::TracingPolicy | Self::TracingDestination => {
+                &trace_exports::commands::TRACING_MANAGE
+            }
             Self::SandboxTemplate => &harnesses::HARNESS_VIEW,
             Self::UserProfile => &users::profile::OWN_PROFILE,
             Self::Agent
@@ -252,6 +264,9 @@ impl EntityKind {
         use crate::domains::*;
         match self {
             Self::Organization => &organizations::settings::ORGANIZATION_MANAGE,
+            Self::TracingPolicy | Self::TracingDestination => {
+                &trace_exports::commands::TRACING_MANAGE
+            }
             Self::OrganizationNetwork => {
                 &organizations::egress_allowlist::ORG_EGRESS_ALLOWLIST_MANAGE
             }
@@ -314,6 +329,8 @@ impl EntityKind {
             Self::OrganizationDecision => ("get_org_decision_settings", "org"),
             Self::UserProfile => ("get_account_profile", "id"),
             Self::OrganizationAccount => ("get_organization_account", "id"),
+            Self::TracingPolicy => ("get_tracing_policy", "id"),
+            Self::TracingDestination => ("get_tracing_destination_metadata", "id"),
             Self::SandboxTemplate => ("get_sandbox_template_metadata", "id"),
             Self::Agent => ("get_agent", "id"),
             Self::Harness => ("get_harness", "id"),
@@ -484,8 +501,8 @@ pub fn declared(name: &str) -> Change {
         }
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
-        "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
-        "resume_agent_exposures" => on(K::Agent, Resumed, ID),
+        "pause_agent" => on(K::Agent, Suspended, ID),
+        "resume_agent" => on(K::Agent, Resumed, ID),
         "set_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
@@ -497,6 +514,7 @@ pub fn declared(name: &str) -> Change {
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
         "analyze_agent"
         | "draft_agent"
+        | "plan_agent_costs"
         | "preview_agent"
         | "diff_agent_package"
         | "validate_agent_package" => {
@@ -630,6 +648,16 @@ pub fn declared(name: &str) -> Change {
         // Organization.
         "update_org" => on(K::Organization, Updated, Param("org")),
         "update_sandbox_template_metadata" => on(K::SandboxTemplate, Updated, Param("id")),
+        "start_sandbox_template_build"
+        | "cancel_sandbox_template_build"
+        | "discard_sandbox_template_build" => {
+            Change::Exempt("build attempts and provider artifact cleanup are operational state")
+        }
+        "apply_sandbox_template_build" => Change::Exempt(
+            "records its resolved parent template through RestChange with the original caller and context",
+        ),
+        "update_tracing_destination_metadata" => on(K::TracingDestination, Updated, Param("id")),
+        "update_tracing_policy" => on(K::TracingPolicy, Updated, Param("id")),
         "update_organization_account_name" => on(K::OrganizationAccount, Updated, Param("id")),
         "update_account_profile" => on(K::UserProfile, Updated, Param("id")),
         "update_workspace" => on(K::Workspace, Updated, ID),
@@ -644,12 +672,24 @@ pub fn declared(name: &str) -> Change {
         "create_observer" => on(K::Observer, Created, ID),
         "update_observer" => on(K::Observer, Updated, ID),
         "delete_observer" => on(K::Observer, Deleted, Param("observer_id")),
+        "review_observer_score" => {
+            Change::Exempt("a review annotates one derived score, not the observer")
+        }
+        "backfill_observer" => {
+            Change::Exempt("a backfill queues scores, the observer is unchanged")
+        }
 
         "create_budget" => on(K::Budget, Created, ID),
         "update_budget" => on(K::Budget, Updated, ID),
         "delete_budget" => on(K::Budget, Deleted, Param("budget_id")),
         "top_up_budget" => Change::Exempt("a balance movement, recorded in the budget ledger"),
         "resume_session_budgets" => Change::Exempt("resumes sessions a budget paused"),
+        "create_cost_rate" | "retire_cost_rate" => Change::Exempt(
+            "the price list is append-only; each row keeps its own reason and author",
+        ),
+        "update_cost_settings" => {
+            Change::Exempt("an organization setting with no entity history of its own")
+        }
 
         "create_payment_account" => on(K::PaymentAccount, Created, ID),
         "update_payment_account" => on(K::PaymentAccount, Updated, ID),
@@ -662,13 +702,26 @@ pub fn declared(name: &str) -> Change {
         "create_eval" => on(K::Eval, Created, ID),
         "update_eval" => on(K::Eval, Updated, ID),
         "delete_eval" => on(K::Eval, Deleted, Param("eval_id")),
-        "import_atif_trajectories" => on(K::Eval, Imported, Param("eval_id")),
-        "create_eval_case" => on(K::EvalCase, Created, ID),
+        "import_atif_trajectories" | "import_eval_samples" => {
+            on(K::Eval, Imported, Param("eval_id"))
+        }
+        "create_eval_case" | "accept_eval_proposal" => on(K::EvalCase, Created, ID),
+        "propose_eval_cases" | "dismiss_eval_proposal" => Change::Exempt(
+            "Eval Builder suggestions are not configuration until accepted as a case",
+        ),
+        "update_finding_fix" | "reject_finding_fix" => {
+            Change::Exempt("a suggested fix is not configuration until it is applied")
+        }
+        "apply_finding_fix" => {
+            Change::Exempt("applies through update_agent, which records the agent's new revision")
+        }
         "update_eval_case" => on(K::EvalCase, Updated, ID),
         "delete_eval_case" => on(K::EvalCase, Deleted, Param("case_id")),
-        "create_eval_run" | "cancel_eval_run" | "import_eval_run" => {
-            Change::Exempt("eval runs are results, not configuration")
-        }
+        "create_eval_run"
+        | "cancel_eval_run"
+        | "import_eval_run"
+        | "create_eval_experiment"
+        | "check_finding_fix" => Change::Exempt("eval runs are results, not configuration"),
         "bulk_update_eval_run_scores" | "update_eval_result_scores" => {
             Change::Exempt("scores are results, not configuration")
         }
@@ -705,6 +758,9 @@ pub fn declared(name: &str) -> Change {
         "set_message_feedback" => {
             Change::Exempt("a person's rating of a reply, not a change to the session")
         }
+        "add_message_reaction" | "remove_message_reaction" => {
+            Change::Exempt("conversation traffic, kept in the session's events")
+        }
         "cancel_session_task"
         | "post_session_task_message"
         | "create_task_push_config"
@@ -720,6 +776,9 @@ pub fn declared(name: &str) -> Change {
         "worker_create_session_schedule" | "worker_cancel_session_schedule" => {
             Change::Exempt("the agent's own schedules are the session's working state")
         }
+        "register_external_agent" | "disable_external_agent" => Change::Exempt(
+            "external execution credentials are not authored Agent configuration; sanitized management audit records the change",
+        ),
         "worker_register_session_resource"
         | "worker_update_session_resource_status"
         | "worker_deregister_session_resource" => {
@@ -777,9 +836,15 @@ pub fn declared(name: &str) -> Change {
             "runtime credential operations are write-only and use payload-free resource audit",
         ),
         "mark_notification_viewed" => Change::Exempt("read state of the caller's own inbox"),
-        "check_health_issue" | "snooze_health_issue" => {
+        "check_health_issue" | "snooze_health_issue" | "dismiss_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
         }
+        "take_finding_action" | "undo_finding_action" => Change::Exempt(
+            "pauses or resumes a schedule; recorded on the finding as a finding action",
+        ),
+        "run_health_issue_fixer" => Change::Exempt(
+            "repairs an integration or pauses a schedule; recorded on the issue as a finding action",
+        ),
 
         _ => Change::Undeclared,
     }

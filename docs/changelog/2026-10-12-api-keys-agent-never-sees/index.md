@@ -10,7 +10,6 @@ release: "0.48.0"
 links:
   docs: [/capabilities/bashkit-shell/#api-keys-the-agent-never-sees, /capabilities/session-storage/]
   prs: [everruns/everruns#4609]
-visual: "Agent Credentials tab with an HTTP API credential row ($JEV_API_KEY → https://api.typesafe.ai) next to an MCP tool credential (/agents/<id>?tab=credentials)"
 ---
 
 **In the UI:** on an agent's **Credentials** tab, **Add binding** now offers
@@ -19,6 +18,8 @@ goes as a bearer token or a named header. With outbound HTTP on, the agent's
 shell calls the API with `$NAME`. The platform swaps the real key into that
 header only for requests to the bound URL and redacts it if a response echoes
 it back.
+
+![Agent Credentials sheet with an HTTP API binding for $JEV_API_KEY next to an MCP tool credential](./agent-credentials-http-api@2x.png)
 
 **In the API:** [session secrets](/capabilities/session-storage/) accept `bindings` on
 `PUT /v1/sessions/{session_id}/storage/secrets`, and the MCP tool

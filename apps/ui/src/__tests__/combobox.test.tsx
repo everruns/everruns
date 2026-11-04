@@ -75,3 +75,23 @@ it("keeps the selected label while server results load or fail and leaves paging
   expect(screen.getByRole("button", { name: "Load more people" })).toBeEnabled();
   expect(props.onValueChange).not.toHaveBeenCalled();
 });
+
+it("connects a visible field label and validation hint to the trigger", () => {
+  render(
+    <>
+      <label htmlFor="resource">Bound resource</label>
+      <p id="resource-error">Choose an available resource</p>
+      <Combobox
+        id="resource"
+        aria-invalid
+        aria-describedby="resource-error"
+        options={options}
+        value="user-a"
+        onValueChange={jest.fn()}
+      />
+    </>,
+  );
+  const trigger = screen.getByRole("combobox", { name: "Bound resource" });
+  expect(trigger).toHaveAttribute("aria-invalid", "true");
+  expect(trigger).toHaveAccessibleDescription("Choose an available resource");
+});

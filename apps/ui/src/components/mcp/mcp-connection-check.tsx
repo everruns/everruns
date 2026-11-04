@@ -5,7 +5,7 @@
 // "Check again" (knowledge/integrations/mcp-servers.md), so a host the network
 // policy blocks shows here when it is added, not halfway through a login.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { CheckCircle2, AlertTriangle, CircleDashed, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrgEgressAllowlist, useSetOrgEgressAllowlist } from "@/hooks/use-organizations";
@@ -62,6 +62,8 @@ export function McpConnectionCheckLine({
   checking: boolean;
   onCheck: () => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { tone, label } = describeConnectionCheck(check);
   const Icon = tone === "ready" ? CheckCircle2 : tone === "problem" ? AlertTriangle : CircleDashed;
@@ -71,7 +73,9 @@ export function McpConnectionCheckLine({
       <span
         className={`flex items-start gap-1 text-xs ${toneClass[tone]}`}
         title={
-          checkedAt ? ui("Checked {value0}", { value0: checkedAt.toLocaleString() }) : undefined
+          checkedAt
+            ? ui("Checked {value0}", { value0: checkedAt.toLocaleString(displayLocale) })
+            : undefined
         }
       >
         <Icon className="mt-px size-3.5 shrink-0" aria-hidden />

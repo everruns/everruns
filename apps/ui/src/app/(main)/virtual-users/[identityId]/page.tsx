@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -69,6 +69,8 @@ export default function VirtualUserDetailPage({
 }: {
   params: Promise<{ identityId: string }>;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { identityId } = use(params);
   const router = useRouter();
@@ -221,7 +223,7 @@ export default function VirtualUserDetailPage({
             <span>
               {ui("Created")}{" "}
               <span className="text-foreground">
-                {new Date(identity.created_at).toLocaleDateString()}
+                {new Date(identity.created_at).toLocaleDateString(displayLocale)}
               </span>
             </span>
           </>
@@ -429,13 +431,13 @@ export default function VirtualUserDetailPage({
                 <div>
                   <p className="text-sm font-medium">{ui("Created")}</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(identity.created_at).toLocaleDateString()}
+                    {new Date(identity.created_at).toLocaleDateString(displayLocale)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium">{ui("Updated")}</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(identity.updated_at).toLocaleDateString()}
+                    {new Date(identity.updated_at).toLocaleDateString(displayLocale)}
                   </p>
                 </div>
               </CardContent>

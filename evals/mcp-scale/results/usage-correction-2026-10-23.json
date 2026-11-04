@@ -1,0 +1,83 @@
+{
+  "archives": [
+    {
+      "cases": 18,
+      "path": "results/live-read-rollback-600-1.jsonl.gz",
+      "role": "qualification",
+      "sha256": "9a307ea8f4d1874326cf274c5cb4f3c83f26204b421a551a48c104391435d4c5"
+    },
+    {
+      "cases": 18,
+      "path": "results/live-read-rollback-2000-1.jsonl.gz",
+      "role": "qualification",
+      "sha256": "0a6358fb6504853715ac0bf99d615eff540d5ece4c5726f0fa0ce703bf4d2af5"
+    },
+    {
+      "cases": 9,
+      "path": "results/live-description-600-10-serial-retry.jsonl.gz",
+      "role": "qualification",
+      "sha256": "b291d59e1823163764e5de3c9e9f3562e9921bfe65a1d04e5fd831675845883f"
+    },
+    {
+      "cases": 9,
+      "path": "results/live-description-2000-10.jsonl.gz",
+      "role": "qualification",
+      "sha256": "6ec3825105aeee8619526f44fc78e6493f41e355a3ed58d8d4decad51bf154d2"
+    },
+    {
+      "cases": 9,
+      "path": "results/live-description-600-10.jsonl.gz",
+      "role": "concurrency-3-provider-availability-attempt",
+      "sha256": "bc93c40b83bbd5cf906edfebd45c574e5c032c45c7db1dc72aa06d9de06f3f2d"
+    },
+    {
+      "cases": 2,
+      "path": "results/post-fix-cli-2000-smoke.jsonl.gz",
+      "role": "post-fix-smoke",
+      "sha256": "58819a4edbfacfb87bfd25c8813d3068e706691ebd3f03ce3ade686bc1baccb8"
+    },
+    {
+      "cases": 6,
+      "path": "results/shipping-2026-10-21-live.jsonl.gz",
+      "role": "shipping-smoke",
+      "sha256": "fcf3b525c17069b8dd2b96e41b4bce0b2937f900277c596c4bc9a67c5bc458e3"
+    }
+  ],
+  "command": "gzip -dc <archive.jsonl.gz> | target/debug/mcp_scale --reaccount-report - --output <corrected.json>",
+  "date": "2026-10-23",
+  "method": "generation-iteration-v1",
+  "projection_sha256": "bc4c08c2b5c28d85cbff969d571c96c100cde5626917b42e0b50f6860681bfd7",
+  "qualification_token_totals": {
+    "cache_read_tokens": 1167856,
+    "cost_usd": 0.058075912000000014,
+    "input_tokens": 493572,
+    "output_tokens": 31915
+  },
+  "reason": "Recursive JSON usage aggregation counted generation, output-message, reason, turn, and session records. Token totals were five times per-generation usage; actual cost fields were missed.",
+  "separate_hosted_evidence": "Hosted qualification already counted individual generation usage and is not changed by this correction.",
+  "shipping_usage_by_surface": {
+    "cli": {
+      "cache_read_tokens": 100556,
+      "cost_usd": 0.010264112000000002,
+      "input_tokens": 96036,
+      "output_tokens": 2297,
+      "trials": 2
+    },
+    "hybrid": {
+      "cache_read_tokens": 16708,
+      "cost_usd": 0.002653716,
+      "input_tokens": 24465,
+      "output_tokens": 869,
+      "trials": 2
+    },
+    "native": {
+      "cache_read_tokens": 6852,
+      "cost_usd": 0.0018965039999999998,
+      "input_tokens": 16938,
+      "output_tokens": 945,
+      "trials": 2
+    }
+  },
+  "unchanged": "Raw gzip archives, hashes, task outcomes, scorers, fixture state and source provenance.",
+  "usage_convention": "everruns-disjoint-v1"
+}

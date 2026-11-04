@@ -534,8 +534,10 @@ mod network_guard {
     /// A public URL that answers 302 to a private address. Browserless cloud
     /// itself drops the connection when a page touches a loopback or metadata
     /// URL, so a private RFC 1918 target is what shows the Everruns guard.
+    /// httpbin.org now answers 403 for internal redirect targets, so this uses
+    /// postman-echo, which still redirects anywhere.
     const REDIRECT_TO_PRIVATE: &str =
-        "https://httpbin.org/redirect-to?url=http%3A%2F%2F10.0.0.5%2Fadmin";
+        "https://postman-echo.com/redirect-to?url=http%3A%2F%2F10.0.0.5%2Fadmin";
 
     fn tool(name: &str) -> Box<dyn Tool> {
         BrowserlessCapability

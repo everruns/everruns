@@ -8,12 +8,6 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
-jest.mock("@/components/agents/integrations/slack-channel-configuration", () => ({
-  SlackChannelConfiguration: ({ canManage }: { canManage: boolean }) => (
-    <div data-testid="slack-configuration" data-can-manage={String(canManage)} />
-  ),
-}));
-
 function channel(overrides: Partial<AgentChannel>): AgentChannel {
   return {
     id: "appchan_123",
@@ -37,26 +31,6 @@ describe("ChannelDetailsPanel", () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
-  });
-
-  it("renders the combined Slack configuration instead of setup and use panels", () => {
-    render(
-      <ChannelDetailsPanel
-        agentId="agent_123"
-        agentName="Support Agent"
-        channel={channel({})}
-        configureHref="/agents/agent_123/channels/appchan_123"
-      />,
-    );
-    expect(screen.getByTestId("slack-configuration")).toHaveAttribute("data-can-manage", "true");
-    expect(screen.queryByText("Set up")).not.toBeInTheDocument();
-    expect(screen.queryByText("Use it")).not.toBeInTheDocument();
-  });
-  it("renders Slack details without editing access", () => {
-    render(
-      <ChannelDetailsPanel agentId="agent_123" agentName="Support Agent" channel={channel({})} />,
-    );
-    expect(screen.getByTestId("slack-configuration")).toHaveAttribute("data-can-manage", "false");
   });
 
   it("mounts the A2A Agent Card setup path in the expanded channel details", () => {

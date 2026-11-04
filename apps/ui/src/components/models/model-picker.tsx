@@ -4,13 +4,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Star } from "lucide-react";
 import { ModelIcon } from "@/components/models/model-icon";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModelWithProvider, ModelService } from "@/lib/api/types";
@@ -63,13 +57,14 @@ export function ModelPicker({
   className,
 }: ModelPickerProps) {
   const ui = useUiTranslations();
-  const { data: models = [], isLoading } = useModels();
+  const { data: models = [], isLoading, error } = useModels();
 
   // Only show enabled models, sorted: favorites first, then by provider and name
   const sortedModels = [...models]
     .filter(
       (m) =>
         m.enabled &&
+        !m.stale &&
         (!organizationDefault || m.provider_type !== "chatgpt") &&
         (!requireTools || m.profile?.tool_call !== false) &&
         m.healthy !== false &&
@@ -97,44 +92,37 @@ export function ModelPicker({
 
   return (
     <div className="space-y-2">
-      <Select
+      <Combobox
+        id={id}
         value={value || "none"}
-        onValueChange={(val) => onChange(val === "none" ? "" : val)}
+        onValueChange={(next) => onChange(next === "none" ? "" : next)}
+        ariaLabel={id ? undefined : ui(placeholder)}
+        placeholder={ui(placeholder)}
+        searchPlaceholder={ui("Search models")}
+        valueLabel={
+          selectedOption?.label ??
+          (selectedModel
+            ? `${selectedModel.display_name} (${selectedModel.provider_name})`
+            : ui(placeholder))
+        }
         disabled={disabled || isLoading}
-      >
-        <SelectTrigger id={id} className={cn("w-full", className)}>
-          <SelectValue>
-            {(() => {
-              if (isLoading) return "Loading...";
-              if (selectedOption) return selectedOption.label;
-              if (!selectedModel) return placeholder;
-              return (
-                <div className="flex items-center gap-2">
-                  <ModelIcon model={selectedModel} size="sm" showBackground={false} />
-                  <span>
-                    {selectedModel.display_name} ({selectedModel.provider_name})
-                  </span>
-                  {selectedModel.is_favorite && (
-                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                  )}
-                </div>
-              );
-            })()}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="none">{placeholder}</SelectItem>
-          {additionalOptions.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-          {sortedModels.map((model) => (
-            <ModelSelectItem key={model.id} model={model} showFavoriteToggle={showFavoriteToggle} />
-          ))}
-        </SelectContent>
-      </Select>
-      {!isLoading && sortedModels.length === 0 && (
+        loading={isLoading}
+        error={error ? ui("Could not load models. Try again.") : undefined}
+        clearable={false}
+        className={cn("w-full", className)}
+        options={[
+          { value: "none", label: ui(placeholder) },
+          ...additionalOptions,
+          ...sortedModels.map((model) => ({
+            value: model.id,
+            label: `${model.display_name} (${model.provider_name})`,
+            icon: <ModelIcon model={model} size="sm" showBackground={false} />,
+            description: model.is_favorite ? ui("Favorites") : undefined,
+          })),
+        ]}
+      />
+      {showFavoriteToggle && selectedModel && <FavoriteToggle model={selectedModel} size="sm" />}
+      {!isLoading && !error && sortedModels.length === 0 && (
         <p className="text-xs text-muted-foreground">
           {ui("No configured")} {service} {ui("models.")}{" "}
           <Link href="/models" className="text-primary underline">
@@ -154,58 +142,6 @@ export function ModelPicker({
           </p>
         )}
     </div>
-  );
-}
-
-interface ModelSelectItemProps {
-  model: ModelWithProvider;
-  showFavoriteToggle: boolean;
-}
-
-function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
-  const queryClient = useQueryClient();
-  const updateModel = useUpdateModel(model.id);
-
-  const handleToggleFavorite = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    updateModel.mutate(
-      { is_favorite: !model.is_favorite },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ["models"] });
-        },
-      },
-    );
-  };
-
-  return (
-    <SelectItem value={model.id}>
-      <div className="flex items-center gap-2 w-full">
-        <ModelIcon model={model} size="sm" showBackground={false} />
-        <span className="flex-1">
-          {model.display_name} ({model.provider_name})
-        </span>
-        {model.is_favorite && <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />}
-        {showFavoriteToggle && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={handleToggleFavorite}
-            disabled={updateModel.isPending}
-          >
-            <Star
-              className={cn(
-                "w-4 h-4",
-                model.is_favorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground",
-              )}
-            />
-          </Button>
-        )}
-      </div>
-    </SelectItem>
   );
 }
 

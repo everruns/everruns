@@ -2,6 +2,7 @@
 // Org travels in the X-Org-Id header (see ./active-org), with the everruns_org cookie as fallback
 
 import { withSessionActivity } from "../session-activity";
+import { downloadBlob } from "../download";
 import { api, throwApiError } from "./client";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -11,6 +12,7 @@ import type {
   ForkSessionRequest,
   UpdateSessionRequest,
   SessionContextReport,
+  SessionCost,
   SessionResolvedModelResponse,
   SessionFacetsResponse,
   SessionWorkResult,
@@ -145,6 +147,18 @@ export async function getSessionContextReport(sessionId: string): Promise<Sessio
   return response.data;
 }
 
+/** What the session spent, by cost category, over time, by origin, tool and sandbox. */
+export async function getSessionCost(sessionId: string): Promise<SessionCost> {
+  const response = await api.get<SessionCost>(`/v1/sessions/${sessionId}/cost`);
+  return response.data;
+}
+
+/** The run the session belongs to: every agent session in it, with turns and spend. */
+export async function getSessionRun(sessionId: string): Promise<SessionRun> {
+  const response = await api.get<SessionRun>(`/v1/sessions/${sessionId}/run`);
+  return response.data;
+}
+
 /** Work report of one turn, or of the session's latest turn when `turnId` is omitted. */
 export async function getSessionWork(
   sessionId: string,
@@ -264,7 +278,7 @@ export async function exportSession(
   }
   const omitted = parseImagesOmitted(response.headers.get("X-Atif-Images-Omitted"));
   const blob = await response.blob();
-  triggerBlobDownload(format === "atif" ? `${sessionId}.atif.json` : `${sessionId}.jsonl`, blob);
+  await downloadBlob(format === "atif" ? `${sessionId}.atif.json` : `${sessionId}.jsonl`, blob);
   return { imagesOmitted: omitted };
 }
 
@@ -306,17 +320,6 @@ export class SegmentedExportError extends Error {
 function parseImagesOmitted(header: string | null): number {
   const n = header ? Number.parseInt(header, 10) : 0;
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function triggerBlobDownload(filename: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 /**
@@ -399,7 +402,7 @@ export async function exportSessionSegmented(sessionId: string): Promise<Segment
 
     imagesOmitted += parseImagesOmitted(response.headers.get("X-Atif-Images-Omitted"));
     const text = await response.text();
-    triggerBlobDownload(
+    await downloadBlob(
       `${sessionId}.atif.part${partsSaved + 1}.json`,
       new Blob([text], { type: "application/json" }),
     );
@@ -443,13 +446,17 @@ export async function exportSessionSegmented(sessionId: string): Promise<Segment
  */
 export async function submitToolResults(
   sessionId: string,
-  toolResults: Array<{ tool_call_id: string; result?: unknown; error?: string }>,
+  toolResults: Array<{
+    tool_call_id: string;
+    result?: unknown;
+    error?: string;
+  }>,
 ): Promise<{ status: string; tool_results_count: number }> {
   return withSessionActivity(sessionId, async () => {
-    const response = await api.post<{ status: string; tool_results_count: number }>(
-      `/v1/sessions/${sessionId}/tool-results`,
-      { tool_results: toolResults },
-    );
+    const response = await api.post<{
+      status: string;
+      tool_results_count: number;
+    }>(`/v1/sessions/${sessionId}/tool-results`, { tool_results: toolResults });
     return response.data;
   });
 }
@@ -554,4 +561,20 @@ export async function submitToolApprovals(
     );
     return response.data;
   });
+}
+
+// ============================================
+// Requests from other agents in a run
+// ============================================
+
+import type { RunRequestsResponse, SessionRun } from "./schema-types";
+
+/**
+ * Questions and approvals the agents this session handed work to wait on.
+ * Empty unless the session is a run's first session. Each request names the
+ * asking agent's session; its card answers there.
+ */
+export async function getRunRequests(sessionId: string): Promise<RunRequestsResponse> {
+  const response = await api.get<RunRequestsResponse>(`/v1/sessions/${sessionId}/run-requests`);
+  return response.data;
 }

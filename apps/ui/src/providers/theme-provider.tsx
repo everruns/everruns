@@ -36,7 +36,7 @@ const fallbackThemeContext: ThemeContextValue = {
   setMode: () => {},
 };
 
-const ThemeContext = createContext<ThemeContextValue>(fallbackThemeContext);
+export const ThemeContext = createContext<ThemeContextValue>(fallbackThemeContext);
 
 export function ThemeProvider({
   initialMode,

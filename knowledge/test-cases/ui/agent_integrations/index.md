@@ -1,6 +1,6 @@
 # Agent Integrations (UI)
 
-* [TC001: Agent Integrations tab](TC001_integrations_tab.md) - Verifies the Agent detail Integrations tab lists the agent's channels and triggers, publishes a channel from its row, and replaces the separate Triggers and Integrate tabs.
+* [TC001: Agent Channels and triggers tab](TC001_integrations_tab.md) - Verifies the Agent detail Channels and triggers tab lists channels and triggers in one table style, each row opening its own page, with GitHub and Pause agent elsewhere.
 * [TC002: Agent channel full-page editors](TC002_channel_routes.md) - Verifies the agent-scoped channel create and edit routes, including that they return to the Integrations tab rather than the App page.
 * [TC003: Slack channel setup](TC003_slack_channel_setup.md) - Verifies a Slack channel can create its app from a channel-scoped manifest and receive a signed inbound event.
 * [TC004: Agent card channels](TC004_agent_card_channels.md) - Verifies compact channel summaries, responsive overflow, lifecycle indicators, and navigation from agent cards.

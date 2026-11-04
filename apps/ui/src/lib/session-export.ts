@@ -3,7 +3,7 @@
 // Decisions:
 // - ATIF limit signals are user-facing: 413 (document over the server size
 //   cap) and `X-Atif-Images-Omitted` become toasts. Everything else keeps the
-//   pre-ATIF behavior (console.error only), so the flow degrades gracefully
+//   pre-ATIF behavior (console.error only), except host save failures, so the flow degrades gracefully
 //   against servers without ATIF support.
 // - When the server advertises SEGMENTED export in its 413 (the RFC-9457
 //   `detail` names `segmented=true`), the too-large case becomes recoverable:
@@ -19,6 +19,7 @@ import {
   type SessionExportFormat,
 } from "@/lib/api/sessions";
 import { ApiError } from "@/lib/api/client";
+import { BlobDownloadError } from "@/lib/download";
 import {
   formatAtifExportStopped,
   formatAtifImagesOmitted,
@@ -64,6 +65,10 @@ async function runSegmentedExport(
       });
     }
   } catch (error) {
+    if (error instanceof BlobDownloadError) {
+      notify({ title: error.message, body: "" });
+      return;
+    }
     if (error instanceof SegmentedExportError) {
       const body =
         error.reason === "limit"
@@ -100,6 +105,10 @@ export async function downloadSessionExport(
       });
     }
   } catch (error) {
+    if (error instanceof BlobDownloadError) {
+      notify?.({ title: error.message, body: "" });
+      return;
+    }
     if (format === "atif" && error instanceof ApiError && error.status === 413) {
       // Recoverable path: offer a segmented download when the server supports
       // it and we can drive the walk (needs `notify` to confirm + report).

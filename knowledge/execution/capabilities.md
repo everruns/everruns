@@ -450,6 +450,10 @@ session per hour, counted from the schedules it created) so a provider that
 keeps refusing cannot turn it into a loop. Hooks run on every terminal error,
 transient ones included: a transient error reaching the atom has already spent
 its in-call retries.
+The hook identifies a newly created retry separately from user-facing error
+fields. The engine records its link to the failed input even under generic
+error disclosure. [Runtime identity](../runtime-resources/virtual-users.md#request-session-and-execution-contracts)
+owns the continuation authorization boundary; prompt text is not that boundary.
 
 ##### System Prompt Methods
 
@@ -554,6 +558,10 @@ Display strings are localized through additive overlays, keeping
   the generic editor stays capability-agnostic. Server-side
   `validate_config` errors remain canonical English; clients localize their
   own pre-submit validation messages.
+- The server enriches built-in display metadata with its maintained resource
+  catalogs before returning API DTOs. Existing capability-supplied translations
+  win; tenant MCP, skill and declarative resource metadata stays authored.
+  The larger display catalog is separate from portable Engine activity wording.
 - Localization affects display only. Prompt building and LLM-facing
   descriptions always use the canonical English strings.
 
