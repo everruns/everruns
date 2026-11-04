@@ -26,7 +26,7 @@ jobs:
     name: Slack accepts worst-case manifests
     # A manual dispatch may pick any branch; only main runs beside the vault token.
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 5
 
     steps:

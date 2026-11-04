@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   trace-store:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 30
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns

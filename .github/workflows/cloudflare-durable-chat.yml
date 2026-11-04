@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   chat-recovery:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 25
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target/wasm-chat
