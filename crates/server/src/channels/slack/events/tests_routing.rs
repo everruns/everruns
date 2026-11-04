@@ -300,7 +300,7 @@ fn test_manifest_yaml_agent_surface_on() {
         .as_str()
         .expect("agent_description is required by Slack");
     assert!(description.contains("My Bot"));
-    assert!(description.len() <= SLACK_AGENT_DESC_MAX);
+    assert!(description.len() <= SLACK_AGENT_DESC_MAX_BYTES);
 
     // The channel bot is untouched — the surface is additive.
     let scopes: Vec<&str> = parsed["oauth_config"]["scopes"]["bot"]
@@ -335,7 +335,7 @@ fn test_manifest_yaml_agent_surface_on() {
 
 #[test]
 fn test_agent_description_respects_slack_limit() {
-    // Slack rejects an agent_description over 300 characters.
+    // Slack refuses a 300-character agent_description, so we cap it in bytes.
     let long = "d".repeat(500);
     let yaml = build_manifest_yaml(
         "Bot",
@@ -352,7 +352,14 @@ fn test_agent_description_respects_slack_limit() {
     let description = parsed["features"]["agent_view"]["agent_description"]
         .as_str()
         .expect("agent_description");
-    assert_eq!(description.chars().count(), SLACK_AGENT_DESC_MAX);
+    assert!(
+        description.len() <= SLACK_AGENT_DESC_MAX_BYTES,
+        "{description}"
+    );
+    assert!(
+        description.len() > SLACK_AGENT_DESC_MAX_BYTES / 2,
+        "{description}"
+    );
 }
 
 #[test]
@@ -370,14 +377,11 @@ fn test_agent_description_is_char_safe() {
         &[],
     );
     let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
-    assert_eq!(
-        parsed["features"]["agent_view"]["agent_description"]
-            .as_str()
-            .expect("agent_description")
-            .chars()
-            .count(),
-        SLACK_AGENT_DESC_MAX
-    );
+    let description = parsed["features"]["agent_view"]["agent_description"]
+        .as_str()
+        .expect("agent_description");
+    assert!(description.len() <= SLACK_AGENT_DESC_MAX_BYTES);
+    assert!(description.ends_with('…'), "{description}");
 }
 
 #[test]
@@ -471,7 +475,8 @@ fn test_manifest_yaml_escapes_special_chars_in_name() {
         false,
         &[],
     );
-    assert!(yaml.contains(r#"name: "Bot \"Special\"""#));
+    // Slack refuses quotes in an app name, so they become spaces.
+    assert!(yaml.contains(r#"name: "Bot Special""#));
     assert!(yaml.contains(r#"description: "Bot \"Special\" (Powered by Everruns)""#));
 }
 
@@ -506,7 +511,25 @@ fn test_build_long_description_empty_desc_treated_as_none() {
 fn test_build_long_description_truncates_at_max() {
     let long = "名".repeat(5000);
     let desc = build_long_description("Bot", Some(&long));
-    assert_eq!(desc.chars().count(), SLACK_LONG_DESC_MAX);
+    assert!(desc.len() <= SLACK_LONG_DESC_MAX_BYTES);
+    assert!(desc.chars().count() >= SLACK_LONG_DESC_MIN);
+    assert!(desc.ends_with('…'));
+}
+
+#[test]
+fn test_app_name_keeps_letters_and_drops_punctuation() {
+    // Slack refused this name with `invalid_characters`.
+    assert_eq!(
+        build_app_name("Дуже довга назва агента, що не влазить у ліміт Slack"),
+        "Дуже довга назва агента що не влази"
+    );
+    assert_eq!(build_app_name("Bot: \"v2\" (beta)"), "Bot v2 beta");
+    assert_eq!(build_app_name("my-bot_1.0"), "my-bot_1.0");
+    assert_eq!(build_app_name("!!!"), "Everruns agent");
+    assert_eq!(
+        build_app_name(&"x".repeat(200)).chars().count(),
+        SLACK_APP_NAME_MAX
+    );
 }
 
 #[test]
