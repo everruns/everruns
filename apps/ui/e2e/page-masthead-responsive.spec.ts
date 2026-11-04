@@ -155,6 +155,9 @@ for (const scenario of [
     context,
     baseURL,
   }, testInfo) => {
+    // The dev server compiles the agent page and the trigger page on first visit, which
+    // on a cold CI runner takes longer than the default navigation and assertion budgets.
+    test.slow();
     await context.addCookies([
       { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
     ]);
@@ -211,7 +214,9 @@ for (const scenario of [
       await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
     }
     await row.click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_ID}/triggers/${triggerId}$`));
+    await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_ID}/triggers/${triggerId}$`), {
+      timeout: 60_000,
+    });
     const message = page.getByRole("textbox", { name: "Message", exact: true });
     await expect(message).toHaveValue("Fictional scheduled report");
     await message.fill("Reviewed report");
