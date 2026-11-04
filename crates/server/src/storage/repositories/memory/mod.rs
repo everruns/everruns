@@ -103,6 +103,44 @@ impl Database {
         Ok(row)
     }
 
+    /// The team folder of the run whose first session is `root`, created on
+    /// first use. Concurrent first uses converge on one row through the
+    /// unique (org, owner session) index.
+    pub async fn ensure_run_memory(
+        &self,
+        org_id: i64,
+        root: everruns_contracts::typed_id::SessionId,
+    ) -> Result<MemoryRow> {
+        sqlx::query(
+            r#"
+            INSERT INTO memories (org_id, public_id, name, description, scope, owner_session_id)
+            VALUES ($1, $2, $3, $4, 'run', $5)
+            ON CONFLICT (org_id, owner_session_id) WHERE scope = 'run' AND status <> 'deleted'
+            DO NOTHING
+            "#,
+        )
+        .bind(org_id)
+        .bind(everruns_contracts::typed_id::MemoryId::new().to_string())
+        .bind(format!("run-{}", root.uuid().simple()))
+        .bind("Team folder shared by every agent in one run.")
+        .bind(root.uuid())
+        .execute(&self.pool)
+        .await?;
+        let row = sqlx::query_as::<_, MemoryRow>(sql!(
+            r#"
+            SELECT {MemoryRow}
+            FROM memories
+            WHERE org_id = $1 AND scope = 'run' AND owner_session_id = $2
+              AND status != 'deleted'
+            "#
+        ))
+        .bind(org_id)
+        .bind(root.uuid())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
     pub async fn get_memory_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let row = sqlx::query_scalar::<_, i64>(
             r#"

@@ -18,6 +18,8 @@ import {
   writeFileToolResult,
 } from "@/app/dev/_fixtures/tool-showcase-fixtures";
 import { fallbackDetails } from "@/app/dev/_fixtures/web-search-fixtures";
+import { ToolApprovalRequests } from "@/components/chat/tool-approval-tool-call";
+import { McpApprovalToolCall } from "@/components/chat/mcp-approval-tool-call";
 import { BashToolCallCard } from "@/components/chat/bash-tool-call-card";
 import { GroupedActivityCard } from "@/components/chat/grouped-activity-card";
 import { ReadFileToolCallCard } from "@/components/chat/read-file-tool-call-card";
@@ -42,6 +44,38 @@ export default function ToolActivityDevPage() {
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
+        <section aria-label="Approval control characters" className="max-w-3xl space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">Approval control characters</h2>
+          <ToolApprovalRequests
+            sessionId="approval-display-preview"
+            requests={[
+              {
+                id: "tool_approval_display_preview",
+                arguments: {
+                  tool: "delete_file",
+                  display_name: "Delete file",
+                  risk: "destructive",
+                  arguments: {
+                    path: "reports/quarterly\u202Etxt.exe",
+                    note: "می‌خواهم 👩‍💻",
+                    literal: "\\u202E",
+                  },
+                },
+              },
+            ]}
+            toolResultsMap={new Map()}
+          />
+          <McpApprovalToolCall
+            sessionId="approval-display-preview"
+            toolCallId="mcp_approval_display_preview"
+            approval={{
+              server_label: "Documents",
+              name: "read\u2066file",
+              arguments: JSON.stringify({ path: "reports/quarterly\u202Etxt.exe" }),
+            }}
+            toolResultsMap={new Map()}
+          />
+        </section>
         <section className="space-y-4 border border-border/70 bg-card/90 p-4">
           <h2 className="text-lg font-semibold text-foreground">{ui("Conversational approval")}</h2>
           <div className="space-y-3">

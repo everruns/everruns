@@ -8,7 +8,7 @@ products: [platform, cloud]
 release: "0.50.1"
 surfaces: [operations, api]
 links:
-  docs: [/sre/environment-variables/]
+  docs: [/sre/environment-variables/, /getting-started/kubernetes/]
 ---
 
 Restarting a server now drains it. It keeps serving for a few seconds while the
@@ -30,7 +30,8 @@ again.
 Requests that hit a database timeout while authenticating now get
 `503 Service Unavailable` with `Retry-After`, not `401 Unauthorized`.
 
-Keep the orchestrator's kill timeout above these grace periods:
+The [Helm chart](/getting-started/kubernetes/#upgrade) sets these defaults.
+Elsewhere, keep the orchestrator's kill timeout above these grace periods:
 
 ```yaml
 # Server: 5 s linger + 20 s drain + 5 s worker link

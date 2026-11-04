@@ -46,6 +46,7 @@ pub mod sandbox_templates;
 pub mod sandboxes;
 pub mod schedules;
 pub mod session_commands;
+pub mod session_cost;
 pub mod session_databases;
 pub mod session_files;
 pub mod session_git;

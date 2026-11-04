@@ -42,6 +42,7 @@ jest.mock("@/hooks/use-agent-channels", () => ({
 
 jest.mock("@/hooks/use-agent-triggers", () => ({
   useAgentTriggers: () => ({ data: [] }),
+  useAgentTriggerRuns: () => ({ data: [] }),
   useUpdateAgentTrigger: () => ({ mutate: jest.fn(), isPending: false }),
   useDeleteAgentTrigger: () => ({ mutate: jest.fn() }),
   useRunAgentTrigger: () => ({ mutate: jest.fn(), isPending: false }),
@@ -53,33 +54,8 @@ jest.mock("@/hooks/use-policies", () => ({
   }),
 }));
 
-jest.mock("@/hooks/use-agents", () => ({
-  useResumeAgentExposures: () => ({ mutate: jest.fn(), isPending: false }),
-  useSuspendAgentExposures: () => ({ mutate: jest.fn(), isPending: false }),
-}));
-
-jest.mock("@/components/agents/channels/channel-row", () => ({
-  ChannelRow: ({
-    usePanel,
-    expanded,
-    channel,
-  }: {
-    usePanel?: React.ReactNode;
-    expanded?: boolean;
-    channel: { id: string };
-  }) => (
-    <div data-testid={`row-${channel.id}`} data-expanded={String(!!expanded)}>
-      {usePanel}
-    </div>
-  ),
-}));
-
-jest.mock("@/components/agents/agent-github-card", () => ({
-  AgentGitHubSection: ({ githubTriggerCount }: { githubTriggerCount?: number }) => (
-    <section data-testid="github-section" data-github-triggers={String(githubTriggerCount)}>
-      <h3>GitHub</h3>
-    </section>
-  ),
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => async () => true,
 }));
 
 jest.mock("@/components/budgets/budget-panel", () => ({
@@ -113,7 +89,7 @@ const agent = {
   deleted_at: null,
 } as Agent;
 
-describe("AgentIntegrationsPanel budgets", () => {
+describe("AgentIntegrationsPanel", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseFeatureFlag.mockReturnValue(true);
@@ -161,23 +137,14 @@ describe("AgentIntegrationsPanel budgets", () => {
     expect(screen.queryByTestId(/^budget-/)).not.toBeInTheDocument();
   });
 
-  it("enables or disables every channel and keeps each channel's publish state", () => {
+  // Pausing is the agent's header menu now; the tab has no traffic switch.
+  it("has no Accept traffic switch", () => {
     mockCanBudget.mockReturnValue(false);
 
-    const { rerender } = render(<AgentIntegrationsPanel agent={agent} />);
+    render(<AgentIntegrationsPanel agent={{ ...agent, exposures_suspended: true }} />);
 
-    expect(screen.getByRole("switch", { name: "Accept traffic" })).toBeChecked();
-    expect(
-      screen.getByText(
-        "Off pauses every channel at once. Each channel keeps its own Published or Draft setting.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("All channels are paused")).not.toBeInTheDocument();
-
-    rerender(<AgentIntegrationsPanel agent={{ ...agent, exposures_suspended: true }} />);
-
-    expect(screen.getByRole("switch", { name: "Accept traffic" })).not.toBeChecked();
-    expect(screen.getByText("All channels are paused")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Accept traffic/)).not.toBeInTheDocument();
   });
 
   it("sends a link to a channel on to that channel's page", () => {
@@ -188,26 +155,22 @@ describe("AgentIntegrationsPanel budgets", () => {
     expect(mockReplace).toHaveBeenCalledWith("/agents/agent_1/channels/endpoint_1");
   });
 
-  it("gives GitHub its own section between Channels and Triggers", () => {
+  it("shows Channels then Triggers, with GitHub moved to its own page", () => {
     mockUseFeatureFlag.mockReturnValue(false);
     mockCanBudget.mockReturnValue(false);
 
     render(<AgentIntegrationsPanel agent={agent} />);
 
-    expect(screen.getAllByText("Triggers")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Channels and triggers" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add trigger" })).toHaveAttribute(
       "href",
       "/agents/agent_1/triggers/new",
     );
     expect(screen.getByRole("heading", { name: "No triggers yet" })).toBeInTheDocument();
-
     const headings = screen
       .getAllByRole("heading", { level: 3 })
       .map((heading) => heading.textContent);
-    expect(headings.slice(0, 3)).toEqual(["Channels", "GitHub", "Triggers"]);
-    // GitHub sits beside Triggers, not inside it.
-    const triggers = screen.getByRole("heading", { name: "Triggers" }).closest("section");
-    expect(triggers).not.toContainElement(screen.getByTestId("github-section"));
-    expect(screen.getByTestId("github-section")).toHaveAttribute("data-github-triggers", "0");
+    expect(headings.slice(0, 2)).toEqual(["Channels", "Triggers"]);
+    expect(screen.queryByRole("heading", { name: "GitHub" })).not.toBeInTheDocument();
   });
 });

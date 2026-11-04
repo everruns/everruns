@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { authenticate, hmac, eventStream } from "../src/protocol.js";
-import { execute, salesSummary } from "../src/index.js";
+import { execute } from "../src/agent.js";
+import { salesSummary } from "../src/tool.js";
 const secret = "test_endpoint_secret_01234567890123456789";
 const id = "message_0123456789abcdef0123456789abcdef";
 const body = () => ({ protocol: "everruns-worker/v1", audience:"https://agent.example/", type: "invoke", issued_at: Math.floor(Date.now()/1000), invocation_id: id, input_sequence: 1, input: { id, role: "user", content: [{type:"text",text:"North sales?"}] }, journal: [] });
@@ -66,4 +67,14 @@ test("model rejection and transport failure are traced without secret diagnostic
     assert.match(metadata.error,rejected?/429.*credit_balance_exhausted/:/transport failed/);
     assert.doesNotMatch(JSON.stringify(events),/secret diagnostic|app-owned-model-key/);
   }
+});
+
+test("entry point answers the ownership challenge and rejects malformed invocations", async () => {
+  const { default: worker } = await import("../src/index.js");
+  const env = { EVERRUNS_ENDPOINT_SECRET: secret };
+  const verify = { ...body(), type: "verify", challenge: "nonce" };
+  const proof = await (await worker.fetch(await signed(verify), env, {})).json();
+  assert.equal(proof.proof, await hmac(secret, new TextEncoder().encode("nonce")));
+  assert.equal((await worker.fetch(await signed({ ...body(), invocation_id: "bad" }), env, {})).status, 400);
+  assert.equal((await worker.fetch(await signed(body(), "wrong_endpoint_secret_0123456789abcdef"), env, {})).status, 401);
 });

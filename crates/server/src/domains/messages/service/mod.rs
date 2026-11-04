@@ -93,6 +93,41 @@ impl MessageService {
         self
     }
 
+    /// Answer the pending client-side tool calls of a waiting session from
+    /// server code, the way `POST /v1/sessions/{id}/tool-results` does. Eval
+    /// tool fixtures use it. Returns `false` when the session is no longer
+    /// waiting (another answer won, or the turn ended).
+    pub async fn submit_tool_results(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        results: &[crate::domains::tool_results::types::ClientToolResult],
+    ) -> Result<bool> {
+        let completed = results
+            .iter()
+            .map(crate::domains::tool_results::types::ClientToolResult::completed)
+            .collect();
+        match self
+            .db
+            .claim_tool_result_command(org_id, session_id, completed)
+            .await?
+        {
+            crate::storage::ClaimWaitingTurnResult::Claimed(claim) => {
+                execute_waiting_turn_resolution(
+                    &self.db,
+                    &self.event_service,
+                    &self.runner,
+                    org_id,
+                    session_id,
+                    &claim,
+                )
+                .await?;
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
     async fn ensure_active_user_participant(
         &self,
         org_id: i64,
@@ -164,24 +199,72 @@ impl MessageService {
     ) -> Result<Message> {
         // Keep the intake future off nested HTTP handler stacks. Agent API
         // sends add enough wrappers to overflow a default debug worker stack.
-        Box::pin(self.create_inner(ctx, req, prefetch, None)).await
+        Box::pin(self.create_inner(ctx, req, prefetch, Vec::new())).await
     }
 
-    /// [`Self::create`] for a message whose turn runs a saved script instead
-    /// of the model (Tools in Shell D9). The marker is reserved metadata a
-    /// client cannot set, so it is added after the client's keys are cleaned.
-    pub async fn create_script_run(
+    /// [`Self::create`] for a message the platform writes on someone's behalf
+    /// (a trigger or channel schedule firing), marked with who wrote it. The
+    /// origin is reserved metadata a client cannot set, so it is added after
+    /// the client's keys are cleaned. A trigger that targets a saved script also
+    /// carries the script-run marker, so its turn runs the script instead of
+    /// the model (Tools in Shell D9).
+    pub async fn create_with_origin(
         &self,
         ctx: CreateMessageContext,
         req: CreateMessageRequest,
-        run: &everruns_contracts::runtime::saved_scripts::ScriptRun,
+        origin: everruns_core::message::MessageOrigin,
+        script: Option<&everruns_contracts::runtime::saved_scripts::ScriptRun>,
     ) -> Result<Message> {
-        let marker = (
-            everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
-            serde_json::to_value(run)?,
+        let mut platform = vec![(
+            everruns_core::message::MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+            origin.to_value(),
+        )];
+        if let Some(run) = script {
+            platform.push((
+                everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
+                serde_json::to_value(run)?,
+            ));
+        }
+        Box::pin(self.create_inner(ctx, req, CreateMessagePrefetch::default(), platform)).await
+    }
+
+    /// Tell the agent about reactions now, as a message whose text is the
+    /// reaction note (origin `reaction`). It starts a turn, or joins the one
+    /// running. The client message id is derived from the note's last
+    /// reaction event, so two reactions racing to tell the same note store it
+    /// once.
+    pub async fn create_reaction_message(
+        &self,
+        ctx: CreateMessageContext,
+        note: everruns_contracts::message_reactions::ReactionNote,
+    ) -> Result<Message> {
+        let client_message_id = Uuid::new_v5(
+            &ctx.session_id,
+            format!("everruns.reactions.{}", note.through_sequence).as_bytes(),
         );
-        self.create_inner(ctx, req, CreateMessagePrefetch::default(), Some(marker))
-            .await
+        let req = CreateMessageRequest {
+            message: crate::domains::messages::types::InputMessage {
+                role: crate::domains::messages::types::MessageRole::User,
+                content: vec![everruns_core::InputContentPart::text(note.render())],
+            },
+            addressed_participant_id: None,
+            controls: None,
+            metadata: None,
+            tags: None,
+            external_actor: None,
+            client_message_id: Some(client_message_id),
+        };
+        let mut note_metadata = std::collections::HashMap::new();
+        note.write(&mut note_metadata);
+        let mut platform = vec![(
+            everruns_core::message::MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+            everruns_core::message::MessageOrigin::new(
+                everruns_core::message::MessageOriginKind::Reaction,
+            )
+            .to_value(),
+        )];
+        platform.extend(note_metadata);
+        Box::pin(self.create_inner(ctx, req, CreateMessagePrefetch::default(), platform)).await
     }
 
     async fn create_inner(
@@ -189,7 +272,7 @@ impl MessageService {
         ctx: CreateMessageContext,
         req: CreateMessageRequest,
         prefetch: CreateMessagePrefetch,
-        platform_metadata: Option<(String, serde_json::Value)>,
+        platform_metadata: Vec<(String, serde_json::Value)>,
     ) -> Result<Message> {
         tracing::info!(
             session_id = %ctx.session_id,
@@ -353,8 +436,31 @@ impl MessageService {
         // dress its own text up as a platform notice.
         let mut metadata = req.metadata.clone();
         everruns_core::message::strip_reserved_message_metadata(&mut metadata);
-        if let Some((key, value)) = platform_metadata {
+        let carries_note = platform_metadata.iter().any(|(key, _)| {
+            key == everruns_contracts::message_reactions::MESSAGE_REACTIONS_METADATA_KEY
+        });
+        for (key, value) in platform_metadata {
             metadata.get_or_insert_default().insert(key, value);
+        }
+        // Reactions that waited for the agent's next turn ride on this
+        // message (knowledge/execution/message-reactions.md). Best-effort: a
+        // failed lookup must never stop a send.
+        if !carries_note {
+            match crate::domains::messages::reactions::pending_reaction_note(
+                &self.db,
+                ctx.session_id,
+                ctx.agent_id,
+            )
+            .await
+            {
+                Ok(Some(note)) => note.write(metadata.get_or_insert_default()),
+                Ok(None) => {}
+                Err(error) => tracing::warn!(
+                    session_id = %ctx.session_id,
+                    error = %error,
+                    "Could not read pending reactions; they wait for the next message"
+                ),
+            }
         }
         if let Some(client_message_id) = req.client_message_id {
             metadata.get_or_insert_default().insert(
@@ -676,6 +782,10 @@ impl MessageService {
 
     /// Access the underlying event service. Used by sibling callers that
     /// need to emit lifecycle events outside of `MessageService::create`.
+    pub fn db(&self) -> &StorageBackend {
+        &self.db
+    }
+
     pub fn event_service(&self) -> &EventService {
         &self.event_service
     }

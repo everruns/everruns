@@ -90,6 +90,13 @@ export function useSlackWorkspaces(enabled = true) {
   });
 }
 
+/** A workspace's name when it is one of the org's connected workspaces, otherwise its ID. */
+export function useSlackWorkspaceName(teamId?: string | null): string | undefined {
+  const workspaces = useSlackWorkspaces(Boolean(teamId));
+  if (!teamId) return undefined;
+  return workspaces.data?.find((workspace) => workspace.team_id === teamId)?.team_name || teamId;
+}
+
 /** Refresh everything that depends on which workspaces are connected. */
 export function useInvalidateSlackWorkspaces() {
   const queryClient = useQueryClient();

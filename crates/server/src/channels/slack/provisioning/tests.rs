@@ -296,6 +296,48 @@ async fn invalid_refresh_token_marks_the_claimed_generation_for_reconnect() {
     assert!(row.refresh_token_encrypted.is_none());
 }
 
+/// A Slack outage during a refresh must not cost the workspace its
+/// connection: the refresh token most likely still works, so the stored
+/// tokens stay and a later sweep retries.
+#[tokio::test]
+async fn a_failed_refresh_keeps_the_connection_for_the_next_sweep() {
+    let server = MockServer::start().await;
+    let outage = Mock::given(method("POST"))
+        .and(path("/tooling.tokens.rotate"))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(1)
+        .mount_as_scoped(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    let row = db
+        .upsert_org_slack_connection(stored(41, "T1", chrono::Duration::minutes(10)))
+        .await
+        .unwrap();
+
+    provisioner.rotate_due_connections().await.unwrap();
+    drop(outage);
+    let kept = db
+        .get_org_slack_connection(41, row.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.state, "connected");
+    assert_eq!(kept.refresh_token_encrypted, row.refresh_token_encrypted);
+
+    mount_rotate(&server, "T1").await;
+    provisioner.rotate_due_connections().await.unwrap();
+    let rotated = db
+        .get_org_slack_connection(41, row.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(rotated.state, "connected");
+    assert!(
+        rotated.access_token_expires_at.unwrap()
+            > chrono::Utc::now() + chrono::Duration::minutes(30)
+    );
+}
+
 #[tokio::test]
 async fn with_several_workspaces_the_caller_must_name_one() {
     let server = MockServer::start().await;
@@ -358,6 +400,71 @@ async fn app_creation_encodes_the_generated_yaml_as_json_for_slack() {
         .await
         .unwrap();
     assert_eq!(created.app_id, "A1");
+}
+
+#[tokio::test]
+async fn a_refused_manifest_reports_which_fields_slack_rejected() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.create"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "invalid_manifest",
+            "errors": [
+                {"message": "Must be 139 characters or fewer", "pointer": "/display_information/description"},
+                {"message": "Something without a pointer"}
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    db.upsert_org_slack_connection(stored(42, "T1", chrono::Duration::hours(1)))
+        .await
+        .unwrap();
+
+    let error = provisioner
+        .create_app(42, Some("T1"), "{}")
+        .await
+        .unwrap_err();
+
+    match error {
+        SlackProvisioningError::RejectedWithProblems { code, problems } => {
+            assert_eq!(code, "invalid_manifest");
+            assert_eq!(
+                problems,
+                vec![
+                    "/display_information/description: Must be 139 characters or fewer",
+                    "Something without a pointer",
+                ]
+            );
+        }
+        other => panic!("expected the problems to be kept, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn other_refusals_keep_the_bare_code_callers_match_on() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.create"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "ratelimited",
+            "response_metadata": {"messages": ["[ERROR] slow down"]}
+        })))
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    db.upsert_org_slack_connection(stored(43, "T1", chrono::Duration::hours(1)))
+        .await
+        .unwrap();
+
+    let error = provisioner
+        .create_app(43, Some("T1"), "{}")
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, SlackProvisioningError::Rejected(code) if code == "ratelimited"));
 }
 
 #[tokio::test]
@@ -830,4 +937,50 @@ async fn a_manager_grant_is_kept_when_the_deployment_drops_its_manager_app() {
     assert_eq!(row.state, "connected");
     assert!(row.refresh_token_encrypted.is_some());
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_manifest_check_reports_each_case_slack_refuses() {
+    let server = MockServer::start().await;
+    // Slack refuses any manifest whose app is named "Bot" (the
+    // tricky-characters case) and accepts the rest.
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.validate"))
+        .and(header("authorization", "Bearer access"))
+        .and(wiremock::matchers::body_string_contains(
+            r#"\"name\":\"Bot\""#,
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "invalid_manifest",
+            "errors": [{"message": "too long", "pointer": "/display_information/description"}]
+        })))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.validate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
+        .with_priority(2)
+        .expect(5)
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    assert_eq!(
+        provisioner.check_manifests().await,
+        manifest_health::SlackManifestOutcome::NoWorkspace
+    );
+    db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(6)))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        provisioner.check_manifests().await,
+        manifest_health::SlackManifestOutcome::Refused {
+            refusals: vec![(
+                "tricky-characters".to_string(),
+                vec!["/display_information/description: too long".to_string()]
+            )]
+        }
+    );
 }

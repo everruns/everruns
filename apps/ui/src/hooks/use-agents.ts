@@ -16,8 +16,8 @@ import {
   listAgentCredentials,
   createAgentCredentialBinding,
   deleteAgentCredentialBinding,
-  suspendAgentExposures,
-  resumeAgentExposures,
+  pauseAgent,
+  resumeAgent,
   getAgentMcpAttachments,
   revokeAgentMcpConnection,
   uploadAgentAvatar,
@@ -217,12 +217,12 @@ function useExposureMutation(mutationFn: (agentId: string) => Promise<unknown>) 
   });
 }
 
-export function useSuspendAgentExposures() {
-  return useExposureMutation(suspendAgentExposures);
+export function usePauseAgent() {
+  return useExposureMutation(pauseAgent);
 }
 
-export function useResumeAgentExposures() {
-  return useExposureMutation(resumeAgentExposures);
+export function useResumeAgent() {
+  return useExposureMutation(resumeAgent);
 }
 
 /** Upload or remove an agent's avatar; refreshes the agent everywhere it shows. */

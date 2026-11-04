@@ -30,6 +30,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 .as_ref()
                 .and_then(|message| message.metadata.as_ref()),
         );
+        let origin = input_message.as_ref().and_then(RuntimeMessage::origin);
         let input_content = input_message.map(|message| message.content_to_llm_string());
         let agent = agent?;
 
@@ -54,6 +55,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                     agent_id: agent.id,
                     agent_name: agent.name,
                     agent_description: agent.description,
+                    origin,
                 },
             )
             .with_causal_context(&causes),

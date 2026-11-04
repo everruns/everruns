@@ -19,6 +19,11 @@ async fn schedule_store_runs_the_internal_commands_scoped_to_its_org() {
             Some("0 0 3 * * *".into()),
             None,
             "UTC".into(),
+            everruns_core::session_schedule::ScheduleBounds {
+                max_runs: Some(3),
+                stop_when: Some("the nightly report is sent".into()),
+                ..Default::default()
+            },
         )
         .await
         .ok()
@@ -32,6 +37,11 @@ async fn schedule_store_runs_the_internal_commands_scoped_to_its_org() {
             Some("* * * * *".into()),
             None,
             "UTC".into(),
+            everruns_core::session_schedule::ScheduleBounds {
+                max_runs: Some(3),
+                stop_when: Some("done".into()),
+                ..Default::default()
+            },
         )
         .await;
     assert!(matches!(

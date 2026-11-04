@@ -53,14 +53,14 @@ fn skill_activation_resource_id(name: &str) -> String {
     format!("{SKILL_ACTIVATION_KIND}:{name}")
 }
 
-/// Max skills to include in the system prompt (rest via list_skills tool)
+/// Max skills to include in the inventory (rest via list_skills tool)
 const MAX_SKILLS_IN_PROMPT: usize = 15;
 
-/// Max skill directories to scan when building the system prompt.
-/// Bounds per-turn filesystem reads to avoid prompt-build DoS.
+/// Max skill directories to scan when building the inventory.
+/// Bounds per-turn filesystem reads to avoid inventory-build DoS.
 const MAX_SKILLS_SCAN_IN_PROMPT: usize = 64;
 
-/// Max description length in system prompt (truncated with "…")
+/// Max description length in the inventory (truncated with "…")
 const MAX_DESCRIPTION_CHARS: usize = 76;
 
 /// Workspace prefix for agent-facing paths (matches file_system capability convention)
@@ -91,6 +91,9 @@ fn workspace_path(path: &str) -> String {
 /// SKILL.md files to `/.agents/skills/{name}/SKILL.md` in the session VFS.
 pub struct SkillsCapability;
 
+/// An explicit empty catalog also establishes freshness after a history cut.
+pub(super) const EMPTY_SKILL_INVENTORY: &str = "No skills are currently available.";
+
 /// Static skills system prompt (used by sync callers and as fallback)
 const SKILLS_SYSTEM_PROMPT: &str = "Skills location: `/workspace/.agents/skills/{skill-name}/SKILL.md`. \
 Only activate skills that are relevant to the current task.";
@@ -115,7 +118,7 @@ impl Capability for SkillsCapability {
         }
     }
 
-    async fn system_prompt_contribution_with_config(
+    async fn conversation_context_update_contribution_with_config(
         &self,
         ctx: &SystemPromptContext,
         config: &Value,
@@ -123,10 +126,10 @@ impl Capability for SkillsCapability {
         if super::artifact_inspection::enabled(config) {
             super::ScopedSkillsCapability::new(super::SkillsConfig::default())
                 .with_report_only_inspection()
-                .system_prompt_contribution(ctx)
+                .conversation_context_update_contribution(ctx)
                 .await
         } else {
-            self.system_prompt_contribution(ctx).await
+            self.conversation_context_update_contribution(ctx).await
         }
     }
 
@@ -176,41 +179,22 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
         Some(SKILLS_SYSTEM_PROMPT)
     }
 
-    /// Dynamically discovers skills from the session filesystem and includes
-    /// them in the system prompt.
-    ///
-    /// When a file store is available, scans `/.agents/skills/` for SKILL.md
-    /// files and lists discovered skills directly in the prompt. Falls back
-    /// to the static prompt when no file store is available.
-    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
-        let file_store = match ctx.file_store.as_ref() {
-            Some(fs) => fs,
-            None => {
-                // No file store — fall back to static prompt with capability wrapping
-                return Some(format!(
-                    "<capability id=\"{}\">\n{}\n</capability>",
-                    self.id(),
-                    SKILLS_SYSTEM_PROMPT
-                ));
-            }
-        };
-
-        // Scan /.agents/skills/ for SKILL.md files
-        let entries = match file_store.list_directory(ctx.session_id, SKILLS_PATH).await {
-            Ok(entries) => entries,
-            Err(_) => {
-                // Directory doesn't exist — use static prompt
-                return Some(format!(
-                    "<capability id=\"{}\">\n{}\n</capability>",
-                    self.id(),
-                    SKILLS_SYSTEM_PROMPT
-                ));
-            }
-        };
+    // Keep the instructions static. Mutable workspace metadata rides in later
+    // user-role updates so partial installs cannot rewrite the cached prefix.
+    async fn conversation_context_update_contribution(
+        &self,
+        ctx: &SystemPromptContext,
+    ) -> Option<String> {
+        let file_store = ctx.file_store.as_ref()?;
+        let entries = file_store
+            .list_directory(ctx.session_id, SKILLS_PATH)
+            .await
+            .unwrap_or_default();
 
         // Only scan a bounded number of skill directories for prompt generation.
         // Full discovery remains available through list_skills tool.
-        let skill_dirs: Vec<_> = entries.iter().filter(|entry| entry.is_directory).collect();
+        let mut skill_dirs: Vec<_> = entries.iter().filter(|entry| entry.is_directory).collect();
+        skill_dirs.sort_by(|a, b| a.path.cmp(&b.path));
         let scan_truncated = skill_dirs.len() > MAX_SKILLS_SCAN_IN_PROMPT;
 
         let mut discovered_skills = Vec::new();
@@ -229,7 +213,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
             }
         }
 
-        let mut prompt = String::from(SKILLS_SYSTEM_PROMPT);
+        let mut prompt = String::new();
 
         if !discovered_skills.is_empty() {
             // Filter out skills where disable_model_invocation is true
@@ -261,11 +245,11 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
             }
         }
 
-        Some(format!(
-            "<capability id=\"{}\">\n{}\n</capability>",
-            self.id(),
+        Some(if prompt.is_empty() {
+            EMPTY_SKILL_INVENTORY.to_string()
+        } else {
             prompt
-        ))
+        })
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -747,7 +731,7 @@ mod tests {
     use crate::session_files::SessionFileSystem;
     use crate::session_services::SessionResourceRegistry;
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     struct FileSystemDependencyFixture;
@@ -779,49 +763,7 @@ mod tests {
         /// Counter used by the idempotence test to prove the cache-hit path
         /// does not re-read SKILL.md on the second activation.
         read_count: AtomicUsize,
-    }
-
-    impl MockFileStore {
-        fn new() -> Self {
-            Self {
-                files: Mutex::new(HashMap::new()),
-                readonly_files: Mutex::new(std::collections::HashSet::new()),
-                dirs: Mutex::new(std::collections::HashSet::new()),
-                read_count: AtomicUsize::new(0),
-            }
-        }
-
-        fn read_count(&self) -> usize {
-            self.read_count.load(Ordering::SeqCst)
-        }
-
-        /// Add a file and auto-create parent directories
-        fn add_file(&self, session_id: SessionId, path: &str, content: &str) {
-            self.files
-                .lock()
-                .unwrap()
-                .insert((session_id, path.to_string()), content.to_string());
-
-            // Auto-create parent directories
-            let mut dir = path.to_string();
-            while let Some(idx) = dir.rfind('/') {
-                if idx == 0 {
-                    break;
-                }
-                dir = dir[..idx].to_string();
-                self.dirs.lock().unwrap().insert((session_id, dir.clone()));
-            }
-        }
-
-        /// Add a file and mark it as readonly (simulates a capability or
-        /// registry mount).
-        fn add_readonly_file(&self, session_id: SessionId, path: &str, content: &str) {
-            self.add_file(session_id, path, content);
-            self.readonly_files
-                .lock()
-                .unwrap()
-                .insert((session_id, path.to_string()));
-        }
+        list_unavailable: AtomicBool,
     }
 
     #[async_trait]
@@ -891,6 +833,9 @@ mod tests {
         }
 
         async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+            if self.list_unavailable.load(Ordering::SeqCst) {
+                return Err(anyhow::anyhow!("inventory unavailable").into());
+            }
             let files = self.files.lock().unwrap();
             let dirs = self.dirs.lock().unwrap();
             let mut entries = Vec::new();
@@ -1633,7 +1578,7 @@ mod tests {
     }
 
     // ========================================================================
-    // Dynamic system_prompt_contribution tests
+    // Skill inventory contribution tests
     // ========================================================================
 
     #[tokio::test]
@@ -1658,8 +1603,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
-        assert!(result.contains("<capability id=\"skills\">"));
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
         assert!(result.contains("pdf-processor"));
         assert!(result.contains("data-analysis"));
         assert!(result.contains("Available skills:"));
@@ -1727,7 +1674,7 @@ mod tests {
     }
 
     // ========================================================================
-    // System prompt caps at MAX_SKILLS_IN_PROMPT
+    // Inventory caps at MAX_SKILLS_IN_PROMPT
     // ========================================================================
 
     #[tokio::test]
@@ -1751,7 +1698,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         // Should contain "Available skills:"
         assert!(result.contains("Available skills:"));
@@ -1789,7 +1739,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         let skill_lines: Vec<&str> = result
             .lines()
@@ -1821,7 +1774,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         assert_eq!(store.read_count(), MAX_SKILLS_SCAN_IN_PROMPT);
         assert!(result.contains("Additional skills may exist"));
@@ -2007,13 +1963,16 @@ mod tests {
             materialize_mount_into_store(&store, session_id, &mount);
         }
 
-        // SkillsCapability dynamic prompt should include the mounted skill
+        // SkillsCapability inventory should include the mounted skill
         let skills_cap = SkillsCapability;
         let ctx = SystemPromptContext {
             file_store: Some(store),
             ..SystemPromptContext::without_file_store(session_id)
         };
-        let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = skills_cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
         assert!(result.contains("pdf-tool"));
         assert!(result.contains("Extract text from PDFs"));
         assert!(result.contains("Available skills:"));
@@ -2097,7 +2056,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
         assert!(
             result.contains("normal-skill"),
             "Normal skill should appear"
@@ -2126,11 +2088,16 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         // The full 200-char description should NOT appear
         assert!(!result.contains(&long_desc));
         // Should contain truncated version with ellipsis
         assert!(result.contains('…'));
     }
+    mod cache_tests;
+    mod mock;
 }

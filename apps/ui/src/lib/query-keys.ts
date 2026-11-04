@@ -87,6 +87,8 @@ export const queryKeys = {
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,
+    cost: (org?: string, sessionId?: string) => ["session", org, sessionId, "cost"] as const,
+    run: (org?: string, sessionId?: string) => ["session", org, sessionId, "run"] as const,
     work: (org?: string, sessionId?: string, turnId?: string) =>
       ["session", org, sessionId, "work", turnId ?? "latest"] as const,
     resolvedModel: (org?: string, sessionId?: string) =>
@@ -98,6 +100,8 @@ export const queryKeys = {
       ["session", org, sessionId, "participants"] as const,
     messageFeedback: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "message-feedback"] as const,
+    messageReactions: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "message-reactions"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
   },
 
@@ -329,6 +333,13 @@ export const queryKeys = {
     cases: (evalId: string) => ["eval", evalId, "cases"] as const,
     runs: (evalId: string) => ["eval", evalId, "runs"] as const,
     runDetail: (evalId: string, runId: string) => ["eval", evalId, "run", runId] as const,
+    experiments: (evalId: string) => ["eval", evalId, "experiments"] as const,
+    allExperiments: ["evals", "experiments"] as const,
+    experimentDetail: (evalId: string, experimentId: string) =>
+      ["eval", evalId, "experiment", experimentId] as const,
+    proposals: (agentId: string) => ["evals", "proposals", agentId] as const,
+    findingFix: (issueId: string) => ["evals", "finding-fix", issueId] as const,
+    findingActions: (issueId: string) => ["evals", "finding-actions", issueId] as const,
   },
 
   // Observer queries
@@ -337,6 +348,8 @@ export const queryKeys = {
     list: (includeArchived = false) => ["observers", { includeArchived }] as const,
     detail: (observerId: string) => ["observer", observerId] as const,
     scores: (observerId: string) => ["observer", observerId, "scores"] as const,
+    summary: (days: number, agentId?: string) =>
+      ["observers", "summary", { days, agentId: agentId ?? null }] as const,
   },
 
   // Policy queries

@@ -296,3 +296,67 @@ impl Database {
         .map_err(Into::into)
     }
 }
+
+// Platform message links (migration channel_message_links). First link wins.
+impl Database {
+    /// Link a platform message key to a session message, unless linked.
+    pub async fn link_channel_message(
+        &self,
+        channel_id: Uuid,
+        message_key: &str,
+        session_id: Uuid,
+        message_id: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO channel_message_links (channel_id, message_key, session_id, message_id)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (channel_id, message_key) DO NOTHING
+            "#,
+        )
+        .bind(channel_id)
+        .bind(message_key)
+        .bind(session_id)
+        .bind(message_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// The session message a platform message key carries.
+    pub async fn channel_linked_message(
+        &self,
+        channel_id: Uuid,
+        message_key: &str,
+    ) -> Result<Option<(Uuid, String)>> {
+        Ok(sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT session_id, message_id FROM channel_message_links WHERE channel_id = $1 AND message_key = $2",
+        )
+        .bind(channel_id)
+        .bind(message_key)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// The platform message key of a session message, the earliest if several.
+    pub async fn channel_message_key(
+        &self,
+        channel_id: Uuid,
+        session_id: Uuid,
+        message_id: &str,
+    ) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT message_key FROM channel_message_links
+            WHERE channel_id = $1 AND session_id = $2 AND message_id = $3
+            ORDER BY created_at
+            LIMIT 1
+            "#,
+        )
+        .bind(channel_id)
+        .bind(session_id)
+        .bind(message_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+}

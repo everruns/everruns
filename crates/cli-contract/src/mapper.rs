@@ -38,6 +38,7 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "agents check-rules",
         "Rules the agent analyzer applies, built-in and custom.",
     ),
+    ("agents costs", "What an agent cost the organization."),
     (
         "agents credentials",
         "Secrets an agent needs from whoever runs it.",
@@ -45,10 +46,6 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "agents examples",
         "Ready-made agents (blueprints) to adopt and adapt.",
-    ),
-    (
-        "agents exposures",
-        "Pause or resume all of an agent's live channels at once.",
     ),
     (
         "agents external-worker",
@@ -100,13 +97,13 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     (
         "budgets",
-        "Spending limits for sessions, agents, users and organizations.",
+        "Usage policies: limits on what sessions, agents, people and the organization use.",
     ),
     (
         "budgets ledger",
         "Charges and top-ups recorded against a budget.",
     ),
-    ("budgets top-up", "Add credits to a budget."),
+    ("budgets top-up", "Add to a usage policy's balance."),
     (
         "capabilities",
         "Capabilities agents can use, including declarative ones you define.",
@@ -132,6 +129,22 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Notes managers keep about an entity, read by agents that manage it.",
     ),
     (
+        "costs",
+        "What usage cost the organization, its price list and cost settings.",
+    ),
+    (
+        "costs rates",
+        "The organization's price list: rates for model tokens and sandbox time.",
+    ),
+    (
+        "costs settings",
+        "Cost settings, such as the timezone calendar windows use.",
+    ),
+    (
+        "costs summary",
+        "Costs over a window, by where each number came from.",
+    ),
+    (
         "credential-bindings",
         "Declare, list and revoke write-only credential bindings.",
     ),
@@ -152,6 +165,22 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Import agent trajectories (ATIF) as eval cases.",
     ),
     ("evals cases", "Inputs and expectations an eval run checks."),
+    (
+        "evals experiments",
+        "Variants compared on the same eval cases, with a CI gate.",
+    ),
+    (
+        "evals samples",
+        "Dataset cases as Mira samples, to export or import.",
+    ),
+    (
+        "evals fixes",
+        "Fixes the Inspector suggests for findings, to check, apply or reject.",
+    ),
+    (
+        "evals proposals",
+        "Cases the Eval Builder suggests for an agent, to add or dismiss.",
+    ),
     ("evals runs", "Executions of eval cases against an agent."),
     ("evals runs artifacts", "Raw outputs of an eval run."),
     (
@@ -176,6 +205,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "health-issues",
         "Operational problems detected in this installation.",
+    ),
+    (
+        "health-issues actions",
+        "What was done about a finding, such as pausing a repeating schedule, and undo.",
     ),
     (
         "history",
@@ -319,6 +352,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("sessions budgets", "Budgets attached to a session."),
     (
+        "sessions cost",
+        "Where a session's spend went: categories, days, turns, tools.",
+    ),
+    (
         "sessions databases",
         "SQL databases created inside a session.",
     ),
@@ -350,6 +387,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Your permanent Platform Chat conversation.",
     ),
     ("sessions resources", "Resources registered in a session."),
+    (
+        "sessions run",
+        "The whole run a session belongs to: every agent, its status and spend.",
+    ),
     (
         "sessions sandbox",
         "A session's sandbox: inspect, pause, resume, delete.",

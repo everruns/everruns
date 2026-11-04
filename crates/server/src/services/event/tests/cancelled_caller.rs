@@ -23,6 +23,12 @@ impl everruns_core::EventListener for GatedListener {
             self.gate.notified().await;
         }
     }
+
+    /// An in-process listener (`feed::IN_PROCESS`): the caller waits for it
+    /// between publishing the two events, which is where it is dropped.
+    fn name(&self) -> &'static str {
+        "PrometheusMetricsListener"
+    }
 }
 
 #[tokio::test]

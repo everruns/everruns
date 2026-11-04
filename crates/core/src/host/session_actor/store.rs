@@ -172,6 +172,15 @@ pub struct ActorRenewal {
     pub cancel_inbox_seq: Option<i64>,
 }
 
+/// One lease of a batched renewal ([`SessionActorStore::renew_actor_leases`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActorLeaseRenewal {
+    pub session_id: SessionId,
+    pub fence: u64,
+    /// See [`SessionActorStore::renew_actor_lease`]'s `consumed_seq`.
+    pub consumed_seq: i64,
+}
+
 /// The outcome of releasing an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ActorRelease {
@@ -279,6 +288,30 @@ pub trait SessionActorStore: Send + Sync {
         ttl: Duration,
         consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>>;
+
+    /// Renew several of `holder`'s leases, each as
+    /// [`renew_actor_lease`](Self::renew_actor_lease) would: one result per
+    /// lease, in order (`Err(SessionNotFound)` for a deleted session). The
+    /// outer error fails them all. The default renews each lease with its own
+    /// call, concurrently; a store that can do better renews them in one
+    /// round trip.
+    async fn renew_actor_leases(
+        &self,
+        holder: &str,
+        ttl: Duration,
+        leases: &[ActorLeaseRenewal],
+    ) -> Result<Vec<Result<Option<ActorRenewal>>>> {
+        Ok(futures::future::join_all(leases.iter().map(|lease| {
+            self.renew_actor_lease(
+                lease.session_id,
+                holder,
+                lease.fence,
+                ttl,
+                lease.consumed_seq,
+            )
+        }))
+        .await)
+    }
 
     /// Give up `holder`'s lease on `session_id` after consuming input up to
     /// `consumed_inbox_seq`. Newer input keeps the actor runnable for the

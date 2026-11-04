@@ -247,6 +247,46 @@ impl SessionFileSystem for GrpcAdapter {
         }
     }
 
+    /// One recursive listing instead of one call per directory. The control
+    /// plane's recursive listing covers the whole workspace, so entries outside
+    /// `path` are dropped here. Any refusal (a Knowledge mount, an old control
+    /// plane) falls back to walking.
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        // Compare without the leading slash: listings and callers differ on it.
+        let prefix = path.trim_matches('/');
+        let outcome = self
+            .files_command(
+                session_id,
+                "get_workspace_file",
+                json!({ "session_id": session_id.to_string(), "path": path, "recursive": true }),
+            )
+            .await?;
+        let Ok(value) = outcome else {
+            return Ok(None);
+        };
+        let GetResponse::Listing { data } = decode::<GetResponse>("get_workspace_file", value)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(
+            data.into_iter()
+                .filter_map(|mut info| {
+                    let full = info.path.trim_start_matches('/');
+                    let rest = if prefix.is_empty() {
+                        full
+                    } else {
+                        full.strip_prefix(prefix)?.strip_prefix('/')?
+                    };
+                    if rest.is_empty() {
+                        return None;
+                    }
+                    info.path = rest.to_string();
+                    Some(info)
+                })
+                .collect(),
+        ))
+    }
+
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         match self
             .files_command(

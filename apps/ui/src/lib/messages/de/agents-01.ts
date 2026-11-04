@@ -75,7 +75,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Activity unavailable": "Aktivität nicht verfügbar",
   "Acts as the person": "Fungiert als Person",
   "Add a": "Fügen Sie a hinzu",
-  "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them.":
+  "Add a channel from an agent's Channels and triggers tab. New channels start as drafts and take no traffic until you publish them.":
     "Fügen Sie einen Kanal über die Registerkarte „Integrationen“ eines Agenten hinzu. Neue Kanäle beginnen als Entwürfe und nehmen keinen Traffic auf, bis Sie sie veröffentlichen.",
   "Add a sandbox target": "Fügen Sie ein Sandbox-Ziel hinzu",
   "Add a schedule or event to run this agent proactively.":

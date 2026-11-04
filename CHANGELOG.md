@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Knowledge document extraction uses the patched spreadsheet parser for RUSTSEC-2026-0436 and retains stable warning codes.
+
 ## [0.50.1] - 2026-10-31
 
 Changelog: https://everruns.com/docs/changelog/2026-10-31-everruns-0-50-1/

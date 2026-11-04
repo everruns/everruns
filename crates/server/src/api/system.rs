@@ -14,12 +14,14 @@ use super::common::{ApiResult, ErrorResponse};
 use super::state::ApiState;
 use crate::auth::PlatformUser;
 use crate::domains::common::Command;
-use crate::domains::system::RunSystemDoctor;
+use crate::domains::health_issues::types::PlatformDetectionList;
 use crate::domains::system::doctor::DoctorReport;
+use crate::domains::system::{ListPlatformDetections, RunSystemDoctor};
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/system/doctor", get(run_system_doctor))
+        .route("/v1/system/detections", get(list_platform_detections))
         .with_state(state)
 }
 
@@ -43,5 +45,28 @@ pub async fn run_system_doctor(
     State(state): State<ApiState>,
     Query(query): Query<RunSystemDoctor>,
 ) -> ApiResult<DoctorReport> {
+    Ok(axum::Json(query.run(&state.platform_ctx(&auth)).await?))
+}
+
+/// GET /v1/system/detections - Open abuse detections in every organization
+#[utoipa::path(
+    get,
+    path = "/v1/system/detections",
+    params(
+        ("offset" = Option<i64>, Query, description = "Number of detections to skip"),
+        ("limit" = Option<i64>, Query, description = "Page size from 1 through 100; defaults to 20")
+    ),
+    responses(
+        (status = 200, description = "Open detections, newest first", body = PlatformDetectionList),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Platform user access is required", body = ErrorResponse)
+    ),
+    tag = "system"
+)]
+pub async fn list_platform_detections(
+    auth: PlatformUser,
+    State(state): State<ApiState>,
+    Query(query): Query<ListPlatformDetections>,
+) -> ApiResult<PlatformDetectionList> {
     Ok(axum::Json(query.run(&state.platform_ctx(&auth)).await?))
 }

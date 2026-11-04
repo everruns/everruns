@@ -166,6 +166,7 @@ async fn a_lease_stuck_before_its_turn_stops_renewing_at_the_stall_bound() {
     let renewer = tokio::spawn(super::lease::renew_loop(
         lease.clone(),
         Arc::new(tokio::sync::Notify::new()),
+        tokio::time::Instant::now(),
     ));
     tokio::time::timeout(Duration::from_secs(60), renewer)
         .await
@@ -210,6 +211,7 @@ async fn a_driven_turn_keeps_renewing_past_the_stall_bound() {
     let renewer = tokio::spawn(super::lease::renew_loop(
         lease.clone(),
         Arc::new(tokio::sync::Notify::new()),
+        tokio::time::Instant::now(),
     ));
     tokio::time::sleep(Duration::from_secs(30)).await;
     assert!(!lease.is_lost());
@@ -289,6 +291,7 @@ async fn failing_renews_lose_the_lease_by_its_ttl() {
     let renewer = tokio::spawn(super::lease::renew_loop(
         lease.clone(),
         Arc::new(tokio::sync::Notify::new()),
+        tokio::time::Instant::now(),
     ));
     // The first renew (at a third of the TTL) succeeds; every later one fails.
     tokio::time::sleep_until(start + ttl / 3 + Duration::from_millis(1)).await;

@@ -64,10 +64,16 @@ function scoreStatusVariant(status: string): "default" | "secondary" | "destruct
 }
 
 function scorerSummary(scorer: ObserverScorerConfig): string {
+  const scope =
+    scorer.scope === "session"
+      ? "conversation · "
+      : scorer.scope === "tool"
+        ? `tool${scorer.tools?.length ? ` (${scorer.tools.join(", ")})` : ""} · `
+        : "";
   if (scorer.method === "llm_judge") {
-    return `llm_judge (pass ≥ ${scorer.pass_threshold})`;
+    return `${scope}llm_judge (pass ≥ ${scorer.pass_threshold})`;
   }
-  return describeRule(scorer.rule);
+  return `${scope}${describeRule(scorer.rule)}`;
 }
 
 function ConfigurationTab({
@@ -138,7 +144,7 @@ function ConfigurationTab({
             <p className="mb-1 text-xs font-medium text-muted-foreground">{ui("Sampling rate")}</p>
             <p>
               {Math.round(observer.sampling_rate * 100)}
-              {ui("% of matching turns")}
+              {ui("% of matching answers, conversations and tool calls")}
             </p>
           </div>
         </CardContent>

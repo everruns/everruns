@@ -33,6 +33,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Automatic session titles](/capabilities/automatic-session-titles/) | `automatic_session_titles` | 0 |
+| Reactions | `reactions` | 1 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
 | [Web Search](/capabilities/web-search/) | `web_search` | 1 |
@@ -56,7 +57,8 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (contributes the `agent` `spawn_agent` target) |
+| [Agents](/capabilities/agent-handoff/) | `agent_handoff` | 2 (and contributes the `agent` `spawn_agent` target) |
+| Run conversation | `run_conversation` | 2 (added to every agent a run hands work to) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target) |
 | AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target) |
 | [Coordination](/framework/coordination/) | `coordination` | 5 |
@@ -173,6 +175,7 @@ Performance and cost optimization for LLM interactions.
 | [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | `parallel_tool_calls` | 0 |
 | Native Async Tools | `native_async_tools` | 0 |
 | [Prompt Caching](/capabilities/prompt-caching/) | `prompt_caching` | 0 |
+| [Claude Message Threads](/capabilities/claude-message-threads/) | `claude_message_threads` | 0 |
 
 ### Safety
 

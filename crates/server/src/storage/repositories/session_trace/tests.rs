@@ -70,6 +70,7 @@ fn turn_events(session: SessionId, prompt: &str, tool_ok: bool) -> Vec<CreateEve
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         )),
         row(Event::new(

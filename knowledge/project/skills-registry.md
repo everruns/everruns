@@ -131,28 +131,35 @@ Example: `skill:01933b5a-0000-7000-8000-000000000601`
 1. **Listing** (GET /v1/capabilities): Returns skill name + description only (metadata for discovery)
 2. **Agent Assignment**: Skill capability ID stored in `agent_capabilities` junction table
 3. **Session Runtime**: When an agent with skill capabilities starts a session:
-   - Skill names and descriptions injected into system prompt as `<available_skills>` XML block
+   - Skill names and descriptions disclosed as cache-stable user-role inventory updates
    - Agent can "activate" a skill by requesting its full instructions
 4. **Activation**: Full SKILL.md body loaded into context when agent matches a task to a skill
 
-### System Prompt Integration
+### Cache-stable inventory disclosure
 
-When skills are assigned to an agent, the system prompt includes:
+The skills capability keeps only its location and relevance instructions in the
+system prompt. The bounded, deterministically ordered inventory is mutable
+workspace reference data: installation, edits, scope precedence changes and
+removal must not rewrite the system prefix or earlier conversation history.
 
-```xml
-<available_skills>
-  <skill>
-    <name>pdf-processing</name>
-    <description>Extract text and tables from PDF files, fill forms, merge documents.</description>
-  </skill>
-  <skill>
-    <name>data-analysis</name>
-    <description>Analyze datasets, generate charts, and create summary reports.</description>
-  </skill>
-</available_skills>
+The runtime appends a user-role inventory snapshot when the visible catalog
+changes and records it with the completed assistant message. Later requests
+replay that snapshot at its original position; unchanged catalogs produce no
+additional snapshot. Explicit clearing updates retire a removed catalog.
+The transcript is the authority across workers and restarts, and a history cut
+establishes a fresh baseline from current discovery. No extra storage write or
+process-local cache is required. Snapshot metadata is runtime-owned, removed
+from caller-supplied metadata and withheld from public annotation projections.
 
-When a user's task matches an available skill, activate it by using the `activate_skill` tool with the skill name. This loads the full instructions into your context.
-```
+This delivery applies to default workspace skills, multi-scope skills and the
+opt-in inspection catalog. Scope precedence, bounded scanning, hidden-skill
+filtering and full discovery through `list_skills` are unchanged. Activation
+still reads through the authorized filesystem and returns a tool result.
+The generic reference-data replay lives in
+[`context_updates.rs`](../../crates/core/src/engine/execution/reason/context_updates.rs).
+Provider-managed opaque history reduction falls back to local context handling
+while these snapshots are present, so restoring a provider checkpoint cannot
+omit their disclosure or clearing updates.
 
 ### Skill Activation Tool
 
@@ -172,7 +179,7 @@ already mounted into the session VFS before the tool runs, activation is a read,
 The `skills` capability accepts `report_only_inspection: true`. It is off by
 default. Both the hosted workspace capability and the multi-scope capability
 use the same local inspector for catalog discovery and activation. The prompt
-catalog carries a short finding count; `list_skills` and `activate_skill`
+inventory update carries a short finding count; `list_skills` and `activate_skill`
 return the structured report. Invalid catalog entries can have findings but
 remain invalid for activation.
 

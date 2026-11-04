@@ -101,6 +101,8 @@ impl LlmErrorHook for RateLimitAutoRetryHook {
                 None,
                 Some(scheduled_at),
                 "UTC".to_string(),
+                // One-shot: fires once, on the default schedule budget.
+                Default::default(),
             )
             .await
         {
@@ -170,6 +172,11 @@ mod tests {
             created_at,
             updated_at: created_at,
             deleted_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
+            stop_reason: None,
+            budget: None,
         }
     }
 

@@ -1069,6 +1069,9 @@ async fn a_provider_retry_can_register_personal_mcp_and_offer_the_sign_in_card()
         scheduled_at: Some(chrono::Utc::now() + chrono::Duration::seconds(120)),
         timezone: "UTC".into(),
         next_trigger_at: None,
+        ends_at: None,
+        max_runs: None,
+        stop_when: None,
     };
     let retry = fixture
         .db

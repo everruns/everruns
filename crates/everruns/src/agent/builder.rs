@@ -475,11 +475,12 @@ impl AgentBuilder {
     /// - [`BuildError::MissingApprover`] if a function tool
     ///   [needs approval](crate::FunctionTool::needs_approval) and no approver
     ///   was set.
-    pub fn build(self) -> Result<Agent, BuildError> {
+    pub fn build(mut self) -> Result<Agent, BuildError> {
         #[cfg(feature = "local")]
         if self.local.is_some() && self.backends.is_some() {
             return Err(BuildError::ConflictingBackends);
         }
+        let members = self.attach_members()?;
         let mut seen_memory = HashSet::new();
         for (mount, _) in &self.memory_directories {
             if !["/memory/user", "/memory/agent"].contains(&mount.as_str())
@@ -834,6 +835,8 @@ impl AgentBuilder {
             initial_files: self.initial_files,
             network_access: self.network_access,
             package_manifest: self.package_manifest,
+            description: self.description,
+            members,
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
             communication: self.communication,

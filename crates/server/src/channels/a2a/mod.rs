@@ -60,6 +60,7 @@ mod pact_identity;
 pub(crate) mod pact_keys;
 mod pact_oauth;
 mod push;
+mod reactions;
 pub mod signing;
 mod stream;
 mod task_view;
@@ -706,6 +707,9 @@ struct ParsedMessage {
     /// carried as a `DataPart`. `None` for every message that is just a
     /// message, which is what keeps text-only callers unchanged.
     answer: Option<crate::api::question_answers::QuestionAnswersRequest>,
+    /// A reaction on a message of this task (reactions extension). Only a
+    /// message with nothing else to say carries one.
+    reaction: Option<reactions::ReactionPart>,
 }
 
 fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
@@ -741,7 +745,14 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
         |_| "Invalid params: message.parts carries a malformed everruns/ask_user_answer data part",
     )?;
     let files = files::file_attachments(&parts);
-    if answer.is_none() && text.trim().is_empty() && files.is_empty() {
+    let reaction = if text.trim().is_empty() && files.is_empty() {
+        reactions::parse_reaction_part(&parts).map_err(
+            |_| "Invalid params: message.parts carries a malformed everruns/reaction data part",
+        )?
+    } else {
+        None
+    };
+    if answer.is_none() && reaction.is_none() && text.trim().is_empty() && files.is_empty() {
         return Err(
             "Invalid params: message.parts must contain a non-empty text part or a file part",
         );
@@ -766,6 +777,7 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
             .and_then(Value::as_str)
             .map(str::to_owned),
         answer,
+        reaction,
     })
 }
 
@@ -787,6 +799,17 @@ async fn handle_message_send(
     // completes the `ask_user` call this task is waiting on and resumes the
     // turn that asked. A text-only reply falls through to the ordinary path,
     // where the message supersedes the question.
+    if let Some(reaction) = parsed_msg.reaction {
+        return reactions::handle_reaction(
+            state,
+            &auth,
+            parsed_msg.task_id.as_deref(),
+            reaction,
+            rpc_id,
+            ctx.version,
+        )
+        .await;
+    }
     if let Some(answer) = parsed_msg.answer {
         return ask_user::handle_ask_user_answer(
             state,
@@ -1135,7 +1158,13 @@ async fn cancel_a2a_session_turn(
     let user_message_event = EventRequest::new(
         session_id,
         context,
-        InputMessageData::new(RuntimeMessage::user("A2A client requested cancellation.")),
+        InputMessageData::new({
+            let mut message = RuntimeMessage::user("A2A client requested cancellation.");
+            message.metadata = Some(
+                everruns_core::message::MessageOrigin::system("Work cancelled").into_metadata(),
+            );
+            message
+        }),
     );
     if let Err(err) = event_service.emit(user_message_event).await {
         tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: emit user message failed");

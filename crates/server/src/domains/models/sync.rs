@@ -106,6 +106,7 @@ impl ModelSyncService {
         );
         config.api_key = Some(api_key);
         config.base_url = provider_row.base_url.clone();
+        config.api = crate::services::provider_resolver::provider_api(&provider_row.settings)?;
         config.request_options =
             crate::services::provider_resolver::provider_request_options(&provider_row.settings);
 
@@ -176,6 +177,8 @@ impl ModelSyncService {
         self.db
             .update_provider_last_synced(provider_row.org_id, provider_row.id.uuid(), now)
             .await?;
+        // A sync decides which models are still listed.
+        crate::domains::health_issues::model_health::check_org(&self.db, provider_row.org_id).await;
         Ok(sync_result)
     }
 

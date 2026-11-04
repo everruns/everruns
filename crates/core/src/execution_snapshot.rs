@@ -122,6 +122,17 @@ pub struct ResolvedExecutionSnapshot {
     /// How the agent talks; owned by the agent layer.
     #[serde(default, skip_serializing_if = "Communication::is_direct")]
     pub communication: Communication,
+    /// When a finishing turn gets a completion check; owned by the agent
+    /// layer. Omitted at the default so earlier snapshots serialize
+    /// identically.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::completion_check::CompletionCheck::is_default"
+    )]
+    pub completion_check: crate::completion_check::CompletionCheck,
+    /// No person is watching the session (trigger or schedule origin).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unattended: bool,
 
     /// Output demand inherited from session hints. Child sessions default to
     /// completed output; a live debugger can explicitly opt back in.
@@ -212,6 +223,11 @@ impl ResolvedExecutionSnapshot {
             parallel_tool_calls: effective.parallel_tool_calls,
             max_output_tokens: effective.max_output_tokens,
             communication: effective.communication.unwrap_or_default(),
+            // Agent-owned: harnesses and sessions do not set it.
+            completion_check: agent
+                .map(|agent| agent.completion_check)
+                .unwrap_or_default(),
+            unattended: session.unattended,
             output_streaming: session
                 .hints
                 .as_ref()
@@ -583,6 +599,32 @@ mod tests {
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.max_iterations, Some(0));
         assert_eq!(snapshot.parallel_tool_calls, Some(false));
+    }
+
+    #[test]
+    fn completion_check_and_unattended_origin_reach_snapshot() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut agent = agent(agent_id, harness_id);
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        let unset = ResolvedExecutionSnapshot::project(&harness(), Some(&agent), &session).unwrap();
+        assert_eq!(
+            unset.completion_check,
+            crate::completion_check::CompletionCheck::Unattended
+        );
+        assert!(!unset.unattended);
+        let wire = serde_json::to_value(&unset).unwrap();
+        assert!(wire.get("completion_check").is_none());
+        assert!(wire.get("unattended").is_none());
+
+        agent.completion_check = crate::completion_check::CompletionCheck::Off;
+        session.unattended = true;
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&harness(), Some(&agent), &session).unwrap();
+        assert_eq!(
+            snapshot.completion_check,
+            crate::completion_check::CompletionCheck::Off
+        );
+        assert!(snapshot.unattended);
     }
 
     #[test]

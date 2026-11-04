@@ -41,6 +41,7 @@ export const messages: Readonly<Record<string, string>> = {
   "≈ cached prefix ends here": "≈ 缓存前缀在此结束",
   "⌘G": "⌘G",
   "■ errors": "■ 错误",
+  "in view": "可见",
   "✗": "✗",
   "0s": "0s",
   "1 cell =": "1 个单元 =",
@@ -201,6 +202,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Latest generation:": "最新一代：",
   Left: "左",
   "Lifecycle events": "生命周期事件",
+  "Reactions on the reply": "对回复的反应",
   "LLM Generation Details": "LLM生成详情",
   "Load 20 earlier": "提前加载 20 个",
   "Load 20 later": "稍后加载 20 个",
@@ -324,4 +326,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Response ·": "回应·",
   "Response field:": "响应字段：",
   "Restore split view": "恢复分割视图",
+  "run {number} of {limit}": "第 {number} 次运行，共 {limit} 次",
+  "run {number}": "第 {number} 次运行",
 };

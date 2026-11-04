@@ -10,8 +10,8 @@ provides it. The user never writes infrastructure config.
 `cargo run -- manifest` prints it. The shape is defined in
 [`src/manifest.rs`](../src/manifest.rs), and it contains:
 
-- **agents**: each agent's model string, tools, whether it is the default or a
-  subagent, and its source file;
+- **agents**: each agent's model string, tools, whether it is the default, the
+  other agents it hands work to (`members`), and its source file;
 - **tools**: each tool's JSON Schema and approval mode (`never`, `always` or
   `conditional`);
 - **skills**, **channels** (with their webhook routes), **schedules** (cron)

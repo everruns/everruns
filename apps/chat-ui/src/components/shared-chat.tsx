@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { MessageContent } from "./message-content";
-import { conversationMessages, type ChatEvent } from "./transcript";
+import { conversationMessages, originLabel, type ChatEvent } from "./transcript";
 export function SharedChat({ token, name }: { token: string; name: string }) {
   const [events, setEvents] = useState<ChatEvent[]>([]),
     [title, setTitle] = useState(name),
@@ -60,14 +60,20 @@ export function SharedChat({ token, name }: { token: string; name: string }) {
             Older messages
           </button>
         )}
-        {conversationMessages(events).map((message) => (
-          <article
-            key={message.id}
-            className={`message ${message.role === "user" ? "user" : "assistant"}`}
-          >
-            <MessageContent text={message.text} />
-          </article>
-        ))}
+        {conversationMessages(events).map((message) =>
+          message.origin ? (
+            <p key={message.id} className="automatic">
+              {originLabel(message.origin)}
+            </p>
+          ) : (
+            <article
+              key={message.id}
+              className={`message ${message.role === "user" ? "user" : "assistant"}`}
+            >
+              <MessageContent text={message.text} />
+            </article>
+          ),
+        )}
         {loading && <p role="status">Loading conversation…</p>}
       </section>
       <footer>Shared from {name} · Work Chat · Very large messages may be omitted</footer>

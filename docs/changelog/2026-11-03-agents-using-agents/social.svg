@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="560" viewBox="0 0 520 560">
+<rect x="20" y="30" width="480" height="440" fill="#0F1D45" stroke="#3A4766" stroke-width="2"/>
+<text x="40" y="62" font-family="Geist Mono" font-size="13" font-weight="400" fill="#A8B0BE" text-anchor="start">WHOLE RUN · 5 AGENTS</text>
+<line x1="40" y1="140" x2="480" y2="140" stroke="#3A4766" stroke-width="1"/>
+<rect x="40" y="100" width="28" height="28" fill="#0A1636" stroke="#D4A43A" stroke-width="2"/>
+<text x="54" y="119" font-family="Geist" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">F</text>
+<text x="78" y="119" font-family="Geist" font-size="14" font-weight="400" fill="#FFFFFF" text-anchor="start">Foreman</text>
+<rect x="150.0" y="106" width="20.6" height="16" fill="#D4A43A"/>
+<rect x="232.5" y="106" width="20.6" height="16" fill="#D4A43A"/>
+<rect x="356.2" y="106" width="20.6" height="16" fill="#D4A43A"/>
+<rect x="431.9" y="106" width="20.6" height="16" fill="#D4A43A"/>
+<line x1="40" y1="210" x2="480" y2="210" stroke="#3A4766" stroke-width="1"/>
+<rect x="40" y="170" width="28" height="28" fill="#0A1636" stroke="#5B6B8F" stroke-width="2"/>
+<text x="54" y="189" font-family="Geist" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">T</text>
+<text x="78" y="189" font-family="Geist" font-size="14" font-weight="400" fill="#FFFFFF" text-anchor="start">Triage</text>
+<rect x="170.6" y="176" width="55.0" height="16" fill="#5B6B8F"/>
+<line x1="40" y1="280" x2="480" y2="280" stroke="#3A4766" stroke-width="1"/>
+<rect x="40" y="240" width="28" height="28" fill="#0A1636" stroke="#5B6B8F" stroke-width="2"/>
+<text x="54" y="259" font-family="Geist" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">S</text>
+<text x="78" y="259" font-family="Geist" font-size="14" font-weight="400" fill="#FFFFFF" text-anchor="start">Spec</text>
+<rect x="253.1" y="246" width="96.2" height="16" fill="#5B6B8F"/>
+<line x1="40" y1="350" x2="480" y2="350" stroke="#3A4766" stroke-width="1"/>
+<rect x="40" y="310" width="28" height="28" fill="#0A1636" stroke="#5B6B8F" stroke-width="2"/>
+<text x="54" y="329" font-family="Geist" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">I</text>
+<text x="78" y="329" font-family="Geist" font-size="14" font-weight="400" fill="#FFFFFF" text-anchor="start">Implement</text>
+<rect x="376.9" y="316" width="51.6" height="16" fill="#5B6B8F"/>
+<line x1="40" y1="420" x2="480" y2="420" stroke="#3A4766" stroke-width="1"/>
+<rect x="40" y="380" width="28" height="28" fill="#0A1636" stroke="#5B6B8F" stroke-width="2"/>
+<text x="54" y="399" font-family="Geist" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">R</text>
+<text x="78" y="399" font-family="Geist" font-size="14" font-weight="400" fill="#FFFFFF" text-anchor="start">Review</text>
+<rect x="452.5" y="386" width="20.6" height="16" fill="#5B6B8F"/>
+<line x1="170.6" y1="90" x2="170.6" y2="440" stroke="#A8B0BE" stroke-width="1.5" stroke-dasharray="4 5" opacity="0.6"/>
+<line x1="253.1" y1="90" x2="253.1" y2="440" stroke="#A8B0BE" stroke-width="1.5" stroke-dasharray="4 5" opacity="0.6"/>
+<line x1="376.9" y1="90" x2="376.9" y2="440" stroke="#A8B0BE" stroke-width="1.5" stroke-dasharray="4 5" opacity="0.6"/>
+<line x1="452.5" y1="90" x2="452.5" y2="440" stroke="#A8B0BE" stroke-width="1.5" stroke-dasharray="4 5" opacity="0.6"/>
+<rect x="20" y="470" width="300" height="70" fill="#0A1636" stroke="#D4A43A" stroke-width="2.5"/>
+<text x="38" y="498" font-family="Geist" font-size="17" font-weight="600" fill="#FFFFFF" text-anchor="start">team/</text>
+<text x="38" y="522" font-family="Geist Mono" font-size="13" font-weight="400" fill="#A8B0BE" text-anchor="start">triage/repro.md · spec.md</text>
+<rect x="340" y="470" width="160" height="70" fill="#0A1636" stroke="#3A4766" stroke-width="2"/>
+<text x="358" y="498" font-family="Geist Mono" font-size="13" font-weight="400" fill="#A8B0BE" text-anchor="start">Run cost</text>
+<text x="358" y="526" font-family="Geist" font-size="22" font-weight="600" fill="#FFFFFF" text-anchor="start">$5.06</text>
+</svg>

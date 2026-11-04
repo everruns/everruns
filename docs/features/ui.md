@@ -24,7 +24,7 @@ The sidebar provides access to main sections:
 
 | Section | Description |
 |---------|-------------|
-| Dashboard | Overview statistics and quick actions |
+| Home | What needs attention in the organization, and how its agents ran today |
 | Agents | List, create, and manage agents |
 | Virtual users | Manage end-user and service runtime accounts |
 | Capabilities | Browse available capabilities |
@@ -49,13 +49,27 @@ folded line, such as "Releases is done". Open the line to read the report. The
 coordinator still receives the full text and answers in the conversation. Disabling the
 feature restores the existing Chat interface and preserves conversations and their URLs.
 
-## Dashboard
+## Home
 
-The dashboard provides an at-a-glance view of your system:
+**Home** sits above Chat in the sidebar. Chat stays the page you land on.
 
-- **Stats Cards**: Total agents, active sessions, and other metrics
-- **Recent Agents**: Quick access to recently created or updated agents
-- **Quick Actions**: Shortcuts to create agents or browse the agent list
+**Needs attention** comes first: one list, most urgent first, built from every place
+that already tracks a problem. It includes agent setup problems (a disabled model, a
+missing Slack permission, a channel open to anyone), open health issues such as the
+organization's active-turn limit, agents whose recent turns mostly failed, sessions
+paused at their budget limit, sandboxes that need attention and, for viewers who can see
+System, failing system checks. Each row links to the page where you fix it. When nothing
+is wrong, the list shrinks to one line.
+
+Below it, Home shows the last 24 hours: sessions running now against the turn limit,
+turns and the failure rate, channel sessions, people reached and live sandboxes. With
+Monitoring enabled, Activity shows the same parallel-session and turn charts as
+**Monitoring → Timeline**. Then come the busiest agents, the sessions running now, and
+Health and Sandboxes summaries. A new organization sees a short Get started list
+instead.
+
+With the Chat workspace enabled, signing in opens Chat beside Home, so you can ask
+Chat what to look at first.
 
 ## Agents
 
@@ -84,13 +98,13 @@ a narrow column on the right holds the settings:
 
 - **Harness**, **Capabilities** (compact chips, in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
-- **More**: one row each for Branding, MCP servers, Credentials, Service account, Network
+- **More**: one row each for Branding, MCP servers, Credentials, GitHub (opens the Agent's GitHub page), Service account, Network
   access, Sandbox, Token usage, and Health check. **Files** is included when the agent
   has a filesystem (from its capabilities, a dependency, or the harness) or already has starter
   files. Each row shows its current value and opens a side sheet. Service account saves
   immediately.
 
-Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
+Tabs: **Agent**, **Preview**, **Channels and triggers**, **Stats**, and
 **Sessions**. Preview's Files card follows the same filesystem rule.
 
 #### Estimate agent cost
@@ -206,6 +220,24 @@ View raw session events for debugging:
 - Event type (input.message, output.message.completed, tool.completed, etc.)
 - Timestamp
 - JSON data payload
+
+#### Cost Tab
+
+See what a session spent and why:
+
+- **Where the money went**: total spend split into uncached prompt, prompt read from cache,
+  prompt written to cache, and output, with tokens, average rate and share for each. The
+  cost of each model call is the provider-reported cost where there is one, otherwise the
+  model's price-table estimate.
+- **Spend per day** in your timezone, or **per turn**, which shows each turn's cost and
+  marks failed turns.
+- **Tool calls**: calls, failures and running time per tool.
+- **Sandbox**: running and paused time, with a timeline.
+- **Who started the turns**: people, schedules, agent triggers or channels, with their spend.
+- **Context now**: what the next model call will send, by section, with the sources folded.
+
+A notice appears when most spend is prompt that was not read from cache. The same data is
+available from `GET /v1/sessions/{session_id}/cost` and `everruns sessions cost get`.
 
 ### Session Status
 

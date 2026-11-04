@@ -1,7 +1,8 @@
 //! Native disk effects; the portable package codec has no filesystem access.
 use super::assets::{allowed, asset_path, safe_source};
 use super::{
-    AgentPackage, File, Format, MAX_FILE_BYTES, MAX_FILES, MAX_PACKAGE_BYTES, Result, error,
+    AgentPackage, File, Format, MAX_FILE_BYTES, MAX_FILES, MAX_MEMBERS, MAX_PACKAGE_BYTES,
+    MEMBERS_DIR, Result, error,
 };
 use std::{
     collections::BTreeMap,
@@ -251,6 +252,39 @@ impl AgentPackage {
                 }
             }
             package.resolve_assets(entries, folder_defaults)?;
+        }
+        let members = root.join(MEMBERS_DIR);
+        if conventional && package.discovers_members() && members.is_dir() {
+            if fs::symlink_metadata(&members).is_ok_and(|m| m.file_type().is_symlink()) {
+                return Err(error(MEMBERS_DIR, "symlinks are not allowed"));
+            }
+            let mut found: Vec<_> = fs::read_dir(&members)
+                .map_err(|e| error(MEMBERS_DIR, e))?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| error(MEMBERS_DIR, e))?;
+            found.sort_by_key(|entry| entry.file_name());
+            if found.len() > MAX_MEMBERS {
+                return Err(error(MEMBERS_DIR, "at most 32 bundled agents"));
+            }
+            for entry in found {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let metadata = fs::symlink_metadata(&path).map_err(|e| error(&name, e))?;
+                let folder = metadata.is_dir() && !metadata.file_type().is_symlink();
+                let markdown = metadata.is_file() && name.ends_with(".md");
+                let member = if folder || markdown {
+                    Self::load(&path)?
+                } else if name.starts_with('.') {
+                    continue;
+                } else {
+                    return Err(error(
+                        format!("{MEMBERS_DIR}/{name}"),
+                        "expected an agent folder or a Markdown agent file",
+                    ));
+                };
+                package.manifest.agents.push(member.manifest);
+            }
+            package.manifest.agents.sort_by(|a, b| a.name.cmp(&b.name));
         }
         package.files()?;
         Ok(package)

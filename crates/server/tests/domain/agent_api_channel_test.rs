@@ -922,6 +922,7 @@ async fn running_turn(server: &TestServer, session_id: &str) {
             agent_id: None,
             agent_name: Some("Support agent".into()),
             agent_description: None,
+            origin: None,
         }
         .into(),
         ToolStartedData {

@@ -218,6 +218,7 @@ async fn causal_turn_anchor_roundtrips_through_worker_and_authority() {
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         ))
         .await

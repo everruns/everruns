@@ -151,7 +151,13 @@ pub(super) fn filtered_reasoning_summary(
 }
 
 fn is_dynamic_error_placeholder(text: &str) -> bool {
-    (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
+    // Usage policy wording first; the "Budget ..." forms are what older
+    // histories carry.
+    (text.starts_with("Usage limit reached.") && text.ends_with("raise its limit to continue."))
+        || (text.starts_with("Usage policy asks before continuing")
+            && text.ends_with("Continue this turn or raise the limit."))
+        || (text.starts_with("Budget exhausted.")
+            && text.ends_with("Increase the budget to continue."))
         || (text.starts_with("Budget paused.")
             && text.ends_with("Increase or resume the budget to continue."))
         || (text.starts_with("Budget paused with ")

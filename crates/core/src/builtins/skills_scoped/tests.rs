@@ -11,6 +11,74 @@ use crate::session_services::SessionResourceRegistry;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
+#[tokio::test]
+async fn scoped_and_inspected_inventories_change_without_rewriting_instructions() {
+    let fs = Arc::new(MockFs::new());
+    let sid = SessionId::new();
+    let ctx = SystemPromptContext {
+        file_store: Some(fs.clone()),
+        ..SystemPromptContext::without_file_store(sid)
+    };
+    let cap = ScopedSkillsCapability::new(SkillsConfig::default());
+    let hosted = super::super::skills::SkillsCapability;
+    for config in [json!({}), json!({"report_only_inspection": true})] {
+        let scoped_before = cap
+            .system_prompt_contribution_with_config(&ctx, &config)
+            .await;
+        let hosted_before = hosted
+            .system_prompt_contribution_with_config(&ctx, &config)
+            .await;
+        fs.add_file(
+            sid,
+            "/.agents/skills/example/SKILL.md",
+            &valid_skill_md("example", "First version"),
+        );
+        let first = cap
+            .conversation_context_update_contribution_with_config(&ctx, &config)
+            .await
+            .unwrap();
+        assert!(first.contains("First version"));
+        fs.add_file(
+            sid,
+            "/.agents/skills/example/SKILL.md",
+            &valid_skill_md("example", "Second version"),
+        );
+        let second = cap
+            .conversation_context_update_contribution_with_config(&ctx, &config)
+            .await
+            .unwrap();
+        assert!(second.contains("Second version"));
+        assert_eq!(
+            scoped_before,
+            cap.system_prompt_contribution_with_config(&ctx, &config)
+                .await
+        );
+        assert_eq!(
+            hosted_before,
+            hosted
+                .system_prompt_contribution_with_config(&ctx, &config)
+                .await
+        );
+        assert!(
+            hosted
+                .conversation_context_update_contribution_with_config(&ctx, &config)
+                .await
+                .unwrap()
+                .contains("Second version")
+        );
+        fs.files
+            .lock()
+            .unwrap()
+            .remove(&(sid, "/.agents/skills/example/SKILL.md".to_string()));
+        assert_eq!(
+            cap.conversation_context_update_contribution_with_config(&ctx, &config)
+                .await
+                .as_deref(),
+            Some(EMPTY_SKILL_INVENTORY)
+        );
+    }
+}
+
 // ----------------------------------------------------------------------------
 // In-memory mock file store (files + directories), keyed by VFS path.
 // ----------------------------------------------------------------------------
@@ -401,7 +469,7 @@ async fn hosted_skills_config_enables_the_same_inspection_and_prompt() {
         ..SystemPromptContext::without_file_store(sid)
     };
     let prompt = cap
-        .system_prompt_contribution_with_config(&prompt_context, &enabled)
+        .conversation_context_update_contribution_with_config(&prompt_context, &enabled)
         .await
         .unwrap();
     assert!(prompt.contains("heuristic findings"));

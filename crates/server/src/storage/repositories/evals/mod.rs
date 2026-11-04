@@ -1,5 +1,6 @@
 // Eval storage (PostgreSQL)
 
+mod experiments;
 pub(super) mod rows;
 use rows::*;
 
@@ -79,7 +80,8 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT id, org_id, public_id, name, description, target,
-                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at
+                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at,
+                      version
                FROM evals
                WHERE org_id = $1{status_sql}{search_sql}
                ORDER BY created_at DESC"#
@@ -152,8 +154,8 @@ impl Database {
     ) -> Result<EvalCaseRow> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             sql!(r#"
-            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers, max_turns, timeout_seconds, position)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers, max_turns, timeout_seconds, position, simulated_user, tool_fixtures)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING {EvalCaseRow}
             "#),
         )
@@ -170,6 +172,8 @@ impl Database {
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
         .bind(input.position)
+        .bind(&input.simulated_user)
+        .bind(&input.tool_fixtures)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -243,6 +247,8 @@ impl Database {
                 max_turns = COALESCE($10, max_turns),
                 timeout_seconds = COALESCE($11, timeout_seconds),
                 position = COALESCE($12, position),
+                simulated_user = CASE WHEN $13 THEN $14 ELSE simulated_user END,
+                tool_fixtures = CASE WHEN $15 THEN $16 ELSE tool_fixtures END,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING {EvalCaseRow}
@@ -260,6 +266,10 @@ impl Database {
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
         .bind(input.position)
+        .bind(input.simulated_user.is_some())
+        .bind(input.simulated_user.flatten())
+        .bind(input.tool_fixtures.is_some())
+        .bind(input.tool_fixtures.flatten())
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
@@ -303,8 +313,8 @@ impl Database {
     ) -> Result<EvalRunRow> {
         let row = sqlx::query_as::<_, EvalRunRow>(
             sql!(r#"
-            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by, started_by_user_id, started_by_role)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING {EvalRunRow}
             "#),
         )
@@ -315,6 +325,8 @@ impl Database {
         .bind(&input.model_override)
         .bind(&input.filter_tags)
         .bind(&input.triggered_by)
+        .bind(input.started_by_user_id)
+        .bind(&input.started_by_role)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -353,14 +365,21 @@ impl Database {
             .into());
         }
 
-        let case_count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*)::bigint FROM eval_cases WHERE eval_id = $1")
-                .bind(input.eval_id)
-                .fetch_one(&mut *tx)
-                .await?;
-        if case_count.0 > max_cases_per_run as i64 {
+        let case_count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)::bigint FROM eval_cases WHERE eval_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2))",
+        )
+        .bind(input.eval_id)
+        .bind(&input.case_ids)
+        .fetch_one(&mut *tx)
+        .await?;
+        if case_count.0 == 0 && input.case_ids.is_some() {
+            return Err(CreateEvalRunError::NoMatchingCases.into());
+        }
+        // The limit bounds durable work, so every trial counts.
+        let trials = input.trials.max(1) as i64;
+        if case_count.0 * trials > max_cases_per_run as i64 {
             return Err(CreateEvalRunError::TooManyCases {
-                cases: case_count.0 as usize,
+                cases: (case_count.0 * trials) as usize,
                 limit: max_cases_per_run,
             }
             .into());
@@ -370,21 +389,22 @@ impl Database {
             r#"
             SELECT id
             FROM eval_cases
-            WHERE eval_id = $1
+            WHERE eval_id = $1 AND ($3::uuid[] IS NULL OR id = ANY($3))
             ORDER BY position ASC, created_at ASC
             LIMIT $2
             "#,
         )
         .bind(input.eval_id)
         .bind(max_cases_per_run as i64 + 1)
+        .bind(&input.case_ids)
         .fetch_all(&mut *tx)
         .await?;
 
         // Keep the selected case snapshot bounded even if cases are inserted
         // after the count query under PostgreSQL's default read-committed mode.
-        if case_ids.len() > max_cases_per_run {
+        if case_ids.len() as i64 * trials > max_cases_per_run as i64 {
             return Err(CreateEvalRunError::TooManyCases {
-                cases: case_ids.len(),
+                cases: case_ids.len() * trials as usize,
                 limit: max_cases_per_run,
             }
             .into());
@@ -406,8 +426,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, EvalRunRow>(
             sql!(r#"
-            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by, trials, started_by_user_id, started_by_role, max_cost_usd)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING {EvalRunRow}
             "#),
         )
@@ -418,22 +438,45 @@ impl Database {
         .bind(&input.model_override)
         .bind(&input.filter_tags)
         .bind(&input.triggered_by)
+        .bind(trials as i32)
+        .bind(input.started_by_user_id)
+        .bind(&input.started_by_role)
+        .bind(input.max_cost_usd)
         .fetch_one(&mut *tx)
         .await?;
 
-        for case in cases {
-            let resolved = input
-                .target
-                .clone()
-                .or(case.target.clone())
-                .or(eval_target.clone())
-                .ok_or(CreateEvalRunError::NoTarget)?;
-            let result_uuid = Uuid::now_v7();
-            let result_public_id = format!("evalresult_{:032x}", result_uuid.as_u128());
+        // The cap is an ordinary budget, created with the run so no case can
+        // start before it binds. The budget hierarchy finds it from the case
+        // session (`eval_run` subject), so the loop gate stops a turn once the
+        // run's money is spent.
+        if let Some(limit) = input.max_cost_usd {
             sqlx::query(
                 r#"
-                INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot, artifacts)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", balance, metadata, status)
+                VALUES ($1, 'eval_run', $2, 'usd', $3, $3, '{"created_by": "evals"}'::jsonb, 'active')
+                "#,
+            )
+            .bind(org_id)
+            .bind(&row.public_id)
+            .bind(limit)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        for case in cases {
+            for trial in 0..trials as i32 {
+                let resolved = input
+                    .target
+                    .clone()
+                    .or(case.target.clone())
+                    .or(eval_target.clone())
+                    .ok_or(CreateEvalRunError::NoTarget)?;
+                let result_uuid = Uuid::now_v7();
+                let result_public_id = format!("evalresult_{:032x}", result_uuid.as_u128());
+                sqlx::query(
+                r#"
+                INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot, artifacts, trial)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 "#,
             )
             .bind(row.id)
@@ -442,8 +485,10 @@ impl Database {
             .bind(&resolved)
             .bind(&resolved)
             .bind(Option::<serde_json::Value>::None)
+            .bind(trial)
             .execute(&mut *tx)
             .await?;
+            }
         }
 
         tx.commit().await?;
@@ -725,7 +770,7 @@ impl Database {
             SELECT {EvalCaseResultRow as ecr}
             FROM eval_case_results ecr
             WHERE ecr.eval_run_id = $1
-            ORDER BY ecr.created_at ASC
+            ORDER BY ecr.created_at ASC, ecr.trial ASC
             "#
         ))
         .bind(eval_run_id)
@@ -776,6 +821,83 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    /// One case result by id, with its run's org for scope checks.
+    pub async fn get_eval_case_result(&self, id: Uuid) -> Result<Option<EvalCaseResultRow>> {
+        let row = sqlx::query_as::<_, EvalCaseResultRow>(sql!(
+            r#"
+            SELECT {EvalCaseResultRow as ecr}
+            FROM eval_case_results ecr
+            WHERE ecr.id = $1
+            "#
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Move a result from `pending` to `running`. Returns false when another
+    /// task already owns it or it is no longer pending (e.g. cancelled).
+    pub async fn claim_eval_case_result(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE eval_case_results SET status = 'running', updated_at = NOW() \
+             WHERE id = $1 AND status = 'pending'",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Pending case results of running internal runs, as (org, run, result).
+    /// Used at startup to re-queue cases whose tasks never existed.
+    pub async fn list_pending_eval_case_tasks(&self) -> Result<Vec<(i64, Uuid, Uuid)>> {
+        let rows: Vec<(i64, Uuid, Uuid)> = sqlx::query_as(
+            r#"
+            SELECT r.org_id, r.id, ecr.id
+            FROM eval_case_results ecr
+            JOIN eval_runs r ON r.id = ecr.eval_run_id
+            WHERE r.status = 'running' AND r.source = 'internal' AND ecr.status = 'pending'
+            ORDER BY ecr.created_at
+            LIMIT 10000
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Mark every unfinished result of a run as skipped (cancellation).
+    pub async fn skip_unfinished_eval_case_results(&self, run_id: Uuid) -> Result<u64> {
+        let result = sqlx::query(
+            "UPDATE eval_case_results SET status = 'skipped', updated_at = NOW() \
+             WHERE eval_run_id = $1 AND status IN ('pending', 'running')",
+        )
+        .bind(run_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Complete a running run with its summary, once. Returns false when the
+    /// run already left `running` (another finisher won, or it was cancelled).
+    pub async fn complete_eval_run_once(
+        &self,
+        run_id: Uuid,
+        summary: serde_json::Value,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE eval_runs SET status = 'completed', summary = $2, \
+             completed_at = COALESCE(completed_at, NOW()), updated_at = NOW() \
+             WHERE id = $1 AND status = 'running'",
+        )
+        .bind(run_id)
+        .bind(summary)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     // ============================================
@@ -984,6 +1106,38 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    /// Public id of the eval run whose case created this session, for the
+    /// `eval_run` budget level. `session_id` is a delegation root.
+    pub async fn eval_run_public_id_for_session(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+    ) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT r.public_id FROM eval_case_results cr \
+             JOIN eval_runs r ON r.id = cr.eval_run_id \
+             WHERE cr.session_id = $2 AND r.org_id = $1 LIMIT 1",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// What a case session and the sessions it delegated to spent on model
+    /// calls, in USD (provider-reported where there is one, else estimated).
+    pub async fn eval_session_cost_usd(&self, org_id: i64, session_id: Uuid) -> Result<f64> {
+        Ok(sqlx::query_scalar(
+            "SELECT COALESCE(SUM(COALESCE(g.actual_cost_usd, g.estimated_cost_usd)), 0)::float8 \
+             FROM llm_generations g JOIN sessions s ON s.id = g.session_id \
+             WHERE g.org_id = $1 AND (s.id = $2 OR s.root_session_id = $2)",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_one(&self.pool)
+        .await?)
     }
 
     /// Load an eval run by internal id (used by the public share resolver, which

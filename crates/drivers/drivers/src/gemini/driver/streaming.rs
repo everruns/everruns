@@ -74,17 +74,14 @@ pub(super) fn convert_gemini_stream(
                 let resumes = incomplete
                     && !state.output_since_checkpoint
                     && state.continuation_token.is_some();
-                if resumes && let Some((input, output, cached, thoughts)) = state.checkpoint_usage {
-                    state.input_tokens = input;
-                    state.output_tokens = output;
-                    state.cached_tokens = cached;
-                    state.thought_tokens = thoughts;
+                if resumes && let Some(usage) = state.checkpoint_usage {
+                    state.usage = usage;
                 }
                 if let Some(context) = continuation.as_mut().filter(|_| continues || resumes) {
                     let spent = state
                         .billed_output
-                        .saturating_add(state.output_tokens)
-                        .saturating_add(state.thought_tokens.unwrap_or(0));
+                        .saturating_add(state.usage.output_tokens)
+                        .saturating_add(state.usage.thought_tokens.unwrap_or(0));
                     if context
                         .request
                         .generation_config

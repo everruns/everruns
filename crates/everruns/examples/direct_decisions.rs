@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // An OpenAI provider carries the Decisions API next to chat, so the same
     // credential reaches both. TypeSafe System One plugs in the same way:
-    // `Decisions::new("jev-latest", TypeSafeAI::from_env()?)` with `typesafe`.
+    // `Decisions::new("jev-latest", everruns::TypeSafe::from_env()?.into())` with `typesafe`.
     println!("OpenAI Decisions API over HTTP.\n");
     let decisions = Decisions::new("gpt-6-luna", Provider::from(OpenAI::from_env()?));
 

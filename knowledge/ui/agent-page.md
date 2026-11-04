@@ -84,6 +84,18 @@ reviews the latest definition. Marker dismissal never bypasses that conflict.
   Display text falls back per field; stable addresses and execution configuration
   remain independent.
 
+- **External agents replace the prompt pane.** An agent can run its turns on the customer's
+  own HTTPS endpoint ([custom workers](../operations/custom-workers.md)). That endpoint owns the
+  system prompt, model and tools, so a greyed-out copy of them would only mislead: while an
+  endpoint is bound (connected or disconnected), the page hides the prompt, harness,
+  capabilities, model, communication, the execution More rows (MCP servers, credentials, files,
+  network, sandbox, token limit, health check, GitHub), the Preview and Agents tabs and the cost
+  estimate. An Endpoint pane takes the prompt's place (status, URL, last run, last error) and
+  the header carries an External agent badge. The hidden values stay stored. Setup is the
+  **External agent** More row and side sheet, never a card above the tabs: most agents never
+  use it, and the row is hidden where the installation does not allow it (`available` on the
+  status endpoint). Source: `apps/ui/src/components/agents/external-agent.tsx`.
+
 - **Cost planning is a header action.** Estimate cost opens a side sheet for the current draft
   without saving or running it. Task choices and daily volume produce task and monthly estimates;
   technical controls stay under Advanced assumptions. See [Agent Cost Estimation](agent-cost-estimation.md).

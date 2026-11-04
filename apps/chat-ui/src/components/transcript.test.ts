@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { artifactPath } from "./artifact-path";
-import { conversationMessages, type ChatEvent } from "./transcript";
+import { conversationMessages, originLabel, type ChatEvent } from "./transcript";
 import { workForMessages } from "./work-log";
 test("completed messages replace streamed deltas and keep tool results out of the transcript", () => {
   const events: ChatEvent[] = [
@@ -29,7 +29,9 @@ test("a sent message is the reply and its tool call is not work", () => {
   const events: ChatEvent[] = [
     {
       type: "input.message",
-      data: { message: { id: "u", role: "user", content: [{ type: "text", text: "What is this?" }] } },
+      data: {
+        message: { id: "u", role: "user", content: [{ type: "text", text: "What is this?" }] },
+      },
     },
     {
       type: "tool.started",
@@ -156,4 +158,45 @@ test("artifact URLs decode file names once and stay on workspace mounts", () => 
   assert.equal(artifactPath("https://example.test/workspace/report.md"), null);
   assert.equal(artifactPath("/workspace/../memory/user"), null);
   assert.equal(artifactPath("/workspace/bad%escape.md"), null);
+});
+test("platform messages are marked and silent runs from one source collapse", () => {
+  const scheduled = (id: string) => ({
+    type: "input.message",
+    data: {
+      message: {
+        id,
+        role: "user",
+        content: [{ type: "text", text: "Shipmail claim poll. Read the state file." }],
+        metadata: {
+          everruns_origin: { kind: "schedule", name: "Shipmail claim poll", source_id: "sched_1" },
+        },
+      },
+    },
+  });
+  const events: ChatEvent[] = [
+    {
+      type: "input.message",
+      data: {
+        message: { id: "u", role: "user", content: [{ type: "text", text: "Keep checking" }] },
+      },
+    },
+    scheduled("s1"),
+    scheduled("s2"),
+    scheduled("s3"),
+    {
+      type: "output.message.completed",
+      data: { message: { id: "a", role: "agent", content: [{ type: "text", text: "Approved." }] } },
+    },
+    scheduled("s4"),
+  ];
+  const messages = conversationMessages(events);
+  assert.deepEqual(
+    messages.map((message) => [message.id, message.origin ? originLabel(message.origin) : null]),
+    [
+      ["u", null],
+      ["s3", "Scheduled check · Shipmail claim poll · 3×"],
+      ["a", null],
+      ["s4", "Scheduled check · Shipmail claim poll"],
+    ],
+  );
 });

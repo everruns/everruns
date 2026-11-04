@@ -116,6 +116,8 @@ tracing-subscriber = { workspace = true, optional = true }
 # `channel-auth`: JWT verification and the discovery/JWKS caches.
 jsonwebtoken = { workspace = true, optional = true }
 moka = { workspace = true, optional = true }
+# Web Bot Auth request signing (host::web_bot_auth), direct-egress only.
+ed25519-dalek = { version = "3", optional = true }
 
 [features]
 # Core's default feature set is intentionally empty. Portable structural
@@ -128,7 +130,7 @@ ui-capabilities = ["builtins"]
 host = ["engine", "dep:zip", "dep:fs2", "dep:ignore", "dep:libc", "tokio/fs", "tokio/io-util"]
 execution-host = ["engine", "dep:zip"]
 actor-runtime = ["execution-host", "builtins"]
-direct-egress = ["host", "dep:reqwest", "reqwest/blocking"]
+direct-egress = ["host", "dep:reqwest", "reqwest/blocking", "dep:ed25519-dalek"]
 openai-agents-api = ["direct-egress", "dep:eventsource-stream"]
 process = ["host", "tokio/process", "tokio/time"]
 native-containment = ["process", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:landlock", "dep:libc", "dep:seccompiler"]

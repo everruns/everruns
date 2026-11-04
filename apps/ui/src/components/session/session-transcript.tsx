@@ -1,7 +1,8 @@
 "use client";
 
 // The read-only half of a conversation: history, streaming output, and turn
-// navigation, with no composer and no mutating call of any kind.
+// navigation, with no composer. Its only answers are the request cards a chat
+// surface opts into (`runRequests`), the same cards the transcript shows.
 //
 // Extracted from `ChatPanel` (EVE-854) so the session detail page — a recording,
 // not a workspace — can render the same transcript the chat surface renders.
@@ -26,6 +27,8 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { assignRunsToEvents } from "@/components/chat/run-cards";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { StreamingMessage } from "@/components/streaming-message";
+import { SessionReactionsScope } from "@/components/chat/message-reactions";
+import { RunRequestCards } from "@/components/chat/run-request-cards";
 
 export function SessionTranscript({
   /** Rendered inside the scroll container, below the transcript (e.g. composer errors). */
@@ -38,12 +41,15 @@ export function SessionTranscript({
   emptyState,
   /** Good / Bad and Branch on agent replies; only chats that can be forked. */
   messageActions = false,
+  /** Show the questions and approvals of the agents this chat handed work to. */
+  runRequests = false,
 }: {
   footer?: ReactNode;
   showRunCards?: boolean;
   collapseWorkLog?: boolean;
   emptyState?: ReactNode;
   messageActions?: boolean;
+  runRequests?: boolean;
 }) {
   const ui = useUiTranslations();
   const { t } = useLocale();
@@ -140,37 +146,39 @@ export function SessionTranscript({
             !eventsLoading && transcriptEmpty && "flex flex-1 flex-col justify-center",
           )}
         >
-          <ChatMessageList
-            events={events}
-            chatEvents={chatEvents}
-            sessionId={sessionId}
-            toolResultsMap={toolResultsMap}
-            toolProgressMap={toolProgressMap}
-            toolOutputMap={toolOutputMap}
-            eventsLoading={eventsLoading}
-            hasMoreEvents={hasMoreEvents}
-            loadingOlderEvents={loadingOlderEvents}
-            getMessageText={getMessageText}
-            getToolCalls={getToolCalls}
-            participants={participants}
-            runsByEventId={runsByEventId}
-            emptyState={emptyState}
-            collapseWorkLog={collapseWorkLog}
-            pendingSends={chatSends.pending}
-            onRetrySend={chatSends.retry}
-            onDiscardSend={chatSends.discard}
-            sessionActive={isActive}
-            messageActions={messageActions}
-            streamingWork={
-              (isThinking && !streamingText) || streamingPhase === "commentary"
-                ? {
-                    turnId: streamingTurnId ?? null,
-                    text: streamingPhase === "commentary" ? streamingText : null,
-                    isThinking: Boolean(isThinking && !streamingText),
-                  }
-                : null
-            }
-          />
+          <SessionReactionsScope sessionId={sessionId} enabled={messageActions} events={events}>
+            <ChatMessageList
+              events={events}
+              chatEvents={chatEvents}
+              sessionId={sessionId}
+              toolResultsMap={toolResultsMap}
+              toolProgressMap={toolProgressMap}
+              toolOutputMap={toolOutputMap}
+              eventsLoading={eventsLoading}
+              hasMoreEvents={hasMoreEvents}
+              loadingOlderEvents={loadingOlderEvents}
+              getMessageText={getMessageText}
+              getToolCalls={getToolCalls}
+              participants={participants}
+              runsByEventId={runsByEventId}
+              emptyState={emptyState}
+              collapseWorkLog={collapseWorkLog}
+              pendingSends={chatSends.pending}
+              onRetrySend={chatSends.retry}
+              onDiscardSend={chatSends.discard}
+              sessionActive={isActive}
+              messageActions={messageActions}
+              streamingWork={
+                (isThinking && !streamingText) || streamingPhase === "commentary"
+                  ? {
+                      turnId: streamingTurnId ?? null,
+                      text: streamingPhase === "commentary" ? streamingText : null,
+                      isThinking: Boolean(isThinking && !streamingText),
+                    }
+                  : null
+              }
+            />
+          </SessionReactionsScope>
 
           {streamingText && streamingPhase !== "commentary" && (
             <div className="mt-4 flex justify-start">
@@ -188,6 +196,8 @@ export function SessionTranscript({
               </div>
             </div>
           )}
+
+          {runRequests && <RunRequestCards sessionId={sessionId} sessionActive={isActive} />}
 
           {footer}
         </div>

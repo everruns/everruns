@@ -131,9 +131,9 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
+/// Same rule as the session file commands: only `fs/_/...` is reserved.
 fn is_reserved_path(path: &str) -> bool {
-    let path = path.trim_start_matches('/');
-    path.starts_with('_') || path.split('/').any(|segment| segment.starts_with('_'))
+    crate::domains::session_files::queries::is_reserved_path(path)
 }
 
 /// A workspace the caller passed the org/policy check for, plus whether the
@@ -424,7 +424,7 @@ pub async fn create_path(
     if is_reserved_path(&path) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Paths starting with '_' are reserved for system actions".to_string(),
+            "The top-level folder '_' is reserved for file actions".to_string(),
         ));
     }
 
@@ -500,7 +500,7 @@ pub async fn update_path(
     if is_reserved_path(&path) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Paths starting with '_' are reserved for system actions".to_string(),
+            "The top-level folder '_' is reserved for file actions".to_string(),
         ));
     }
     let file = state
@@ -822,7 +822,7 @@ pub async fn upload_path(
     if is_reserved_path(&path) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Paths starting with '_' are reserved for system actions".to_string(),
+            "The top-level folder '_' is reserved for file actions".to_string(),
         ));
     }
     let declared_bytes = headers

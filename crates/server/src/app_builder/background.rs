@@ -349,6 +349,8 @@ pub(super) struct MaintenanceDeps {
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
+    /// Host egress boundary that monitor probes send through.
+    pub egress: Arc<dyn everruns_core::EgressService>,
 }
 
 /// Tool result timeouts, the session schedule poller, cluster-once jobs, and
@@ -367,10 +369,12 @@ pub(super) async fn start_maintenance(
     );
 
     // -- Session schedule poller (both prod and dev) --
-    // Provide a built-in probe registry so monitors with a `spec["tool"]`
-    // can run their probe directly without delegating to an agent turn.
-    let probe_registry =
-        std::sync::Arc::new(crate::background::session_scheduler::monitor_probe_tool_registry());
+    // Monitors with a probe tool run it directly, without an agent turn,
+    // under the session's network access list and the host egress boundary.
+    let probes = Arc::new(crate::background::monitor_probe::ProbeHost::new(
+        deps.background_db.clone(),
+        Some(deps.egress.clone()),
+    ));
     supervisor.track(
         "session_scheduler",
         crate::background::session_scheduler::spawn_session_scheduler(
@@ -378,7 +382,7 @@ pub(super) async fn start_maintenance(
             deps.background_session_schedule_service,
             deps.background_event_service,
             deps.background_runner,
-            Some(probe_registry),
+            Some(probes),
             crate::background::session_scheduler::poll_interval_from_env(),
         ),
     );
@@ -409,6 +413,13 @@ pub(super) async fn start_maintenance(
             "sandbox-history-retention",
             "sandbox_history_retention",
         ),
+        // Retired: unified Knowledge processing (`knowledge-processing`)
+        // replaced the Knowledge index sync. Kept disabled so the schedule an
+        // earlier version created stops enqueuing tasks no pool claims.
+        crate::background::cluster_jobs::ClusterJob::disabled(
+            crate::domains::knowledge_indexes::source_sync::KNOWLEDGE_INDEX_SYNC_SCHEDULE,
+            crate::domains::knowledge_indexes::source_sync::KNOWLEDGE_INDEX_SYNC_ACTIVITY,
+        ),
         crate::background::sandbox_idle_sweep::idle_sweep_job(
             deps.background_pool.clone(),
             deps.session_sandbox_service,
@@ -419,6 +430,12 @@ pub(super) async fn start_maintenance(
             deps.connection_resolver.clone(),
         ),
         crate::background::session_trace_backfill::backfill_job(deps.background_db.clone()),
+        crate::background::stranded_actor_sweep::sweep_job(deps.background_db.clone()),
+        crate::background::sandbox_time_meter::meter_job(Arc::new(
+            crate::domains::budgets::BudgetService::new(deps.background_db.clone()),
+        )),
+        crate::background::monitoring_timeline::sampler_job(deps.background_db.clone()),
+        crate::background::monitoring_timeline::backfill_job(deps.background_db.clone()),
         crate::domains::memory::source_sync::memory_source_sync_job(
             deps.background_db.clone(),
             deps.connection_resolver.clone(),

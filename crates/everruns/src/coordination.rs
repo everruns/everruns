@@ -39,8 +39,9 @@
 // Decision: the Framework runs threads through the engine that owns the
 // coordinator (`EngineSessionRunner`), so a thread is an ordinary engine
 // session the application can resume and read like any other.
-// Decision: only `self` workers. A local profile has no agent catalog to look
-// another worker up in, so the runner refuses any other agent id.
+// Decision: `self` workers and the agent's own members
+// (`AgentBuilder::member`). A local profile has no agent catalog to look any
+// other worker up in, so the runner refuses any other agent id.
 // Decision: the wake path covers `assignment` tasks only. Other task kinds
 // keep their existing between-turn delivery; widening the waker would change
 // how every local background task reaches its session.
@@ -383,13 +384,18 @@ impl LocalSessionRunner for EngineSessionRunner {
             .agent(parent)
             .ok_or_else(|| AgentLoopError::session_not_found(parent))?;
         let parent_record = self.sessions.get_session(parent).await?;
-        if let Some(agent_id) = agent_id
-            && parent_record.as_ref().and_then(|s| s.agent_id) != Some(agent_id)
-        {
-            return Err(AgentLoopError::tool(
-                "a Framework engine runs threads with the coordinator's own agent only",
-            ));
-        }
+        // A member of the parent's agent runs as itself; any other agent id
+        // is refused, since a local profile has no catalog to look it up in.
+        let agent = match agent_id {
+            Some(agent_id) if parent_record.as_ref().and_then(|s| s.agent_id) != Some(agent_id) => {
+                agent.member_on_host(agent_id).ok_or_else(|| {
+                    AgentLoopError::tool(
+                        "a Framework engine runs threads with the coordinator's own agent or one of its members only",
+                    )
+                })?
+            }
+            _ => agent,
+        };
         let mut session = SessionBuilder::new(harness_id)
             .id(SessionId::new())
             .title(title.unwrap_or("Thread"))

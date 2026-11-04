@@ -13,8 +13,8 @@ use crate::domains::agent_triggers::types::{
 };
 use crate::domains::agent_triggers::{
     CreateAgentTrigger, DeleteAgentTrigger, GetAgentTrigger, ListAgentTriggerDeliveries,
-    ListAgentTriggerRuns, ListAgentTriggers, McpEventTriggers, TriggerAgentTriggerNow,
-    TriggerAgentTriggerOutput, UpdateAgentTriggerCmd,
+    ListAgentTriggerRuns, ListAgentTriggers, ManualTriggerEvent, McpEventTriggers,
+    TriggerAgentTriggerNow, TriggerAgentTriggerOutput, UpdateAgentTriggerCmd,
 };
 use crate::domains::common::Command;
 use crate::domains::messages::MessageService;
@@ -50,6 +50,10 @@ pub struct AppState {
     pub mcp_event_triggers: Option<Arc<McpEventTriggers>>,
     /// The channel host targeted schedule triggers run on when fired by hand.
     pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
+    /// Reads a pull request through an agent's GitHub connection when a
+    /// GitHub trigger is fired with a pull request reference.
+    pub connection_resolver:
+        Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
 }
 
 impl AppState {
@@ -73,6 +77,7 @@ impl AppState {
             message_service: Some(message_service),
             mcp_event_triggers: None,
             channels: None,
+            connection_resolver: None,
         }
     }
 
@@ -108,6 +113,9 @@ impl AppState {
         ctx.mcp_event_triggers = self.mcp_event_triggers.clone();
         ctx.channels = self.channels.clone();
         ctx.egress_service = self.external_egress.clone();
+        ctx.connection_resolver = self.connection_resolver.clone();
+        ctx.github_apps =
+            crate::github_apps::GitHubAppContext::from_env().with_auth_config(&self.auth.config);
         ctx
     }
 }
@@ -364,6 +372,14 @@ pub async fn delete_agent_trigger(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Body of a manual fire. Without `event`, a schedule trigger runs as on a tick.
+#[derive(Debug, Default, serde::Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FireAgentTriggerRequest {
+    #[serde(default)]
+    pub event: Option<ManualTriggerEvent>,
+}
+
 /// POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger
 #[utoipa::path(
     post,
@@ -372,8 +388,10 @@ pub async fn delete_agent_trigger(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")
     ),
+    request_body(content = FireAgentTriggerRequest, description = "Optional event to fire the trigger with"),
     responses(
-        (status = 200, description = "Trigger fired", body = TriggerAgentTriggerOutput),
+        (status = 200, description = "Trigger fired, or the event was filtered or a duplicate", body = TriggerAgentTriggerOutput),
+        (status = 400, description = "The event does not fit the trigger", body = ErrorResponse),
         (status = 404, description = "Trigger not found", body = ErrorResponse)
     ),
     tag = "agent-triggers"
@@ -382,10 +400,13 @@ pub async fn trigger_agent_trigger(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((agent_id, trigger_id)): Path<(String, String)>,
+    body: Option<Json<FireAgentTriggerRequest>>,
 ) -> ApiResult<TriggerAgentTriggerOutput> {
+    let event = body.and_then(|Json(body)| body.event);
     let output = TriggerAgentTriggerNow {
         agent_id,
         trigger_id,
+        event,
     }
     .run(&state.ctx(&org))
     .await?;

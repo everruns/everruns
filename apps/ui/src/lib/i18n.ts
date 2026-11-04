@@ -39,6 +39,11 @@ const messages = {
     waiting_on_tools: "Waiting on tools",
     scheduled: "Scheduled",
     automatic_update: "Automatic update",
+    origin_trigger: "Trigger",
+    origin_webhook: "Webhook",
+    origin_system: "System",
+    origin_run: "run {number} of {limit}",
+    origin_run_number: "run {number}",
     from_chat: "From Chat",
     new_assignment: "New assignment: {title}",
     task_update_done: "{title} is done",
@@ -79,6 +84,11 @@ const messages = {
     bad_response: "Bad response",
     branch_into_new_chat: "Branch into new chat",
     branch_chat_error: "Could not branch this chat",
+    add_reaction: "Add reaction",
+    reacted_with: "{names} reacted {emoji}",
+    reaction_you: "You",
+    reaction_remove: "Remove your {emoji}",
+    origin_reaction: "Reaction",
     show_earlier_steps: "Show {count} earlier steps",
     work_log_errors_one: "{count} error",
     work_log_errors_few: "{count} errors",
@@ -166,18 +176,19 @@ const messages = {
     voice_service_unavailable_error: "Voice service is unavailable.",
     error_prefix: "Error: {value}",
     runtime_error_budget_exhausted_reached:
-      "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.",
+      "Usage limit reached. {spent} {currency} spent reached the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.",
     runtime_error_budget_exhausted_exceeded:
-      "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.",
-    runtime_error_budget_exhausted_generic: "Budget exhausted. Increase the budget to continue.",
+      "Usage limit reached. {spent} {currency} spent exceeded the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.",
+    runtime_error_budget_exhausted_generic:
+      "Usage limit reached. A usage policy stopped this work; raise its limit to continue.",
     runtime_error_budget_paused_reached:
-      "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. {spent} {currency} spent reached the {soft_limit} {currency} ask point. Continue this turn or raise the limit.",
     runtime_error_budget_paused_exceeded:
-      "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. {spent} {currency} spent exceeded the {soft_limit} {currency} ask point. Continue this turn or raise the limit.",
     runtime_error_budget_paused_with_spent:
-      "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing, with {spent} {currency} spent. Continue this turn or raise the limit.",
     runtime_error_budget_paused_generic:
-      "Budget paused. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. Continue this turn or raise the limit.",
     runtime_error_model_unavailable:
       "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
     runtime_error_model_unavailable_generic:
@@ -203,10 +214,13 @@ const messages = {
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
     runtime_error_provider_quota_exhausted_affordable:
       "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.",
+    runtime_error_provider_quota_credit_wait:
+      "The work continues automatically once credits are back (checked every minute for up to an hour).",
     runtime_error_provider_attestation_required:
       "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.",
     runtime_error_provider_attestation_required_types:
       "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.",
+    runtime_error_model_refusal: "The model declined this request.",
     runtime_error_details_label: "Details",
     runtime_error_provider_unavailable:
       "The AI provider is experiencing issues. Please try again shortly.",
@@ -352,6 +366,11 @@ const messages = {
     waiting_on_tools: "Очікування інструментів",
     scheduled: "За розкладом",
     automatic_update: "Автоматичне оновлення",
+    origin_trigger: "Тригер",
+    origin_webhook: "Вебхук",
+    origin_system: "Система",
+    origin_run: "запуск {number} з {limit}",
+    origin_run_number: "запуск {number}",
     from_chat: "Від Чату",
     new_assignment: "Нове завдання: {title}",
     task_update_done: "{title}: готово",
@@ -392,6 +411,11 @@ const messages = {
     bad_response: "Погана відповідь",
     branch_into_new_chat: "Відгалузити в новий чат",
     branch_chat_error: "Не вдалося відгалузити цей чат",
+    add_reaction: "Додати реакцію",
+    reacted_with: "{names}: {emoji}",
+    reaction_you: "Ви",
+    reaction_remove: "Прибрати вашу реакцію {emoji}",
+    origin_reaction: "Реакція",
     show_earlier_steps: "Показати попередні кроки ({count})",
     work_log_errors_one: "{count} помилка",
     work_log_errors_few: "{count} помилки",
@@ -481,18 +505,19 @@ const messages = {
     voice_service_unavailable_error: "Голосовий сервіс недоступний.",
     error_prefix: "Помилка: {value}",
     runtime_error_budget_exhausted_reached:
-      "Бюджет вичерпано. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Збільште бюджет, щоб продовжити.",
+      "Досягнуто ліміту використання. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
     runtime_error_budget_exhausted_exceeded:
-      "Бюджет вичерпано. Витрачено {spent} {currency}, що перевищило ліміт {limit} {currency}. Збільште бюджет, щоб продовжити.",
-    runtime_error_budget_exhausted_generic: "Бюджет вичерпано. Збільште бюджет, щоб продовжити.",
+      "Досягнуто ліміту використання. Витрачено {spent} {currency}, що перевищило ліміт {limit} {currency}. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
+    runtime_error_budget_exhausted_generic:
+      "Досягнуто ліміту використання. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
     runtime_error_budget_paused_reached:
-      "Бюджет призупинено. Витрачено {spent} {currency}, що досягло м'якого ліміту {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Витрачено {spent} {currency}, що досягло порогу запиту {soft_limit} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_exceeded:
-      "Бюджет призупинено. Витрачено {spent} {currency}, що перевищило м'який ліміт {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Витрачено {spent} {currency}, що перевищило поріг запиту {soft_limit} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_with_spent:
-      "Бюджет призупинено після витрати {spent} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження: витрачено {spent} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_generic:
-      "Бюджет призупинено. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Продовжте цей хід або підвищте ліміт.",
     runtime_error_model_unavailable:
       "Модель `{value}` недоступна. Її могли видалити, перейменувати або ваш API-ключ не має до неї доступу. Виберіть іншу модель.",
     runtime_error_model_unavailable_generic: "Вибрана модель недоступна. Виберіть іншу модель.",
@@ -518,10 +543,13 @@ const messages = {
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
     runtime_error_provider_quota_exhausted_affordable:
       "На обліковому записі AI-провайдера бракує кредитів для цього запиту: запитано до {requested_max_tokens} вихідних токенів, а баланс покриває {affordable_tokens}. Поповніть рахунок або зменште максимальну кількість вихідних токенів, щоб продовжити.",
+    runtime_error_provider_quota_credit_wait:
+      "Робота продовжиться автоматично, щойно кредити з'являться (перевірка щохвилини протягом години).",
     runtime_error_provider_attestation_required:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель. Завершіть його на {confirm_url} і спробуйте ще раз.",
     runtime_error_provider_attestation_required_types:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель ({missing_types}). Завершіть його на {confirm_url} і спробуйте ще раз.",
+    runtime_error_model_refusal: "Модель відмовилася виконати цей запит.",
     runtime_error_details_label: "Деталі",
     runtime_error_provider_unavailable:
       "AI-провайдер зараз недоступний. Спробуйте ще раз трохи пізніше.",

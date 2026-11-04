@@ -206,7 +206,7 @@ impl Command for CreateWorkspaceFile {
         access.ensure_user_memory_mutation_access(&path)?;
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
-                "Paths starting with '_' are reserved for system actions",
+                "The top-level folder '_' is reserved for file actions",
             ));
         }
 
@@ -295,7 +295,7 @@ impl Command for UpdateWorkspaceFile {
         access.ensure_user_memory_mutation_access(&path)?;
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
-                "Paths starting with '_' are reserved for system actions",
+                "The top-level folder '_' is reserved for file actions",
             ));
         }
 

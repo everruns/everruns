@@ -4,6 +4,10 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { ApiError } from "@/lib/api/client";
 import type { Event, ModelWithProvider } from "@/lib/api/types";
 
+jest.mock("@/components/chat/run-request-cards", () => ({
+  RunRequestCards: () => null,
+}));
+
 jest.mock("@/hooks/use-turn-work-report", () => ({
   useTurnWorkReport: () => null,
   useLiveWorkReport: () => null,
@@ -216,9 +220,9 @@ jest.mock("@/components/ui/button", () => ({
   Button: ({
     children,
     ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children?: React.ReactNode }) => (
-    <button {...props}>{children}</button>
-  ),
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    children?: React.ReactNode;
+  }) => <button {...props}>{children}</button>,
 }));
 
 jest.mock("@/components/ui/skeleton", () => ({
@@ -408,7 +412,11 @@ describe("ChatPanel model change divider", () => {
   it("prefers the org's display name over the name the event captured", () => {
     mockModels.push(
       { ...availableDefaultModel, id: "model_1", display_name: "GPT-5.6 Sol" },
-      { ...availableDefaultModel, id: "model_2", display_name: "GPT-5.6 Terra" },
+      {
+        ...availableDefaultModel,
+        id: "model_2",
+        display_name: "GPT-5.6 Terra",
+      },
     );
     mockSessionContext.chatEvents = [
       modelChangedEvent("evt-model-changed-1", {
@@ -525,7 +533,9 @@ describe("ChatPanel placeholder", () => {
 
     expect(screen.getByRole("combobox")).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Attach images (PNG, JPEG, GIF, WebP)" }),
+      screen.getByRole("button", {
+        name: "Attach images (PNG, JPEG, GIF, WebP)",
+      }),
     ).toBeDisabled();
   });
 
@@ -535,7 +545,9 @@ describe("ChatPanel placeholder", () => {
 
     const { container } = render(<ChatPanel />);
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "hello" } });
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "hello" },
+    });
 
     expect(screen.getByText("Checking model availability…")).toBeInTheDocument();
     expect(container.querySelector('button[type="submit"]')).toBeDisabled();
@@ -575,7 +587,11 @@ describe("ChatPanel placeholder", () => {
         images: [],
         files: [],
         controls: {
-          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          hints: {
+            setup_connection: true,
+            url_elicitation: true,
+            ask_user: true,
+          },
           locale: "en-US",
           model_id: "model-explicit",
         },
@@ -586,7 +602,11 @@ describe("ChatPanel placeholder", () => {
 
   it("does not submit a stale explicit model that is no longer enabled", async () => {
     mockSessionContext.llmModel = null;
-    mockModels.push({ ...availableDefaultModel, id: "model-disabled", enabled: false });
+    mockModels.push({
+      ...availableDefaultModel,
+      id: "model-disabled",
+      enabled: false,
+    });
     window.localStorage.setItem(
       "everruns:chat:model-selection:agent-1:session-1",
       "model-disabled",
@@ -608,7 +628,9 @@ describe("ChatPanel placeholder", () => {
 
     render(<ChatPanel />);
     const textarea = screen.getByRole("combobox");
-    fireEvent.change(textarea, { target: { value: "Ask me which guide to use" } });
+    fireEvent.change(textarea, {
+      target: { value: "Ask me which guide to use" },
+    });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() =>
@@ -618,7 +640,11 @@ describe("ChatPanel placeholder", () => {
         files: mockHasFiles ? [{ fileId: "file-1" }] : [],
         controls: {
           locale: "en-US",
-          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          hints: {
+            setup_connection: true,
+            url_elicitation: true,
+            ask_user: true,
+          },
         },
         addressedParticipantId: null,
       }),
@@ -682,7 +708,9 @@ describe("ChatPanel placeholder", () => {
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
     expect(screen.getByTestId("participant-mention-token")).toHaveTextContent("Researcher");
 
-    fireEvent.change(textarea, { target: { value: "Summarize the findings", selectionStart: 22 } });
+    fireEvent.change(textarea, {
+      target: { value: "Summarize the findings", selectionStart: 22 },
+    });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() =>
@@ -691,7 +719,11 @@ describe("ChatPanel placeholder", () => {
         images: [],
         files: [],
         controls: {
-          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          hints: {
+            setup_connection: true,
+            url_elicitation: true,
+            ask_user: true,
+          },
           locale: "en-US",
         },
         addressedParticipantId: "part_guest_123456",
@@ -728,7 +760,9 @@ describe("ChatPanel placeholder", () => {
     render(<ChatPanel />);
 
     const textarea = screen.getByPlaceholderText("Type a message... (Enter to send)");
-    fireEvent.change(textarea, { target: { value: "@help", selectionStart: 5 } });
+    fireEvent.change(textarea, {
+      target: { value: "@help", selectionStart: 5 },
+    });
     fireEvent.click(screen.getByRole("option", { name: /Helper \(bbbbbb\)/ }));
 
     expect(screen.getByTestId("participant-mention-token")).toHaveTextContent("Helper (bbbbbb)");
@@ -830,7 +864,13 @@ describe("ChatPanel placeholder", () => {
             name: "btw",
             description: "Ask a side question",
             source: "system",
-            args: [{ name: "question", description: "The side question", required: true }],
+            args: [
+              {
+                name: "question",
+                description: "The side question",
+                required: true,
+              },
+            ],
           },
         ],
       },
@@ -845,7 +885,9 @@ describe("ChatPanel placeholder", () => {
     const textarea = screen.getByPlaceholderText(
       "Type a message or / for commands... (Enter to send)",
     );
-    fireEvent.change(textarea, { target: { value: "/btw why is this running" } });
+    fireEvent.change(textarea, {
+      target: { value: "/btw why is this running" },
+    });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     await waitFor(() =>
@@ -853,7 +895,11 @@ describe("ChatPanel placeholder", () => {
         name: "btw",
         arguments: "why is this running",
         controls: {
-          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          hints: {
+            setup_connection: true,
+            url_elicitation: true,
+            ask_user: true,
+          },
           locale: "en-US",
         },
       }),
@@ -872,7 +918,13 @@ describe("ChatPanel placeholder", () => {
             name: "btw",
             description: "Ask a side question",
             source: "system",
-            args: [{ name: "question", description: "The side question", required: true }],
+            args: [
+              {
+                name: "question",
+                description: "The side question",
+                required: true,
+              },
+            ],
           },
         ],
       },
@@ -902,7 +954,13 @@ describe("ChatPanel placeholder", () => {
             name: "btw",
             description: "Ask a side question",
             source: "system",
-            args: [{ name: "question", description: "The side question", required: true }],
+            args: [
+              {
+                name: "question",
+                description: "The side question",
+                required: true,
+              },
+            ],
           },
         ],
       },
@@ -950,7 +1008,11 @@ describe("ChatPanel placeholder", () => {
         images: [],
         files: [],
         controls: {
-          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          hints: {
+            setup_connection: true,
+            url_elicitation: true,
+            ask_user: true,
+          },
           locale: "en-US",
         },
         addressedParticipantId: null,
@@ -1076,7 +1138,9 @@ describe("ChatPanel placeholder", () => {
 
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(
-      screen.getByText("The AI provider account is out of credits or quota.", { exact: false }),
+      screen.getByText("The AI provider account is out of credits or quota.", {
+        exact: false,
+      }),
     ).toBeInTheDocument();
   });
 
@@ -1119,7 +1183,14 @@ describe("ChatPanel placeholder", () => {
 
   it("reports a failed send on its row with Retry", () => {
     mockSessionContext.chatSends.pending = [
-      { clientId: "c1", text: "hello", images: [], files: [], phase: "failed", sentAtMs: 0 },
+      {
+        clientId: "c1",
+        text: "hello",
+        images: [],
+        files: [],
+        phase: "failed",
+        sentAtMs: 0,
+      },
     ];
     try {
       render(<ChatPanel />);
@@ -1134,7 +1205,9 @@ describe("ChatPanel placeholder", () => {
 
   it("gives the text back when Stop takes back a send before it is delivered", () => {
     mockSessionContext.chatSends.busy = true;
-    mockSessionContext.chatSends.stop.mockReturnValueOnce({ text: "hello again" } as never);
+    mockSessionContext.chatSends.stop.mockReturnValueOnce({
+      text: "hello again",
+    } as never);
     try {
       render(<ChatPanel />);
 
@@ -1253,7 +1326,9 @@ describe("ChatPanel placeholder", () => {
     const { rerender } = render(<ChatPanel />);
     fireEvent.click(screen.getByTitle("Start voice session"));
     const stopButton = await screen.findByTitle("End voice session");
-    expect(mockStartSessionVoice).toHaveBeenCalledWith("session-1", { sdp: "local-sdp" });
+    expect(mockStartSessionVoice).toHaveBeenCalledWith("session-1", {
+      sdp: "local-sdp",
+    });
 
     mockSessionContext.llmModel = null;
     rerender(<ChatPanel />);

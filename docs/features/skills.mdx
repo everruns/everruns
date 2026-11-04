@@ -22,7 +22,7 @@ slug: features/skills
 
 ## Three-stage disclosure
 
-1. **Discovery** (~100 tokens per skill): names and descriptions appear in the system prompt under `<available_skills>`.
+1. **Discovery**: a bounded inventory of names and descriptions arrives as a user-role conversation update. Changes append a new snapshot; unchanged inventories add no new update. Use `list_skills` for the full current catalog.
 2. **Activation** (under 5,000 tokens): full SKILL.md instructions load when the agent calls `activate_skill`.
 3. **Resources**: bundled files mount at `/workspace/.agents/skills/{name}/` and are read with the normal filesystem tools.
 

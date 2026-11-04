@@ -180,6 +180,7 @@ async fn run_blocks_member_from_creating_a_provider() {
         Arc::new(DefaultPermissionResolver),
     );
     let err = CreateProvider {
+        api: None,
         name: "member-denied".to_string(),
         provider_type: DriverId::OpenAI,
         base_url: None,
@@ -573,6 +574,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: public_id.to_string(),
                 name: name.to_string(),
@@ -673,6 +675,7 @@ async fn eval_run_creation_requires_session_permission() {
         req: CreateEvalRunRequest {
             target: None,
             model_override: None,
+            ..Default::default()
         },
     }
     .run(&ctx)
@@ -851,8 +854,8 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // off the internet during an incident. Same shape of reasoning as
     // `copy_agent` above — a protection that makes the agent unusable is the
     // wrong protection.
-    "suspend_agent_exposures",
-    "resume_agent_exposures",
+    "pause_agent",
+    "resume_agent",
 ];
 
 /// The guard lives in `Command::execute`, so it must hold over `dispatch()` —

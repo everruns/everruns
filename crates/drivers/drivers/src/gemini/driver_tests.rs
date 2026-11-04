@@ -13,15 +13,15 @@ async fn long_decode_resumes_only_at_a_safe_checkpoint_and_bills_committed_usage
         Mock::given(method("POST"))
             .and(body_partial_json(json!({"continuationToken":"checkpoint"})))
             .respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").insert_header("Connection","close")
-                .set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"last\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":13,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":3}}\n\n"))
+                .set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"last\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":13,\"toolUsePromptTokenCount\":7,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":3}}\n\n"))
             .expect(if later_output {0} else {1}).mount(&server).await;
-        let checkpoint = json!({"candidates":[{"content":{"parts":[{"text":"first"}]},"continuationToken":"checkpoint"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":1,"thoughtsTokenCount":2}});
+        let checkpoint = json!({"candidates":[{"content":{"parts":[{"text":"first"}]},"continuationToken":"checkpoint"}],"usageMetadata":{"promptTokenCount":10,"toolUsePromptTokenCount":4,"candidatesTokenCount":1,"thoughtsTokenCount":2}});
         let tail = if later_output {
             json!({"candidates":[{"content":{"parts":[{"text":"extra"}]}}]})
         } else {
             // Usage after the checkpoint describes work that is not committed
             // on a dropped stream and must not be charged again on resume.
-            json!({"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":1000,"thoughtsTokenCount":500}})
+            json!({"usageMetadata":{"promptTokenCount":100,"toolUsePromptTokenCount":900,"candidatesTokenCount":1000,"thoughtsTokenCount":500}})
         };
         let mut chunks = vec![Ok(format!("data: {checkpoint}\n\ndata: {tail}\n\n")
             .into_bytes()
@@ -85,7 +85,8 @@ async fn long_decode_resumes_only_at_a_safe_checkpoint_and_bills_committed_usage
             let Some(LlmStreamEvent::Done(meta)) = events.last() else {
                 panic!("missing completion")
             };
-            assert_eq!(meta.prompt_tokens, Some(23));
+            assert_eq!(meta.prompt_tokens, Some(34));
+            assert_eq!(meta.total_tokens, Some(41));
             assert_eq!(meta.completion_tokens, Some(7));
             assert_eq!(meta.reasoning_tokens, Some(5));
         }
@@ -739,4 +740,41 @@ fn function_response_is_followed_by_returned_pdf() {
             {"inlineData":{"mimeType":"application/pdf","data":"JVBERi0="}}
         ]})
     );
+}
+
+#[test]
+fn tool_use_usage_handles_optional_counts_and_resets_between_hops() {
+    for (usage, expected) in [
+        (json!({"promptTokenCount": 10}), 10),
+        (
+            json!({"promptTokenCount": 10, "toolUsePromptTokenCount": null}),
+            10,
+        ),
+        (
+            json!({"promptTokenCount": null, "toolUsePromptTokenCount": 7}),
+            7,
+        ),
+        (json!({"toolUsePromptTokenCount": 7}), 7),
+        (
+            json!({"promptTokenCount": 10, "toolUsePromptTokenCount": 0}),
+            10,
+        ),
+        (
+            json!({"promptTokenCount": u32::MAX, "toolUsePromptTokenCount": 7}),
+            u32::MAX,
+        ),
+    ] {
+        let mut state = GeminiStreamState::default();
+        state.response(serde_json::from_value(json!({"usageMetadata": usage})).unwrap());
+        state.next_hop();
+        state.response(
+            serde_json::from_value(json!({"usageMetadata": {"promptTokenCount": 2}})).unwrap(),
+        );
+        state.finish();
+        let Some(LlmStreamEvent::Done(meta)) = state.pending.back() else {
+            panic!("missing completion")
+        };
+        assert_eq!(meta.prompt_tokens, Some(expected.saturating_add(2)));
+        assert_eq!(meta.total_tokens, meta.prompt_tokens);
+    }
 }

@@ -18,6 +18,7 @@ use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 /// resolve a real credential however the environment is configured.
 fn synthetic_descriptor() -> everruns_contracts::driver_registry::DriverDescriptor {
     everruns_contracts::driver_registry::DriverDescriptor {
+        apis: Vec::new(),
         credential_schema: everruns_contracts::credential_schema::CredentialFormSchema::empty(),
         ..everruns_contracts::driver_registry::DriverDescriptor::chat_only(
             super::DriverId::Anthropic,

@@ -47,6 +47,7 @@ use crate::domains::messages::types::{CreateMessageRequest, InputMessage, Messag
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::record::{SessionSource, SessionStatus};
+use crate::domains::sessions::run_requests::{RequestingAgent, waiting_agents};
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::execution_metadata;
 use crate::storage::runtime_identity::VerifiedRuntimeIdentity;
@@ -531,6 +532,8 @@ pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
         TURN_FAILED,
         TURN_CANCELLED,
         TOOL_CALL_REQUESTED,
+        everruns_core::MESSAGE_REACTION_ADDED,
+        everruns_core::MESSAGE_REACTION_REMOVED,
     ];
     match visibility {
         ApiVisibility::Full => return None,
@@ -581,6 +584,13 @@ pub fn project_event(mut event: Value, config: &AgentApiChannelConfig) -> Option
             "tool_call_id": raw["tool_call_id"],
             "success": raw["success"],
         }),
+        // Who reacted is shown by kind and name only: a caller never learns
+        // another person's ids from a reaction.
+        everruns_core::MESSAGE_REACTION_ADDED | everruns_core::MESSAGE_REACTION_REMOVED => json!({
+            "message_id": raw["message_id"],
+            "emoji": raw["emoji"],
+            "actor": {"kind": raw["actor"]["kind"], "name": raw["actor"]["name"]},
+        }),
         TOOL_CALL_REQUESTED => {
             let pending = pending_input(raw);
             if pending.is_empty() {
@@ -615,6 +625,14 @@ pub struct PendingQuestionView {
     /// When the server stops waiting (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
+    /// The asking agent's session, when another agent in the run asked.
+    /// Answer on this session; the server routes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub session_id: Option<SessionId>,
+    /// The asking agent, when another agent in the run asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<RequestingAgent>,
 }
 
 /// A held-back tool call the session waits on. Same shape as serve's
@@ -636,6 +654,14 @@ pub struct PendingApprovalView {
     pub risk: String,
     /// When the request counts as rejected (RFC 3339).
     pub expires_at: String,
+    /// The asking agent's session, when another agent in the run asked.
+    /// Answer on this session; the server routes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub session_id: Option<SessionId>,
+    /// The asking agent, when another agent in the run asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<RequestingAgent>,
 }
 
 /// What a parked session waits on from outside.
@@ -667,6 +693,8 @@ pub fn pending_input(requested: &Value) -> PendingInput {
                 tool_call_id: id.to_string(),
                 questions: call["arguments"]["questions"].clone(),
                 expires_at: call["arguments"]["expires_at"].as_str().map(str::to_string),
+                session_id: None,
+                agent: None,
             });
         } else if let Some(request) =
             ToolApprovalRequired::from_request_call(id, name, &call["arguments"])
@@ -681,6 +709,8 @@ pub fn pending_input(requested: &Value) -> PendingInput {
                 arguments_truncated: request.arguments_truncated,
                 risk: request.risk,
                 expires_at: request.expires_at,
+                session_id: None,
+                agent: None,
             });
         }
     }
@@ -710,6 +740,36 @@ pub async fn session_pending_input(
         .last()
         .map(|row| pending_input(&row.data))
         .unwrap_or_default())
+}
+
+/// What `session` waits on, plus, on a run's first session, what the agents it
+/// handed work to wait on (`knowledge/runtime-resources/agents-using-agents.md`).
+pub async fn run_pending_input(
+    db: &StorageBackend,
+    session: &SessionRow,
+) -> anyhow::Result<PendingInput> {
+    let mut pending = session_pending_input(db, session).await?;
+    let waiting = waiting_agents(
+        db,
+        session.org_id,
+        session.id,
+        session.parent_session_id.is_none(),
+    )
+    .await?;
+    for agent in waiting {
+        let mut theirs = pending_input(&agent.requested.data);
+        for question in &mut theirs.pending_questions {
+            question.session_id = Some(agent.session_id);
+            question.agent = agent.agent.clone();
+        }
+        for approval in &mut theirs.pending_approvals {
+            approval.session_id = Some(agent.session_id);
+            approval.agent = agent.agent.clone();
+        }
+        pending.pending_questions.extend(theirs.pending_questions);
+        pending.pending_approvals.extend(theirs.pending_approvals);
+    }
+    Ok(pending)
 }
 
 /// A message event's text parts. Commentary and messages with no text are

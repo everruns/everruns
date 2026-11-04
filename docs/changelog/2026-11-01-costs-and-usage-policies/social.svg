@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="560" viewBox="0 0 520 560">
+<rect x="20" y="30" width="480" height="440" fill="#0F1D45" stroke="#3A4766" stroke-width="2"/>
+<text x="40" y="62" font-family="Geist Mono" font-size="13" font-weight="400" fill="#A8B0BE" text-anchor="start">COSTS · AGENT · LAST 14 DAYS</text>
+<rect x="40.0" y="333.0" width="22" height="87.0" fill="#5B6B8F" opacity="0.9"/>
+<rect x="72.2" y="298.2" width="22" height="121.8" fill="#5B6B8F" opacity="0.9"/>
+<rect x="104.3" y="315.6" width="22" height="104.4" fill="#5B6B8F" opacity="0.9"/>
+<rect x="136.5" y="260.5" width="22" height="159.5" fill="#5B6B8F" opacity="0.9"/>
+<rect x="168.6" y="280.8" width="22" height="139.2" fill="#5B6B8F" opacity="0.9"/>
+<rect x="200.8" y="240.2" width="22" height="179.8" fill="#5B6B8F" opacity="0.9"/>
+<rect x="232.9" y="251.8" width="22" height="168.2" fill="#5B6B8F" opacity="0.9"/>
+<rect x="265.1" y="214.1" width="22" height="205.9" fill="#5B6B8F" opacity="0.9"/>
+<rect x="297.2" y="228.6" width="22" height="191.4" fill="#5B6B8F" opacity="0.9"/>
+<rect x="329.4" y="188.0" width="22" height="232.0" fill="#D4A43A" opacity="1"/>
+<rect x="361.5" y="153.2" width="22" height="266.8" fill="#D4A43A" opacity="1"/>
+<rect x="393.7" y="130.0" width="22" height="290.0" fill="#D4A43A" opacity="1"/>
+<rect x="425.8" y="205.4" width="22" height="214.6" fill="#5B6B8F" opacity="0.9"/>
+<rect x="458.0" y="269.2" width="22" height="150.8" fill="#5B6B8F" opacity="0.9"/>
+<line x1="40" y1="420" x2="480" y2="420" stroke="#3A4766" stroke-width="2"/>
+<line x1="40" y1="130.0" x2="480" y2="130.0" stroke="#D9534F" stroke-width="2" stroke-dasharray="8 6"/>
+<rect x="362" y="104.0" width="118" height="20" fill="#0A1636"/>
+<text x="476" y="119" font-family="Geist Mono" font-size="13" font-weight="400" fill="#D9534F" text-anchor="end">100% · stop</text>
+<line x1="40" y1="202.5" x2="480" y2="202.5" stroke="#D4A43A" stroke-width="2" stroke-dasharray="8 6"/>
+<rect x="362" y="176.5" width="118" height="20" fill="#0A1636"/>
+<text x="476" y="191.5" font-family="Geist Mono" font-size="13" font-weight="400" fill="#D4A43A" text-anchor="end">75% · ask</text>
+<rect x="20" y="470" width="300" height="70" fill="#0A1636" stroke="#D4A43A" stroke-width="2.5"/>
+<text x="38" y="498" font-family="Geist" font-size="17" font-weight="600" fill="#FFFFFF" text-anchor="start">Usage policy</text>
+<text x="38" y="522" font-family="Geist Mono" font-size="13" font-weight="400" fill="#A8B0BE" text-anchor="start">$20 / day · notify → ask → stop</text>
+<rect x="340" y="470" width="160" height="70" fill="#0A1636" stroke="#3A4766" stroke-width="2"/>
+<text x="358" y="498" font-family="Geist Mono" font-size="13" font-weight="400" fill="#A8B0BE" text-anchor="start">Today</text>
+<text x="358" y="526" font-family="Geist" font-size="22" font-weight="600" fill="#FFFFFF" text-anchor="start">$14.80</text>
+</svg>

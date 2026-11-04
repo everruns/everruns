@@ -1,5 +1,5 @@
 ---
-title: Agent Handoff
+title: Agents
 description: Delegate work to configured first-party agents with spawn_agent, as a background task, a blocking call, or an invited participant in the current session.
 appliesTo: [platform]
 ---
@@ -13,9 +13,12 @@ appliesTo: [platform]
 | **Risk** | High |
 | **Availability** | Experimental |
 
-Agent Handoff lets an agent hand work to other first-party Everruns agents.
-Each target is configured ahead of time with an agent and a harness, so the
-model can only pick from that list. The capability adds the `agent` target type
+The Agents capability (`agent_handoff`) lets an agent hand work to other
+first-party Everruns agents. The agents it can use are listed ahead of time,
+so the model can only pick from that list. In the UI, add them from the
+agent's **Agents** tab: link an existing agent, or create a new one there.
+Agents created there are exported and imported together with the agent that
+uses them. The capability adds the `agent` target type
 to the shared `spawn_agent` tool, the same dispatcher that
 [Sub Agents](/capabilities/sub-agents/) and
 [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) extend. The child runs as its own session, or joins
@@ -37,11 +40,7 @@ sessions that use the parent's own configuration, see
   "config": {
     "targets": [
       {
-        "id": "billing",
-        "name": "Billing agent",
-        "description": "Answers invoice and refund questions",
         "agent_id": "agent_...",
-        "harness_id": "harness_...",
         "required_connections": ["github"]
       }
     ]
@@ -51,11 +50,11 @@ sessions that use the parent's own configuration, see
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | Yes | Stable key the model passes as `target.id` |
-| `name` | Yes | Human-readable name, shown in the system prompt |
-| `description` | No | What the target does, shown in the system prompt |
 | `agent_id` | Yes | Public ID of the target agent |
-| `harness_id` | Yes | Public ID of the harness the target runs on |
+| `id` | No | Key the model passes as `target.id`; filled from the agent when saved |
+| `name` | No | Shown in the system prompt; filled from the agent's name when saved |
+| `description` | No | Shown in the system prompt; filled from the agent's description when saved |
+| `harness_id` | No | Harness to run the target on; defaults to the agent's current harness at hand-off time |
 | `required_connections` | No | Provider connections that must exist before the handoff starts |
 | `required_scopes` | No | Non-secret scope labels recorded for audit and resource metadata |
 
@@ -99,6 +98,61 @@ connection for one of those providers, `spawn_agent` returns a
 `connection_required` result naming the provider. The client collects the
 credentials through the Connections flow. The system prompt tells the agent
 never to ask for tokens in chat or pass them in tool arguments.
+
+### Approvals and questions
+
+When an agent the session handed work to needs an approval or asks a
+question, the person answers it in the conversation they started, not in the
+other agent's session. Chat and Playground show the card headed with that
+agent's name.
+
+Over the API, `GET /v1/sessions/{session_id}/run-requests` on the first
+session lists what the other agents wait on, each with the asking agent and
+its `session_id`. Answer with the usual
+`POST /v1/sessions/{session_id}/tool-approvals` or `…/question-answers` on
+either session: the first session routes the answer to the agent that asked.
+On the Agent Execution API, `pending_approvals` and `pending_questions` on the
+session include these requests with `agent` and `session_id`, and answers on
+the session are routed the same way. Only a person (or the API key holder)
+answers; another agent's message never approves.
+
+### Team folder
+
+Every agent in one run shares a `team/` folder in its files. What one agent
+writes there, the others can read straight away, and the files stay after the
+run ends. The routing agent is told to have each agent write its results under
+`team/<its name>/` and to pass file paths in its instructions instead of
+pasting long content.
+
+Each run gets its own folder: starting the same agent again starts with an
+empty one. A session that is not part of a run (an agent without this
+capability, on its own) has no team folder. The folder does not show up in
+the organization's Memory list.
+
+### Starting with a copy of the files
+
+By default an agent starts with its own files. Set a member's **Files** to
+**A copy of this agent's** on the Agents tab (or `"files": "copy"` on its
+target) and each hand-off starts with a copy of the handing-off session's
+files. The agent works on the copy; the originals stay as they were, and the
+results come back through the team folder.
+
+### Agents talking to each other
+
+Agents in one run can message each other while they work. Each has two
+tools:
+
+- `message_agent` posts a message. Set `to` to an agent's name and that agent
+  gets it in its own conversation; set `to` to `everyone` and every agent in
+  the run does. Without `to`, the message is only posted for others to read.
+- `read_run_conversation` reads the latest messages and lists the agents you
+  can message.
+
+The messages are kept in the team folder under `team/conversation/`, so you
+can read the whole exchange in the first session's Files. A message from
+another agent is always marked as such: it never counts as your answer to an
+approval or a question. A run stops accepting messages after 200, so two
+agents cannot keep answering each other forever.
 
 ## See also
 

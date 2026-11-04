@@ -1,33 +1,12 @@
-// MCP Apps views for Everruns' own MCP server (EVE-1122).
-//
-// See `knowledge/ui/mcp-apps.md`. Decisions:
-//
-// - **One implementation, the open standard.** ChatGPT, Codex and Claude all
-//   render MCP Apps (SEP-1865): a tool names a `ui://` template in
-//   `_meta.ui.resourceUri`, the host reads it with `resources/read`
-//   (`text/html;profile=mcp-app`) and feeds it the tool result over a
-//   postMessage JSON-RPC bridge. OpenAI's extensions ride on top as extra
-//   `_meta["openai/ui"]` keys that other hosts ignore, so nothing here branches
-//   on which host is calling. The view itself branches on the capabilities the
-//   host hands it in `ui/initialize` (can it proxy tool calls, open links, go
-//   fullscreen), never on a user agent.
-// - **Static templates, dynamic data.** The HTML is the same for every caller
-//   and carries no data, so it is safe to prefetch and cache. Data arrives as
-//   `structuredContent` from ordinary tool results.
-// - **The view is never the trust boundary.** Buttons ask the host to call an
-//   app-only tool on this server; the call arrives through `/mcp` with the
-//   user's own MCP credential and passes the same org resolution and command
-//   policy as any other call (THREAT[TM-MCP-004]). There is no side channel,
-//   no cookie, and nothing a cross-site request could ride.
-// - **Answers go through the existing pause-and-resume paths.** A question is
-//   resolved by the one shared `resolve_question_answers` operation, and an
-//   approval becomes the user's next message, exactly like a Slack click
-//   (`channels::slack::approvals`). The view adds a surface, not a protocol.
+mod bridge;
+pub(super) mod workspace;
+// MCP resources host the shared product UI through a source-checked bridge.
+// The frontend receives no credentials: app_read/app_write enter the existing
+// REST handlers with the authenticated MCP caller and resolved organization.
+// Host capabilities, not client names, govern links and display modes.
+// See knowledge/ui/mcp-apps.md and THREAT[TM-MCP-004].
 
-use super::{
-    AppState, ResolvedOrg, dispatch_command, form_elicitation, link_builder, mcp_ctx,
-    resource_error,
-};
+use super::{AppState, ResolvedOrg, dispatch_command, form_elicitation, link_builder, mcp_ctx};
 use crate::channels::slack::approvals::{ApprovalDecision, ApprovalPrompt, approval_prompt};
 use crate::domains::common::Command;
 use crate::domains::sessions::record::SessionStatus;
@@ -44,6 +23,8 @@ pub(super) const APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
 
 /// Template for a single session: status, transcript tail, question, approval.
 pub(super) const SESSION_VIEW_URI: &str = "ui://everruns/app/session";
+/// Template for one agent card.
+pub(super) const AGENT_VIEW_URI: &str = "ui://everruns/app/agent";
 /// Template for the home panel: agents, recent sessions, what waits on you.
 pub(super) const HOME_VIEW_URI: &str = "ui://everruns/app/home";
 
@@ -72,12 +53,6 @@ const VIEW_MESSAGE_LIMIT: usize = 12;
 /// Events read to build a view. Covers the transcript tail and a pending
 /// approval raised in the last turn.
 const VIEW_EVENT_LOOKBACK: i32 = 80;
-/// Sessions listed on the home panel.
-const HOME_SESSION_LIMIT: u32 = 10;
-/// Agents listed on the home panel.
-const HOME_AGENT_LIMIT: u32 = 25;
-
-const APP_HTML: &str = include_str!("app.html");
 
 /// 20x20 monochrome sidebar icon, `currentColor` so it follows the host theme
 /// (OpenAI extensions spec, "Icon Guidelines").
@@ -120,6 +95,21 @@ pub(super) fn is_app_tool(name: &str) -> bool {
 /// `_meta` for a tool descriptor in `tools/list`, or `None` for tools with no
 /// view.
 pub(super) fn tool_meta(name: &str) -> Option<Value> {
+    if let Some(uri) = match name {
+        "harness_get_card" => Some(workspace::HARNESS_URI),
+        "capability_get_card" => Some(workspace::CAPABILITY_URI),
+        "knowledge_get_card" => Some(workspace::KNOWLEDGE_URI),
+        "session_open" => Some(SESSION_VIEW_URI),
+        _ => None,
+    } {
+        return Some(json!({"ui":{"resourceUri":uri}}));
+    }
+    if matches!(name, "app_read" | "app_write" | "app_bootstrap") {
+        return Some(json!({"ui":{"visibility":["app"]}}));
+    }
+    if name == "agent_get_card" {
+        return Some(json!({ "ui": { "resourceUri": AGENT_VIEW_URI } }));
+    }
     if name == HOME_TOOL {
         return Some(json!({
             "ui": { "resourceUri": HOME_VIEW_URI },
@@ -156,21 +146,15 @@ pub(super) fn server_extension() -> Value {
     json!({ "mimeTypes": [APP_MIME_TYPE] })
 }
 
-/// Security and rendering metadata for a template.
-///
-/// The view needs no network at all: it reaches the server only through the
-/// host. An empty CSP declaration therefore asks for the spec's restrictive
-/// default, and the document repeats it in a `<meta>` tag for hosts that only
-/// sandbox.
+/// Presentation hints. Resources/read adds the deployment-specific frame CSP.
 fn resource_meta(uri: &str) -> Value {
-    let preferred = if uri == HOME_VIEW_URI {
+    let preferred = if matches!(uri, HOME_VIEW_URI | SESSION_VIEW_URI) {
         "fullscreen"
     } else {
         "inline"
     };
     json!({
         "ui": {
-            "csp": { "connectDomains": [], "resourceDomains": [] },
             "prefersBorder": true,
         },
         "openai/ui": {
@@ -184,15 +168,31 @@ fn resource_meta(uri: &str) -> Value {
 pub(super) fn resource_list_entries() -> Vec<Value> {
     [
         (
-            SESSION_VIEW_URI,
-            "Everruns session",
-            "Live view of one session: status, recent messages, and any question or approval waiting on the user.",
+            workspace::HARNESS_URI,
+            "Everruns harness",
+            "A harness card.",
         ),
         (
-            HOME_VIEW_URI,
-            "Everruns home",
-            "Agents, recent sessions, and everything waiting on the user.",
+            workspace::CAPABILITY_URI,
+            "Everruns capability",
+            "A capability card.",
         ),
+        (
+            workspace::KNOWLEDGE_URI,
+            "Everruns knowledge",
+            "A knowledge collection card.",
+        ),
+        (
+            AGENT_VIEW_URI,
+            "Everruns agent",
+            "Agent identity, channels, and invocation activity.",
+        ),
+        (
+            SESSION_VIEW_URI,
+            "Everruns session",
+            "Full Session UI, including Trace, Approvals, Work, Events, Files and Cost.",
+        ),
+        (HOME_VIEW_URI, "Everruns home", "Full organization Home UI."),
     ]
     .into_iter()
     .map(|(uri, name, description)| {
@@ -207,21 +207,6 @@ pub(super) fn resource_list_entries() -> Vec<Value> {
     .collect()
 }
 
-/// `resources/read` contents for a template URI, or `None` for other URIs.
-pub(super) fn read_resource(uri: &str) -> Option<Value> {
-    if uri != SESSION_VIEW_URI && uri != HOME_VIEW_URI {
-        return None;
-    }
-    Some(json!({
-        "contents": [{
-            "uri": uri,
-            "mimeType": APP_MIME_TYPE,
-            "text": APP_HTML,
-            "_meta": resource_meta(uri),
-        }]
-    }))
-}
-
 /// Run one of this module's tools and return its structured result.
 pub(super) async fn call_tool(
     name: &str,
@@ -230,7 +215,7 @@ pub(super) async fn call_tool(
     state: &AppState,
 ) -> Result<Value, String> {
     match name {
-        HOME_TOOL => home(org, state).await,
+        HOME_TOOL => Ok(json!({"view":{"kind":"home"},"organization_id":org.public_id})),
         SESSION_VIEW_TOOL => session_view(&session_id_arg(args)?, org, state).await,
         ANSWER_TOOL => answer_question(args, org, state).await,
         APPROVAL_TOOL => decide_approval(args, org, state).await,
@@ -249,103 +234,6 @@ fn session_id_arg(args: &Value) -> Result<SessionId, String> {
 
 fn policy_error(error: everruns_core::PolicyError) -> String {
     error.to_string()
-}
-
-// ---------------------------------------------------------------------------
-// Home
-// ---------------------------------------------------------------------------
-
-async fn home(org: &ResolvedOrg, state: &AppState) -> Result<Value, String> {
-    let ctx = mcp_ctx(org, state);
-    let agents = crate::domains::agents::ListAgents {
-        search: None,
-        include_archived: false,
-        offset: Some(0),
-        limit: Some(HOME_AGENT_LIMIT),
-    }
-    .run(&ctx)
-    .await
-    .map_err(|e| resource_error("agents", e))?;
-
-    let agent_names: std::collections::HashMap<String, String> = agents
-        .data
-        .iter()
-        .map(|agent| {
-            (
-                agent.public_id.to_string(),
-                agent
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| agent.name.clone()),
-            )
-        })
-        .collect();
-
-    let sessions = dispatch_command(
-        "list_sessions",
-        json!({ "mine": true, "order": "last_activity", "limit": HOME_SESSION_LIMIT }),
-        org,
-        state,
-    )
-    .await?;
-
-    let caller = Caller::from(org);
-    let mut session_items = Vec::new();
-    for session in sessions["data"].as_array().into_iter().flatten() {
-        let Some(raw_id) = session["id"].as_str() else {
-            continue;
-        };
-        let Ok(session_id) = raw_id.parse::<SessionId>() else {
-            continue;
-        };
-        let status = normalize_status(session["status"].as_str().unwrap_or_default());
-        // Only a turn that stopped can be waiting on the user, so running
-        // sessions skip the event read.
-        let pending = if matches!(status.as_str(), "idle" | "waiting_for_tool_results") {
-            pending_input(&caller, session_id, &status, state)
-                .await
-                .unwrap_or(None)
-        } else {
-            None
-        };
-        let agent_id = session["agent_id"].as_str().map(str::to_string);
-        session_items.push(json!({
-            "session_id": raw_id,
-            "title": session["title"],
-            "status": status,
-            "agent_id": agent_id,
-            "agent_name": agent_id.as_ref().and_then(|id| agent_names.get(id)),
-            "pending": pending.map(|pending| json!({ "kind": pending["kind"] })),
-        }));
-    }
-
-    let agent_items: Vec<Value> = agents
-        .data
-        .iter()
-        .map(|agent| {
-            json!({
-                "id": agent.public_id.to_string(),
-                "name": agent.name,
-                "display_name": agent.display_name,
-                "description": agent.description,
-            })
-        })
-        .collect();
-
-    Ok(json!({
-        "organization": { "id": org.public_id, "name": org.name },
-        "agents": agent_items,
-        "sessions": session_items,
-    }))
-}
-
-/// Session status as the view vocabulary spells it. The JSON enum and the
-/// `Display` form disagree on the waiting state; the view only knows one.
-fn normalize_status(status: &str) -> String {
-    match status {
-        "waitingfortoolresults" => "waiting_for_tool_results".to_string(),
-        other => other.to_string(),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -407,6 +295,7 @@ pub(super) async fn session_view(
     };
 
     let mut view = json!({
+        "organization_id": org.public_id,
         "session_id": session_id.to_string(),
         "title": session.title,
         "status": status,
@@ -711,7 +600,8 @@ async fn decide_approval(
     dispatch_command(
         "create_message",
         json!({
-            "session_id": session_id.to_string(),
+            "organization_id": org.public_id,
+        "session_id": session_id.to_string(),
             "message": {
                 "role": "user",
                 "content": [{ "type": "text", "text": decision.as_message(&pending.action) }]
@@ -770,6 +660,20 @@ mod tests {
     }
 
     #[test]
+    fn agent_card_has_a_readable_app_template() {
+        let meta = tool_meta("agent_get_card").expect("agent cards must open an MCP App");
+        let uri = meta["ui"]["resourceUri"].as_str().unwrap();
+        let read = workspace::resource(uri, "https://app.everruns.com")
+            .expect("the advertised template must be readable");
+        assert_eq!(read["contents"][0]["mimeType"], APP_MIME_TYPE);
+        assert!(
+            resource_list_entries()
+                .iter()
+                .any(|entry| entry["uri"] == uri)
+        );
+    }
+
+    #[test]
     fn home_is_a_global_and_thread_entrypoint() {
         let meta = tool_meta(HOME_TOOL).unwrap();
         assert_eq!(meta["ui"]["resourceUri"], HOME_VIEW_URI);
@@ -787,28 +691,38 @@ mod tests {
     }
 
     #[test]
-    fn templates_are_mcp_app_resources_without_network_access() {
-        for uri in [SESSION_VIEW_URI, HOME_VIEW_URI] {
-            let read = read_resource(uri).unwrap();
+    fn templates_embed_only_the_configured_product_origin() {
+        for uri in [SESSION_VIEW_URI, HOME_VIEW_URI, AGENT_VIEW_URI] {
+            let read = workspace::resource(uri, "https://app.everruns.com").unwrap();
             let content = &read["contents"][0];
             assert_eq!(content["mimeType"], APP_MIME_TYPE);
             assert_eq!(content["_meta"]["ui"]["csp"]["connectDomains"], json!([]));
             let html = content["text"].as_str().unwrap();
-            assert!(html.contains("connect-src 'none'"));
+            assert_eq!(
+                content["_meta"]["ui"]["csp"]["frameDomains"],
+                json!(["https://app.everruns.com"])
+            );
+            assert!(html.contains("https://app.everruns.com/mcp-app"));
             assert!(html.len() < super::super::cards::MAX_CARD_BYTES);
         }
-        assert!(read_resource("ui://everruns/agent/agent_1/card").is_none());
-        assert_eq!(resource_list_entries().len(), 2);
+        assert!(
+            workspace::resource(
+                "ui://everruns/agent/agent_1/card",
+                "https://app.everruns.com"
+            )
+            .is_none()
+        );
+        assert_eq!(resource_list_entries().len(), 6);
     }
 
     #[test]
     fn template_never_writes_server_data_as_html() {
         // The view renders agent- and user-authored text. `innerHTML` would
         // make every message an XSS vector inside the host's sandbox.
-        assert!(!APP_HTML.contains("innerHTML"));
-        assert!(!APP_HTML.contains("outerHTML"));
-        assert!(!APP_HTML.contains("insertAdjacentHTML"));
-        assert!(!APP_HTML.contains("document.write"));
+        assert!(!include_str!("workspace.html").contains("innerHTML"));
+        assert!(!include_str!("workspace.html").contains("outerHTML"));
+        assert!(!include_str!("workspace.html").contains("insertAdjacentHTML"));
+        assert!(!include_str!("workspace.html").contains("document.write"));
     }
 
     #[test]
@@ -851,14 +765,5 @@ mod tests {
         assert_eq!(tail.len(), VIEW_MESSAGE_LIMIT);
         assert_eq!(tail.last().unwrap()["text"], "m19");
         assert_eq!(tail.first().unwrap()["text"], "m8");
-    }
-
-    #[test]
-    fn waiting_status_is_normalized() {
-        assert_eq!(
-            normalize_status("waitingfortoolresults"),
-            "waiting_for_tool_results"
-        );
-        assert_eq!(normalize_status("idle"), "idle");
     }
 }

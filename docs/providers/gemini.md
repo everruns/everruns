@@ -55,7 +55,10 @@ config.reasoning_effort = Some(ReasoningEffort::High);
 
 Everruns follows continuation tokens automatically, streams text and reasoning
 across the hops, and returns one completion. Usage sums the final counts from
-each hop, including billed thinking and repeated input. Context-window pressure
+each hop, including billed thinking and repeated input. Tool-use prompt tokens
+reported for provider-hosted tools count as additional uncached input; cached
+tokens remain a subset of the ordinary prompt. Repeated cumulative usage frames
+within a hop are counted once. Context-window pressure
 is estimated from the assembled messages, rather than those summed billing counts.
 
 With native Google Search enabled, citations retain the sources and supported
