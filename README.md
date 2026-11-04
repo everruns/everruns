@@ -127,6 +127,18 @@ and, where feasible, test coverage.
 - [Security testing](./knowledge/security/security-testing.md) — threat-model tests, failure injection, DeepSec scanning, and supply-chain checks
 - [Security policy](./SECURITY.md) — report a vulnerability
 
+## How can I support this project?
+
+Everruns is a free, open-source hobby project. There are many ways to help:
+
+- Use Everruns and tell us how it went on [Discord](https://everruns.com/discord/everruns) or by email ([mykhailo@everruns.com](mailto:mykhailo@everruns.com))
+- Report bugs and rough edges in [GitHub Issues](https://github.com/everruns/everruns/issues)
+- Star the repository, it helps other people find it
+- Write a blog post or share the agent you built
+- Help with the [documentation](https://everruns.com/docs/) by asking questions or sending PRs
+- Contribute code (see below, and say hi on [Discord](https://everruns.com/discord/everruns))
+- Talk about Everruns around you
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and
