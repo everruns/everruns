@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut event_types = Vec::new();
     while let Some(event) = events.recv().await? {
         event_types.push(event.event_type().to_string());
-        if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+        if event.kind.is_terminal() {
             break;
         }
     }

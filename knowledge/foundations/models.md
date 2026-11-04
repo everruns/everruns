@@ -149,13 +149,22 @@ When `controls.reasoning.effort` is set, reasoning models generate chain-of-thou
 2. `session.model_id` - session-level override
 3. `agent.default_model_id` - agent's default model
 4. Harness default model
-5. System default model - fallback if no model is configured above
+5. Organization Chat default, only for the built-in Everruns Chat agent
+6. Organization agents/sessions default - fallback if no model is configured above
 
 `session.model_id` holds only a model someone chose for the session (at create,
 or later through `PATCH /v1/sessions/{id}`; `null` clears it). It never copies
 the agent or harness default: the fallback is resolved per turn, so changing the
 agent's default model reaches existing sessions, which is how an operator moves
 a run off a model whose provider is limiting it.
+
+The Chat setting is independent of the agents/sessions default. An unset Chat
+setting inherits the general default. It never affects user-agent Work Chat
+channels, and explicit session, agent, and harness selections still win.
+Organization owners and admins select an enabled shared chat model with an
+available provider and tool support at **Settings → Chat**. Personal provider
+accounts cannot become organization defaults. Default binding changes are read
+across server replicas without retaining an hour-long cached organization binding.
 
 ### Image
 
@@ -183,11 +192,11 @@ When messages containing `image_file` content parts are sent to an LLM, the syst
 3. Convert to `data:` URLs
 4. Each LLM provider formats for its vision API
 
-**gRPC Transfer:**
+**Transfer:**
 
-Image data transferred via gRPC with 150MB message limit (100MB raw + ~33% encoding overhead).
-
-> **Warning:** The 150MB gRPC limit is a temporary workaround. Future: presigned URLs, streaming, or direct storage access. Revert to default 4MB when implemented.
+The resolve RPC returns metadata and a short-lived signed path; the worker
+fetches the bytes over HTTP on the same worker endpoint, never inside a gRPC
+message (`crates/server/src/api/internal_blobs.rs`).
 
 **Error Handling:**
 - Missing images: Replaced with `[Image not found: {id}]`
@@ -266,6 +275,7 @@ Key design points:
 - `enabled` flag: only enabled models appear in UI model pickers (Chat UI). All models remain available via API regardless of enabled status. See `crates/server/src/setup/seed/mod.rs` for default enabled models.
 - Model/provider assignment is editable so an existing model config can be moved to a different configured provider without deleting and recreating it.
 - Organization default model: stored in `organization_settings.default_model_id` (not on the model itself). Auto-elects a new default from enabled models if the current default is disabled or deleted.
+- Organization Small model: independent shared chat selection for lightweight consumers. Unset inherits the consumer's session model; unavailable selections never auto-elect another account. See [Session titles](../runtime-resources/session-titles.md).
 - Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.
 - First-run intelligence bootstrap: a provider gaining a credential (create, update, or a manual model sync) discovers its models and then, when the org has no enabled chat model, switches on a shortlist of the provider's catalog-known tool-calling models, stars the strongest few, and elects `organization_settings.default_model_id` when none resolves. Discovery alone creates models disabled and elects nothing, which left a freshly onboarded org with a keyed provider and a chat that could not resolve a model. The bootstrap only ever adds, so an org that deliberately disabled everything is never overridden. Ranking is curated-family first, then newest release, then fewest missing agent traits: the newest flagship must not become the default the day it ships, so OpenAI orgs land on GPT-6 Luna (the platform fallback) rather than the pricier GPT-6.1 Sol or Astra. See `ModelService::bootstrap_intelligence` in `crates/server/src/domains/models/service/mod.rs` and `provision_provider_models` in `crates/server/src/domains/providers/commands.rs`.
 
@@ -295,7 +305,7 @@ Read-only metadata describing model capabilities, costs, and limits. Computed at
 
 See `crates/contracts/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
 
-Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-5.2-2025-12-11" → "gpt-5.2").
+Profiles match provider type and wire model ID with version normalization. Gateway-qualified IDs reuse a canonical profile only through explicit registered aliases; unknown names do not inherit guessed prices. The [registry](../../crates/contracts/src/model_profile_data/profiles.rs) owns those identities.
 
 ### Model Discovery
 

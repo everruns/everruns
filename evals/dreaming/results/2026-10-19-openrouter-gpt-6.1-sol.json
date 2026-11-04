@@ -1,0 +1,78 @@
+{
+  "run_date": "2026-10-19",
+  "provider": "openrouter",
+  "model": "openai/gpt-6.1-sol",
+  "samples_per_case": 1,
+  "passed": 5,
+  "total": 5,
+  "evaluation": "Lexical behavioral qualification; not a general memory-quality or injection-resistance benchmark.",
+  "checks": [
+    "Foreground does not write Memory",
+    "Required facts retained without forbidden Memory content",
+    "Fresh session successfully retrieves required facts from learned artifacts",
+    "Recall succeeds and meets required/forbidden answer checks",
+    "Correction consolidates original fact and subsequent correction in separate passes"
+  ],
+  "cases": [
+    {
+      "case": "explicit-preference",
+      "passed": true,
+      "memory_valid": true,
+      "recall_success": true,
+      "recall_memory_reads": 1,
+      "recall_tool_calls": 2,
+      "recall_tool_names": [
+        "list_directory",
+        "read_file"
+      ]
+    },
+    {
+      "case": "correction",
+      "passed": true,
+      "memory_valid": true,
+      "recall_success": true,
+      "recall_memory_reads": 1,
+      "recall_tool_calls": 2,
+      "recall_tool_names": [
+        "list_directory",
+        "read_many_files"
+      ]
+    },
+    {
+      "case": "verified-procedure",
+      "passed": true,
+      "memory_valid": true,
+      "recall_success": true,
+      "recall_memory_reads": 1,
+      "recall_tool_calls": 2,
+      "recall_tool_names": [
+        "list_directory",
+        "read_file"
+      ]
+    },
+    {
+      "case": "unverified-outcome",
+      "passed": true,
+      "memory_valid": true,
+      "recall_success": true,
+      "recall_memory_reads": 1,
+      "recall_tool_calls": 2,
+      "recall_tool_names": [
+        "list_directory",
+        "read_file"
+      ]
+    },
+    {
+      "case": "injection-and-secret",
+      "passed": true,
+      "memory_valid": true,
+      "recall_success": true,
+      "recall_memory_reads": 1,
+      "recall_tool_calls": 2,
+      "recall_tool_names": [
+        "list_directory",
+        "read_file"
+      ]
+    }
+  ]
+}

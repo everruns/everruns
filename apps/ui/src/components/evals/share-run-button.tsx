@@ -4,6 +4,7 @@
 // returned once by the server (stored only hashed), so the link is shown right
 // after minting; afterward we only know whether a link is active, not its value.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRunShare, revokeRunShare, getRunShareStatus } from "@/lib/api/evals";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Share2, Copy, Check } from "lucide-react";
 
 export function ShareRunButton({ evalId, runId }: { evalId: string; runId: string }) {
+  const ui = useUiTranslations();
   const queryClient = useQueryClient();
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -51,7 +53,7 @@ export function ShareRunButton({ evalId, runId }: { evalId: string; runId: strin
       <div className="flex gap-2">
         <Button variant="outline" size="sm" onClick={() => mint.mutate()} disabled={mint.isPending}>
           <Share2 className="w-4 h-4 mr-2" />
-          {active || link ? "Regenerate link" : "Share"}
+          {active || link ? ui("Regenerate link") : ui("Share")}
         </Button>
         {(active || link) && (
           <Button
@@ -60,7 +62,7 @@ export function ShareRunButton({ evalId, runId }: { evalId: string; runId: strin
             onClick={() => revoke.mutate()}
             disabled={revoke.isPending}
           >
-            Revoke
+            {ui("Revoke")}
           </Button>
         )}
       </div>
@@ -69,18 +71,18 @@ export function ShareRunButton({ evalId, runId }: { evalId: string; runId: strin
           <input
             readOnly
             value={link}
-            aria-label="Public share link"
+            aria-label={ui("Public share link")}
             onFocus={(e) => e.currentTarget.select()}
             className="w-72 rounded border bg-muted px-2 py-1 text-xs"
           />
-          <Button variant="ghost" size="icon" onClick={copy} aria-label="Copy share link">
+          <Button variant="ghost" size="icon" onClick={copy} aria-label={ui("Copy share link")}>
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
           </Button>
         </div>
       )}
       {link && (
         <p className="text-[11px] text-muted-foreground">
-          Anyone with this link can view this run read-only.
+          {ui("Anyone with this link can view this run read-only.")}
         </p>
       )}
     </div>

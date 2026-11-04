@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: Edit-Tab Agent Checks"
-description: "Verifies that advisory agent checks are discoverable and actionable while editing, while Preview contains only the rendered system prompt, tools, and initial files."
+description: "Verifies that advisory agent checks are discoverable and actionable while editing, while Preview contains only the rendered system prompt, tools, and initial files when a filesystem is enabled."
 tags:
   - everruns
   - test-case
@@ -13,7 +13,7 @@ tags:
 ## Description
 
 Verifies that advisory agent checks are discoverable and actionable while editing, while Preview
-contains only the rendered system prompt, tools, and initial files.
+contains only the rendered system prompt, tools, and initial files when a filesystem is enabled.
 
 ## Preconditions
 
@@ -36,7 +36,7 @@ contains only the rendered system prompt, tools, and initial files.
 5. Select Analyze and wait for the deeper AI review to finish.
 6. If a finding proposes a system-prompt replacement, select Apply fix and confirm the editor text changes while the agent remains unsaved.
 7. Select Preview.
-8. Confirm Preview shows Full System Prompt, Available Tools, and Initial Files without Checks or Health check cards.
+8. Confirm Preview shows Full System Prompt and Available Tools, plus the Files card when the agent has a filesystem, without Checks or Health check cards.
 9. Resize to a narrow viewport and confirm the shared columns stack Agent Details before
    Capabilities, Checks, and Health check; repeat the Edit/Preview switch.
 
@@ -46,5 +46,5 @@ contains only the rendered system prompt, tools, and initial files.
 - Built-in findings refresh from the current unsaved configuration.
 - Analyze exposes a loading state and then findings or a clear error without losing built-in findings.
 - Apply fix updates only the authored form state; saving remains explicit.
-- Preview is limited to the resolved system prompt, tools, and initial files.
+- Preview is limited to the resolved system prompt, tools, and initial files when a filesystem is enabled.
 - Cards and actions remain usable without horizontal clipping at narrow widths.

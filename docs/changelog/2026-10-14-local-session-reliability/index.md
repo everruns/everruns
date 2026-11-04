@@ -3,6 +3,7 @@ title: "More reliable Framework agent sessions"
 description: "Local background tasks recover after owner loss, MCP discovery pauses failed authentication, and provider tool calls preserve optional arguments."
 date: "2026-10-14"
 products: [framework]
+release: "0.49.0"
 kind: fix
 significance: notable
 surfaces: [code, agent]

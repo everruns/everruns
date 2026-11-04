@@ -243,6 +243,7 @@ impl CodingWorkspace {
     }
 
     /// Attach durable local session state, the workspace backend, and policy.
+    #[allow(deprecated)] // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
     pub fn configure_agent(&self, builder: AgentBuilder, policy: WorkspacePolicy) -> AgentBuilder {
         builder
             .local(self.local.clone())

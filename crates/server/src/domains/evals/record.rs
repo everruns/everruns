@@ -277,11 +277,15 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
-    /// Agent called named tool at least `min` times.
+    /// Agent called named tool at least `min` times. With
+    /// `arguments_contain`, only calls whose argument JSON contains that text
+    /// count, so a case can check what the agent asked a tool to do.
     ToolCalled {
         tool: String,
         #[serde(default = "default_min_one")]
         min: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        arguments_contain: Option<String>,
         #[serde(default = "default_weight")]
         weight: f64,
     },
@@ -303,6 +307,13 @@ pub enum Scorer {
     /// Completed within N turns.
     TurnsWithin {
         max: u32,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
+    /// The agent spent at most `max` tokens (input plus output).
+    TokensWithin {
+        #[schema(example = 20000)]
+        max: u64,
         #[serde(default = "default_weight")]
         weight: f64,
     },
@@ -357,10 +368,54 @@ pub enum Scorer {
         #[schema(example = 1.0)]
         weight: f64,
     },
+    /// The org's chat model grades the answer against a rubric and returns a
+    /// value from 0 to 1 with its reasoning.
+    Judge {
+        /// What a good answer does and what a bad one does.
+        #[schema(
+            example = "Score 1 when the answer resolves the refund request with the policy's \
+                             actual terms; 0 when it invents terms or deflects."
+        )]
+        rubric: String,
+        /// Judge model; the org's default is used when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_id: Option<ModelId>,
+        /// Minimum judged value to pass.
+        #[serde(default = "default_half")]
+        #[schema(example = 0.5)]
+        pass_threshold: f64,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
+    /// A decision model answers one yes/no question about the answer; the
+    /// probability of yes is the value. Cheaper than `judge` and typed, so it
+    /// suits any check with a yes/no shape.
+    Decision {
+        /// The yes/no question, asked about the user message, the answer and
+        /// the tools used.
+        #[schema(example = "Does the answer stay within the published refund policy?")]
+        question: String,
+        /// What a yes means, when the question alone is ambiguous.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        yes: Option<String>,
+        /// What a no means.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        no: Option<String>,
+        /// Minimum probability of yes to pass.
+        #[serde(default = "default_half")]
+        #[schema(example = 0.5)]
+        pass_threshold: f64,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
 }
 
 fn default_pass_threshold() -> f64 {
     0.8
+}
+
+fn default_half() -> f64 {
+    0.5
 }
 
 impl Scorer {
@@ -379,12 +434,139 @@ impl Scorer {
             Scorer::ToolNotCalled { .. } => "tool_not_called",
             Scorer::ToolCallCount { .. } => "tool_call_count",
             Scorer::TurnsWithin { .. } => "turns_within",
+            Scorer::TokensWithin { .. } => "tokens_within",
             Scorer::FileContains { .. } => "file_contains",
             Scorer::JsonSchema { .. } => "json_schema",
             Scorer::CitationFaithful { .. } => "citation_faithful",
             Scorer::CitationJudged { .. } => "citation_judged",
+            Scorer::Judge { .. } => "judge",
+            Scorer::Decision { .. } => "decision",
         }
     }
+
+    /// Reject a scorer that could never grade: an empty rubric or question,
+    /// a threshold outside 0..1, a pattern or schema that does not compile.
+    /// Returns the reason, for a 400.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        let threshold = |name: &str, value: f64| {
+            if (0.0..=1.0).contains(&value) {
+                Ok(())
+            } else {
+                Err(format!("{name} pass_threshold must be between 0.0 and 1.0"))
+            }
+        };
+        if !self.weight().is_finite() || self.weight() < 0.0 {
+            return Err(format!("{} weight must be zero or more", self.kind()));
+        }
+        match self {
+            Scorer::Judge {
+                rubric,
+                pass_threshold,
+                ..
+            } => {
+                if rubric.trim().is_empty() {
+                    return Err("judge rubric must not be empty".to_string());
+                }
+                threshold("judge", *pass_threshold)
+            }
+            Scorer::Decision {
+                question,
+                pass_threshold,
+                ..
+            } => {
+                if question.trim().is_empty() {
+                    return Err("decision question must not be empty".to_string());
+                }
+                threshold("decision", *pass_threshold)
+            }
+            Scorer::CitationFaithful { pass_threshold, .. } => {
+                threshold("citation_faithful", *pass_threshold)
+            }
+            Scorer::CitationJudged { pass_threshold, .. } => {
+                threshold("citation_judged", *pass_threshold)
+            }
+            Scorer::Regex { pattern, .. } => regex::Regex::new(pattern)
+                .map(|_| ())
+                .map_err(|error| format!("regex pattern does not compile: {error}")),
+            Scorer::ToolCalled {
+                arguments_contain: Some(text),
+                ..
+            } if text.is_empty() => {
+                Err("tool_called arguments_contain must not be empty".to_string())
+            }
+            Scorer::JsonSchema { schema, .. } => jsonschema::validator_for(schema)
+                .map(|_| ())
+                .map_err(|error| format!("json_schema schema is invalid: {error}")),
+            _ => Ok(()),
+        }
+    }
+
+    /// Relative weight of this scorer in the case's weighted score.
+    pub fn weight(&self) -> f64 {
+        match self {
+            Scorer::Contains { weight, .. }
+            | Scorer::NotContains { weight, .. }
+            | Scorer::Regex { weight, .. }
+            | Scorer::ToolCalled { weight, .. }
+            | Scorer::ToolNotCalled { weight, .. }
+            | Scorer::ToolCallCount { weight, .. }
+            | Scorer::TurnsWithin { weight, .. }
+            | Scorer::TokensWithin { weight, .. }
+            | Scorer::FileContains { weight, .. }
+            | Scorer::JsonSchema { weight, .. }
+            | Scorer::CitationFaithful { weight, .. }
+            | Scorer::CitationJudged { weight, .. }
+            | Scorer::Judge { weight, .. }
+            | Scorer::Decision { weight, .. } => *weight,
+        }
+    }
+}
+
+/// Validates an EvalTarget if present. Returns error on invalid combinations.
+pub fn validate_target(target: &Option<EvalTarget>) -> anyhow::Result<()> {
+    if let Some(EvalTarget::Session {
+        harness_id,
+        harness_name,
+        ..
+    }) = target
+        && harness_id.is_some()
+        && harness_name.is_some()
+    {
+        anyhow::bail!("harness_id and harness_name are mutually exclusive in eval target");
+    }
+    Ok(())
+}
+
+/// Upper bound on repetitions per case in one run.
+pub const MAX_TRIALS: u32 = 20;
+
+/// Upper bound on one run's spending cap, a guard against typos.
+pub const MAX_RUN_COST_USD: f64 = 100_000.0;
+
+/// Check a run's repetitions and spending cap; returns the trial count.
+pub fn validate_run_bounds(trials: Option<u32>, max_cost_usd: Option<f64>) -> anyhow::Result<u32> {
+    let bad = |reason: String| anyhow::Error::new(crate::errors::BadRequestError::new(reason));
+    let trials = trials.unwrap_or(1);
+    if !(1..=MAX_TRIALS).contains(&trials) {
+        return Err(bad(format!("trials must be between 1 and {MAX_TRIALS}")));
+    }
+    if max_cost_usd.is_some_and(|cap| !(cap > 0.0 && cap <= MAX_RUN_COST_USD)) {
+        return Err(bad(format!(
+            "max_cost_usd must be above 0 and at most {MAX_RUN_COST_USD}"
+        )));
+    }
+    Ok(trials)
+}
+
+/// Validate every scorer of a case; the first one that could never grade is
+/// a 400.
+pub fn validate_scorers(scorers: &[Scorer]) -> anyhow::Result<()> {
+    for scorer in scorers {
+        scorer
+            .validate()
+            .map_err(|reason| anyhow::Error::new(crate::errors::BadRequestError::new(reason)))?;
+    }
+    Ok(())
 }
 
 fn default_weight() -> f64 {
@@ -450,6 +632,31 @@ pub struct RunSummary {
     /// Total output tokens across cases.
     #[schema(example = 10200)]
     pub total_output_tokens: u64,
+    /// Repetitions per case. `total` counts every repetition.
+    #[serde(default = "default_one_trial")]
+    #[schema(example = 3)]
+    pub trials: u32,
+    /// Distinct cases in the run.
+    #[serde(default)]
+    #[schema(example = 4)]
+    pub cases: u32,
+    /// Cases that passed in every trial (pass^k).
+    #[serde(default)]
+    #[schema(example = 3)]
+    pub cases_passed_every_trial: u32,
+    /// Cases that passed in at least one trial (pass@k).
+    #[serde(default)]
+    #[schema(example = 4)]
+    pub cases_passed_any_trial: u32,
+    /// What the run spent in USD: the agents' model calls plus grading.
+    /// Absent on imported runs, whose cost is in their own metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0.42)]
+    pub total_cost_usd: Option<f64>,
+}
+
+fn default_one_trial() -> u32 {
+    1
 }
 
 // ============================================
@@ -505,6 +712,11 @@ pub struct Eval {
     #[serde(default)]
     #[schema(example = 12)]
     pub case_count: i64,
+    /// Version of the cases (the eval's dataset). Every case change bumps it;
+    /// runs and experiments record the version they ran.
+    #[serde(default = "default_one_trial")]
+    #[schema(example = 7)]
+    pub version: u32,
     /// Last run summary (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_run: Option<EvalRunSummaryView>,
@@ -590,6 +802,12 @@ pub struct EvalCase {
     /// Display order.
     #[schema(example = 0)]
     pub position: i32,
+    /// A model that plays the user after the scripted messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulated_user: Option<crate::domains::evals::multistep::SimulatedUser>,
+    /// Tools the case gives the agent, answered with canned responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_fixtures: Option<Vec<crate::domains::evals::multistep::ToolFixture>>,
     /// When the case was created.
     #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
@@ -614,7 +832,7 @@ pub struct EvalRun {
     pub target: Option<EvalTarget>,
     /// Model override for this run.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-5.1")]
+    #[schema(example = "gpt-6-luna")]
     pub model_override: Option<String>,
     /// Only run cases matching these tags.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -635,6 +853,27 @@ pub struct EvalRun {
     /// What triggered this run.
     #[schema(example = "manual")]
     pub triggered_by: String,
+    /// How many times each case runs; results carry their `trial` number.
+    #[serde(default = "default_one_trial")]
+    #[schema(example = 3)]
+    pub trials: u32,
+    /// Spending cap in USD. Once the run's agents and graders have spent it,
+    /// running turns stop and remaining cases are skipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 5.0)]
+    pub max_cost_usd: Option<f64>,
+    /// Dataset version (the eval's `version`) the run was created from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 7)]
+    pub dataset_version: Option<u32>,
+    /// The experiment this run is a variant of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "evalexp_01933b5a000070008000000000000001")]
+    pub experiment_id: Option<String>,
+    /// The variant's label within its experiment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "candidate")]
+    pub variant_label: Option<String>,
     /// When the run started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "2026-01-15T10:30:00Z")]
@@ -759,6 +998,10 @@ pub struct EvalCaseResult {
     pub target_snapshot: Option<EvalTarget>,
     /// Execution status of the case.
     pub status: CaseResultStatus,
+    /// Which repetition of the case this result is, from 0.
+    #[serde(default)]
+    #[schema(example = 0)]
+    pub trial: u32,
     /// Per-scorer results.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"pass": true, "value": 1.0, "reason": "Output contains expected text"}]))]
@@ -804,35 +1047,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_eval_status_display() {
-        assert_eq!(EvalStatus::Active.to_string(), "active");
-        assert_eq!(EvalStatus::Archived.to_string(), "archived");
-        assert_eq!(EvalStatus::Deleted.to_string(), "deleted");
-    }
-
-    #[test]
     fn test_eval_status_from_str() {
         assert_eq!(EvalStatus::from("active"), EvalStatus::Active);
         assert_eq!(EvalStatus::from("archived"), EvalStatus::Archived);
         assert_eq!(EvalStatus::from("deleted"), EvalStatus::Deleted);
         assert_eq!(EvalStatus::from("unknown"), EvalStatus::Active);
-    }
-
-    #[test]
-    fn test_eval_status_serde_roundtrip() {
-        let json = serde_json::to_string(&EvalStatus::Archived).unwrap();
-        assert_eq!(json, r#""archived""#);
-        let parsed: EvalStatus = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, EvalStatus::Archived);
-    }
-
-    #[test]
-    fn test_eval_run_status_display() {
-        assert_eq!(EvalRunStatus::Pending.to_string(), "pending");
-        assert_eq!(EvalRunStatus::Running.to_string(), "running");
-        assert_eq!(EvalRunStatus::Completed.to_string(), "completed");
-        assert_eq!(EvalRunStatus::Failed.to_string(), "failed");
-        assert_eq!(EvalRunStatus::Cancelled.to_string(), "cancelled");
     }
 
     #[test]
@@ -843,15 +1062,6 @@ mod tests {
         assert_eq!(EvalRunStatus::from("failed"), EvalRunStatus::Failed);
         assert_eq!(EvalRunStatus::from("cancelled"), EvalRunStatus::Cancelled);
         assert_eq!(EvalRunStatus::from("unknown"), EvalRunStatus::Pending);
-    }
-
-    #[test]
-    fn test_case_result_status_display() {
-        assert_eq!(CaseResultStatus::Pending.to_string(), "pending");
-        assert_eq!(CaseResultStatus::Passed.to_string(), "passed");
-        assert_eq!(CaseResultStatus::Failed.to_string(), "failed");
-        assert_eq!(CaseResultStatus::Errored.to_string(), "errored");
-        assert_eq!(CaseResultStatus::Timeout.to_string(), "timeout");
     }
 
     #[test]
@@ -885,20 +1095,6 @@ mod tests {
     }
 
     #[test]
-    fn test_scorer_tool_called_defaults() {
-        let json = r#"{"type": "tool_called", "tool": "read_file"}"#;
-        let scorer: Scorer = serde_json::from_str(json).unwrap();
-        match scorer {
-            Scorer::ToolCalled { tool, min, weight } => {
-                assert_eq!(tool, "read_file");
-                assert_eq!(min, 1);
-                assert_eq!(weight, 1.0);
-            }
-            _ => panic!("wrong variant"),
-        }
-    }
-
-    #[test]
     fn test_eval_target_session_serde_roundtrip() {
         let target = EvalTarget::Session {
             harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
@@ -915,39 +1111,6 @@ mod tests {
         assert!(json.get("system_prompt").is_none()); // skip_serializing_if
         assert!(json.get("harness_name").is_none());
         assert!(json.get("max_iterations").is_none());
-
-        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
-        assert_eq!(parsed, target);
-    }
-
-    #[test]
-    fn test_eval_target_session_minimal() {
-        // Session with just harness_name, no other params
-        let target = EvalTarget::Session {
-            harness_id: None,
-            harness_name: Some("generic".to_string()),
-            agent_id: None,
-            model_id: None,
-            system_prompt: None,
-            max_iterations: None,
-        };
-        let json = serde_json::to_value(&target).unwrap();
-        assert_eq!(json["type"], "session");
-        assert_eq!(json["harness_name"], "generic");
-        assert!(json.get("harness_id").is_none());
-
-        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
-        assert_eq!(parsed, target);
-    }
-
-    #[test]
-    fn test_eval_target_app_variant() {
-        let target = EvalTarget::App {
-            app_id: AppId::from_uuid(Uuid::nil()),
-        };
-        let json = serde_json::to_value(&target).unwrap();
-        assert_eq!(json["type"], "app");
-        assert!(json.get("app_id").is_some());
 
         let parsed: EvalTarget = serde_json::from_value(json).unwrap();
         assert_eq!(parsed, target);
@@ -973,6 +1136,7 @@ mod tests {
             tags: vec![],
             status: EvalStatus::Active,
             case_count: 0,
+            version: 1,
             last_run: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

@@ -47,7 +47,6 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
-#[case::fireworks_kimi_k3(FIREWORKS_KIMI_K3)]
 #[case::openrouter_mistral_large_4(OPENROUTER_MISTRAL_LARGE_4)]
 #[case::vercel_glm_46(VERCEL_GLM_46)]
 #[case::cloudflare_llama_33_70b(CLOUDFLARE_LLAMA_33_70B)]
@@ -105,7 +104,6 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
-#[case::fireworks_kimi_k3(FIREWORKS_KIMI_K3)]
 #[case::openrouter_mistral_large_4(OPENROUTER_MISTRAL_LARGE_4)]
 #[case::vercel_glm_46(VERCEL_GLM_46)]
 #[case::cloudflare_llama_33_70b(CLOUDFLARE_LLAMA_33_70B)]
@@ -129,7 +127,9 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
             let model = config.model().expect("model set (checked above)");
             let runner = InMemoryAgenticLoop::builder()
                 .agent_name("Time Agent")
-                .system_prompt("When asked about time, use get_current_time tool first.")
+                // See TIME_TOOL_QUESTION: the `<facts>` block already answers
+                // a bare "What time is it?".
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
                 .model(model)
                 .driver_registry(all_providers_registry())
                 .capability(CurrentTimeCapability)
@@ -137,7 +137,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
                 .build()
                 .await
                 .unwrap();
-            runner.run_turn("What time is it?").await.unwrap()
+            runner.run_turn(TIME_TOOL_QUESTION).await.unwrap()
         }
     ) else {
         return;

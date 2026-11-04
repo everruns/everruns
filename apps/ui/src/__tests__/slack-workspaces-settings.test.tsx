@@ -52,7 +52,7 @@ describe("Slack workspaces settings", () => {
   it("says running agents survive before disconnecting", () => {
     render(<SlackWorkspacesPage />);
     fireEvent.click(screen.getAllByRole("button", { name: "Disconnect" })[0]);
-    expect(screen.getByText(/keep working — each has its own Slack app/)).toBeInTheDocument();
+    expect(screen.getByText(/keep working; each has its own Slack app/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Disconnect workspace" })).toBeInTheDocument();
   });
 

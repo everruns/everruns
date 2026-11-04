@@ -17,6 +17,7 @@ use crate::valkey::ValkeyClient;
 use std::sync::Arc;
 
 pub(super) struct ChannelDeps {
+    pub session_service: Arc<crate::domains::sessions::SessionService>,
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn everruns_core::host::TurnBackend>,
@@ -24,6 +25,7 @@ pub(super) struct ChannelDeps {
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub valkey: Option<ValkeyClient>,
     pub auth: auth::AuthState,
+    pub auth_verifier: Option<api::channel_auth::ChannelAuthVerifier>,
     pub frontend_url: String,
     pub public_chat_enabled: bool,
     pub mcp_event_triggers: Arc<crate::domains::agent_triggers::McpEventTriggers>,
@@ -86,7 +88,7 @@ impl ChannelStates {
             a2a_replay_store,
         );
         // api_endpoint execution keys.
-        let api = api::channel_api::ChannelApiState::new(
+        let mut api = api::channel_api::ChannelApiState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
@@ -95,7 +97,11 @@ impl ChannelStates {
             deps.rate_limiter("apikey"),
         )
         .with_runtime_auth(deps.auth.clone())
+        .with_session_service(deps.session_service.clone())
         .with_egress(deps.egress.clone());
+        if let Some(verifier) = &deps.auth_verifier {
+            api.auth_verifier = verifier.clone();
+        }
         let ag_ui = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),
             deps.encryption.clone(),

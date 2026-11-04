@@ -1,0 +1,6 @@
+/target/
+/pkg/
+/.wrangler/
+/.celld/
+/.dev.vars
+/worker/build.json

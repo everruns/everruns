@@ -32,6 +32,8 @@ pub use git_workspace::LocalGitWorkspace as LocalGitWorkspaceProvider;
 pub use platform_store::{LocalPlatformStore, LocalSessionRunner};
 pub use profile::LocalProfile;
 pub use runtime_builder::{LocalRuntimeBuilder, local_capability_registry};
+#[cfg(test)]
+pub(crate) use schedule_runner::occurrence_message_id;
 pub use schedule_runner::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
 };
@@ -39,6 +41,7 @@ pub use schedule_store::{LocalScheduleStore, ScheduleReconcileReport};
 pub use session_leases::LocalSessionLeases;
 pub use session_store::LocalSessionStore;
 pub use task_recovery::LocalTaskRecovery;
+pub(crate) use task_recovery::process_ownership;
 pub use task_registry::LocalSessionTaskRegistry;
 pub use wake_routing::{HostRoutedRunner, WakeRoutes};
 
@@ -87,3 +90,5 @@ impl LocalConfig {
         LocalProfile::new(self.data_dir.clone()).with_workspace_root(self.workspace_root.clone())
     }
 }
+
+mod dreaming;

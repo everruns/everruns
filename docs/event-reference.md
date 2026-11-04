@@ -18,6 +18,8 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`turn.started`](#turnstarted) | Turn began. |
 | [`turn.completed`](#turncompleted) | Turn finished successfully. |
 | [`turn.failed`](#turnfailed) | Turn failed with an error. |
+| [`turn.completion_checked`](#turncompletion_checked) | A finishing turn was reviewed; says whether it finished or continued automatically. |
+| [`turn.credit_shortfall`](#turncredit_shortfall) | The provider refused a request for lack of credits; says whether the turn retried smaller, waits for credits, resumed, or gave up. |
 | `turn.sealed` | Turn stopped without success or error (for example repeated crash-reclaims or exhausted work budget); carries a `reason`. |
 | [`turn.cancelled`](#turncancelled) | Turn cancelled by the user. |
 | [`reason.started`](#reasonstarted) | LLM inference step began. |
@@ -60,6 +62,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `context.compacted` | Context compaction installed a summary. |
 | `context.compaction.skipped` | A compaction evaluation ran but installed nothing. |
 | `context.compaction.failed` | A compaction attempt errored before installing. |
+| `dreaming.activity` | Background Memory consolidation status, note count, model, usage, and cost; excludes evidence and generated notes. See [Dreaming](/features/dreaming/). |
 | `file.written` | A session file was written. |
 | `budget.warning` | Budget crossed its warning threshold. |
 | `budget.paused` | Budget paused the session. |
@@ -276,6 +279,68 @@ Emitted when a turn completes successfully.
     "issue_count": 0,
     "status": "completed",
     "stop_reason": "stop"
+  }
+}
+```
+
+### turn.completion_checked
+
+Emitted when a turn that was about to finish is reviewed by the agent's `completion_check` setting. When `action` is `continued`, an `input.message` with metadata `everruns_origin: "turn_continuation"` follows in the same turn, and the turn keeps going.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn_id` | string | Turn identifier |
+| `verdict` | string? | `achieved`, `in_progress` or `blocked`; absent when the review failed |
+| `reason` | string | The review's short reason, or the failure |
+| `action` | string | `finished`, `continued`, `budget_exhausted` or `review_failed` |
+| `continuations_used` | integer | Automatic continuations this turn has used, including this one |
+| `max_continuations` | integer | Continuations the turn may use |
+| `tokens_used` | integer | Tokens the turn's continuations have used |
+| `elapsed_ms` | integer | Time since the first continuation |
+| `continuation_message_id` | string? | The continuation input, when `action` is `continued` |
+
+```json
+{
+  "type": "turn.completion_checked",
+  "data": {
+    "turn_id": "turn_...",
+    "verdict": "in_progress",
+    "reason": "The review was announced but never submitted.",
+    "action": "continued",
+    "continuations_used": 1,
+    "max_continuations": 6,
+    "tokens_used": 0,
+    "elapsed_ms": 0,
+    "continuation_message_id": "message_..."
+  }
+}
+```
+
+### turn.credit_shortfall
+
+Emitted when the provider refuses a request because the account cannot pay for it (`provider_quota_exhausted`), once per decision the runtime makes about it. When the balance still covers at least 4,096 output tokens, the same request is retried once with max output tokens lowered to what it covers (`shrunk`). Otherwise the turn fails and a check for credits runs every minute for up to an hour, as a scheduled run of the session that reads the provider balance without a model call (`wait_started`, then `still_waiting` per check). When credits are back the work continues (`resumed`); when the hour runs out the turn fails with `provider_quota_exhausted` (`gave_up`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn_id` | string | Turn identifier |
+| `action` | string | `shrunk`, `wait_started`, `still_waiting`, `resumed` or `gave_up` |
+| `requested_max_tokens` | integer? | Max output tokens the refused request asked for, when the provider said |
+| `affordable_tokens` | integer? | Output tokens the balance covered, when the provider said |
+| `max_tokens` | integer? | Max output tokens of the smaller retry (`shrunk`) |
+| `wait_until` | string? | When the wait ends at the latest (RFC 3339) |
+| `next_check_at` | string? | When the next check runs, when one was scheduled |
+| `balance_checked` | boolean? | `true` when a check read the provider balance (OpenRouter); `false` when the provider has no balance API and the request itself was the check |
+
+```json
+{
+  "type": "turn.credit_shortfall",
+  "data": {
+    "turn_id": "turn_...",
+    "action": "wait_started",
+    "requested_max_tokens": 65536,
+    "affordable_tokens": 283,
+    "wait_until": "2026-11-03T15:04:05Z",
+    "next_check_at": "2026-11-03T14:05:05Z"
   }
 }
 ```
@@ -564,7 +629,8 @@ Emitted when individual tool execution completes.
 | `result` | ContentPart[]? | Result content |
 | `error` | string? | Error message |
 | `severity` | string? | `issue` when the call failed; absent on success. See [Issues and errors](#issues-and-errors) |
-| `duration_ms` | integer? | Duration |
+| `duration_ms` | integer? | Wall-clock duration |
+| `worker_thread_cpu_ns` | integer? | Observed worker-thread CPU during executor-future polls; absent means unknown |
 | `executed_arguments` | JSON? | Arguments the tool actually ran with. Present only when a `pre_tool_use` hook rewrote the arguments the model sent (those stay on `tool.started`). Values under credential-named keys such as `password`, `access_token`, or `Authorization` read `[REDACTED]`, and credential-looking text inside other values (bearer tokens, common provider API keys, URL user info) is replaced with `[REDACTED]`. Larger than 8 KiB serialized, it is a truncated JSON string. |
 | `executed_arguments_truncated` | boolean? | `true` when `executed_arguments` is truncated |
 
@@ -582,6 +648,12 @@ Emitted when individual tool execution completes.
 }
 ```
 
+Native Linux/macOS hosts measure CPU only while polling the invoked tool executor
+future, including clock-bracketing overhead. Async waits, hooks, child processes,
+separately spawned/blocking work and remote compute are outside this scope.
+Unsupported or failed observations are absent, not zero. This is not total tool
+CPU, and `duration_ms` remains elapsed wall time.
+
 ### Issues and errors
 
 A failure is either an **issue** or an **error**, and the event says which:
@@ -596,6 +668,11 @@ Do not infer severity from `success: false` alone. Failed `tool.completed` event
 ### llm.generation
 
 Full visibility into LLM API calls. Emitted after each call.
+
+Background [dreaming](/features/dreaming/) calls emit usage and timing with
+`metadata.dreaming_operation_id` on the event envelope. Their messages, tools,
+output, and captured request are empty to keep private consolidation content
+out of the session log.
 
 | Field | Type | Description |
 |-------|------|-------------|

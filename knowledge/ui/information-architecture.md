@@ -13,7 +13,7 @@ tags:
 ## Abstract
 
 The shell groups navigation by **what you do with a thing**, not by what the thing is.
-Five groups carry every destination: Chats, Operational, Building, Registers, Quality,
+Five groups carry every destination: Chats, Operational, Building, Library, Quality,
 with Settings pinned below them. The data lives in
 [`navigation.ts`](../../apps/ui/src/lib/navigation.ts)
 and renders through the generic section renderer in
@@ -54,15 +54,16 @@ authoring is the activity that brings the user to the page.
 
 | Group | Assertion |
 |---|---|
-| **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. |
+| **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. [Home](org-home.md) sits above Chat in this group without becoming the landing route. |
 | **Operational** | Recordings and external exposure: Sessions and Exposures. |
 | **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
-| **Registers** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
+| **Library** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
 | **Quality** | Evaluation, observation, and reporting. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
-than being a thing the user works on. Durable Execution and Dev keep their existing
-policy and dev-mode gating and stay out of the five groups for the same reason.
+than being a thing the user works on. System (Health first, then the durable execution
+pages; formerly "Durable Execution") and Dev keep their existing policy and dev-mode
+gating and stay out of the five groups for the same reason.
 
 ## The hard cases, worked
 
@@ -70,7 +71,9 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   reference it by name from an agent. You do not sit and author a skill as part of
   building a specific agent, and you do not read it back as a record of what ran.
   Registering-and-referencing beats its surface resemblance to Knowledge indexes.
-* **Memory and Knowledge indexes are Registers.** They are curated resources referenced
+* **The group is called Library, not Registers.** "Registers" meant nothing to a new
+  user; Library says what the group holds: reusable entries agents draw from.
+* **Memory and Knowledge indexes are in Library.** They are curated resources referenced
   by agents; keeping them with the other reusable entries leaves Building focused on
   composing and trying agents.
 * **Sandboxes is Building, one entry with tabs.** Live execution environments sit beside
@@ -82,7 +85,7 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   `?tab=` links redirect ([`tab-routes.ts`](../../apps/ui/src/lib/tab-routes.ts)).
 * **Reports is Quality.** Reporting sits with Evals and Observers, leaving Operational
   focused on recordings and external exposure. Approvals stays within its session.
-* **Identities is Building, not Registers.** An identity is authored per agent
+* **Identities is Building, not Library.** An identity is authored per agent
   deployment with credentials and scope decisions, not registered once and forgotten.
 
 ## Playground
@@ -118,15 +121,18 @@ See [source and binding policy](../../crates/server/src/domains/sessions/playgro
 
 ### Adopted Chat workspace
 
-The Chat threads adoption feature is disabled by default. An organisation owner/admin
-opts in through Features settings; deployment availability alone is not enrolment.
-Without that opt-in, the existing sidebar and conversation routes retain their behavior.
+Chat and fresh **subchats** are unconditional personal conversation surfaces.
+Each subchat is a new instance of the managed Agent, with separate history and
+workspace files. Selecting one replaces the main conversation; it never opens
+beside another Chat. Creation and recent conversations stay in the sidebar.
+The Subchats panel is a list, with search and history links, not another composer.
 
-In the adopted workspace the global sidebar contains only Chat. The permanent conversation
-stays alongside an integrated Threads panel containing personal side conversations and
-background work owned by that permanent conversation. Creation, search, history, and
-resolution live in the panel. Opening a thread preserves the permanent conversation;
-the panel can expand and becomes a full-screen drawer on mobile. Existing URLs remain valid.
+The **Chat workspace** Adoption feature (`chat_mode`) adds page-side Chat and
+page context only on app pages. Full Chat routes retain one conversation.
+The independent **Chat background work** feature (`chat_threads`) adds delegation
+and the Work tab. Work belongs to the active Chat instance; a delegated child
+uses its validated Chat parent. Both features default off and preserve existing
+organization enrollment. See [flag proposal and ownership](chat-mode.md#proposed-flag-schema-not-migrated).
 
 An idle conversation remains open. Explicit Resolve/Reopen reuse the durable archive
 lifecycle; resolved conversations retain their transcript and require reopening to send.
@@ -145,7 +151,7 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   archived, deleted, or reassigned. Server resolution and database uniqueness arbitrate
   concurrent tabs and retries; an existing conversation is always adopted.
   Its sidebar entry remains a prominent navigation control on every route;
-  **New side chat** is the subordinate action for a separate conversation.
+  **New subchat** is the subordinate action for a separate conversation.
 * **Chat has one managed Agent on Generic.** The Agent owns identity, platform access,
   instructions, introduction, and starters. No Agent or harness picker appears in Chat.
   New chat opens an empty draft and creates a fresh side conversation on first send,
@@ -207,6 +213,15 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   and moving a route between groups needs no page-level change. The group is a label, not a
   link, there is no group index page to point at, and inventing one would add a hop nobody
   wants. Pages outside a labelled section (Chats, Settings) take no prefix.
+
+## Navigation loading
+
+Page navigation keeps the current content visible until the destination is ready.
+Do not put a generic loading boundary at the main route group: it replaces known
+titles, breadcrumbs and controls with skeletons, making even cached pages feel
+slow. Sidebar links show pending feedback while the selected item continues to
+identify the displayed page. Data loading boundaries belong inside persistent
+layouts, such as the session header, or around page data alone.
 
 ## Dismissed options
 

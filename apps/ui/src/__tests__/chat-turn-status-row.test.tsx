@@ -4,6 +4,8 @@ import type { Event, InputMessageData } from "@/lib/api/types";
 import { getTextFromContent } from "@/lib/api/types";
 import { CLIENT_MESSAGE_ID_METADATA_KEY, type PendingSend } from "@/lib/chat-turn-state";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+
 jest.mock("streamdown", () => ({
   Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));
@@ -17,6 +19,7 @@ jest.mock("@/hooks", () => ({
 }));
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({ locale: "en", t: (key: string) => key }),
 }));
 jest.mock("@/components/chat/message-info-icon", () => ({ MessageInfoIcon: () => null }));

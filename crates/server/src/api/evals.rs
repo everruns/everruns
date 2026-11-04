@@ -15,8 +15,6 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-#[cfg(test)]
-use serde_json::{Map, Value};
 
 use crate::domains::evals::record::*;
 
@@ -29,11 +27,19 @@ use crate::domains::evals::EvalService;
 use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
+    AcceptEvalProposal, DismissEvalProposal, ExportEvalSamples, ImportEvalSamples,
+    ListEvalProposals, ProposeEvalCases,
+};
+use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun,
     CreateEvalRunShare, DeleteEval, DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts,
     ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun, GetEvalRunDataset, GetEvalRunShare,
     ImportAtifTrajectories, ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals,
     RevokeEvalRunShare, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
+};
+use crate::domains::evals::{
+    CreateEvalExperiment, GateEvalExperiment, GetEvalExperiment, ListAllEvalExperiments,
+    ListEvalExperiments,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -107,6 +113,29 @@ pub fn routes(state: AppState) -> Router {
         .command::<CreateEvalRun>()
         .command::<ListEvalRuns>()
         .command::<GetEvalRun>()
+        // Experiments (knowledge/evaluation/experiments.md).
+        .command::<ListAllEvalExperiments>()
+        .command::<CreateEvalExperiment>()
+        .command::<ListEvalExperiments>()
+        .command::<GetEvalExperiment>()
+        .command::<GateEvalExperiment>()
+        // Eval Builder proposals (knowledge/evaluation/evals.md, "Eval Builder").
+        .command::<ProposeEvalCases>()
+        .command::<ListEvalProposals>()
+        .command::<AcceptEvalProposal>()
+        .command::<DismissEvalProposal>()
+        // Dataset cases as Mira samples (knowledge/evaluation/external-results-publishing.md).
+        .command::<ExportEvalSamples>()
+        .command::<ImportEvalSamples>()
+        // Suggested fixes for findings (knowledge/evaluation/suggested-fixes.md).
+        .command::<crate::domains::health_issues::ListFindingFixes>()
+        .command::<crate::domains::health_issues::CheckFindingFix>()
+        .command::<crate::domains::health_issues::UpdateFindingFix>()
+        .command::<crate::domains::health_issues::ApplyFindingFix>()
+        .command::<crate::domains::health_issues::RejectFindingFix>()
+        .command::<crate::domains::health_issues::ListFindingActions>()
+        .command::<crate::domains::health_issues::TakeFindingAction>()
+        .command::<crate::domains::health_issues::UndoFindingAction>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
@@ -248,44 +277,9 @@ pub async fn export_run_dataset(
 }
 
 #[cfg(test)]
-fn run_artifact_export_value(result: &EvalCaseResult) -> Value {
-    let mut export = Map::new();
-    export.insert(
-        "instance_id".to_string(),
-        Value::String(
-            result
-                .case_name
-                .clone()
-                .unwrap_or_else(|| result.eval_case_id.to_string()),
-        ),
-    );
-
-    if let Some(artifacts) = &result.artifacts {
-        for (name, content) in artifacts {
-            let key = if name == "patch" {
-                "model_patch"
-            } else {
-                name.as_str()
-            };
-            if export.contains_key(key) {
-                tracing::warn!(
-                    eval_case_id = %result.eval_case_id,
-                    artifact_name = %name,
-                    export_key = %key,
-                    "Skipping colliding eval artifact export field"
-                );
-                continue;
-            }
-            export.insert(key.to_string(), Value::String(content.clone()));
-        }
-    }
-
-    Value::Object(export)
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::evals::queries::run_artifact_export_value;
     use everruns_contracts::typed_id::EvalCaseId;
     use std::collections::BTreeMap;
     use uuid::Uuid;
@@ -301,6 +295,7 @@ mod tests {
             target: None,
             target_snapshot: None,
             status: CaseResultStatus::Passed,
+            trial: 0,
             scores: None,
             metadata: None,
             turns: None,
@@ -334,6 +329,7 @@ mod tests {
             target: None,
             target_snapshot: None,
             status: CaseResultStatus::Passed,
+            trial: 0,
             scores: None,
             metadata: None,
             turns: None,

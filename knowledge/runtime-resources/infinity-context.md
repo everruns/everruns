@@ -200,6 +200,15 @@ explicitly configured `keep_first_messages > 0` the live prompt reads
 default (`keep_first_messages = 0`) there is no anchor, so it reads
 `[N earlier messages hidden] -> [recent window]` and the notice leads the prompt.
 
+**Cache-stable window start.** The tightest fit moves the window start, and the
+notice count, on every model call, so a session over budget never hit a prompt
+cache (the start sits at the front of the request). The start is rounded up to
+the next multiple of a fixed step on the conversation's absolute message index
+(about a quarter of the budget at the candidate-load average message size), so
+the request only appends until history grows past the next step. Rounding is
+skipped when it would cut into `min_recent_messages` or keep under half the
+budget. Source: [`infinity_context/window.rs`](../../crates/core/src/builtins/infinity_context/window.rs).
+
 `max_recent_messages` is a hard cap for constrained surfaces such as public
 support chat; it bounds only the recent tail (any explicitly configured head
 anchor is additional).

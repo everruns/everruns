@@ -39,6 +39,21 @@ impl Agent {
             })
             .cloned()
             .collect();
+        m.description = self.description.clone().or(m.description);
+        // Every member exports as a bundled agent: the Framework keeps no
+        // catalog to resolve a linked name against on import.
+        m.members = None;
+        m.agents = self
+            .members
+            .iter()
+            .map(|member| {
+                member
+                    .to_package()
+                    .map(|package| package.manifest().clone())
+            })
+            .collect::<Result<_, _>>()?;
+        m.capabilities
+            .retain(|c| self.members.is_empty() || c.id() != super::members::AGENTS_CAPABILITY);
         m.max_iterations = self.max_iterations;
         m.parallel_tool_calls = self.parallel_tool_calls;
         m.communication = self
@@ -82,6 +97,14 @@ impl AgentBuilder {
                 "bind the hosted Sandbox policy explicitly",
             ));
         }
+        // Bundled agents are built with this agent's providers in `build`;
+        // linked agents (by name) must be added with `AgentBuilder::member`.
+        for bundled in &m.agents {
+            let bundled = crate::AgentPackage::new(bundled.clone())
+                .map_err(|error| failure(&format!("agents.{}", bundled.name), error.to_string()))?;
+            self.bundled_members.push(bundled);
+        }
+        self.linked_members = m.members.clone().unwrap_or_default();
         let registry = framework_capability_registry(false);
         for reference in &m.capabilities {
             if let Some(bound) = self
@@ -169,7 +192,9 @@ impl AgentBuilder {
         if self.model.is_none()
             && let Some(model) = &m.model
         {
-            self.model = Some(Model::from(model.model.clone()));
+            // Keep the manifest's provider key so a mismatched Agent provider
+            // fails and host provider services can resolve it.
+            self.model = Some(Model::on(model.provider.to_string(), model.model.clone()));
         }
         if let Some(model) = &m.model
             && self.providers.iter().any(|p| p.id() != &model.provider)
@@ -184,6 +209,9 @@ impl AgentBuilder {
         self.parallel_tool_calls = m.parallel_tool_calls;
         self.communication = m.communication.unwrap_or_default();
         self.network_access = m.network_access.clone();
+        if self.description.is_none() {
+            self.description = m.description.clone();
+        }
         self.package_manifest = Some(m.clone());
         Ok(self)
     }

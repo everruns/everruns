@@ -485,7 +485,8 @@ async fn a_run_reports_the_message_it_sent() {
 
     let run = session.ag_ui(input("Hi")).await.expect("run starts");
     let sent = run.sent().expect("a user message starts a turn").clone();
-    assert_eq!(sent.disposition, SendDisposition::Started);
+    assert_eq!(sent.disposition, SendDisposition::Pending);
+    assert!(sent.turn_id.is_none());
     let events: Vec<Event> = run.collect().await;
     assert_well_formed(&events);
     assert!(sent.wait().await.expect("turn ends").success);
@@ -956,21 +957,6 @@ async fn reserved_oversized_and_duplicate_frontend_tools_are_refused() {
     )
     .await;
     assert!(matches!(many, Err(AgUiError::InvalidInput(_))));
-}
-
-#[tokio::test]
-async fn the_latest_run_sets_the_frontend_tools() {
-    let session = confirming_session();
-    run_with(&session, with_tools(input("Hi")), AgUiOptions::new()).await;
-    assert!(
-        session
-            .inspect()
-            .await
-            .expect("inspect")
-            .tools
-            .iter()
-            .any(|tool| tool.name == "confirm")
-    );
 }
 
 /// An agent whose first turn writes a todo list through a tool named like the

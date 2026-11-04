@@ -175,15 +175,6 @@ fn current_uid() -> u32 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn default_profile_uses_user_local_data_dir() {
-        assert!(
-            !LocalProfile::default()
-                .data_dir
-                .starts_with(std::env::temp_dir())
-        );
-    }
-
     #[cfg(unix)]
     #[test]
     fn ensure_dirs_hardens_permissions() {

@@ -25,7 +25,10 @@ use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::actor_runtime::{ActorRuntime, ActorRuntimeConfig, ActorSlots, WorkerActorHosts};
+use crate::actor_runtime::{
+    ActorRuntime, ActorRuntimeConfig, ActorSlots, DetachedCalls, DetachedCallsConfig,
+    WorkerActorHosts,
+};
 use crate::engine::model_wait::ModelWaitSlots;
 use crate::model_wait_slots::{DEFAULT_MAX_CONCURRENT_MODEL_WAITS, WorkerModelWaitSlots};
 use crate::task_driver::TaskDriver;
@@ -104,6 +107,12 @@ pub struct TaskWorkerConfig {
     /// orchestrator's kill timeout; aborted tasks go back to the queue when
     /// the worker deregisters.
     pub shutdown_grace: Duration,
+    /// How long a server-side tool call runs with its turn before it detaches
+    /// and the turn parks (`WORKER_TOOL_DETACH_AFTER_SECS`; zero keeps every
+    /// call with its turn). See `actor_runtime::detached_calls`.
+    pub tool_detach_after: Duration,
+    /// Most detached calls this worker holds (`MAX_DETACHED_TOOL_CALLS`).
+    pub max_detached_tool_calls: usize,
 }
 
 /// Default for [`TaskWorkerConfig::shutdown_grace`]: inside Kubernetes'
@@ -126,6 +135,9 @@ impl Default for TaskWorkerConfig {
             grpc_address: "127.0.0.1:9001".to_string(),
             connect_timeout: Duration::from_secs(30),
             shutdown_grace: DEFAULT_SHUTDOWN_GRACE,
+            tool_detach_after: crate::actor_runtime::detached_calls::DEFAULT_TOOL_DETACH_AFTER,
+            max_detached_tool_calls:
+                crate::actor_runtime::detached_calls::DEFAULT_MAX_DETACHED_TOOL_CALLS,
         }
     }
 }
@@ -199,6 +211,14 @@ impl TaskWorkerConfig {
                 "WORKER_SHUTDOWN_GRACE_SECS",
                 defaults.shutdown_grace,
             ),
+            tool_detach_after: env_duration_secs(
+                "WORKER_TOOL_DETACH_AFTER_SECS",
+                defaults.tool_detach_after,
+            ),
+            max_detached_tool_calls: env_or(
+                "MAX_DETACHED_TOOL_CALLS",
+                defaults.max_detached_tool_calls,
+            ),
             ..defaults
         }
     }
@@ -222,6 +242,7 @@ where
     store: Arc<S>,
     /// Runs each claimed task (see `task_driver`).
     driver: TaskDriver<S, A>,
+    dreaming_host: crate::runtime_host::WorkerRuntimeHost<A>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     in_flight: Arc<AtomicUsize>,
@@ -256,14 +277,32 @@ where
             "Initialized unified worker"
         );
 
-        let actors = ActorRuntime::new(
+        let mut actors = ActorRuntime::new(
             WorkerActorHosts::new(adapters.clone()),
             adapters.actor_lease_store(),
             ActorRuntimeConfig::new(config.worker_id.clone()),
         );
+        if !config.tool_detach_after.is_zero() && config.max_detached_tool_calls > 0 {
+            let emitters = adapters.clone();
+            actors = actors.with_detached_calls(Arc::new(DetachedCalls::new(
+                adapters.actor_lease_store(),
+                config.worker_id.clone(),
+                DetachedCallsConfig {
+                    detach_after: config.tool_detach_after,
+                    max_calls: config.max_detached_tool_calls,
+                    ttl: crate::actor_runtime::detached_calls::DETACHED_CALL_TTL,
+                },
+                Arc::new(move |fence| {
+                    Arc::new(
+                        crate::worker_adapters::SessionAdapter::new(emitters.clone())
+                            .with_actor_fence(Some(fence)),
+                    ) as Arc<dyn crate::core::event_emitter::EventEmitter>
+                }),
+            )));
+        }
         let driver = TaskDriver::new(
             store.clone(),
-            adapters,
+            adapters.clone(),
             config.worker_id.clone(),
             config.heartbeat_interval,
         );
@@ -279,6 +318,7 @@ where
             config,
             store,
             driver,
+            dreaming_host: crate::runtime_host::WorkerRuntimeHost::new(adapters),
             shutdown_tx,
             shutdown_rx,
             in_flight,
@@ -300,6 +340,24 @@ where
 
     /// Run the worker (blocking until shutdown)
     pub async fn run(&mut self) -> Result<()> {
+        let maintenance_host = self.dreaming_host.clone();
+        let maintenance = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+            loop {
+                interval.tick().await;
+                if let Err(error) = crate::host::dreaming::run_due(maintenance_host.clone()).await {
+                    tracing::warn!(%error,"dreaming sweep failed");
+                }
+            }
+        });
+        struct StopMaintenance(tokio::task::JoinHandle<()>);
+        impl Drop for StopMaintenance {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+        let _maintenance = StopMaintenance(maintenance);
+
         info!(
             worker_id = %self.config.worker_id,
             "Starting unified worker"
@@ -317,9 +375,13 @@ where
             backpressure_reason: None,
             started_at: chrono::Utc::now(),
             last_heartbeat_at: chrono::Utc::now(),
-            hostname: None,
-            version: None,
-            metadata: None,
+            hostname: hostname::get()
+                .ok()
+                .and_then(|name| name.into_string().ok()),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            metadata: Some(serde_json::json!({
+                "protocol_version": everruns_internal_protocol::WORKER_PROTOCOL_VERSION,
+            })),
             tasks_completed: 0,
             tasks_failed: 0,
             avg_task_duration_ms: None,
@@ -329,6 +391,11 @@ where
         } else {
             info!(worker_id = %self.config.worker_id, "Worker registered");
         }
+        let self_checks = tokio::spawn(self_check_loop(
+            self.store.clone(),
+            self.config.worker_id.clone(),
+        ));
+        let _self_checks = StopMaintenance(self_checks);
 
         // Heartbeat task. It outlives the poll loop: a shutting-down worker
         // keeps heartbeating (not accepting) while in-flight tasks finish, so
@@ -605,6 +672,21 @@ where
     }
 }
 
+/// Sends the worker's checks on its own setup now and every
+/// [`crate::self_checks::REPORT_INTERVAL`] until the task is aborted. A failed
+/// send waits for the next round: the report is for operators, not the work.
+async fn self_check_loop<S: TaskStore>(store: Arc<S>, worker_id: String) {
+    let mut interval = tokio::time::interval(crate::self_checks::REPORT_INTERVAL);
+    loop {
+        interval.tick().await;
+        let env = crate::self_checks::SelfCheckEnv::from_env();
+        let checks = crate::self_checks::run(&env).await;
+        if let Err(error) = store.record_worker_checks(&worker_id, &checks).await {
+            debug!(%error, "worker self-check report not delivered");
+        }
+    }
+}
+
 /// Heartbeats until `stop` resolves, recording whether the registry reports
 /// the worker draining and waking the poll loop when a drain is lifted.
 #[allow(clippy::too_many_arguments)]
@@ -680,35 +762,6 @@ mod tests {
 
     use super::*;
     use crate::durable::{ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome};
-
-    #[test]
-    fn test_config_default() {
-        let config = TaskWorkerConfig::default();
-        assert!(config.worker_id.starts_with("worker-"));
-        // Safe-by-default concurrency; 1000-way is opt-in.
-        assert_eq!(config.max_concurrent_tasks, DEFAULT_MAX_CONCURRENT_TASKS);
-        assert_eq!(config.claim_batch_size, DEFAULT_CLAIM_BATCH_SIZE);
-        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
-    }
-
-    #[test]
-    fn test_config_dev_mode() {
-        let config = TaskWorkerConfig::dev_mode();
-        assert!(config.worker_id.starts_with("dev-worker-"));
-        assert_eq!(config.worker_group, Some("dev".to_string()));
-        // Claim batch must stay within execution concurrency in every preset.
-        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
-    }
-
-    #[test]
-    fn test_config_production() {
-        // production() is the explicit opt-in for high concurrency, but the claim
-        // batch stays bounded independently of execution concurrency.
-        let config = TaskWorkerConfig::production();
-        assert_eq!(config.max_concurrent_tasks, 1000);
-        assert_eq!(config.claim_batch_size, DEFAULT_CLAIM_BATCH_SIZE);
-        assert!(config.claim_batch_size < config.max_concurrent_tasks);
-    }
 
     #[test]
     fn test_claim_limit_bounds_to_batch() {

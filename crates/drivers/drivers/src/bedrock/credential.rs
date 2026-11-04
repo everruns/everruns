@@ -93,6 +93,7 @@ mod tests {
 
     fn config_from_document(document: &str) -> DriverConfig {
         DriverConfig {
+            api: None,
             provider: everruns_contracts::ProviderKey::new("bedrock"),
             provider_type: DriverId::Bedrock,
             credentials: parse_credential_document(Some(document)),

@@ -6,7 +6,19 @@ tags:
   - everruns
   - runtime-resources
 ---
+
+> The undeployed split product is retired. [Unified Knowledge](knowledge.md) owns
+> the current implementation and explicitly distinguishes delivered behavior
+> from remaining target-design work. The older design below is historical.
+
 # Knowledge Indexes Specification
+
+> Status: existing undeployed design and implementation. The product owner
+> confirms this feature is not deployed. [Unified Knowledge](knowledge.md) and
+> [Knowledge Indexing and Storage](knowledge-indexing.md) propose its replacement.
+> In particular, current sync rebuilds the index, regenerates IDs and replaces
+> the active namespace; the incremental behavior described below is design intent,
+> not the current implementation. Existing chunk text is stored in PostgreSQL.
 
 ## Abstract
 

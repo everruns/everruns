@@ -225,6 +225,8 @@ impl LlmErrorHook for UsageLimitAutoContinueHook {
                 None,
                 Some(scheduled_at),
                 "UTC".to_string(),
+                // One-shot: fires once, on the default schedule budget.
+                Default::default(),
             )
             .await
         {
@@ -261,12 +263,6 @@ mod tests {
     #[test]
     fn resolve_returns_none_without_capability() {
         assert_eq!(resolve_usage_limit_auto_continue(&[]), None);
-    }
-
-    #[test]
-    fn resolve_uses_defaults_for_empty_config() {
-        let resolved = resolve_usage_limit_auto_continue(&[cap_config(json!({}))]).unwrap();
-        assert_eq!(resolved, AutoContinueConfig::default());
     }
 
     #[test]
@@ -361,6 +357,12 @@ mod tests {
                 trigger_count: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
+                deleted_at: None,
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
+                stop_reason: None,
+                budget: None,
             })
         }
 

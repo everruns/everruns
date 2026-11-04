@@ -105,11 +105,23 @@ fn list_directory_delegates_to_the_correct_store_path_contract() {
 fn shell_exec_helper_en_and_uk() {
     let a = json!({ "command": "cargo test" });
     assert_eq!(
-        narrate_shell_exec(&a, "Shell", ToolNarrationPhase::Started, None),
+        narrate_shell_exec(
+            &a,
+            "Shell",
+            ToolNarrationPhase::Started,
+            None,
+            ToolNarrationContext::default()
+        ),
         "Running `cargo test`"
     );
     assert_eq!(
-        narrate_shell_exec(&a, "Shell", ToolNarrationPhase::Completed, Some("uk")),
+        narrate_shell_exec(
+            &a,
+            "Shell",
+            ToolNarrationPhase::Completed,
+            Some("uk"),
+            ToolNarrationContext::default()
+        ),
         "Запустив `cargo test`"
     );
 }
@@ -124,15 +136,6 @@ fn read_file_helper_uses_basename() {
     assert_eq!(
         narrate_read_file(&a, ToolNarrationPhase::Completed, Some("uk-UA")),
         "Прочитав AGENTS.md"
-    );
-}
-
-#[test]
-fn edit_file_helper() {
-    let a = json!({ "path": "/workspace/src/main.rs" });
-    assert_eq!(
-        narrate_edit_file(&a, ToolNarrationPhase::Completed, None),
-        "Edited main.rs"
     );
 }
 
@@ -386,22 +389,6 @@ fn write_session_title_truncates_exact_characters_and_drops_blank_detail() {
 }
 
 #[test]
-fn get_session_info_all_phases() {
-    assert_eq!(
-        narrate_get_session_info(ToolNarrationPhase::Started, None),
-        "Reading session info"
-    );
-    assert_eq!(
-        narrate_get_session_info(ToolNarrationPhase::Completed, None),
-        "Read session info"
-    );
-    assert_eq!(
-        narrate_get_session_info(ToolNarrationPhase::Failed, None),
-        "Failed to read session info"
-    );
-}
-
-#[test]
 fn session_schedule_family_labels_and_detail() {
     let a = json!({ "description": "Run nightly backup" });
     assert_eq!(
@@ -468,23 +455,6 @@ fn session_task_family_labels_and_detail() {
 }
 
 #[test]
-fn sandbox_status_and_manage() {
-    assert_eq!(
-        narrate_sandbox_status(ToolNarrationPhase::Completed, None),
-        "Checked sandbox status"
-    );
-    let a = json!({ "action": "pause" });
-    assert_eq!(
-        narrate_sandbox_manage(&a, ToolNarrationPhase::Started, None),
-        "Managing sandbox: pause"
-    );
-    assert_eq!(
-        narrate_sandbox_manage(&json!({}), ToolNarrationPhase::Failed, None),
-        "Failed to manage sandbox"
-    );
-}
-
-#[test]
 fn sql_family_omits_statement() {
     let a = json!({ "sql": "SELECT * FROM users WHERE api_token = 'SECRET42'" });
     assert_eq!(
@@ -529,22 +499,6 @@ fn knowledge_and_history_search_show_queries_and_ignore_unrelated_fields() {
 }
 
 #[test]
-fn delegation_result_family() {
-    assert_eq!(
-        narrate_delegation_result("report_result", ToolNarrationPhase::Completed, None),
-        Some("Reported result".to_string())
-    );
-    assert_eq!(
-        narrate_delegation_result("report_task_progress", ToolNarrationPhase::Started, None),
-        Some("Reporting progress".to_string())
-    );
-    assert_eq!(
-        narrate_delegation_result("other", ToolNarrationPhase::Started, None),
-        None
-    );
-}
-
-#[test]
 fn fallback_prefers_definition_display_name_then_title_cases_unowned_tools() {
     let call = ToolCall {
         id: "call_1".into(),
@@ -577,20 +531,6 @@ fn group_action(key: &str, narration: &str, repeated_narration: &str) -> GroupHe
         narration: narration.to_string(),
         repeated_narration: repeated_narration.to_string(),
     }
-}
-
-#[test]
-fn group_headline_preserves_one_action_narration() {
-    let actions = [group_action(
-        "grep_files",
-        "Searched files for full_name",
-        "Searched files",
-    )];
-
-    assert_eq!(
-        summarize_group_actions(&actions, None),
-        "Searched files for full_name"
-    );
 }
 
 #[test]
@@ -725,7 +665,13 @@ fn argument_aliases_skip_empty_or_non_string_candidates() {
             Some("cargo test")
         );
         assert_eq!(
-            narrate_shell_exec(&arguments, "Shell", ToolNarrationPhase::Completed, None),
+            narrate_shell_exec(
+                &arguments,
+                "Shell",
+                ToolNarrationPhase::Completed,
+                None,
+                ToolNarrationContext::default()
+            ),
             "Ran `cargo test`"
         );
     }

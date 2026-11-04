@@ -72,6 +72,13 @@ with that channel's agent. The Framework implements it over
 `Engine`/`Session`, serve over its host, the server over its services. Same
 shape as the voice loop's `VoiceSessionPort`.
 
+Engine admission may finish before turn assignment. A channel acknowledges that
+admission promptly, then resolves assignment independently. Only an input that
+starts a turn owns a reply delivery; steering and rejected preparation clear
+their pending delivery without waiting for a terminal event that will never
+belong to that input. Streaming follows the assigned logical turn, including
+when its events arrive before the assignment is observed.
+
 ### Binding and duplicates
 
 `SessionBinding` decides which session a message lands in: one per thread

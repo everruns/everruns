@@ -339,11 +339,3 @@ async fn set_agent_avatar_records_history_through_run() {
     assert_eq!(entry.action, "updated");
     assert_eq!(entry.changed_fields, vec!["preset_id".to_string()]);
 }
-
-#[tokio::test]
-async fn lists_the_curated_presets() {
-    let ctx = owner_ctx().await;
-    let presets = ListAvatarPresets {}.run(&ctx).await.expect("list presets");
-    assert_eq!(presets.len(), PRESETS.len());
-    assert!(presets.iter().all(|p| find_preset(p.id).is_some()));
-}

@@ -1,6 +1,6 @@
 ---
 title: Start here
-description: Choose how you run Everruns, the Framework, a self-hosted Platform, or Everruns Cloud, and go to the right first page.
+description: Choose how you run Everruns, the Framework, a self-hosted Platform, or Everruns Demo, and go to the right first page.
 sidebar:
   label: Start here
 ---
@@ -9,15 +9,15 @@ Everruns is a durable agentic harness engine built on Rust. You can use it in
 three ways. They run the same agent model (agents, sessions, capabilities,
 events) and differ in what you operate.
 
-![One agent, three places to run it: the Framework embeds the everruns crate in your Rust process, the self-hosted Platform runs the control plane, workers and PostgreSQL on your infrastructure, and Everruns Cloud is the same Platform hosted at app.everruns.com. The self-hosted Platform and Cloud share one API: REST, SDKs, CLI, UI and MCP.](../images/concepts/run-modes.svg)
+![One agent, three places to run it: the Framework embeds the everruns crate in your Rust process, the self-hosted Platform runs the control plane, workers and PostgreSQL on your infrastructure, and Everruns Demo is the same Platform hosted at app.everruns.com. The self-hosted Platform and Demo share one API: REST, SDKs, CLI, UI and MCP.](../images/concepts/run-modes.svg)
 
-| | Framework | Self-hosted | Everruns Cloud |
+| | Framework | Self-hosted | Everruns Demo |
 |---|---|---|---|
 | **For** | Rust developers who want agents inside their own application | Teams that need the full Platform on their own infrastructure | Anyone who wants the Platform without operating it |
 | **You operate** | Your application process. No server, database, or worker | The Platform: API server, workers, PostgreSQL, UI | Nothing. Everruns runs the Platform at [app.everruns.com](https://app.everruns.com) |
 | **You talk to it through** | The `everruns` Rust crate, in process | The REST API, SDKs, CLI, UI, and MCP | The REST API, SDKs, CLI, UI, and MCP |
-| **Cost** | Free and open source (MIT). You pay your model provider | Free and open source (MIT). You pay for your infrastructure and model providers | Prepaid credit for the built-in model provider, with $5 of starter credit. Your own provider keys are optional |
-| **First page** | [Framework quickstart](/framework/quickstart/) | [Docker Compose](/getting-started/docker-compose/) | [Everruns Cloud quickstart](/getting-started/cloud/) |
+| **Cost** | Free and open source (MIT). You pay your model provider | Free and open source (MIT). You pay for your infrastructure and model providers | Available promotional credit for built-in models, or your own provider keys. No credit purchases or top-ups |
+| **First page** | [Framework quickstart](/framework/quickstart/) | [On your machine](/getting-started/run-locally/), [Docker Compose](/getting-started/docker-compose/) or [Kubernetes](/getting-started/kubernetes/) | [Everruns Demo quickstart](/getting-started/cloud/) |
 
 Pages across these docs carry an **Applies to** row under the title that names
 which of the three the page covers.
@@ -46,20 +46,26 @@ clients, multi-tenant organizations, or durable execution that survives a worker
 restart, and want to keep the deployment and data in your own environment.
 
 ```bash
-curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
-# write .env with the required secrets, see the Docker Compose guide
-docker compose up -d   # UI and API on http://localhost:9300
+brew install everruns/tap/everruns
+everruns docker up     # UI and API on http://localhost:9300
 ```
 
-Next: [Docker Compose](/getting-started/docker-compose/), which lists the
-required secrets and walks through the first session. Operators continue with
-[Environment variables](/sre/environment-variables/).
+Pick the page for where it runs:
 
-## Everruns Cloud
+- [On your machine](/getting-started/run-locally/): `everruns docker up` asks a
+  few questions, starts the Platform in Docker and signs the CLI in.
+- [Docker Compose](/getting-started/docker-compose/): the same stack set up by
+  hand on a server.
+- [Kubernetes](/getting-started/kubernetes/): the official Helm chart, with your
+  own PostgreSQL and workers that can scale on queue depth.
+
+Operators continue with [Environment variables](/sre/environment-variables/).
+
+## Everruns Demo
 
 Use the Platform at [app.everruns.com](https://app.everruns.com) without running
-it. A built-in model provider is ready on sign-up, and your first organization
-gets $5 of starter credit, so you need no provider keys to start.
+it. Explore the hosted demo with available promotional credit for built-in models,
+or connect your own provider keys. Credit purchases and top-ups are unavailable.
 
 ```bash
 everruns login
@@ -67,7 +73,7 @@ SESSION=$(everruns sessions create -q)
 everruns chat --session "$SESSION" "Say hello."
 ```
 
-Next: [Everruns Cloud quickstart](/getting-started/cloud/), which covers sign-up,
+Next: [Everruns Demo quickstart](/getting-started/cloud/), which covers sign-up,
 tokens, the SDK, CLI and AI-tool setup, and how credit works.
 
 ## After the first page
@@ -77,6 +83,6 @@ tokens, the SDK, CLI and AI-tool setup, and how credit works.
 - [Use in AI Tools](/getting-started/use-in-ai-tools/): drive Everruns from
   Claude Code, Codex, or Cursor.
 - [Build your first agent](/tutorials/building-agents-using-sdk/): a guided SDK
-  lesson for the self-hosted Platform or Everruns Cloud.
+  lesson for the self-hosted Platform or Everruns Demo.
 - [Capabilities](/capabilities/): the tools an agent can use, each marked with
   where it is available.

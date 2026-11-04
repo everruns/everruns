@@ -8,8 +8,8 @@
  * identity, and Sandbox selection.
  *
  * Dry run (proactive agents D5) adds the `dry_run` session capability: tools
- * that only read run for real, every other call is simulated. The agent page's
- * Test run button opens this form with it ticked; unticking runs for real.
+ * that only read run for real, every other call is simulated. The existing
+ * checkbox selects this mode before starting a chat.
  *
  * An org with no model to chat with never reaches this form: both hosts own
  * their empty-state frame, so they swap the whole frame for the
@@ -17,17 +17,23 @@
  */
 "use client";
 
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
+import { z } from "zod";
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
   SelectGroup,
-  SelectItem,
   SelectLabel,
+  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -37,6 +43,13 @@ import { useCreateSession } from "@/hooks/use-sessions";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { isHarnessDeprecated } from "@/lib/harness-deprecation";
 import type { CreateSessionRequest } from "@/lib/api/types";
+
+const playgroundDraftSchema = z.strictObject({
+  counterpart: z.string(),
+  sandbox: z.string(),
+  dry_run: z.boolean(),
+  end_user_id: z.string(),
+});
 
 const AGENT_VALUE_PREFIX = "agent:";
 const HARNESS_VALUE_PREFIX = "harness:";
@@ -52,6 +65,8 @@ export function NewPlaygroundChatForm({
   endUserId?: string;
   children?: ReactNode;
 } = {}) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: allAgents = [], isLoading: agentsLoading } = useAgents();
   const agents = allAgents.filter((a) => !(a.name === "platform-chat"));
@@ -97,8 +112,63 @@ export function NewPlaygroundChatForm({
     setSandbox(agent?.sandbox_policy?.default ?? "");
   };
 
+  usePageReadContext({
+    entityType: "playground_chat",
+    label: ui("Playground choices"),
+    formId: "choices",
+    fields: ["counterparts", "sandboxes", "choices_truncated"],
+    values: {
+      counterparts: JSON.stringify(
+        [
+          ...agents.map((a) => ({
+            value: `${AGENT_VALUE_PREFIX}${a.id}`,
+            name: getDisplayName(a, displayLocale).slice(0, 128),
+          })),
+          ...availableHarnesses.map((h) => ({
+            value: `${HARNESS_VALUE_PREFIX}${h.name}`,
+            name: getDisplayName(h, displayLocale).slice(0, 128),
+          })),
+        ].slice(0, 500),
+      ),
+      sandboxes: JSON.stringify(sandboxNames.slice(0, 100)),
+      choices_truncated: String(
+        agents.length + availableHarnesses.length > 500 || sandboxNames.length > 100,
+      ),
+    },
+  });
+
+  const chat = usePageFormDraft({
+    schema: playgroundDraftSchema,
+    entityType: "playground_chat",
+    label: ui("New Playground chat"),
+    enabled: !optionsLoading,
+    values: { counterpart: selection, sandbox, dry_run: dryRun, end_user_id: endUserId ?? "" },
+    readonlyFields: ["end_user_id"],
+    baseline: JSON.stringify([initialAgentId, initialDryRun, endUserId]),
+    dirty: !!selection || dryRun !== initialDryRun || !!sandbox,
+    writable: !createSession.isPending,
+    apply: (next) => {
+      selectCounterpart(next.counterpart);
+      if (next.counterpart === selection || next.sandbox !== sandbox) setSandbox(next.sandbox);
+      setDryRun(next.dry_run);
+    },
+  });
+
   const start = async () => {
-    if (!selection) return;
+    if (!selection || chat.blocked) return;
+    if (!selectedAgent && !selectedHarness) {
+      setError("Choose an available agent or harness.");
+      return;
+    }
+    if (
+      sandbox &&
+      (!selectedAgent ||
+        !sandboxNames.includes(sandbox) ||
+        (sandboxMode === "fixed" && sandbox !== selectedAgent.sandbox_policy?.default))
+    ) {
+      setError("Choose a sandbox offered by this agent.");
+      return;
+    }
     setError(null);
     const binding: Partial<CreateSessionRequest> = selection.startsWith(HARNESS_VALUE_PREFIX)
       ? { harness_name: selection.slice(HARNESS_VALUE_PREFIX.length) }
@@ -126,69 +196,66 @@ export function NewPlaygroundChatForm({
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          There are no agents or harnesses available for a chat yet.
+          {ui("There are no agents or harnesses available for a chat yet.")}
         </p>
-        <Button onClick={() => router.push("/agents/new")}>Create an agent</Button>
+        <Button onClick={() => router.push("/agents/new")}>{ui("Create an agent")}</Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {chat.notice}
       <div className="flex flex-col gap-3">
-        <Select value={selection} onValueChange={selectCounterpart} disabled={optionsLoading}>
-          <SelectTrigger className="w-full" aria-label="Chat counterpart">
-            <SelectValue
-              placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {availableHarnesses.some(isHarnessDeprecated) && (
+        <Combobox
+          value={selection}
+          onValueChange={selectCounterpart}
+          ariaLabel="Chat counterpart"
+          placeholder={optionsLoading ? ui("Loading options...") : ui("Pick an agent or harness")}
+          searchPlaceholder="Search agents and harnesses"
+          clearable={false}
+          disabled={optionsLoading}
+          options={[
+            ...harnesses.map((harness) => ({
+              value: `${HARNESS_VALUE_PREFIX}${harness.name}`,
+              label: getDisplayName(harness, displayLocale),
+              group: "Harnesses",
+            })),
+            ...agents.map((agent) => ({
+              value: `${AGENT_VALUE_PREFIX}${agent.id}`,
+              label: getDisplayName(agent, displayLocale),
+              group: "Agents",
+            })),
+          ]}
+          footer={
+            availableHarnesses.some(isHarnessDeprecated) ? (
               <button
                 type="button"
                 className="w-full px-2 py-1.5 text-left text-sm text-muted-foreground"
                 onClick={() => setShowDeprecated((shown) => !shown)}
                 aria-pressed={showDeprecated}
               >
-                {showDeprecated ? "Hide deprecated" : "Show deprecated"}
+                {showDeprecated ? ui("Hide deprecated") : ui("Show deprecated")}
               </button>
-            )}
-            {harnesses.length > 0 && (
-              <SelectGroup>
-                <SelectLabel>Harnesses</SelectLabel>
-                {harnesses.map((harness) => (
-                  <SelectItem key={harness.id} value={`${HARNESS_VALUE_PREFIX}${harness.name}`}>
-                    {getDisplayName(harness)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
-            {agents.length > 0 && (
-              <SelectGroup>
-                <SelectLabel>Agents</SelectLabel>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.id} value={`${AGENT_VALUE_PREFIX}${agent.id}`}>
-                    {getDisplayName(agent)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
-          </SelectContent>
-        </Select>
+            ) : undefined
+          }
+        />
         {selectedAgent?.sandbox_policy && sandboxNames.length > 0 && sandboxMode !== "fixed" ? (
           <Select value={selectedSandbox} onValueChange={setSandbox}>
-            <SelectTrigger className="w-full" aria-label="Sandbox">
-              <SelectValue placeholder="Pick a sandbox" />
+            <SelectTrigger className="w-full" aria-label={ui("Sandbox")}>
+              <SelectValue placeholder={ui("Pick a sandbox")} />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectLabel>Runs in</SelectLabel>
+                <SelectLabel>{ui("Runs in")}</SelectLabel>
                 {sandboxNames.map((name) => {
                   const spec = sandboxTemplates[name];
                   const target = spec.target.provider || spec.target.kind;
                   return (
                     <SelectItem key={name} value={name}>
-                      {name === selectedAgent.sandbox_policy?.default ? `${name} (default)` : name}{" "}
+                      {name === selectedAgent.sandbox_policy?.default
+                        ? ui("{value0} (default)", { value0: name })
+                        : name}{" "}
                       · {target}
                     </SelectItem>
                   );
@@ -198,37 +265,38 @@ export function NewPlaygroundChatForm({
           </Select>
         ) : selectedAgent?.sandbox_policy && sandboxNames.length > 0 ? (
           <div className="border bg-muted/40 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Sandbox: </span>
-            {selectedSandbox} · fixed by Agent
+            <span className="text-muted-foreground">{ui("Sandbox:")} </span>
+            {selectedSandbox} {ui("· fixed by Agent")}
           </div>
         ) : usesManagedBashkitSandbox ? (
           <div className="border bg-muted/40 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Sandbox: </span>
-            Bashkit Virtual Workspace · fixed by Bashkit Worker
+            <span className="text-muted-foreground">{ui("Sandbox:")} </span>
+            {ui("Bashkit Virtual Workspace · fixed by Bashkit Worker")}
           </div>
         ) : null}
         {children}
         <div className="flex items-start gap-2">
           <Checkbox id="dry-run" checked={dryRun} onCheckedChange={setDryRun} className="mt-0.5" />
           <label htmlFor="dry-run" className="text-sm">
-            <span className="font-medium">Dry run</span>
+            <span className="font-medium">{ui("Dry run")}</span>
             <span className="block text-xs text-muted-foreground">
-              Tools that only read run for real. Every other action is simulated and changes
-              nothing.
+              {ui(
+                "Tools that only read run for real. Every other action is simulated and changes nothing.",
+              )}
             </span>
           </label>
         </div>
         <Button
           variant="accent"
           onClick={start}
-          disabled={!selection || createSession.isPending || !endUserId}
+          disabled={chat.blocked || !selection || createSession.isPending || !endUserId}
         >
           {createSession.isPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <MessageCircle className="size-4" />
           )}
-          {dryRun ? "Start test run" : "Start Playground chat"}
+          {dryRun ? ui("Start test run") : ui("Start Playground chat")}
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}

@@ -9,6 +9,8 @@
 import { createContext, useContext, useCallback, type ReactNode } from "react";
 import { useAuthConfig, useCurrentUser, useLogout as useLogoutMutation } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
+import { clearSharedEventStreams } from "@/lib/event-stream";
+import { clearChatRecovery } from "@/lib/chat-recovery";
 import type { AuthConfigResponse, UserInfoResponse } from "@/lib/api/types";
 
 export interface AuthContextValue {
@@ -88,7 +90,11 @@ export function AuthProvider({
     requiresAuth,
     isLoading,
     authUnavailable,
-    logout: logoutOverride ?? defaultLogout,
+    logout: async () => {
+      clearChatRecovery();
+      clearSharedEventStreams();
+      await (logoutOverride ?? defaultLogout)();
+    },
     logoutPending: logoutOverride ? false : logoutMutation.isPending,
     createOrganization,
   };

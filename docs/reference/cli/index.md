@@ -35,10 +35,13 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | Group | What it manages |
 |---|---|
 | [`agents`](/reference/cli/agents/) | Agent definitions and their configuration |
-| [`budgets`](/reference/cli/budgets/) | Spending limits for sessions, agents, users and organizations. |
+| [`budgets`](/reference/cli/budgets/) | Usage policies: limits on what sessions, agents, people and the organization use. |
 | [`capabilities`](/reference/cli/capabilities/) | Capabilities agents can use, including declarative ones you define. |
 | [`connections`](/reference/cli/connections/) | Your LLM provider API keys |
 | [`context`](/reference/cli/context/) | Notes managers keep about an entity, read by agents that manage it. |
+| [`costs`](/reference/cli/costs/) | What usage cost the organization, its price list and cost settings. |
+| [`credential-bindings`](/reference/cli/credential-bindings/) | Declare, list and revoke write-only credential bindings. |
+| [`docker`](/reference/cli/docker/) | Run Everruns on this machine with Docker |
 | [`durable`](/reference/cli/durable/) | Durable scheduled tasks and their executions. |
 | [`evals`](/reference/cli/evals/) | Evaluation cases, runs, results and scores. |
 | [`files`](/reference/cli/files/) | Sync files between a local folder and a session |
@@ -46,25 +49,29 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`health-issues`](/reference/cli/health-issues/) | Operational problems detected in this installation. |
 | [`history`](/reference/cli/history/) | Recorded changes to entities: list, compare, restore. |
 | [`images`](/reference/cli/images/) | Uploaded images. |
-| [`knowledge-bases`](/reference/cli/knowledge-bases/) | Curated collections of knowledge entries. |
-| [`knowledge-indexes`](/reference/cli/knowledge-indexes/) | Searchable indexes synced from external sources. |
+| [`knowledge`](/reference/cli/knowledge/) | File collections with optional indexed retrieval. |
 | [`mcp-servers`](/reference/cli/mcp-servers/) | Registered MCP servers available to agents and sessions. |
 | [`memories`](/reference/cli/memories/) | Workspace memories in the organization. |
 | [`models`](/reference/cli/models/) | LLM models available to agents, and organization defaults. |
 | [`notifications`](/reference/cli/notifications/) | Your in-app notifications. |
 | [`observers`](/reference/cli/observers/) | Online scoring of live traces. |
+| [`organization-accounts`](/reference/cli/organization-accounts/) | Organization account names, without retrieving credentials. |
 | [`orgs`](/reference/cli/orgs/) | Organizations you belong to, and which one is active |
 | [`payments`](/reference/cli/payments/) | Machine payments: wallets, spend policies and attempts. |
 | [`plugin-marketplaces`](/reference/cli/plugin-marketplaces/) | Sources of installable plugins. |
 | [`plugins`](/reference/cli/plugins/) | Plugins installed in this organization. |
 | [`providers`](/reference/cli/providers/) | LLM providers and their credentials. |
 | [`reports`](/reference/cli/reports/) | Usage and cost reporting: queries, saved reports, catalog. |
+| [`resources`](/reference/cli/resources/) | Access to credentials and connections. |
 | [`sandbox-targets`](/reference/cli/sandbox-targets/) | Sandbox providers this deployment offers. |
+| [`sandbox-template-metadata`](/reference/cli/sandbox-template-metadata/) | Sandbox Template names and descriptions, without execution settings. |
+| [`sandbox-templates`](/reference/cli/sandbox-templates/) | Reusable sandbox configurations and their provider snapshots. |
 | [`sandboxes`](/reference/cli/sandboxes/) | Sandboxes across providers: state, history, usage. |
 | [`sessions`](/reference/cli/sessions/) | Running and archived sessions, their state and participants |
 | [`skills`](/reference/cli/skills/) | Skill packages and their content. |
 | [`system`](/reference/cli/system/) | Server status. |
 | [`tasks`](/reference/cli/tasks/) | Background tasks across every session in the organization. |
+| [`tracing`](/reference/cli/tracing/) | Customer tracing destinations and routing. |
 | [`user`](/reference/cli/user/) | Your own account settings. |
 | [`users`](/reference/cli/users/) | People in the current organization. |
 | [`virtual-users`](/reference/cli/virtual-users/) | Runtime accounts for consumers or services. |

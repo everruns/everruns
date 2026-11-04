@@ -25,6 +25,7 @@ import { extractMcpAppResources, extractResultImages, getFullText } from "./tool
 import { useLocale } from "@/providers/locale-provider";
 import { ApprovalToolActivity, type ApprovalToolContext } from "./approval-tool-activity";
 import { WebSearchRow } from "./web-search-details";
+import { useToolErrorsInline } from "./tool-error-disclosure";
 import { parseWebSearchDetails } from "@/lib/web-search";
 
 export function ToolActivityRow({
@@ -49,8 +50,10 @@ export function ToolActivityRow({
   const mcpAppResources = extractMcpAppResources(toolResult?.result, toolCall.name);
   const resultImages = extractResultImages(toolResult?.result);
   const detailsId = `tool-activity-details-${toolCall.id}`;
-  const hasOutput = fullText.length > 0;
   const hasToolError = Boolean(toolResult?.error);
+  // In chat the raw tool error waits behind Details; see tool-error-disclosure.ts.
+  const errorsInline = useToolErrorsInline();
+  const hasOutput = fullText.length > 0 || (!errorsInline && hasToolError);
   const failureSeverity = hasToolError ? (toolFailureSeverity(toolResult) ?? "issue") : null;
   const isComplete = Boolean(toolResult);
   const isRunning = !isComplete && !hasToolError;
@@ -108,7 +111,7 @@ export function ToolActivityRow({
               </span>
             )}
             {isRunning && (
-              <span className="animate-tool-pulse text-[10px] uppercase tracking-[0.18em] text-accent-foreground/70">
+              <span className="animate-tool-pulse text-xs font-medium text-accent-foreground/70">
                 {progressMessage ?? (mode === "client" ? t("waiting") : t("running"))}
               </span>
             )}
@@ -118,14 +121,14 @@ export function ToolActivityRow({
                 onClick={() => setIsExpanded((current) => !current)}
                 aria-expanded={isExpanded}
                 aria-controls={detailsId}
-                className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/50 transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground/50 transition-colors hover:text-foreground"
               >
                 {isExpanded ? t("hide_details") : t("details")}
               </button>
             )}
           </div>
 
-          {failureSeverity && (
+          {errorsInline && failureSeverity && (
             <div className={cn("mt-1 text-xs", failureTextClass(failureSeverity))}>
               {toolResult?.error}
             </div>
@@ -145,7 +148,12 @@ export function ToolActivityRow({
             )}
           >
             <div className="min-h-0 overflow-hidden">
-              {hasOutput && (
+              {!errorsInline && failureSeverity && (
+                <div className={cn("mb-1 text-xs", failureTextClass(failureSeverity))}>
+                  {toolResult?.error}
+                </div>
+              )}
+              {fullText && (
                 <pre className="max-h-80 overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
                   {formatResultDetails(toolCall, fullText)}
                 </pre>

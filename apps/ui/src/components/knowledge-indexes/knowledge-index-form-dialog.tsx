@@ -1,7 +1,12 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -44,6 +49,7 @@ interface KnowledgeIndexFormDialogProps {
   open: boolean;
   index?: KnowledgeIndex | null;
   isPending?: boolean;
+  writable?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (request: CreateKnowledgeIndexRequest | UpdateKnowledgeIndexRequest) => Promise<void>;
 }
@@ -61,9 +67,11 @@ export function KnowledgeIndexFormDialog({
   open,
   index,
   isPending = false,
+  writable = false,
   onOpenChange,
   onSubmit,
 }: KnowledgeIndexFormDialogProps) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sourceType, setSourceType] = useState<KnowledgeIndexSourceType>("github");
@@ -78,10 +86,49 @@ export function KnowledgeIndexFormDialog({
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
 
+  const config = (index?.source_config ?? {}) as Record<string, unknown>;
+  const initial = [
+    mode === "edit" ? (index?.name ?? "") : "",
+    mode === "edit" ? (index?.description ?? "") : "",
+    index?.source_type === "git" ? "git" : "github",
+    readStringField(config, "repository"),
+    readStringField(config, "url"),
+    readStringField(config, "branch"),
+    readStringField(config, "root_folder"),
+    mode === "edit" ? (index?.embedding_model_id ?? "") : "",
+  ];
+  const initialState = JSON.stringify(initial);
+  const formState = JSON.stringify([
+    name,
+    description,
+    sourceType,
+    repository,
+    gitUrl,
+    branch,
+    rootFolder,
+    embeddingModelId,
+  ]);
+  const currentFormState = useRef(formState);
+  const seededState = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    currentFormState.current = formState;
+  });
+  const dirty = seededState.current !== null && formState !== seededState.current;
+  const adopted = !!usePageChatMode();
+  const seededForm = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
+      seededForm.current = null;
+      seededState.current = null;
       return;
     }
+    const seed = `${mode}:${index?.id ?? "new"}`;
+    // Preserve every manual field, including controls excluded from Chat. A
+    // clean form can follow a refetch; a dirty form keeps its original baseline.
+    if (adopted && seededForm.current === seed && seededState.current !== currentFormState.current)
+      return;
+    seededState.current = initialState;
+    seededForm.current = seed;
     const config = (index?.source_config ?? {}) as Record<string, unknown>;
     setName(mode === "edit" ? (index?.name ?? "") : "");
     setDescription(mode === "edit" ? (index?.description ?? "") : "");
@@ -94,7 +141,7 @@ export function KnowledgeIndexFormDialog({
     setFieldErrors({});
     setEmbeddingModelValid(false);
     setFormError(null);
-  }, [mode, open, index]);
+  }, [mode, open, index, adopted, initialState]);
 
   function buildSourceConfig(normalizedRepository: string | null): Record<string, unknown> {
     const trimmedBranch = branch.trim();
@@ -110,8 +157,34 @@ export function KnowledgeIndexFormDialog({
     return { ...base, url: gitUrl.trim() };
   }
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name", "description"],
+    values: { name, description },
+    entityId: index?.id,
+    entityType: "knowledge_index",
+    formId: "details",
+    label: mode === "create" ? "New knowledge index" : (index?.name ?? "Edit knowledge index"),
+    baseline: JSON.stringify([
+      mode,
+      index?.name,
+      index?.description,
+      index?.source_type,
+      index?.source_config,
+      index?.embedding_model_id,
+    ]),
+    dirty,
+    writable: writable && !isPending,
+    enabled: open && (mode === "create" || !!index),
+    priority: 30,
+    apply: (values) => {
+      setName(values.name);
+      setDescription(values.description);
+    },
+  });
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setFieldErrors({});
     setFormError(null);
 
@@ -173,12 +246,13 @@ export function KnowledgeIndexFormDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {mode === "create" ? "Create an org-scoped knowledge index." : index?.id}
+            {mode === "create" ? ui("Create an org-scoped knowledge index.") : index?.id}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chatDraft.notice}
           <div className="space-y-2">
-            <Label htmlFor="kidx-name">Name</Label>
+            <Label htmlFor="kidx-name">{ui("Name")}</Label>
             <Input
               id="kidx-name"
               value={name}
@@ -197,7 +271,7 @@ export function KnowledgeIndexFormDialog({
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="kidx-description">Description</Label>
+            <Label htmlFor="kidx-description">{ui("Description")}</Label>
             <Textarea
               id="kidx-description"
               value={description}
@@ -206,7 +280,7 @@ export function KnowledgeIndexFormDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="kidx-embedding-model">Embedding model</Label>
+            <Label htmlFor="kidx-embedding-model">{ui("Embedding model")}</Label>
             <EmbeddingModelPicker
               id="kidx-embedding-model"
               value={embeddingModelId}
@@ -224,7 +298,7 @@ export function KnowledgeIndexFormDialog({
               onValidityChange={setEmbeddingModelValid}
             />
             <p className="text-xs text-muted-foreground">
-              Required. Chunks are embedded with this model; it cannot be cleared.
+              {ui("Required. Chunks are embedded with this model; it cannot be cleared.")}
             </p>
             {fieldErrors.embedding_model_id && (
               <p id="kidx-embedding-model-error" className="text-xs text-destructive">
@@ -234,24 +308,24 @@ export function KnowledgeIndexFormDialog({
           </div>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="kidx-source">Source</Label>
+              <Label htmlFor="kidx-source">{ui("Source")}</Label>
               <Select
                 value={sourceType}
                 onValueChange={(value) => setSourceType(value as KnowledgeIndexSourceType)}
               >
-                <SelectTrigger id="kidx-source" className="w-full" aria-label="Source">
+                <SelectTrigger id="kidx-source" className="w-full" aria-label={ui("Source")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="github">GitHub</SelectItem>
-                  <SelectItem value="git">Git URL</SelectItem>
+                  <SelectItem value="github">{ui("GitHub")}</SelectItem>
+                  <SelectItem value="git">{ui("Git URL")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {sourceType === "github" && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="kidx-repository">Repository</Label>
+                  <Label htmlFor="kidx-repository">{ui("Repository")}</Label>
                   <Input
                     id="kidx-repository"
                     value={repository}
@@ -259,7 +333,7 @@ export function KnowledgeIndexFormDialog({
                       setRepository(event.target.value);
                       setFieldErrors((previous) => ({ ...previous, repository: undefined }));
                     }}
-                    placeholder="owner/repo or https://github.com/owner/repo"
+                    placeholder={ui("owner/repo or https://github.com/owner/repo")}
                     aria-invalid={!!fieldErrors.repository}
                     aria-describedby={fieldErrors.repository ? "kidx-repository-error" : undefined}
                   />
@@ -269,32 +343,32 @@ export function KnowledgeIndexFormDialog({
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Public repositories sync without a GitHub connection.
+                      {ui("Public repositories sync without a GitHub connection.")}
                     </p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="kidx-github-connection">Connection</Label>
+                  <Label htmlFor="kidx-github-connection">{ui("Connection")}</Label>
                   <Select value={githubConnection ? "github" : "none"} disabled>
                     <SelectTrigger
                       id="kidx-github-connection"
                       className="w-full"
-                      aria-label="GitHub connection"
+                      aria-label={ui("GitHub connection")}
                     >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="github">
-                        {githubConnection?.provider_username ?? "GitHub connected"}
+                        {githubConnection?.provider_username ?? ui("GitHub connected")}
                       </SelectItem>
-                      <SelectItem value="none">No GitHub connection</SelectItem>
+                      <SelectItem value="none">{ui("No GitHub connection")}</SelectItem>
                     </SelectContent>
                   </Select>
                   {!githubConnection && (
                     <p className="text-xs text-muted-foreground">
-                      Private repositories need a{" "}
-                      <Link href="/settings/agent-experience" className="underline">
-                        GitHub connection
+                      {ui("Private repositories need a")}{" "}
+                      <Link href="/settings/connections" className="underline">
+                        {ui("GitHub connection")}
                       </Link>
                       .
                     </p>
@@ -304,7 +378,7 @@ export function KnowledgeIndexFormDialog({
             )}
             {sourceType === "git" && (
               <div className="space-y-2">
-                <Label htmlFor="kidx-git-url">Git URL</Label>
+                <Label htmlFor="kidx-git-url">{ui("Git URL")}</Label>
                 <Input
                   id="kidx-git-url"
                   value={gitUrl}
@@ -315,21 +389,21 @@ export function KnowledgeIndexFormDialog({
             )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="kidx-branch">Branch</Label>
+                <Label htmlFor="kidx-branch">{ui("Branch")}</Label>
                 <Input
                   id="kidx-branch"
                   value={branch}
                   onChange={(event) => setBranch(event.target.value)}
-                  placeholder="main"
+                  placeholder={ui("main")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="kidx-root-folder">Root Folder</Label>
+                <Label htmlFor="kidx-root-folder">{ui("Root Folder")}</Label>
                 <Input
                   id="kidx-root-folder"
                   value={rootFolder}
                   onChange={(event) => setRootFolder(event.target.value)}
-                  placeholder="docs"
+                  placeholder={ui("docs")}
                 />
               </div>
             </div>
@@ -342,9 +416,13 @@ export function KnowledgeIndexFormDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {ui("Cancel")}
             </Button>
-            <Button type="submit" variant="accent" disabled={isPending || !embeddingModelValid}>
+            <Button
+              type="submit"
+              variant="accent"
+              disabled={chatDraft.blocked || isPending || !embeddingModelValid}
+            >
               {submitLabel}
             </Button>
           </DialogFooter>

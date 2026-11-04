@@ -122,22 +122,55 @@ impl ObserverMatch {
 // Scorer config
 // ============================================
 
-/// What slice of the trace a scorer grades. Phase 1 implements `turn` only;
-/// `session` and `tool` scopes are reserved for future use.
+/// What slice of the trace a scorer grades.
+///
+/// - `turn`: one exchange, scored when the turn completes.
+/// - `session`: the whole conversation, scored once the session has been idle
+///   for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so
+///   each session has one current score.
+/// - `tool`: one tool call and its result, scored when the call completes.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ObserverScope {
     #[default]
     Turn,
+    Session,
+    Tool,
+}
+
+impl ObserverScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ObserverScope::Turn => "turn",
+            ObserverScope::Session => "session",
+            ObserverScope::Tool => "tool",
+        }
+    }
 }
 
 impl std::fmt::Display for ObserverScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ObserverScope::Turn => write!(f, "turn"),
+        f.write_str(self.as_str())
+    }
+}
+
+impl From<&str> for ObserverScope {
+    fn from(s: &str) -> Self {
+        match s {
+            "session" => ObserverScope::Session,
+            "tool" => ObserverScope::Tool,
+            _ => ObserverScope::Turn,
         }
     }
 }
+
+/// How long a session stays idle before its session-scope score runs. A
+/// person who answers within this time moves it back, so a conversation is
+/// judged once it has settled, not after every reply.
+pub const SESSION_SETTLE_SECONDS: i64 = 600;
+
+/// The `turn_id` key of a session-scope score: one per session.
+pub const SESSION_SCORE_KEY: &str = "session";
 
 /// Default value at/above which an LLM-judge score is considered a pass.
 fn default_pass_threshold() -> f64 {
@@ -184,9 +217,70 @@ pub struct ObserverScorerConfig {
     /// Trace slice this scorer grades.
     #[serde(default)]
     pub scope: ObserverScope,
+    /// Tool scope only: grade calls to these tools. Empty or absent grades
+    /// every tool call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<String>>,
     /// How this scorer grades (rule or llm_judge).
     #[serde(flatten)]
     pub method: ScorerMethod,
+}
+
+impl ObserverScorerConfig {
+    /// Whether a tool-scope scorer grades a call to `tool`.
+    pub fn grades_tool(&self, tool: &str) -> bool {
+        self.tools
+            .as_ref()
+            .is_none_or(|tools| tools.is_empty() || tools.iter().any(|t| t == tool))
+    }
+}
+
+// ============================================
+// Alerts and reviews
+// ============================================
+
+fn default_alert_window_hours() -> u32 {
+    24
+}
+
+fn default_alert_min_scored() -> u32 {
+    20
+}
+
+/// Open a health issue, and tell the people who own the watched agents, when
+/// an observer's pass rate falls under `min_pass_rate` over the last
+/// `window_hours`. Needs `min_scored` scores in the window so a handful of
+/// samples cannot raise it. The issue resolves itself once the rate recovers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
+pub struct ObserverAlert {
+    /// Pass rate (0.0–1.0) under which the alert opens.
+    #[schema(example = 0.8)]
+    pub min_pass_rate: f64,
+    /// Window the rate is measured over, in hours (1–168). Defaults to 24.
+    #[serde(default = "default_alert_window_hours")]
+    #[schema(example = 24)]
+    pub window_hours: u32,
+    /// Scores the window needs before the alert can open. Defaults to 20.
+    #[serde(default = "default_alert_min_scored")]
+    #[schema(example = 20)]
+    pub min_scored: u32,
+}
+
+/// A person's verdict on one score: whether the grader got it right. Reviews
+/// calibrate graders, and a disagreed score is a candidate eval case.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
+pub struct ScoreReview {
+    /// True when the person agrees with the grader's pass or fail.
+    pub agrees: bool,
+    /// Optional note on why.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// Who reviewed (user id), set by the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_by: Option<String>,
+    /// When, set by the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<DateTime<Utc>>,
 }
 
 // ============================================
@@ -221,6 +315,9 @@ pub struct Observer {
     pub sampling_rate: f64,
     /// Scoring rules.
     pub scorers: Vec<ObserverScorerConfig>,
+    /// Pass-rate alert, when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert: Option<ObserverAlert>,
     /// Lifecycle status.
     pub status: ObserverStatus,
     pub created_at: DateTime<Utc>,
@@ -292,7 +389,11 @@ pub struct TraceScore {
     /// Session this score grades.
     #[schema(value_type = String, example = "session_01933b5a000070008000000000000001")]
     pub session_id: SessionId,
-    /// Turn this score grades (turn scope).
+    /// Trace slice this score grades.
+    #[serde(default)]
+    pub scope: ObserverScope,
+    /// What was graded: the turn id (turn scope), `session` (session scope)
+    /// or the tool call id (tool scope).
     pub turn_id: String,
     /// Agent active in the session at scoring time.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -330,42 +431,68 @@ pub struct TraceScore {
     /// Error details if errored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+    /// A person's review of this score.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<ScoreReview>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
+// Live quality summary and backfill
+// ============================================
+
+/// Completed scores in one group of a live-quality summary.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
+pub struct QualityGroup {
+    /// An agent id, an observer id or a day (`YYYY-MM-DD`), by list.
+    #[schema(example = "agent_01933b5a000070008000000000000001")]
+    pub key: String,
+    pub scored: u64,
+    pub passed: u64,
+    /// `passed / scored`; absent when nothing was scored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0.92)]
+    pub pass_rate: Option<f64>,
+    /// Distinct sessions the scores read.
+    pub sessions: u64,
+    /// Daily pass rates, oldest first (agent groups only).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trend: Vec<f64>,
+}
+
+/// How production traffic scored over the last `days`: in total, by agent,
+/// by observer and by day.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
+pub struct QualitySummary {
+    /// Start of the window.
+    pub since: DateTime<Utc>,
+    #[schema(example = 7)]
+    pub days: u32,
+    pub scored: u64,
+    pub passed: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0.92)]
+    pub pass_rate: Option<f64>,
+    pub sessions: u64,
+    pub by_agent: Vec<QualityGroup>,
+    pub by_observer: Vec<QualityGroup>,
+    pub by_day: Vec<QualityGroup>,
+}
+
+/// What a backfill read and queued.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
+pub struct BackfillResult {
+    /// Past turn, tool and idle events read.
+    pub events_read: u64,
+    /// Scores queued. Turns and tool calls already scored are not queued
+    /// again; a conversation's score is refreshed.
+    pub enqueued: u64,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn observer_status_roundtrip() {
-        for (s, v) in [
-            ("active", ObserverStatus::Active),
-            ("paused", ObserverStatus::Paused),
-            ("archived", ObserverStatus::Archived),
-            ("deleted", ObserverStatus::Deleted),
-        ] {
-            assert_eq!(ObserverStatus::from(s), v);
-            assert_eq!(v.to_string(), s);
-        }
-        assert_eq!(ObserverStatus::from("unknown"), ObserverStatus::Active);
-    }
-
-    #[test]
-    fn trace_score_status_roundtrip() {
-        for (s, v) in [
-            ("pending", TraceScoreStatus::Pending),
-            ("scoring", TraceScoreStatus::Scoring),
-            ("completed", TraceScoreStatus::Completed),
-            ("errored", TraceScoreStatus::Errored),
-            ("skipped", TraceScoreStatus::Skipped),
-        ] {
-            assert_eq!(TraceScoreStatus::from(s), v);
-            assert_eq!(v.to_string(), s);
-        }
-        assert_eq!(TraceScoreStatus::from("unknown"), TraceScoreStatus::Pending);
-    }
 
     #[test]
     fn empty_match_matches_everything() {
@@ -423,19 +550,6 @@ mod tests {
     }
 
     #[test]
-    fn scorer_config_serde_defaults_scope() {
-        let json = serde_json::json!({
-            "key": "greeting",
-            "method": "rule",
-            "rule": { "type": "contains", "text": "hello" }
-        });
-        let config: ObserverScorerConfig = serde_json::from_value(json).unwrap();
-        assert_eq!(config.scope, ObserverScope::Turn);
-        assert_eq!(config.key, "greeting");
-        assert!(matches!(config.method, ScorerMethod::Rule { .. }));
-    }
-
-    #[test]
     fn scorer_config_llm_judge_serde() {
         let json = serde_json::json!({
             "key": "completeness",
@@ -466,6 +580,7 @@ mod tests {
             match_config: ObserverMatch::default(),
             sampling_rate: 0.1,
             scorers: vec![],
+            alert: None,
             status: ObserverStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),

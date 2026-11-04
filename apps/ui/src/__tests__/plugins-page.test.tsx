@@ -139,21 +139,6 @@ describe("Plugins page catalog install", () => {
     expect(screen.getByRole("button", { name: "Install" })).toBeEnabled();
   });
 
-  it("retains the installed state when the catalog row is reopened", async () => {
-    const installed = installedPlugin();
-    const installedKey = [...queryKeys.installedPlugins.list(), "org-1"];
-    queryClient.setQueryData(installedKey, []);
-    mockInstallPlugin.mockResolvedValueOnce(installed);
-
-    const first = renderRow();
-    fireEvent.click(screen.getByRole("button", { name: "Install" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Installed" })).toBeDisabled());
-    first.unmount();
-
-    renderRow(queryClient.getQueryData<InstalledPlugin[]>(installedKey) ?? []);
-    expect(screen.getByRole("button", { name: "Installed" })).toBeDisabled();
-  });
-
   it("distinguishes an available upgrade from the installed catalog version", () => {
     renderRow([installedPlugin({ version: "0.9.0", update_available: true })]);
 

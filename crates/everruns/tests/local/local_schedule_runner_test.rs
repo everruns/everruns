@@ -338,6 +338,11 @@ async fn create_reads_unix_weekdays_and_rejects_bad_input() {
             Some(cron.into()),
             None,
             timezone.into(),
+            everruns_core::session_schedule::ScheduleBounds {
+                max_runs: Some(4),
+                stop_when: Some("the weekly report is sent".into()),
+                ..Default::default()
+            },
         )
     };
 
@@ -379,6 +384,11 @@ async fn rejects_unknown_cron_interval_before_local_storage() {
                 Some(expression.into()),
                 None,
                 "UTC".into(),
+                everruns_core::session_schedule::ScheduleBounds {
+                    max_runs: Some(4),
+                    stop_when: Some("done".into()),
+                    ..Default::default()
+                },
             )
             .await;
         assert!(matches!(result, Err(ScheduleLimitError::Rejected(_))));
@@ -547,8 +557,10 @@ async fn failed_delivery_is_recorded_and_retried() {
         .unwrap();
     let session_runner = Arc::new(RecordingRunner::failing(1));
     let handle = LocalScheduleRunner::new(store.clone(), session_runner.clone())
+        // The first poll is immediate. Hold the next poll beyond the test's
+        // timeout, so inspecting the recorded failure cannot race a retry.
         .with_config(config(
-            Duration::from_millis(10),
+            Duration::from_secs(60 * 60),
             Duration::from_millis(100),
         ))
         .start()
@@ -565,9 +577,17 @@ async fn failed_delivery_is_recorded_and_retried() {
     assert!(retryable.enabled);
     assert_eq!(retryable.trigger_count, 0);
     assert!(retryable.next_trigger_at.is_some());
-    tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(session_runner.attempts.load(Ordering::SeqCst), 1);
+    handle.shutdown().await.unwrap();
 
+    // A new runner recovers the retained failure and retries the occurrence.
+    let handle = LocalScheduleRunner::new(store.clone(), session_runner.clone())
+        .with_config(config(
+            Duration::from_millis(10),
+            Duration::from_millis(100),
+        ))
+        .start()
+        .unwrap();
     session_runner.wait_for_deliveries(1).await;
     handle.shutdown().await.unwrap();
     let completed = store.list_schedules(session_id).await.unwrap().remove(0);
@@ -685,6 +705,12 @@ async fn existing_recurring_schedule_is_migrated_and_executed() {
         trigger_count: 0,
         created_at: now,
         updated_at: now,
+        deleted_at: None,
+        ends_at: None,
+        max_runs: None,
+        stop_when: None,
+        stop_reason: None,
+        budget: None,
     };
     {
         let conn = rusqlite::Connection::open(&path).unwrap();

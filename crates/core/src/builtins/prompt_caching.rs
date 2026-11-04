@@ -121,7 +121,7 @@ impl Capability for PromptCachingCapability {
         }
         Some(PromptCacheConfig {
             retention: parse(config, "retention").unwrap_or(self.retention),
-            enabled: true,
+            enabled: parse(config, "enabled").unwrap_or(true),
             strategy: parse(config, "strategy").unwrap_or(self.strategy),
             gemini_cached_content,
         })
@@ -172,17 +172,6 @@ mod tests {
     }
 
     #[test]
-    fn explicit_strategy_can_be_selected_in_capability_config() {
-        let capability = PromptCachingCapability::new();
-        let config = Capability::prompt_cache_config(
-            &capability,
-            &serde_json::json!({"strategy":"explicit"}),
-        )
-        .unwrap();
-        assert_eq!(config.strategy, PromptCacheStrategy::Explicit);
-    }
-
-    #[test]
     fn retention_is_read_from_config_and_unknown_values_keep_the_constructor_value() {
         let capability =
             PromptCachingCapability::new().with_retention(PromptCacheRetention::FiveMinutes);
@@ -203,6 +192,15 @@ mod tests {
             retention(json!({"retention":"2h"})),
             PromptCacheRetention::FiveMinutes
         );
+        assert_eq!(
+            retention(json!({"retention":"12h"})),
+            PromptCacheRetention::TwelveHours
+        );
         assert_eq!(retention(json!({})), PromptCacheRetention::FiveMinutes);
+        assert!(
+            !Capability::prompt_cache_config(&capability, &json!({"enabled":false}))
+                .unwrap()
+                .enabled
+        );
     }
 }

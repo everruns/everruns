@@ -8,7 +8,7 @@ import type {
 
 export interface ChannelLifecyclePresentation {
   label: "live" | "draft";
-  description: "Live" | "Draft — not accepting traffic";
+  description: "Live" | "Draft, not accepting traffic";
   isLive: boolean;
 }
 
@@ -20,7 +20,7 @@ export function getChannelLifecyclePresentation(
   if (channel.enabled && channel.status === "live") {
     return { label: "live", description: "Live", isLive: true };
   }
-  return { label: "draft", description: "Draft — not accepting traffic", isLive: false };
+  return { label: "draft", description: "Draft, not accepting traffic", isLive: false };
 }
 
 /**
@@ -60,6 +60,8 @@ export function getChannelTypeDisplayName(channelType: ChannelType): string {
       return "A2A (Agent2Agent)";
     case "fcp":
       return "FCP (Free Communication Protocol)";
+    case "work_chat":
+      return "Work Chat";
     case "api":
       return "Agent API";
     case "public_chat":

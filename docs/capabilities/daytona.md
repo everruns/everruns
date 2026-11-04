@@ -24,7 +24,7 @@ Sandbox IDs and remain independent of the provider-facing tool namespace.
 ## Set up
 
 1. In the [Daytona Dashboard](https://app.daytona.io), open **API Keys** in your account settings, select **Create New API Key**, and copy the key.
-2. In Everruns, open **Settings → My agent experience**, find **Daytona**, select **Connect**, and paste the key.
+2. In Everruns, open **Settings → Connections**, find **Daytona**, select **Connect**, and paste the key.
 
 Once connected, agents with the Daytona capability can use the tools below.
 
@@ -162,7 +162,7 @@ All sandbox-scoped tools require a `sandbox_id`. The exceptions are `daytona_cre
 
 ## See also
 
-- [Computer Use](/capabilities/computer-use/): `computer_use_daytona` drives a desktop in a Daytona sandbox.
+- [Sandbox Templates](/features/sandbox-templates/#desktop): start the Session Sandbox with a desktop the agent drives with the `computer` tool.
 - [Storage](/capabilities/session-storage/): API key and state persistence.
 - [Daytona documentation](https://www.daytona.io/docs)
 - [Integrations](/integrations/): every vendor integration.

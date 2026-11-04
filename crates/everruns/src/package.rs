@@ -84,10 +84,9 @@ impl AgentPackage {
     pub fn diff(&self, proposed: &Self) -> Result<Vec<PackageChange>, PackageError> {
         self.0.diff(&proposed.0)
     }
-    /// Create a session with the manifest's standard harness. Custom harness
-    /// names must instead be bound explicitly with `Session::harness`.
-    pub fn create(&self, engine: &Engine, agent: Agent) -> Result<Session, PackageError> {
-        let harness = match self.manifest().harness.as_deref() {
+    /// Resolve the package's portable standard Harness for Engine registration.
+    pub fn session_harness(&self) -> Result<Option<Harness>, PackageError> {
+        Ok(match self.manifest().harness.as_deref() {
             None => None,
             Some("base") => Some(Harness::base()),
             Some("conversation") => Some(Harness::conversation()),
@@ -100,7 +99,12 @@ impl AgentPackage {
                     format!("bind custom harness {name:?} explicitly with Session::harness"),
                 ));
             }
-        };
+        })
+    }
+    /// Create a session with the manifest's standard harness. Custom harness
+    /// names must instead be bound explicitly with `Session::harness`.
+    pub fn create(&self, engine: &Engine, agent: Agent) -> Result<Session, PackageError> {
+        let harness = self.session_harness()?;
         let session = engine.create(agent);
         if let Some(harness) = harness {
             session

@@ -31,6 +31,7 @@ fn turn_log(calls: &[&str], settled: &[&str], cancelled: bool) -> (TurnId, Vec<E
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         ),
         Event::new(
@@ -89,6 +90,70 @@ fn a_settled_act_without_an_end_reasons_again() {
 #[test]
 fn an_answered_turn_without_an_end_is_not_resumed() {
     assert_eq!(fold(turn_log(&[], &[], false).1), None);
+}
+
+fn reason_started(session_id: SessionId, context: &EventContext) -> Event {
+    Event::new(
+        session_id,
+        context.clone(),
+        crate::events::ReasonStartedData {
+            harness_id: everruns_contracts::typed_id::HarnessId::new(),
+            agent_id: None,
+            metadata: None,
+        },
+    )
+}
+
+fn steering(session_id: SessionId) -> Event {
+    Event::new(
+        session_id,
+        EventContext::empty(),
+        crate::events::InputMessageData::new(RuntimeMessage::user("Also this.")),
+    )
+}
+
+// EVE-1279: steering that reached the turn after its answering reason started
+// was never read by it (the holder took it for one more reason and died), so
+// the turn is not answered and resume reasons again. Whether the steering
+// landed before or after the answer, and whether the next reason's start was
+// stored, does not matter.
+#[test]
+fn steering_after_the_answering_reason_started_leaves_the_turn_unanswered() {
+    for steer_before_answer in [true, false] {
+        for next_reason_started in [false, true] {
+            let (_, mut events) = turn_log(&[], &[], false);
+            let session_id = events[0].session_id;
+            let context = events[0].context.clone();
+            events.insert(1, reason_started(session_id, &context));
+            if steer_before_answer {
+                events.insert(2, steering(session_id));
+            } else {
+                events.push(steering(session_id));
+            }
+            if next_reason_started {
+                events.push(reason_started(session_id, &context));
+            }
+            let turn = TurnLogFold::from_events(events).expect("open turn");
+            assert!(
+                !turn.is_answered(),
+                "steer_before_answer={steer_before_answer} next_reason_started={next_reason_started}"
+            );
+        }
+    }
+}
+
+#[test]
+fn steering_the_answering_reason_read_keeps_the_turn_answered() {
+    let (_, mut events) = turn_log(&[], &[], false);
+    let session_id = events[0].session_id;
+    let context = events[0].context.clone();
+    events.insert(1, steering(session_id));
+    events.insert(2, reason_started(session_id, &context));
+    assert!(
+        TurnLogFold::from_events(events)
+            .expect("open turn")
+            .is_answered()
+    );
 }
 
 #[test]
@@ -213,15 +278,4 @@ fn a_tail_from_the_last_turn_started_folds_like_the_whole_log() {
     assert_eq!(fold(events.clone()), Some((last, vec![call("c")])));
     // A tail cut after its `turn.started` holds no open turn.
     assert_eq!(fold(events[tail_start + 1..].to_vec()), None);
-}
-
-#[test]
-fn a_parked_turn_with_its_results_recorded_has_nothing_left_to_run() {
-    // A client-side call's `tool.completed` arrives after the park; the
-    // open turn then only moves to its next reason.
-    let (turn_id, events) = turn_log(&["client"], &["client"], false);
-    let turn = TurnLogFold::from_events(events).expect("open turn");
-    assert_eq!(turn.turn_id(), turn_id);
-    assert!(!turn.is_answered());
-    assert!(turn.unfinished_calls().is_empty());
 }

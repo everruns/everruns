@@ -742,3 +742,29 @@ async fn reseeding_clears_readonly() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn dreaming_artifacts_are_atomic_create_only_across_store_instances() {
+    let (a, directory) = make_store();
+    let b = RealDiskFileStore::new(directory.path()).unwrap();
+    let a: Arc<dyn SessionFileSystem> = Arc::new(a);
+    let b: Arc<dyn SessionFileSystem> = Arc::new(b);
+    let id = sid();
+    let (x, y) = tokio::join!(
+        a.create_file_if_absent(id, "/dream.md", "first"),
+        b.create_file_if_absent(id, "/dream.md", "second")
+    );
+    assert_ne!(x.unwrap(), y.unwrap());
+    let saved = std::fs::read_to_string(directory.path().join("dream.md")).unwrap();
+    assert!(saved == "first" || saved == "second");
+    assert!(
+        !a.create_file_if_absent(id, "/dream.md", "replacement")
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.path().join("dream.md")).unwrap(),
+        saved
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}

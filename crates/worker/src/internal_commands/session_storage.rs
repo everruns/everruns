@@ -18,12 +18,14 @@ use serde_json::json;
 
 /// The session storage tools use, on either transport.
 pub struct CommandSessionStorageStore<T> {
-    transport: T,
+    pub(super) transport: std::sync::Arc<T>,
 }
 
 impl<T: InternalCommandTransport> CommandSessionStorageStore<T> {
     pub fn new(transport: T) -> Self {
-        Self { transport }
+        Self {
+            transport: std::sync::Arc::new(transport),
+        }
     }
 }
 
@@ -45,10 +47,19 @@ fn secret(session_id: SessionId, name: &str) -> serde_json::Value {
 }
 
 #[async_trait]
-impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageStore<T> {
+impl<T: InternalCommandTransport + 'static> SessionStorageStore for CommandSessionStorageStore<T> {
+    fn credential_service(
+        &self,
+    ) -> Option<
+        std::sync::Arc<dyn everruns_contracts::runtime::credential_services::CredentialService>,
+    > {
+        Some(std::sync::Arc::new(CommandSessionStorageStore {
+            transport: self.transport.clone(),
+        }))
+    }
     async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Set storage value",
             "worker_set_session_storage_value",
             json!({ "session_id": session_id.to_string(), "key": key, "value": value }),
@@ -58,7 +69,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn get_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Get storage value",
             "worker_get_session_storage_value",
             entry(session_id, key),
@@ -70,7 +81,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
     /// must not take the trait's get-then-delete default.
     async fn take_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Take storage value",
             "worker_take_session_storage_value",
             entry(session_id, key),
@@ -80,7 +91,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn delete_value(&self, session_id: SessionId, key: &str) -> Result<bool> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Delete storage value",
             "worker_delete_session_storage_value",
             entry(session_id, key),
@@ -90,7 +101,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn list_keys(&self, session_id: SessionId) -> Result<Vec<KeyInfo>> {
         let keys: Vec<Listed> = call(
-            &self.transport,
+            self.transport.as_ref(),
             "List storage keys",
             "worker_list_session_storage_keys",
             json!({ "session_id": session_id.to_string() }),
@@ -108,7 +119,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
         call_secret(
-            &self.transport,
+            self.transport.as_ref(),
             "Set secret",
             "worker_set_session_secret",
             json!({ "session_id": session_id.to_string(), "name": name, "value": value }),
@@ -118,7 +129,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>> {
         call_secret(
-            &self.transport,
+            self.transport.as_ref(),
             "Get secret",
             "worker_get_session_secret",
             secret(session_id, name),
@@ -128,7 +139,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn delete_secret(&self, session_id: SessionId, name: &str) -> Result<bool> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Delete secret",
             "worker_delete_session_secret",
             secret(session_id, name),
@@ -138,7 +149,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>> {
         let secrets: Vec<Listed> = call(
-            &self.transport,
+            self.transport.as_ref(),
             "List secrets",
             "worker_list_session_secrets",
             json!({ "session_id": session_id.to_string() }),
@@ -156,7 +167,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn list_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecretInfo>> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "List bound secrets",
             "worker_list_bound_secrets",
             json!({ "session_id": session_id.to_string() }),
@@ -168,7 +179,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
     /// them out of failure messages.
     async fn resolve_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecret>> {
         call_secret(
-            &self.transport,
+            self.transport.as_ref(),
             "Resolve bound secrets",
             "worker_resolve_bound_secrets",
             json!({ "session_id": session_id.to_string() }),
@@ -182,7 +193,7 @@ mod tests {
     use super::*;
     use everruns_internal_protocol::proto;
     use serde_json::Value;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     /// Records each call and answers with a canned result.
     struct Recorded {
@@ -191,7 +202,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl InternalCommandTransport for &Recorded {
+    impl InternalCommandTransport for Arc<Recorded> {
         async fn execute_internal_command(
             &self,
             name: &str,
@@ -202,11 +213,11 @@ mod tests {
         }
     }
 
-    fn recorded(answer: std::result::Result<Value, proto::CommandError>) -> Recorded {
-        Recorded {
+    fn recorded(answer: std::result::Result<Value, proto::CommandError>) -> Arc<Recorded> {
+        Arc::new(Recorded {
             calls: Mutex::new(Vec::new()),
             answer,
-        }
+        })
     }
 
     #[tokio::test]
@@ -217,13 +228,13 @@ mod tests {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-02T00:00:00Z",
         }])));
-        let store = CommandSessionStorageStore::new(&answered);
+        let store = CommandSessionStorageStore::new(answered.clone());
         let keys = store.list_keys(session).await.unwrap();
         assert_eq!(keys[0].key, "a");
         assert_eq!(keys[0].updated_at.to_rfc3339(), "2026-01-02T00:00:00+00:00");
 
         let set = recorded(Ok(Value::Null));
-        CommandSessionStorageStore::new(&set)
+        CommandSessionStorageStore::new(set.clone())
             .set_value(session, "k", "v")
             .await
             .unwrap();
@@ -239,7 +250,7 @@ mod tests {
     async fn take_is_one_command_and_absent_values_decode() {
         let session = SessionId::new();
         let absent = recorded(Ok(Value::Null));
-        let store = CommandSessionStorageStore::new(&absent);
+        let store = CommandSessionStorageStore::new(absent.clone());
         assert!(store.take_value(session, "gone").await.unwrap().is_none());
         assert!(store.get_value(session, "gone").await.unwrap().is_none());
         let calls = absent.calls.lock().unwrap();
@@ -252,7 +263,7 @@ mod tests {
     async fn secrets_travel_as_commands_and_decode_back() {
         let session = SessionId::new();
         let set = recorded(Ok(Value::Null));
-        CommandSessionStorageStore::new(&set)
+        CommandSessionStorageStore::new(set.clone())
             .set_secret(session, "TOKEN", "s3cret")
             .await
             .unwrap();
@@ -264,7 +275,7 @@ mod tests {
         }
 
         let got = recorded(Ok(json!("s3cret")));
-        let store = CommandSessionStorageStore::new(&got);
+        let store = CommandSessionStorageStore::new(got.clone());
         assert_eq!(
             store.get_secret(session, "TOKEN").await.unwrap().as_deref(),
             Some("s3cret")
@@ -276,7 +287,7 @@ mod tests {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-02T00:00:00Z",
         }])));
-        let secrets = CommandSessionStorageStore::new(&listed)
+        let secrets = CommandSessionStorageStore::new(listed.clone())
             .list_secrets(session)
             .await
             .unwrap();
@@ -288,7 +299,7 @@ mod tests {
 
         let deleted = recorded(Ok(json!(true)));
         assert!(
-            CommandSessionStorageStore::new(&deleted)
+            CommandSessionStorageStore::new(deleted.clone())
                 .delete_secret(session, "TOKEN")
                 .await
                 .unwrap()
@@ -304,7 +315,7 @@ mod tests {
     #[tokio::test]
     async fn a_malformed_secret_answer_does_not_echo_the_value() {
         let wrong = recorded(Ok(json!("s3cret-value")));
-        let error = CommandSessionStorageStore::new(&wrong)
+        let error = CommandSessionStorageStore::new(wrong.clone())
             .set_secret(SessionId::new(), "TOKEN", "s3cret-value")
             .await
             .expect_err("wrong shape");
@@ -319,7 +330,7 @@ mod tests {
             kind: proto::command_error::Kind::NotFound as i32,
             message: "Session".to_string(),
         }));
-        let error = CommandSessionStorageStore::new(&missing)
+        let error = CommandSessionStorageStore::new(missing.clone())
             .delete_value(SessionId::new(), "a")
             .await
             .expect_err("not found");

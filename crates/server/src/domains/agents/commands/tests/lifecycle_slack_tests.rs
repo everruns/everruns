@@ -367,10 +367,14 @@ async fn queued_channel_edit_cannot_restore_removed_slack_credentials() {
             .await
             .unwrap();
         if archived {
-            ctx.db
-                .delete_agent(ctx.org_id(), AgentId::from_uuid(agent.internal_id))
-                .await
-                .unwrap();
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                ctx.db
+                    .delete_agent(ctx.org_id(), AgentId::from_uuid(agent.internal_id)),
+            )
+            .await
+            .expect("a queued local channel edit must not hold the Agent row")
+            .unwrap();
         }
         drop(guard);
         assert_eq!(edit.await.unwrap().is_err(), archived);

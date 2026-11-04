@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -361,6 +362,7 @@ const sampleImageBase64 =
 // ============================================
 
 export default function DevFilePreviewsPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "File Previews" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
@@ -368,7 +370,7 @@ export default function DevFilePreviewsPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -383,119 +385,124 @@ export default function DevFilePreviewsPage() {
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Developer Tools
+            {ui("Back to Developer Tools")}
           </Link>
-          <h1 className="text-3xl font-bold">File Preview Components</h1>
+          <h1 className="text-3xl font-bold">{ui("File Preview Components")}</h1>
           <p className="text-muted-foreground mt-2">
-            Preview components for code, CSV, JSON, markdown, and images using Shiki syntax
-            highlighting
+            {ui(
+              "Preview components for code, CSV, JSON, markdown, and images using Shiki syntax highlighting",
+            )}
           </p>
           <Badge variant="outline" className="mt-2">
-            Development Mode
+            {ui("Development Mode")}
           </Badge>
         </div>
 
         <div className="space-y-8">
           {/* Code Preview - Multiple Languages */}
           <ShowcaseSection
-            title="Code Preview"
-            description="Shiki-based syntax highlighting for various programming languages"
+            title={ui("Code Preview")}
+            description={ui("Shiki-based syntax highlighting for various programming languages")}
           >
-            <ShowcaseItem label="TypeScript (.ts)">
+            <ShowcaseItem label={ui("TypeScript (.ts)")}>
               <CodePreview content={sampleCode.typescript} extension="ts" />
             </ShowcaseItem>
 
-            <ShowcaseItem label="Python (.py)">
+            <ShowcaseItem label={ui("Python (.py)")}>
               <CodePreview content={sampleCode.python} extension="py" />
             </ShowcaseItem>
 
-            <ShowcaseItem label="Rust (.rs)">
+            <ShowcaseItem label={ui("Rust (.rs)")}>
               <CodePreview content={sampleCode.rust} extension="rs" />
             </ShowcaseItem>
 
-            <ShowcaseItem label="Go (.go)">
+            <ShowcaseItem label={ui("Go (.go)")}>
               <CodePreview content={sampleCode.go} extension="go" />
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* CSV Preview */}
           <ShowcaseSection
-            title="CSV Preview"
-            description="Tabular data rendered as formatted tables"
+            title={ui("CSV Preview")}
+            description={ui("Tabular data rendered as formatted tables")}
           >
-            <ShowcaseItem label="Employee Data (.csv)">
+            <ShowcaseItem label={ui("Employee Data (.csv)")}>
               <CSVPreview content={sampleCSV} />
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* JSON Preview */}
           <ShowcaseSection
-            title="JSON Preview"
-            description="Pretty-printed JSON with Shiki syntax highlighting"
+            title={ui("JSON Preview")}
+            description={ui("Pretty-printed JSON with Shiki syntax highlighting")}
           >
-            <ShowcaseItem label="Agent Configuration (.json)">
+            <ShowcaseItem label={ui("Agent Configuration (.json)")}>
               <JSONPreview content={JSON.stringify(sampleJSON)} />
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* Markdown Preview */}
           <ShowcaseSection
-            title="Markdown Preview"
-            description="Full markdown rendering with GFM support and code highlighting"
+            title={ui("Markdown Preview")}
+            description={ui("Full markdown rendering with GFM support and code highlighting")}
           >
-            <ShowcaseItem label="Documentation (.md)">
+            <ShowcaseItem label={ui("Documentation (.md)")}>
               <MarkdownPreview content={sampleMarkdown} />
             </ShowcaseItem>
 
-            <ShowcaseItem label="With Frontmatter (.md)">
+            <ShowcaseItem label={ui("With Frontmatter (.md)")}>
               <MarkdownPreview content={sampleMarkdownWithFrontmatter} />
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* Image Preview */}
           <ShowcaseSection
-            title="Image Preview"
-            description="Inline image rendering from base64-encoded content"
+            title={ui("Image Preview")}
+            description={ui("Inline image rendering from base64-encoded content")}
           >
-            <ShowcaseItem label="Sample Image (.png)">
+            <ShowcaseItem label={ui("Sample Image (.png)")}>
               <ImagePreview content={sampleImageBase64} extension="png" fileName="sample.png" />
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* HTML Preview */}
           <ShowcaseSection
-            title="HTML Preview"
-            description="Sandboxed, opaque-origin iframe — no access to everruns cookies, storage, parent DOM, or top-frame navigation (TM-WEB-010). This static srcDoc fallback renders CSS/markup but does NOT run JS under the app CSP; the file viewer uses the server-backed endpoint where JavaScript executes."
+            title={ui("HTML Preview")}
+            description={ui(
+              "Sandboxed, opaque-origin iframe — no access to everruns cookies, storage, parent DOM, or top-frame navigation (TM-WEB-010). This static srcDoc fallback renders CSS/markup but does NOT run JS under the app CSP; the file viewer uses the server-backed endpoint where JavaScript executes.",
+            )}
           >
-            <ShowcaseItem label="Document (.html) — static fallback">
+            <ShowcaseItem label={ui("Document (.html) — static fallback")}>
               <HtmlPreview content={sampleHtml} />
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* PDF Preview */}
           <ShowcaseSection
-            title="PDF Preview"
-            description="Rendered via a data:application/pdf iframe using the browser's built-in viewer; the opaque data: origin isolates it from everruns (TM-WEB-011)"
+            title={ui("PDF Preview")}
+            description={ui(
+              "Rendered via a data:application/pdf iframe using the browser's built-in viewer; the opaque data: origin isolates it from everruns (TM-WEB-011)",
+            )}
           >
-            <ShowcaseItem label="Document (.pdf)">
+            <ShowcaseItem label={ui("Document (.pdf)")}>
               <PdfPreview content={samplePdfBase64} />
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* FilePreview Unified Component */}
           <ShowcaseSection
-            title="Unified FilePreview Component"
-            description="Automatic preview type detection based on file extension"
+            title={ui("Unified FilePreview Component")}
+            description={ui("Automatic preview type detection based on file extension")}
           >
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="font-medium mb-2">Preview Type Detection</div>
+                <div className="font-medium mb-2">{ui("Preview Type Detection")}</div>
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-1">Extension</th>
-                      <th className="text-left py-1">Type</th>
-                      <th className="text-left py-1">Can Preview</th>
+                      <th className="text-left py-1">{ui("Extension")}</th>
+                      <th className="text-left py-1">{ui("Type")}</th>
+                      <th className="text-left py-1">{ui("Can Preview")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -526,7 +533,7 @@ export default function DevFilePreviewsPage() {
                 </table>
               </div>
               <div>
-                <div className="font-medium mb-2">Usage</div>
+                <div className="font-medium mb-2">{ui("Usage")}</div>
                 <pre className="bg-muted p-4 text-xs overflow-x-auto">
                   {`import { FilePreview, canPreview } from "@/components/files";
 
@@ -547,8 +554,8 @@ if (canPreview(extension, encoding)) {
 
           {/* Supported Languages */}
           <ShowcaseSection
-            title="Supported Languages"
-            description="Code languages with Shiki syntax highlighting"
+            title={ui("Supported Languages")}
+            description={ui("Code languages with Shiki syntax highlighting")}
           >
             <div className="flex flex-wrap gap-2">
               {[

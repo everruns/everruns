@@ -41,6 +41,8 @@ pub use serde;
 pub use serde_json;
 
 pub mod background_call;
+/// Provider-native offline model request contracts.
+pub mod batch;
 pub mod compact;
 pub mod credential_provider;
 pub mod credential_schema;
@@ -48,16 +50,21 @@ pub mod credential_schema;
 pub mod driver_helpers;
 mod driver_oauth;
 pub mod driver_registry;
+pub mod durable_retry;
 pub mod error;
 pub mod execution_api;
 pub mod execution_phase;
 pub mod form_elicitation_types;
 pub mod hosted_mcp;
+#[cfg(feature = "http")]
+pub mod http_transport;
 mod llm_call_config_builder;
 pub mod llm_error;
 pub mod llm_retry;
 pub mod llm_telemetry;
 pub mod message;
+pub mod message_origin;
+pub mod message_reactions;
 pub mod model;
 pub mod model_discovery;
 pub mod model_profiles;
@@ -81,9 +88,13 @@ pub mod openai_wire;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod provider;
+pub mod provider_info;
 pub mod provider_limit;
 mod provider_managed;
+pub mod public_metadata;
 pub mod reasoning;
+pub mod recommended_models;
+pub mod retry_failure;
 pub mod rt;
 pub mod runtime_provider;
 pub mod secret_scrub;
@@ -96,6 +107,7 @@ pub mod structured_output;
 pub mod tool_approval_types;
 pub mod tool_schema_compat;
 pub mod tool_types;
+pub mod turn;
 pub mod turn_collector;
 pub mod typed_id;
 pub mod url_validation;
@@ -140,12 +152,14 @@ pub use model::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
     ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
-#[cfg(feature = "http")]
-pub use model_discovery::list_openai_compatible_models;
 pub use model_discovery::{
     DiscoveredProviderModel, ModelSearchMatch, ModelSearchResult, RankedDiscoveredModels,
     discover_provider_models, enrich_with_profiles, match_models, normalize_and_enrich,
     rank_discovered_models, search_provider_models,
+};
+#[cfg(feature = "http")]
+pub use model_discovery::{
+    list_openai_compatible_models, list_openai_compatible_models_with_transport,
 };
 pub use model_profiles::{
     ModelProfileEntry, all_profile_entries, all_profiles, get_model_profile, get_model_vendor,
@@ -199,7 +213,7 @@ pub use user_facing_error::{
 /// to pick a default implicitly when a crate in the graph could install another.
 /// Repeated and concurrent calls are safe: rustls accepts the first
 /// installation and later calls are no-ops.
-#[cfg(feature = "tls-aws-lc-rs")]
+#[cfg(all(feature = "tls-aws-lc-rs", not(target_arch = "wasm32")))]
 pub fn install_default_crypto_provider() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 }
@@ -208,6 +222,7 @@ pub mod reasoning_updates;
 pub mod tool_changes;
 
 pub mod connector;
+pub mod knowledge;
 pub mod knowledge_store;
 pub mod session_sqldb;
 pub mod vector_store;
@@ -224,3 +239,6 @@ pub mod decisions;
 
 /// Voice channels and speech-to-speech provider sessions.
 pub mod voice;
+
+#[cfg(all(feature = "http", target_arch = "wasm32"))]
+pub fn install_default_crypto_provider() {}

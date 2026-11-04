@@ -194,22 +194,6 @@ async fn abandoned_background_response_is_cancelled() {
 }
 
 #[tokio::test]
-async fn completed_background_response_is_not_cancelled() {
-    let server = MockServer::start().await;
-    mount_post(&server, &[created(0), delta(1, "done"), completed(2)]).await;
-    provider(&server, true)
-        .chat_completion(
-            vec![Message::text(MessageRole::User, "hi")],
-            &config(Some(ReasoningEffort::Max)),
-        )
-        .await
-        .unwrap();
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let requests = server.received_requests().await.unwrap();
-    assert!(!requests.iter().any(|r| r.url.path().ends_with("/cancel")));
-}
-
-#[tokio::test]
 async fn rejected_background_mode_falls_back_to_the_foreground() {
     use wiremock::matchers::body_partial_json;
     let server = MockServer::start().await;

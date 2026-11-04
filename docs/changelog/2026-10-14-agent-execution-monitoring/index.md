@@ -5,6 +5,7 @@ date: 2026-10-14
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, api, operations]
 links:
   docs: [/observability/monitoring/]

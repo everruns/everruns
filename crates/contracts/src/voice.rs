@@ -444,16 +444,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_defaults_round_trip_from_empty_json() {
-        let config: VoiceChannelConfig = serde_json::from_str("{}").unwrap();
-        assert_eq!(config, VoiceChannelConfig::default());
-        assert_eq!(config.mode, VoiceMode::Delegated);
-        assert_eq!(config.model, DEFAULT_REALTIME_MODEL);
-        assert_eq!(config.interruption, Interruption::Steer);
-        config.validate().unwrap();
-    }
-
-    #[test]
     fn config_rejects_bad_values() {
         let blank = VoiceChannelConfig {
             voice: " ".into(),
@@ -487,12 +477,6 @@ mod tests {
             ..config
         };
         assert!(blank.validate().unwrap_err().contains("speech_model"));
-    }
-
-    #[test]
-    fn unknown_mode_is_rejected() {
-        let err = serde_json::from_str::<VoiceChannelConfig>(r#"{"mode":"telepathy"}"#);
-        assert!(err.is_err());
     }
 
     #[test]

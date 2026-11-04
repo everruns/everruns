@@ -29,6 +29,10 @@ use async_trait::async_trait;
 use super::{AgUiError, AgUiOptions, AgUiStream, RunAgentInput, invalid, lock};
 use crate::{Agent, Engine, ResumeError, Session, SessionId};
 
+/// Namespace of hosted thread session identities.
+const THREAD_NAMESPACE: uuid::Uuid =
+    uuid::Uuid::from_u128(0x6167_7569_7468_7265_6164_7365_7373_696f);
+
 /// Longest scope [`AgUiThreads::run_in`] accepts, in bytes.
 const MAX_SCOPE_BYTES: usize = 256;
 
@@ -78,6 +82,8 @@ pub enum ThreadError {
     Store(ThreadStoreError),
     /// The thread's session exists but could not be reopened.
     Resume(ResumeError),
+    /// The session hosting authority refused to create the thread's session.
+    Create(String),
 }
 
 impl std::fmt::Display for ThreadError {
@@ -85,6 +91,7 @@ impl std::fmt::Display for ThreadError {
         match self {
             Self::Store(error) => write!(f, "{error}"),
             Self::Resume(error) => write!(f, "cannot reopen the thread's session: {error}"),
+            Self::Create(error) => write!(f, "cannot create the thread's session: {error}"),
         }
     }
 }
@@ -94,6 +101,7 @@ impl std::error::Error for ThreadError {
         match self {
             Self::Store(error) => Some(error),
             Self::Resume(error) => Some(error),
+            Self::Create(_) => None,
         }
     }
 }
@@ -417,9 +425,17 @@ pub struct AgUiThreads {
     inner: Arc<ThreadsInner>,
 }
 
+/// What a new thread's session runs.
+enum Behavior {
+    /// A process-local Agent value (the legacy facade lane and memory hosting).
+    Agent(Box<Agent>),
+    /// A retained build on the Engine's coherent session hosting (EVE-1298).
+    Hosted(crate::hosting::AgentBuild),
+}
+
 struct ThreadsInner {
     engine: Engine,
-    agent: Agent,
+    behavior: Behavior,
     store: Arc<dyn ThreadStore>,
     resolving: tokio::sync::Mutex<()>,
     /// Every session resolved so far, so a parked turn outlives its run.
@@ -461,11 +477,32 @@ impl AgUiThreads {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn with_store(engine: Engine, agent: Agent, store: impl ThreadStore) -> Self {
+        Self::build(engine, Behavior::Agent(Box::new(agent)), Arc::new(store))
+    }
+
+    /// Threads whose sessions run the retained `build` on `engine`'s coherent
+    /// session hosting, recorded in `store`.
+    ///
+    /// Each new thread commits its session through
+    /// [`Engine::create_registered`] at an identity derived from the thread
+    /// key, so a retried first run after a lost reply reuses the same session.
+    /// Threads whose sessions were moved from the legacy lane with
+    /// [`Engine::cut_over_legacy_session`] keep answering from the same
+    /// session. Stability: experimental.
+    pub fn hosted(
+        engine: Engine,
+        build: crate::hosting::AgentBuild,
+        store: impl ThreadStore,
+    ) -> Self {
+        Self::build(engine, Behavior::Hosted(build), Arc::new(store))
+    }
+
+    fn build(engine: Engine, behavior: Behavior, store: Arc<dyn ThreadStore>) -> Self {
         Self {
             inner: Arc::new(ThreadsInner {
                 engine,
-                agent,
-                store: Arc::new(store),
+                behavior,
+                store,
                 resolving: tokio::sync::Mutex::new(()),
                 live: Mutex::default(),
             }),
@@ -575,7 +612,22 @@ impl AgUiThreads {
                 Err(error) => return Err(AgUiError::Thread(ThreadError::Resume(error))),
             }
         }
-        let session = inner.engine.create(inner.agent.clone());
+        let session = match &inner.behavior {
+            Behavior::Agent(agent) => inner.engine.create(agent.as_ref().clone()),
+            Behavior::Hosted(build) => {
+                // A deterministic identity makes a retried creation the same
+                // authoritative session (creation is idempotent per binding).
+                let id = SessionId::from_uuid(uuid::Uuid::new_v5(
+                    &THREAD_NAMESPACE,
+                    format!("{}:{}:{key}", build.agent, build.build_id).as_bytes(),
+                ));
+                inner
+                    .engine
+                    .create_registered(id, build)
+                    .await
+                    .map_err(|error| AgUiError::Thread(ThreadError::Create(error.to_string())))?
+            }
+        };
         inner.store.bind(key, session.session_id()).await?;
         lock(&inner.live).insert(session.session_id(), session.clone());
         Ok(ThreadSession {
@@ -587,12 +639,12 @@ impl AgUiThreads {
     /// The engine's session, attaching it from the backend after a restart.
     async fn reopen(&self, session_id: SessionId) -> Result<Session, ResumeError> {
         let engine = &self.inner.engine;
-        match engine.resume(session_id).await {
-            Err(ResumeError::SessionNotFound { .. }) => {
-                engine.attach(session_id, self.inner.agent.clone()).await?;
+        match (engine.resume(session_id).await, &self.inner.behavior) {
+            (Err(ResumeError::SessionNotFound { .. }), Behavior::Agent(agent)) => {
+                engine.attach(session_id, agent.as_ref().clone()).await?;
                 engine.resume(session_id).await
             }
-            other => other,
+            (other, _) => other,
         }
     }
 }

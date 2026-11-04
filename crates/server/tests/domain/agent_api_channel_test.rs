@@ -651,7 +651,7 @@ fn approval_call() -> Value {
 }
 
 #[tokio::test]
-async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
+async fn the_caller_answers_questions_and_sees_the_held_back_tool() {
     let server = parked_server().await;
     let channel = api_channel(&server, json!({ "visibility": "messages" }), true).await;
     let key = create_key(&server, &channel, "k").await;
@@ -684,12 +684,13 @@ async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
         session["pending_questions"][0]["questions"][0]["id"],
         "target"
     );
-    // An operator decides by default: the caller sees that a call waits, not
-    // which tool or with what.
+    // The caller decides, so it sees the held-back tool. The agent's own
+    // calls in the same batch stay hidden.
     let approval = &session["pending_approvals"][0];
     assert_eq!(approval["tool_call_id"], "tool_approval_toolu_mail");
-    assert_eq!(approval["answerable"], false);
-    for hidden in ["send_email", "cfo@example.com", "s3cr3t", "internal_lookup"] {
+    assert_eq!(approval["answerable"], true);
+    assert_eq!(approval["tool_name"], "send_email");
+    for hidden in ["s3cr3t", "internal_lookup"] {
         assert!(
             !session.to_string().contains(hidden),
             "{hidden} leaked: {session}"
@@ -717,15 +718,16 @@ async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
     );
     assert!(!requested.to_string().contains("s3cr3t"));
 
+    // Another caller cannot approve for this one.
     call(
         &server,
         Method::POST,
         &format!("{session_path}/tool-approvals"),
-        Some(secret),
+        Some(other),
         Some(json!({ "decisions": [{ "tool_call_id": "tool_approval_toolu_mail", "decision": "allow" }] })),
     )
     .await
-    .assert_status(StatusCode::FORBIDDEN);
+    .assert_status(StatusCode::NOT_FOUND);
     // A credential never travels over the execution API.
     call(
         &server,
@@ -781,9 +783,11 @@ async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
 }
 
 #[tokio::test]
-async fn the_caller_approves_tools_when_the_channel_lets_it() {
+async fn the_caller_approves_tools_even_on_an_older_operator_channel() {
     let server = parked_server().await;
-    let channel = api_channel(&server, json!({ "tool_approvals": "caller" }), true).await;
+    // Older channels stored who approves. The value still loads and no longer
+    // decides anything: the person using the agent approves.
+    let channel = api_channel(&server, json!({ "tool_approvals": "operator" }), true).await;
     let key = create_key(&server, &channel, "k").await;
     let secret = key["secret"].as_str().unwrap();
     let base = format!("/v1/channels/{}", channel.channel_id);
@@ -896,5 +900,92 @@ async fn the_event_stream_applies_visibility() {
         call(&server, Method::GET, &sse, key, None)
             .await
             .assert_status(status);
+    }
+}
+
+/// Starts a turn on `session_id` and leaves a narrated tool call running.
+async fn running_turn(server: &TestServer, session_id: &str) {
+    use everruns_contracts::tool_types::ToolCall;
+    use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+    use everruns_core::events::{
+        EventContext, EventData, EventRequest, ToolStartedData, TurnStartedData,
+    };
+
+    let session_id: SessionId = session_id.parse().unwrap();
+    let turn_id = TurnId::new();
+    let context = EventContext::turn(turn_id, MessageId::new());
+    let events: [EventData; 2] = [
+        TurnStartedData {
+            turn_id,
+            input_message_id: context.input_message_id.unwrap(),
+            input_content: None,
+            agent_id: None,
+            agent_name: Some("Support agent".into()),
+            agent_description: None,
+            origin: None,
+        }
+        .into(),
+        ToolStartedData {
+            tool_call: ToolCall {
+                id: "call_1".into(),
+                name: "bash".into(),
+                arguments: json!({ "command": "curl -H 'token: s3cr3t' billing" }),
+            },
+            tool_call_fingerprint: None,
+            display_name: None,
+            narration: Some("Running `curl -H 'token: s3cr3t' billing`".into()),
+            side_effect_class: None,
+        }
+        .into(),
+    ];
+    for data in events {
+        server
+            .event_service
+            .emit(EventRequest::new(session_id, context.clone(), data))
+            .await
+            .expect("emit");
+    }
+}
+
+#[tokio::test]
+async fn the_session_read_carries_a_work_report_shaped_by_visibility() {
+    let server = TestServer::new().await;
+    for (visibility, shows_steps) in [("activity", false), ("full", true)] {
+        let channel = api_channel(&server, json!({ "visibility": visibility }), true).await;
+        let key = create_key(&server, &channel, "k").await;
+        let secret = key["secret"].as_str().unwrap();
+        let base = format!("/v1/channels/{}", channel.channel_id);
+        let session: Value = call(
+            &server,
+            Method::POST,
+            &format!("{base}/sessions"),
+            Some(secret),
+            None,
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+        let session_path = format!("{base}/sessions/{}", session["id"].as_str().unwrap());
+        let idle: Value = call(&server, Method::GET, &session_path, Some(secret), None)
+            .await
+            .assert_status(StatusCode::OK)
+            .json();
+        assert!(idle.get("work").is_none(), "no turn, no report: {idle}");
+
+        running_turn(&server, session["id"].as_str().unwrap()).await;
+        let read: Value = call(&server, Method::GET, &session_path, Some(secret), None)
+            .await
+            .assert_status(StatusCode::OK)
+            .json();
+        let work = &read["work"];
+        assert_eq!(work["state"], "working", "{visibility}: {read}");
+        if shows_steps {
+            assert_eq!(work["steps"][0]["tool_name"], "bash");
+            assert!(work["headline"].as_str().unwrap().contains("curl"));
+        } else {
+            assert_eq!(work["headline"], "Working");
+            assert!(work.get("steps").is_none_or(|steps| steps == &json!([])));
+            assert!(!read.to_string().contains("s3cr3t"), "leaked: {read}");
+        }
     }
 }

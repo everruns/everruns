@@ -1,5 +1,6 @@
+import { LocaleProvider } from "@/providers/locale-provider";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { EntityCard, EntityCardTags, EntityCardCapabilities } from "@/components/ui/entity-card";
+import { EntityCardTags, EntityCardCapabilities } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 
 describe("EntityCard", () => {
@@ -16,23 +17,26 @@ describe("EntityCard", () => {
     fireEvent.click(less);
     expect(screen.queryByText("safety")).not.toBeInTheDocument();
   });
-
-  it("keeps long titles shrinkable beside header actions", () => {
-    const { container } = render(
-      <EntityCard title="A very long entity name" headerActions={<span>active</span>}>
-        Body
-      </EntityCard>,
-    );
-
-    expect(screen.getByText("A very long entity name")).toHaveClass("block", "truncate");
-    expect(container.querySelector('[data-slot="entity-card-heading"]')).toHaveClass(
-      "min-w-0",
-      "flex-1",
-    );
-  });
 });
 
 describe("EntityIdentity", () => {
+  afterEach(() => localStorage.clear());
+
+  it.each([true, false])(
+    "localizes the copy action while preserving the authored name and ID (truncate=%s)",
+    (truncate) => {
+      localStorage.setItem("everruns.ui-language", "uk");
+      render(
+        <LocaleProvider>
+          <EntityIdentity value="agent_123" truncate={truncate}>
+            Copy ID: authored
+          </EntityIdentity>
+        </LocaleProvider>,
+      );
+      expect(screen.getByRole("button", { name: "Скопіювати ID: agent_123" })).toBeInTheDocument();
+      expect(screen.getByText("Copy ID: authored")).toBeInTheDocument();
+    },
+  );
   it("keeps a long ID out of the layout and exposes its full value accessibly", async () => {
     const value = "plugin:plugin_019fda100f037c008024046d6b3d74c0";
 
@@ -69,19 +73,6 @@ describe("EntityIdentity", () => {
     act(() => jest.runOnlyPendingTimers());
     await waitFor(() => expect(screen.getByRole("status")).toBeEmptyDOMElement());
     jest.useRealTimers();
-  });
-
-  it("wraps a page-heading label without exposing the long ID to the layout", () => {
-    const value = "entity_019fda100f037c008024046d6b3d74c0";
-
-    render(
-      <EntityIdentity value={value} truncate={false}>
-        A deliberately long readable entity heading for a narrow viewport
-      </EntityIdentity>,
-    );
-
-    expect(screen.getByText(/deliberately long readable/)).toHaveClass("break-words", "min-w-0");
-    expect(screen.queryByText(value)).not.toBeInTheDocument();
   });
 });
 

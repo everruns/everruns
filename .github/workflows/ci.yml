@@ -113,7 +113,7 @@ jobs:
       skip_integration_workflows: ${{ steps.ci_opt_outs.outputs.skip_integration_workflows }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -203,7 +203,7 @@ jobs:
           set_output skip_docker "ci:skip-docker"
           set_output skip_integration_workflows "ci:skip-integration-workflows"
 
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: core_filter
         if: (steps.plan.outputs.mode == 'pr' || steps.plan.outputs.mode == 'batch') && steps.plan.outputs.force != 'true'
         with:
@@ -243,6 +243,7 @@ jobs:
               - 'scripts/lib/core-feature-modules.sh'
               - 'scripts/test-core-feature-modules.sh'
               - 'scripts/lib/check-durable-isolation.sh'
+              - 'scripts/test-durable-isolation.sh'
               - 'scripts/lib/check-database-driver-isolation.sh'
               - 'scripts/lib/check-database-driver-isolation.py'
               - 'scripts/test-database-driver-isolation.py'
@@ -270,6 +271,11 @@ jobs:
             chaos:
               - 'scripts/chaos/**'
               - '!scripts/chaos/**/*.md'
+              # Cancellation ownership must survive concurrent completion and
+              # backend failures under the multi-process harness.
+              - 'crates/server/src/domains/sessions/commands/**'
+              - 'crates/server/src/api/channel_api.rs'
+              - 'crates/server/src/channels/a2a/mod.rs'
               - '.github/workflows/chaos.yml'
               - '.github/workflows/ci.yml'
             sdk_compat:
@@ -290,6 +296,8 @@ jobs:
             # libraries/assets they exercise. Workflow-specific harnesses under
             # .github/scripts stay owned by their dedicated jobs.
             shell:
+              - 'examples/cloudflare-data-agent/**'
+              - 'docs/how-to/cloudflare-agent.md'
               - '.github/scripts/ci/**'
               - 'scripts/run-shell-tests.sh'
               # The Compose regression checks syntax and credential-consent gates.
@@ -315,6 +323,8 @@ jobs:
               - '.github/crates-publish-set.txt'
               # scripts/test-chaos-harness.sh imports the chaos harness modules.
               - 'scripts/chaos/**'
+              # scripts/test-stress-bench.sh imports the stress bench modules.
+              - 'scripts/stress/**'
               # scripts/test-publish-crates-order.sh reads the publish workflow
               # and the workspace member manifests it publishes.
               - '.github/workflows/publish-crates.yml'
@@ -360,6 +370,7 @@ jobs:
               - '.github/workflows/ci.yml'
             ui:
               - 'apps/ui/**'
+              - 'apps/chat-ui/**'
               # api-types:check regenerates apps/ui/src/lib/api/generated from
               # this spec, so a spec-only change can leave the committed types
               # stale. Without it here the UI job is skipped and the drift only
@@ -382,6 +393,8 @@ jobs:
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
+              - 'apps/ui/scripts/patch-zod-v3.mjs'
+              - 'apps/ui/scripts/zod-v3-compatibility.json'
               - 'docs/**'
               - 'release-card.yml'
               - '.github/workflows/ci.yml'
@@ -463,7 +476,7 @@ jobs:
       # `some-with-excludes` matches any positive path while making every
       # negated docs pattern final; `some` leaks exclusions and `every` makes
       # disjoint positive paths impossible to match.
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: live_filter
         if: (steps.plan.outputs.mode == 'pr' || steps.plan.outputs.mode == 'batch') && steps.plan.outputs.force != 'true'
         with:
@@ -482,6 +495,8 @@ jobs:
             daytona:
               - 'crates/integrations/src/daytona/**'
               - 'crates/integrations/tests/daytona_*.rs'
+              - 'crates/integrations/openapi/daytona/**'
+              - 'crates/integrations/build.rs'
               - '!crates/integrations/src/daytona/**/*.md'
               - 'crates/contracts/src/session_sandbox.rs'
               - 'crates/contracts/src/sandbox_checkpoint.rs'
@@ -771,7 +786,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             . -> target
-            examples/celld-engine -> target
+            examples/durable-object-agent -> target
 
       - name: Check wasm portability
         run: bash scripts/lib/check-wasm-portability.sh
@@ -816,8 +831,19 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
 
+      - name: Install durable guard scanner
+        timeout-minutes: 5
+        run: |
+          if ! command -v rg >/dev/null 2>&1; then
+            sudo apt-get update || true
+            sudo apt-get install -y ripgrep
+          fi
+          rg --version
+
       - name: Check durable isolation
-        run: bash scripts/lib/check-durable-isolation.sh
+        run: |
+          bash scripts/test-durable-isolation.sh
+          bash scripts/lib/check-durable-isolation.sh
 
       - name: Check database driver isolation
         run: |
@@ -919,6 +945,8 @@ jobs:
       run: bash scripts/lib/check-log-error-field.sh
     - name: Check nothing links the former docs host
       run: bash scripts/lib/check-docs-host.sh
+    - name: Check no Rust test is ignored
+      run: bash scripts/lib/check-no-ignored-tests.sh
     - name: Check domains, storage, services and records never import crate::api
       run: bash scripts/lib/check-server-api-layering.sh
     - name: Check server modules use folder mod.rs and no path attributes
@@ -963,7 +991,9 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.mode == 'pr' && needs.changes.outputs.has_tests == 'true'
-    timeout-minutes: 30
+    # A server cache miss measured 35m compiling plus six minutes of tests.
+    # Retain every selected test and bounded cold-build headroom.
+    timeout-minutes: ${{ matrix.group == 'server' && 50 || 40 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.changes.outputs.matrix) }}
@@ -1016,7 +1046,10 @@ jobs:
     # A docs/framework-only change still runs, but only the facade-cli leg
     # does work: it compiles the Framework docs snippets (crates/docs-snippets).
     if: (needs.changes.outputs.mode != 'pr' || needs.changes.outputs.rust != 'true') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_snippets == 'true')
-    timeout-minutes: 30
+    # 40: facade-cli adds ~9 serial integration-crate invocations in nightly/full
+    # mode. It took 28m in the 2026-10-22 nightly and hit the old 30m limit in the
+    # full run 39749578382, while running those extras with every test passing.
+    timeout-minutes: 40
 
 
     # Sharded: ~27 sequential `cargo test` invocations were ~20 min of
@@ -1132,7 +1165,7 @@ jobs:
           cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,openai-image,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util -- --test-threads=1
           # Experimental integrations stay on their own support track; unit and
           # mock-backed tests run here, while Sprites live tests remain manual.
-          cargo test -p everruns-integrations-experimental --features deno,sprites -- --test-threads=1
+          cargo test -p everruns-integrations-experimental --features sprites -- --test-threads=1
           # Hosted integration composition and its entries live with the hosted
           # capabilities. The script separately guards catalog completeness.
           cargo test -p everruns-capabilities --features hosted-integration-catalog --lib
@@ -1145,12 +1178,9 @@ jobs:
           CARGO_TARGET_DIR="$PWD/target" cargo test --locked \
             --manifest-path crates/everruns/tests/fixtures/external-consumer/Cargo.toml \
             -p external-platform-store
-          # capability_boundary's dependency/narration invariants only hold
-          # with `environment-capabilities` on: every hosted binary
-          # (crates/server, crates/worker) enables it, and some hosted
-          # capabilities (memory, data_knowledge, platform) declare a hard
-          # dependency on the filesystem integration it links.
-          cargo test -p everruns-capabilities --features environment-capabilities \
+          # Match server/worker composition: hosted dependencies require both
+          # environment capabilities (filesystem) and portable builtins (skills).
+          cargo test -p everruns-capabilities --features environment-capabilities,portable-builtins \
             --test capability_boundary
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.
@@ -1190,13 +1220,12 @@ jobs:
           # --bins runs the unit tests inside src/main.rs, contract_golden among
           # them: the guard on the shipped command line. Without it the named
           # --test targets are all that run and the golden drifts unseen.
-          cargo test -p everruns-cli --bins --test auth_integration_test --test chat_integration_test --test files_integration_test --test pat_scope_integration_test -- --test-threads=1
+          cargo test -p everruns-cli --bins --test auth_integration_test --test pat_scope_integration_test -- --test-threads=1
           if [[ "$VALIDATION_MODE" == nightly || "$VALIDATION_MODE" == full ]]; then
             # Do not pass --all-features to integration crates: it enables their *-live-tests
             # features, which fail closed without real credentials. Live tests run in their
             # own dedicated jobs (e.g. `daytona-live-test`) that provide Doppler secrets.
             cargo test -p everruns-integrations --features daytona,daytona-test-util
-            cargo test -p everruns-integrations-experimental --features deno
             cargo test -p everruns-integrations --features browserless
             cargo test -p everruns-integrations --features cursor
             cargo test -p everruns-integrations --features e2b
@@ -1355,7 +1384,7 @@ jobs:
       - name: Run Daytona live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test --test daytona_live_openapi_test -- --test-threads=1
 
   # Live E2B API tests — only when crates/integrations/src/e2b/** changes
   e2b-live-test:
@@ -1399,15 +1428,6 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-integrations --features e2b-live-tests --test e2b_live_api_test -- --test-threads=1
 
-  # The `deno-live-test` job is quarantined: the Deno organization's plan no
-  # longer includes sandboxes, so `create_sandbox` returns 400
-  # VERIFICATION_REQUIRED_FOR_SANDBOXES and the fail-closed live tests can never
-  # pass. Per the fail-closed contract we remove the job rather than let it
-  # silently skip/pass. The mock-backed unit tests still run above via
-  # `cargo test -p everruns-integrations-experimental --features deno`, so the client stays covered.
-  # Restoring it means re-adding this job, its `deno` path filter and `changes`
-  # output, its entry in the `build-check` needs list, and the matrix entry in
-  # integration-live-sweep.yml. See EVE-946.
 
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database
@@ -1418,7 +1438,8 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
-    timeout-minutes: 40
+    # Cold server compilation must leave time for the full persistence suite.
+    timeout-minutes: ${{ matrix.shard != 'durable' && 60 || 40 }}
 
     # Sharded: 8 sequential test steps were ~26 min on one runner with a
     # warm cache. Three legs split by suite; each leg gets its own
@@ -1561,11 +1582,17 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Install pi-poppy and Datalayer's PAP library
         if: ${{ matrix.shard == 'domain' }}
         run: bash scripts/poppy-interop.sh --setup-only
+
+      # The official MCP TypeScript client for `official_ts_client_drives_mcp_tasks`
+      # (scripts/mcp-tasks-interop.sh), which also rides the domain step.
+      - name: Install the official MCP Tasks client
+        if: ${{ matrix.shard == 'domain' }}
+        run: bash scripts/mcp-tasks-interop.sh --setup-only
 
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
@@ -1575,6 +1602,7 @@ jobs:
           DEPLOYMENT_GRADE: dev
           PI_POPPY_DIR: ${{ github.workspace }}/.local/pi-poppy
           PAP_PYTHON: ${{ github.workspace }}/.local/pap-venv/bin/python
+          MCP_TASKS_INTEROP_DIR: ${{ github.workspace }}/scripts/mcp-tasks-interop
         run: |
           python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/domain-tests.jsonl" -- \
             cargo test --locked -p everruns-server --no-run --message-format=json \
@@ -1638,7 +1666,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    timeout-minutes: 20
+    # 30, like the S3 job sharing this cache: when the `integration-v2` and sqlx
+    # caches are both evicted, installing sqlx-cli from source (~8m) plus a cold
+    # server test build overran 20 and cancelled the 2026-10-21 nightly.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -1753,7 +1784,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.provider_live == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -1806,6 +1837,15 @@ jobs:
         # provider's wire serialization, which is what this matrix exists to
         # check. `--nocapture` exposes the generations behind the failure.
         run: doppler run -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --test tool_search_test --all-features -- --nocapture
+
+      # Driver and Agents API live tests (`crates/llm-tests/tests/provider_live`).
+      # Unlike the matrix above these never skip: a missing key or exhausted
+      # account fails the step, so green means every vendor answered.
+      - name: Run provider live tests
+        if: ${{ !cancelled() }}
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: doppler run -- cargo test -p everruns-llm-tests --test provider_live --all-features -- --nocapture
 
       - name: Report provider coverage
         # `always()`: the coverage picture is most valuable when the step above
@@ -2002,7 +2042,7 @@ jobs:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.changes.outputs.revision }}
 
@@ -2019,10 +2059,10 @@ jobs:
           bash scripts/ci-prepare-linker.sh
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: "ci-bins-opt0-v1"
@@ -2034,8 +2074,13 @@ jobs:
         env:
           BUILD_WORKER: ${{ needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true' }}
           BUILD_CLI: ${{ needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' }}
+          # The server image (docker/Dockerfile.prebuilt) also carries the egress proxy.
+          BUILD_EGRESS_PROXY: ${{ needs.changes.outputs.docker == 'true' }}
         run: |
           args=(-p everruns-server --bin everruns-server)
+          if [ "$BUILD_EGRESS_PROXY" = true ]; then
+            args+=(--bin everruns-egress-proxy)
+          fi
           if [ "$BUILD_WORKER" = true ]; then
             args+=(-p everruns-worker --bin everruns-worker)
           fi
@@ -2045,16 +2090,25 @@ jobs:
           cargo build --locked --profile release-ci "${args[@]}"
 
       - name: Upload server binary
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: everruns-server
           path: target/release-ci/everruns-server
           retention-days: 1
           compression-level: 1
 
+      - name: Upload egress proxy binary
+        if: needs.changes.outputs.docker == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: everruns-egress-proxy
+          path: target/release-ci/everruns-egress-proxy
+          retention-days: 1
+          compression-level: 1
+
       - name: Upload worker binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: everruns-worker
           path: target/release-ci/everruns-worker
@@ -2063,7 +2117,7 @@ jobs:
 
       - name: Upload CLI binary
         if: needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: everruns-cli
           path: target/release-ci/everruns
@@ -2168,6 +2222,8 @@ jobs:
         if-no-files-found: warn
         retention-days: 7
 
+  # THREAT[TM-CI-010]: producers can tamper with code later run with credentials.
+  # Keep actions here and in their dependency jobs pinned, as in the consumer.
   # Compile concurrently with the CI binaries; the execution job only downloads.
   workflow-test-build:
     name: Compile Workflow Tests
@@ -2178,7 +2234,7 @@ jobs:
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.changes.outputs.revision }}
       - name: Prepare linker and disk
@@ -2186,8 +2242,8 @@ jobs:
         run: |
           bash scripts/ci-prepare-disk.sh
           bash scripts/ci-prepare-linker.sh
-      - uses: dtolnay/rust-toolchain@1.96.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: integration-v2
           save-if: false
@@ -2197,7 +2253,7 @@ jobs:
             cargo test --locked -p everruns-server --test workflow_test \
             --no-run --message-format=json
           python3 .github/scripts/ci/libtest.py archive-workflow "$RUNNER_TEMP/workflow-tests.jsonl" "$RUNNER_TEMP/workflow-tests"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: workflow-tests
           path: ${{ runner.temp }}/workflow-tests/
@@ -2231,7 +2287,6 @@ jobs:
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      API_BASE_URL: http://localhost:9000
       WORKER_GRPC_AUTH_TOKEN: test-grpc-token-for-ci
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
       # This job exercises the real durable topology: the server owns Postgres
@@ -2405,7 +2460,7 @@ jobs:
           # the vault holds.
           EVERRUNS_LIVE_SKIP_REPORT: ${{ github.workspace }}/live-provider-skips.md
         run: >-
-          doppler run --preserve-env="DATABASE_URL,API_BASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS,EVERRUNS_LIVE_SKIP_REPORT"
+          doppler run --preserve-env="DATABASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS,EVERRUNS_LIVE_SKIP_REPORT"
           -- python3 .github/scripts/ci/libtest.py execute-workflow "$GITHUB_WORKSPACE/bin/workflow-tests" -- --test-threads=1
 
       - name: Run llmsim workflow tests
@@ -2616,7 +2671,7 @@ jobs:
         if: matrix.language == 'typescript'
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Setup Python
         if: matrix.language == 'python'
@@ -2674,7 +2729,9 @@ jobs:
     needs:
       - changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
-    timeout-minutes: 15
+    # A Cargo.lock change misses the openapi-v1 cache: the cold exporter build
+    # alone took 14m on batch 7e36160, and 15 cancelled the job during cache save.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
@@ -2717,7 +2774,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true'
-    timeout-minutes: 20
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: chat_test
+          POSTGRES_PASSWORD: chat_test
+          POSTGRES_DB: chat_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U chat_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
 
     defaults:
       run:
@@ -2736,7 +2804,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2751,6 +2819,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}-
             ${{ runner.os }}-nextjs-
+
+      - name: Verify standalone Work Chat
+        timeout-minutes: 15
+        working-directory: apps/chat-ui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm typecheck
+          pnpm build
+          pnpm exec playwright install --with-deps chromium
+          pnpm e2e
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+          TEST_CHAT_DATABASE_URL=postgres://chat_test:chat_test@127.0.0.1:5432/chat_test pnpm test:broker
+
+      - name: Upload Work Chat browser evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: work-chat-browser-evidence
+          path: work/work-chat-*.png
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Format check
         run: pnpm run format:check
@@ -2794,7 +2884,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2880,7 +2970,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2961,7 +3051,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docs == 'true'
-    timeout-minutes: 20
+    # Notebook Rust builds must leave time for the site and release-card checks.
+    timeout-minutes: 30
 
     defaults:
       run:
@@ -2990,7 +3081,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/docs/pnpm-lock.yaml
 
@@ -3092,9 +3183,9 @@ jobs:
   # `build-binaries` into the runtime images via docker/Dockerfile.prebuilt —
   # validating the runtime layer (base image, COPY, ENV, CMD) in seconds.
   #
-  # The full build-from-source, multi-arch images are produced at release time
-  # by docker-publish.yml (which also validates the Dockerfile.unified builder
-  # stage from-source on PRs that touch docker/** paths). This job therefore
+  # The multi-arch release images come from the same Dockerfile in
+  # docker-publish.yml, with binaries compiled for release in a bookworm
+  # container (it also runs on PRs that touch docker/** paths). This job therefore
   # gates on `rust` (not the broader `docker` filter) so the build-binaries
   # artifacts it consumes are guaranteed to exist.
   docker-build:
@@ -3118,17 +3209,24 @@ jobs:
           # through Google's mirror too, so this job does not depend on Docker Hub.
           driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
 
+      # Dockerfile.prebuilt reads bin/<TARGETARCH>/; this build is amd64 only.
       - name: Download server binary
         uses: actions/download-artifact@v8
         with:
           name: everruns-server
-          path: ./bin
+          path: ./bin/amd64
+
+      - name: Download egress proxy binary
+        uses: actions/download-artifact@v8
+        with:
+          name: everruns-egress-proxy
+          path: ./bin/amd64
 
       - name: Download worker binary
         uses: actions/download-artifact@v8
         with:
           name: everruns-worker
-          path: ./bin
+          path: ./bin/amd64
 
       # No host chmod needed: Dockerfile.prebuilt uses COPY --chmod, and the
       # image is only built here (never run in CI).

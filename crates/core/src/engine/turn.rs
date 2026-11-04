@@ -8,8 +8,8 @@
 
 use crate::engine::{ActInput, ExecutionContext, ReasonResult};
 use crate::events::{TokenUsage, TurnCompletedData};
-use crate::turn::TurnStopReason;
 use chrono::{DateTime, Utc};
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{
     AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId,
 };
@@ -455,6 +455,21 @@ pub fn plan_after_reason(
         return (TurnPlan::ScheduleReason(next), Vec::new());
     }
 
+    let stop_reason = if !reason_result.success {
+        match TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref()) {
+            TurnStopReason::Refusal => TurnStopReason::Refusal,
+            _ => TurnStopReason::Error,
+        }
+    } else if max_turn_requests_reached
+        && (reason_result.has_tool_calls
+            || pending_user_message_count > 0
+            || reason_result.truncation_retry)
+    {
+        TurnStopReason::MaxTurnRequests
+    } else {
+        TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref())
+    };
+
     let turn_id = state.turn_id.unwrap_or_default();
     let mut effects = Vec::new();
 
@@ -462,6 +477,7 @@ pub fn plan_after_reason(
         effects.push(TurnLifecycleEffect::TurnCompleted {
             input_message_id: state.input_message_id,
             data: TurnCompletedData {
+                termination_reason: Some(stop_reason),
                 turn_id,
                 iterations: state.iteration,
                 duration_ms: summarized_state.duration_ms(now),
@@ -502,21 +518,6 @@ pub fn plan_after_reason(
         turn_id,
         success: reason_result.success,
     });
-
-    let stop_reason = if !reason_result.success {
-        match TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref()) {
-            TurnStopReason::Refusal => TurnStopReason::Refusal,
-            _ => TurnStopReason::Error,
-        }
-    } else if max_turn_requests_reached
-        && (reason_result.has_tool_calls
-            || pending_user_message_count > 0
-            || reason_result.truncation_retry)
-    {
-        TurnStopReason::MaxTurnRequests
-    } else {
-        TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref())
-    };
 
     (
         TurnPlan::Complete {

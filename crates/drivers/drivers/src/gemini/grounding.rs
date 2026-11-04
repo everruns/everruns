@@ -4,9 +4,9 @@
 //! A grounded answer's `groundingMetadata` lists the sources
 //! (`groundingChunks[].web`) and which parts of the answer they support
 //! (`groundingSupports[]`: a `segment` and the chunk indices). Segment offsets
-//! count UTF-8 bytes. Whether they count from the start of the answer or of
+//! count UTF-8 bytes. Whether they count from the start of the request's answer or of
 //! one streamed part is not something a stream makes certain, so a segment is
-//! kept only where its own `text` sits: at its byte range in the whole
+//! kept only where its own `text` sits: at its byte range in that request's
 //! streamed answer, or else at that text's single occurrence in it. A segment
 //! that matches neither is dropped, never attached to a guess.
 

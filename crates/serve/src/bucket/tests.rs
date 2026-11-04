@@ -274,6 +274,17 @@ async fn a_session_survives_its_daemon_being_killed_and_started_elsewhere() {
     let host = Host::new(app(), Mode::Dev, Some(data_dir.clone())).unwrap();
     assert_eq!(host.events_after(&id, 0).await.unwrap().len(), before);
     let turn = host.send(&id, "after".into()).await.unwrap().wait().await;
+    if turn.is_err() {
+        let status = host
+            .engine
+            .session_status(id.parse().unwrap())
+            .await
+            .unwrap();
+        panic!(
+            "restored turn: {turn:?}, current build {}, authority {status:?}",
+            host.build_id
+        );
+    }
     assert!(turn.unwrap().success);
     assert!(host.events_after(&id, 0).await.unwrap().len() > before);
 }

@@ -1,33 +1,41 @@
 # syntax=docker/dockerfile:1.4
 #
-# Runtime-only images assembled from pre-built binaries.
+# Runtime images assembled from pre-built binaries. This is the Dockerfile
+# behind every published everruns-server, -worker and -admin image.
 #
-# CI (`ci.yml` docker-build) uses this for fast PR validation: it packages the
-# server/worker binaries already compiled on the host by the `build-binaries`
-# job instead of recompiling the whole workspace inside Docker (~28 min). The
-# full multi-arch, build-from-source images for releases come from
-# docker/Dockerfile.unified via docker-publish.yml.
+# Expects the binaries in the build context under ./bin/<TARGETARCH>/, where
+# TARGETARCH is amd64 or arm64, so a single multi-platform build picks the
+# right binary for each architecture:
+#   docker buildx build -f docker/Dockerfile.prebuilt --target server \
+#     --platform linux/amd64,linux/arm64 .
 #
-# Expects the binaries in the build context under ./bin/:
-#   docker build -f docker/Dockerfile.prebuilt --target server -t everruns-server:ci .
+# Release images (docker-publish.yml): the binaries are compiled natively, one
+# runner per architecture and in parallel, inside the same Debian bookworm
+# userland as these runtime bases, so the glibc they link against matches.
+# Compiling inside Docker instead meant one runner building amd64 and then
+# arm64 back to back from an empty cache, about 2h20m for 0.49.0.
+# docker/Dockerfile.unified remains for building from source locally.
 #
-# NOTE: this Dockerfile is intentionally build-only in CI — the image is never
-# run there. The CI binaries are compiled on the GitHub runner (newer glibc)
-# while the distroless base ships an older glibc, so a `docker run` smoke test
-# would fail on a glibc mismatch. Production images avoid this by compiling
-# inside the matching bookworm base (Dockerfile.unified). Keep the base digest
-# identical to Dockerfile.unified so this validates the real runtime layer.
+# CI (ci.yml docker-build) also uses it to validate the runtime layer from the
+# binaries the build-binaries job already compiled. Those are linked on the
+# GitHub runner (newer glibc than distroless), so CI only builds the images and
+# never runs them.
 
 # ============================================================================
-# Server runtime (distroless, matches Dockerfile.unified `server` stage)
+# Server runtime (distroless)
 # ============================================================================
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS server
+
+ARG TARGETARCH
 
 WORKDIR /app
 
 # --chmod so the image doesn't depend on the host file mode (CI artifacts can
 # arrive as 0644). Requires BuildKit (enabled via the syntax directive above).
-COPY --chmod=0755 bin/everruns-server /app/everruns-server
+COPY --chmod=0755 bin/${TARGETARCH}/everruns-server /app/everruns-server
+# Optional tenant egress proxy; run with `/app/everruns-egress-proxy` as the
+# command (ports 4750 proxy, 4751 health). See crates/server/src/egress_proxy.
+COPY --chmod=0755 bin/${TARGETARCH}/everruns-egress-proxy /app/everruns-egress-proxy
 
 EXPOSE 9000
 EXPOSE 9001
@@ -38,14 +46,50 @@ ENV HTTP_ADDR=0.0.0.0:9000
 CMD ["/app/everruns-server"]
 
 # ============================================================================
-# Worker runtime (distroless, matches Dockerfile.unified `worker` stage)
+# Worker runtime (distroless)
 # ============================================================================
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS worker
 
+ARG TARGETARCH
+
 WORKDIR /app
 
-COPY --chmod=0755 bin/everruns-worker /app/everruns-worker
+COPY --chmod=0755 bin/${TARGETARCH}/everruns-worker /app/everruns-worker
 
 ENV RUST_LOG=info
 
 CMD ["/app/everruns-worker"]
+
+# ============================================================================
+# Admin runtime (migrations, key rotation). See docs/sre/admin-container.md.
+# ============================================================================
+# debian-slim instead of distroless because the entrypoint needs a shell.
+# CA certificates come from a build-platform stage so they need no emulation.
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS ca-certs
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
+FROM debian:bookworm-slim AS admin
+
+ARG TARGETARCH
+
+# Non-root user. Admin tasks (sqlx migrate, reencrypt-secrets) are user-space
+# DB/crypto operations and don't need root.
+RUN groupadd --system --gid 65532 admin \
+    && useradd --system --uid 65532 --gid admin --shell /bin/bash admin
+
+WORKDIR /app
+
+COPY --from=ca-certs /etc/ssl/certs /etc/ssl/certs
+COPY --chmod=0755 bin/${TARGETARCH}/sqlx /usr/local/bin/sqlx
+COPY --chmod=0755 bin/${TARGETARCH}/reencrypt-secrets /app/reencrypt-secrets
+# Adopts the migration baseline; sqlx-cli cannot.
+COPY --chmod=0755 bin/${TARGETARCH}/everruns-migrate /app/everruns-migrate
+COPY crates/server/migrations /app/migrations
+COPY --chmod=755 docker/admin-entrypoint.sh /app/entrypoint.sh
+
+ENV RUST_LOG=info
+
+USER admin
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["help"]

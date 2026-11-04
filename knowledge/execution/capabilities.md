@@ -12,6 +12,12 @@ tags:
 
 Capabilities are modular functionality units that extend Agent behavior. A Capability can contribute additions to the system prompt, provide tools, and modify execution behavior. Users can enable multiple capabilities on an Agent to compose functionality.
 
+[Native and CLI Tool Surfaces](tool-surfaces.md) defines the implemented,
+read-only `ToolSurfacePlan` shared with capability prompt and definition hooks.
+It preserves one canonical operation registration while allowing native calls,
+CLI, or both, with eager/deferred native schemas resolved separately from the
+invocation route.
+
 ## Requirements
 
 ### Persisted Declarative Capabilities
@@ -245,6 +251,17 @@ without rebuilding the runtime or replacing the session:
 host-storage boundary. Its default implementation fails closed, while the bundled
 in-memory runtime store implements both mutations atomically.
 
+The Framework Engine rebuilds a session's runtime from the trusted Agent on every
+attach, resume, inspection and restart, and must not reset that overlay. Agent
+capabilities therefore live only on the agent (and synthetic harness) layer, so
+the persisted session layer holds exactly the hot-enabled overlay: it survives
+reconstruction, a deactivated entry stays absent, and changing an Agent default
+reaches existing sessions instead of a pinned copy. Every other session-record
+field is either Agent/Engine-owned (re-derived, including association ids and
+MCP servers) or session-owned (persisted value wins). The field-by-field rules
+and the legacy-record caveat live in
+[`session_overlay.rs`](../../crates/everruns/src/engine/session_overlay.rs).
+
 ### Live registration
 
 Activation can only reach a capability the registry already knows. A host that
@@ -433,6 +450,10 @@ session per hour, counted from the schedules it created) so a provider that
 keeps refusing cannot turn it into a loop. Hooks run on every terminal error,
 transient ones included: a transient error reaching the atom has already spent
 its in-call retries.
+The hook identifies a newly created retry separately from user-facing error
+fields. The engine records its link to the failed input even under generic
+error disclosure. [Runtime identity](../runtime-resources/virtual-users.md#request-session-and-execution-contracts)
+owns the continuation authorization boundary; prompt text is not that boundary.
 
 ##### System Prompt Methods
 
@@ -537,6 +558,10 @@ Display strings are localized through additive overlays, keeping
   the generic editor stays capability-agnostic. Server-side
   `validate_config` errors remain canonical English; clients localize their
   own pre-submit validation messages.
+- The server enriches built-in display metadata with its maintained resource
+  catalogs before returning API DTOs. Existing capability-supplied translations
+  win; tenant MCP, skill and declarative resource metadata stays authored.
+  The larger display catalog is separate from portable Engine activity wording.
 - Localization affects display only. Prompt building and LLM-facing
   descriptions always use the canonical English strings.
 
@@ -560,6 +585,19 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 ##### Capability-Contributed Skills
 
 Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-core` (`builtins` feature) then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/contracts/src/runtime/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
+
+The hosted `platform` capability contributes the maintained `everruns`,
+`everruns-cli`, and `everruns-agent-authoring` product skills and depends on the
+`skills` loader. Both shell and three-tool surfaces receive the same authored
+content through read-only mounts, without organization registry rows. Its
+always-present interface guidance keeps external MCP examples from switching a
+session away from its organization-bound command surface. Workspace builds embed
+the allowlisted source trees. API and worker source image builds include the
+authored tree before compiling, so both binaries embed the same guides without
+a runtime checkout or fetch. Standalone crate builds without repository skills
+omit that content, matching the optional embedded-docs boundary. See the
+[contribution implementation](../../crates/capabilities/src/capabilities/platform_skills.rs)
+and [canonical skills](../../skills/).
 
 ### Capability Dependencies
 
@@ -620,7 +658,7 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 2. **Aggregation**: `compute_features()` resolves dependencies and collects features from all resolved capabilities
 3. **Deduplication**: Features are deduplicated, multiple capabilities contributing the same feature produce one entry
 4. **Session DTO**: The `Session.features` field is computed at read time (not stored in the database)
-5. **UI Rendering**: The UI conditionally renders tabs based on the feature set (e.g., Workspace tab only appears when `"file_system"` is present)
+5. **UI Rendering**: The UI conditionally renders tabs based on the feature set. The Files tab appears for `file_system`, `managed_sandbox`, `key_value`, `secrets`, or `schedules` (and when the session already has files). It lists the filesystem, key values, and schedules, including schedules that were deleted. The Work tab appears for `leased_resources` or `schedules`, and also when the session still has tasks or an active schedule.
 
 #### Built-in Feature Mapping
 
@@ -643,11 +681,11 @@ MCP and Skill virtual capabilities currently declare no features.
 
 | Feature | UI Element | Description |
 |---------|------------|-------------|
-| `file_system` | Workspace tab | Session has file system access |
-| `secrets` | Storage tab | Session can store encrypted secrets |
-| `managed_sandbox` | Sandbox-aware UX | Session has one managed sandbox with provider-neutral tools |
-| `key_value` | Storage tab | Session can store key/value pairs |
-| `schedules` | Schedules tab | Session can create/manage schedules |
+| `file_system` | Files tab, filesystem | Session has file system access |
+| `secrets` | Files tab, key values | Session can store encrypted secrets |
+| `managed_sandbox` | Files tab, filesystem | Session has one managed sandbox; its files and desktop recordings are on the session filesystem |
+| `key_value` | Files tab, key values | Session can store key/value pairs |
+| `schedules` | Files tab and Work tab | Session can create and manage schedules, including ones later deleted |
 | `sql_database` | *(reserved)* | Session has SQL database access |
 | `openui` | OpenUI rendering | Session can render OpenUI Lang components |
 | `a2ui` | A2UI rendering | Session can render A2UI JSON component trees |
@@ -678,7 +716,7 @@ harness rows.
 - **`retired`** is the removal. The implementation is deleted down to an
   identity-only shell: no tools, prompt, mounts, dependencies, or hooks. The ID
   stays registered on purpose — an unregistered ID fails
-  `RuntimeAgent` activation (`crates/core/src/host/runtime.rs`), whereas a retired one
+  `RuntimeAgent` activation (`crates/core/src/host/runtime/mod.rs`), whereas a retired one
   resolves to a no-op, so an agent that still references it keeps running. It is
   hidden from `list_capabilities` unless `include_retired` is set, which is how
   management UIs still name the stale attachment and offer to remove it.
@@ -703,7 +741,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 
 High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
 
-See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents/mod.rs` for `require_admin_for_high_risk()`.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/domains/agents/managed.rs` for `check_high_risk_caps()`, which every agent create, update, import, and example adoption runs.
 
 #### Admin-Only Tier Decision (PRs #1485, #1500, EVE-395)
 
@@ -1328,7 +1366,7 @@ carries mounts in product registries.
   its loop/error/compaction safeguards, so documentation browsing cannot
   displace the requested management workflow.
 
-The [managed Platform Chat](../../crates/server/src/platform_chat_agent.rs) runs on
+The [managed Platform Chat](../../crates/server/src/platform_chat_agent/mod.rs) runs on
 Generic. Its platform capability exposes the authoritative command catalog through the
 session shell; product docs and durable operator memory share that namespace. The Agent
 owns its domain instructions, identity, introduction, and starters. Generic supplies the

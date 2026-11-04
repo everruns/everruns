@@ -47,7 +47,7 @@ Verified against `origin/main` at `c79edc4` and saas `main`.
 
 | Path | Credential | Acts on GitHub as | Where it is set up | Where it lives |
 |---|---|---|---|---|
-| Shared Everruns App, person connection | Installation of the deployment App (`GITHUB_APP_*`), stored on the person's virtual user | `everruns[bot]` (installation token), not the person | Settings > My agent experience | `api/user_connections/github_setup.rs`, `GitHubAppTokenMinter` in `storage/connection_resolver/mod.rs` |
+| Shared Everruns App, person connection | Installation of the deployment App (`GITHUB_APP_*`), stored on the person's virtual user | `everruns[bot]` (installation token), not the person | Settings > Connections | `api/user_connections/github_setup.rs`, `GitHubAppTokenMinter` in `storage/connection_resolver/mod.rs` |
 | Per-agent App | App created from a manifest, stored as the service virtual user's `github` connection | `<agent-app>[bot]` | Agent > Integrations, under Triggers | `github_apps.rs`, `api/github_apps.rs` |
 | `github` capability tools | `get_connection_token(session, "github")`: the invoking person's connection when the turn has a person, otherwise the agent's | Whichever of the two above was picked, implicitly | Capability on the agent | `crates/integrations/src/github/` |
 | GitHub MCP preset | `acts as service`: the agent's `github` connection (connection-backed preset). `acts as user`: a separate OAuth grant `mcp_oauth_<server>` through the preset's OAuth client | Agent bot, or the person | Agent MCP sheet | `setup/seed/mcp_servers.rs`, `domains/mcp_servers/connection_backed.rs` |
@@ -142,7 +142,7 @@ person's rights and by which tools the agent has.
 | `github` capability tools | Configured per agent: `service` for bots, `user` for personal agents | Derived from the enabled tools: read tools ask read, `submit_github_pull_request_review` asks `pull_requests: write`, `create_github_pull_request` asks `contents: write` |
 | GitHub MCP server | The attachment's `acts as`, unchanged | Read-only toolsets ask read permissions; others the App's full set |
 | Sandbox repositories | `service` for triggered runs, `user` for chats started by a person | `contents: read` for listed repositories, `contents: write` only when the template allows pushing |
-| Repository sync (memory, knowledge, agents) | `service`, on the org's service virtual user | `contents: read`; writes go through a pull request with `contents: write, pull_requests: write` |
+| Repository sync (memory, knowledge, agents) | `service`, on the org's service virtual user; an Agent source may instead use the configuring person's own sign-in ([agent sources](../runtime-resources/agent-sources.md)), never the Agent's runtime identity | `contents: read`; Agent source two-way sync writes `contents: write` directly to the branch |
 | Triggers and channel replies | `service` | Inbound needs no token; replies use the channel's write permissions |
 
 ### 4. Inbound: listening and talking
@@ -267,8 +267,15 @@ The agent page gets one **GitHub** section: identity (bot name, avatar step,
 which kind), installations (account, repositories, permissions, missing
 permissions), usage report, and links to the agent's GitHub triggers and
 GitHub channel. Triggers and the channel need the identity and link to it
-instead of hosting its setup. Settings > My agent experience shows the
+instead of hosting its setup. Settings > Connections shows the
 person's `person` connection; Settings > Organization shows the shared App.
+
+Revised 2026-11-03: the section is a page of its own, `/agents/{id}/github`,
+opened from a GitHub row in the Agent tab's settings list next to Service
+account, rather than a section of the Channels and triggers tab. GitHub is an
+identity, like the service account, not a way to reach the agent, and a page
+gives it an address that API, CLI and MCP output can link to (`view_url` on the
+agent's GitHub status).
 
 ### D8. Talking is a channel, listening is a trigger
 
@@ -312,10 +319,19 @@ Each step is one PR unless noted, and leaves everything working.
    refused. See [admission](../../crates/contracts/src/runtime/github_credential.rs)
    and [checkout](../../crates/integrations/src/github/checkout.rs).
    Pushing from the sandbox stays with step 6.
+   Without `SandboxWorkspace` but with session files (Bashkit Worker), the
+   tool downloads the head tarball host-side and writes its text files into
+   the session files ([checkout_files](../../crates/integrations/src/github/checkout_files.rs)),
+   so a Bashkit reviewer can read the code around a change. The token never
+   leaves the host, so ordinary token resolution applies and no installation
+   evidence is needed.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
-   Done: the agent's Integrations tab has a **GitHub** section between Channels
-   and Triggers (`agent-github-card.tsx`), showing the bot login, the kind,
+   Done: the agent's GitHub identity has its own page, `/agents/{id}/github`,
+   reached from a GitHub row in the Agent tab's settings list (it was a section
+   of the Integrations tab between Channels and Triggers until 2026-11-03; an
+   identity is not a way to reach the agent, so it left that tab). The page
+   (`agent-github-card.tsx`) shows the bot login, the kind,
    the installation, missing permissions, a "Set the avatar" step (download
    the agent's avatar, open the App's settings page) and links to add and list
    GitHub triggers. `AgentGitHubStatus` gained `kind`, `bot_login` and
@@ -339,8 +355,7 @@ Each step is one PR unless noted, and leaves everything working.
    needs agent and identity management); its service virtual user then holds
    an `everruns_app` row with the installation and
    `provider_metadata.org_connection_id`, and shows as `<shared slug>[bot]`.
-   The `everruns_app` kind is now named by `connection_type`, while an
-   `oauth` row with an installation still reads as one until 3b. The shared
+   The `everruns_app` kind is now named by `connection_type`. The shared
    App's webhook (`POST /v1/github/everruns-app/webhook`, HMAC with
    `GITHUB_APP_WEBHOOK_SECRET`, fails closed when unset) routes by
    installation id to the linked org and only to agents that chose it;
@@ -348,11 +363,31 @@ Each step is one PR unless noted, and leaves everything working.
    `new_permissions_accepted` refreshes scopes. Unlinking and disconnecting
    never uninstall on GitHub, and nothing falls back to the shared App. The
    member path to attach an installation to an agent's service virtual user
-   is closed. Left for 3b: migrating person-held installations (including
-   legacy `oauth` rows on agents, which no longer show as connected) and
-   their cleanup.
+   is closed.
+   Done (3b): migration `20261018212249_github_person_installs_to_org_links`
+   moves every installation held on a virtual user's own row (`oauth` with an
+   installation) to an org link in the org of its oldest holder; an agent's
+   row becomes its choice of that link, and people's rows and rows in other
+   orgs are removed. The `oauth`-with-installation reading of the kind is
+   gone, nobody can install the shared App on their own connection any more
+   (person and agent alike: an admin links it), and GitHub is no longer
+   listed among a person's connections until step 4 gives people their own
+   sign-in (3b and step 4 ship in one release). A source sync whose owner has no GitHub connection of their own
+   reads through the org's link for the repository's account, the `service`
+   use on the org identity this design names for syncs.
 4. **Person connection** (D1, D5): store and refresh the user token; GitHub
    MCP `user` uses it after the endpoint check.
+   Done: connecting GitHub as a person is the shared App's user
+   authorization (`/login/oauth/authorize`, no installation step). The
+   callback exchanges the code, reads the account from `GET /user`, and stores
+   the `ghu_` token, its refresh token and expiry on the person's `oauth` row
+   without an installation (`crates/server/src/github_user_token.rs`). A
+   setup state or callback that names an installation is refused, so a state
+   issued before 3b cannot store one. The resolver refreshes an expired token
+   single-flight per connection and stores the rotated pair; a refused
+   refresh yields no token, never the stale one, and the person signs in
+   again. Not done: D5 is unverified, so the GitHub MCP preset keeps its own
+   OAuth client for `user`.
 5. **GitHub channel** (D8) on the channel host, with the manifest additions.
 6. **Sandbox repositories**: repositories and access level on the sandbox
    template, injected at the egress proxy (Modal, saas egress proxy) or

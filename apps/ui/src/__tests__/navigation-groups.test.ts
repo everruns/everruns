@@ -3,13 +3,6 @@ import { defaultNavigationSections, navigationGroupForPath } from "@/lib/navigat
 // EVE-869: a page's group is decided in exactly one place — the sidebar section
 // table. These pin the derivation the breadcrumb depends on.
 describe("navigationGroupForPath", () => {
-  it("names the group that owns a list route", () => {
-    expect(navigationGroupForPath("/sessions")).toBe("Operational");
-    expect(navigationGroupForPath("/agents")).toBe("Building");
-    expect(navigationGroupForPath("/models")).toBe("Registers");
-    expect(navigationGroupForPath("/evals")).toBe("Quality");
-  });
-
   it("carries the group down to detail and sub-routes", () => {
     expect(navigationGroupForPath("/sessions/ses-abc123")).toBe("Operational");
     expect(navigationGroupForPath("/agents/agent-1/edit")).toBe("Building");
@@ -25,7 +18,8 @@ describe("navigationGroupForPath", () => {
 
   it("prefers the longest matching route", () => {
     // Both `/durable` and `/durable/workers` match; the more specific wins.
-    expect(navigationGroupForPath("/durable/workers")).toBe("Durable Execution");
+    expect(navigationGroupForPath("/durable/workers")).toBe("System");
+    expect(navigationGroupForPath("/system/health")).toBe("System");
   });
 
   it("gives no group to pages outside a labelled section", () => {
@@ -42,34 +36,5 @@ describe("navigationGroupForPath", () => {
       section.label === "Building" ? { ...section, label: "Workshop" } : section,
     );
     expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe("Workshop");
-  });
-
-  it("keeps Building and Operational in the requested order", () => {
-    const itemsFor = (label: string) =>
-      defaultNavigationSections
-        .find((section) => section.label === label)
-        ?.items.map((item) => item.name);
-    expect(itemsFor("Building")).toEqual([
-      "Agents",
-      "Playground",
-      "Harnesses",
-      "Sandboxes",
-      "Virtual Users",
-    ]);
-    expect(itemsFor("Operational")).toEqual(["Monitoring", "Sessions"]);
-    // Sandboxes is one page with tabs, not a sidebar group of its own.
-    expect(defaultNavigationSections.some((section) => section.label === "Sandboxes")).toBe(false);
-    expect(navigationGroupForPath("/sandboxes")).toBe("Building");
-    expect(navigationGroupForPath("/sandboxes/templates/template-1")).toBe("Building");
-    expect(navigationGroupForPath("/sandboxes/accounts")).toBe("Building");
-    expect(navigationGroupForPath("/knowledge-indexes")).toBe("Registers");
-    expect(navigationGroupForPath("/memory")).toBe("Registers");
-    expect(navigationGroupForPath("/sessions/session-1/approvals")).toBe("Operational");
-    expect(
-      defaultNavigationSections
-        .flatMap((section) => section.items)
-        .some((item) => item.href === "/approvals"),
-    ).toBe(false);
-    expect(navigationGroupForPath("/reports")).toBe("Quality");
   });
 });

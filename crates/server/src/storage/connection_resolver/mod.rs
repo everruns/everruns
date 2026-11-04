@@ -71,12 +71,20 @@ pub struct DbConnectionResolver {
     refresh_locks: Cache<String, Arc<Mutex<()>>>,
 }
 
+/// Held while one grant refreshes; see `DbConnectionResolver::refresh_guard`.
+struct RefreshGuard {
+    _replica: sqlx::Transaction<'static, sqlx::Postgres>,
+    _local: tokio::sync::OwnedMutexGuard<()>,
+}
+
 #[derive(Debug)]
 struct OAuthClientConfig {
     token_endpoint: String,
     client_id: String,
     client_secret: Option<String>,
     resource: Option<String>,
+    /// The server's org, to which the refresh request is attributed.
+    org_id: i64,
 }
 
 /// Handles GitHub App JWT signing and installation token minting.
@@ -85,6 +93,8 @@ struct OAuthClientConfig {
 pub struct GitHubAppTokenMinter {
     app_id: String,
     private_key: String,
+    /// The App's OAuth client, which refreshes people's own tokens (D1).
+    user_client: Option<crate::github_user_token::GitHubUserClient>,
 }
 
 impl GitHubAppTokenMinter {
@@ -92,7 +102,16 @@ impl GitHubAppTokenMinter {
         Self {
             app_id,
             private_key,
+            user_client: None,
         }
+    }
+
+    pub fn with_user_client(
+        mut self,
+        client: Option<crate::github_user_token::GitHubUserClient>,
+    ) -> Self {
+        self.user_client = client;
+        self
     }
 
     /// Mint a fresh installation access token (1h TTL).
@@ -226,7 +245,7 @@ impl DbConnectionResolver {
         };
         let Some(agent) = self
             .db
-            .get_agent(s.org_id, agent_id)
+            .get_agent_config(s.org_id, agent_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
         else {
@@ -294,7 +313,12 @@ impl DbConnectionResolver {
             return Ok(None);
         };
         let store = |e: anyhow::Error| AgentLoopError::store(e.to_string());
-        let Some(agent) = self.db.get_agent(org_id, agent_id).await.map_err(store)? else {
+        let Some(agent) = self
+            .db
+            .get_agent_config(org_id, agent_id)
+            .await
+            .map_err(store)?
+        else {
             return Ok(None);
         };
         let Some(identity_id) = agent.virtual_user_id.filter(|_| agent.status == "active") else {
@@ -397,11 +421,12 @@ impl DbConnectionResolver {
         if settings.auth_mode != McpServerAuthMode::OAuth {
             return Ok(None);
         }
-        self.oauth_client_config_from_settings(settings.oauth.as_ref())
+        self.oauth_client_config_from_settings(org_id, settings.oauth.as_ref())
     }
 
     fn oauth_client_config_from_settings(
         &self,
+        org_id: i64,
         oauth: Option<&McpServerOAuthSettings>,
     ) -> Result<Option<OAuthClientConfig>> {
         let Some(oauth) = oauth else {
@@ -427,6 +452,7 @@ impl DbConnectionResolver {
             client_id,
             client_secret,
             resource: oauth.resource.clone(),
+            org_id,
         }))
     }
 
@@ -443,6 +469,7 @@ impl DbConnectionResolver {
                 client_secret: config.client_secret,
                 refresh_token,
                 resource: config.resource,
+                org_id: config.org_id,
             })
             .await
         {
@@ -463,6 +490,32 @@ impl DbConnectionResolver {
             .map(|seconds| Utc::now() + Duration::seconds(seconds))
     }
 
+    /// Single-flight one grant's refresh: the in-process mutex queues this
+    /// replica's callers, and a polling advisory lock keeps another server
+    /// replica from spending the same rotating refresh token at once (a
+    /// provider can revoke a grant whose refresh token is replayed). The guard
+    /// holds both until the refresh is persisted.
+    async fn refresh_guard(&self, key: String) -> Result<RefreshGuard> {
+        let lock = self
+            .refresh_locks
+            .get_with(key.clone(), || Arc::new(Mutex::new(())));
+        let local = lock.lock_owned().await;
+        let replica = self
+            .db
+            .database()
+            .advisory_xact_lock_polling(
+                "oauth_refresh",
+                &key,
+                crate::storage::repositories::ADVISORY_LOCK_WAIT,
+            )
+            .await
+            .map_err(|e| AgentLoopError::store(format!("OAuth refresh lock: {e}")))?;
+        Ok(RefreshGuard {
+            _replica: replica,
+            _local: local,
+        })
+    }
+
     async fn resolve_session_oauth_token(
         &self,
         session_id: SessionId,
@@ -478,11 +531,9 @@ impl DbConnectionResolver {
                 .map(Some);
         }
 
-        let key = format!("session:{session_id}:{server_id}");
-        let lock = self
-            .refresh_locks
-            .get_with(key, || Arc::new(Mutex::new(())));
-        let _guard = lock.lock().await;
+        let _guard = self
+            .refresh_guard(format!("session:{session_id}:{server_id}"))
+            .await?;
 
         // Re-read after taking the lock: another waiter may have refreshed it.
         let Some(credentials) = self
@@ -566,6 +617,10 @@ impl DbConnectionResolver {
         server_id: Uuid,
         row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
+        if !self.authorize_connection(scope, &row, None).await? {
+            return Ok(None);
+        }
+
         let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
             return Ok(None);
         };
@@ -579,11 +634,9 @@ impl DbConnectionResolver {
                 .map(Some);
         }
 
-        let key = format!("identity-connection:{}", row.id);
-        let lock = self
-            .refresh_locks
-            .get_with(key, || Arc::new(Mutex::new(())));
-        let _guard = lock.lock().await;
+        let _guard = self
+            .refresh_guard(format!("identity-connection:{}", row.id))
+            .await?;
         let Some(row) = self
             .db
             .get_virtual_user_connection(row.virtual_user_id, &row.provider)
@@ -671,6 +724,127 @@ impl DbConnectionResolver {
 }
 
 impl DbConnectionResolver {
+    /// The provider still owns identity selection and token minting. This adapter
+    /// adds the common lifecycle/grant check at the point of each use.
+    async fn authorize_connection(
+        &self,
+        scope: OAuthScope,
+        row: &VirtualUserConnectionRow,
+        github: Option<&everruns_contracts::runtime::GitHubAccess>,
+    ) -> Result<bool> {
+        use crate::domains::resource_access as access;
+        use everruns_contracts::runtime::resource_access::*;
+        let org_id = self.scope_org_id(scope).await?;
+        let ctx = crate::domains::common::Ctx::minimal(
+            everruns_core::Caller::internal(org_id),
+            Arc::new(self.db.clone()),
+            Some(Arc::new(self.encryption.clone())),
+            Arc::new(everruns_core::DefaultPermissionResolver),
+        );
+        let record = match access::record(&ctx, row.id).await {
+            Ok(r) => r,
+            Err(_) => return Ok(false),
+        };
+        if record.kind != "connection" || record.revoked_at.is_some() {
+            return Ok(false);
+        }
+        // Session-less cleanup/sync callers already supply an exact, validated
+        // owner or immutable attachment. Keep that adapter's authority local;
+        // it cannot be supplied by tool arguments or expanded into a session.
+        let OAuthScope::Session(session) = scope else {
+            return Ok(true);
+        };
+        let selected =
+            access::usage(&record.usage).map_err(|e| AgentLoopError::store(e.to_string()))?;
+        let actor = if let Some(input) = self.input_message_id {
+            match access::actor(
+                &ctx,
+                everruns_contracts::runtime::credential_services::CredentialInvocation {
+                    session_id: session,
+                    input_message_id: input,
+                },
+                selected,
+            )
+            .await
+            {
+                Ok(a) => a,
+                Err(_) => return Ok(false),
+            }
+        } else {
+            if selected == CredentialUsage::User {
+                return Ok(false);
+            }
+            let Some(s) = self
+                .db
+                .get_session(org_id, session)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+            else {
+                return Ok(false);
+            };
+            let agent = match s.agent_id {
+                Some(a) => self
+                    .db
+                    .get_agent_config(org_id, a)
+                    .await
+                    .map_err(|e| AgentLoopError::store(e.to_string()))?
+                    .filter(|a| a.status == "active"),
+                None => None,
+            };
+            ResourceActor {
+                org_id,
+                session_id: session.uuid(),
+                agent_id: agent.as_ref().map(|a| a.id.uuid()),
+                virtual_user_id: None,
+                service_user_id: agent.and_then(|a| a.virtual_user_id).map(|v| v.uuid()),
+                usage: selected,
+                private_access: false,
+            }
+        };
+        if !access::permits_github(&ctx, &record, &actor, github)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        {
+            return Ok(false);
+        }
+        // A selected shared installation remains subordinate to the exact org
+        // link. Disconnecting or revoking that link blocks the next mint.
+        if let Some(source) = row
+            .provider_metadata
+            .as_ref()
+            .and_then(|m| m.get("org_connection_id"))
+            .and_then(serde_json::Value::as_str)
+        {
+            let Ok(source) = Uuid::parse_str(source) else {
+                return Ok(false);
+            };
+            let shared = match access::record(&ctx, source).await {
+                Ok(r) => r,
+                Err(_) => return Ok(false),
+            };
+            if shared.scope != "organization"
+                || shared.kind != "connection"
+                || !access::permits_github(&ctx, &shared, &actor, github)
+                    .await
+                    .map_err(|e| AgentLoopError::store(e.to_string()))?
+            {
+                return Ok(false);
+            }
+            let link = self
+                .db
+                .get_everruns_app_link(org_id, source)
+                .await
+                .map_err(|_| AgentLoopError::store("Shared installation lookup failed"))?;
+            if link.is_none_or(|link| {
+                link.installation_id != row.installation_id
+                    || link.connection_type != row.connection_type
+            }) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// Token held by one selected connection row: GitHub installations mint a
     /// fresh installation token with the App their kind names, MCP OAuth grants
     /// refresh near expiry, everything else decrypts the stored token.
@@ -680,6 +854,9 @@ impl DbConnectionResolver {
         provider: &str,
         row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
+        if !self.authorize_connection(scope, &row, None).await? {
+            return Ok(None);
+        }
         // GitHub mints with the App the connection's kind names, so the
         // trigger, the tools and the GitHub MCP all act as the same
         // installation.
@@ -817,6 +994,17 @@ impl UserConnectionResolver for DbConnectionResolver {
         access: &everruns_contracts::runtime::GitHubAccess,
     ) -> Result<Option<String>> {
         self.github_token_for_owner(org_id, owner, access).await
+    }
+
+    async fn get_github_token_for_connection(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        connection_id: Uuid,
+        access: &everruns_contracts::runtime::GitHubAccess,
+    ) -> Result<Option<String>> {
+        self.github_token_for_connection(org_id, owner, connection_id, access)
+            .await
     }
 
     async fn get_sandbox_connection_token(

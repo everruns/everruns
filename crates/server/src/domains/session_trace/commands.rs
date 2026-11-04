@@ -90,6 +90,8 @@ fn step_out(row: TraceStepRow, turn_started: DateTime<Utc>, child: Option<Uuid>)
         input_tokens: row.input_tokens,
         output_tokens: row.output_tokens,
         requested_tool_call_ids: row.requested_tool_call_ids,
+        retry_attempts: row.retry_attempts,
+        retry_wait_ms: row.retry_wait_ms,
         child_session_id: child.map(|id| SessionId::from_uuid(id).to_string()),
         start_sequence: row.start_sequence,
         end_sequence: row.end_sequence,
@@ -102,7 +104,9 @@ fn turn_out(row: &TraceTurnRow, items: Vec<TraceItem>) -> TraceTurn {
         turn_id: TurnId::from_uuid(row.turn_id).to_string(),
         status: row.status.clone(),
         prompt: row.prompt_preview.clone(),
+        origin: row.origin.clone(),
         error: row.error.clone(),
+        error_code: row.error_code.clone(),
         started_at: row.started_at,
         ended_at: row.ended_at,
         duration_ms: row
@@ -172,12 +176,20 @@ fn payload(value: Value, full: bool) -> TracePayload {
 }
 
 fn event_ref(row: crate::storage::TraceEventRefRow) -> TraceEventRef {
+    // Inline previews are an API response too, even when they fit below the
+    // payload-size cutoff. Unknown/malformed event payloads fail closed.
+    let data = row.data.and_then(|data| {
+        let data = everruns_core::events::deserialize_event_data(&row.event_type, data);
+        (!data.is_unsupported())
+            .then(|| serde_json::to_value(data.into_public()).ok())
+            .flatten()
+    });
     TraceEventRef {
         id: EventId::from_uuid(row.id).to_string(),
         sequence: row.sequence,
         event_type: row.event_type,
         ts: row.ts,
-        data: row.data,
+        data,
         size_bytes: row.size_bytes,
     }
 }
@@ -642,7 +654,7 @@ impl Command for GetSessionTraceStep {
                     attach_cache_reset(usage, &row, &data, previous.as_ref());
                 }
                 request = Some(summary);
-                output = data.get("output").cloned().map(|v| payload(v, full));
+                output = model_call_output(&data).map(|v| payload(v, full));
             }
             events = db
                 .trace_events_in_range(
@@ -739,6 +751,34 @@ fn public_message(message: &Value) -> Option<Value> {
 /// text is often the tool's JSON output serialized into a string; that string
 /// is decoded back into JSON, and plain text is returned as one string with
 /// its line breaks intact. Anything else (images, mixed parts) stays as is.
+/// What a model call returned, or, for a failed call, its error. A failed
+/// `llm.generation` carries an empty `output` and the error in `metadata`, so
+/// showing `output` alone left the inspector with `{}`. The error takes the
+/// same `{ "error": .. }` shape a failed tool call has, plus the provider
+/// account that served the call so the inspector can link to it.
+fn model_call_output(data: &Value) -> Option<Value> {
+    let metadata = data.get("metadata");
+    let failed = metadata
+        .and_then(|m| m.get("success"))
+        .and_then(Value::as_bool)
+        == Some(false);
+    let error = metadata
+        .and_then(|m| m.get("error"))
+        .filter(|e| !e.is_null());
+    match error {
+        Some(error) if failed => {
+            let mut out = serde_json::json!({ "error": error });
+            for field in ["provider", "provider_id"] {
+                if let Some(value) = metadata.and_then(|m| m.get(field)).filter(|v| !v.is_null()) {
+                    out[field] = value.clone();
+                }
+            }
+            Some(out)
+        }
+        _ => data.get("output").cloned(),
+    }
+}
+
 fn tool_result_value(result: Value) -> Value {
     let Value::Array(parts) = &result else {
         return result;
@@ -1207,6 +1247,59 @@ impl Command for ListSessionTraceTurnEvents {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_failed_model_call_shows_its_error_not_the_empty_output() {
+        let failed = json!({
+            "output": {},
+            "metadata": {
+                "success": false,
+                "error": "LLM error: 402 Payment Required",
+                "provider": "openrouter",
+                "provider_id": "provider_01a1"
+            }
+        });
+        assert_eq!(
+            model_call_output(&failed),
+            Some(json!({
+                "error": "LLM error: 402 Payment Required",
+                "provider": "openrouter",
+                "provider_id": "provider_01a1"
+            }))
+        );
+        let ok = json!({"output": {"text": "hi"}, "metadata": {"success": true}});
+        assert_eq!(model_call_output(&ok), Some(json!({"text": "hi"})));
+        assert_eq!(model_call_output(&json!({})), None);
+    }
+
+    #[test]
+    fn message_and_inline_event_previews_hide_runtime_metadata() {
+        let mut message = everruns_core::RuntimeMessage::assistant("answer");
+        message.metadata = Some(
+            serde_json::from_value(
+                json!({"model":"test", "tool_changes":{"system_prompt":"CANARY"}}),
+            )
+            .unwrap(),
+        );
+        let stored = serde_json::to_value(&message).unwrap();
+        assert!(
+            !public_message(&stored)
+                .unwrap()
+                .to_string()
+                .contains("CANARY")
+        );
+        let row = crate::storage::TraceEventRefRow {
+            id: Uuid::now_v7(),
+            sequence: 1,
+            event_type: "output.message.completed".into(),
+            ts: chrono::Utc::now(),
+            data: Some(json!({"message":stored})),
+            size_bytes: 512,
+        };
+        let public = event_ref(row).data.unwrap();
+        assert!(!public.to_string().contains("CANARY"));
+        assert_eq!(public["message"]["metadata"]["model"], "test");
+    }
 
     #[test]
     fn small_payloads_inline_and_large_ones_are_cut() {

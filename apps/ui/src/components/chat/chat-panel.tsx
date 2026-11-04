@@ -1,5 +1,13 @@
 "use client";
 
+import {
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
+import { usePageDraftTools } from "@/components/chat-mode/use-page-draft-tools";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { CommandDescriptor, Controls } from "@/lib/api/types";
@@ -19,6 +27,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
+import { useChatDraft } from "@/hooks/use-chat-draft";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
@@ -27,6 +36,7 @@ import { useVoiceCall } from "@/hooks/use-voice-call";
 import { useMutation } from "@tanstack/react-query";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice";
 import { PlatformChatIntroBox } from "@/components/chat/platform-chat-intro";
 import { MessageContent } from "@/components/chat/message-content";
@@ -42,7 +52,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 interface ParsedSystemCommand {
@@ -104,6 +114,8 @@ function parseSystemCommandInvocation(
 }
 
 export interface ChatPanelProps {
+  pageAware?: boolean;
+  onPageMessage?: () => void;
   /** Resolved work retains its transcript; reopen explicitly before continuing. */
   resolvedThread?: boolean;
   onDraftSubmit?: (
@@ -137,6 +149,8 @@ export interface ChatPanelProps {
 }
 
 export function ChatPanel({
+  pageAware = false,
+  onPageMessage,
   resolvedThread = false,
   replyToLabel,
   replyInThread = false,
@@ -148,6 +162,10 @@ export function ChatPanel({
   platformIntro,
   platformStarters = [],
 }: ChatPanelProps = {}) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
+  const chatMode = useChatMode();
+  const [sentActionId, setSentActionId] = useState<string | undefined>(undefined);
   const { t } = useLocale();
   const voiceFeatureEnabled = useFeatureFlag("voice");
   const {
@@ -159,6 +177,7 @@ export function ChatPanel({
     llmModelLoading,
     eventsLoading,
     isActive,
+    effectiveStatus,
     reasoningEffort,
     setReasoningEffort,
     verbosity,
@@ -167,6 +186,7 @@ export function ChatPanel({
     chatSends,
     cancelCurrentTurn,
   } = useSessionContext();
+  const pageTools = usePageDraftTools(pageAware, sessionId, chatEvents, effectiveStatus);
 
   const { data: models = [], isLoading: modelsLoading } = useModels();
   // One guiding block on a fresh platform thread: the intro + starters render
@@ -183,11 +203,14 @@ export function ChatPanel({
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [draftSending, setDraftSending] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue, draftRecoveryError] = useChatDraft(chatSends.storageKey);
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (pageAware && chatMode?.open) textareaRef.current?.focus();
+  }, [pageAware, chatMode?.open]);
 
   const {
     selectedModelId,
@@ -476,10 +499,10 @@ export function ChatPanel({
   const agentNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const agent of agents ?? []) {
-      map.set(agent.id, getDisplayName(agent));
+      map.set(agent.id, getDisplayName(agent, displayLocale));
     }
     return map;
-  }, [agents]);
+  }, [agents, displayLocale]);
 
   const activeAgentParticipants = useMemo(
     () => (participants ?? []).filter((p) => !p.left_at && p.kind === "agent"),
@@ -501,11 +524,14 @@ export function ChatPanel({
       const suffix = participant.id.replace(/^part_/, "").slice(-6);
       return {
         id: participant.id,
-        label: labelCounts.get(label)! > 1 ? `${label} (${suffix})` : label,
+        label:
+          labelCounts.get(label)! > 1
+            ? ui("{value0} ({value1})", { value0: label, value1: suffix })
+            : label,
         description: `Guest agent · ${suffix}`,
       };
     });
-  }, [addressableParticipants, agentNameById]);
+  }, [addressableParticipants, agentNameById, ui]);
 
   useEffect(() => {
     if (
@@ -544,13 +570,34 @@ export function ChatPanel({
       } else {
         // The turn status row takes over from Enter: the composer clears now,
         // and a send that fails shows "Not delivered" with Retry on its row.
+        const pageActions =
+          pageAware && chatMode
+            ? chatMode.actions.slice(
+                Math.max(0, chatMode.actions.findIndex((action) => action.id === sentActionId) + 1),
+              )
+            : [];
         const send = chatSends.submit({
           text: inputValue.trim(),
           images: hasImages ? uploadedImageIds : [],
           files: hasFiles ? uploadedFileIds : [],
           controls,
           addressedParticipantId,
+          ...(pageAware && chatMode
+            ? {
+                metadata: {
+                  page_context: {
+                    ...chatMode.page,
+                    ...(chatMode.pageAdapter && { draft: chatMode.pageAdapter.describe() }),
+                  },
+                  page_actions: pageActions,
+                },
+              }
+            : {}),
         });
+        if (pageAware) {
+          setSentActionId(chatMode?.actions.at(-1)?.id);
+          onPageMessage?.();
+        }
         clearImages();
         clearFiles();
         persistSelection();
@@ -624,6 +671,7 @@ export function ChatPanel({
           <SessionTranscript
             showRunCards={showRunCards}
             collapseWorkLog={collapseWorkLog}
+            runRequests
             // Playground sessions cannot be forked, so they get no Branch or rating.
             messageActions={!!session && session.source !== "playground"}
             emptyState={
@@ -643,6 +691,15 @@ export function ChatPanel({
             }
             footer={
               <>
+                {(chatSends.recoveryError || draftRecoveryError) && (
+                  <div className="mt-4" role="alert">
+                    <ChatErrorAlert
+                      message={ui(
+                        "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.",
+                      )}
+                    />
+                  </div>
+                )}
                 {submitError && (
                   <div className="mt-4">
                     <ChatErrorAlert message={submitError} />
@@ -673,80 +730,128 @@ export function ChatPanel({
 
           {resolvedThread ? (
             <p className="border-t border-border p-4 text-sm text-muted-foreground">
-              This thread is resolved. Reopen it to continue.
+              {ui("This thread is resolved. Reopen it to continue.")}
             </p>
           ) : (
-            <ChatComposer
-              commands={commands}
-              models={models}
-              inputValue={inputValue}
-              onInputChange={setInputValue}
-              onSubmit={submitMessage}
-              onCommandSelect={handleCommandSelect}
-              mentionOptions={mentionOptions}
-              selectedMention={selectedMention}
-              onMentionChange={(participant) => setAddressedParticipantId(participant?.id ?? null)}
-              pendingImages={pendingImages}
-              hasImages={hasImages}
-              removeImage={removeImage}
-              addFiles={addFiles}
-              pendingFiles={pendingFiles}
-              hasFiles={hasFiles}
-              removeFileAttachment={removeFileAttachment}
-              supportsPdf={supportsPdf}
-              isDraggingOver={isDraggingOver}
-              dropZoneProps={dropZoneProps}
-              handlePaste={handlePaste}
-              placeholder={
-                showPlatformIntro
-                  ? !modelReady
-                    ? t("type_message_pick_model")
-                    : undefined
-                  : replyInThread
-                    ? t("reply_in_thread")
-                    : replyToLabel
-                      ? t("reply_to", { name: replyToLabel })
+            <>
+              {pageTools.error && (
+                <p role="alert" className="px-4 text-xs text-destructive">
+                  {pageTools.error}{" "}
+                  <button type="button" className="underline" onClick={pageTools.retry}>
+                    {ui("Retry")}
+                  </button>
+                </p>
+              )}
+              {pageAware && chatMode && (
+                <div className="mx-auto w-full max-w-[820px] space-y-2 px-6 pb-2">
+                  {chatMode.actions
+                    .slice(
+                      Math.max(
+                        0,
+                        chatMode.actions.findIndex((action) => action.id === sentActionId) + 1,
+                      ),
+                    )
+                    .slice(-3)
+                    .map((action) => (
+                      <p key={action.id} className="text-[11px] text-muted-foreground">
+                        ↖ {action.label}
+                      </p>
+                    ))}
+                  <div className="flex flex-wrap gap-2">
+                    {(chatMode.page.entity_type === "agent"
+                      ? [
+                          "Improve these instructions",
+                          "Make this agent kid-safe",
+                          "Explain this agent’s capabilities",
+                        ]
+                      : ["Help me with this page"]
+                    ).map((text) => (
+                      <button
+                        key={text}
+                        type="button"
+                        onClick={() => {
+                          setInputValue(text);
+                          textareaRef.current?.focus();
+                        }}
+                        className="border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                      >
+                        {text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <ChatComposer
+                hideModelPicker={pageAware}
+                commands={commands}
+                models={models}
+                inputValue={inputValue}
+                onInputChange={setInputValue}
+                onSubmit={submitMessage}
+                onCommandSelect={handleCommandSelect}
+                mentionOptions={mentionOptions}
+                selectedMention={selectedMention}
+                onMentionChange={(participant) =>
+                  setAddressedParticipantId(participant?.id ?? null)
+                }
+                pendingImages={pendingImages}
+                hasImages={hasImages}
+                removeImage={removeImage}
+                addFiles={addFiles}
+                pendingFiles={pendingFiles}
+                hasFiles={hasFiles}
+                removeFileAttachment={removeFileAttachment}
+                supportsPdf={supportsPdf}
+                isDraggingOver={isDraggingOver}
+                dropZoneProps={dropZoneProps}
+                handlePaste={handlePaste}
+                placeholder={
+                  showPlatformIntro
+                    ? !modelReady
+                      ? t("type_message_pick_model")
                       : undefined
-              }
-              selectedModelId={selectedModelId}
-              usingChatGptPlan={
-                selectedModel?.provider_type === "chatgpt" ||
-                (!selectedModelId && llmModel?.provider_type === "chatgpt")
-              }
-              recentModels={recentModels}
-              onModelChange={handleModelChange}
-              modelTriggerLabel={
-                showPlatformIntro && !modelReady ? t("choose_model") : modelTriggerLabel
-              }
-              defaultModelOptionLabel={defaultModelOptionLabel}
-              supportsReasoning={supportsReasoning}
-              reasoningEffort={reasoningEffort}
-              reasoningEffortConfig={reasoningEffortConfig}
-              defaultEffortName={defaultEffortName}
-              getReasoningEffortName={getReasoningEffortName}
-              onReasoningEffortChange={(value) =>
-                setReasoningEffort(value as typeof reasoningEffort)
-              }
-              supportsVerbosity={supportsVerbosity}
-              verbosity={verbosity}
-              verbosityConfig={verbosityConfig}
-              defaultVerbosityName={defaultVerbosityName}
-              getVerbosityName={getVerbosityName}
-              onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
-              isActive={isActive || chatSends.busy}
-              cancelCurrentTurn={stopTurn}
-              canSubmit={canSubmit}
-              modelReady={modelReady}
-              modelLoading={modelLoading}
-              hideModelNotice={showPlatformIntro}
-              isUploading={isUploading}
-              sendPending={draftSending || executeCommand.isPending}
-              textareaRef={textareaRef}
-              voiceEnabled={voiceAvailable}
-              voiceActive={voiceState === "connected"}
-              voicePending={voiceState === "connecting"}
-              onToggleVoice={toggleVoice}
-            />
+                    : replyInThread
+                      ? t("reply_in_thread")
+                      : replyToLabel
+                        ? t("reply_to", { name: replyToLabel })
+                        : undefined
+                }
+                selectedModelId={selectedModelId}
+                recentModels={recentModels}
+                onModelChange={handleModelChange}
+                modelTriggerLabel={
+                  showPlatformIntro && !modelReady ? t("choose_model") : modelTriggerLabel
+                }
+                defaultModelOptionLabel={defaultModelOptionLabel}
+                supportsReasoning={supportsReasoning}
+                reasoningEffort={reasoningEffort}
+                reasoningEffortConfig={reasoningEffortConfig}
+                defaultEffortName={defaultEffortName}
+                getReasoningEffortName={getReasoningEffortName}
+                onReasoningEffortChange={(value) =>
+                  setReasoningEffort(value as typeof reasoningEffort)
+                }
+                supportsVerbosity={supportsVerbosity}
+                verbosity={verbosity}
+                verbosityConfig={verbosityConfig}
+                defaultVerbosityName={defaultVerbosityName}
+                getVerbosityName={getVerbosityName}
+                onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
+                isActive={isActive || chatSends.busy}
+                cancelCurrentTurn={stopTurn}
+                canSubmit={canSubmit}
+                modelReady={modelReady}
+                modelLoading={modelLoading}
+                hideModelNotice={showPlatformIntro}
+                isUploading={isUploading}
+                sendPending={draftSending || executeCommand.isPending}
+                textareaRef={textareaRef}
+                voiceEnabled={voiceAvailable}
+                voiceActive={voiceState === "connected"}
+                voicePending={voiceState === "connecting"}
+                onToggleVoice={toggleVoice}
+              />
+            </>
           )}
         </div>
 
@@ -758,28 +863,26 @@ export function ChatPanel({
           <DialogHeader>
             <DialogTitle>/{commandOverlay?.commandName}</DialogTitle>
             <DialogDescription>
-              This command result is ephemeral and does not alter the main chat history.
+              {ui("This command result is ephemeral and does not alter the main chat history.")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {commandOverlay?.argumentsText && (
               <div className="rounded-sm border border-border bg-muted/30 p-3">
-                <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                  Arguments
+                <div className="mb-1 text-xs font-medium text-muted-foreground">
+                  {ui("Arguments")}
                 </div>
                 <div className="text-sm text-foreground">{commandOverlay.argumentsText}</div>
               </div>
             )}
 
             <div className="rounded-sm border border-border p-4">
-              <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Result
-              </div>
+              <div className="mb-3 text-xs font-medium text-muted-foreground">{ui("Result")}</div>
               {commandOverlay?.pending ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Thinking...
+                  {ui("Thinking...")}
                 </div>
               ) : commandOverlay?.error ? (
                 <div className="text-sm text-destructive">{commandOverlay.error}</div>
@@ -791,7 +894,7 @@ export function ChatPanel({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={closeCommandOverlay}>
-              Dismiss
+              {ui("Dismiss")}
             </Button>
           </DialogFooter>
         </DialogContent>

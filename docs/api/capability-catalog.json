@@ -69,9 +69,12 @@
         "dev"
       ],
       "id": "agent_handoff",
-      "name": "Agent Handoff",
+      "name": "Agents",
       "status": "available",
-      "tools": []
+      "tools": [
+        "message_agent",
+        "read_run_conversation"
+      ]
     },
     {
       "category": "Core",
@@ -138,6 +141,21 @@
       "tools": []
     },
     {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": "automatic-session-titles",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "automatic_session_titles",
+      "name": "Automatic session titles",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Execution",
       "dependencies": [],
       "docs_slug": null,
@@ -198,7 +216,7 @@
         "session_storage"
       ],
       "docs_slug": "browser-use",
-      "feature_flag": "browserless_browser_use",
+      "feature_flag": "browserless",
       "features": [
         "leased_resources"
       ],
@@ -343,6 +361,21 @@
     {
       "category": "Optimization",
       "dependencies": [],
+      "docs_slug": "claude-message-threads",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "claude_message_threads",
+      "name": "Claude Message Threads",
+      "status": "available",
+      "tools": []
+    },
+    {
+      "category": "Optimization",
+      "dependencies": [],
       "docs_slug": "tool-search",
       "feature_flag": null,
       "features": [],
@@ -376,7 +409,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": "browserless_computer_use",
+      "feature_flag": "browserless",
       "features": [
         "leased_resources"
       ],
@@ -386,48 +419,6 @@
       ],
       "id": "computer_use",
       "name": "Computer Use",
-      "status": "available",
-      "tools": [
-        "computer"
-      ]
-    },
-    {
-      "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": "computer-use",
-      "feature_flag": "daytona_computer_use",
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "computer_use_daytona",
-      "name": "Daytona Desktop Computer Use",
-      "status": "available",
-      "tools": [
-        "computer"
-      ]
-    },
-    {
-      "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": "computer-use",
-      "feature_flag": "e2b_computer_use",
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "computer_use_desktop",
-      "name": "Desktop Computer Use",
       "status": "available",
       "tools": [
         "computer"
@@ -577,32 +568,6 @@
     },
     {
       "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": null,
-      "feature_flag": null,
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "deno",
-      "name": "Deno Sandboxes",
-      "status": "available",
-      "tools": [
-        "deno_create_sandbox",
-        "deno_exec",
-        "deno_list_sandboxes",
-        "deno_manage_sandbox",
-        "deno_read_file",
-        "deno_write_file"
-      ]
-    },
-    {
-      "category": "Sandboxes",
       "dependencies": [],
       "docs_slug": "docker",
       "feature_flag": "docker_capability",
@@ -621,6 +586,23 @@
         "docker_stop",
         "docker_write_file"
       ]
+    },
+    {
+      "category": "Optimization",
+      "dependencies": [
+        "session_file_system"
+      ],
+      "docs_slug": null,
+      "feature_flag": "dreaming",
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "dreaming",
+      "name": "Dreaming",
+      "status": "available",
+      "tools": []
     },
     {
       "category": "Safety",
@@ -820,8 +802,10 @@
     },
     {
       "category": "Knowledge",
-      "dependencies": [],
-      "docs_slug": "knowledge-base",
+      "dependencies": [
+        "session_file_system"
+      ],
+      "docs_slug": "knowledge",
       "feature_flag": "knowledge",
       "features": [
         "knowledge"
@@ -830,29 +814,13 @@
         "prod",
         "dev"
       ],
-      "id": "knowledge_base",
-      "name": "Knowledge Base",
+      "id": "knowledge",
+      "name": "Knowledge",
       "status": "available",
       "tools": [
+        "browse_knowledge",
         "search_knowledge"
       ]
-    },
-    {
-      "category": "Knowledge",
-      "dependencies": [],
-      "docs_slug": "knowledge-index",
-      "feature_flag": "knowledge",
-      "features": [
-        "knowledge"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "knowledge_index",
-      "name": "Knowledge Index",
-      "status": "available",
-      "tools": []
     },
     {
       "category": null,
@@ -1126,6 +1094,7 @@
     {
       "category": "Platform",
       "dependencies": [
+        "skills",
         "session_file_system"
       ],
       "docs_slug": "platform",
@@ -1226,6 +1195,23 @@
       "tools": []
     },
     {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "reactions",
+      "name": "Reactions",
+      "status": "available",
+      "tools": [
+        "react"
+      ]
+    },
+    {
       "category": "AI",
       "dependencies": [],
       "docs_slug": null,
@@ -1257,6 +1243,43 @@
         "attach_resource",
         "discover_resources",
         "list_attached_resources"
+      ]
+    },
+    {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "run_conversation",
+      "name": "Run conversation",
+      "status": "available",
+      "tools": [
+        "message_agent",
+        "read_run_conversation"
+      ]
+    },
+    {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": "computer-use",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "sandbox_desktop",
+      "name": "Sandbox Desktop",
+      "status": "available",
+      "tools": [
+        "computer"
       ]
     },
     {
@@ -1566,6 +1589,7 @@
       "name": "Task Management",
       "status": "available",
       "tools": [
+        "report_done",
         "write_todos"
       ]
     },
@@ -1749,6 +1773,7 @@
         "connect_mcp_server",
         "disable_user_mcp_server",
         "enable_user_mcp_server",
+        "list_mcp_catalog",
         "list_user_mcp_servers",
         "remove_user_mcp_server"
       ]

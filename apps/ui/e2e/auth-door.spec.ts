@@ -96,7 +96,7 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
   await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Open session", exact: true })).toBeVisible();
   await expect(
-    page.getByRole("combobox", { name: "Type a message — pick a model to send" }),
+    page.getByRole("combobox", { name: "Type a message, then pick a model to send" }),
   ).toBeVisible();
 });
 
@@ -209,7 +209,7 @@ test.describe("Unified auth door", () => {
     await expect(
       page.getByText(
         "If new@acme.com can be registered, we've sent a confirmation link. " +
-          "Click it to verify your email and get started — the link signs you in.",
+          "Click it to verify your email and get started. The link signs you in.",
       ),
     ).toBeVisible();
     expect(registered).toBe(true);

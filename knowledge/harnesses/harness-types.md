@@ -22,6 +22,8 @@ Built-ins form a tree by use case, not one chain. Each layer answers one questio
 
 Capability additions and configurations are owned by [the shared preset definition](../../crates/contracts/src/capability/presets.rs); do not duplicate its inventory here. Hosted labels, icons and execution rules are owned by [levels](../../crates/server/src/harnesses/levels.rs) and the [sandbox worker definition](../../crates/server/src/harnesses/sandbox_worker.rs). The public diagram is `docs/images/features/harness-tree.svg`.
 
+Worker bundles [dreaming](../runtime-resources/dreaming.md); child harnesses inherit it. Hosted use requires explicit organization adoption before background consolidation runs.
+
 ## Execution rules
 
 Where an agent runs is the last split, so it is a property of the harness, not a capability check. Built-in definitions declare an execution rule; a custom harness inherits the rule of its nearest built-in ancestor ([queries](../../crates/server/src/domains/harnesses/queries.rs) `execution_rule`).

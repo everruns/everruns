@@ -172,6 +172,7 @@ async fn scoped_server(
         url: row.url.clone(),
         protocol_mode: settings.protocol_mode,
         elicitation_policy: settings.elicitation_policy,
+        tool_timeout_ms: settings.tool_timeout_ms,
         ..Default::default()
     };
     match settings.auth_mode {

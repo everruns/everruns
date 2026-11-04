@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,7 @@ export function McpServersEditor({
   servers: McpServerEntry[];
   onChange: (servers: McpServerEntry[]) => void;
 }) {
+  const ui = useUiTranslations();
   const update = (id: string, patch: Partial<McpServerEntry>) =>
     onChange(servers.map((s) => (s.id === id ? { ...s, ...patch } : s)));
 
@@ -34,7 +36,7 @@ export function McpServersEditor({
     <div className="space-y-4">
       {servers.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No MCP servers. Add one to expose its tools to agents using this capability.
+          {ui("No MCP servers. Add one to expose its tools to agents using this capability.")}
         </p>
       )}
       {servers.map((server) => (
@@ -45,10 +47,10 @@ export function McpServersEditor({
                 <Plug className="h-4 w-4 text-primary" />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={`mcp-name-${server.id}`}>Server name</Label>
+                <Label htmlFor={`mcp-name-${server.id}`}>{ui("Server name")}</Label>
                 <Input
                   id={`mcp-name-${server.id}`}
-                  placeholder="atlassian"
+                  placeholder={ui("atlassian")}
                   value={server.name}
                   onChange={(e) => update(server.id, { name: e.target.value })}
                   className="w-64"
@@ -61,14 +63,14 @@ export function McpServersEditor({
               size="sm"
               className="h-9 w-9 p-0 shrink-0"
               onClick={() => onChange(servers.filter((s) => s.id !== server.id))}
-              aria-label="Remove server"
+              aria-label={ui("Remove server")}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
 
           <div className="grid gap-1.5">
-            <Label>Transport</Label>
+            <Label>{ui("Transport")}</Label>
             <Select
               value={server.transportType}
               onValueChange={(value) =>
@@ -79,8 +81,8 @@ export function McpServersEditor({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="http">HTTP (remote)</SelectItem>
-                <SelectItem value="stdio">stdio (local process)</SelectItem>
+                <SelectItem value="http">{ui("HTTP (remote)")}</SelectItem>
+                <SelectItem value="stdio">{ui("stdio (local process)")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -88,7 +90,7 @@ export function McpServersEditor({
           {server.transportType === "http" ? (
             <>
               <div className="grid gap-1.5">
-                <Label htmlFor={`mcp-url-${server.id}`}>URL</Label>
+                <Label htmlFor={`mcp-url-${server.id}`}>{ui("URL")}</Label>
                 <Input
                   id={`mcp-url-${server.id}`}
                   placeholder="https://mcp.example.com/v1/mcp"
@@ -97,7 +99,7 @@ export function McpServersEditor({
                 />
               </div>
               <KeyValueEditor
-                label="Headers"
+                label={ui("Headers")}
                 pairs={server.headers}
                 onChange={(headers) => update(server.id, { headers })}
                 addLabel="Add header"
@@ -106,16 +108,16 @@ export function McpServersEditor({
           ) : (
             <>
               <div className="grid gap-1.5">
-                <Label htmlFor={`mcp-command-${server.id}`}>Command</Label>
+                <Label htmlFor={`mcp-command-${server.id}`}>{ui("Command")}</Label>
                 <Input
                   id={`mcp-command-${server.id}`}
-                  placeholder="npx"
+                  placeholder={ui("npx")}
                   value={server.command}
                   onChange={(e) => update(server.id, { command: e.target.value })}
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={`mcp-args-${server.id}`}>Arguments (one per line)</Label>
+                <Label htmlFor={`mcp-args-${server.id}`}>{ui("Arguments (one per line)")}</Label>
                 <Textarea
                   id={`mcp-args-${server.id}`}
                   placeholder={"-y\n@modelcontextprotocol/server-filesystem"}
@@ -126,7 +128,7 @@ export function McpServersEditor({
                 />
               </div>
               <KeyValueEditor
-                label="Environment variables"
+                label={ui("Environment variables")}
                 pairs={server.env}
                 onChange={(env) => update(server.id, { env })}
                 addLabel="Add variable"
@@ -137,7 +139,7 @@ export function McpServersEditor({
           <Separator />
 
           <div className="grid gap-1.5">
-            <Label>Authentication</Label>
+            <Label>{ui("Authentication")}</Label>
             <Select
               value={server.authMode}
               onValueChange={(value) => {
@@ -152,25 +154,25 @@ export function McpServersEditor({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="api_key">API key</SelectItem>
-                <SelectItem value="oauth">OAuth</SelectItem>
+                <SelectItem value="none">{ui("None")}</SelectItem>
+                <SelectItem value="api_key">{ui("API key")}</SelectItem>
+                <SelectItem value="oauth">{ui("OAuth")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           {server.authMode === "oauth" && (
             <>
               <div className="grid gap-1.5">
-                <Label htmlFor={`mcp-oauth-${server.id}`}>OAuth provider ID</Label>
+                <Label htmlFor={`mcp-oauth-${server.id}`}>{ui("OAuth provider ID")}</Label>
                 <Input
                   id={`mcp-oauth-${server.id}`}
-                  placeholder="atlassian"
+                  placeholder={ui("atlassian")}
                   value={server.oauthProviderId}
                   onChange={(e) => update(server.id, { oauthProviderId: e.target.value })}
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label>Acting identity</Label>
+                <Label>{ui("Acting identity")}</Label>
                 <Select
                   value={server.actsAs}
                   onValueChange={(value) =>
@@ -181,13 +183,13 @@ export function McpServersEditor({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Choose an identity</SelectItem>
-                    <SelectItem value="user">Invoking user</SelectItem>
-                    <SelectItem value="service">Agent service</SelectItem>
+                    <SelectItem value="none">{ui("Choose an identity")}</SelectItem>
+                    <SelectItem value="user">{ui("Invoking user")}</SelectItem>
+                    <SelectItem value="service">{ui("Agent service")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Choose whose OAuth grant this capability can use.
+                  {ui("Choose whose OAuth grant this capability can use.")}
                 </p>
               </div>
             </>
@@ -195,9 +197,9 @@ export function McpServersEditor({
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor={`mcp-discovery-${server.id}`}>Live tool discovery</Label>
+              <Label htmlFor={`mcp-discovery-${server.id}`}>{ui("Live tool discovery")}</Label>
               <p className="text-xs text-muted-foreground">
-                Discover tool definitions from the server at runtime.
+                {ui("Discover tool definitions from the server at runtime.")}
               </p>
             </div>
             <Switch
@@ -217,7 +219,7 @@ export function McpServersEditor({
         onClick={() => onChange([...servers, newMcpServerEntry()])}
       >
         <Plus className="h-4 w-4 mr-1" />
-        Add MCP server
+        {ui("Add MCP server")}
       </Button>
     </div>
   );

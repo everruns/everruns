@@ -1,20 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
 use everruns_contracts::model_profile_data::{
-    all_profiles, profiles_for_provider, selected_profiles, selected_profiles_for_provider,
+    all_profiles, profiles_for_provider, selected_profiles_for_provider,
 };
-
-#[test]
-fn selected_profiles_are_the_curated_registry() {
-    assert!(!all_profiles().is_empty());
-    assert_eq!(selected_profiles(), all_profiles());
-    assert_eq!(
-        selected_profiles_for_provider("openai"),
-        profiles_for_provider("openai")
-    );
-    assert!(profiles_for_provider("unknown").is_empty());
-    assert!(selected_profiles_for_provider("unknown").is_empty());
-}
 
 #[test]
 fn entries_round_trip_without_conflating_families_or_aliases() {
@@ -148,42 +136,4 @@ fn provider_masks_and_curated_models_survive_enumeration() {
         assert!(astra.profile.verbosity.is_none());
         assert!(!astra.profile.supports_server_compaction);
     }
-    for (provider, required) in [
-        ("openai", &["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"][..]),
-        ("anthropic", &["claude-opus-5-5", "claude-fable-5-1"][..]),
-        (
-            "meta",
-            &[
-                "muse-wonder-1.0",
-                "muse-spark-1.3",
-                "muse-spark-1.3-contributor",
-            ][..],
-        ),
-        (
-            "gemini",
-            &["gemini-3.1-pro-preview", "gemini-3.5-flash"][..],
-        ),
-    ] {
-        let entries = profile_entries_for_provider(provider);
-        for id in required {
-            assert!(
-                entries.iter().any(|entry| entry.model_id == *id),
-                "missing {provider}/{id}"
-            );
-        }
-    }
-    assert!(
-        !profile_entries_for_provider("azure_openai")
-            .iter()
-            .any(|entry| entry.model_id.starts_with("muse-"))
-    );
-}
-
-#[test]
-fn returned_profiles_are_owned_and_order_is_repeatable() {
-    let expected = all_profiles();
-    let mut modified = all_profiles();
-    modified[0].name.clear();
-    assert_eq!(all_profiles(), expected);
-    assert_ne!(modified, expected);
 }

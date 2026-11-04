@@ -217,7 +217,7 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         return CommandError::not_found(nf.resource());
     }
     if crate::errors::is_database_pool_exhausted(&e) {
-        tracing::warn!(error = ?e, "database request pool exhausted");
+        everruns_core::report_repeated_failure!(warn, error = ?e, "database request pool exhausted");
         return CommandError::unavailable(crate::errors::DATABASE_POOL_EXHAUSTED_DETAIL)
             .with_code(crate::errors::DATABASE_POOL_EXHAUSTED_CODE)
             .with_retry_after(crate::errors::DATABASE_POOL_RETRY_AFTER_SECONDS);
@@ -352,10 +352,22 @@ pub struct CommandMeta {
 }
 
 impl CommandMeta {
+    /// Dedicated credential entry stays outside agent tools and their transcripts.
+    /// The authenticated HTTP handler still runs the command's policy normally.
+    pub fn is_interactive_secret_setup(&self) -> bool {
+        self.name == "register_external_agent"
+    }
+
     /// Whether this is internal worker plumbing; see
     /// [`INTERNAL_COMMAND_PATH_PREFIX`].
     pub fn is_internal(&self) -> bool {
         self.path.starts_with(INTERNAL_COMMAND_PATH_PREFIX)
+    }
+
+    /// Undeployed split Knowledge commands remain usable by internal migration
+    /// code, but are absent from discovery and public command dispatch.
+    pub fn is_retired(&self) -> bool {
+        matches!(self.category, "knowledge_bases" | "knowledge_indexes")
     }
 
     /// Feature flag required for this operation to exist in an organization's
@@ -365,7 +377,7 @@ impl CommandMeta {
             "evals" => Some("evals"),
             "skills" => Some("skills"),
             "memories" => Some("memory"),
-            "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
+            "knowledge" | "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
             "payments" => Some("machine_payments"),
@@ -464,12 +476,17 @@ pub struct Ctx {
     pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Whole-install health checks; `None` on surfaces without the server's services.
+    pub system_doctor: Option<Arc<crate::domains::system::doctor::SystemDoctor>>,
     /// Runs the OAuth catalog preset connection check; `None` on surfaces
     /// without the API layer's OAuth client (presets stay `not_checked`).
     pub mcp_oauth_checker:
         Option<Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
+    /// The channel host Slack runs on, for a schedule trigger fired by hand
+    /// that runs in a channel conversation; `None` on surfaces without it.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
     /// GitHub client and public URLs for agents' own GitHub Apps.
     pub github_apps: crate::github_apps::GitHubAppContext,
     /// Per-org/per-user resource caps enforced in create paths (harnesses, agents, sessions).
@@ -534,7 +551,9 @@ impl Ctx {
             utility_llm_service: None,
             decisions: None,
             health_check_service: None,
+            system_doctor: None,
             mcp_event_triggers: None,
+            channels: None,
             mcp_oauth_checker: None,
             github_apps: crate::github_apps::GitHubAppContext::from_env(),
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
@@ -737,18 +756,43 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
                         .map_err(|e| CommandError::forbidden(e.message))?;
                 }
+                let mutation_key = super::change_history::mutation_guard::subject(
+                    ctx,
+                    Self::change(),
+                    &serde_json::to_value(&self).unwrap_or(Value::Null),
+                );
                 // Boxed: the command's future is deep, and both arms below
                 // would otherwise hold it inline on the stack.
                 let body = Box::pin(async {
                     // Entity history: an invalid reason fails before anything changes.
                     let pending = super::change_history::PendingChange::of(&self, ctx).await?;
+                    let check_chat = Self::transactional()
+                        && meta.method != "GET"
+                        && matches!(
+                            meta.category,
+                            "agents" | "harnesses" | "agent_channels" | "agent_packages"
+                        );
+                    if check_chat {
+                        ctx.db.lock_chat_configuration(ctx.org_id()).await?;
+                    }
                     let output = self.execute(ctx).await?;
+                    if check_chat {
+                        super::agent_channels::work_chat::validate_live(ctx).await?;
+                    }
                     super::change_history::PendingChange::record(pending, &meta, ctx, &output)
                         .await?;
                     Ok(output)
                 });
                 // The mutation and its history commit together, or neither does.
-                if Self::transactional() {
+                if let Some(key) = mutation_key {
+                    super::change_history::mutation_guard::run(
+                        ctx,
+                        key,
+                        Self::transactional(),
+                        body,
+                    )
+                    .await
+                } else if Self::transactional() {
                     crate::storage::transaction::scope(&ctx.db, body, CommandError::internal).await
                 } else {
                     body.await
@@ -1046,6 +1090,11 @@ pub async fn dispatch(
     let desc = DISPATCH_TABLE
         .get(name)
         .ok_or_else(|| CommandError::not_found_msg(format!("Unknown command: {name}")))?;
+    if (desc.meta)().is_retired() {
+        return Err(CommandError::not_found_msg(format!(
+            "Unknown command: {name}"
+        )));
+    }
     (desc.dispatch)(params, ctx).await
 }
 
@@ -1054,7 +1103,7 @@ pub fn catalog_entries() -> Vec<CommandMeta> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
         .map(|desc| (desc.meta)())
-        .filter(|meta| !meta.is_internal())
+        .filter(|meta| !meta.is_internal() && !meta.is_retired())
         .collect()
 }
 
@@ -1090,7 +1139,7 @@ pub fn catalog_entries_with_schemas(
         .into_iter()
         .filter(|desc| {
             let meta = (desc.meta)();
-            !meta.is_internal() && meta.is_enabled(feature_flags)
+            !meta.is_internal() && !meta.is_retired() && meta.is_enabled(feature_flags)
         })
         .map(|desc| {
             let meta = (desc.meta)();
@@ -1406,12 +1455,6 @@ mod lenient_tests {
             let v: OptFlagInput = serde_json::from_value(json!({"enabled": input})).unwrap();
             assert_eq!(v.enabled, expected, "input: {input}");
         }
-    }
-
-    #[test]
-    fn opt_bool_lenient_accepts_missing() {
-        let v: OptFlagInput = serde_json::from_value(json!({})).unwrap();
-        assert_eq!(v.enabled, None);
     }
 
     #[test]

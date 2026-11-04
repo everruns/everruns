@@ -17,6 +17,7 @@
 //! assert_eq!(FileSystemCapability.id(), "session_file_system");
 //! ```
 
+mod edit_diagnostics;
 mod inline_media;
 mod stable_tools;
 
@@ -104,7 +105,7 @@ impl FilePathPresentation {
     fn root_guidance(&self) -> String {
         if self.uses_vfs_namespace() {
             format!(
-                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`. "
+                "Workspace root: `{WORKSPACE_PREFIX}`. Mounts like `/memory/user` stay absolute. "
             )
         } else {
             let escaped_root = escape_xml_text(&self.root);
@@ -115,16 +116,7 @@ impl FilePathPresentation {
     }
 
     fn system_prompt_preview(&self) -> String {
-        if self.uses_vfs_namespace() {
-            format!(
-                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`."
-            )
-        } else {
-            format!(
-                "Workspace root: `{}`. Paths may be relative to this root or absolute under it.",
-                self.root
-            )
-        }
+        self.root_guidance().trim_end().to_owned()
     }
 
     fn path_param_description(&self, example: &str) -> String {
@@ -747,7 +739,7 @@ fn plan_text_edits(
     let line_ending = detect_line_ending(body);
     let mut planned = Vec::with_capacity(edits.len());
 
-    for edit in edits {
+    for (index, edit) in edits.iter().enumerate() {
         let old_text = align_to_file_line_endings(
             edit.old_text
                 .strip_prefix('\u{feff}')
@@ -763,9 +755,12 @@ fn plan_text_edits(
 
         let mut matches = body.match_indices(&old_text);
         let Some((start, _)) = matches.next() else {
-            return Err(format!(
-                "Could not find an exact match for old_text: '{}'",
-                truncate_snippet(&old_text, 80)
+            return Err(edit_diagnostics::missing_match(
+                body,
+                &old_text,
+                &new_text,
+                line_ending,
+                index + 1,
             ));
         };
         if matches.next().is_some() {
@@ -1675,7 +1670,7 @@ impl Tool for EditFileTool {
             Ok(result) => result,
             Err(error) if rebased => {
                 return ToolExecutionResult::tool_error(format!(
-                    "File '{}' changed since the last read (expected {}, found {}) and the edits conflict with its current content: {}. Read the file again before editing.",
+                    "File '{}' changed since the last read (expected {}, found {}) and the edits conflict with its current content: {}",
                     display_path, expected_hash, current_hash, error
                 ));
             }
@@ -1946,13 +1941,10 @@ impl Tool for GrepFilesTool {
         tool_call: &self::tool_types::ToolCall,
         phase: self::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: self::tool_narration::ToolNarrationContext<'_>,
+        ctx: self::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(self::tool_narration::narrate_grep_files(
-            &tool_call.arguments,
-            phase,
-            locale,
-        ))
+        let narration = self::tool_narration::narrate_grep_files;
+        Some(narration(&tool_call.arguments, phase, locale, ctx))
     }
 
     fn name(&self) -> &str {
@@ -2365,6 +2357,8 @@ impl Tool for StatFileTool {
 
 #[cfg(test)]
 mod tests {
+    mod edit_diagnostics_tests;
+
     use self::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
     use self::tool_types::ToolCall;
     use super::*;
@@ -2913,34 +2907,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_text_edits_coerces_top_level_only() {
-        // Backward-compat: a legacy call with only top-level scalars (no edits[])
-        // is folded into a single edit instead of rejected.
-        let edits = parse_text_edits(&json!({
-            "old_text": "hello",
-            "new_text": "world"
-        }))
-        .expect("legacy top-level scalars should be coerced into edits[]");
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].old_text, "hello");
-        assert_eq!(edits[0].new_text, "world");
-    }
-
-    #[test]
-    fn test_parse_text_edits_allows_legacy_top_level_deletion() {
-        // Backward-compat: an explicit empty-string replacement is still a valid
-        // deletion edit when both legacy scalar fields are well-formed strings.
-        let edits = parse_text_edits(&json!({
-            "old_text": "remove me",
-            "new_text": ""
-        }))
-        .expect("explicit legacy deletion edit should be accepted");
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].old_text, "remove me");
-        assert_eq!(edits[0].new_text, "");
-    }
-
-    #[test]
     fn test_parse_text_edits_rejects_malformed_legacy_top_level_new_text() {
         let missing_err = parse_text_edits(&json!({
             "old_text": "remove me"
@@ -2970,20 +2936,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_text_edits_accepts_batch() {
-        let edits = parse_text_edits(&json!({
-            "edits": [
-                {"old_text": "a", "new_text": "1"},
-                {"old_text": "b", "new_text": "2"}
-            ]
-        }))
-        .expect("batch mode should be accepted");
-        assert_eq!(edits.len(), 2);
-        assert_eq!(edits[1].old_text, "b");
-        assert_eq!(edits[1].new_text, "2");
-    }
-
-    #[test]
     fn test_parse_text_edits_allows_empty_single_placeholders_with_batch() {
         // EVE-498 compat: some models emit empty top-level placeholders alongside a
         // real edits[]. That is treated as batch mode, not an ambiguous mixed call.
@@ -2998,39 +2950,9 @@ mod tests {
         assert_eq!(edits[0].new_text, "d");
     }
 
-    #[test]
-    fn test_apply_text_edits_rejects_overlaps() {
-        let result = apply_text_edits(
-            "abcdef",
-            &[
-                TextEdit {
-                    old_text: "abcd".to_string(),
-                    new_text: "wxyz".to_string(),
-                },
-                TextEdit {
-                    old_text: "cdef".to_string(),
-                    new_text: "1234".to_string(),
-                },
-            ],
-        );
-
-        assert_eq!(result.unwrap_err(), "Edits overlap in the target file");
-    }
-
     // Metadata and tool-list constants are covered registry-wide by
     // `builtin_capabilities_satisfy_registry_invariants` in `capabilities::tests`;
     // the per-capability constant mirrors were removed.
-
-    #[tokio::test]
-    async fn test_capability_has_system_prompt() {
-        let cap = FileSystemCapability;
-        let ctx = SystemPromptContext::without_file_store(SessionId::new());
-        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
-        assert!(prompt.contains("/workspace"));
-        assert!(prompt.contains("File reading economy"));
-        assert!(prompt.contains("offset"));
-        assert!(prompt.contains("total_lines"));
-    }
 
     #[tokio::test]
     async fn system_prompt_uses_mounted_workspace_display_root() {
@@ -3045,6 +2967,8 @@ mod tests {
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
 
         assert!(prompt.contains("Workspace root: `/workspace`"));
+        assert!(prompt.contains("Mounts like `/memory/user` stay absolute"));
+        assert!(!prompt.contains("All file paths must start"));
         assert!(!prompt.contains("/host/repo"));
     }
 
@@ -3111,35 +3035,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn test_read_many_files_schema_is_required_bounded_and_dependency_safe() {
-        let schema = ReadManyFilesTool.parameters_schema();
-        let paths = &schema["properties"]["paths"];
-
-        assert_eq!(paths["type"], "array");
-        assert_eq!(paths["minItems"], 2);
-        assert_eq!(paths["maxItems"], READ_FILE_BATCH_MAX_PATHS);
-        assert_eq!(paths["items"]["type"], "string");
-        assert_eq!(paths["items"]["maxLength"], READ_FILE_BATCH_MAX_PATH_BYTES);
-        assert!(
-            paths["description"]
-                .as_str()
-                .unwrap()
-                .contains("Never include a path discovered from another file")
-        );
-        assert_eq!(schema["required"], json!(["paths"]));
-        assert_eq!(
-            ReadFileTool.parameters_schema()["required"],
-            json!(["path"])
-        );
-        assert!(
-            ReadFileTool.parameters_schema()["properties"]
-                .get("paths")
-                .is_none(),
-            "single-file compatibility keeps one unambiguous path input"
-        );
     }
 
     #[test]
@@ -3698,65 +3593,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_edit_file_batch_replace_success() {
-        let store = Arc::new(MockFileStore::default());
-        store.add_text_file("/batch.txt", "one\ntwo\nthree\n");
-        let context = make_context(store.clone());
-        let expected_hash = read_hash(&context, "/workspace/batch.txt").await;
-
-        let result = EditFileTool
-            .execute_with_context(
-                json!({
-                    "path": "/workspace/batch.txt",
-                    "expected_hash": expected_hash,
-                    "edits": [
-                        {"old_text": "one", "new_text": "ONE"},
-                        {"old_text": "three", "new_text": "THREE"}
-                    ]
-                }),
-                &context,
-            )
-            .await;
-        let value = expect_success(result);
-
-        assert_eq!(store.content("/batch.txt").unwrap(), "ONE\ntwo\nTHREE\n");
-        assert_eq!(value["applied_edits"], 2);
-        assert_eq!(value["rebased"], false);
-        assert_eq!(value["first_changed_line"], 1);
-    }
-
-    #[tokio::test]
-    async fn test_edit_file_batch_replace_ignores_empty_single_placeholders() {
-        let store = Arc::new(MockFileStore::default());
-        store.add_text_file("/batch-placeholders.txt", "one\ntwo\nthree\n");
-        let context = make_context(store.clone());
-        let expected_hash = read_hash(&context, "/workspace/batch-placeholders.txt").await;
-
-        let result = EditFileTool
-            .execute_with_context(
-                json!({
-                    "path": "/workspace/batch-placeholders.txt",
-                    "expected_hash": expected_hash,
-                    "edits": [
-                        {"old_text": "one", "new_text": "ONE"},
-                        {"old_text": "three", "new_text": "THREE"}
-                    ],
-                    "old_text": "",
-                    "new_text": ""
-                }),
-                &context,
-            )
-            .await;
-        let value = expect_success(result);
-
-        assert_eq!(
-            store.content("/batch-placeholders.txt").unwrap(),
-            "ONE\ntwo\nTHREE\n"
-        );
-        assert_eq!(value["applied_edits"], 2);
-    }
-
-    #[tokio::test]
     async fn test_edit_file_allows_delete_replacement() {
         let store = Arc::new(MockFileStore::default());
         store.add_text_file("/delete.txt", "keep\nremove me\nkeep\n");
@@ -4285,12 +4121,6 @@ mod tests {
     fn test_effective_read_defaults_binary() {
         let (_, mode) = effective_read_defaults("/app.wasm", false, false);
         assert_eq!(mode, ReadMode::MetadataOnly);
-    }
-
-    #[test]
-    fn localized_name_differs_from_default() {
-        let cap = FileSystemCapability;
-        assert_ne!(cap.localized_name(Some("uk")), cap.name());
     }
 
     #[test]

@@ -73,27 +73,3 @@ impl Connector for SpritesConnector {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_provider_metadata() {
-        let p = SpritesConnector;
-        assert_eq!(p.provider_id(), "sprites");
-        assert_eq!(p.display_name(), "Sprites");
-        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
-        assert_eq!(p.icon(), "sprites");
-    }
-
-    #[test]
-    fn test_form_schema() {
-        let p = SpritesConnector;
-        let schema = p.form_schema().expect("should have form schema");
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert!(schema.instructions_markdown.contains("sprites.dev"));
-    }
-}

@@ -13,6 +13,15 @@ pub struct SessionFileAccess {
 }
 
 impl SessionFileAccess {
+    /// Knowledge grants belong to the session, even when files use a shared workspace.
+    pub fn read_key(&self, session: SessionId, path: &str) -> Uuid {
+        if everruns_contracts::knowledge::is_mount(path) {
+            session.uuid()
+        } else {
+            self.workspace_key
+        }
+    }
+
     pub fn ensure_user_memory_access(&self, path: &str) -> Result<(), CommandError> {
         if !self.user_memory_allowed && is_user_memory_path(path) {
             return Err(user_memory_forbidden());
@@ -66,6 +75,23 @@ pub async fn verify_session(
     ctx: &Ctx,
     session_id: SessionId,
 ) -> Result<SessionFileAccess, CommandError> {
+    // The worker running this session's turn (it holds the session's lease)
+    // reads its files on every tool call. Its access does not depend on the
+    // owner, and the org and workspace never change, so the cached lineage is
+    // enough; everyone else gets the full row and the owner check below.
+    if ctx.acting_for_session == Some(session_id) {
+        let lineage = ctx
+            .db
+            .session_lineage(session_id)
+            .await
+            .map_err(classify_storage)?
+            .filter(|lineage| lineage.org_id == ctx.org_id())
+            .ok_or_else(|| CommandError::not_found("Session"))?;
+        return Ok(SessionFileAccess {
+            workspace_key: lineage.workspace_id,
+            user_memory_allowed: true,
+        });
+    }
     let row = ctx
         .db
         .get_session(ctx.org_id(), session_id)
@@ -188,9 +214,16 @@ pub fn normalize_path(path: &str) -> String {
     everruns_core::session_path::to_session_path(path)
 }
 
+/// Only a first segment of exactly `_` is reserved: the action routes live
+/// under `fs/_/` (`_/move`, `_/grep`, `_/download/...`). Every other name is
+/// an ordinary file, so repositories keep `__init__.py`, `__tests__/` and
+/// `_config.yml` when an agent writes or checks them out.
 pub fn is_reserved_path(path: &str) -> bool {
-    let path = path.trim_start_matches('/');
-    path.starts_with('_') || path.split('/').any(|segment| segment.starts_with('_'))
+    normalize_path(path)
+        .trim_start_matches('/')
+        .split('/')
+        .next()
+        == Some("_")
 }
 
 pub fn is_user_memory_path(path: &str) -> bool {
@@ -221,6 +254,9 @@ fn user_memory_forbidden() -> CommandError {
 }
 
 pub fn classify_storage(error: anyhow::Error) -> CommandError {
+    if let Some(too_large) = error.downcast_ref::<crate::storage::FileTooLargeToLoad>() {
+        return CommandError::unprocessable(too_large.to_string());
+    }
     tracing::error!("Session file domain error: {error}");
     CommandError::internal(error)
 }
@@ -254,5 +290,25 @@ mod tests {
         assert!(is_user_memory_path_or_ancestor("/memory"));
         assert!(is_user_memory_path_or_ancestor("/memory/user/notes.md"));
         assert!(!is_user_memory_path_or_ancestor("/notes.md"));
+    }
+}
+
+#[cfg(test)]
+mod reserved_path_tests {
+    use super::is_reserved_path;
+
+    #[test]
+    fn only_the_action_segment_is_reserved() {
+        for reserved in ["_", "/_", "_/move", "/workspace/_/grep"] {
+            assert!(is_reserved_path(reserved), "{reserved}");
+        }
+        for ordinary in [
+            "pkg/__init__.py",
+            "/workspace/bashkit/crates/js/__test__/basic.spec.ts",
+            "_config.yml",
+            "docs/_index.md",
+        ] {
+            assert!(!is_reserved_path(ordinary), "{ordinary}");
+        }
     }
 }

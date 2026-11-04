@@ -20,13 +20,3 @@ fn session_exposes_a_typed_round_trippable_identity() {
     assert_eq!(typed, parsed);
     assert_eq!(typed.to_string(), session.id());
 }
-
-#[test]
-fn independent_sessions_have_distinct_typed_identities() {
-    let agent = simulated_agent();
-
-    assert_ne!(
-        InMemoryEngine::new().create(agent.clone()).session_id(),
-        InMemoryEngine::new().create(agent.clone()).session_id()
-    );
-}

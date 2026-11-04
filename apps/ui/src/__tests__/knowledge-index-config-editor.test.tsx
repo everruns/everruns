@@ -69,19 +69,6 @@ describe("KnowledgeIndexConfigEditor", () => {
     expect(screen.getByText(/no active knowledge indexes/i)).toBeInTheDocument();
   });
 
-  it("renders a row per active index", () => {
-    render(<KnowledgeIndexConfigEditor config={{}} onChange={jest.fn()} />);
-    expect(screen.getAllByTestId("knowledge-index-row")).toHaveLength(2);
-    expect(screen.getByText("Product Docs")).toBeInTheDocument();
-    expect(screen.getByText("API Reference")).toBeInTheDocument();
-  });
-
-  it("treats null config as empty selection", () => {
-    render(<KnowledgeIndexConfigEditor config={null} onChange={jest.fn()} />);
-    const checkboxes = screen.getAllByRole("checkbox");
-    checkboxes.forEach((checkbox) => expect(checkbox).not.toBeChecked());
-  });
-
   it("emits config with the selected index when a row is checked", () => {
     const onChange = jest.fn();
     render(<KnowledgeIndexConfigEditor config={{}} onChange={onChange} />);

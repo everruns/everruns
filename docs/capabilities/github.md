@@ -25,7 +25,7 @@ do both for you.
 |---|---|
 | `get_github_pull_request` | Title, description, author, state, branches, size, and up to 100 changed files. |
 | `get_github_pull_request_diff` | The unified diff, cut to `max_bytes` (default 60,000, at most 200,000). `truncated` says whether it was cut. |
-| `github_checkout_pull_request` | Checks the pull request out into the session's [managed sandbox](/features/sandbox-templates/), private repositories included. See [Check out a pull request](#check-out-a-pull-request). |
+| `github_checkout_pull_request` | Checks the pull request out into the session's [managed sandbox](/features/sandbox-templates/), or copies its files into the session files on Bashkit, private repositories included. See [Check out a pull request](#check-out-a-pull-request). |
 | `upsert_github_comment` | Posts a Markdown comment, or edits the one it posted earlier with the same `marker` (default `summary`). |
 | `submit_github_pull_request_review` | Submits one review (`COMMENT` or `REQUEST_CHANGES`; it cannot approve) with a summary and inline comments on changed lines. |
 | `upsert_github_issue` | Files a finding as an issue keyed by a `fingerprint`; updates the open issue for the same fingerprint, leaves a closed one closed. |
@@ -48,10 +48,21 @@ build, test and diff it:
 ```
 
 It returns `path`, `head_sha`, `base_ref` and `base_sha`; `depth` (default 100)
-sets how much history is fetched. It needs the Managed Sandbox
-(`session_sandbox`) capability on a Sandbox Worker, and says so otherwise.
+sets how much history is fetched. This git checkout needs the Managed Sandbox
+(`session_sandbox`) capability on a Sandbox Worker.
 
-Checkout requires a GitHub App installation. The trusted resolver must supply
+Without a managed sandbox, as on the Bashkit Worker harness, the tool copies
+the head's text files into the session files at the same path instead, where
+`bash` (`grep`, `rg`, `find`, `cat`) and the file tools read them. That copy is
+a snapshot, not a repository: there is no git history, so get the change itself
+from `get_github_pull_request_diff`. Binary files and files over `max_file_kib`
+(default 1024) are skipped and counted in `skipped`; `paths` limits the copy to
+some files or directories, for example `["AGENTS.md", "crates/core"]`, and
+leaves the rest of an earlier copy in place. The
+token stays on the host, so a personal token or `GITHUB_TOKEN` session secret
+works here too. The result has `"mode": "files"`.
+
+The git checkout requires a GitHub App installation. The trusted resolver must supply
 installation-mint evidence that the token covers exactly this repository,
 grants only **Contents: read**, **Pull requests: read** and GitHub's implicit
 **Metadata: read**, and expires within one hour. Missing evidence, personal

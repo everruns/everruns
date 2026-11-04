@@ -1,3 +1,7 @@
+import { LocaleProvider } from "@/providers/locale-provider";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { Suspense } from "react";
 import HarnessPage from "@/app/(main)/harnesses/[harnessId]/page";
@@ -123,12 +127,16 @@ jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({ can: () => true }),
 }));
 
-async function renderPage() {
+async function renderPage(mode: ChatModeState | null = null) {
   const params = Promise.resolve({ harnessId: "harness-1" });
   await act(async () => {
     render(
       <Suspense fallback={<div>Loading...</div>}>
-        <HarnessPage params={params} />
+        <LocaleProvider>
+          <PageChatProvider value={mode}>
+            <HarnessPage params={params} />
+          </PageChatProvider>
+        </LocaleProvider>
       </Suspense>,
     );
     await params;
@@ -149,6 +157,14 @@ beforeEach(() => {
 });
 
 describe("HarnessPage layout", () => {
+  afterEach(() => localStorage.clear());
+  it("localizes the unrestricted network summary", async () => {
+    localStorage.setItem("everruns.ui-language", "uk");
+    await renderPage();
+    expect(
+      screen.getByRole("button", { name: /Доступ до мережі\s*Без обмежень/ }),
+    ).toBeInTheDocument();
+  });
   it("shows one tab row and makes the system prompt the page", async () => {
     await renderPage();
 
@@ -198,14 +214,6 @@ describe("HarnessPage layout", () => {
     expect(screen.queryByLabelText("Default model")).not.toBeInTheDocument();
     expect(screen.getByText("Organization default")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
-  });
-
-  it("opens the old overview tab on the harness workspace", async () => {
-    mockSearchParams = new URLSearchParams("tab=overview");
-    await renderPage();
-
-    expect(screen.getByRole("tab", { name: "Harness" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "Capabilities" })).toBeInTheDocument();
   });
 
   it("shows integrate and stats on their tabs", async () => {
@@ -331,4 +339,32 @@ describe("HarnessPage edit mode", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(await screen.findByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
   });
+});
+
+it("stages the actual Harness draft, preserves manual edits and saves through the existing action", async () => {
+  global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+  let adapter: PageDraftAdapter;
+  const mode: ChatModeState = {
+    page: { route: "/harnesses/harness-1", label: "Harness" },
+    pageContainer: { current: null },
+    open: true,
+    setOpen: () => {},
+    actions: [],
+    recordAction: () => {},
+    registerPage: (_page, value) => {
+      adapter = value!;
+      return () => {};
+    },
+  };
+  await renderPage(mode);
+  const before = adapter!.read(adapter!.binding!);
+  act(() => {
+    adapter!.patch(before.binding, before.revision, { system_prompt: "Reviewed by Chat" });
+  });
+  expect(mockUpdate).not.toHaveBeenCalled();
+  expect(screen.getByText("Draft edited by Chat")).toBeInTheDocument();
+  await save();
+  expect(mockUpdate).toHaveBeenCalledTimes(1);
+  expect(mockUpdate.mock.calls[0][0].request.system_prompt).toBe("Reviewed by Chat");
+  expect(mockUpdate.mock.calls[0][0].request.network_access).toBeUndefined();
 });

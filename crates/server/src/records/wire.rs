@@ -56,12 +56,14 @@ pub fn proto_agent_to_schema(
         "harness_id": harness_id_str,
         "tags": tags,
         "capabilities": capabilities,
+        "tools": value.tools.iter().map(|tool| serde_json::from_str::<serde_json::Value>(tool)).collect::<Result<Vec<_>, _>>()?,
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "parallel_tool_calls": value.parallel_tool_calls,
         "max_output_tokens": value.max_tokens.filter(|tokens| *tokens > 0),
         "communication": value.communication.as_deref().unwrap_or("direct"),
+        "completion_check": value.completion_check.as_deref().unwrap_or("unattended"),
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
@@ -96,8 +98,15 @@ pub fn schema_agent_to_proto(value: &crate::domains::agents::record::Agent) -> p
             .communication
             .is_explicit()
             .then(|| value.communication.as_str().to_owned()),
+        completion_check: (!value.completion_check.is_default())
+            .then(|| value.completion_check.as_str().to_owned()),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         capabilities: encode_capability_configs(&value.capabilities),
+        tools: value
+            .tools
+            .iter()
+            .map(|tool| serde_json::to_string(tool).expect("tool definitions serialize"))
+            .collect(),
     }
 }
 
@@ -286,6 +295,11 @@ pub fn proto_session_to_schema(
         "tags": tags,
         "model_id": model_id_str,
         "capabilities": capabilities,
+        "tools": value
+            .tools
+            .iter()
+            .filter_map(|tool| serde_json::from_str::<serde_json::Value>(tool).ok())
+            .collect::<Vec<_>>(),
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
@@ -375,5 +389,21 @@ pub fn schema_session_to_proto(
             String::new()
         }),
         parallel_tool_calls: value.parallel_tool_calls,
+        tools: value
+            .tools
+            .iter()
+            .filter_map(|tool| match serde_json::to_string(tool) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    tracing::error!(
+                        session_id = %value.id,
+                        error = %e,
+                        "internal-protocol: failed to serialize session tool; dropping it"
+                    );
+                    None
+                }
+            })
+            .collect(),
+        unattended: value.source.is_unattended().then_some(true),
     }
 }

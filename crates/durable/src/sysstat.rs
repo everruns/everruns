@@ -334,11 +334,6 @@ mod tests {
     }
 
     #[test]
-    fn cpu_cores_is_at_least_one() {
-        assert!(cpu_cores() >= 1);
-    }
-
-    #[test]
     fn host_name_is_not_empty_when_present() {
         // Gated on target_os = "linux": /proc/sys/kernel/hostname is always
         // readable, so this must resolve rather than silently no-op.

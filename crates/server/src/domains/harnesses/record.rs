@@ -84,6 +84,9 @@ pub struct ConversationStarter {
 /// A harness defines the base behavior and capabilities that apply to all sessions.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Harness {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(default)]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Unique identifier for the harness (format: harness_{32-hex}).
     #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
     pub id: HarnessId,
@@ -299,6 +302,7 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
     let effective = AgentConfigOverlay::from(parent).merge(AgentConfigOverlay::from(child));
 
     Harness {
+        localizations: child.localizations.clone(),
         // Metadata: always child-owned
         id: child.id,
         name: child.name.clone(),
@@ -405,6 +409,7 @@ pub use everruns_contracts::CapabilityRef as BuiltInCapabilityDefinition;
 /// assigned by the seeder at provisioning time — never hardcoded.
 #[derive(Debug, Clone)]
 pub struct BuiltInHarnessDefinition {
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Name, unique per org (e.g. "conversation").
     pub name: String,
     /// Human-readable display name shown in UI.
@@ -442,6 +447,7 @@ impl BuiltInHarnessDefinition {
         system_prompt: impl Into<String>,
     ) -> Self {
         Self {
+            localizations: Default::default(),
             name: name.into(),
             display_name: display_name.into(),
             description: description.into(),
@@ -545,6 +551,7 @@ mod tests {
 
     fn test_harness(id_seed: u128, system_prompt: &str) -> Harness {
         Harness {
+            localizations: Default::default(),
             id: HarnessId::from_uuid(uuid::Uuid::from_u128(id_seed)),
             name: format!("harness-{id_seed}"),
             display_name: Some(format!("Harness {id_seed}")),

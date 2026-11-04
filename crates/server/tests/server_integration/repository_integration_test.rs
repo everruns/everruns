@@ -496,27 +496,13 @@ async fn test_agent_get_by_name() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
-                name: unique_name.clone(),
                 display_name: Some(unique_name.clone()),
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: "Test".to_string(),
-                default_model_id: None,
-                harness_id: ensure_test_harness_id(&backend).await,
-                tags: vec![],
-                initial_files: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                max_output_tokens: None,
-                communication: Default::default(),
-                environments: None,
-                is_built_in: false,
+                ..CreateAgentRow::new(
+                    everruns_contracts::typed_id::AgentId::new().to_string(),
+                    unique_name.clone(),
+                    "Test",
+                    ensure_test_harness_id(&backend).await,
+                )
             },
         )
         .await
@@ -589,27 +575,13 @@ async fn test_session_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
-                name: format!("session-test-agent-{}", Uuid::now_v7()),
                 display_name: Some("Session Test Agent".to_string()),
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: "Test".to_string(),
-                default_model_id: None,
-                harness_id: ensure_test_harness_id(&backend).await,
-                tags: vec![],
-                initial_files: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                max_output_tokens: None,
-                communication: Default::default(),
-                environments: None,
-                is_built_in: false,
+                ..CreateAgentRow::new(
+                    everruns_contracts::typed_id::AgentId::new().to_string(),
+                    format!("session-test-agent-{}", Uuid::now_v7()),
+                    "Test",
+                    ensure_test_harness_id(&backend).await,
+                )
             },
         )
         .await
@@ -621,6 +593,7 @@ async fn test_session_crud() {
         .create_harness(
             TEST_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("repo-test-app-harness-{}", Uuid::now_v7()),
                 display_name: Some("Repo Test App Harness".to_string()),
                 icon: None,
@@ -704,6 +677,7 @@ async fn test_session_crud() {
         .create_harness(
             TEST_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("repo-test-harness-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Repo Test Harness".to_string()),
                 icon: None,
@@ -868,6 +842,8 @@ async fn test_event_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Test Agent".to_string()),
@@ -950,6 +926,8 @@ async fn test_event_exclude_types() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-excl-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Exclude Test Agent".to_string()),
@@ -1040,6 +1018,8 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-window-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Window Test Agent".to_string()),
@@ -1124,6 +1104,8 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-anchor-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Anchor Test Agent".to_string()),
@@ -1224,6 +1206,8 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("long-history-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Long History Test Agent".to_string()),
@@ -1433,6 +1417,8 @@ async fn test_event_filter_types() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-filter-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Filter Types Agent".to_string()),
@@ -1726,6 +1712,8 @@ async fn test_session_file_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("file-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("File Test Agent".to_string()),
@@ -2071,6 +2059,8 @@ async fn test_agent_capabilities() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("cap-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Capability Test Agent".to_string()),
@@ -2357,6 +2347,8 @@ async fn test_session_usage_tracking() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("usage-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Usage Test Agent".to_string()),
@@ -2448,6 +2440,8 @@ async fn test_session_previews() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("preview-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Preview Test Agent".to_string()),
@@ -3092,19 +3086,25 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let session_id = session.id;
 
+    // The fixtures below differ only in description and timing.
+    let row = |description: &str, cron: Option<&str>, scheduled_at| CreateSessionScheduleRow {
+        org_id: TEST_ORG_ID,
+        session_id,
+        owner_principal_id,
+        resolved_owner_user_id: None,
+        description: description.to_string(),
+        cron_expression: cron.map(str::to_string),
+        scheduled_at,
+        timezone: "UTC".to_string(),
+        next_trigger_at: None,
+        ends_at: None,
+        max_runs: None,
+        stop_when: None,
+    };
+
     // Fixture: a recurring session schedule, enabled by default.
     let schedule = backend
-        .create_session_schedule(CreateSessionScheduleRow {
-            org_id: TEST_ORG_ID,
-            session_id,
-            owner_principal_id,
-            resolved_owner_user_id: None,
-            description: "monitor-inactive-sched-test".to_string(),
-            cron_expression: Some("0 * * * *".to_string()),
-            scheduled_at: None,
-            timezone: "UTC".to_string(),
-            next_trigger_at: None,
-        })
+        .create_session_schedule(row("monitor-inactive-sched-test", Some("0 * * * *"), None))
         .await
         .expect("Failed to create test schedule");
 
@@ -3113,17 +3113,11 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     // Fixture: a directly canceled one-shot schedule. It should be considered
     // inactive because it has no trigger metadata.
     let one_shot_schedule = backend
-        .create_session_schedule(CreateSessionScheduleRow {
-            org_id: TEST_ORG_ID,
-            session_id,
-            owner_principal_id,
-            resolved_owner_user_id: None,
-            description: "monitor-canceled-one-shot-test".to_string(),
-            cron_expression: None,
-            scheduled_at: Some(Utc::now()),
-            timezone: "UTC".to_string(),
-            next_trigger_at: None,
-        })
+        .create_session_schedule(row(
+            "monitor-canceled-one-shot-test",
+            None,
+            Some(Utc::now()),
+        ))
         .await
         .expect("Failed to create one-shot test schedule");
 
@@ -3132,17 +3126,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     // Fixture: a fired one-shot schedule. It is disabled before its linked
     // monitor is marked Succeeded, so it should not be an orphan candidate.
     let fired_one_shot_schedule = backend
-        .create_session_schedule(CreateSessionScheduleRow {
-            org_id: TEST_ORG_ID,
-            session_id,
-            owner_principal_id,
-            resolved_owner_user_id: None,
-            description: "monitor-fired-one-shot-test".to_string(),
-            cron_expression: None,
-            scheduled_at: Some(Utc::now()),
-            timezone: "UTC".to_string(),
-            next_trigger_at: None,
-        })
+        .create_session_schedule(row("monitor-fired-one-shot-test", None, Some(Utc::now())))
         .await
         .expect("Failed to create fired one-shot test schedule");
 
@@ -3928,6 +3912,9 @@ async fn seed_overdue_schedules(
                 scheduled_at: None,
                 timezone: "UTC".to_string(),
                 next_trigger_at: Some(Utc::now() - chrono::Duration::days(3650)),
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
             })
             .await
             .expect("Failed to create overdue schedule");

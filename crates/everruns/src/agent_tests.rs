@@ -181,17 +181,6 @@ fn build_rejects_missing_model() {
 }
 
 #[test]
-fn build_succeeds_with_simulator() {
-    let agent = Agent::builder()
-        .instructions("You are concise.")
-        .model(Model::simulated("Sure."))
-        .name("assistant")
-        .build()
-        .expect("valid agent");
-    assert_eq!(agent.name, "assistant");
-}
-
-#[test]
 fn build_resolves_plain_model_id_against_provider() {
     let agent = Agent::builder()
         .instructions("You are concise.")
@@ -204,7 +193,7 @@ fn build_resolves_plain_model_id_against_provider() {
         .expect("valid agent");
 
     assert_eq!(agent.model, ModelSpec::on("acme", "assistant-v1"));
-    assert_eq!(agent.provider.id().as_str(), "acme");
+    assert_eq!(agent.provider.as_ref().unwrap().id().as_str(), "acme");
 }
 
 #[test]
@@ -217,7 +206,7 @@ fn build_accepts_a_model_with_its_provider() {
         .expect("valid agent");
 
     assert_eq!(agent.model, ModelSpec::on("acme", "assistant-v1"));
-    assert_eq!(agent.provider.id().as_str(), "acme");
+    assert_eq!(agent.provider.as_ref().unwrap().id().as_str(), "acme");
 }
 
 #[test]

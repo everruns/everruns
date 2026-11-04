@@ -5,6 +5,9 @@ description: "Deploy the Everruns platform with Docker Compose: control plane, w
 
 Deploy the complete Everruns platform using Docker Compose. This guide sets up the control plane, workers, UI, and database in a single command.
 
+On your own computer, [`everruns docker up`](/getting-started/run-locally/) does
+these steps for you. On a cluster, use the [Helm chart](/getting-started/kubernetes/).
+
 ## Prerequisites
 
 - Docker Engine 20.10+
@@ -46,6 +49,9 @@ WORKER_GRPC_AUTH_TOKEN=<worker-token>
 AUTH_ADMIN_EMAIL=admin@example.com
 AUTH_ADMIN_PASSWORD=<choose-a-password>
 
+# Optional: two extra workers and VictoriaMetrics (see Profiles below)
+COMPOSE_PROFILES=scale,metrics
+
 # Optional, single-tenant admin mode: encrypt these keys into the default org.
 # The explicit seeding opt-in is required to skip UI credential configuration.
 SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true
@@ -78,10 +84,10 @@ This starts:
 - PostgreSQL database
 - Valkey (rate limiting) and NATS (event delivery and task notifications)
 - Control plane (`server`): HTTP API and worker gRPC
-- 3 worker instances
+- 1 worker, or 3 with the `scale` profile
 - Next.js UI
 - Caddy reverse proxy
-- VictoriaMetrics, scraping server metrics at http://localhost:8428/vmui
+- VictoriaMetrics, scraping server metrics at http://localhost:8428/vmui (`metrics` profile)
 
 Sign in to the UI with `AUTH_ADMIN_EMAIL` and `AUTH_ADMIN_PASSWORD`.
 
@@ -208,9 +214,25 @@ curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
   -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'
 ```
 
+## Profiles
+
+Without profiles the stack is the lean set: PostgreSQL, Valkey, NATS, the
+server, one worker, the UI and Caddy. Two optional
+[Compose profiles](https://docs.docker.com/compose/how-tos/profiles/) add the rest:
+
+| Profile | Adds |
+|---------|------|
+| `scale` | `worker-2` and `worker-3` |
+| `metrics` | VictoriaMetrics at http://localhost:8428/vmui |
+
+Set them in `.env` as `COMPOSE_PROFILES=scale,metrics` (as above), or per
+command: `docker compose --profile metrics up -d`. Profiles need Docker
+Compose 2.20 or newer.
+
 ## Scaling Workers
 
-Add more workers by scaling the worker services:
+Add more workers by scaling the worker services (`worker-2` and `worker-3`
+need the `scale` profile):
 
 ```bash
 # Scale to 5 workers

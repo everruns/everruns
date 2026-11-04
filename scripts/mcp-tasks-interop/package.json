@@ -1,0 +1,10 @@
+{
+  "name": "everruns-mcp-tasks-interop",
+  "private": true,
+  "type": "module",
+  "description": "Drives Everruns' /mcp Tasks extension with the official MCP TypeScript client.",
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/ext-tasks": "0.2.2"
+  }
+}

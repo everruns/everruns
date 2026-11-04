@@ -26,7 +26,10 @@ Agent definitions and their configuration.
 | [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
 | [`agents list`](#agents-list) | List all active agents. |
+| [`agents pause`](#agents-pause) | Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed. |
+| [`agents cost-plan`](#agents-cost-plan) | Suggest editable typical task workloads for agent cost planning. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
+| [`agents resume`](#agents-resume) | Resume a paused agent: its published channels, triggers and schedules work again. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
 | [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
 | [`agents avatar set`](#agents-avatar-set) | Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). |
@@ -45,9 +48,13 @@ Agent definitions and their configuration.
 | [`agents check-rules delete`](#agents-check-rules-delete) | Delete an agent check rule (built-in override or custom rule). |
 | [`agents check-rules list`](#agents-check-rules-list) | List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules. |
 | [`agents check-rules upsert`](#agents-check-rules-upsert) | Create or update an agent check rule (built-in override or custom rule). |
+| [`agents costs get`](#agents-costs-get) | What one agent cost the organization this month. |
 | [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
-| [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
-| [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents examples adopt`](#agents-examples-adopt) | Create an agent from an agent example by name (see list_agent_examples). |
+| [`agents examples list`](#agents-examples-list) | List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). |
+| [`agents external-worker disable`](#agents-external-worker-disable) | Revoke external execution; queued sessions stay bound without native fallback. |
+| [`agents external-worker get`](#agents-external-worker-get) | Get an Agent's external execution endpoint. |
+| [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
 | [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
 | [`agents github get`](#agents-github-get) | Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. |
@@ -61,6 +68,13 @@ Agent definitions and their configuration.
 | [`agents scripts get`](#agents-scripts-get) | Get a single saved script by id. |
 | [`agents scripts list`](#agents-scripts-list) | List an agent's saved scripts with their bodies. |
 | [`agents scripts update`](#agents-scripts-update) | Update a saved script's description, input schema or body. |
+| [`agents source connect`](#agents-source-connect) | Apply a reviewed GitHub package and enable continuous sync. |
+| [`agents source disconnect`](#agents-source-disconnect) | Disconnect GitHub source sync and restore local editing. |
+| [`agents source get`](#agents-source-get) | Show the Agent's continuous GitHub source binding and sync status. |
+| [`agents source preview`](#agents-source-preview) | Validate and compare a GitHub Agent package without changing the Agent. |
+| [`agents source sync`](#agents-source-sync) | Queue an immediate check of this Agent's GitHub source. |
+| [`agents source accounts list`](#agents-source-accounts-list) | Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. |
+| [`agents source options get`](#agents-source-options-get) | Browse GitHub branches and Agent package paths. |
 | [`agents triggers create`](#agents-triggers-create) | Create a schedule or webhook trigger for an agent. |
 | [`agents triggers delete`](#agents-triggers-delete) | Archive an agent trigger and remove its durable schedule. |
 | [`agents triggers get`](#agents-triggers-get) | Get a single agent trigger by id. |
@@ -335,6 +349,46 @@ Example:
 everruns agents list --search triage --limit 20
 ```
 
+## agents pause
+
+Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed.
+
+```bash
+everruns agents pause [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Stop everything that starts an agent without deleting it
+everruns agents pause agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
+## agents cost-plan
+
+Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
+
+```bash
+everruns agents cost-plan [OPTIONS] --agent <agent>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT>` | Required. Request to preview the final agent shape with capabilities applied. |
+| `--guidance <GUIDANCE>` | Optional description of the workload to plan. |
+| `--locale <LOCALE>` |  |
+
+Example:
+
+```bash
+# Suggest task workloads for a draft without running or saving it
+everruns agents cost-plan --agent '{"system_prompt":"Draft short customer replies"}'
+```
+
 ## agents preview
 
 Preview the final agent shape with capabilities applied.
@@ -359,6 +413,25 @@ Example:
 everruns agents preview --system-prompt 'Triage incoming issues'
 ```
 
+## agents resume
+
+Resume a paused agent: its published channels, triggers and schedules work again.
+
+```bash
+everruns agents resume [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Let a paused agent start work again
+everruns agents resume agent_01h9 --reason 'Prompt fix verified'
+```
+
 ## agents upsert
 
 Upsert agent — create (201) or update (200) by ID.
@@ -372,6 +445,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--id <ID>` | Client-supplied agent ID (format: agent_{32-hex}). If not provided, one is auto-generated. |
 | `--capabilities <CAPABILITIES>` | Capabilities to enable for this agent with per-agent configuration. Each capability has a `re... |
 | `--communication <COMMUNICATION>` | How an agent talks to the people in its conversations. One of `direct`, `explicit`. |
+| `--completion-check <COMPLETION_CHECK>` | When a turn that is about to finish gets a completion check, and an automatic continuation wh... One of `off`, `unattended`, `always`. |
 | `--default-model-id <DEFAULT_MODEL_ID>` | The ID of the default LLM model to use for this agent. If not specified, the system default m... |
 | `--description <DESCRIPTION>` | A human-readable description of what the agent does. |
 | `--display-name <DISPLAY_NAME>` | Human-readable display name shown in UI. Falls back to `name` when absent. |
@@ -379,11 +453,13 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--harness-id <HARNESS_ID>` | Harness ID used as this agent's base execution environment. |
 | `--initial-files <INITIAL_FILES>` | Starter files copied into each new session for this agent. |
 | `--intro-markdown <INTRO_MARKDOWN>` | Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed. |
+| `--localizations <LOCALIZATIONS>` | Locale-keyed display overlays. |
 | `--max-iterations <MAX_ITERATIONS>` | Maximum number of LLM iterations per turn for this agent. |
 | `--max-output-tokens <MAX_OUTPUT_TOKENS>` | Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ... |
 | `--mcpServers <MCPSERVERS>` |  |
 | `--name <NAME>` | Required. Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |
+| `--owner-agent-id <OWNER_AGENT_ID>` | Agent this one is created as part of ("Created here" on that agent's Agents tab). |
 | `--parallel-tool-calls` | Request-level parallel tool calling preference (EVE-598). |
 | `--sandbox-policy <SANDBOX_POLICY>` |  |
 | `--service-virtual-user-id <SERVICE_VIRTUAL_USER_ID>` |  |
@@ -452,7 +528,7 @@ everruns agents channels create [OPTIONS] --agent-id <agent_id> --channel-type <
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-config <CHANNEL_CONFIG>` | Transport-specific channel configuration. |
-| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `public_chat`, `voice`, `api`, `poppy`. |
+| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `public_chat`, `voice`, `api`, `poppy`, `work_chat`. |
 | `--enabled` | Whether the channel can accept ingress traffic. |
 
 Example:
@@ -750,6 +826,25 @@ Example:
 everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --enabled true --category safety --severity warning --rubric 'Flag prompts that tell the agent to store customer personal data' --reason 'Privacy review requirement'
 ```
 
+## agents costs get
+
+What one agent cost the organization this month.
+
+```bash
+everruns agents costs get [OPTIONS] [AGENT_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# See what an agent cost this month
+everruns agents costs get agent_01h9
+```
+
 ## agents credentials create
 
 Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.
@@ -781,42 +876,99 @@ everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti
 everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'
 ```
 
-## agents exposures resume
+## agents examples adopt
 
-Let an agent's live channels accept traffic again.
+Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.
 
 ```bash
-everruns agents exposures resume [OPTIONS] [AGENT]
+everruns agents examples adopt [OPTIONS] [NAME]
 ```
 
 | Flag | Description |
 |---|---|
-| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+| `--name <NAME>` | Example name from list_agent_examples, such as `pr-reviewer`. |
 
 Example:
 
 ```bash
-# Put a suspended agent back on its exposed surfaces
-everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'
+# Start a pull request reviewer from its template
+everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'
 ```
 
-## agents exposures suspend
+## agents examples list
 
-Stop every channel on an agent from accepting traffic.
+List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.
 
 ```bash
-everruns agents exposures suspend [OPTIONS] [AGENT]
+everruns agents examples list [OPTIONS]
+```
+
+Example:
+
+```bash
+# Find a ready-made agent to start from instead of writing one by hand
+everruns agents examples list
+```
+
+## agents external-worker disable
+
+Revoke external execution; queued sessions stay bound without native fallback.
+
+```bash
+everruns agents external-worker disable [OPTIONS] --agent-id <agent_id>
 ```
 
 | Flag | Description |
 |---|---|
-| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+| `--agent-id <AGENT_ID>` | Required. Agent public ID or name; the HTTP route supplies this value. |
 
 Example:
 
 ```bash
-# Stop an agent answering on its exposed surfaces without deleting it
-everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
+# Revoke external execution while retaining queued work
+everruns agents external-worker disable --agent-id agent_01h9 --reason 'Pause external execution'
+```
+
+## agents external-worker get
+
+Get an Agent's external execution endpoint.
+
+```bash
+everruns agents external-worker get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent public ID or name; the HTTP route supplies this value. |
+
+Example:
+
+```bash
+# Inspect an Agent's external runtime without credentials
+everruns agents external-worker get --agent-id agent_01h9
+```
+
+## agents failures list
+
+List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+
+```bash
+everruns agents failures list [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` |  |
+| `--after <AFTER>` | Exclusive lower bound on failure time; defaults to 24 hours before `before`. |
+| `--before <BEFORE>` | Inclusive upper bound, normally the Agents activity response's generated_at. |
+| `--limit <LIMIT>` |  |
+| `--offset <OFFSET>` |  |
+
+Example:
+
+```bash
+# Find an agent's failed turns, including sessions that later recovered
+everruns agents failures list agent_01h9 --limit 20
 ```
 
 ## agents github connect
@@ -1084,6 +1236,155 @@ Example:
 everruns agents scripts update --agent-id agent_01h9 --script-id scr_01h9 --body 'cargo test --workspace --locked' --reason 'Pin tests to the lockfile'
 ```
 
+## agents source connect
+
+Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.
+
+```bash
+everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-id <agent_id> --branch <branch> --commit <commit> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-digest <AGENT_DIGEST>` | Required. Agent package digest returned by preview, protecting concurrent local edits. |
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
+| `--commit <COMMIT>` | Required. Exact source commit returned by preview; a changed branch requires another preview. |
+| `--expected-generation <EXPECTED_GENERATION>` | Current binding generation when replacing a source; omit for an unbound Agent. |
+| `--github-account <GITHUB_ACCOUNT>` |  |
+| `--mode <MODE>` | Source direction. One of `pull`, `two_way`. |
+| `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
+
+Example:
+
+```bash
+# Enable continuous sync using the commit and Agent digest returned by preview
+everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason "Deploy the reviewed GitHub package"
+```
+
+## agents source disconnect
+
+Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.
+
+```bash
+everruns agents source disconnect [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# Keep the last applied definition and restore local editing
+everruns agents source disconnect --agent-id agent_01h9 --reason "Resume local editing"
+```
+
+## agents source get
+
+Show the Agent's continuous GitHub source binding and sync status.
+
+```bash
+everruns agents source get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# See the applied GitHub revision and any sync error
+everruns agents source get --agent-id agent_01h9
+```
+
+## agents source preview
+
+Validate and compare a GitHub Agent package without changing the Agent.
+
+```bash
+everruns agents source preview [OPTIONS] --agent-id <agent_id> --branch <branch> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
+| `--github-account <GITHUB_ACCOUNT>` |  |
+| `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
+
+Example:
+
+```bash
+# Review a repository package without changing the Agent
+everruns agents source preview --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support
+```
+
+## agents source sync
+
+Queue an immediate check of this Agent's GitHub source.
+
+```bash
+everruns agents source sync [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# Check the source now after pushing a repository change
+everruns agents source sync --agent-id agent_01h9 --reason "Apply the latest repository change"
+```
+
+## agents source accounts list
+
+Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
+
+```bash
+everruns agents source accounts list [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# See which GitHub accounts and repositories can back this Agent's source
+everruns agents source accounts list --agent-id agent_01h9
+```
+
+## agents source options get
+
+Browse GitHub branches and Agent package paths.
+
+```bash
+everruns agents source options get [OPTIONS] --agent-id <agent_id> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Branch to browse; omitted uses the repository's default branch. |
+| `--github-account <GITHUB_ACCOUNT>` |  |
+| `--path <PATH>` | Repository-relative directory to browse; empty selects the root. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
+
+Example:
+
+```bash
+# Find branches and package paths before choosing a source
+everruns agents source options get --agent-id agent_01h9 --repository acme/agents --branch main --path agents
+```
+
 ## agents triggers create
 
 Create a schedule or webhook trigger for an agent.
@@ -1110,6 +1411,8 @@ everruns agents triggers create [OPTIONS] --agent-id <agent_id> --message <messa
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` | What identity keys a session, for every exposure and every transport. One enum replaces the ... One of `per_thread`, `per_channel`, `per_user`, `shared_session`, `session_per_invocation`. |
 | `--subject-template <SUBJECT_TEMPLATE>` | Webhook and MCP event: template for the event subject. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi... |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio... |
 | `--timezone <TIMEZONE>` | IANA timezone identifier for cron evaluation (default `UTC`). |
 | `--token <TOKEN>` | Shared secret for webhook triggers. |
 | `--trigger-type <TRIGGER_TYPE>` | The kind of event that fires an agent trigger. One of `schedule`, `webhook`, `github`, `mcp_event`. |
@@ -1183,7 +1486,7 @@ everruns agents triggers list agent_01h9
 
 ## agents triggers trigger
 
-Manually fire an agent trigger once.
+Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.
 
 ```bash
 everruns agents triggers trigger [OPTIONS] --agent-id <agent_id> --trigger-id <trigger_id>
@@ -1192,6 +1495,7 @@ everruns agents triggers trigger [OPTIONS] --agent-id <agent_id> --trigger-id <t
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
+| `--event <EVENT>` |  |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
 
 Example:
@@ -1199,6 +1503,9 @@ Example:
 ```bash
 # Fire a trigger once now to test it without waiting for its schedule
 everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'
+
+# Run a GitHub trigger on an existing pull request, in that pull request's own session
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{"repository":"acme/api","pull_request":12}' --reason 'Review this pull request'
 ```
 
 ## agents triggers update
@@ -1227,6 +1534,8 @@ everruns agents triggers update [OPTIONS] --agent-id <agent_id> --trigger-id <tr
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` |  |
 | `--subject-template <SUBJECT_TEMPLATE>` | Replacement subject template. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Replacement target conversation; given with `target_channel_id`. |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Replacement target channel. |
 | `--timezone <TIMEZONE>` | Replacement IANA timezone identifier. |
 | `--token <TOKEN>` | Replacement webhook token. |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |

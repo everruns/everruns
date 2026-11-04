@@ -7,7 +7,9 @@ use super::{
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agents::record::Agent;
 use crate::domains::common::*;
-use everruns_contracts::{CapabilityRef, model_spec::ModelSpec, runtime_provider::ProviderKey};
+use everruns_contracts::{
+    CapabilityRef, model_spec::ModelSpec, runtime_provider::ProviderKey, typed_id::AgentId,
+};
 use everruns_core::agent_package::{
     AgentPackage, Channel, File, Format, Manifest, PackageError, sensitive_key,
 };
@@ -265,12 +267,31 @@ async fn read_folder(
 }
 
 pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
+    Box::pin(export_inner(ctx, id, false, None)).await
+}
+
+/// Source ownership excludes destination-only channels before package validation.
+pub(crate) async fn export_source(
+    ctx: &Ctx,
+    id: &str,
+    managed: Option<&[String]>,
+) -> Result<AgentPackage, CommandError> {
+    Box::pin(export_inner(ctx, id, true, managed)).await
+}
+
+async fn export_inner(
+    ctx: &Ctx,
+    id: &str,
+    source_only: bool,
+    managed: Option<&[String]>,
+) -> Result<AgentPackage, CommandError> {
     let agent = GetAgent { id: id.into() }.run(ctx).await?;
     let mut value = serde_json::to_value(&agent).map_err(|e| CommandError::internal(e.into()))?;
     let object = value.as_object_mut().expect("agent object");
     let allowed = [
         "name",
         "display_name",
+        "localizations",
         "description",
         "system_prompt",
         "tags",
@@ -283,6 +304,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
         "parallel_tool_calls",
         "max_output_tokens",
         "communication",
+        "completion_check",
         "tools",
         "intro_markdown",
         "short_description",
@@ -293,6 +315,9 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
     // `direct` is the default; a package states only a deliberate choice.
     if object.get("communication").and_then(|v| v.as_str()) == Some("direct") {
         object.remove("communication");
+    }
+    if object.get("completion_check").and_then(|v| v.as_str()) == Some("unattended") {
+        object.remove("completion_check");
     }
     object.insert("schema_version".into(), json!(1));
     let instructions = object.remove("system_prompt").unwrap_or(json!(""));
@@ -358,12 +383,14 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
                 acts_as: server.acts_as,
                 protocol_mode: server.protocol_mode,
                 elicitation_policy: server.elicitation_policy,
+                tool_timeout_ms: server.tool_timeout_ms,
                 tool_discovery: server.tool_discovery,
                 ..Default::default()
             };
         }
     }
     let mut caps = Vec::new();
+    let mut linked = Vec::new();
     for cap in &agent.capabilities {
         if let Some(id) =
             everruns_core::capabilities::parse_skill_capability_id(cap.capability_id())
@@ -419,6 +446,36 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
                     ..Default::default()
                 },
             );
+        } else if cap.capability_id() == AGENTS_CAPABILITY {
+            // Agents created here travel inside the package; any other agent
+            // is linked by name and must exist wherever the package lands.
+            let targets = cap
+                .config_value()
+                .get("targets")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            for target in targets {
+                let Some(id) = target
+                    .get("agent_id")
+                    .and_then(Value::as_str)
+                    .and_then(|id| id.parse::<AgentId>().ok())
+                else {
+                    continue;
+                };
+                let Some(member) = ctx.db.get_agent(ctx.org_id(), id).await? else {
+                    continue;
+                };
+                if member.status != "active" {
+                    continue;
+                }
+                if member.owner_agent_id.map(|owner| owner.uuid()) == Some(agent.internal_id) {
+                    let bundled = Box::pin(export_inner(ctx, &member.name, false, None)).await?;
+                    manifest.agents.push(bundled.manifest);
+                } else {
+                    linked.push(member.name);
+                }
+            }
         } else if everruns_contracts::is_plugin_capability(cap.capability_id()) {
             return Err(CommandError::bad_request(
                 "Installed plugins cannot be exported by ID. Describe their MCP servers or declarative capabilities explicitly.",
@@ -430,6 +487,8 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
     caps.sort_by(|a, b| a.capability_id().cmp(b.capability_id()));
     caps.dedup_by(|a, b| a.capability_id() == b.capability_id());
     manifest.capabilities = caps;
+    manifest.agents.sort_by(|a, b| a.name.cmp(&b.name));
+    manifest.members = (!linked.is_empty()).then_some(linked);
     for channel in (crate::domains::agent_channels::ListAgentChannels {
         agent_id: agent.name.clone(),
     })
@@ -437,11 +496,23 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
     .await?
     {
         let mut config = channel.channel_config;
+        let package_name = config.get("package_name").and_then(Value::as_str);
+        if source_only
+            && package_name
+                .is_none_or(|name| managed.is_some_and(|names| !names.iter().any(|n| n == name)))
+        {
+            continue;
+        }
         let name = config
             .get("package_name")
             .and_then(Value::as_str)
             .map(str::to_string)
             .unwrap_or_else(|| format!("{}-{}", channel.channel_type, manifest.channels.len() + 1));
+        if source_only && manifest.channels.contains_key(&name) {
+            return Err(CommandError::conflict(
+                "Multiple channels claim the same source name. Remove the duplicate binding before syncing",
+            ));
+        }
         scrub_channel(&mut config);
         manifest.channels.insert(
             name,
@@ -510,6 +581,8 @@ pub async fn request(
         package.legacy_model_id
     };
     let req = CreateAgentRequest {
+        owner_agent_id: None,
+        localizations: m.localizations.clone(),
         service_virtual_user_id: None,
         id: None,
         name: m.name.clone(),
@@ -539,6 +612,7 @@ pub async fn request(
         parallel_tool_calls: m.parallel_tool_calls,
         max_output_tokens: m.max_output_tokens,
         communication: m.communication.unwrap_or_default(),
+        completion_check: m.completion_check.unwrap_or_default(),
     };
     crate::domains::validation::validate_create_agent_input(
         &req.name,
@@ -685,12 +759,119 @@ async fn destination(
     Ok(existing)
 }
 
+/// The capability that lists the agents an agent hands work to ("Agents").
+const AGENTS_CAPABILITY: &str =
+    everruns_capabilities::capabilities::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID;
+
+/// Agents a package hands work to, checked before anything is written.
+struct Members {
+    /// Bundled agents and the name of the existing agent each one updates.
+    bundled: Vec<(AgentPackage, Option<String>)>,
+    linked: Vec<Agent>,
+}
+
+/// Resolve `members` by name and check every bundled agent can be written:
+/// its name is free, or already belongs to an agent created as part of this
+/// one. Nothing is written, so validation and import report the same errors.
+async fn members(
+    ctx: &Ctx,
+    package: &AgentPackage,
+    lead: Option<&Agent>,
+) -> Result<Members, CommandError> {
+    let m = &package.manifest;
+    let mut bundled = Vec::new();
+    for manifest in &m.agents {
+        let member = AgentPackage::new(manifest.clone()).map_err(package_error)?;
+        let name = &member.manifest.name;
+        let existing = ctx.db.get_agent_by_name(ctx.org_id(), name).await?;
+        let update = match existing.filter(|row| row.status != "deleted") {
+            Some(row)
+                if lead.is_some_and(|lead| {
+                    row.owner_agent_id.map(|owner| owner.uuid()) == Some(lead.internal_id)
+                }) =>
+            {
+                Some(row.name)
+            }
+            Some(_) => {
+                return Err(CommandError::conflict(format!(
+                    "agents.{name}: an agent with this name already exists. List it under members to use it, or rename the bundled agent"
+                )));
+            }
+            None => None,
+        };
+        request(ctx, &member)
+            .await
+            .map_err(|e| CommandError::bad_request(format!("agents.{name}: {}", e.message())))?;
+        bundled.push((member, update));
+    }
+    let mut linked = Vec::new();
+    for name in m.members.iter().flatten() {
+        let agent = GetAgent { id: name.clone() }
+            .run(ctx)
+            .await
+            .map_err(|_| CommandError::bad_request(format!("members: no agent named {name}")))?;
+        if agent.status != crate::domains::agents::record::AgentStatus::Active {
+            return Err(CommandError::bad_request(format!(
+                "members: agent {name} is not active"
+            )));
+        }
+        linked.push(agent);
+    }
+    Ok(Members { bundled, linked })
+}
+
+fn member_ref(agent: &Agent) -> Value {
+    json!({ "agent_id": AgentId::from_uuid(agent.internal_id) })
+}
+
 pub async fn apply(
     ctx: &Ctx,
     package: &AgentPackage,
     target: Option<&str>,
 ) -> Result<(Agent, bool), CommandError> {
-    let req = request(ctx, package).await?;
+    let m = &package.manifest;
+    if m.agents.is_empty() && m.members.as_ref().is_none_or(Vec::is_empty) {
+        // Boxed: the import future is large and callers nest it deeply.
+        return Box::pin(apply_agent(ctx, package, target, None)).await;
+    }
+    // Check everything first, so a bad lead does not leave new agents behind.
+    Box::pin(request(ctx, package)).await?;
+    let lead = Box::pin(destination(ctx, package, target)).await?;
+    let Members { bundled, linked } = Box::pin(members(ctx, package, lead.as_ref())).await?;
+    let mut targets = Vec::new();
+    let mut created_here = Vec::new();
+    for (member, update) in &bundled {
+        let (agent, _) = Box::pin(apply_agent(ctx, member, update.as_deref(), None)).await?;
+        targets.push(member_ref(&agent));
+        created_here.push(agent);
+    }
+    targets.extend(linked.iter().map(member_ref));
+    let agents = CapabilityRef::with_config(AGENTS_CAPABILITY, json!({ "targets": targets }));
+    let (lead, created) = Box::pin(apply_agent(ctx, package, target, Some(agents))).await?;
+    for agent in created_here {
+        ctx.db
+            .set_agent_owner(
+                ctx.org_id(),
+                AgentId::from_uuid(agent.internal_id),
+                Some(AgentId::from_uuid(lead.internal_id)),
+            )
+            .await?;
+    }
+    Ok((lead, created))
+}
+
+async fn apply_agent(
+    ctx: &Ctx,
+    package: &AgentPackage,
+    target: Option<&str>,
+    agents: Option<CapabilityRef>,
+) -> Result<(Agent, bool), CommandError> {
+    let mut req = request(ctx, package).await?;
+    if let Some(agents) = agents {
+        req.capabilities
+            .retain(|cap| cap.capability_id() != AGENTS_CAPABILITY);
+        req.capabilities.push(agents);
+    }
     let resolved = destination(ctx, package, target).await?;
     let destination = resolved.as_ref().map(|a| a.public_id).or(package.legacy_id);
     let existing = if let Some(id) = resolved.as_ref().map(|a| a.public_id) {
@@ -761,6 +942,17 @@ pub async fn apply(
             .await?;
         }
     }
+    super::source::record_local_channels(
+        ctx,
+        agent.internal_id,
+        &package
+            .manifest
+            .channels
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+    )
+    .await?;
     Ok((agent, created))
 }
 
@@ -961,7 +1153,8 @@ impl Command for ValidateAgentPackage {
                 let preview = package.canonical().map_err(package_error)?;
                 match async {
                     request(ctx, &package).await?;
-                    destination(ctx, &package, self.0.target.as_deref()).await?;
+                    let lead = destination(ctx, &package, self.0.target.as_deref()).await?;
+                    members(ctx, &package, lead.as_ref()).await?;
                     Ok::<_, CommandError>(())
                 }
                 .await

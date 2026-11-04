@@ -15,13 +15,14 @@
 //   tool arguments and results, usage and internal error text.
 // THREAT[TM-AGENTKEY-002]: caller confinement by channel id and key tag.
 // - Questions and held-back tool calls surface at every visibility, since the
-//   caller is who must answer them. A held-back call is answered by an
-//   operator unless the channel's `tool_approvals` is `caller`.
+//   caller is who must answer them. The Agent's approval gate decides which
+//   calls wait; the person using the agent answers them, on every channel.
 // THREAT[TM-AGENTKEY-003]: event visibility filter.
 // THREAT[TM-AGENTKEY-006]: who may approve a held-back tool call.
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::runtime::work_report::WorkReport;
 use everruns_contracts::tool_types::ToolApprovalRequired;
 use everruns_contracts::typed_id::{PrincipalId, SessionId, VirtualUserId};
 use everruns_core::Event;
@@ -37,7 +38,7 @@ use uuid::Uuid;
 
 use super::ingress::{IngressChannel, IngressContext};
 use super::record::api::{
-    AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiToolApprovals, ApiVisibility,
+    AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiVisibility,
     MAX_END_USER_ID_CHARS, agent_key_public_id, hash_agent_key, is_agent_key_shaped,
 };
 use crate::domains::common::CommandError;
@@ -46,6 +47,7 @@ use crate::domains::messages::types::{CreateMessageRequest, InputMessage, Messag
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::record::{SessionSource, SessionStatus};
+use crate::domains::sessions::run_requests::{RequestingAgent, waiting_agents};
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::execution_metadata;
 use crate::storage::runtime_identity::VerifiedRuntimeIdentity;
@@ -157,10 +159,28 @@ pub enum ApiAuthError {
     InsufficientScope,
     /// The channel's stored config does not parse.
     Misconfigured,
+    /// A verified identity the Work Chat membership does not include.
+    NotAdmitted,
 }
 
 /// The channel's config, or `Misconfigured`.
 pub fn api_channel_config(channel: &IngressChannel) -> Result<AgentApiChannelConfig, ApiAuthError> {
+    if channel.channel_type == super::record::ChannelType::WorkChat {
+        let mut config: super::record::work_chat::WorkChatConfig =
+            serde_json::from_value(channel.channel_config.clone())
+                .map_err(|_| ApiAuthError::Misconfigured)?;
+        if config.execution.auth_methods.is_empty()
+            && let (Ok(issuer), Ok(client_id)) = (
+                std::env::var("CHAT_OIDC_ISSUER"),
+                std::env::var("CHAT_OIDC_CLIENT_ID"),
+            )
+        {
+            config.execution.auth_methods.push(serde_json::from_value(serde_json::json!({
+                    "mode":"oidc","provider":{"type":"oidc","issuer":issuer},"requirements":{"audiences":[client_id]}
+                })).map_err(|_| ApiAuthError::Misconfigured)?);
+        }
+        return Ok(config.execution);
+    }
     serde_json::from_value::<AgentApiChannelConfig>(channel.channel_config.clone())
         .map_err(|_| ApiAuthError::Misconfigured)
 }
@@ -267,7 +287,9 @@ pub fn session_is_callers(
     caller: &ApiCaller,
 ) -> bool {
     session.channel_id == Some(channel.internal_id)
-        && session.archived_at.is_none()
+        && (session.archived_at.is_none()
+            || channel.channel_type
+                == crate::domains::agent_channels::record::ChannelType::WorkChat)
         && caller
             .session_tags(channel)
             .iter()
@@ -278,10 +300,14 @@ pub fn session_is_callers(
 /// or costs, which are management's.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentSessionView {
+    pub archived: bool,
+    pub pinned: bool,
     #[schema(example = "session_01933b5a000070008000000000000001")]
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
     /// `started`, `active`, `idle`, `waitingforinput` or `failed`.
     #[schema(example = "idle")]
     pub status: String,
@@ -298,6 +324,12 @@ pub struct AgentSessionView {
     /// `pending_questions`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending_approvals: Option<Vec<PendingApprovalView>>,
+    /// What the latest turn is doing or got done. Only `GET …/sessions/{id}`
+    /// reads it. Under `full` visibility it is the whole report; otherwise
+    /// the public view: state, plan counts, facts, the agent's own summary
+    /// and links, never step labels or approval prompts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work: Option<WorkReport>,
 }
 
 impl AgentSessionView {
@@ -311,14 +343,18 @@ impl AgentSessionView {
 impl From<&SessionRow> for AgentSessionView {
     fn from(row: &SessionRow) -> Self {
         Self {
+            archived: row.archived_at.is_some(),
+            pinned: row.tags.iter().any(|tag| tag == "work_chat:pinned"),
             id: row.id.to_string(),
             title: row.title.clone(),
+            parent_session_id: row.parent_session_id.map(|id| id.to_string()),
             status: row.status.clone(),
             last_turn_status: row.last_turn_status.clone(),
             created_at: row.created_at,
             updated_at: row.updated_at,
             pending_questions: None,
             pending_approvals: None,
+            work: None,
         }
     }
 }
@@ -434,6 +470,7 @@ pub async fn send_api_message(
     mut message: InputMessage,
     files: Vec<everruns_core::InputContentPart>,
     request_id: Option<String>,
+    controls: Option<everruns_contracts::runtime::Controls>,
 ) -> Result<crate::domains::messages::types::Message, CommandError> {
     check_api_message(&message, !files.is_empty())?;
     message.content.extend(files);
@@ -453,33 +490,32 @@ pub async fn send_api_message(
             json!(user.virtual_user_id.to_string()),
         );
     }
-    Ok(message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
-                org_id: context.org_id,
-                user_id: None,
-                harness_id: context.harness_id.uuid(),
-                agent_id: Some(context.agent_internal_id),
-                session_id: session_id.uuid(),
-                event_metadata: Some(execution_metadata::channel_message_metadata(
-                    context.public_id,
-                    context.owner_principal_id,
-                    context.virtual_user_id,
-                )),
-                request_id,
-            },
-            CreateMessageRequest {
-                message,
-                addressed_participant_id: None,
-                controls: None,
-                metadata: Some(metadata),
-                tags: None,
-                external_actor: None,
-                client_message_id: None,
-            },
-        )
-        .await?)
+    Ok(Box::pin(message_service.create(
+        CreateMessageContext {
+            runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
+            org_id: context.org_id,
+            user_id: None,
+            harness_id: context.harness_id.uuid(),
+            agent_id: Some(context.agent_internal_id),
+            session_id: session_id.uuid(),
+            event_metadata: Some(execution_metadata::channel_message_metadata(
+                context.public_id,
+                context.owner_principal_id,
+                context.virtual_user_id,
+            )),
+            request_id,
+        },
+        CreateMessageRequest {
+            message,
+            addressed_participant_id: None,
+            controls,
+            metadata: Some(metadata),
+            tags: None,
+            external_actor: None,
+            client_message_id: None,
+        },
+    ))
+    .await?)
 }
 
 /// Event types each visibility reads from storage. `None` reads every type.
@@ -496,6 +532,8 @@ pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
         TURN_FAILED,
         TURN_CANCELLED,
         TOOL_CALL_REQUESTED,
+        everruns_core::MESSAGE_REACTION_ADDED,
+        everruns_core::MESSAGE_REACTION_REMOVED,
     ];
     match visibility {
         ApiVisibility::Full => return None,
@@ -506,10 +544,10 @@ pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
 }
 
 /// An event as every API surface publishes it: the canonical envelope after
-/// [`Event::into_public`], which strips reasoning replay state. Projection
+/// [`Event::into_public`], which projects metadata and strips replay state. Projection
 /// starts from this, so no visibility can return more than `/v1` would.
 pub fn public_event_json(event: &Event) -> Option<Value> {
-    if event.data.needs_public_projection() {
+    if event.metadata.is_some() || event.data.needs_public_projection() {
         serde_json::to_value(event.clone().into_public()).ok()
     } else {
         serde_json::to_value(event).ok()
@@ -546,8 +584,15 @@ pub fn project_event(mut event: Value, config: &AgentApiChannelConfig) -> Option
             "tool_call_id": raw["tool_call_id"],
             "success": raw["success"],
         }),
+        // Who reacted is shown by kind and name only: a caller never learns
+        // another person's ids from a reaction.
+        everruns_core::MESSAGE_REACTION_ADDED | everruns_core::MESSAGE_REACTION_REMOVED => json!({
+            "message_id": raw["message_id"],
+            "emoji": raw["emoji"],
+            "actor": {"kind": raw["actor"]["kind"], "name": raw["actor"]["name"]},
+        }),
         TOOL_CALL_REQUESTED => {
-            let pending = pending_input(raw, config);
+            let pending = pending_input(raw);
             if pending.is_empty() {
                 return None;
             }
@@ -555,8 +600,7 @@ pub fn project_event(mut event: Value, config: &AgentApiChannelConfig) -> Option
         }
         _ => return None,
     };
-    // Event metadata and tags carry internal routing and execution detail, so
-    // only `full` returns them.
+    // Reduced visibility withholds even the reviewed provenance and tags.
     Some(json!({
         "id": event["id"],
         "type": event["type"],
@@ -581,6 +625,14 @@ pub struct PendingQuestionView {
     /// When the server stops waiting (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
+    /// The asking agent's session, when another agent in the run asked.
+    /// Answer on this session; the server routes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub session_id: Option<SessionId>,
+    /// The asking agent, when another agent in the run asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<RequestingAgent>,
 }
 
 /// A held-back tool call the session waits on. Same shape as serve's
@@ -589,23 +641,27 @@ pub struct PendingQuestionView {
 pub struct PendingApprovalView {
     /// The request to name in `POST …/tool-approvals`.
     pub tool_call_id: String,
-    /// Whether this caller may answer it. When `false` an operator decides in
-    /// Everruns and the tool is not shown.
+    /// Always `true`: the person using the agent answers its approvals.
     pub answerable: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<Object>)]
-    pub arguments: Option<Value>,
+    pub tool_name: String,
+    #[schema(value_type = Object)]
+    pub arguments: Value,
     /// `arguments` is a truncated preview; the decision still binds to the
     /// full arguments.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub arguments_truncated: bool,
     /// Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub risk: Option<String>,
+    pub risk: String,
     /// When the request counts as rejected (RFC 3339).
     pub expires_at: String,
+    /// The asking agent's session, when another agent in the run asked.
+    /// Answer on this session; the server routes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub session_id: Option<SessionId>,
+    /// The asking agent, when another agent in the run asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<RequestingAgent>,
 }
 
 /// What a parked session waits on from outside.
@@ -623,12 +679,11 @@ impl PendingInput {
 
 /// The questions and approvals in a `tool.call_requested` payload. Every
 /// other call in the batch is the agent's own and stays hidden.
-pub fn pending_input(requested: &Value, config: &AgentApiChannelConfig) -> PendingInput {
+pub fn pending_input(requested: &Value) -> PendingInput {
     let mut pending = PendingInput::default();
     let Some(calls) = requested["tool_calls"].as_array() else {
         return pending;
     };
-    let answerable = config.tool_approvals == ApiToolApprovals::Caller;
     for call in calls {
         let (Some(id), Some(name)) = (call["id"].as_str(), call["name"].as_str()) else {
             continue;
@@ -638,20 +693,24 @@ pub fn pending_input(requested: &Value, config: &AgentApiChannelConfig) -> Pendi
                 tool_call_id: id.to_string(),
                 questions: call["arguments"]["questions"].clone(),
                 expires_at: call["arguments"]["expires_at"].as_str().map(str::to_string),
+                session_id: None,
+                agent: None,
             });
         } else if let Some(request) =
             ToolApprovalRequired::from_request_call(id, name, &call["arguments"])
         {
-            // THREAT[TM-AGENTKEY-006]: a caller that may not answer does not
-            // learn which tool waits or with what arguments either.
+            // THREAT[TM-AGENTKEY-006]: the caller decides, so it sees the
+            // tool and its arguments.
             pending.pending_approvals.push(PendingApprovalView {
                 tool_call_id: id.to_string(),
-                answerable,
-                tool_name: answerable.then(|| request.tool.clone()),
-                arguments: answerable.then(|| request.arguments.clone()),
-                arguments_truncated: answerable && request.arguments_truncated,
-                risk: answerable.then(|| request.risk.clone()),
+                answerable: true,
+                tool_name: request.tool,
+                arguments: request.arguments,
+                arguments_truncated: request.arguments_truncated,
+                risk: request.risk,
                 expires_at: request.expires_at,
+                session_id: None,
+                agent: None,
             });
         }
     }
@@ -662,7 +721,6 @@ pub fn pending_input(requested: &Value, config: &AgentApiChannelConfig) -> Pendi
 pub async fn session_pending_input(
     db: &StorageBackend,
     session: &SessionRow,
-    config: &AgentApiChannelConfig,
 ) -> anyhow::Result<PendingInput> {
     if SessionStatus::from(session.status.as_str()) != SessionStatus::WaitingForToolResults {
         return Ok(PendingInput::default());
@@ -680,8 +738,38 @@ pub async fn session_pending_input(
         .await?;
     Ok(requested
         .last()
-        .map(|row| pending_input(&row.data, config))
+        .map(|row| pending_input(&row.data))
         .unwrap_or_default())
+}
+
+/// What `session` waits on, plus, on a run's first session, what the agents it
+/// handed work to wait on (`knowledge/runtime-resources/agents-using-agents.md`).
+pub async fn run_pending_input(
+    db: &StorageBackend,
+    session: &SessionRow,
+) -> anyhow::Result<PendingInput> {
+    let mut pending = session_pending_input(db, session).await?;
+    let waiting = waiting_agents(
+        db,
+        session.org_id,
+        session.id,
+        session.parent_session_id.is_none(),
+    )
+    .await?;
+    for agent in waiting {
+        let mut theirs = pending_input(&agent.requested.data);
+        for question in &mut theirs.pending_questions {
+            question.session_id = Some(agent.session_id);
+            question.agent = agent.agent.clone();
+        }
+        for approval in &mut theirs.pending_approvals {
+            approval.session_id = Some(agent.session_id);
+            approval.agent = agent.agent.clone();
+        }
+        pending.pending_questions.extend(theirs.pending_questions);
+        pending.pending_approvals.extend(theirs.pending_approvals);
+    }
+    Ok(pending)
 }
 
 /// A message event's text parts. Commentary and messages with no text are
@@ -722,6 +810,36 @@ fn public_turn_failure(data: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_visibility_modes_hide_internal_metadata() {
+        let mut message = everruns_core::RuntimeMessage::assistant("answer");
+        message.metadata = Some(
+            serde_json::from_value(
+                json!({"tool_changes":{"system_prompt":"CANARY"}, "model":"test"}),
+            )
+            .unwrap(),
+        );
+        let event = Event::new(
+            SessionId::new(),
+            everruns_core::EventContext::empty(),
+            everruns_core::events::OutputMessageCompletedData::new(message),
+        )
+        .with_metadata(json!({"authority":"CANARY"}));
+        for visibility in [
+            ApiVisibility::Messages,
+            ApiVisibility::Activity,
+            ApiVisibility::Full,
+        ] {
+            let public = project_event(
+                public_event_json(&event).unwrap(),
+                &config(visibility, ApiErrorDetail::Detailed),
+            )
+            .unwrap();
+            assert!(!public.to_string().contains("CANARY"));
+            assert!(public.to_string().contains("answer"));
+        }
+    }
 
     fn event(event_type: &str, data: Value) -> Value {
         json!({
@@ -875,21 +993,10 @@ mod tests {
             data["pending_questions"][0]["questions"][0]["question"],
             "Your name?"
         );
-        // An operator decides by default: the caller sees that a call waits,
-        // never which one.
+        // The person using the agent decides, so it sees the held-back call,
+        // never the agent's own calls in the same batch.
         let approval = &data["pending_approvals"][0];
         assert_eq!(approval["tool_call_id"], "tool_approval_call_1");
-        assert_eq!(approval["answerable"], false);
-        assert!(!projected.to_string().contains("send_email"));
-        assert!(!projected.to_string().contains("s3cr3t"));
-        assert!(!projected.to_string().contains("internal_lookup"));
-
-        let caller = AgentApiChannelConfig {
-            tool_approvals: ApiToolApprovals::Caller,
-            ..config.clone()
-        };
-        let projected = project_event(requested(), &caller).unwrap();
-        let approval = &projected["data"]["pending_approvals"][0];
         assert_eq!(approval["answerable"], true);
         assert_eq!(approval["tool_name"], "send_email");
         assert_eq!(approval["arguments"]["to"], "a@example.com");

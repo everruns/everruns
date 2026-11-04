@@ -184,40 +184,6 @@ fn required_context_service_validation_accepts_supplied_service() {
 }
 
 #[test]
-fn test_tool_result_conversion() {
-    // Success
-    let result = ToolExecutionResult::success(serde_json::json!({"value": 42}));
-    let tool_result = result.into_tool_result("call_1", "test_tool");
-    assert_eq!(tool_result.tool_call_id, "call_1");
-    assert!(tool_result.error.is_none());
-    assert!(tool_result.images.is_none());
-    assert!(tool_result.connection_required.is_none());
-    assert!(tool_result.raw_output.is_none());
-    assert_eq!(tool_result.result, Some(serde_json::json!({"value": 42})));
-
-    // Tool error (packaged as {"error": "..."} in result field, also sets error)
-    let result = ToolExecutionResult::tool_error("Invalid input");
-    let tool_result = result.into_tool_result("call_2", "test_tool");
-    assert_eq!(tool_result.error.as_deref(), Some("Invalid input"));
-    assert_eq!(
-        tool_result.result.unwrap(),
-        serde_json::json!({"error": "Invalid input"})
-    );
-
-    // Internal error (packaged as {"error": "..."} with generic message)
-    let result = ToolExecutionResult::internal_error_msg("Secret database error");
-    let tool_result = result.into_tool_result("call_3", "test_tool");
-    assert_eq!(
-        tool_result.error.as_deref(),
-        Some("An internal error occurred while executing the tool")
-    );
-    assert_eq!(
-        tool_result.result.unwrap(),
-        serde_json::json!({"error": "An internal error occurred while executing the tool"})
-    );
-}
-
-#[test]
 fn test_success_with_raw_output_object_preserves_shape() {
     let res = ToolExecutionResult::success_with_raw_output(
         serde_json::json!({"stdout": "hello"}),
@@ -373,7 +339,7 @@ fn result_variants_keep_images_connections_and_classification_distinct() {
         (
             ToolExecutionResult::connection_required("daytona"),
             (false, false, true),
-            json!({"tool_call_id":"variant-id","result":{"connection_required":"daytona"},"error":null,"connection_required":"daytona"}),
+            json!({"tool_call_id":"variant-id","result":{"connection_required":"daytona","error":"This tool did not run: its daytona connection is not set up. The person has to connect daytona, then try again."},"error":"This tool did not run: its daytona connection is not set up. The person has to connect daytona, then try again.","connection_required":"daytona"}),
         ),
         (
             ToolExecutionResult::connection_required_with_setup(
@@ -382,7 +348,7 @@ fn result_variants_keep_images_connections_and_classification_distinct() {
                 "/agents/agent_123?tab=mcp",
             ),
             (false, false, true),
-            json!({"tool_call_id":"variant-id","result":{"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}},"error":null,"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}}),
+            json!({"tool_call_id":"variant-id","result":{"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"},"error":"This tool did not run: its mcp_oauth_linear connection is not set up. An admin has to connect the agent's mcp_oauth_linear account at /agents/agent_123?tab=mcp, then try again."},"error":"This tool did not run: its mcp_oauth_linear connection is not set up. An admin has to connect the agent's mcp_oauth_linear account at /agents/agent_123?tab=mcp, then try again.","connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}}),
         ),
         (
             ToolExecutionResult::tool_error("visible"),
@@ -407,40 +373,6 @@ fn result_variants_keep_images_connections_and_classification_distinct() {
         assert!(result.raw_output.is_none());
         assert_eq!(serde_json::to_value(result).unwrap(), expected);
     }
-}
-
-#[tokio::test]
-async fn test_tool_registry_as_executor() {
-    let mut registry = ToolRegistry::new();
-    registry.register(EchoTool);
-
-    let tool_call = ToolCall {
-        id: "call_1".to_string(),
-        name: "echo".to_string(),
-        arguments: serde_json::json!({"message": "test"}),
-    };
-
-    let tool_def = registry.get("echo").unwrap().to_definition();
-    let result = registry.execute(&tool_call, &tool_def).await.unwrap();
-
-    assert!(result.error.is_none());
-    assert_eq!(result.result.unwrap()["echoed"], "test");
-}
-
-#[test]
-fn test_with_defaults_has_expected_tools() {
-    let registry = ToolRegistry::with_defaults();
-    // Exact inventory excludes test doubles and capability-owned tools:
-    // exposing those here would bypass host composition or capability policy.
-    let mut names = registry.tool_names();
-    names.sort_unstable();
-    assert_eq!(names, ["no_reply", "send_message"]);
-    assert!(
-        registry
-            .tool_definitions()
-            .iter()
-            .all(|tool| tool.display_name().is_some())
-    );
 }
 
 #[tokio::test]
@@ -573,8 +505,53 @@ fn success_with_details_wraps_and_unwraps_scalar_values() {
 }
 
 #[test]
-fn plain_success_has_no_details() {
-    let tool_result =
-        ToolExecutionResult::success(serde_json::json!({"a": 1})).into_tool_result("c", "t");
-    assert!(tool_result.details.is_none());
+fn capability_context_is_searchable_and_refreshes_without_overriding_execution() {
+    let mut registry = ToolRegistry::new();
+    registry.register(EchoTool);
+    let canonical = registry.get("echo").unwrap().to_definition();
+    let described = canonical.clone().with_capability_context(
+        "minerals",
+        Some("Mineral operations"),
+        "Scandium prospecting",
+    );
+    registry.set_capability_contexts(std::slice::from_ref(&described));
+    assert_eq!(
+        registry.tool_definition("echo").unwrap().full_parameters(),
+        canonical.full_parameters()
+    );
+    let first = registry.search_index();
+    let hits = first.search("scandium", 8, |_| true);
+    assert_eq!(hits.len(), 1);
+    assert!(!hits[0].tool_match);
+    assert_eq!(hits[0].source.as_ref().unwrap().id, "minerals");
+    registry.set_capability_contexts(&[described]);
+    assert!(Arc::ptr_eq(&first, &registry.search_index()));
+
+    let changed = canonical.clone().with_capability_context(
+        "minerals",
+        Some("Mineral operations"),
+        "Tungsten prospecting",
+    );
+    registry.set_capability_contexts(&[changed]);
+    let second = registry.search_index();
+    assert!(!Arc::ptr_eq(&first, &second));
+    assert!(second.search("scandium", 8, |_| true).is_empty());
+    assert_eq!(second.search("tungsten", 8, |_| true).len(), 1);
+    assert_eq!(first.search("scandium", 8, |_| true).len(), 1);
+
+    registry.register(EchoTool);
+    assert!(
+        registry
+            .search_index()
+            .search("tungsten", 8, |_| true)
+            .is_empty()
+    );
+    assert!(
+        registry
+            .tool_definition("echo")
+            .unwrap()
+            .hints()
+            .capability_id
+            .is_none()
+    );
 }

@@ -1,15 +1,5 @@
-import { getHarnessTabItems, resolveHarnessTab } from "@/components/harnesses/harness-tabs";
-import { render } from "@testing-library/react";
-
-function labels(items: ReturnType<typeof getHarnessTabItems>): string[] {
-  return items.map((item) => render(<>{item.label}</>).container.textContent ?? "");
-}
-
+import { resolveHarnessTab } from "@/components/harnesses/harness-tabs";
 describe("harness tab definitions", () => {
-  it("renders the single tab row in order", () => {
-    expect(labels(getHarnessTabItems())).toEqual(["Harness", "Preview", "Integrate", "Stats"]);
-  });
-
   it.each([
     ["overview", "harness"],
     ["preview", "preview"],

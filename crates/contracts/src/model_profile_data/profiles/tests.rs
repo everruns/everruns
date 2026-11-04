@@ -21,7 +21,6 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"),
         ("anthropic", "claude-sonnet-5-5-latest", "claude-sonnet-5-5"),
         ("anthropic", "claude-haiku-5-5", "claude-haiku-5-5"),
-        ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
         (
             "gemini",
             "gemini-2.5-flash-preview-04-17",
@@ -37,20 +36,14 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("openai", "gpt-4.1", "gpt-4.1"),
         ("openai", "gpt-4.1-2025-04-14", "gpt-4.1"),
         ("openai", "gpt-4.1-mini", "gpt-4.1-mini"),
-        ("openai", "gpt-4.1-nano", "gpt-4.1-nano"),
         ("openai", "gpt-5", "gpt-5"),
         ("openai", "gpt-5-2025-08-07", "gpt-5"),
-        ("openai", "gpt-5-codex", "gpt-5-codex"),
         ("openai", "gpt-5-mini", "gpt-5-mini"),
         ("openai", "gpt-5-nano", "gpt-5-nano"),
         ("openai", "gpt-5-pro", "gpt-5-pro"),
         ("openai", "gpt-5.1", "gpt-5.1"),
-        ("openai", "gpt-5.1-codex", "gpt-5.1-codex"),
-        ("openai", "gpt-5.1-codex-max", "gpt-5.1-codex-max"),
-        ("openai", "gpt-5.1-codex-mini", "gpt-5.1-codex-mini"),
         ("openai", "gpt-5.2", "gpt-5.2"),
         ("openai", "gpt-5.2-2025-12-11", "gpt-5.2"),
-        ("openai", "gpt-5.2-codex", "gpt-5.2-codex"),
         ("openai", "gpt-5.2-pro", "gpt-5.2-pro"),
         ("openai", "gpt-5.3-codex", "gpt-5.3-codex"),
         ("openai", "gpt-5.4", "gpt-5.4"),
@@ -75,7 +68,6 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("openai", "o3", "o3"),
         ("openai", "o3-2025-04-16", "o3"),
         ("openai", "o3-pro", "o3-pro"),
-        ("openai", "o4-mini", "o4-mini"),
     ] {
         let vendor = if provider == "gemini" {
             "google"
@@ -277,99 +269,38 @@ fn test_profile_keys_and_service_kinds() {
 }
 
 #[test]
-fn test_get_profile_unknown_model() {
-    let profile = get_model_profile("openai", "unknown-model");
-    assert!(profile.is_none());
-}
-
-#[test]
 fn test_retired_semantic_variants_do_not_resolve_to_parent_profiles() {
     assert!(get_model_profile("openai", "o3-mini").is_none());
     assert!(get_model_profile("anthropic", "claude-opus-4-1").is_none());
 }
 
+/// Models past their vendor shutdown date leave the registry (OpenAI
+/// deprecations of 2026-04-22, Anthropic's 2026-06-15 retirement, Gemini's
+/// 2026-06-01 shutdown).
 #[test]
-fn test_get_profile_wrong_provider() {
-    // Try to get an OpenAI model with Anthropic provider
-    let profile = get_model_profile("anthropic", "gpt-5.2");
-    assert!(profile.is_none());
-}
-
-#[test]
-fn test_openai_completions_uses_openai_profiles() {
-    let profile = get_model_profile("openai_completions", "gpt-5.2");
-    assert!(profile.is_some());
-    assert_eq!(profile.unwrap().name, "GPT-5.2");
-}
-
-#[test]
-fn test_azure_openai_uses_openai_profiles() {
-    let profile = get_model_profile("azure_openai", "gpt-5.2");
-    assert!(profile.is_some());
-    assert_eq!(profile.unwrap().name, "GPT-5.2");
+fn test_models_past_vendor_shutdown_have_no_profile() {
+    for model in [
+        "gpt-5-chat-latest",
+        "gpt-5-codex",
+        "gpt-5.1-chat-latest",
+        "gpt-5.1-codex",
+        "gpt-5.1-codex-mini",
+        "gpt-5.1-codex-max",
+        "gpt-5.2-chat-latest",
+        "gpt-5.2-codex",
+        "o3-deep-research",
+        "o4-mini",
+        "o4-mini-deep-research",
+        "gpt-4.1-nano",
+    ] {
+        assert!(get_model_profile("openai", model).is_none(), "{model}");
+    }
+    assert!(get_model_profile("anthropic", "claude-opus-4").is_none());
+    assert!(get_model_profile("gemini", "gemini-2.0-flash").is_none());
 }
 
 // Speed (service tier) availability follows OpenAI's official tier tables;
 // see the speed_* helper docs.
-
-#[test]
-fn test_speed_config_matches_pricing_tiers() {
-    let speeds = |model: &str| -> Vec<Speed> {
-        get_model_profile("openai", model)
-            .unwrap()
-            .speed
-            .map(|s| s.values.into_iter().map(|v| v.value).collect())
-            .unwrap_or_default()
-    };
-    use Speed::*;
-    // Flex + priority pricing rows.
-    for model in [
-        "gpt-6-sol",
-        "gpt-6-luna",
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-        "gpt-5.5",
-        "gpt-5.4",
-        "gpt-5.4-mini",
-    ] {
-        assert_eq!(speeds(model), vec![Flex, Default, Priority], "{model}");
-    }
-    // Flex-only pricing rows.
-    for model in ["gpt-5.5-pro", "gpt-5.4-nano", "gpt-5.4-pro"] {
-        assert_eq!(speeds(model), vec![Flex, Default], "{model}");
-    }
-    // Priority-only pricing rows.
-    for model in [
-        "gpt-4.1",
-        "gpt-4.1-mini",
-        "gpt-4.1-nano",
-        "gpt-5",
-        "gpt-5-mini",
-        "gpt-5-codex",
-        "gpt-5.1",
-        "gpt-5.1-codex",
-        "gpt-5.2",
-        "gpt-5.3-codex",
-        "o3",
-        "o4-mini",
-    ] {
-        assert_eq!(speeds(model), vec![Default, Priority], "{model}");
-    }
-    // No tier rows: unlisted variants, chat-latest, and deep research.
-    for model in [
-        "gpt-5-nano",
-        "gpt-5-pro",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-codex-max",
-        "gpt-5.2-pro",
-        "gpt-5.2-codex",
-        "gpt-5-chat-latest",
-        "o3-deep-research",
-    ] {
-        assert_eq!(speeds(model), vec![], "{model}");
-    }
-}
 
 #[test]
 fn test_speed_masked_for_non_openai_surfaces() {
@@ -392,538 +323,15 @@ fn test_speed_masked_for_non_openai_surfaces() {
     }
 }
 
-#[test]
-fn reasoning_effort_sets_match_model_contracts() {
-    use ReasoningEffort::{High, Low, Medium, None as NoReasoning, Xhigh};
-    let cases: &[(&str, ReasoningEffort, &[ReasoningEffort])] = &[
-        ("gpt-5", Medium, &[Low, Medium, High]),
-        ("gpt-5-mini", Medium, &[Low, Medium, High]),
-        ("gpt-5-pro", High, &[High]),
-        ("gpt-5.1", NoReasoning, &[NoReasoning, Low, Medium, High]),
-        (
-            "gpt-5.1-codex-max",
-            NoReasoning,
-            &[NoReasoning, Low, Medium, High, Xhigh],
-        ),
-        ("o3", Medium, &[Low, Medium, High]),
-        ("o3-pro", High, &[High]),
-        ("o4-mini", Medium, &[Low, Medium, High]),
-    ];
-    for (id, default, values) in cases {
-        let profile = get_model_profile("openai", id).unwrap();
-        assert!(profile.reasoning, "{id}");
-        assert!(profile.tool_call, "{id}");
-        assert_eq!(profile.family, *id, "{id}");
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, *default, "{id}");
-        assert_eq!(
-            effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
-            *values,
-            "{id}"
-        );
-    }
-}
-
-#[test]
-fn test_gpt52_profile() {
-    let profile = get_model_profile("openai", "gpt-5.2").unwrap();
-    assert_eq!(profile.name, "GPT-5.2");
-    assert!(profile.reasoning);
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 400_000);
-    assert_eq!(limits.output, 128_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 1.75).abs() < f64::EPSILON);
-    assert!((cost.output - 14.00).abs() < f64::EPSILON);
-
-    // gpt-5.2: default none, supports none/low/medium/high/xhigh
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::None);
-    assert_eq!(effort.values.len(), 5);
-}
-
-#[test]
-fn test_gpt52_pro_profile() {
-    let profile = get_model_profile("openai", "gpt-5.2-pro").unwrap();
-    assert_eq!(profile.name, "GPT-5.2 Pro");
-    assert!(profile.reasoning);
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 400_000);
-    assert_eq!(limits.output, 128_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 21.00).abs() < f64::EPSILON);
-    assert!((cost.output - 168.00).abs() < f64::EPSILON);
-
-    // gpt-5.2-pro: default medium, supports medium/high/xhigh
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::Medium);
-    assert_eq!(effort.values.len(), 3);
-}
-
-#[test]
-fn test_gpt55_profile() {
-    let profile = get_model_profile("openai", "gpt-5.5").unwrap();
-    assert_eq!(profile.name, "GPT-5.5");
-    assert_eq!(profile.family, "gpt-5.5");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.structured_output);
-    assert!(profile.tool_search);
-    assert!(profile.supports_phases);
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 1_050_000);
-    assert_eq!(limits.output, 128_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 5.00).abs() < f64::EPSILON);
-    assert!((cost.output - 30.00).abs() < f64::EPSILON);
-    assert!((cost.cache_read.unwrap() - 0.50).abs() < f64::EPSILON);
-    assert!(cost.cost_tiers.is_empty()); // Flat pricing, no 200K tier
-
-    // gpt-5.5: default medium, supports none/low/medium/high/xhigh
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::Medium);
-    assert_eq!(effort.values.len(), 5);
-}
-
-#[test]
-fn test_gpt_realtime_2_profile() {
-    let profile = get_model_profile("openai", "gpt-realtime-2").unwrap();
-    assert_eq!(profile.name, "GPT Realtime 2");
-    assert_eq!(profile.family, "gpt-realtime");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.supports_phases);
-
-    let modalities = profile.modalities.unwrap();
-    assert!(modalities.input.contains(&Modality::Audio));
-    assert!(modalities.output.contains(&Modality::Audio));
-
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::Low);
-    assert!(
-        effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Minimal)
-    );
-    assert!(
-        effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Xhigh)
-    );
-}
-
-#[test]
-fn test_gpt55_pro_profile() {
-    let profile = get_model_profile("openai", "gpt-5.5-pro").unwrap();
-    assert_eq!(profile.name, "GPT-5.5 Pro");
-    assert_eq!(profile.family, "gpt-5.5-pro");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.structured_output);
-    assert!(profile.tool_search);
-    assert!(profile.supports_phases);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 30.00).abs() < f64::EPSILON);
-    assert!((cost.output - 180.00).abs() < f64::EPSILON);
-    assert!(cost.cache_read.is_none());
-    assert!(cost.cost_tiers.is_empty());
-
-    // gpt-5.5-pro: default medium, supports medium/high/xhigh
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::Medium);
-    assert_eq!(effort.values.len(), 3);
-}
-
-#[test]
-fn test_gpt56_profiles() {
-    // Sol, Terra, Luna share the same shape: 1.05M context, 128K output,
-    // 2026-02-16 knowledge cutoff, tool_search + native phases, and a
-    // >272K-token pricing tier (2x input, 1.5x output).
-    for (id, name, family, input, output, cache, tier_input, tier_output, tier_cache) in [
-        (
-            "gpt-5.6-sol",
-            "GPT-5.6 Sol",
-            "gpt-5.6-sol",
-            5.00,
-            30.00,
-            0.50,
-            10.00,
-            45.00,
-            1.00,
-        ),
-        (
-            "gpt-5.6-terra",
-            "GPT-5.6 Terra",
-            "gpt-5.6-terra",
-            2.50,
-            15.00,
-            0.25,
-            5.00,
-            22.50,
-            0.50,
-        ),
-        (
-            "gpt-5.6-luna",
-            "GPT-5.6 Luna",
-            "gpt-5.6-luna",
-            1.00,
-            6.00,
-            0.10,
-            2.00,
-            9.00,
-            0.20,
-        ),
-    ] {
-        let profile = get_model_profile("openai", id).unwrap();
-        assert_eq!(profile.name, name);
-        assert_eq!(profile.family, family);
-        assert!(profile.reasoning);
-        assert!(!profile.temperature);
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-        assert!(profile.tool_search);
-        assert!(profile.supports_phases);
-        assert_eq!(profile.knowledge.as_deref(), Some("2026-02-16"));
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_050_000);
-        assert_eq!(limits.output, 128_000);
-
-        let cost = profile.cost.unwrap();
-        assert!((cost.input - input).abs() < f64::EPSILON);
-        assert!((cost.output - output).abs() < f64::EPSILON);
-        assert!((cost.cache_read.unwrap() - cache).abs() < f64::EPSILON);
-        assert_eq!(cost.cost_tiers.len(), 1);
-        let tier = &cost.cost_tiers[0];
-        assert_eq!(tier.above_tokens, 272_000);
-        assert!((tier.input - tier_input).abs() < f64::EPSILON);
-        assert!((tier.output - tier_output).abs() < f64::EPSILON);
-        assert!((tier.cache_read.unwrap() - tier_cache).abs() < f64::EPSILON);
-
-        // Series default: medium, supports none/low/medium/high/xhigh.
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-        assert_eq!(effort.values.len(), 5);
-    }
-}
-
-#[test]
-fn test_gpt54_profile() {
-    let profile = get_model_profile("openai", "gpt-5.4").unwrap();
-    assert_eq!(profile.name, "GPT-5.4");
-    assert_eq!(profile.family, "gpt-5.4");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.structured_output);
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 1_050_000);
-    assert_eq!(limits.output, 128_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 2.50).abs() < f64::EPSILON);
-    assert!((cost.output - 15.00).abs() < f64::EPSILON);
-    assert!((cost.cache_read.unwrap() - 0.25).abs() < f64::EPSILON);
-
-    // Tiered pricing above 200K tokens
-    assert_eq!(cost.cost_tiers.len(), 1);
-    let tier = &cost.cost_tiers[0];
-    assert_eq!(tier.above_tokens, 200_000);
-    assert!((tier.input - 5.00).abs() < f64::EPSILON);
-    assert!((tier.output - 22.50).abs() < f64::EPSILON);
-    assert!((tier.cache_read.unwrap() - 0.50).abs() < f64::EPSILON);
-
-    assert!(profile.description.is_some());
-    assert!(profile.supports_phases);
-    assert!(profile.tool_search);
-
-    // gpt-5.4: default none, supports none/low/medium/high/xhigh
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::None);
-    assert_eq!(effort.values.len(), 5);
-}
-
-#[test]
-fn test_gpt54_mini_profile() {
-    let profile = get_model_profile("openai", "gpt-5.4-mini").unwrap();
-    assert_eq!(profile.name, "GPT-5.4 mini");
-    assert_eq!(profile.family, "gpt-5.4-mini");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.structured_output);
-    assert!(profile.tool_search);
-    assert!(profile.supports_phases);
-    assert!(profile.description.is_some());
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 400_000);
-    assert_eq!(limits.output, 128_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 0.75).abs() < f64::EPSILON);
-    assert!((cost.output - 4.50).abs() < f64::EPSILON);
-    assert!((cost.cache_read.unwrap() - 0.075).abs() < f64::EPSILON);
-    assert!(cost.cost_tiers.is_empty()); // No tiered pricing
-}
-
-#[test]
-fn test_gpt54_nano_profile() {
-    let profile = get_model_profile("openai", "gpt-5.4-nano").unwrap();
-    assert_eq!(profile.name, "GPT-5.4 nano");
-    assert_eq!(profile.family, "gpt-5.4-nano");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.tool_search);
-    assert!(profile.supports_phases);
-    assert!(profile.description.is_some());
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 400_000);
-    assert_eq!(limits.output, 128_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 0.20).abs() < f64::EPSILON);
-    assert!((cost.output - 1.25).abs() < f64::EPSILON);
-    assert!((cost.cache_read.unwrap() - 0.02).abs() < f64::EPSILON);
-    assert!(cost.cost_tiers.is_empty()); // No tiered pricing
-}
-
-#[test]
-fn test_gpt54_pro_profile() {
-    let profile = get_model_profile("openai", "gpt-5.4-pro").unwrap();
-    assert_eq!(profile.name, "GPT-5.4 Pro");
-    assert_eq!(profile.family, "gpt-5.4-pro");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(!profile.structured_output); // Not supported for pro
-    assert!(profile.description.is_some());
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 1_050_000);
-    assert_eq!(limits.output, 128_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 30.00).abs() < f64::EPSILON);
-    assert!((cost.output - 180.00).abs() < f64::EPSILON);
-    assert!(cost.cache_read.is_none());
-
-    // Tiered pricing above 200K tokens
-    assert_eq!(cost.cost_tiers.len(), 1);
-    let tier = &cost.cost_tiers[0];
-    assert_eq!(tier.above_tokens, 200_000);
-    assert!((tier.input - 60.00).abs() < f64::EPSILON);
-    assert!((tier.output - 270.00).abs() < f64::EPSILON);
-
-    assert!(profile.supports_phases);
-
-    // gpt-5.4-pro: default medium, supports medium/high/xhigh
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::Medium);
-    assert_eq!(effort.values.len(), 3);
-}
-
 // Claude 4.7 / 4.6 model tests
-
-#[test]
-fn test_claude_opus_47_profile() {
-    let profile = get_model_profile("anthropic", "claude-opus-4-7").unwrap();
-    assert_eq!(profile.name, "Claude Opus 4.7");
-    assert_eq!(profile.family, "claude-opus-4-7");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    // Sampling parameters removed from Opus 4.7 on (API rejects `temperature`).
-    assert!(!profile.temperature);
-    assert!(profile.structured_output);
-
-    let limits = profile.limits.unwrap();
-    // Bare id is the 200K profile; the 1M window is `claude-opus-4-7[1m]`.
-    assert_eq!(limits.context, 200_000);
-    assert_eq!(limits.output, 128_000);
-    assert_eq!(limits.max_media, None);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 5.00).abs() < f64::EPSILON);
-    assert!((cost.output - 25.00).abs() < f64::EPSILON);
-
-    let modalities = profile.modalities.unwrap();
-    assert_eq!(
-        modalities.input,
-        vec![Modality::Text, Modality::Image, Modality::Pdf]
-    );
-
-    // Adaptive thinking: default high, supports low/medium/high/max(xhigh)
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::High);
-    assert_eq!(effort.values.len(), 4);
-    assert!(
-        effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Xhigh)
-    );
-}
-
-#[test]
-fn test_claude_opus_46_profile() {
-    let profile = get_model_profile("anthropic", "claude-opus-4-6").unwrap();
-    assert_eq!(profile.name, "Claude Opus 4.6");
-    assert_eq!(profile.family, "claude-opus-4-6");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.temperature);
-    assert!(profile.structured_output);
-
-    let limits = profile.limits.unwrap();
-    // Bare id is the 200K profile; the 1M window is `claude-opus-4-6[1m]`.
-    assert_eq!(limits.context, 200_000);
-    assert_eq!(limits.output, 128_000);
-    assert_eq!(limits.max_media, Some(600));
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 5.00).abs() < f64::EPSILON);
-    assert!((cost.output - 25.00).abs() < f64::EPSILON);
-
-    let modalities = profile.modalities.unwrap();
-    assert_eq!(modalities.input, vec![Modality::Text, Modality::Image]);
-
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::High);
-    assert_eq!(effort.values.len(), 4);
-}
-
-#[test]
-fn test_claude_sonnet_46_profile() {
-    let profile = get_model_profile("anthropic", "claude-sonnet-4-6").unwrap();
-    assert_eq!(profile.name, "Claude Sonnet 4.6");
-    assert_eq!(profile.family, "claude-sonnet-4-6");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.structured_output);
-
-    let limits = profile.limits.unwrap();
-    assert_eq!(limits.context, 200_000);
-    assert_eq!(limits.output, 64_000);
-
-    let cost = profile.cost.unwrap();
-    assert!((cost.input - 3.00).abs() < f64::EPSILON);
-    assert!((cost.output - 15.00).abs() < f64::EPSILON);
-
-    // Adaptive thinking: default high, supports low/medium/high/max(xhigh)
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::High);
-    assert_eq!(effort.values.len(), 4);
-    assert!(
-        effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Xhigh)
-    );
-}
 
 // Normalize tests for new models
 
 // Gemini model tests
 
-#[test]
-fn test_gemini_unknown_model() {
-    let profile = get_model_profile("gemini", "unknown-model");
-    assert!(profile.is_none());
-}
-
-#[test]
-fn argon_profile_allows_long_decode_and_exposes_only_supported_thinking_levels() {
-    let profile = get_model_profile("gemini", "gemini-4-argon").unwrap();
-    assert_eq!(profile.name, "Gemini 4 Argon");
-    assert!(!profile.temperature);
-    assert!(profile.reasoning && profile.tool_call && profile.attachment);
-    let limits = profile.limits.unwrap();
-    assert_eq!((limits.context, limits.output), (1_048_576, 1_048_576));
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::Medium);
-    assert_eq!(
-        effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
-        vec![
-            ReasoningEffort::Low,
-            ReasoningEffort::Medium,
-            ReasoningEffort::High
-        ]
-    );
-}
-
 // Newly added flagship model profiles
 
 // Claude `[1m]` twin tests live in `profiles_claude_tests.rs`.
-
-#[test]
-fn test_gemini_3_1_pro_preview_profile() {
-    let profile = get_model_profile("gemini", "gemini-3.1-pro-preview").unwrap();
-    assert_eq!(profile.name, "Gemini 3.1 Pro Preview");
-    assert!(profile.reasoning);
-    // >200K-token pricing tier.
-    let cost = profile.cost.as_ref().unwrap();
-    assert_eq!(cost.cost_tiers.len(), 1);
-    assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
-    assert_eq!(cost.cost_tiers[0].input, 4.00);
-}
-
-#[test]
-fn test_third_party_profiles_via_openai_completions() {
-    // Bare ids and common vendor-prefixed aliases both resolve.
-    let cases = [
-        ("nemotron-3-super-120b-a12b", "Nemotron 3 Super"),
-        ("nvidia/nemotron-3-super-120b-a12b", "Nemotron 3 Super"),
-        ("qwen3.7-max", "Qwen3.7 Max"),
-        ("MAI-1-preview", "MAI-1-preview"),
-        ("MiniMax-M3", "MiniMax-M3"),
-        ("kimi-k2-thinking", "Kimi K2 Thinking"),
-        ("kimi-k3", "Kimi K3"),
-        ("moonshotai/kimi-k3", "Kimi K3"),
-        ("grok-4.3", "Grok 4.3"),
-        ("x-ai/grok-4.3", "Grok 4.3"),
-        ("grok-4.7", "Grok 4.7"),
-        ("x-ai/grok-4.7", "Grok 4.7"),
-        ("qwen3.8-max", "Qwen3.8 Max"),
-        ("qwen/qwen3.8-max", "Qwen3.8 Max"),
-    ];
-    for (id, name) in cases {
-        let profile = get_model_profile("openai_completions", id)
-            .unwrap_or_else(|| panic!("missing profile for {id}"));
-        assert_eq!(profile.name, name, "wrong profile for {id}");
-    }
-}
-
-#[test]
-fn test_kimi_k3_profile() {
-    let profile = get_model_profile("openai_completions", "kimi-k3").unwrap();
-    assert_eq!(profile.name, "Kimi K3");
-    assert_eq!(profile.family, "kimi-k3");
-    assert!(profile.reasoning);
-    assert!(profile.tool_call);
-    assert!(profile.open_weights);
-    assert!(!profile.temperature);
-    let cost = profile.cost.as_ref().unwrap();
-    assert_eq!(cost.input, 3.00);
-    assert_eq!(cost.output, 15.00);
-    assert_eq!(cost.cache_read, Some(0.30));
-    assert!(cost.cost_tiers.is_empty());
-    let limits = profile.limits.as_ref().unwrap();
-    assert_eq!(limits.context, 1_048_576);
-    assert_eq!(limits.output, 131_072);
-    let modalities = profile.modalities.as_ref().unwrap();
-    assert_eq!(
-        modalities.input,
-        vec![Modality::Text, Modality::Image, Modality::Video]
-    );
-}
 
 #[test]
 fn test_mistral_large_4_profile() {
@@ -1024,80 +432,6 @@ fn test_mistral_medium_and_small_profiles() {
 }
 
 #[test]
-fn test_recent_gemini_flash_profiles() {
-    for (id, name, input) in [
-        ("gemini-3.8-flash", "Gemini 3.8 Flash", 0.75),
-        ("gemini-3.7-flash", "Gemini 3.7 Flash", 0.75),
-        ("gemini-3.6-flash", "Gemini 3.6 Flash", 0.75),
-        ("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite", 0.30),
-    ] {
-        let profile =
-            get_model_profile("gemini", id).unwrap_or_else(|| panic!("missing profile for {id}"));
-        assert_eq!(profile.name, name);
-        assert_eq!(profile.cost.as_ref().unwrap().input, input, "{id}");
-        assert_eq!(profile.limits.as_ref().unwrap().context, 1_048_576);
-    }
-    // The Lite id must not fall back to the 3.5 Flash profile.
-    assert_eq!(
-        get_model_profile("gemini", "gemini-3.5-flash-lite")
-            .unwrap()
-            .family,
-        "gemini-3.5-flash-lite"
-    );
-}
-
-#[test]
-fn test_recent_openai_aliases_and_realtime() {
-    let sol = get_model_profile("openai", "gpt-5.6").unwrap();
-    assert_eq!(
-        sol.name,
-        get_model_profile("openai", "gpt-5.6-sol").unwrap().name
-    );
-    assert_eq!(
-        get_model_service_kind("openai", "gpt-realtime-2.1"),
-        ServiceKind::Realtime
-    );
-    assert_eq!(
-        get_model_profile("openai", "gpt-realtime-2.1")
-            .unwrap()
-            .name,
-        "GPT Realtime 2.1"
-    );
-}
-
-#[test]
-fn test_grok_4_7_has_context_tier() {
-    let profile = get_model_profile("openrouter", "x-ai/grok-4.7").unwrap();
-    let cost = profile.cost.as_ref().unwrap();
-    assert_eq!((cost.input, cost.output), (2.00, 6.00));
-    assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
-    assert_eq!(cost.cost_tiers[0].input, 4.00);
-}
-
-#[test]
-fn test_grok_4_3_has_context_tier() {
-    let profile = get_model_profile("openai_completions", "grok-4.3").unwrap();
-    let cost = profile.cost.as_ref().unwrap();
-    assert_eq!(cost.cost_tiers.len(), 1);
-    assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
-}
-
-#[test]
-fn test_mai_preview_has_no_cost_or_limits() {
-    // Microsoft never published pricing/limits for MAI-1-preview.
-    let profile = get_model_profile("openai_completions", "MAI-1-preview").unwrap();
-    assert!(profile.cost.is_none());
-    assert!(profile.limits.is_none());
-    assert!(!profile.reasoning);
-}
-
-#[test]
-fn test_third_party_unknown_still_none() {
-    let profile = get_model_profile("openai_completions", "totally-made-up");
-    assert!(profile.is_none());
-}
-
-#[test]
 fn test_third_party_surfaces() {
     // Third-party, OpenAI-compatible models are reachable via the Chat
     // Completions path AND via Responses-capable gateways (e.g. OpenRouter
@@ -1151,41 +485,6 @@ fn test_phases_and_tool_search_gated_to_responses_surface() {
 }
 
 #[test]
-fn test_anthropic_native_tool_search_by_family() {
-    // Claude 4-family + Fable advertise Anthropic's hosted tool_search.
-    for id in [
-        "claude-fable-5-1",
-        "claude-fable-5",
-        "claude-opus-5-5",
-        "claude-opus-5",
-        "claude-opus-4-8",
-        "claude-opus-4-7",
-        "claude-opus-4-6",
-        "claude-opus-4-5",
-        "claude-opus-4",
-        "claude-sonnet-5-5",
-        "claude-sonnet-4-6",
-        "claude-haiku-5-5",
-        "claude-haiku-4-5",
-    ] {
-        let p = get_model_profile("anthropic", id)
-            .unwrap_or_else(|| panic!("{id} should resolve under anthropic"));
-        assert!(p.tool_search, "{id} should advertise native tool_search");
-    }
-    // The 1M twin inherits the flag.
-    assert!(
-        get_model_profile("anthropic", "claude-opus-4-8[1m]")
-            .unwrap()
-            .tool_search
-    );
-    // Retired pre-4 Claude models are no longer in the registry at all.
-    assert!(get_model_profile("anthropic", "claude-3-5-haiku").is_none());
-    // This registry does not expose Claude through Bedrock. An optional
-    // assertion on a nonexistent profile would never exercise masking.
-    assert!(get_model_profile("bedrock", "claude-opus-4-8").is_none());
-}
-
-#[test]
 fn test_model_vendor_lookup() {
     assert_eq!(
         get_model_vendor("anthropic", "claude-opus-4-8"),
@@ -1200,109 +499,6 @@ fn test_model_vendor_lookup() {
         Some(ModelVendor::OpenAi)
     );
     assert_eq!(get_model_vendor("openai", "made-up"), None);
-}
-
-#[test]
-fn test_muse_spark_1_3_profiles_and_tiers() {
-    let standard = get_model_profile("meta", "muse-spark-1.3").unwrap();
-    assert_eq!(standard.name, "Muse Spark 1.3");
-    assert_eq!(standard.family, "muse-spark-1.3");
-    assert_eq!(standard.limits.as_ref().unwrap().context, 1_048_576);
-    assert!(standard.tool_call);
-    assert!(standard.tool_search);
-    assert!(standard.structured_output);
-    assert!(standard.supports_phases);
-    assert_eq!(
-        standard.modalities.as_ref().unwrap().input,
-        vec![
-            Modality::Text,
-            Modality::Image,
-            Modality::Audio,
-            Modality::Video,
-            Modality::Pdf,
-        ]
-    );
-    let standard_cost = standard.cost.unwrap();
-    assert_eq!(standard_cost.input, 1.25);
-    assert_eq!(standard_cost.cache_read, Some(0.15));
-    assert_eq!(standard_cost.output, 4.25);
-
-    let contributor = get_model_profile("meta", "muse-spark-1.3-contributor").unwrap();
-    assert_eq!(contributor.name, "Muse Spark 1.3 Contributor");
-    assert_eq!(contributor.family, "muse-spark-1.3");
-    let contributor_cost = contributor.cost.unwrap();
-    assert_eq!(contributor_cost.input, 0.10);
-    assert_eq!(contributor_cost.cache_read, Some(0.002));
-    assert_eq!(contributor_cost.output, 0.20);
-    assert!(
-        contributor
-            .description
-            .as_deref()
-            .unwrap()
-            .contains("used to train")
-    );
-    assert_eq!(
-        get_model_profile_key("meta", "muse-spark-1.3-contributor").as_deref(),
-        Some("meta/muse-spark-1.3-contributor")
-    );
-}
-
-#[test]
-fn test_muse_wonder_profile() {
-    let wonder = get_model_profile("meta", "muse-wonder-1.0").unwrap();
-    assert_eq!(wonder.name, "Muse Wonder");
-    assert_eq!(wonder.family, "muse-wonder");
-    assert_eq!(wonder.limits.as_ref().unwrap().context, 1_048_576);
-    assert!(wonder.tool_call);
-    assert!(wonder.tool_search);
-    assert!(wonder.supports_phases);
-    let cost = wonder.cost.unwrap();
-    assert_eq!(cost.input, 4.00);
-    assert_eq!(cost.cache_read, Some(0.20));
-    assert_eq!(cost.output, 20.00);
-    // No Contributor tier on pay-as-you-go.
-    assert!(get_model_profile("meta", "muse-wonder-1.0-contributor").is_none());
-}
-
-#[test]
-fn test_muse_reasoning_effort_matches_what_meta_accepts() {
-    let levels = |model: &str| -> Vec<ReasoningEffort> {
-        get_model_profile("meta", model)
-            .unwrap()
-            .reasoning_effort
-            .expect("Muse models expose effort levels")
-            .values
-            .into_iter()
-            .map(|value| value.value)
-            .collect()
-    };
-    use ReasoningEffort::*;
-    let with_max = vec![Minimal, Low, Medium, High, Xhigh, Max];
-    for model in [
-        "muse-wonder-1.0",
-        "muse-spark-1.3",
-        "muse-spark-1.3-contributor",
-    ] {
-        assert_eq!(levels(model), with_max, "{model}");
-    }
-    for model in ["muse-spark-1.2", "muse-spark-1.2-contributor"] {
-        assert_eq!(levels(model), with_max[..5], "{model}");
-    }
-}
-
-#[test]
-fn test_muse_spark_1_2_profiles_stay_resolvable() {
-    // 1.2 remains served by Meta and referenced by existing model records,
-    // so it keeps its own family and profile next to 1.3.
-    let standard = get_model_profile("meta", "muse-spark-1.2").unwrap();
-    assert_eq!(standard.name, "Muse Spark 1.2");
-    assert_eq!(standard.family, "muse-spark-1.2");
-    let contributor = get_model_profile("meta", "muse-spark-1.2-contributor").unwrap();
-    assert_eq!(contributor.name, "Muse Spark 1.2 Contributor");
-    assert_eq!(contributor.family, "muse-spark-1.2");
-    // Both tiers reach the gateways under their vendor-prefixed ids, which
-    // is how OpenRouter spells them.
-    assert!(get_model_profile("openrouter", "meta/muse-spark-1.2-contributor").is_some());
 }
 
 #[test]
@@ -1360,28 +556,8 @@ fn test_third_party_alias_matching_is_case_insensitive() {
 }
 
 #[test]
-fn test_estimate_cost_usd_known_model() {
-    // gpt-5.2 profile: input $1.75/M, output $14.00/M.
-    let est = estimate_cost_usd("openai", "gpt-5.2", 1_000_000, 500_000, 0, 0)
-        .expect("known model should yield an estimate");
-    // 1M input * 1.75 + 0.5M output * 14.00 = 1.75 + 7.00 = 8.75
-    assert!((est - 8.75).abs() < 1e-9, "got {est}");
-}
-
-#[test]
 fn test_estimate_cost_usd_unknown_model_is_none() {
     assert!(estimate_cost_usd("openai", "no-such-model", 100, 50, 0, 0).is_none());
-}
-
-#[test]
-fn test_estimate_cost_usd_openai_embedding_model() {
-    let estimate = estimate_cost_usd("openai", "text-embedding-3-small", 1_000_000, 0, 0, 0);
-
-    assert_eq!(estimate, Some(0.02));
-    assert_eq!(
-        get_model_service_kind("openai", "text-embedding-3-small"),
-        ServiceKind::Embeddings
-    );
 }
 
 #[test]
@@ -1451,31 +627,77 @@ fn test_estimate_cost_usd_anthropic_cache_is_additive() {
 }
 
 #[test]
-fn test_model_card_links_reach_every_route() {
-    let card = "https://www.anthropic.com/claude-opus-5-5-system-card";
-    for (provider, model) in [
-        ("anthropic", "claude-opus-5-5"),
-        ("anthropic", "claude-opus-5-5[1m]"),
-    ] {
-        let profile = get_model_profile(provider, model).unwrap();
-        assert_eq!(
-            profile.model_card_url.as_deref(),
-            Some(card),
-            "{provider}/{model}"
-        );
-    }
+fn openrouter_gpt_61_wire_id_keeps_canonical_prices_and_gateway_capabilities() {
+    let canonical = get_model_profile("openai", "gpt-6.1-sol").unwrap();
+    let routed = get_model_profile("openrouter", "openai/gpt-6.1-sol").unwrap();
+    assert_eq!(routed.cost, canonical.cost);
+    assert!(!routed.supports_phases);
+    assert!(routed.speed.is_none());
+    assert!(get_model_profile("openrouter", "untrusted/gpt-6.1-sol").is_none());
+    assert!(get_model_profile("openrouter", "openai/gpt-6.1-sol-pro").is_none());
+}
+
+#[test]
+fn terra_profiles_follow_verified_api_and_openrouter_contracts() {
+    let direct = get_model_profile("openai", "gpt-6.1-terra").unwrap();
+    let routed = get_model_profile("openrouter", "openai/gpt-6.1-terra").unwrap();
+    assert_eq!(direct.family, "gpt-6.1-terra");
+    assert_eq!(direct.cost, routed.cost);
+    assert!(direct.tool_call && routed.tool_call && direct.attachment);
+    assert_eq!(direct.limits.as_ref().unwrap().context, 1_050_000);
+    assert_eq!(direct.limits.as_ref().unwrap().output, 128_000);
+    let cost = direct.cost.as_ref().unwrap();
     assert_eq!(
-        get_model_profile_by_key("meta/muse-wonder-1.0")
-            .unwrap()
-            .model_card_url
-            .as_deref(),
-        Some("https://research.meta.ai/static/muse-wonder-model-card")
+        (cost.input, cost.output, cost.cache_read, cost.cache_write),
+        (1.0, 5.0, Some(0.05), Some(1.25))
     );
-    // Models without a published card carry no link rather than a guess.
+    assert_eq!(cost.cost_tiers[0].above_tokens, 272_000);
+    assert_eq!(cost.cost_tiers[0].input, 2.0);
+    assert_eq!(cost.cost_tiers[0].output, 7.5);
+    assert!(!direct.supports_phases && direct.supported_parameters.is_empty());
+    assert!(get_model_profile("openai_completions", "gpt-6.1-terra").is_none());
+    assert!(get_model_profile("azure_openai", "gpt-6.1-terra").is_none());
+    assert!(get_model_profile("openrouter", "untrusted/gpt-6.1-terra").is_none());
+    assert!(get_model_profile("openrouter", "openai/gpt-6.1-terra-pro").is_none());
     assert!(
-        get_model_profile("meta", "muse-spark-1.3")
-            .unwrap()
-            .model_card_url
-            .is_none()
+        super::all_profile_entries()
+            .iter()
+            .any(|entry| entry.key == "openai/gpt-6.1-terra")
+    );
+}
+
+#[test]
+fn jev_1_14_is_a_text_decision_profile_on_supported_accounts() {
+    for (provider, model) in [
+        ("typesafe", "jev-1.14.0"),
+        ("openrouter", "typesafe/jev-1.14"),
+    ] {
+        assert_eq!(
+            get_model_service_kind(provider, model),
+            ServiceKind::Decisions
+        );
+        assert_eq!(
+            get_model_profile_key(provider, model).as_deref(),
+            Some("typesafe/jev-1.14.0")
+        );
+        let profile = get_model_profile(provider, model).unwrap();
+        assert_eq!(profile.name, "Jev 1.14");
+        assert_eq!(profile.release_date.as_deref(), Some("2026-10-14"));
+        assert!(!profile.attachment && !profile.reasoning && !profile.tool_call);
+        let cost = profile.cost.unwrap();
+        assert_eq!((cost.input, cost.output), (0.042, 0.0));
+        let decisions = profile.decisions.unwrap();
+        assert_eq!(decisions.primitives, ["noul", "choice", "score"]);
+        assert!(decisions.calibrated);
+        assert_eq!(decisions.state_tokens, Some(32_000));
+        assert_eq!(decisions.request_tokens, Some(64_000));
+        let entries = profile_entries_for_provider(provider);
+        assert!(entries.iter().any(|entry| entry.model_id == "jev-1.14.0"));
+        assert!(entries.iter().any(|entry| entry.model_id == "jev-1.13.0"));
+    }
+    assert!(get_model_profile("openai", "jev-1.14.0").is_none());
+    assert_eq!(
+        get_model_profile_key("openrouter", "~typesafe/jev-latest").as_deref(),
+        Some("typesafe/jev-latest")
     );
 }

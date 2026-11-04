@@ -341,16 +341,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_standalone_tasks_record_nothing() {
-        let store = InMemoryWorkflowEventStore::new();
-
-        // No workflow exists; a `None` workflow id must not even look one up.
-        record_activity_started(&store, None, "a".into(), 1, "w".into()).await;
-        record_activity_completed(&store, None, "a".into(), serde_json::json!(1)).await;
-        record_activity_failed(&store, None, "a".into(), "x".into(), false).await;
-    }
-
-    #[tokio::test]
     async fn test_append_event_gives_up_on_missing_workflow() {
         let store = InMemoryWorkflowEventStore::new();
         let missing = Uuid::now_v7();

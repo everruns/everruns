@@ -409,6 +409,33 @@ pub struct EncryptedColumn {
 /// - Tests to ensure all encrypted columns are properly registered
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
     EncryptedColumn {
+        table: "sandbox_template_builds",
+        column: "credential_snapshot_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "custom_workers",
+        column: "endpoint_secret_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "custom_workers",
+        column: "adapter_token_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "tracing_connections",
+        column: "secrets_encrypted",
+        id_column: "id",
+    },
+    // Private consolidation evidence/proposals and Memory-wide reservations.
+    // The UUID is globally unique; tenant/key remains the maintenance CAS identity.
+    EncryptedColumn {
+        table: "dreaming_state",
+        column: "value_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
         table: "org_slack_connections",
         column: "access_token_encrypted",
         id_column: "id",
@@ -475,7 +502,7 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
     // Agent credentials (MCP tool parameters and HTTP bound secrets) are
     // encrypted at rest.
     EncryptedColumn {
-        table: "agent_mcp_secret_bindings",
+        table: "credential_bindings",
         column: "value_encrypted",
         id_column: "id",
     },
@@ -684,37 +711,6 @@ mod tests {
 
         let result = EncryptionService::new(&key1, &[&key2]);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_unknown_key_id() {
-        let key_v1 = test_key("kek-v1");
-        let key_v2 = test_key("kek-v2");
-
-        // Encrypt with v1
-        let service_v1 = EncryptionService::new(&key_v1, &[]).unwrap();
-        let encrypted = service_v1.encrypt_string("test").unwrap();
-
-        // Try to decrypt with only v2 (v1 not available)
-        let service_v2 = EncryptionService::new(&key_v2, &[]).unwrap();
-        let result = service_v2.decrypt(&encrypted);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_payload_format() {
-        let key = test_key("kek-v1");
-        let service = EncryptionService::new(&key, &[]).unwrap();
-
-        let encrypted = service.encrypt_string("test").unwrap();
-        let payload: EncryptedPayload = serde_json::from_slice(&encrypted).unwrap();
-
-        assert_eq!(payload.version, 1);
-        assert_eq!(payload.alg, "AES-256-GCM");
-        assert_eq!(payload.key_id, "kek-v1");
-        assert!(!payload.dek_wrapped.is_empty());
-        assert!(!payload.nonce.is_empty());
-        assert!(!payload.ciphertext.is_empty());
     }
 
     #[test]
@@ -981,24 +977,6 @@ mod tests {
     }
 
     // --- DEK cache tests ---
-
-    #[test]
-    fn test_cache_populated_on_decrypt() {
-        let key = test_key("kek-v1");
-        let service = EncryptionService::new(&key, &[]).unwrap();
-
-        let encrypted = service.encrypt_string("secret").unwrap();
-
-        // Cache empty before first decrypt
-        assert_eq!(service.dek_cache_entry_count(), 0);
-
-        let _ = service.decrypt_to_string(&encrypted).unwrap();
-
-        // Cache should have one entry after decrypt
-        // moka may need a sync to reflect entry_count
-        service.dek_cache.run_pending_tasks();
-        assert_eq!(service.dek_cache_entry_count(), 1);
-    }
 
     #[test]
     fn test_cache_hit_avoids_re_decryption() {

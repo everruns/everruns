@@ -336,48 +336,7 @@ fn answer_schema(tool_call_id: &str, questions: &[Question]) -> Value {
 
 /// Every question answered once, with offered options only, as the Everruns
 /// server checks a question-answers request.
-fn validate_answers(questions: &[Question], answers: &[Answer]) -> Result<(), String> {
-    for answer in answers {
-        if !questions
-            .iter()
-            .any(|question| question.id.as_deref() == Some(answer.id.as_str()))
-        {
-            return Err(format!("no question with id {:?} was asked", answer.id));
-        }
-    }
-    for question in questions {
-        let id = question.id.as_deref().unwrap_or_default();
-        let mut matching = answers.iter().filter(|answer| answer.id == id);
-        let answer = matching
-            .next()
-            .ok_or_else(|| format!("question {id:?} was not answered"))?;
-        if matching.next().is_some() {
-            return Err(format!("question {id:?} was answered more than once"));
-        }
-        for label in &answer.selected {
-            if !question.options.iter().any(|option| &option.label == label) {
-                return Err(format!(
-                    "question {id:?} was not asked with option {label:?}"
-                ));
-            }
-        }
-        let other = answer
-            .other_text
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| !text.is_empty());
-        if other.is_some() && question.kind != QuestionKind::Text && !question.allow_other {
-            return Err(format!("question {id:?} does not allow free text"));
-        }
-        if answer.selected.is_empty() && other.is_none() {
-            return Err(format!("question {id:?} has no selection and no free text"));
-        }
-        if !question.multi_select && answer.selected.len() > 1 {
-            return Err(format!("question {id:?} is single-select"));
-        }
-    }
-    Ok(())
-}
+use crate::hosting::validate_question_answers as validate_answers;
 
 fn as_object(value: Value) -> Option<serde_json::Map<String, Value>> {
     match value {

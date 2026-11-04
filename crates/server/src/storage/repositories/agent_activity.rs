@@ -134,7 +134,18 @@ impl Database {
         let loads = sqlx::query_as::<_, AgentLoadRow>(
             r#"
             SELECT a.public_id AS agent_id,
-                   COUNT(*) FILTER (WHERE s.status = 'active')::bigint AS running_sessions,
+                   -- A session whose turn is queued (actor runnable, no live lease) is
+                   -- not running yet: no worker has picked it up. Counting it made the
+                   -- Agents page say "1 running" while chat sat in "Starting".
+                   COUNT(*) FILTER (
+                       WHERE s.status = 'active'
+                         AND NOT EXISTS (
+                             SELECT 1 FROM session_actors sa
+                             WHERE sa.session_id = s.id
+                               AND sa.runnable_since IS NOT NULL
+                               AND (sa.lease_holder IS NULL OR sa.lease_expires_at <= $2)
+                         )
+                   )::bigint AS running_sessions,
                    MAX(s.last_turn_at) AS last_turn_at
             FROM sessions s
             JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
@@ -143,6 +154,7 @@ impl Database {
             "#,
         )
         .bind(org_id)
+        .bind(now)
         .fetch_all(&self.pool)
         .await?;
 

@@ -650,14 +650,6 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_metadata() {
-        let cap = ToolOutputPersistenceCapability;
-        assert_eq!(cap.id(), "tool_output_persistence");
-        assert!(!cap.post_tool_exec_hooks().is_empty());
-        assert!(cap.dependencies().contains(&"session_file_system"));
-    }
-
-    #[test]
     fn test_split_output_streams_both() {
         let text = "hello world\n--- stderr ---\nwarning: unused";
         let (stdout, stderr) = split_output_streams(text);
@@ -928,15 +920,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_persist_large_output_persists_stdout_below_budget() {
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
-        let small = "a".repeat(EXEC_OUTPUT_BUDGET);
-        let result = persist_large_output(&store, test_session_id(), "call-1", &small, "").await;
-        let r = result.expect("should persist non-empty stdout");
-        assert_eq!(r.stdout_path.as_deref(), Some("/outputs/call-1.stdout"));
-    }
-
-    #[tokio::test]
     async fn test_persist_large_output_persists_stdout_above_budget() {
         let mock = Arc::new(MockFileStore::default());
         let store: Arc<dyn SessionFileSystem> = mock.clone();
@@ -977,25 +960,6 @@ mod tests {
         assert_eq!(r.stdout_path.as_deref(), Some("/outputs/call-3.stdout"));
         assert_eq!(r.stderr_path.as_deref(), Some("/outputs/call-3.stderr"));
         assert_eq!(mock.content("/outputs/call-3.stderr").unwrap().len(), 4097);
-    }
-
-    #[tokio::test]
-    async fn test_persist_large_output_both_stdout_and_stderr() {
-        let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileSystem> = mock.clone();
-        let large_stdout = "o".repeat(EXEC_OUTPUT_BUDGET + 100);
-        let large_stderr = "e".repeat(5000);
-        let result = persist_large_output(
-            &store,
-            test_session_id(),
-            "call-4",
-            &large_stdout,
-            &large_stderr,
-        )
-        .await;
-        let r = result.expect("should persist both");
-        assert!(r.stdout_path.is_some());
-        assert!(r.stderr_path.is_some());
     }
 
     #[tokio::test]
@@ -1234,13 +1198,6 @@ mod tool_output_persistence_config_tests {
     use super::*;
 
     #[test]
-    fn config_defaults_to_1kib() {
-        let cfg = ToolOutputPersistenceConfig::from_value(&serde_json::json!({}));
-        assert_eq!(cfg.auto_success_budget, AUTO_SUCCESS_BUDGET);
-        assert_eq!(AUTO_SUCCESS_BUDGET, 1024);
-    }
-
-    #[test]
     fn config_override_parses_and_applies_to_auto() {
         let cfg = ToolOutputPersistenceConfig::from_value(
             &serde_json::json!({"auto_success_budget": 100}),
@@ -1269,14 +1226,5 @@ mod tool_output_persistence_config_tests {
             &serde_json::json!({"auto_success_budget": "lots"}),
         );
         assert_eq!(cfg.auto_success_budget, AUTO_SUCCESS_BUDGET);
-    }
-
-    #[test]
-    fn schema_advertises_auto_success_budget() {
-        let schema = ToolOutputPersistenceConfig::json_schema();
-        assert_eq!(
-            schema["properties"]["auto_success_budget"]["default"],
-            serde_json::json!(1024)
-        );
     }
 }

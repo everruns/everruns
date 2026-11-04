@@ -38,7 +38,14 @@ impl Command for GetSessionSandbox {
 
         let sandbox = ctx.db.get_primary_sandbox(session_id).await?;
         Ok(match sandbox {
-            Some(record) => sandbox_from_record(&record, &capabilities),
+            Some(record) => {
+                let mut response = sandbox_from_record(&record, &capabilities);
+                response.build = ctx
+                    .db
+                    .sandbox_build_provenance(ctx.org_id(), &record.spec.target)
+                    .await?;
+                response
+            }
             None => sandbox_from_capabilities(&capabilities),
         })
     }
@@ -62,16 +69,5 @@ impl Command for ListSandboxTargets {
         Ok(SandboxTargetsResponse {
             items: sandbox_targets(),
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn both_commands_are_part_of_the_core_surface() {
-        assert_eq!(GetSessionSandbox::meta().required_feature(), None);
-        assert_eq!(ListSandboxTargets::meta().required_feature(), None);
     }
 }

@@ -103,10 +103,8 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
     body(request, PLAIN);
     let mut events = session.events();
     let pending = session.send(request).await?;
-    while let Some(event) = events.recv().await? {
-        if event.turn_id.as_deref() != Some(pending.turn_id.as_str()) {
-            continue;
-        }
+    let mut assigned = pending.turn_id.clone();
+    while let Some(event) = crate::next_for_receipt(&pending, &mut events, &mut assigned).await? {
         let terminal = event.kind.is_terminal();
         match &event.kind {
             SessionEventKind::ReasonStarted => {

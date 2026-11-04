@@ -226,7 +226,7 @@ async fn an_approval_parks_the_task_until_the_v1_api_answers_it() {
         .as_str()
         .unwrap()
         .to_string();
-    host.resolve_approval(&session, &call, true).unwrap();
+    host.resolve_approval(&session, &call, true).await.unwrap();
     let second = pending.await.unwrap();
     assert_eq!(second["status"]["state"], "TASK_STATE_COMPLETED");
     assert_eq!(reply(&second), "guarded done");
@@ -291,24 +291,4 @@ async fn unknown_agents_bad_input_and_old_versions_are_errors() {
         .await
         .unwrap();
     assert!(old["error"].is_object(), "{old}");
-}
-
-#[tokio::test]
-async fn the_manifest_and_agent_card_list_the_endpoints() {
-    let manifest = app().manifest();
-    for route in [
-        "POST /v1/channels/echoer/a2a",
-        "GET /v1/channels/echoer/a2a/.well-known/agent-card.json",
-    ] {
-        assert!(
-            manifest.routes.contains(&route.to_string()),
-            "{:?}",
-            manifest.routes
-        );
-    }
-    let host = Host::new(app(), Mode::Eval, None).unwrap();
-    let server = serve(host).await;
-    let card: Value = server.get("/v1/agent").await.json().await.unwrap();
-    assert_eq!(card["a2a"]["echoer"], "/v1/channels/echoer/a2a");
-    assert_eq!(card["a2a"]["tester"], "/v1/channels/tester/a2a");
 }

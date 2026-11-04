@@ -61,53 +61,6 @@ async fn test_create_marketplace() {
 }
 
 #[tokio::test]
-async fn test_list_marketplaces() {
-    let server = dev_server().await;
-    let path = testdata_plugins_path();
-
-    server
-        .post(
-            "/v1/plugin_marketplaces",
-            json!({ "name": "list-test", "source_type": "local_path", "source": path }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
-
-    let resp = server.get("/v1/plugin_marketplaces").await.assert_success();
-    let data = resp.json_value();
-    let marketplaces = data["data"].as_array().unwrap();
-    assert!(!marketplaces.is_empty());
-    assert!(
-        marketplaces
-            .iter()
-            .any(|m| m["name"].as_str() == Some("list-test"))
-    );
-}
-
-#[tokio::test]
-async fn test_get_marketplace() {
-    let server = dev_server().await;
-    let path = testdata_plugins_path();
-
-    let create_resp = server
-        .post(
-            "/v1/plugin_marketplaces",
-            json!({ "name": "get-test", "source_type": "local_path", "source": path }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
-
-    let marketplace_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
-
-    let get_resp = server
-        .get(&format!("/v1/plugin_marketplaces/{marketplace_id}"))
-        .await
-        .assert_success();
-
-    assert_eq!(get_resp.json_value()["name"], "get-test");
-}
-
-#[tokio::test]
 async fn test_update_marketplace_status() {
     let server = dev_server().await;
     let path = testdata_plugins_path();

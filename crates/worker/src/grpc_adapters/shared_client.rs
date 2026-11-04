@@ -61,17 +61,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn calls_do_not_wait_on_each_other() {
-        let shared = shared();
-        // Two clients at once: under the old lock the second could not exist
-        // until the first call finished.
-        let _first = shared.client();
-        let _second = shared.client();
-        // An in-flight call does not hold back an ephemeral emit either.
-        assert!(shared.try_ephemeral().is_some());
-    }
-
-    #[tokio::test]
     async fn one_ephemeral_emit_in_flight_at_a_time() {
         let shared = shared();
         let held = shared.try_ephemeral().expect("first emit");

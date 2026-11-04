@@ -66,13 +66,26 @@ pub async fn build_turn_mcp_tool_definitions(
     if let Some(storage) = storage {
         keep_last_listed_tools(storage, session_id, &listed, &failed, &mut definitions).await;
     }
+    let mut metadata_servers = servers.clone();
     for name in deferred {
-        let description = placeholder_description(db, org_id, &servers[&name]).await;
+        let effective_description = effective_server_description(db, org_id, &servers[&name]).await;
+        let description = effective_description.clone().or_else(|| {
+            url::Url::parse(&servers[&name].url)
+                .ok()
+                .and_then(|url| url.host_str().map(|host| format!("tools at {host}")))
+        });
+        if let Some(description) = effective_description {
+            metadata_servers
+                .get_mut(&name)
+                .expect("deferred server exists")
+                .description = Some(description);
+        }
         definitions.push(everruns_core::deferred_mcp_server_definition(
             &name,
             description.as_deref(),
         ));
     }
+    super::scoped_mcp::attach_server_search_metadata(&mut definitions, &metadata_servers);
     Ok(definitions)
 }
 
@@ -157,24 +170,32 @@ async fn keep_last_listed_tools(
     }
 }
 
-/// What the model reads about a deferred server: the catalog preset's
-/// description, else the host it lives on.
-async fn placeholder_description(
+async fn effective_server_description(
     db: &StorageBackend,
     org_id: i64,
     server: &everruns_core::ScopedMcpServer,
 ) -> Option<String> {
+    if let Some(description) = server
+        .description
+        .as_deref()
+        .filter(|text| !text.trim().is_empty())
+    {
+        return Some(description.to_string());
+    }
     if let Some(preset) = &server.preset {
         let row = db
             .get_mcp_server_by_name(org_id, preset.catalog_name())
             .await
             .ok()
-            .flatten()?;
-        return row.description.filter(|text| !text.trim().is_empty());
+            .flatten();
+        if let Some(description) = row
+            .and_then(|row| row.description)
+            .filter(|text| !text.trim().is_empty())
+        {
+            return Some(description);
+        }
     }
-    url::Url::parse(&server.url)
-        .ok()
-        .and_then(|url| url.host_str().map(|host| format!("tools at {host}")))
+    None
 }
 
 #[cfg(test)]

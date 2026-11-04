@@ -21,12 +21,13 @@
 //! Each capability is in its own file with collocated tools.
 
 use crate::is_plugin_capability;
-use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped;
+use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped_with_context;
 use crate::runtime::events::TokenUsage;
 use crate::runtime::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::runtime::message::RuntimeMessage;
 use crate::runtime::message_filter::MessageFilterProvider;
 use crate::runtime::runtime_agent::RuntimeAgent;
+use crate::runtime::tool_surface::{NativeToolDisclosurePolicy, ToolSurfaceMode, ToolSurfacePlan};
 use crate::runtime::tool_types::ToolDefinition;
 use crate::runtime::tools::{Tool, ToolRegistry};
 use crate::runtime::typed_id::SessionId;
@@ -77,6 +78,8 @@ pub struct CollectedCapabilities {
     /// (e.g. AGENTS.md hierarchies) belongs here, below harness safety
     /// instructions in the instruction hierarchy.
     pub conversation_context_parts: Vec<String>,
+    /// Mutable reference data recorded as later conversation updates.
+    pub conversation_context_update_parts: Vec<String>,
     /// Source attribution for each conversation-context addition.
     pub conversation_context_attributions: Vec<SystemPromptAttribution>,
     /// Tool implementations for the registry
@@ -107,6 +110,8 @@ pub struct CollectedCapabilities {
     pub tool_call_hooks: Vec<Arc<dyn ToolCallHook>>,
     /// Scoped remote MCP servers contributed by capabilities.
     pub mcp_servers: ScopedMcpServers,
+    /// Requested tool surface resolved before prompt assembly.
+    pub tool_surface_plan: ToolSurfacePlan,
     // NOTE: output guardrails are intentionally NOT collected here. They are
     // re-derived per turn in `ReasonAtom` directly from the resolved capability
     // configs + registry, because they need the assembled system prompt at
@@ -140,6 +145,12 @@ impl CollectedCapabilities {
         } else {
             Some(self.conversation_context_parts.join("\n\n"))
         }
+    }
+
+    /// Combined current reference data for append-only conversation updates.
+    pub fn conversation_context_update(&self) -> Option<String> {
+        (!self.conversation_context_update_parts.is_empty())
+            .then(|| self.conversation_context_update_parts.join("\n\n"))
     }
 
     /// Apply all collected message filter providers to a query.
@@ -422,7 +433,15 @@ pub fn collect_capability_mcp_servers(
                 if let Some(contributed) = definition.mcp_servers {
                     servers = merge_scoped_mcp_servers(
                         &servers,
-                        &capability_mcp_servers_to_scoped(&contributed),
+                        &capability_mcp_servers_to_scoped_with_context(
+                            &contributed,
+                            cap_id,
+                            definition
+                                .display_name
+                                .as_deref()
+                                .unwrap_or(&definition.name),
+                            &definition.description,
+                        ),
                     );
                 }
             }
@@ -433,8 +452,15 @@ pub fn collect_capability_mcp_servers(
                 continue;
             }
             let contributed = capability.mcp_servers_with_config(cap_config.config_value());
-            servers =
-                merge_scoped_mcp_servers(&servers, &capability_mcp_servers_to_scoped(&contributed));
+            servers = merge_scoped_mcp_servers(
+                &servers,
+                &capability_mcp_servers_to_scoped_with_context(
+                    &contributed,
+                    cap_id,
+                    capability.name(),
+                    capability.description(),
+                ),
+            );
         }
     }
 
@@ -449,9 +475,14 @@ pub fn superseded_capability_ids(
 ) -> std::collections::HashSet<String> {
     capability_configs
         .iter()
-        .filter_map(|config| registry.get(config.capability_id()))
-        .filter(|capability| capability.status().is_active())
-        .flat_map(|capability| capability.supersedes())
+        .filter_map(|config| {
+            let capability = registry.get(config.capability_id())?;
+            capability
+                .status()
+                .is_active()
+                .then(|| capability.supersedes_with_config(config.config_value()))
+        })
+        .flatten()
         .map(str::to_string)
         .collect()
 }
@@ -519,6 +550,30 @@ pub async fn collect_capabilities_with_configs(
     registry: &CapabilityRegistry,
     ctx: &SystemPromptContext,
 ) -> CollectedCapabilities {
+    collect(capability_configs, registry, ctx, true).await
+}
+
+/// [`collect_capabilities_with_configs`] for a caller that runs tools and never
+/// builds a prompt, such as the tool executor.
+///
+/// Dynamic system-prompt and conversation-context contributions are skipped:
+/// they can read the session's files (AGENTS.md, the skills directory) on every
+/// call, and the result would be thrown away. Everything else, tools and hooks
+/// included, is collected exactly as for a prompt.
+pub async fn collect_capability_tools_with_configs(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
+) -> CollectedCapabilities {
+    collect(capability_configs, registry, ctx, false).await
+}
+
+async fn collect(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
+    dynamic_prompts: bool,
+) -> CollectedCapabilities {
     // Write paths reject capabilities sharing an exclusive group, and
     // dependency resolution fails on them. Stored config that predates that
     // check can still reach here through a resolution fallback: drop every
@@ -554,9 +609,28 @@ pub async fn collect_capabilities_with_configs(
         }
         _ => capability_configs,
     };
+    // Resolve the session-wide mode before any prompt or hook receives its
+    // context. Individual definitions are previewed below; late MCP operations
+    // are added by the execution host after it assembles the canonical registry.
+    let surface_mode = capability_configs
+        .iter()
+        .filter_map(|config| {
+            let cap = registry.get(config.capability_id())?;
+            if !cap.status().is_active() {
+                return None;
+            }
+            let effective = cap
+                .resolve_for_model(ctx.model.as_deref())
+                .unwrap_or(cap.as_ref());
+            Some(effective.tool_surface_mode_with_config(config.config_value()))
+        })
+        .find(|mode| *mode != ToolSurfaceMode::Native)
+        .unwrap_or_default();
+    let mut resolved_ctx = ctx.clone();
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut conversation_context_parts: Vec<String> = Vec::new();
+    let mut conversation_context_update_parts: Vec<String> = Vec::new();
     let mut conversation_context_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
@@ -594,6 +668,78 @@ pub async fn collect_capabilities_with_configs(
                     .features()
                     .contains(&sandbox_file_tools::MANAGED_SANDBOX_FEATURE)
         });
+    let mut preview_definitions_by_capability = HashMap::new();
+    let mut preview_definitions = Vec::new();
+    for config in capability_configs {
+        let id = config.capability_id();
+        if superseded.contains(id) {
+            continue;
+        }
+        let Some(capability) = registry.get(id) else {
+            continue;
+        };
+        if !capability.status().is_active() {
+            continue;
+        }
+        let effective: &dyn Capability = capability
+            .resolve_for_model(ctx.model.as_deref())
+            .unwrap_or(capability.as_ref());
+        let yields_files =
+            sandbox_owns_files && sandbox_file_tools::yields_file_tools(&effective.features());
+        let definitions: Vec<_> = effective
+            .tool_definitions_with_config(config.config_value())
+            .into_iter()
+            .filter(|definition| {
+                !(yields_files && sandbox_file_tools::is_session_file_tool(definition.name()))
+            })
+            .map(|definition| {
+                match (definition.category(), effective.category()) {
+                    (None, Some(category)) => definition.with_category(category),
+                    _ => definition,
+                }
+                .with_capability_context(
+                    id,
+                    Some(capability.name()),
+                    capability.description(),
+                )
+            })
+            .collect();
+        preview_definitions.extend(definitions.iter().cloned());
+        preview_definitions_by_capability.insert(id.to_string(), definitions);
+    }
+    let mut surface_plan = ToolSurfacePlan::for_mode(surface_mode);
+    // Every canonical preview definition has a native route unless an active
+    // adapter capability overrides it below. This lets ordinary capabilities
+    // inspect their own effective route even when no adapter was selected.
+    surface_plan.extend_definitions(&preview_definitions, |_| false);
+    let mut native_disclosure_policy = NativeToolDisclosurePolicy::default();
+    for config in capability_configs {
+        let id = config.capability_id();
+        if superseded.contains(id) {
+            continue;
+        }
+        let Some(capability) = registry.get(id) else {
+            continue;
+        };
+        let effective = capability
+            .resolve_for_model(ctx.model.as_deref())
+            .unwrap_or(capability.as_ref());
+        if let Some(policy) = effective
+            .native_tool_disclosure_policy_with_config(config.config_value(), &preview_definitions)
+        {
+            native_disclosure_policy.merge(policy);
+        }
+        let routes =
+            effective.tool_surface_routes_with_config(config.config_value(), &preview_definitions);
+        surface_plan.extend(routes);
+    }
+    surface_plan.set_native_disclosure_policy(native_disclosure_policy);
+    // Capability-owned route declarations describe their preferred surfaces;
+    // apply the combined schema policy to known definitions before prompts and
+    // definition hooks read the effective plan.
+    surface_plan.apply_native_disclosure_policy(&preview_definitions);
+    resolved_ctx.tool_surface_plan = surface_plan;
+    let ctx = &resolved_ctx;
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if superseded.contains(cap_id) {
@@ -626,7 +772,15 @@ pub async fn collect_capabilities_with_configs(
                     if let Some(ref servers) = definition.mcp_servers {
                         mcp_servers = merge_scoped_mcp_servers(
                             &mcp_servers,
-                            &capability_mcp_servers_to_scoped(servers),
+                            &capability_mcp_servers_to_scoped_with_context(
+                                servers,
+                                cap_id,
+                                definition
+                                    .display_name
+                                    .as_deref()
+                                    .unwrap_or(&definition.name),
+                                &definition.description,
+                            ),
                         );
                     }
                     for skill in definition.skill_contributions() {
@@ -686,7 +840,8 @@ pub async fn collect_capabilities_with_configs(
             let all_tools_yielded = tool_count > 0 && capability_tools.is_empty();
 
             // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
-            if !all_tools_yielded
+            if dynamic_prompts
+                && !all_tools_yielded
                 && let Some(contribution) = effective
                     .system_prompt_contribution_with_config(ctx, cap_config.config_value())
                     .await
@@ -702,15 +857,31 @@ pub async fn collect_capabilities_with_configs(
             // from filesystem). Renders as the leading user-role message of
             // every turn, never as system prompt, so untrusted workspace
             // content cannot share privilege with harness safety instructions.
-            if let Some(contribution) = effective
-                .conversation_context_contribution_with_config(ctx, cap_config.config_value())
-                .await
+            if dynamic_prompts
+                && let Some(contribution) = effective
+                    .conversation_context_contribution_with_config(ctx, cap_config.config_value())
+                    .await
             {
                 conversation_context_attributions.push(SystemPromptAttribution {
                     capability_id: cap_id.to_string(),
                     content: contribution.clone(),
                 });
                 conversation_context_parts.push(contribution);
+            }
+
+            if dynamic_prompts
+                && let Some(contribution) = effective
+                    .conversation_context_update_contribution_with_config(
+                        ctx,
+                        cap_config.config_value(),
+                    )
+                    .await
+            {
+                conversation_context_attributions.push(SystemPromptAttribution {
+                    capability_id: cap_id.to_string(),
+                    content: contribution.clone(),
+                });
+                conversation_context_update_parts.push(contribution);
             }
 
             // Collect declared facts. Static facts fold into the cached prompt
@@ -741,16 +912,13 @@ pub async fn collect_capabilities_with_configs(
             // for rationale. ReasonAtom re-derives them at stream-arming time.
 
             // Collect tool definitions, propagating capability category if not already set
-            let cap_category = effective.category();
-            for def in effective.tool_definitions_with_config(cap_config.config_value()) {
+            for def in preview_definitions_by_capability
+                .remove(cap_id)
+                .unwrap_or_default()
+            {
                 if !keeps_tool(def.name()) {
                     continue;
                 }
-                let def = match (def.category(), cap_category) {
-                    (None, Some(cat)) => def.with_category(cat),
-                    _ => def,
-                }
-                .with_capability_attribution(cap_id, Some(capability.name()));
                 tool_definitions.push(def);
             }
 
@@ -774,7 +942,12 @@ pub async fn collect_capabilities_with_configs(
             let contributed = effective.mcp_servers_with_config(cap_config.config_value());
             mcp_servers = merge_scoped_mcp_servers(
                 &mcp_servers,
-                &capability_mcp_servers_to_scoped(&contributed),
+                &capability_mcp_servers_to_scoped_with_context(
+                    &contributed,
+                    cap_id,
+                    effective.name(),
+                    effective.description(),
+                ),
             );
 
             // Normalize capability-contributed skills into mount points under
@@ -830,7 +1003,7 @@ pub async fn collect_capabilities_with_configs(
                 (None, Some(cat)) => def.with_category(cat),
                 _ => def,
             }
-            .with_capability_attribution(cap.id(), Some(cap.name()));
+            .with_capability_context(cap.id(), Some(cap.name()), cap.description());
             tool_definitions.push(def);
         }
         narration_hooks.push(Arc::new(CapabilityNarrationHook(cap.clone())));
@@ -873,6 +1046,7 @@ pub async fn collect_capabilities_with_configs(
         system_prompt_parts,
         system_prompt_attributions,
         conversation_context_parts,
+        conversation_context_update_parts,
         conversation_context_attributions,
         tools,
         tool_definitions,
@@ -886,6 +1060,7 @@ pub async fn collect_capabilities_with_configs(
         tool_definition_hooks,
         tool_call_hooks,
         mcp_servers,
+        tool_surface_plan: resolved_ctx.tool_surface_plan.clone(),
     }
 }
 
@@ -956,22 +1131,21 @@ pub async fn apply_capabilities(
     // leading user-role message, never as system prompt. Bound before fields
     // move out of `collected` below.
     let conversation_context = collected.conversation_context();
+    let conversation_context_update = collected.conversation_context_update();
     // Build tool registry from collected tools
     let mut tool_registry = ToolRegistry::new();
     for tool in collected.tools {
         tool_registry.register_boxed(tool);
     }
+    tool_registry.set_capability_contexts(&collected.tool_definitions);
 
     // Create modified runtime agent
-    let mut tools = collected.tool_definitions;
-    for hook in &collected.tool_definition_hooks {
-        tools = hook.transform(tools);
-    }
-
-    let runtime_agent = RuntimeAgent {
+    let mut runtime_agent = RuntimeAgent {
         system_prompt: final_system_prompt,
         model: base_runtime_agent.model,
-        tools,
+        tools: collected.tool_definitions,
+        catalog_tools: base_runtime_agent.catalog_tools,
+        model_tool_budget: base_runtime_agent.model_tool_budget,
         max_iterations: base_runtime_agent.max_iterations,
         temperature: base_runtime_agent.temperature,
         max_tokens: base_runtime_agent.max_tokens,
@@ -987,8 +1161,13 @@ pub async fn apply_capabilities(
         // Conversation context (e.g. hierarchical AGENTS.md) renders as the
         // leading user-role message, never as system prompt.
         conversation_context,
+        conversation_context_update,
         communication: base_runtime_agent.communication,
     };
+
+    for hook in &collected.tool_definition_hooks {
+        runtime_agent.apply_definition_hook(hook.as_ref());
+    }
 
     AppliedCapabilities {
         runtime_agent,

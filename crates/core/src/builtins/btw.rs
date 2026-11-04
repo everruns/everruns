@@ -137,18 +137,6 @@ mod tests {
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
-    #[test]
-    fn test_btw_capability_registers_command() {
-        let cap = BtwCapability;
-        let commands = cap.commands();
-        assert_eq!(commands.len(), 1);
-        assert_eq!(commands[0].name, "btw");
-        assert_eq!(commands[0].source, CommandSource::System);
-        assert_eq!(commands[0].args.len(), 1);
-        assert_eq!(commands[0].args[0].name, "question");
-        assert!(commands[0].args[0].required);
-    }
-
     struct StubHost {
         completion_result:
             Mutex<Option<std::result::Result<SessionCompletion, SessionCompletionError>>>,

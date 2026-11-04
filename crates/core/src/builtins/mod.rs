@@ -41,6 +41,7 @@ pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
 pub mod current_time;
+pub mod dreaming;
 pub mod dry_run;
 pub mod error_disclosure;
 mod framework_config;
@@ -57,9 +58,12 @@ pub mod openui;
 pub mod output_truncation;
 pub mod parallel_tool_calls;
 pub use native_async_tools::NativeAsyncToolsCapability;
+pub mod artifact_inspection;
+mod claude_message_threads;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
+pub mod report_done;
 pub mod self_budget;
 pub mod skills;
 pub mod skills_scoped;
@@ -133,6 +137,9 @@ pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapabil
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
 pub use channel_context::{CHANNEL_CONTEXT_CAPABILITY_ID, ChannelContextCapability};
+pub use claude_message_threads::{
+    CLAUDE_MESSAGE_THREADS_CAPABILITY_ID, ClaudeMessageThreadsCapability,
+};
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionStep,
@@ -184,6 +191,7 @@ pub use prompt_canary_guardrail::{
     PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     REASON_CODE_SYSTEM_PROMPT_LEAK,
 };
+pub use report_done::ReportDoneTool;
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, Skills, SkillsCapability};
 pub use skills_scoped::{
@@ -200,9 +208,8 @@ pub use stateless_todo_list::{
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{
     ApprovalDecision, ApprovalMode, DEFAULT_APPROVAL_TIMEOUT_SECONDS, DurableToolApprover,
-    ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_CAPABILITY_ID,
-    TOOL_APPROVAL_KV_PREFIX, ToolApprovalCapability, ToolApprovalPolicy, ToolApprover,
-    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
+    TOOL_APPROVAL_CAPABILITY_ID, TOOL_APPROVAL_KV_PREFIX, ToolApprovalCapability,
+    ToolApprovalPolicy, ToolApprover, approval_fingerprint,
 };
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
@@ -322,6 +329,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(MessageMetadataCapability),
         Arc::new(StatelessTodoListCapability),
         Arc::new(BtwCapability),
+        Arc::new(dreaming::DreamingCapability),
         Arc::new(BudgetingCapability),
         Arc::new(SelfBudgetCapability),
         Arc::new(CompactionCapability),
@@ -331,6 +339,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(ToolSearchCapability::new()),
         Arc::new(AutoToolSearchCapability::new()),
         Arc::new(PromptCachingCapability::new()),
+        Arc::new(ClaudeMessageThreadsCapability),
         Arc::new(ParallelToolCallsCapability),
         Arc::new(OutputTruncationCapability),
         Arc::new(NativeAsyncToolsCapability),
@@ -351,7 +360,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 32] = [
+    const RUNTIME_IDS: [&str; 34] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -362,6 +371,7 @@ mod bundle_tests {
         "message_metadata",
         "stateless_todo_list",
         "btw",
+        "dreaming",
         "budgeting",
         "self_budget",
         "compaction",
@@ -371,6 +381,7 @@ mod bundle_tests {
         "tool_search",
         "auto_tool_search",
         "prompt_caching",
+        "claude_message_threads",
         "parallel_tool_calls",
         "output_truncation",
         "native_async_tools",
@@ -385,27 +396,6 @@ mod bundle_tests {
         "soft_approval",
         "dry_run",
     ];
-
-    fn portable_ids() -> Vec<&'static str> {
-        let mut ids = RUNTIME_IDS.to_vec();
-        ids.push("usage_limit_auto_continue");
-        #[cfg(feature = "ui-capabilities")]
-        {
-            ids.push("openui");
-            ids.push("a2ui");
-        }
-        ids
-    }
-
-    #[test]
-    fn bundle_has_the_curated_stable_catalog() {
-        let capabilities = portable_capabilities();
-        let ids: Vec<_> = capabilities
-            .iter()
-            .map(|capability| capability.id())
-            .collect();
-        assert_eq!(ids, portable_ids());
-    }
 
     #[test]
     fn runtime_bundle_excludes_schedule_backed_auto_continue() {

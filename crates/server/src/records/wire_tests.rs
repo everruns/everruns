@@ -10,7 +10,9 @@ fn test_proto_agent_includes_capability_ids() {
 
     // Create an Agent with capabilities
     let id = Uuid::now_v7();
-    let agent = crate::domains::agents::record::Agent {
+    let mut agent = crate::domains::agents::record::Agent {
+        completion_check: Default::default(),
+        localizations: Default::default(),
         is_built_in: false,
         avatar: None,
         service_virtual_user_id: None,
@@ -28,6 +30,7 @@ fn test_proto_agent_includes_capability_ids() {
         harness_id: everruns_contracts::typed_id::HarnessId::new(),
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec!["slack:thread:123.456".to_string()],
         capabilities: vec![
             AgentCapabilityConfig::new("tools:read_file"),
@@ -51,6 +54,11 @@ fn test_proto_agent_includes_capability_ids() {
         deleted_at: None,
         usage: None,
     };
+
+    agent.is_built_in = true;
+    agent.name = crate::platform_chat_agent::NAME.into();
+    crate::platform_chat_agent::add_page_tools(&mut agent, true);
+    let expected_tools = serde_json::to_value(&agent.tools).unwrap();
 
     // Convert to proto
     let proto_agent = schema_agent_to_proto(&agent);
@@ -82,65 +90,10 @@ fn test_proto_agent_includes_capability_ids() {
     assert!(cap_ids.contains(&"tools:read_file"));
     assert!(cap_ids.contains(&"tools:write_file"));
     assert_eq!(schema_agent.max_output_tokens, Some(4096));
-}
-
-#[test]
-fn test_proto_agent_without_capabilities() {
-    use chrono::Utc;
-    use uuid::Uuid;
-
-    // Create an Agent without capabilities
-    let id = Uuid::now_v7();
-    let agent = crate::domains::agents::record::Agent {
-        is_built_in: false,
-        avatar: None,
-        service_virtual_user_id: None,
-
-        public_id: everruns_contracts::typed_id::AgentId::from_uuid(id),
-        internal_id: id,
-        name: "test-agent".to_string(),
-        display_name: Some("Test Agent".to_string()),
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt: "You are a helpful assistant".to_string(),
-        default_model_id: None,
-        harness_id: everruns_contracts::typed_id::HarnessId::new(),
-        forked_from_agent_id: None,
-        root_agent_id: None,
-        tags: vec!["slack:thread:123.456".to_string()],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        max_output_tokens: None,
-        communication: Default::default(),
-        sandbox_policy: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: crate::domains::agents::record::AgentStatus::Active,
-        exposures_suspended: false,
-        exposed: false,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
-    };
-
-    // Convert to proto
-    let proto_agent = schema_agent_to_proto(&agent);
-
-    // Verify capability_ids are empty
-    assert!(proto_agent.capability_ids.is_empty());
-
-    // Convert back to schema
-    let schema_agent = proto_agent_to_schema(proto_agent).unwrap();
-
-    // Verify capabilities remain empty
-    assert!(schema_agent.capabilities.is_empty());
+    assert_eq!(
+        serde_json::to_value(schema_agent.tools).unwrap(),
+        expected_tools
+    );
 }
 
 #[test]
@@ -154,6 +107,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         // Equality invariant: workspace.id == session.id for default sessions.
@@ -172,6 +126,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         locale: None,
         preview: None,
         output_preview: None,
+        last_message_at: None,
         tags: vec!["slack:thread:123.456".to_string()],
         model_id: None,
         capabilities: vec![AgentCapabilityConfig::new("session")],
@@ -344,6 +299,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
@@ -361,10 +317,19 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         locale: None,
         preview: None,
         output_preview: None,
+        last_message_at: None,
         tags: vec![],
         model_id: None,
         capabilities: vec![AgentCapabilityConfig::new("session")],
-        tools: vec![],
+        tools: vec![
+            serde_json::from_value(serde_json::json!({
+                "type": "client_side",
+                "name": "create_ticket",
+                "description": "Open a helpdesk ticket.",
+                "parameters": {"type": "object"},
+            }))
+            .unwrap(),
+        ],
         system_prompt: None,
         initial_files: vec![],
         hints: None,
@@ -403,4 +368,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
     // The bad entry is dropped; the valid capability survives.
     assert_eq!(schema_session.capabilities.len(), 1);
     assert_eq!(schema_session.capabilities[0].capability_id(), "session");
+    // Session client-side tools cross the worker protocol intact.
+    assert_eq!(schema_session.tools.len(), 1);
+    assert_eq!(schema_session.tools[0].name(), "create_ticket");
 }

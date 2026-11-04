@@ -1,6 +1,7 @@
 //! A session runs in one process at a time: each turn holds the session's
 //! lease in the local database, which every process on the data directory
 //! shares.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::time::Duration;
 

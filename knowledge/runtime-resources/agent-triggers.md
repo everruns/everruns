@@ -161,6 +161,43 @@ Each signed delivery is an event whose id is the delivery's `webhook-id`;
 `subject_template` can make one, for `per_thread`. Behind the `mcp_events`
 flag. See `knowledge/integrations/mcp-events.md`.
 
+## Manual fire
+
+`POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger` (CLI
+`everruns agents triggers trigger`, the same command over MCP) runs a trigger
+now. Without a body it runs a schedule trigger as a tick would. With an
+`event` it runs any trigger type on that event, and the event takes the
+trigger's real path: the source's own normalization (webhook request, GitHub
+event, MCP event, or a schedule `payload`), then the event pipeline above, so
+it meets the same filter, message, `per_thread` routing and delivery log.
+Owned by `crates/server/src/domains/agent_triggers/manual.rs`.
+
+Decisions:
+
+- **Recorded, not disguised.** The delivery source and `invocation.source`
+  are `manual`. The event id is fresh unless the caller names one (or a
+  webhook trigger's `event_id_template` renders one), so a test fire runs, and
+  repeating a real id tests deduplication.
+- **Source authentication is skipped, not faked.** The caller holds
+  `agent.manage`, the right that edits the trigger's message and filter. The
+  GitHub own-bot drop does not apply: the person asked for the event.
+- **Explicit over silent.** An event a GitHub trigger does not subscribe to,
+  or a field the trigger type has no use for, is refused with the reason. A
+  filter miss returns `status: filtered` with the condition it missed;
+  `duplicate` likewise. Webhook, GitHub and MCP event triggers refuse a fire
+  without an event, since they have nothing to run on.
+- **Raw or by reference.** An event is given raw, as the source sends it
+  (`payload`, plus `name` for the GitHub event or MCP event and `headers` for a
+  webhook), or by a reference the trigger type resolves. GitHub resolves
+  `{repository, pull_request}` by reading the pull request through the agent's
+  own GitHub connection (pull requests read, that repository only) and building
+  the `pull_request` event GitHub would send, with the first pull request
+  action the trigger listens to. A manual review therefore lands in the pull
+  request's own session, next to the ones real deliveries open.
+- **No stored payloads.** Delivery rows keep no event bodies (they carry
+  third-party content), so replaying a past delivery means sending its event
+  again; a reference is the short way to do that for pull requests.
+
 ## Ownership and provenance
 
 Trigger sessions are owned by the **agent's own `agent_identity` principal**, so
@@ -174,6 +211,33 @@ a guarded write that only sets the link when it is still NULL. An
 explicitly-linked identity is never overridden, and subsequent fires reuse the
 same identity. That identity principal is the stable key the `shared_session`
 reuse lookup matches on. See `knowledge/runtime-resources/agent-identities.md` for the identity model.
+
+## Channel conversation targets
+
+A schedule trigger may carry a target: one of the agent's own Slack channels
+and a binding key on it (`slack:user:{U}` or `slack:channel:{C}`). Such a run
+skips the tag-keyed session above and goes through the channel host
+(`ChannelHost::send_in_conversation`): the session is the one a message from
+that conversation binds, created and bound on the first run, and the turn's
+replies are delivered and recovered like an inbound message's. The session is
+owned and attributed as the channel's, not the agent identity's, because it is
+the channel's conversation.
+
+Why the host and not a trigger-side lookup: a person who talks to the agent in
+a Slack DM and gets a 07:00 briefing must see one history, and only the
+channel's binding table can say which session that is. Rejected alternative: a
+trigger that keeps its own session and posts into Slack, which splits the
+conversation and cannot see what the person said.
+
+Who may target what is checked on write (only the agent's own live Slack
+channel, a key the channel's binding produces, `agent:manage`) and again on
+every run. A run whose channel can no longer post fails and records a
+`failed` delivery; it never falls back to a tag session, so a retired channel
+is visible instead of silently moving the conversation elsewhere. Design
+record: the "Schedules that run in a Slack conversation" decision (D2/D3),
+with D1 in `channels/slack/actions/post_message.rs` (`scheduled_target`).
+Source: `crates/server/src/domains/agent_triggers/channel_target.rs`,
+`crates/server/src/channels/slack/scheduled.rs`.
 
 ## Relationship to App schedule channels
 

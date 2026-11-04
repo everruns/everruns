@@ -1,7 +1,7 @@
 //! The backend conformance suite: the scenarios every turn backend must pass.
 //!
-//! Engine scenarios run on an engine's sessions, which run as actors
-//! (`ActorRunner`: in process, under the session's lease). The entry-point
+//! Engine scenarios use the shared session actor and authority-owned admissions.
+//! Executor-loss scenarios use an independently controlled epoch. The entry-point
 //! scenarios start the same turns directly on `InProcessBackend` and on
 //! `ActorRunner` and require the same outcome: the turns' answers and shape
 //! (stop reason, iterations, tool calls), the session's persisted event types

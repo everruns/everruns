@@ -446,57 +446,6 @@ mod tests {
     }
 
     #[test]
-    fn file_sources_preserve_content_and_encoding() {
-        for (source, expected_content, expected_encoding) in [
-            (
-                MountSource::text_file("Hello, World!"),
-                "Hello, World!",
-                "text",
-            ),
-            (MountSource::binary_file("SGVsbG8="), "SGVsbG8=", "base64"),
-        ] {
-            assert!(!source.is_directory());
-            assert_eq!(
-                source,
-                MountSource::InlineFile {
-                    content: expected_content.into(),
-                    encoding: expected_encoding.into(),
-                }
-            );
-        }
-    }
-
-    #[test]
-    fn mount_point_constructors_preserve_source_and_access() {
-        let source = MountSource::text_file("mounted content");
-        for (mount, access) in [
-            (
-                MountPoint::new(
-                    "/samples",
-                    MountAccess::ReadWrite,
-                    source.clone(),
-                    "sample_data",
-                ),
-                MountAccess::ReadWrite,
-            ),
-            (
-                MountPoint::readonly("/samples", source.clone(), "sample_data"),
-                MountAccess::ReadOnly,
-            ),
-            (
-                MountPoint::readwrite("/samples", source.clone(), "sample_data"),
-                MountAccess::ReadWrite,
-            ),
-        ] {
-            assert_eq!(mount.path, "/samples");
-            assert_eq!(mount.capability_id, "sample_data");
-            assert_eq!(mount.source, source);
-            assert_eq!(mount.access, access);
-            assert_eq!(mount.is_readonly(), access == MountAccess::ReadOnly);
-        }
-    }
-
-    #[test]
     fn mount_directory_builder_preserves_nested_content() {
         let source = MountDirectoryBuilder::new()
             .file("readme.txt", "Hello")

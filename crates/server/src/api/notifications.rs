@@ -275,7 +275,7 @@ pub async fn stream_notifications_sse(
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Ok(Sse::new(guarded_stream).keep_alive(keep_alive))
+    Ok(Sse::new(super::sse::end_on_shutdown(guarded_stream, &config)).keep_alive(keep_alive))
 }
 
 struct GuardedStream<S> {

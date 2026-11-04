@@ -1,6 +1,7 @@
 # Infrastructure and operations
 
 * [Production Deployment Specification](production-deployment.md) - Production deployment aggregation and reverse proxy contract.
+* [Local Setup and Kubernetes](local-setup.md) - `everruns docker up` on a person's machine; Helm chart, not an operator, for Kubernetes.
 * [Migrations Specification](migrations.md) - Database migration naming, squashing, ordering, conflict resolution.
 * [Caching and Distributed Rate Limiting](cache.md) - Valkey rate limiting and in-process moka caching.
 * [Durable Execution Engine Specification](durable-execution-engine.md) - PostgreSQL-backed durable workflow engine.
@@ -15,6 +16,8 @@
 * [Localization And Timezone Resolution](localization.md) - Locale/timezone resolution and backend localization rules.
 * [Notifications](notifications.md) - Generic user notifications.
 * [Actionable Health Issues](health-issues.md) - Persistent operational issues and verified recovery through notifications.
+* [Background Work Limits](background-limits.md) - Lifetime, stop condition and spend caps on unattended schedules and triggers.
+* [System Doctor](system-doctor.md) - Whole-install health checks in plain language, adapted to every hosting mode.
 * [Email Sending](email.md) - Internal email delivery abstraction.
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.
@@ -22,3 +25,7 @@
 * [OpenRouter Decisions Proposal](openrouter-decisions-proposal.md) - Provider service and catalog design.
 * [Voice Channels on the Platform Server](voice.md) - How the server runs voice calls: voice channel type, call routes, delegated voice loop, leases and events.
 * [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.
+
+* [Customer-hosted Custom Workers](custom-workers.md) - Restricted agent-scoped execution, persistent routing and customer-owned private tools.
+
+* [DataFusion Trace Storage](trace-storage.md) - Experimental object-backed event segments and bounded analytical queries.

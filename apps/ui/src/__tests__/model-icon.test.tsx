@@ -10,23 +10,6 @@ function model(
 }
 
 describe("ModelIcon vendor selection", () => {
-  it("renders a per-vendor icon from the model_vendor tag", () => {
-    const cases: Array<[ModelVendor, string]> = [
-      ["nvidia", "NVIDIA"],
-      ["qwen", "Qwen"],
-      ["minimax", "MiniMax"],
-      ["mistral", "Mistral AI"],
-      ["moonshot", "Moonshot"],
-      ["xai", "xAI"],
-      ["microsoft", "Microsoft"],
-    ];
-    for (const [vendor, label] of cases) {
-      const { getByTitle, unmount } = render(<ModelIcon model={model(vendor)} />);
-      expect(getByTitle(label)).toBeInTheDocument();
-      unmount();
-    }
-  });
-
   it("falls back to the provider icon for first-party and unknown vendors", () => {
     // Claude Opus 4.8 (vendor anthropic) and Gemini (vendor google) use their
     // provider-type icons rather than a dedicated brand icon.

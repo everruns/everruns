@@ -1,0 +1,287 @@
+"use client";
+
+import { useUiTranslations } from "@/providers/locale-provider";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
+import { collectionDraftSchema } from "@/components/chat-mode/page-form-schemas";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useModels } from "@/hooks/use-providers";
+import { useOrg } from "@/providers/org-provider";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  listKnowledgeIndexers,
+  type KnowledgeCollection,
+  type CollectionInput,
+  type IndexMode,
+} from "@/lib/api/knowledge";
+
+const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
+
+// The server canonicalizes object keys. Formatting alone must not keep a saved
+// form dirty and block saved-change Undo; invalid JSON still stays a dirty draft.
+function comparableRules(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), (_key, value) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, value[key]]),
+          )
+        : value,
+    );
+  } catch {
+    return text;
+  }
+}
+
+export function CollectionForm({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial?: KnowledgeCollection;
+  onSave: (input: CollectionInput) => Promise<unknown>;
+  onCancel?: () => void;
+}) {
+  const ui = useUiTranslations();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [mode, setMode] = useState<IndexMode>(initial?.indexing ?? "off");
+  const [model, setModel] = useState(
+    initial?.embedding_model_id ? `model_${initial.embedding_model_id.replaceAll("-", "")}` : "",
+  );
+  const [indexer, setIndexer] = useState(initial?.indexer_id ?? "");
+  const [rules, setRules] = useState(
+    JSON.stringify(
+      initial?.rules && Object.keys(initial.rules).length
+        ? initial.rules
+        : { ingest_exclude: [], index_exclude: [], read_exclude: [] },
+      null,
+      2,
+    ),
+  );
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const { data: models } = useModels();
+  const { currentOrg } = useOrg();
+  const accounts = useQuery({
+    queryKey: ["knowledge-indexers", currentOrg?.public_id],
+    queryFn: listKnowledgeIndexers,
+    enabled: !!currentOrg,
+  });
+  const values = { name, description, mode, model, indexer, rules };
+  const savedValues = {
+    name: initial?.name ?? "",
+    description: initial?.description ?? "",
+    mode: initial?.indexing ?? "off",
+    model: initial?.embedding_model_id
+      ? `model_${initial.embedding_model_id.replaceAll("-", "")}`
+      : "",
+    indexer: initial?.indexer_id ?? "",
+    rules: JSON.stringify(
+      initial?.rules && Object.keys(initial.rules).length
+        ? initial.rules
+        : { ingest_exclude: [], index_exclude: [], read_exclude: [] },
+      null,
+      2,
+    ),
+  };
+  const apply = (next: typeof values) => {
+    setName(next.name);
+    setDescription(next.description);
+    setMode(next.mode);
+    setModel(next.model);
+    setIndexer(next.indexer);
+    setRules(next.rules);
+  };
+  const comparableValues = { ...values, rules: comparableRules(values.rules) };
+  const comparableSavedValues = { ...savedValues, rules: comparableRules(savedValues.rules) };
+  usePageFormPrefill({
+    identity: initial?.id ?? "new",
+    open: !!initial,
+    values: comparableValues,
+    saved: comparableSavedValues,
+    apply,
+  });
+  const chatDraft = usePageFormDraft({
+    schema: collectionDraftSchema,
+    values,
+    entityId: initial?.id,
+    entityType: "knowledge_collection",
+    formId: "settings",
+    label: initial?.name ?? "New collection",
+    baseline: String(initial?.revision ?? "new"),
+    dirty: JSON.stringify(comparableValues) !== JSON.stringify(comparableSavedValues),
+    writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
+    readonlyFields: initial?.name === "everruns-docs" ? ["name"] : [],
+    apply,
+  });
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (chatDraft.blocked) return;
+        setError("");
+        setPending(true);
+        try {
+          await onSave({
+            name,
+            description,
+            indexing: mode,
+            embedding_model_id: mode === "hybrid" ? model : null,
+            indexer_id: indexer || null,
+            rules: JSON.parse(rules),
+          });
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Unable to save collection");
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      {chatDraft.notice}
+      <div className="space-y-2">
+        <Label htmlFor="knowledge-name">{ui("Name")}</Label>
+        <Input
+          id="knowledge-name"
+          required
+          maxLength={255}
+          value={name}
+          disabled={initial?.name === "everruns-docs"}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="knowledge-description">{ui("Description")}</Label>
+        <Textarea
+          id="knowledge-description"
+          maxLength={4096}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={ui("What should an agent use this collection for?")}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="knowledge-indexing">{ui("Indexing")}</Label>
+        <select
+          id="knowledge-indexing"
+          className={selectClass}
+          value={mode}
+          onChange={(e) => setMode(e.target.value as IndexMode)}
+        >
+          <option value="off">{ui("Off · browse, mount and grep")}</option>
+          <option value="lexical">{ui("Keyword search")}</option>
+          <option value="hybrid">{ui("Hybrid · keyword and semantic search")}</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          {ui(
+            "Original files stay available independently of indexing. Hybrid indexing uses your selected embedding provider.",
+          )}
+        </p>
+      </div>
+      {mode !== "off" && (
+        <div className="space-y-2">
+          <Label htmlFor="knowledge-indexer">{ui("Search account")}</Label>
+          <select
+            id="knowledge-indexer"
+            className={selectClass}
+            value={indexer}
+            onChange={(e) => setIndexer(e.target.value)}
+          >
+            <option value="">{ui("Deployment default")}</option>
+            {accounts.data?.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {ui(
+              "Keyword search works locally. Hybrid search requires a configured vector search account.",
+            )}
+          </p>
+        </div>
+      )}
+      {mode === "hybrid" && (
+        <div className="space-y-2">
+          <Label htmlFor="knowledge-model">{ui("Embedding model")}</Label>
+          <select
+            id="knowledge-model"
+            className={selectClass}
+            required
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          >
+            <option value="">{ui("Select an embedding model")}</option>
+            {models
+              ?.filter((m) => m.enabled && m.service === "embeddings")
+              .map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.provider_name} / {m.model_id}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+      <details>
+        <summary className="cursor-pointer text-sm">{ui("File exclusions")}</summary>
+        <div className="mt-3 space-y-2">
+          <Label htmlFor="knowledge-rules">{ui("Path rules")}</Label>
+          <Textarea
+            id="knowledge-rules"
+            className="font-mono text-xs"
+            rows={7}
+            value={rules}
+            onChange={(e) => setRules(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            {ui(
+              "Ingestion omits files entirely; indexing controls search; read exclusions also hide files from agents.",
+            )}
+          </p>
+        </div>
+      </details>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending || chatDraft.blocked} variant="accent">
+          {pending ? ui("Saving…") : initial ? ui("Save settings") : ui("Create collection")}
+        </Button>
+        {chatDraft.blocked && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setName(initial?.name ?? "");
+              setDescription(initial?.description ?? "");
+              setMode(initial?.indexing ?? "off");
+              setModel(
+                initial?.embedding_model_id
+                  ? `model_${initial.embedding_model_id.replaceAll("-", "")}`
+                  : "",
+              );
+              setIndexer(initial?.indexer_id ?? "");
+              setRules(savedValues.rules);
+            }}
+          >
+            {ui("Discard")}
+          </Button>
+        )}
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            {ui("Cancel")}
+          </Button>
+        )}
+      </div>
+    </form>
+  );
+}

@@ -1,7 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ChevronDown, X } from "lucide-react";
-import { CHATGPT_USAGE_URL } from "@/lib/api/chatgpt";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -9,27 +9,33 @@ interface ChatErrorAlertProps {
   message: string;
   description?: string;
   details?: string | null;
+  /** False when resending cannot help (quota, keys, budgets); the card then says so. */
+  retryable?: boolean;
+  /** Shown under the message, e.g. "Continue this turn" for a usage policy's ask step. */
+  action?: ReactNode;
   className?: string;
-  manageChatGptUsage?: boolean;
 }
 
 export function ChatErrorAlert({
   message,
   description,
   details,
+  retryable = true,
+  action,
   className,
-  manageChatGptUsage,
 }: ChatErrorAlertProps) {
   const { t } = useLocale();
   const displayMessage = message.trim() || t("chat_error_fallback");
   const trimmedDetails = details?.trim();
-  const displayDescription = description?.trim() || t("chat_error_description");
+  const displayDescription =
+    description?.trim() ||
+    (retryable ? t("chat_error_description") : t("chat_error_action_description"));
 
   return (
     <div
       role="alert"
       className={cn(
-        "animate-chat-row-in w-full rounded-lg border border-border/80 bg-card/95 px-4 py-3 text-left shadow-[0_12px_36px_hsl(var(--foreground)/0.06),inset_0_1px_0_hsl(var(--background)/0.92)]",
+        "animate-chat-row-in w-full rounded-lg border border-border/80 bg-card px-4 py-3 text-left",
         className,
       )}
     >
@@ -41,16 +47,7 @@ export function ChatErrorAlert({
       <div className="mt-3 rounded-md bg-muted/70 px-3 py-2 font-mono text-sm leading-5 text-foreground">
         {displayMessage}
       </div>
-      {manageChatGptUsage && (
-        <a
-          href={CHATGPT_USAGE_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-3 inline-block text-sm underline"
-        >
-          Manage ChatGPT usage
-        </a>
-      )}
+      {action}
       {trimmedDetails ? (
         <details className="group mt-2">
           <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground marker:hidden">

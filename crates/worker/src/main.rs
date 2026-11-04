@@ -29,6 +29,8 @@ async fn main() -> Result<()> {
     let _telemetry_guard = init_telemetry(telemetry_config);
 
     tracing::info!("everrun-worker starting...");
+    // Pre-compile the embedded CPython payload (see ensure_cpython_warm).
+    everruns_integrations::bashkit::tools_in_shell::ensure_cpython_warm();
 
     WorkerAppBuilder::new(TaskWorkerConfig::from_env())
         .run()

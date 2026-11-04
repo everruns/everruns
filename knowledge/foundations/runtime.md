@@ -37,6 +37,14 @@ with durable execution.
 6. Provide a supported host adapter contract so durable/server-backed execution
    can reuse runtime-owned phase orchestration.
 
+## Stack use
+
+Nested in-process delegation must fit ordinary thread stacks. Turn entry keeps
+engine-loop state on the heap so entry wrappers do not embed and repeatedly move
+that state on the caller's stack. The [nested delegation acceptance test](../../crates/everruns/tests/local/local_spawn_agent_runtime_test.rs)
+guards the entry future footprint and exercises both background spawning and
+foreground handoff.
+
 ## Position in the Stack
 
 Core’s optional `host` module composes its `engine` module over the portable
@@ -69,7 +77,7 @@ own backends through the same contracts.
 ## Public Contract
 
 The public entrypoint is `InProcessRuntimeBuilder` in
-`crates/core/src/host/runtime.rs`.
+`crates/core/src/host/runtime/mod.rs`.
 
 ### Builder responsibilities
 
@@ -370,7 +378,7 @@ externally implementable.
 
 `HostBackends` carries a uniform set of optional, additive backend slots that
 the host forwards into `ActAtom` when present (see
-`crates/core/src/host/runtime.rs` and `crates/core/src/host/runtime_host.rs`):
+`crates/core/src/host/runtime/mod.rs` and `crates/core/src/host/runtime_host.rs`):
 
 - `session_task_registry`, persists background-tool / subagent / monitor task
   lifecycle (`everruns_core::session_task::SessionTaskRegistry`).
@@ -417,12 +425,19 @@ due-ordering and the batch limit so inactive sessions cannot consume a batch or
 starve deliverable work. The runner heartbeats live claims, recovers stale
 claims, advances recurring cron occurrences in their IANA timezone, and
 disables successful one-shots. It delivers the stored prompt through the host's
-existing `LocalSessionRunner::send_message` implementation; storage never owns
-session execution. Failed deliveries retain the occurrence and diagnostic
+`LocalSessionRunner::deliver_occurrence`, which defaults to `send_message`;
+storage never owns session execution. Failed deliveries retain the occurrence and diagnostic
 error, then wait `claim_timeout` before retry so a disappearing route cannot
 cause poll-rate claim churn. Shutdown stops new claims and waits for an active
 delivery; forced abort leaves the lease for stale recovery. See `crates/everruns/src/local/`
 for the public lifecycle API and tests.
+
+Hosted and embedded recurring session schedules discard cron candidates at or
+before the reference UTC instant. During a repeated IANA wall-clock hour, the
+cron iterator may yield the other offset's already-past instant first; accepting
+it would immediately make the schedule due again. The timezone still determines
+the cron's wall-clock fields. Fixed-time regressions cover both occurrences of
+the repeated hour in the hosted service and local store.
 
 The session log is the record of a schedule: creating one appends `timer.set`
 to the session, each delivered occurrence `timer.fired`, cancelling
@@ -435,9 +450,14 @@ timers are journal entries and any due-work index is derived from them.
 
 This boundary provides at-least-once delivery across process failure. Atomic
 claims prevent duplicate delivery by concurrent healthy runners, but a crash
-after `send_message` accepts the prompt and before SQLite commits completion
-can retry that occurrence. Hosts should keep scheduled turns idempotent across
-that unavoidable external-delivery window.
+after the host accepts the prompt and before SQLite commits completion can
+retry that occurrence. Each occurrence therefore carries a stable admission
+identity derived from the schedule, its trigger count and its due time. Hosts
+with durable admissions (registered SQLite Engine hosting) admit it with
+`send_with_id`, so a retry reopens the original admission and outcome and the
+turn runs once; any committed outcome, a failed turn included, completes the
+occurrence. Other hosts deliver it as an ordinary message and should keep
+scheduled turns idempotent across that external-delivery window.
 
 ## Context and Capabilities
 
@@ -521,7 +541,7 @@ test binaries in `crates/everruns/tests/host/`.
 
 - `crates/core/src/host/mod.rs`
 - `crates/core/src/host/builders.rs`
-- `crates/core/src/host/runtime.rs`
+- `crates/core/src/host/runtime/mod.rs`
 - `crates/core/src/host/runtime_host.rs`
 - `crates/core/src/host/in_memory.rs`
 - `crates/core/src/host/backends.rs`

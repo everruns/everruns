@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
 
-async fn resolve_agent(
+pub(super) async fn resolve_agent(
     ctx: &Ctx,
     id_or_name: &str,
 ) -> Result<crate::storage::AgentRow, CommandError> {
@@ -43,11 +43,14 @@ pub(crate) async fn find_agent(
 }
 
 fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, CommandError> {
+    let agent_id = row.agent_public_id.parse::<AgentId>().ok();
     let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
-    Ok(redact_channel_for_response(channel.into_channel()))
+    let mut channel = channel.into_channel();
+    channel.agent_id = agent_id;
+    Ok(redact_channel_for_response(channel))
 }
 
-fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {
+pub(super) fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {
     let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
     let mut config = channel.channel_config;
     if let Some(auth) = channel.auth
@@ -200,6 +203,12 @@ impl Command for CreateAgentChannel {
         }
         let agent = resolve_agent(ctx, &self.agent_id).await?;
         let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent).await?;
+        crate::domains::agents::source::ensure_channel_writable(
+            ctx,
+            agent.id,
+            &self.req.channel_config,
+        )
+        .await?;
         let mut config = self.req.channel_config;
         // A builder may configure transport credentials, but cannot select an
         // arbitrary managed app for deletion via forged install metadata.
@@ -267,6 +276,16 @@ impl Command for UpdateAgentChannelCmd {
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
+        if let Some(config) = &self.req.channel_config {
+            crate::domains::agents::source::ensure_channel_writable(
+                ctx,
+                agent.id,
+                &existing.channel_config,
+            )
+            .await?;
+            // A local channel cannot claim a source-owned package name either.
+            crate::domains::agents::source::ensure_channel_writable(ctx, agent.id, config).await?;
+        }
         if existing.channel_type == "slack" {
             // Cleanup must not be followed by a stale settings write restoring
             // the deleted app's credentials. Hold through the command commit.
@@ -450,6 +469,18 @@ impl Command for DeleteAgentChannel {
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
+        if let Some(existing) = ctx
+            .db
+            .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
+            .await?
+        {
+            crate::domains::agents::source::ensure_channel_writable(
+                ctx,
+                agent.id,
+                &existing.channel_config,
+            )
+            .await?;
+        }
         super::slack_cleanup::remove_channel_app(ctx, agent.id.uuid(), &self.channel_id).await?;
         let deleted = ctx
             .db

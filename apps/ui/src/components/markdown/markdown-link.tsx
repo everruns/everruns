@@ -4,6 +4,7 @@ import { Globe2, type LucideIcon } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { TwitterIcon as Twitter } from "@/components/icons/twitter-icon";
 import { type AnchorHTMLAttributes, type ComponentType } from "react";
+import { navigationItemForPath } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 export type MarkdownLinkKind = "everruns" | "github" | "twitter" | "web";
@@ -79,8 +80,24 @@ export function getMarkdownLinkKind(href?: string): MarkdownLinkKind | null {
   return null;
 }
 
-function LinkIcon({ kind }: { kind: MarkdownLinkKind }) {
+/** The in-app path an Everruns link points at, or `null` for another Everruns host. */
+function everrunsAppPath(href: string): string | null {
+  try {
+    const origin = getCurrentOrigin() ?? "https://everruns.invalid";
+    const url = new URL(href.trim(), origin);
+    return url.origin === origin ? url.pathname : null;
+  } catch {
+    return null;
+  }
+}
+
+function LinkIcon({ kind, href }: { kind: MarkdownLinkKind; href: string }) {
   if (kind === "everruns") {
+    // Links into the app carry the icon of the page they open (an agent link shows the
+    // agent icon, a harness link the harness icon); the rings mark only the rest.
+    const path = everrunsAppPath(href);
+    const NavIcon = path ? navigationItemForPath(path)?.icon : undefined;
+    if (NavIcon) return <NavIcon aria-hidden="true" className="markdown-link-icon" />;
     return <span aria-hidden="true" className="markdown-link-icon markdown-link-everruns-icon" />;
   }
 
@@ -107,7 +124,7 @@ export const MarkdownLink: ComponentType<AnchorHTMLAttributes<HTMLAnchorElement>
       rel="noopener noreferrer"
       className={cn(kind && "markdown-link-with-icon", className)}
     >
-      {kind && <LinkIcon kind={kind} />}
+      {kind && href && <LinkIcon kind={kind} href={href} />}
       {children}
     </a>
   );

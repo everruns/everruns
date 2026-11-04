@@ -1,22 +1,22 @@
-version: 0.48.0
-date: 2026-10-13
+version: 0.50.1
+date: 2026-10-31
 headline:
-  - Agents in Slack,
-  - Stable Agent API.
+  - Customer-hosted
+  - agent workers.
 summary:
-  - Durable actors replace the workflow model.
-  - Web search tools with citations.
-  - Agents in Slack take DMs and files.
+  - System health doctor checks the install.
+  - Sandbox snapshots from install scripts.
+  - Agent cost estimates, Framework batches.
 highlights:
-  - title: Durable actor model
-    description: Sessions run as durable actors instead of workflows and survive worker failures.
-    source: "#4629"
-  - title: Stable Agent API
-    description: "Call one agent from code with a key: stream replies, answer questions, approve tools."
-    source: "#4527"
-  - title: Web search tools
-    description: One web_search tool on Brave, Parallel, Cloudflare or native search, with citations.
-    source: "#4551"
-  - title: Agents in Slack
-    description: One-click Slack apps answer DMs, receive files and post scheduled turns.
-    source: "#4597"
+  - title: Customer-hosted workers
+    description: Your own agent runtime over HTTPS, with Everruns sessions and traces.
+    source: "#5057"
+  - title: System health
+    description: One report checks every part of a self-hosted install.
+    source: "#4971"
+  - title: Sandbox snapshot builder
+    description: Sandbox snapshots built from install scripts on Daytona and verified.
+    source: "#5040"
+  - title: Cost estimates
+    description: Per-task and monthly model spend from an agent's configuration.
+    source: "#5050"

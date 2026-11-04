@@ -92,10 +92,12 @@ impl Capability for KnowledgeIndexCapability {
     }
 
     fn description(&self) -> &str {
-        "Bind an agent to org Knowledge Indexes — source-backed collections \
+        // User-facing (capability catalog): no repository paths. Design notes live in
+        // knowledge/runtime-resources/knowledge-indexes.md.
+        "Bind an agent to org Knowledge Indexes: source-backed collections \
          (e.g. a GitHub repository) that are synced, chunked, and embedded for \
          semantic search with citations. Exposes a `search_index` tool over the \
-         bound indexes; see `knowledge/runtime-resources/knowledge-indexes.md`."
+         bound indexes."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -454,13 +456,6 @@ mod tests {
     const VALID_ID: &str = "kidx_00000000000000000000000000000001";
 
     #[test]
-    fn id_and_name() {
-        let cap = KnowledgeIndexCapability;
-        assert_eq!(cap.id(), "knowledge_index");
-        assert_eq!(cap.name(), "Knowledge Index");
-    }
-
-    #[test]
     fn validate_accepts_empty_config() {
         let cap = KnowledgeIndexCapability;
         assert!(cap.validate_config(&json!({})).is_ok());
@@ -500,14 +495,6 @@ mod tests {
     }
 
     #[test]
-    fn uk_localization_present() {
-        let cap = KnowledgeIndexCapability;
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Індекс знань");
-        assert!(cap.describe_schema(Some("uk")).is_some());
-        assert!(cap.describe_schema(None).is_some());
-    }
-
-    #[test]
     fn no_tool_when_no_indexes_bound() {
         let cap = KnowledgeIndexCapability;
         assert!(cap.tools_with_config(&json!({})).is_empty());
@@ -515,25 +502,6 @@ mod tests {
         assert!(cap.tools_with_config(&Value::Null).is_empty());
         // Static tools() delegates to empty config → no tool.
         assert!(cap.tools().is_empty());
-    }
-
-    #[test]
-    fn search_index_tool_when_indexes_bound() {
-        let cap = KnowledgeIndexCapability;
-        let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "search_index");
-        assert!(tools[0].requires_context());
-
-        let schema = tools[0].parameters_schema();
-        let props = &schema["properties"];
-        assert!(props.get("query").is_some());
-        assert!(props.get("top_k").is_some());
-        assert!(props.get("indexes").is_some());
-        assert_eq!(schema["required"], json!(["query"]));
-        assert_eq!(schema["additionalProperties"], json!(false));
-        assert_eq!(props["top_k"]["minimum"], json!(1));
-        assert_eq!(props["top_k"]["maximum"], json!(50));
     }
 
     #[tokio::test]

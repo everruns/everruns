@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,6 +69,7 @@ export function NetworkAccessEditor({
   disabled,
   description,
 }: NetworkAccessEditorProps) {
+  const ui = useUiTranslations();
   // Raw text is the edit-time source of truth; the parsed value flows up via
   // onChange. Initialized once from the loaded resource (pages render this
   // editor only after data is available).
@@ -90,17 +92,19 @@ export function NetworkAccessEditor({
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <Label>Network Access</Label>
+        <Label>{ui("Network Access")}</Label>
         <p className="text-xs text-muted-foreground">
           {description ??
-            "Control which hosts network-capable tools (e.g. web_fetch) can reach. One pattern per line: example.com, *.example.com, or https://example.com/api/."}
+            ui(
+              "Control which hosts network-capable tools (e.g. web_fetch) can reach. One pattern per line: example.com, *.example.com, or https://example.com/api/.",
+            )}
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="network-access-allowed" className="text-xs font-medium">
-            Allowed hosts
+            {ui("Allowed hosts")}
           </Label>
           <Textarea
             id="network-access-allowed"
@@ -113,17 +117,18 @@ export function NetworkAccessEditor({
           />
           {invalidAllowed.length > 0 && (
             <p className="text-xs text-destructive">
-              Invalid pattern{invalidAllowed.length > 1 ? "s" : ""}: {invalidAllowed.join(", ")}
+              {ui("Invalid pattern")}
+              {invalidAllowed.length > 1 ? "s" : ""}: {invalidAllowed.join(", ")}
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            Leave empty to allow all hosts. When set, only matching URLs are permitted.
+            {ui("Leave empty to allow all hosts. When set, only matching URLs are permitted.")}
           </p>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="network-access-blocked" className="text-xs font-medium">
-            Blocked hosts
+            {ui("Blocked hosts")}
           </Label>
           <Textarea
             id="network-access-blocked"
@@ -136,11 +141,12 @@ export function NetworkAccessEditor({
           />
           {invalidBlocked.length > 0 && (
             <p className="text-xs text-destructive">
-              Invalid pattern{invalidBlocked.length > 1 ? "s" : ""}: {invalidBlocked.join(", ")}
+              {ui("Invalid pattern")}
+              {invalidBlocked.length > 1 ? "s" : ""}: {invalidBlocked.join(", ")}
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            Always denied, even when matched by an allowed pattern.
+            {ui("Always denied, even when matched by an allowed pattern.")}
           </p>
         </div>
       </div>

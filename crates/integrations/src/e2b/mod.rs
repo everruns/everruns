@@ -28,6 +28,7 @@
 pub mod client;
 pub mod computer;
 pub mod connection;
+pub mod network;
 mod owned;
 mod session_sandbox;
 pub mod state;
@@ -49,30 +50,16 @@ use tools::{
     E2BWriteFileTool,
 };
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "e2b_computer_use",
-        label: "E2B desktop computer use",
-        description: "Let agents operate a remote Linux desktop through E2B Desktop.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
+/// Feature flags this module's plugins name: none. Desktop computer use is a
+/// Sandbox Template option (`target.options.desktop`), not a flagged
+/// capability.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[];
 
 /// Capability plugins this crate contributes to a hosted catalog.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
-    IntegrationPlugin {
-        feature_flag: None,
-        factory: || Box::new(E2BCapability),
-    },
-    // Desktop computer use ships behind the `e2b_computer_use` feature flag,
-    // like the Browserless backend it complements (EVE-1133).
-    IntegrationPlugin {
-        feature_flag: Some("e2b_computer_use"),
-        factory: || Box::new(computer::E2BDesktopComputerUseCapability),
-    },
-];
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    feature_flag: None,
+    factory: || Box::new(E2BCapability),
+}];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
@@ -176,22 +163,6 @@ mod tests {
                 &format!("{E2B_SANDBOX_SECRET_PREFIX}i-example")
             )
         );
-    }
-
-    #[test]
-    fn capability_tools() {
-        let cap = E2BCapability;
-        let names: Vec<_> = cap
-            .tools()
-            .into_iter()
-            .map(|tool| tool.name().to_string())
-            .collect();
-        assert!(names.contains(&"e2b_create_sandbox".to_string()));
-        assert!(names.contains(&"e2b_exec".to_string()));
-        assert!(names.contains(&"e2b_read_file".to_string()));
-        assert!(names.contains(&"e2b_write_file".to_string()));
-        assert!(names.contains(&"e2b_list_sandboxes".to_string()));
-        assert!(names.contains(&"e2b_manage_sandbox".to_string()));
     }
 
     #[tokio::test]

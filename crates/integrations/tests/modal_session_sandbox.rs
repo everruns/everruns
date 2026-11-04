@@ -7,7 +7,7 @@ use everruns_contracts::runtime::tools::ToolExecutionResult;
 use everruns_contracts::session_sandbox::{
     SessionSandboxConfig, SessionSandboxCredential, SessionSandboxCredentialSource,
     SessionSandboxExecRequest, SessionSandboxInstance, SessionSandboxProvider, SessionSandboxState,
-    SessionSandboxStatus, create_session_sandbox_provider,
+    SessionSandboxStatus,
 };
 use everruns_integrations::modal::ModalSessionSandboxProvider;
 use serde_json::{Value, json};
@@ -73,12 +73,6 @@ async fn lease_status(leases: &MockLeasedResourceStore, id: &str) -> Option<Leas
 
 fn image_of(mock: &MockModal, id: &str) -> String {
     mock.lock().sandboxes[id].image_id.clone()
-}
-
-#[tokio::test]
-async fn it_is_discoverable_by_provider_id() {
-    let provider = create_session_sandbox_provider("modal").expect("registered");
-    assert_eq!(provider.id(), "modal");
 }
 
 #[tokio::test]

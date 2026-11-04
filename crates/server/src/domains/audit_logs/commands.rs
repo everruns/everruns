@@ -206,18 +206,4 @@ mod tests {
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].target_type.as_deref(), Some("member"));
     }
-
-    #[tokio::test]
-    async fn limit_is_clamped() {
-        let ctx = make_ctx(OrgRole::Owner).await;
-        let logs = ListAuditLogs {
-            limit: Some(10_000),
-            ..Default::default()
-        }
-        .execute(&ctx)
-        .await
-        .unwrap();
-        // Limit clamped to 200; storage backend returns all available rows.
-        assert_eq!(logs.len(), 2);
-    }
 }

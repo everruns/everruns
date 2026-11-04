@@ -23,7 +23,7 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::header::HeaderMap;
+use http::header::HeaderMap;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -33,12 +33,28 @@ use crate::driver_registry::{
 };
 use crate::error::{AgentLoopError, Result};
 use crate::openresponses_types::StreamingEvent;
-use crate::stream_reconnect::connect_sse_with_reconnect;
 
 use super::*;
 
 #[async_trait]
 impl ChatDriver for OpenResponsesProtocolChatDriver {
+    fn supports_native_non_streaming(&self) -> bool {
+        self.request_extension
+            .as_ref()
+            .is_none_or(|extension| extension.supports_native_non_streaming())
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<crate::driver_registry::LlmResponse> {
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        self.chat_completion(endpoint, messages, &config).await
+    }
+
     fn supports_stateful_responses(&self) -> bool {
         self.stateful_responses.unwrap_or(false)
     }
@@ -107,8 +123,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .as_deref()
                 .filter(|_| inline_tool_changes.is_some()),
         );
-        let (instructions, transcript_input_items) =
-            Self::build_input_with_changes(&sent, supports_phases, inline_tool_changes);
+        let (instructions, transcript_input_items) = Self::build_input_with_reasoning(
+            &sent,
+            supports_phases,
+            inline_tool_changes,
+            self.plaintext_reasoning_provider,
+        );
         let computer_call_ids = if native_computer.is_some() {
             super::computer::computer_call_ids(&transcript_input_items)
         } else {
@@ -222,61 +242,22 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .extend(hosted_tools.into_iter().map(ResponsesTool::Hosted));
         }
 
-        // Build reasoning config if specified.
-        // Skip when effort is "none" — sending reasoning params to models that
-        // don't support them (or with effort=none) causes OpenAI API errors.
-        let reasoning = config
+        let should_include_reasoning = config
             .reasoning_effort
-            .filter(crate::model::ReasoningEffort::requests_reasoning)
-            .map(|effort| ResponsesReasoning {
-                effort: effort.as_str().to_string(),
-                summary: "detailed".to_string(),
-            });
-
-        // Reasoning items are only replayable when the provider hands back
-        // their encrypted payload, and it only does so on request. Stateful
-        // continuations already retain that state server-side; Meta rejects
-        // this include when paired with `previous_response_id`.
-        let should_include_reasoning = reasoning.is_some() || update_state.is_some();
-        let include = previous_response_id
-            .is_none()
-            .then_some(should_include_reasoning)
-            .filter(|include| *include)
-            .map(|_| vec!["reasoning.encrypted_content".to_string()]);
-
-        // Build metadata for request tracking
-        let metadata = if config.metadata.is_empty() {
-            None
-        } else {
-            Some(config.metadata.clone())
-        };
-        let prompt_cache_key =
-            Self::build_prompt_cache_key(config, &input_items, &instructions, &tools);
-        let mut request = ResponsesRequest {
-            model: config.model.clone(),
-            input: input_items,
+            .is_some_and(|effort| effort.requests_reasoning())
+            || update_state.is_some();
+        let mut request = self.completion_request(
+            config,
+            input_items,
             instructions,
             previous_response_id,
-            temperature: config.temperature,
-            max_output_tokens: config.max_tokens,
-            stream: true,
             tools,
-            reasoning,
-            metadata,
-            prompt_cache_key,
-            parallel_tool_calls: config
-                .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            service_tier: config.speed.clone(),
-            text: ResponsesText {
-                verbosity: config.verbosity.clone(),
-                format: config
-                    .response_format
-                    .as_ref()
-                    .map(|f| f.responses_text_format()),
-            }
-            .into_option(),
-            include,
-        };
+            update_state.is_some(),
+        );
+        request.stream = !(config.prefer_non_streaming
+            && !config.limits.needs_incremental_events()
+            && self.supports_native_non_streaming()
+            && !(self.background_mode && super::background::wants_background(config)));
 
         // Log request details for debugging LLM errors.
         // Only log request shape to avoid leaking prompt or metadata contents.
@@ -305,7 +286,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         if let Some(extension) = &self.request_extension {
             extension.decorate(&mut request_body, config)?;
         }
-        apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+        apply_cache_options(
+            &mut request_body,
+            config,
+            self.native_prompt_cache_options,
+            crate::openai_protocol::is_openai_api_url(&api_url),
+        );
         let mut background = self.background_mode && super::background::wants_background(config);
         super::background::mark(&mut request_body, background);
         crate::openai_compat::validate_body(&request_body, endpoint, true)?;
@@ -318,7 +304,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // retry recognises the response an earlier attempt left running.
         let background_responses = background.then(|| {
             super::background::BackgroundResponses::new(
-                self.client(),
+                self.http_client(),
                 endpoint,
                 &api_url,
                 &extension_headers,
@@ -338,9 +324,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // transient send failures) are handled inside the per-attempt send.
         // Opt-in WebSocket transport (see `websocket.rs`). `None` means it was
         // not wanted or failed before committing, and the call goes over SSE.
-        #[cfg(feature = "responses-websocket")]
+        #[cfg(all(feature = "responses-websocket", not(target_arch = "wasm32")))]
         let websocket_stream = match reattached {
-            None if self.websocket.wants(config, background) => {
+            None if request.stream && self.websocket.wants(config, background) => {
                 super::websocket_transport::open_stream(
                     endpoint,
                     &api_url,
@@ -352,25 +338,18 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             _ => None,
         };
-        #[cfg(not(feature = "responses-websocket"))]
+        #[cfg(any(not(feature = "responses-websocket"), target_arch = "wasm32"))]
         let websocket_stream: Option<crate::stream_reconnect::SseStream> = None;
 
         let first_connect = match (reattached, websocket_stream) {
             (Some((stream, _)), _) | (None, Some(stream)) => Ok((stream, RetryMetadata::default())),
             (None, None) => {
-                connect_sse_with_reconnect(
-                    &self.retry_config,
-                    "OpenResponsesProtocolDriver",
-                    |attempts| {
-                        self.send_responses_request(
-                            endpoint,
-                            &api_url,
-                            &request_body,
-                            &extension_headers,
-                            config,
-                            attempts,
-                        )
-                    },
+                self.connect_response(
+                    endpoint,
+                    &api_url,
+                    &request_body,
+                    &extension_headers,
+                    config,
                 )
                 .await
             }
@@ -380,19 +359,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 tracing::warn!(model = %request.model, %error, "background mode rejected; retrying in foreground");
                 background = false;
                 super::background::mark(&mut request_body, false);
-                connect_sse_with_reconnect(
-                    &self.retry_config,
-                    "OpenResponsesProtocolDriver",
-                    |attempts| {
-                        self.send_responses_request(
-                            endpoint,
-                            &api_url,
-                            &request_body,
-                            &extension_headers,
-                            config,
-                            attempts,
-                        )
-                    },
+                self.connect_response(
+                    endpoint,
+                    &api_url,
+                    &request_body,
+                    &extension_headers,
+                    config,
                 )
                 .await
             }
@@ -436,22 +408,20 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 if let Some(extension) = &self.request_extension {
                     extension.decorate(&mut request_body, config)?;
                 }
-                apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+                apply_cache_options(
+                    &mut request_body,
+                    config,
+                    self.native_prompt_cache_options,
+                    crate::openai_protocol::is_openai_api_url(&api_url),
+                );
                 super::background::mark(&mut request_body, background);
                 crate::openai_compat::validate_body(&request_body, endpoint, true)?;
-                connect_sse_with_reconnect(
-                    &self.retry_config,
-                    "OpenResponsesProtocolDriver",
-                    |attempts| {
-                        self.send_responses_request(
-                            endpoint,
-                            &api_url,
-                            &request_body,
-                            &extension_headers,
-                            config,
-                            attempts,
-                        )
-                    },
+                self.connect_response(
+                    endpoint,
+                    &api_url,
+                    &request_body,
+                    &extension_headers,
+                    config,
                 )
                 .await?
             }
@@ -465,6 +435,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None => event_stream,
         };
 
+        let refusal = Arc::new(Mutex::new(super::refusal::RefusalState::default()));
+        let trailing_refusal = Arc::clone(&refusal);
         let model = config.model.clone();
         let input_tokens = Arc::new(Mutex::new(0u32));
         let output_tokens = Arc::new(Mutex::new(0u32));
@@ -483,11 +455,13 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None
         };
 
+        let plaintext_reasoning_provider = self.plaintext_reasoning_provider;
         let required_completion = self.required_completion;
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let observed_completion = completed.clone();
         let frame_deferred_events = Arc::clone(&deferred_events);
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
+            let refusal = Arc::clone(&refusal);
             let model = model.clone();
             let input_tokens = Arc::clone(&input_tokens);
             let output_tokens = Arc::clone(&output_tokens);
@@ -502,8 +476,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 match result {
                     Ok(event) => {
                         let event_data = &event.data;
-                        if required_completion && let Ok(frame) = serde_json::from_str::<Value>(event_data) {
-                                if let Some(event) = super::completion_contract::terminal(&frame) {
+                        let parsed_frame = serde_json::from_str::<Value>(event_data);
+                        if let Ok(frame) = &parsed_frame
+                            && let Some(event) = refusal.lock().unwrap().observe(frame)
+                        {
+                            observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
+                            return Ok(event);
+                        }
+                        if required_completion && let Ok(frame) = &parsed_frame {
+                                if let Some(event) = super::completion_contract::terminal(frame) {
                                     observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
                                     return Ok(event);
                                 }
@@ -524,7 +505,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         // A custom tool call is not represented by the typed
                         // Responses event enum. Decode completed calls before
                         // that enum so its native metadata reaches the runtime.
-                        if let Ok(json) = serde_json::from_str::<Value>(event_data)
+                        if let Ok(json) = &parsed_frame
                             && json.get("type").and_then(Value::as_str)
                                 == Some("response.output_item.done")
                             && let Some(item) = json.get("item")
@@ -549,6 +530,19 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         if let Ok(streaming_event) =
                             serde_json::from_str::<StreamingEvent>(event_data)
                         {
+                            if let Some(provider) = plaintext_reasoning_provider
+                                && let StreamingEvent::OutputItemDone { item: Some(crate::openresponses_types::OutputItem::Reasoning { id, content, .. }), .. } = &streaming_event
+                            {
+                                let text = content.as_deref().unwrap_or_default().iter().filter_map(|part| match part {
+                                    crate::openresponses_types::ContentPart::ReasoningText { text } => Some(text.as_str()),
+                                    _ => None,
+                                }).collect::<String>();
+                                return Ok(LlmStreamEvent::ReasoningItem(
+                                    crate::reasoning::ReasoningContentPart::opaque(provider)
+                                        .with_item_id(id)
+                                        .with_text(crate::reasoning::ReasoningText::Plain { text }),
+                                ));
+                            }
                             return Ok(handle_streaming_event(
                                 streaming_event,
                                 &input_tokens,
@@ -563,10 +557,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         }
 
                         // Fallback: parse as generic JSON for backwards compatibility
-                        let parsed: std::result::Result<Value, _> =
-                            serde_json::from_str(event_data);
-
-                        match parsed {
+                        match parsed_frame {
                             Ok(json) => {
                                 let event_type = json.get("type").and_then(|t| t.as_str());
 
@@ -823,6 +814,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
                                             cache_creation_tokens: written,
+                                            cache_creation_12h_tokens: response_obj.pointer("/usage/input_tokens_details/cache_write_tokens_details/ttl_12h_tokens")
+                                                .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32),
                                             reasoning_tokens: reasoning_used,
                                             provider_cost_usd,
                                             service_tier: response_obj
@@ -896,12 +889,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                             )),
                         }
                     }
-                    Err(e) => Ok(LlmStreamEvent::Error(
-                        format!("Stream error: {}", e).into(),
+                    Err(e) => Ok(refusal.lock().unwrap().finish().unwrap_or_else(||
+                        LlmStreamEvent::Error(format!("Stream error: {}", e).into())
                     )),
                 }
             }
         }));
+
+        let converted_stream: LlmResponseStream = Box::pin(
+            converted_stream.chain(
+                futures::stream::once(
+                    async move { trailing_refusal.lock().unwrap().finish().map(Ok) },
+                )
+                .filter_map(futures::future::ready),
+            ),
+        );
 
         // Flush whatever the frame queued ahead of the event it mapped to. The
         // per-frame closure is 1:1 by construction, so this is the only place a

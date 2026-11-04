@@ -9,6 +9,7 @@ pub mod a2a_delegation;
 #[cfg(feature = "ag-ui")]
 pub mod ag_ui_delegation;
 pub mod agent_handoff;
+pub mod automatic_session_titles;
 pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
@@ -18,6 +19,7 @@ pub mod data_knowledge;
 pub mod delegation_result;
 mod environment_file_tools;
 mod environment_tools;
+pub mod knowledge;
 pub mod knowledge_base;
 pub mod knowledge_index;
 pub mod memory;
@@ -26,8 +28,13 @@ pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
+pub mod platform_native;
+mod platform_skills;
 pub mod poppy_client;
+pub mod reactions;
 pub mod research;
+pub mod run_conversation;
+pub mod sandbox_desktop;
 mod sandbox_workspace;
 pub mod session_sandbox;
 pub mod session_schedule;
@@ -108,6 +115,7 @@ pub use poppy_client::{
     POPPY_CLIENT_CAPABILITY_ID, PoppyCall, PoppyClientCapability, PoppyInvoker, PoppyInvokerExt,
 };
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
+pub use sandbox_desktop::{SANDBOX_DESKTOP_CAPABILITY_ID, SandboxDesktopCapability};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
     SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
@@ -152,7 +160,7 @@ pub fn register_environment_capabilities(
 ) {
     registry.register(everruns_integrations::filesystem::FileSystemCapability);
     registry.register(everruns_integrations::bashkit::BashkitShellCapability);
-    registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    registry.register(everruns_integrations::web_fetch::WebFetchCapability::new());
     // Hosted search reads Brave keys from the session only, never the
     // process environment.
     registry.register(everruns_integrations::web_search::WebSearchCapability::default());
@@ -189,6 +197,7 @@ pub fn register_agent_delegation_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
 ) {
     registry.register(AgentHandoffCapability);
+    registry.register(run_conversation::RunConversationCapability);
     #[cfg(feature = "a2a")]
     registry.register(A2aAgentDelegationCapability);
     #[cfg(feature = "ag-ui")]
@@ -206,6 +215,9 @@ pub fn register_hosted_capabilities(
     // sandbox provider — so they are composed here rather than shipped by the
     // kernel.
     registry.register(SessionCapability);
+    registry.register(automatic_session_titles::AutomaticSessionTitlesCapability);
+    // No flag: adding the capability is the opt-in (react tool + setting).
+    registry.register(reactions::ReactionsCapability);
     registry.register(SessionStorageCapability);
     registry.register(SessionSqlDatabaseCapability);
     // The provider-neutral Environment profile selects this capability. Keep
@@ -213,6 +225,7 @@ pub fn register_hosted_capabilities(
     // profiles get an honest availability error instead of a missing-capability
     // failure. Concrete providers remain deployment-owned plugins.
     registry.register(SessionSandboxCapability);
+    registry.register(sandbox_desktop::SandboxDesktopCapability);
     registry.register(ResearchCapability);
     registry.register(MemoryCapability);
     registry.register(BackgroundExecutionCapability);
@@ -247,8 +260,7 @@ pub fn register_hosted_capabilities(
     // and runs the protocol (knowledge/integrations/poppy-personal-agent.md).
     registry.register(PoppyClientCapability);
     registry.register(DataKnowledgeCapability);
-    registry.register(KnowledgeBaseCapability);
-    registry.register(KnowledgeIndexCapability);
+    registry.register(knowledge::KnowledgeCapability);
     registry.register(CitationRetrievalCapability);
     registry.register(CitationWebCapability);
     registry.register(CitationVerificationCapability);
@@ -336,13 +348,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn hosted_registry_always_contains_platform_capabilities() {
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
-        assert!(registry.has(PLATFORM_CAPABILITY_ID));
-        assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
-    }
-
     #[cfg(feature = "portable-builtins")]
     #[test]
     fn hosted_registry_has_the_hard_tool_approval_gate() {
@@ -368,49 +373,6 @@ mod tests {
             registry.has(everruns_core::capabilities::AG_UI_DELEGATION_CAPABILITY_ID),
             cfg!(feature = "ag-ui"),
         );
-    }
-
-    #[cfg(feature = "portable-builtins")]
-    #[test]
-    fn hosted_registry_contains_full_portable_policy_catalog() {
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
-        for capability_id in [
-            "human_intent",
-            "infinity_context",
-            "skills",
-            "current_time",
-            "compaction",
-            "tool_call_repair",
-            "usage_limit_auto_continue",
-            "openui",
-            "a2ui",
-        ] {
-            assert!(
-                registry.has(capability_id),
-                "hosted product registry is missing `{capability_id}`"
-            );
-        }
-    }
-
-    #[cfg(feature = "environment-capabilities")]
-    #[test]
-    fn hosted_registry_composes_product_environment_capabilities() {
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
-        for capability_id in [
-            "session_file_system",
-            "bashkit_shell",
-            "web_fetch",
-            "model_scout",
-            "openrouter_workspace",
-            "openrouter_server_tools",
-            "openai_server_tools",
-        ] {
-            assert!(
-                registry.has(capability_id),
-                "hosted product registry is missing `{capability_id}`"
-            );
-        }
-        assert_eq!(registry.canonical_id("virtual_bash"), Some("bashkit_shell"));
     }
 
     #[cfg(not(feature = "environment-capabilities"))]

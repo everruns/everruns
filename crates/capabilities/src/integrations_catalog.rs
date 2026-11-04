@@ -111,12 +111,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         feature_flags: everruns_integrations::daytona::FEATURE_FLAGS,
     },
     CatalogEntry {
-        crate_name: "everruns-integrations-experimental::deno",
-        capabilities: everruns_integrations_experimental::deno::CAPABILITY_PLUGINS,
-        connectors: everruns_integrations_experimental::deno::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations_experimental::deno::FEATURE_FLAGS,
-    },
-    CatalogEntry {
         crate_name: "everruns-integrations::docker",
         capabilities: everruns_integrations::docker::CAPABILITY_PLUGINS,
         connectors: &[],
@@ -394,11 +388,21 @@ mod tests {
     }
 
     #[test]
-    fn daytona_capabilities_and_connection_are_ungated() {
-        assert_eq!(capability_feature_flag("daytona"), None);
-        assert_eq!(connector_feature_flag("daytona"), None);
-        assert_eq!(connector_feature_flag("e2b"), None);
-        assert_eq!(capability_feature_flag("modal"), Some("modal"));
+    fn every_registered_capability_has_name_and_description() {
+        let registry = oss_capability_registry_for_grade(DeploymentGrade::Dev);
+        let mut missing = Vec::new();
+        for capability in registry.list() {
+            let name = capability.name().trim();
+            let description = capability.description().trim();
+            if name.is_empty() || description.is_empty() {
+                missing.push(capability.id().to_string());
+            }
+        }
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "capabilities missing name or description: {missing:?}"
+        );
     }
 
     #[test]
@@ -411,10 +415,6 @@ mod tests {
         assert!(prod.has("daytona"));
         if std::env::var("FEATURE_BROWSERLESS").is_err() {
             assert!(prod.has("browserless"), "browserless is adoption grade");
-        }
-        if std::env::var("FEATURE_DENO").is_err() {
-            assert!(!dev.has("deno"), "deno is off by default");
-            assert!(!prod.has("deno"), "deno is off by default");
         }
     }
 }

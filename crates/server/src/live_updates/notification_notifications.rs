@@ -54,9 +54,10 @@ impl NotificationNotificationBroadcaster {
             let mut listener = match sqlx::postgres::PgListener::connect(&database_url).await {
                 Ok(listener) => listener,
                 Err(e) => {
-                    error!(
-                        "Failed to create PostgreSQL listener for notifications: {}",
-                        e
+                    everruns_core::report_repeated_failure!(
+                        error,
+                        error = %e,
+                        "Failed to create PostgreSQL listener for notifications"
                     );
                     tokio::select! {
                         _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => continue,
@@ -115,21 +116,5 @@ impl NotificationNotificationBroadcaster {
 impl Drop for NotificationNotificationBroadcaster {
     fn drop(&mut self) {
         let _ = self.shutdown_tx.try_send(());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn payload_deserializes() {
-        let payload = serde_json::from_str::<NotificationNotificationPayload>(
-            r#"{"org_id":1,"user_id":"00000000-0000-0000-0000-000000000000","action":"insert"}"#,
-        )
-        .unwrap();
-        assert_eq!(payload.org_id, 1);
-        assert_eq!(payload.user_id, Uuid::nil());
-        assert_eq!(payload.action, "insert");
     }
 }

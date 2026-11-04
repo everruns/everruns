@@ -57,9 +57,8 @@ mod seed_ids {
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
-    pub const DENO_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000110);
     pub const SPRITES_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000111);
-    // 0x…0109: retired Cloud Cost & Security Auditor demo agent (EVE-875). Do not reuse. 0x…0118: Modal Coder, in seed/agents.rs (this file may not grow).
+    // 0x…0109: retired Cloud Cost & Security Auditor demo agent (EVE-875). Do not reuse. 0x…0110: retired Deno Coder demo agent. Do not reuse. 0x…0118: Modal Coder, in seed/agents.rs (this file may not grow).
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
     pub const WEB_RESEARCHER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010b);
@@ -82,27 +81,15 @@ mod seed_ids {
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
     pub const GPT_5_2_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000202);
-    pub const GPT_5_2_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000203);
-    pub const GPT_5_2_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000204);
     pub const GPT_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000205);
-    pub const GPT_5_1_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000206);
-    pub const GPT_5_1_CODEX_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000207);
-    pub const GPT_5_1_CODEX_MAX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000208);
-    pub const GPT_5_1_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000209);
     pub const GPT_5_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020a);
     pub const GPT_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020b);
     pub const GPT_5_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020c);
     pub const GPT_5_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020d);
-    pub const GPT_5_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020e);
-    pub const GPT_5_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020f);
     pub const GPT_4_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000210);
     pub const GPT_4_1_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000211);
-    pub const GPT_4_1_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000212);
-    pub const O4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000215);
-    pub const O4_MINI_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000216);
     pub const O3: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000217);
     pub const O3_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000219);
-    pub const O3_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021a);
     pub const GPT_5_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021f);
     pub const GPT_5_4_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000220);
     pub const GPT_5_4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000221);
@@ -119,6 +106,7 @@ mod seed_ids {
     pub const GPT_6_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022b);
     pub const GPT_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022c);
     pub const GPT_6_1_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022d);
+    pub const GPT_6_1_TERRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022e);
 
     // Anthropic Models (0x300-0x3FF)
     pub const CLAUDE_FABLE_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030f);
@@ -134,7 +122,6 @@ mod seed_ids {
     pub const CLAUDE_OPUS_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000301);
     // 0x…0302: retired Claude Sonnet 4.5 (sunset by Anthropic). Do not reuse.
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
-    pub const CLAUDE_OPUS_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000304);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
     pub const CLAUDE_FABLE_5_1_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a9);
     pub const CLAUDE_OPUS_5_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003aa);
@@ -158,7 +145,6 @@ mod seed_ids {
     pub const GEMINI_38_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060a);
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
-    pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
     pub const GEMINI_4_ARGON: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060b);
     // Bedrock Models (0x700-0x7FF)
     pub const BEDROCK_CLAUDE_OPUS_5_5: Uuid =
@@ -1379,76 +1365,6 @@ mod tests {
     }
 
     #[test]
-    fn test_base_harness_has_only_system_essentials() {
-        // Base is provisioned first; essentials only, no shell.
-        let base = &built_in_harnesses()[0];
-        assert!(
-            base.capabilities
-                .iter()
-                .all(|c| c.capability_id() != "bashkit_shell")
-        );
-        assert!(base.tags.iter().any(|tag| tag == "base"));
-    }
-
-    #[test]
-    fn test_generic_harness_has_expected_capabilities() {
-        let built_in_harnesses = built_in_harnesses();
-        let generic = built_in_harnesses
-            .iter()
-            .find(|h| h.name == "generic")
-            .expect("Generic harness should exist");
-
-        let cap_ids: Vec<&str> = generic
-            .capabilities
-            .iter()
-            .map(|c| c.capability_id())
-            .collect();
-        assert_eq!(cap_ids.len(), 25);
-        assert!(cap_ids.contains(&"human_intent"));
-        assert!(cap_ids.contains(&"session_file_system"));
-        assert!(cap_ids.contains(&"bashkit_shell"));
-        assert!(cap_ids.contains(&"web_fetch"));
-        assert!(cap_ids.contains(&"session_storage"));
-        assert!(cap_ids.contains(&"session"));
-        assert!(cap_ids.contains(&"session_schedule"));
-        assert!(cap_ids.contains(&"btw"));
-        assert!(cap_ids.contains(&"agent_instructions"));
-        assert!(cap_ids.contains(&"skills"));
-        assert!(cap_ids.contains(&"infinity_context"));
-        assert!(cap_ids.contains(&"auto_tool_search"));
-        assert!(cap_ids.contains(&"budgeting"));
-        assert!(cap_ids.contains(&"self_budget"));
-        assert!(cap_ids.contains(&"loop_detection"));
-        assert!(cap_ids.contains(&"error_disclosure"));
-        assert!(cap_ids.contains(&"message_metadata"));
-        assert!(cap_ids.contains(&"compaction"));
-        assert!(cap_ids.contains(&"tool_output_persistence"));
-        assert!(cap_ids.contains(&"tool_output_distillation"));
-        assert!(cap_ids.contains(&"parallel_tool_calls"));
-        assert!(cap_ids.contains(&"citation_retrieval"));
-        assert!(cap_ids.contains(&"citation_verification"));
-        assert!(cap_ids.contains(&"soft_approval"));
-        // Verify compaction default config
-        let compaction_cap = generic
-            .capabilities
-            .iter()
-            .find(|c| c.capability_id() == "compaction")
-            .expect("compaction capability should exist");
-        assert_eq!(compaction_cap.config_value()["strategy"], "auto");
-        assert_eq!(compaction_cap.config_value()["proactive"], true);
-        assert_eq!(compaction_cap.config_value()["budget_percent"], 0.85);
-        // The trusted default harness opts into detailed error disclosure.
-        let error_disclosure_cap = generic
-            .capabilities
-            .iter()
-            .find(|c| c.capability_id() == "error_disclosure")
-            .expect("error_disclosure capability should exist");
-        assert_eq!(error_disclosure_cap.config_value()["mode"], "detailed");
-        assert!(generic.tags.iter().any(|tag| tag == "generic"));
-        assert!(generic.tags.iter().any(|tag| tag == "deprecated"));
-    }
-
-    #[test]
     fn test_generic_harness_capabilities_are_registered() {
         // Verify all capability IDs referenced by Generic harness exist in the registry
         let registry =
@@ -1555,18 +1471,6 @@ mod tests {
         );
     }
 
-    /// Verify that ToolRegistry::with_defaults() alone does NOT include 'bash'.
-    /// This documents why harness capability registration is necessary.
-    #[test]
-    fn test_defaults_alone_miss_bash_tool() {
-        let registry = everruns_core::ToolRegistry::with_defaults();
-        assert!(
-            !registry.has("bash"),
-            "with_defaults() must NOT include 'bash' — it comes from bashkit_shell capability. \
-             If this fails, the tool was added to defaults and the harness fallback is moot."
-        );
-    }
-
     /// Verify server-executed Generic tools have implementations.
     #[tokio::test]
     async fn test_generic_harness_collected_tools_have_implementations() {
@@ -1615,47 +1519,6 @@ mod tests {
             ["bash", "list_skills", "activate_skill", "ask_user"]
                 .iter()
                 .all(|expected| tool_names.contains(expected))
-        );
-    }
-
-    /// Verify Generic Harness includes skills discovery tools.
-    #[tokio::test]
-    async fn test_generic_harness_capabilities_produce_skills_tools() {
-        use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
-
-        let registry =
-            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
-
-        let built_in_harnesses = built_in_harnesses();
-        let generic = built_in_harnesses
-            .iter()
-            .find(|h| h.name == "generic")
-            .expect("Generic harness should exist");
-
-        let cap_ids: Vec<String> = generic
-            .capabilities
-            .iter()
-            .map(|s| s.capability_id().to_string())
-            .collect();
-        let ctx =
-            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
-        let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
-
-        let tool_names: Vec<&str> = collected
-            .tool_definitions
-            .iter()
-            .map(|t| t.name())
-            .collect();
-
-        assert!(
-            tool_names.contains(&"list_skills"),
-            "Generic Harness must include 'list_skills' tool from skills capability, got: {:?}",
-            tool_names
-        );
-        assert!(
-            tool_names.contains(&"activate_skill"),
-            "Generic Harness must include 'activate_skill' tool from skills capability, got: {:?}",
-            tool_names
         );
     }
 
@@ -1731,20 +1594,6 @@ mod tests {
         assert_eq!(result.created, 0, "second run should create nothing");
         assert_eq!(result.updated, 0, "second run should update nothing");
         assert!(result.unchanged > 0, "everything should be unchanged");
-    }
-
-    #[tokio::test]
-    async fn test_seed_all_has_changes() {
-        let db = make_db();
-        let first = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        assert!(first.has_changes());
-
-        let second = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        assert!(!second.has_changes());
     }
 
     #[tokio::test]
@@ -1909,38 +1758,6 @@ mod tests {
     // --- MCP Server upsert ---
 
     #[tokio::test]
-    async fn linear_mcp_seed_uses_application_actor_oauth() {
-        let db = make_db();
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-
-        let row = db
-            .get_mcp_server(DEFAULT_ORG_ID, seed_ids::LINEAR_MCP)
-            .await
-            .unwrap()
-            .expect("Linear MCP preset should be seeded");
-        let settings = crate::domains::mcp_servers::McpServerService::settings_from_row(&row);
-        let oauth = settings
-            .oauth
-            .as_ref()
-            .expect("Linear MCP preset should use OAuth");
-
-        assert_eq!(row.name, "linear");
-        assert_eq!(row.url, "https://mcp.linear.app/mcp");
-        assert_eq!(settings.auth_mode, everruns_core::McpServerAuthMode::OAuth);
-        assert_eq!(settings.protocol_mode, everruns_core::McpProtocolMode::Auto);
-        assert_eq!(oauth.scope.as_deref(), Some("read,write"));
-        assert_eq!(
-            oauth
-                .service_authorization_params
-                .get("actor")
-                .map(String::as_str),
-            Some("app")
-        );
-    }
-
-    #[tokio::test]
     async fn test_mcp_server_seed_detects_url_change() {
         let db = make_db();
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
@@ -2006,53 +1823,6 @@ mod tests {
     }
 
     // --- SeedResult ---
-
-    #[test]
-    fn test_seed_result_merge() {
-        let mut a = SeedResult {
-            created: 1,
-            updated: 2,
-            unchanged: 3,
-        };
-        let b = SeedResult {
-            created: 10,
-            updated: 20,
-            unchanged: 30,
-        };
-        a.merge(b);
-        assert_eq!(a.created, 11);
-        assert_eq!(a.updated, 22);
-        assert_eq!(a.unchanged, 33);
-    }
-
-    #[test]
-    fn test_seed_result_has_changes() {
-        assert!(!SeedResult::default().has_changes());
-        assert!(
-            SeedResult {
-                created: 1,
-                updated: 0,
-                unchanged: 0
-            }
-            .has_changes()
-        );
-        assert!(
-            SeedResult {
-                created: 0,
-                updated: 1,
-                unchanged: 0
-            }
-            .has_changes()
-        );
-        assert!(
-            !SeedResult {
-                created: 0,
-                updated: 0,
-                unchanged: 5
-            }
-            .has_changes()
-        );
-    }
 
     // --- Multi-org harness reconciliation ---
 

@@ -1,5 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import GitHubTriggerPage from "@/app/(main)/agents/[agentId]/triggers/[triggerId]/page";
+
+let mockCanManage = true;
+jest.mock("@/hooks/use-policies", () => ({ usePolicies: () => ({ can: () => mockCanManage }) }));
 
 const create = jest.fn().mockResolvedValue({});
 const push = jest.fn();
@@ -53,6 +59,7 @@ const page = () => <GitHubTriggerPage params={params} />;
 
 describe("GitHub trigger page", () => {
   beforeEach(() => {
+    mockCanManage = true;
     connected = true;
     search = "type=github";
     create.mockClear();
@@ -129,5 +136,76 @@ describe("GitHub trigger page", () => {
     search = "type=github";
     render(page());
     expect(screen.getByText(/Pull request events/)).toBeInTheDocument();
+  });
+});
+
+it("stages trigger text without changing conditions or saving, and enforces page permissions", () => {
+  global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+  let adapter: PageDraftAdapter;
+  const mode: ChatModeState = {
+    page: { route: "/agents/agent_1/triggers/new", label: "New trigger" },
+    pageContainer: { current: null },
+    open: true,
+    setOpen: () => {},
+    actions: [],
+    recordAction: () => {},
+    registerPage: (_page, value) => {
+      adapter = value!;
+      return () => {};
+    },
+  };
+  const { rerender } = render(<PageChatProvider value={mode}>{page()}</PageChatProvider>);
+  const before = adapter!.read(adapter!.binding!);
+  act(() => {
+    adapter!.patch(before.binding, before.revision, {
+      message: "Review only completed CI failures.",
+    });
+  });
+  expect(screen.getByDisplayValue("Review only completed CI failures.")).toBeInTheDocument();
+  expect(create).not.toHaveBeenCalled();
+  mockCanManage = false;
+  rerender(<PageChatProvider value={mode}>{page()}</PageChatProvider>);
+  const locked = adapter!.read(adapter!.binding!);
+  expect(locked.writable).toBe(false);
+  expect(() => adapter!.patch(locked.binding, locked.revision, { message: "Forbidden" })).toThrow(
+    /read-only/,
+  );
+});
+
+// Webhooks are triggers now (EVE-1006): created here, not under New channel.
+describe("Webhook trigger page", () => {
+  beforeEach(() => {
+    mockCanManage = true;
+    search = "type=webhook";
+    create.mockClear();
+    create.mockResolvedValue({ id: "trg_new" });
+    push.mockClear();
+  });
+
+  it("creates a webhook trigger with a generated token and opens its page", async () => {
+    render(page());
+    expect(screen.getByRole("link", { name: "Webhook" })).toHaveAttribute("aria-current", "page");
+    const token = screen.getByLabelText("Token") as HTMLInputElement;
+    expect(token.value).toMatch(/^[0-9a-f]{48}$/);
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Process {{payload}}" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0][0]).toEqual({
+      trigger_type: "webhook",
+      message: "Process {{payload}}",
+      session_mode: "shared_session",
+      enabled: true,
+      token: token.value,
+    });
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/agents/agent_1/triggers/trg_new"));
+  });
+
+  it("does not save a webhook without a token", async () => {
+    render(page());
+    fireEvent.change(screen.getByLabelText("Token"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Go" } });
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 });

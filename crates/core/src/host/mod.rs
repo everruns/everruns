@@ -32,8 +32,11 @@ pub mod compute;
 #[cfg(feature = "native-containment")]
 pub mod containment;
 pub mod decisions;
+pub mod dreaming;
 #[cfg(feature = "direct-egress")]
 mod egress;
+#[cfg(feature = "direct-egress")]
+mod egress_deny_feeds;
 #[cfg(feature = "direct-egress")]
 mod egress_proxy;
 #[cfg(feature = "direct-egress")]
@@ -67,18 +70,25 @@ mod runtime_context;
 #[path = "host.rs"]
 mod runtime_host;
 mod script_run;
+#[cfg(feature = "actor-runtime")]
+pub mod session_actor;
 mod session_file_system_factory;
 pub mod session_services;
+mod thread_cpu;
 mod turn_backend;
+mod turn_completion_check;
 mod turn_loop;
 mod turn_resume;
 mod turn_strategy;
 mod turn_tool_context;
+#[cfg(feature = "direct-egress")]
+pub mod web_bot_auth;
 mod workspace;
+
+pub use turn_completion_check::{COMPLETION_REVIEW_PURPOSE, REVIEW_TIMEOUT};
 
 pub use crate::AssembledTurnContext;
 pub use crate::task_observer::{TaskTransition, TaskTransitionObserver};
-pub use crate::turn::TurnStopReason;
 pub use actor::{
     ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
     session_held_elsewhere,
@@ -102,7 +112,15 @@ pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
 #[cfg(feature = "direct-egress")]
-pub use egress_proxy::{EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, TenantEgressProxy};
+pub use egress_deny_feeds::{DenyFeeds, EGRESS_DENY_FEEDS_ENV};
+#[cfg(feature = "direct-egress")]
+pub use egress_proxy::{
+    EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, MAX_PROXY_TOKEN_FUTURE_SECS,
+    MAX_SANDBOX_PROXY_CREDENTIAL_SECS, MIN_PROXY_SECRET_LEN, ProxyClaims, ProxyTokenError,
+    SANDBOX_PROXY_ADDRESS_ENV, SANDBOX_PROXY_TLS_ENV, SANDBOX_PROXY_USERNAME, TenantEgressProxy,
+    constant_time_eq, sign_proxy_token, sign_sandbox_proxy_credential, verify_proxy_authorization,
+    verify_proxy_token, verify_sandbox_proxy_credential,
+};
 #[cfg(feature = "direct-egress")]
 pub use egress_reputation::{DomainReputation, EGRESS_REPUTATION_ENV};
 pub use events::{
@@ -116,6 +134,7 @@ pub use events::{
 pub use everruns_contracts::error::{
     AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind,
 };
+pub use everruns_contracts::turn::TurnStopReason;
 pub use everruns_contracts::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 pub use extensions::{
@@ -131,6 +150,8 @@ pub use file_store_decorators::{
 pub use org_egress_allowlist::{
     ORG_EGRESS_ALLOWLIST_CACHE_TTL, install_runtime_org_egress_allowlist,
 };
+#[cfg(feature = "direct-egress")]
+pub use web_bot_auth::WebBotAuth;
 
 pub use capabilities::{
     compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
@@ -170,9 +191,13 @@ pub use session_services::{
     update_session_title_with_event,
 };
 pub use turn_backend::{
-    InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket,
+    InProcessBackend, TurnBackend, TurnBackendFactory, TurnInput, TurnRequest, TurnScope,
+    TurnTicket,
 };
-pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, turn_entry_plan};
+pub use turn_loop::{
+    PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, handed_off, is_handed_off,
+    turn_entry_plan,
+};
 pub use turn_resume::{
     InterruptedToolCalls, OpenTurn, TurnLogFold, WaitsOnPerson, WaitsOnPersonFn,
     interrupted_tool_calls, resume_entry_plan, resume_open_turn, resume_plan_from_log,

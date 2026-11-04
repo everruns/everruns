@@ -15,7 +15,9 @@ Tools to read and update session metadata like title and agent information.
 
 ## Automatic titles
 
-Automatic title maintenance is opt-in. Set `auto_title` to `true` in the
+For naming outside the agent loop, enable [Automatic session titles](/capabilities/automatic-session-titles/) and leave `auto_title` off. Explicit tool writes take priority over automatic titles, including same-text writes.
+
+Agent-directed title maintenance is opt-in. Set `auto_title` to `true` in the
 capability configuration to have the agent create a concise 3–7 word title
 before handling the first substantive request. The title is a required pre-work
 update. The agent updates it later, also before other work or a response, only

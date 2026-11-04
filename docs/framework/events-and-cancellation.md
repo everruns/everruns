@@ -21,7 +21,7 @@ let mut events = session.events();
 let pending = session.send("Start.").await?;
 while let Some(event) = events.recv().await? {
     println!("{}", event.event_type());
-    if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+    if event.kind.is_terminal() {
         break;
     }
 }
@@ -188,7 +188,7 @@ you are rendering or recording.
 
 `SessionEvent::as_json()` and `SessionEvent::data()` return the **reviewed**
 form: the event envelope — id, type, timestamp, optional persisted sequence,
-correlation context, metadata, tags — with a `data` payload holding only the
+correlation context and tags, with reviewed public provenance in metadata — and a `data` payload holding only the
 fields promoted onto `SessionEventKind`. Nothing else reaches it, so a field
 added inside the runtime cannot become part of the Framework's public surface,
 or travel to wherever your application forwards these envelopes, without being

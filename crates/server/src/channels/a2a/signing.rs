@@ -455,14 +455,4 @@ mod tests {
         assert!(store.try_record("app1:ch2", sig).await);
         assert!(store.try_record("app2:ch1", sig).await);
     }
-
-    #[tokio::test]
-    async fn replay_store_in_memory_distinct_signatures_independent() {
-        let store = A2aReplayStore::in_memory();
-        let scope = "app1:ch1";
-        for i in 0..5 {
-            let sig = format!("v0=signature-{i}");
-            assert!(store.try_record(scope, &sig).await);
-        }
-    }
 }

@@ -23,6 +23,14 @@ use crate::kernel_imports::Policy;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityKind {
+    Organization,
+    OrganizationNetwork,
+    OrganizationDecision,
+    UserProfile,
+    OrganizationAccount,
+    TracingPolicy,
+    TracingDestination,
+    SandboxTemplate,
     Agent,
     Harness,
     Skill,
@@ -37,6 +45,8 @@ pub enum EntityKind {
     KnowledgeBase,
     KnowledgeEntry,
     KnowledgeIndex,
+    Knowledge,
+    KnowledgeIndexer,
     Memory,
     Provider,
     Model,
@@ -57,6 +67,14 @@ pub enum EntityKind {
 
 impl EntityKind {
     pub const ALL: &'static [EntityKind] = &[
+        Self::Organization,
+        Self::OrganizationNetwork,
+        Self::OrganizationDecision,
+        Self::UserProfile,
+        Self::OrganizationAccount,
+        Self::TracingPolicy,
+        Self::TracingDestination,
+        Self::SandboxTemplate,
         Self::Agent,
         Self::Harness,
         Self::Skill,
@@ -69,6 +87,8 @@ impl EntityKind {
         Self::KnowledgeBase,
         Self::KnowledgeEntry,
         Self::KnowledgeIndex,
+        Self::Knowledge,
+        Self::KnowledgeIndexer,
         Self::Memory,
         Self::Provider,
         Self::Model,
@@ -89,6 +109,14 @@ impl EntityKind {
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Organization => "organization",
+            Self::OrganizationNetwork => "organization_network",
+            Self::OrganizationDecision => "organization_decision",
+            Self::UserProfile => "user_profile",
+            Self::OrganizationAccount => "organization_account",
+            Self::TracingPolicy => "tracing_policy",
+            Self::TracingDestination => "tracing_destination",
+            Self::SandboxTemplate => "sandbox_template",
             Self::Agent => "agent",
             Self::Harness => "harness",
             Self::Skill => "skill",
@@ -101,6 +129,8 @@ impl EntityKind {
             Self::KnowledgeBase => "knowledge_base",
             Self::KnowledgeEntry => "knowledge_entry",
             Self::KnowledgeIndex => "knowledge_index",
+            Self::Knowledge => "knowledge",
+            Self::KnowledgeIndexer => "knowledge_indexer",
             Self::Memory => "memory",
             Self::Provider => "provider",
             Self::Model => "model",
@@ -132,6 +162,13 @@ impl EntityKind {
     /// an explicit `--kind`.
     pub fn id_prefix(self) -> Option<&'static str> {
         Some(match self {
+            Self::Organization => "org",
+            Self::OrganizationNetwork | Self::OrganizationDecision => return None,
+            Self::UserProfile
+            | Self::OrganizationAccount
+            | Self::TracingPolicy
+            | Self::TracingDestination => return None,
+            Self::SandboxTemplate => "sbxtpl",
             Self::Agent => "agent",
             Self::Harness => "harness",
             Self::Skill => "skill",
@@ -142,6 +179,8 @@ impl EntityKind {
             Self::KnowledgeBase => "kb",
             Self::KnowledgeEntry => "kbe",
             Self::KnowledgeIndex => "kidx",
+            Self::Knowledge => "kn",
+            Self::KnowledgeIndexer => return None,
             Self::Memory => "mem",
             Self::Provider => "provider",
             Self::Model => "model",
@@ -175,6 +214,19 @@ impl EntityKind {
     pub fn view_policy(self) -> &'static Policy {
         use crate::domains::*;
         match self {
+            Self::Organization => &organizations::settings::ORGANIZATION_VIEW,
+            Self::OrganizationNetwork => {
+                &organizations::egress_allowlist::ORG_EGRESS_ALLOWLIST_VIEW
+            }
+            Self::OrganizationDecision => &models::LLM_MODEL_VIEW,
+            Self::OrganizationAccount => {
+                &organizations::provider_accounts::ORG_PROVIDER_ACCOUNTS_VIEW
+            }
+            Self::TracingPolicy | Self::TracingDestination => {
+                &trace_exports::commands::TRACING_MANAGE
+            }
+            Self::SandboxTemplate => &harnesses::HARNESS_VIEW,
+            Self::UserProfile => &users::profile::OWN_PROFILE,
             Self::Agent
             | Self::CheckRule
             | Self::AgentChannel
@@ -186,6 +238,7 @@ impl EntityKind {
             Self::Schedule => &schedules::SCHEDULE_VIEW,
             Self::KnowledgeBase | Self::KnowledgeEntry => &knowledge_bases::KNOWLEDGE_BASE_VIEW,
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_VIEW,
+            Self::Knowledge | Self::KnowledgeIndexer => &knowledge::VIEW,
             Self::Memory => &memory::MEMORY_VIEW,
             Self::Provider => &providers::LLM_PROVIDER_VIEW,
             Self::Model => &models::LLM_MODEL_VIEW,
@@ -210,6 +263,19 @@ impl EntityKind {
     pub fn manage_policy(self) -> &'static Policy {
         use crate::domains::*;
         match self {
+            Self::Organization => &organizations::settings::ORGANIZATION_MANAGE,
+            Self::TracingPolicy | Self::TracingDestination => {
+                &trace_exports::commands::TRACING_MANAGE
+            }
+            Self::OrganizationNetwork => {
+                &organizations::egress_allowlist::ORG_EGRESS_ALLOWLIST_MANAGE
+            }
+            Self::OrganizationDecision => &models::LLM_MODEL_MANAGE,
+            Self::OrganizationAccount => {
+                &organizations::provider_accounts::ORG_PROVIDER_ACCOUNTS_VIEW
+            }
+            Self::SandboxTemplate => &harnesses::HARNESS_MANAGE,
+            Self::UserProfile => &users::profile::OWN_PROFILE,
             Self::Agent | Self::AgentChannel | Self::AgentTrigger | Self::AgentScript => {
                 &agents::AGENT_MANAGE
             }
@@ -220,6 +286,7 @@ impl EntityKind {
             Self::Schedule => &schedules::SCHEDULE_MANAGE,
             Self::KnowledgeBase | Self::KnowledgeEntry => &knowledge_bases::KNOWLEDGE_BASE_MANAGE,
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_MANAGE,
+            Self::Knowledge | Self::KnowledgeIndexer => &knowledge::MANAGE,
             Self::Memory => &memory::MEMORY_MANAGE,
             Self::Provider => &providers::LLM_PROVIDER_MANAGE,
             Self::Model => &models::LLM_MODEL_MANAGE,
@@ -241,7 +308,14 @@ impl EntityKind {
     /// them belong on the parent. Sessions have their own lifecycle and are not
     /// managed in this sense.
     pub fn has_manager_context(self) -> bool {
-        !matches!(self, Self::KnowledgeEntry | Self::EvalCase | Self::Session)
+        !matches!(
+            self,
+            Self::KnowledgeEntry
+                | Self::KnowledgeIndexer
+                | Self::EvalCase
+                | Self::Session
+                | Self::UserProfile
+        )
     }
 
     /// The read command that fetches one entity of this kind by its ref alone,
@@ -250,6 +324,14 @@ impl EntityKind {
     /// read needs a parent id (channels, triggers, check rules) have none.
     pub fn lookup(self) -> Option<(&'static str, &'static str)> {
         Some(match self {
+            Self::Organization => ("get_org", "org"),
+            Self::OrganizationNetwork => ("get_org_egress_allowlist", "org"),
+            Self::OrganizationDecision => ("get_org_decision_settings", "org"),
+            Self::UserProfile => ("get_account_profile", "id"),
+            Self::OrganizationAccount => ("get_organization_account", "id"),
+            Self::TracingPolicy => ("get_tracing_policy", "id"),
+            Self::TracingDestination => ("get_tracing_destination_metadata", "id"),
+            Self::SandboxTemplate => ("get_sandbox_template_metadata", "id"),
             Self::Agent => ("get_agent", "id"),
             Self::Harness => ("get_harness", "id"),
             Self::Skill => ("get_skill", "id"),
@@ -257,6 +339,7 @@ impl EntityKind {
             Self::Schedule => ("get_schedule", "schedule_id"),
             Self::KnowledgeBase => ("get_knowledge_base", "kb_id"),
             Self::KnowledgeIndex => ("get_knowledge_index", "index_id"),
+            Self::Knowledge => ("get_knowledge", "collection_id"),
             Self::Memory => ("get_memory", "memory_id"),
             Self::Provider => ("get_provider", "id"),
             Self::Model => ("get_model", "id"),
@@ -277,6 +360,7 @@ impl EntityKind {
             | Self::AgentTrigger
             | Self::AgentScript
             | Self::KnowledgeEntry
+            | Self::KnowledgeIndexer
             | Self::EvalCase => return None,
         })
     }
@@ -286,6 +370,7 @@ impl EntityKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeAction {
+    Baseline,
     Created,
     Updated,
     Deleted,
@@ -307,6 +392,7 @@ pub enum ChangeAction {
 
 impl ChangeAction {
     pub const ALL: &'static [ChangeAction] = &[
+        Self::Baseline,
         Self::Created,
         Self::Updated,
         Self::Deleted,
@@ -328,6 +414,7 @@ impl ChangeAction {
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Baseline => "baseline",
             Self::Created => "created",
             Self::Updated => "updated",
             Self::Deleted => "deleted",
@@ -359,6 +446,7 @@ impl ChangeAction {
 /// Where the changed entity's id is found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubjectId {
+    CallerOrg,
     /// A top-level field of the params (update, delete: the id is an input).
     Param(&'static str),
     /// A top-level field of the output (create: the id exists only after).
@@ -404,12 +492,17 @@ pub fn declared(name: &str) -> Change {
 
     match name {
         // Agents and what hangs off them.
-        "create_agent" | "copy_agent" => on(K::Agent, Created, ID),
+        "create_agent" | "copy_agent" | "adopt_agent_example" => on(K::Agent, Created, ID),
         "import_agent" => on(K::Agent, Imported, ID),
+        "connect_agent_source" => on(K::Agent, Attached, Param("agent_id")),
+        "disconnect_agent_source" => on(K::Agent, Detached, Param("agent_id")),
+        "sync_agent_source" => {
+            Change::Exempt("queues reconciliation; the import records the actual change")
+        }
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
-        "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
-        "resume_agent_exposures" => on(K::Agent, Resumed, ID),
+        "pause_agent" => on(K::Agent, Suspended, ID),
+        "resume_agent" => on(K::Agent, Resumed, ID),
         "set_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
@@ -421,6 +514,7 @@ pub fn declared(name: &str) -> Change {
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
         "analyze_agent"
         | "draft_agent"
+        | "plan_agent_costs"
         | "preview_agent"
         | "diff_agent_package"
         | "validate_agent_package" => {
@@ -491,6 +585,21 @@ pub fn declared(name: &str) -> Change {
         "delete_knowledge_index" => on(K::KnowledgeIndex, Deleted, Param("index_id")),
         "sync_knowledge_index" => Change::Exempt("a sync run refreshes content, not configuration"),
 
+        "create_knowledge" => on(K::Knowledge, Created, ID),
+        "update_knowledge" | "add_knowledge_source" => {
+            on(K::Knowledge, Updated, Param("collection_id"))
+        }
+        "archive_knowledge" => on(K::Knowledge, Deleted, Param("collection_id")),
+        "create_knowledge_indexer" => on(K::KnowledgeIndexer, Created, ID),
+        "sync_knowledge" => {
+            Change::Exempt("queues source refresh and derived indexing, not configuration")
+        }
+        "write_knowledge_file" | "delete_knowledge_file" | "update_knowledge_file_metadata" => {
+            Change::Exempt(
+                "file content and metadata use immutable versions; file lifecycle uses catalog state",
+            )
+        }
+
         "create_memory" => on(K::Memory, Created, ID),
         "update_memory" => on(K::Memory, Updated, ID),
         "delete_memory" => on(K::Memory, Deleted, Param("memory_id")),
@@ -509,12 +618,11 @@ pub fn declared(name: &str) -> Change {
         "create_model" => on(K::Model, Created, ID),
         "update_model" => on(K::Model, Updated, ID),
         "delete_model" => on(K::Model, Deleted, Param("id")),
-        "set_org_egress_allowlist" | "set_org_egress_allowlist_grant" => {
+        "set_org_egress_allowlist" => on(K::OrganizationNetwork, Updated, Param("org")),
+        "set_org_egress_allowlist_grant" => {
             Change::Exempt("an organization setting, recorded in the management audit log")
         }
-        "set_default_decision_model" => {
-            Change::Exempt("an organization setting, not a change to one model")
-        }
+        "set_default_decision_model" => on(K::OrganizationDecision, Updated, SubjectId::CallerOrg),
 
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),
@@ -534,23 +642,54 @@ pub fn declared(name: &str) -> Change {
         "delete_plugin_marketplace" => on(K::PluginMarketplace, Deleted, Param("id")),
         "sync_plugin_marketplace" => Change::Exempt("a sync run refreshes the catalog"),
 
+        "apply_model_selection" | "undo_model_selection" => Change::Exempt(
+            "Each model update records its own revision in the shared batch transaction",
+        ),
         // Organization.
+        "update_org" => on(K::Organization, Updated, Param("org")),
+        "update_sandbox_template_metadata" => on(K::SandboxTemplate, Updated, Param("id")),
+        "start_sandbox_template_build"
+        | "cancel_sandbox_template_build"
+        | "discard_sandbox_template_build" => {
+            Change::Exempt("build attempts and provider artifact cleanup are operational state")
+        }
+        "apply_sandbox_template_build" => Change::Exempt(
+            "records its resolved parent template through RestChange with the original caller and context",
+        ),
+        "update_tracing_destination_metadata" => on(K::TracingDestination, Updated, Param("id")),
+        "update_tracing_policy" => on(K::TracingPolicy, Updated, Param("id")),
+        "update_organization_account_name" => on(K::OrganizationAccount, Updated, Param("id")),
+        "update_account_profile" => on(K::UserProfile, Updated, Param("id")),
         "update_workspace" => on(K::Workspace, Updated, ID),
         "delete_workspace" => on(K::Workspace, Deleted, Param("workspace_id")),
 
         "create_virtual_user" => on(K::VirtualUser, Created, ID),
-        "update_virtual_user" => on(K::VirtualUser, Updated, ID),
+        "update_virtual_user" | "update_own_virtual_user_profile" => {
+            on(K::VirtualUser, Updated, ID)
+        }
         "delete_virtual_user" | "destroy_virtual_user" => on(K::VirtualUser, Deleted, Param("id")),
 
         "create_observer" => on(K::Observer, Created, ID),
         "update_observer" => on(K::Observer, Updated, ID),
         "delete_observer" => on(K::Observer, Deleted, Param("observer_id")),
+        "review_observer_score" => {
+            Change::Exempt("a review annotates one derived score, not the observer")
+        }
+        "backfill_observer" => {
+            Change::Exempt("a backfill queues scores, the observer is unchanged")
+        }
 
         "create_budget" => on(K::Budget, Created, ID),
         "update_budget" => on(K::Budget, Updated, ID),
         "delete_budget" => on(K::Budget, Deleted, Param("budget_id")),
         "top_up_budget" => Change::Exempt("a balance movement, recorded in the budget ledger"),
         "resume_session_budgets" => Change::Exempt("resumes sessions a budget paused"),
+        "create_cost_rate" | "retire_cost_rate" => Change::Exempt(
+            "the price list is append-only; each row keeps its own reason and author",
+        ),
+        "update_cost_settings" => {
+            Change::Exempt("an organization setting with no entity history of its own")
+        }
 
         "create_payment_account" => on(K::PaymentAccount, Created, ID),
         "update_payment_account" => on(K::PaymentAccount, Updated, ID),
@@ -563,13 +702,26 @@ pub fn declared(name: &str) -> Change {
         "create_eval" => on(K::Eval, Created, ID),
         "update_eval" => on(K::Eval, Updated, ID),
         "delete_eval" => on(K::Eval, Deleted, Param("eval_id")),
-        "import_atif_trajectories" => on(K::Eval, Imported, Param("eval_id")),
-        "create_eval_case" => on(K::EvalCase, Created, ID),
+        "import_atif_trajectories" | "import_eval_samples" => {
+            on(K::Eval, Imported, Param("eval_id"))
+        }
+        "create_eval_case" | "accept_eval_proposal" => on(K::EvalCase, Created, ID),
+        "propose_eval_cases" | "dismiss_eval_proposal" => Change::Exempt(
+            "Eval Builder suggestions are not configuration until accepted as a case",
+        ),
+        "update_finding_fix" | "reject_finding_fix" => {
+            Change::Exempt("a suggested fix is not configuration until it is applied")
+        }
+        "apply_finding_fix" => {
+            Change::Exempt("applies through update_agent, which records the agent's new revision")
+        }
         "update_eval_case" => on(K::EvalCase, Updated, ID),
         "delete_eval_case" => on(K::EvalCase, Deleted, Param("case_id")),
-        "create_eval_run" | "cancel_eval_run" | "import_eval_run" => {
-            Change::Exempt("eval runs are results, not configuration")
-        }
+        "create_eval_run"
+        | "cancel_eval_run"
+        | "import_eval_run"
+        | "create_eval_experiment"
+        | "check_finding_fix" => Change::Exempt("eval runs are results, not configuration"),
         "bulk_update_eval_run_scores" | "update_eval_result_scores" => {
             Change::Exempt("scores are results, not configuration")
         }
@@ -606,6 +758,9 @@ pub fn declared(name: &str) -> Change {
         "set_message_feedback" => {
             Change::Exempt("a person's rating of a reply, not a change to the session")
         }
+        "add_message_reaction" | "remove_message_reaction" => {
+            Change::Exempt("conversation traffic, kept in the session's events")
+        }
         "cancel_session_task"
         | "post_session_task_message"
         | "create_task_push_config"
@@ -621,6 +776,9 @@ pub fn declared(name: &str) -> Change {
         "worker_create_session_schedule" | "worker_cancel_session_schedule" => {
             Change::Exempt("the agent's own schedules are the session's working state")
         }
+        "register_external_agent" | "disable_external_agent" => Change::Exempt(
+            "external execution credentials are not authored Agent configuration; sanitized management audit records the change",
+        ),
         "worker_register_session_resource"
         | "worker_update_session_resource_status"
         | "worker_deregister_session_resource" => {
@@ -645,6 +803,9 @@ pub fn declared(name: &str) -> Change {
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
         }
+        "worker_dreaming_state" => Change::Exempt(
+            "private runtime maintenance and reservations; payload-free activity is recorded separately",
+        ),
         "worker_create_session_task"
         | "worker_update_session_task"
         | "worker_request_cancel_session_task"
@@ -665,10 +826,25 @@ pub fn declared(name: &str) -> Change {
             Change::Exempt("session resources are the session's working state")
         }
 
+        "create_scoped_credential"
+        | "revoke_scoped_credential"
+        | "grant_resource_access"
+        | "revoke_resource_grant" => Change::Exempt(
+            "credential ownership and grants have atomic payload-free resource_access_audit entries",
+        ),
+        "worker_credentials" => Change::Exempt(
+            "runtime credential operations are write-only and use payload-free resource audit",
+        ),
         "mark_notification_viewed" => Change::Exempt("read state of the caller's own inbox"),
-        "check_health_issue" | "snooze_health_issue" => {
+        "check_health_issue" | "snooze_health_issue" | "dismiss_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
         }
+        "take_finding_action" | "undo_finding_action" => Change::Exempt(
+            "pauses or resumes a schedule; recorded on the finding as a finding action",
+        ),
+        "run_health_issue_fixer" => Change::Exempt(
+            "repairs an integration or pauses a schedule; recorded on the issue as a finding action",
+        ),
 
         _ => Change::Undeclared,
     }
@@ -705,6 +881,7 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         | "disconnect_agent_github"
         // Composes channel and trigger creation from a package.
         | "import_agent"
+        | "connect_agent_source"
         // Decodes and resizes an image (CPU) before the write.
         | "set_agent_avatar"
     )

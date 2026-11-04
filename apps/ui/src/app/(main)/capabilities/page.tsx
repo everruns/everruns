@@ -1,6 +1,14 @@
 "use client";
 
-import { AgentIcon } from "@/components/icons/facet-icons";
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
+import { CapabilityCard } from "@/components/capabilities/capability-card";
 import { useMemo, useState } from "react";
 import {
   useCapabilities,
@@ -9,7 +17,6 @@ import {
   usePageTitle,
 } from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import {
   Select,
@@ -21,19 +28,16 @@ import {
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { CircleOff, Layers, Plus, Pencil } from "lucide-react";
-import { EntityStatus } from "@/components/ui/entity-status";
-import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
+import { CircleOff, Plus, Pencil } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
-import { CapabilityIcon } from "@/lib/capability-icons";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import {
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+
 import { formatCountLabel, pluralize } from "@/lib/formatting";
 import {
   PageContainer,
@@ -41,7 +45,6 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
-  IconTile,
   PageMain,
   PageFooter,
 } from "@/components/layout";
@@ -53,22 +56,8 @@ type StatusTab = "all" | Exclude<CapabilityStatus, "retired">;
 
 const CapabilitiesIcon = registryDomainIcons.capabilities;
 
-function getStatusLabel(status: CapabilityStatus): string {
-  switch (status) {
-    case "available":
-      return "Available";
-    case "coming_soon":
-      return "Coming Soon";
-    case "deprecated":
-      return "Deprecated";
-    case "needs_identity":
-      return "Needs Identity";
-    case "retired":
-      return "Removed";
-  }
-}
-
 function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapability }) {
+  const ui = useUiTranslations();
   const { locale } = useLocale();
   const deleteCapability = useDeleteDeclarativeCapability();
   return (
@@ -88,7 +77,7 @@ function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapab
       <div className="flex items-center gap-2 shrink-0">
         <LinkButton variant="outline" size="sm" href={`/capabilities/declarative/${capability.id}`}>
           <Pencil className="mr-1.5 h-3.5 w-3.5" />
-          Edit
+          {ui("Edit")}
         </LinkButton>
         <Button
           type="button"
@@ -97,56 +86,10 @@ function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapab
           onClick={() => deleteCapability.mutate(capability.id)}
           disabled={deleteCapability.isPending}
         >
-          Archive
+          {ui("Archive")}
         </Button>
       </div>
     </div>
-  );
-}
-
-function CapabilityStats({ capability }: { capability: Capability }) {
-  const agents = capability.agent_count ?? 0;
-  const harnesses = capability.harness_count ?? 0;
-  return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1">
-        <AgentIcon className="h-3.5 w-3.5" />
-        {formatCountLabel(agents, "agent")}
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <Layers className="h-3.5 w-3.5" />
-        {formatCountLabel(harnesses, "harness", "harnesses")}
-      </span>
-    </div>
-  );
-}
-
-function CapabilityCard({ capability }: { capability: Capability }) {
-  const { locale } = useLocale();
-  return (
-    <EntityCard
-      className="h-full"
-      icon={<IconTile size="md" icon={<CapabilityIcon icon={capability.icon} />} />}
-      title={localizedCapabilityName(capability, locale)}
-      href={`/capabilities/${capability.id}`}
-      headerActions={<EntityStatus status={getStatusLabel(capability.status)} />}
-    >
-      <EntityCardDescription>
-        <InlineStreamdownMessage>
-          {localizedCapabilityDescription(capability, locale)}
-        </InlineStreamdownMessage>
-      </EntityCardDescription>
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        {capability.category ? (
-          <Badge variant="outline" className="text-xs">
-            {capability.category}
-          </Badge>
-        ) : (
-          <span />
-        )}
-        <CapabilityStats capability={capability} />
-      </div>
-    </EntityCard>
   );
 }
 
@@ -158,7 +101,7 @@ function matchesLocalizations(capability: Pick<Capability, "localizations">, q: 
   );
 }
 
-function matches(capability: Capability, query: string): boolean {
+function matches(capability: Capability, query: string, locale: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
   return (
@@ -166,6 +109,9 @@ function matches(capability: Capability, query: string): boolean {
     capability.description.toLowerCase().includes(q) ||
     capability.id.toLowerCase().includes(q) ||
     (capability.category?.toLowerCase().includes(q) ?? false) ||
+    (capability.category
+      ? localizedCapabilityCategory(capability.category, locale).toLowerCase().includes(q)
+      : false) ||
     matchesLocalizations(capability, q)
   );
 }
@@ -183,12 +129,15 @@ function matchesDeclarative(capability: DeclarativeCapability, query: string): b
 }
 
 export default function CapabilitiesPage() {
-  usePageTitle("Capabilities");
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Capabilities"));
   const { data: capabilities, isLoading, error } = useCapabilities();
   const { data: declarativeCapabilities } = useDeclarativeCapabilities();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [statusTab, setStatusTab] = useState<StatusTab>("all");
+  useChatPageFilters({ search: searchQuery, category: selectedCategory, status: statusTab });
 
   const { categories } = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -217,7 +166,7 @@ export default function CapabilitiesPage() {
 
   const filtered = useMemo(() => {
     return (capabilities ?? []).filter((cap) => {
-      if (!matches(cap, searchQuery)) return false;
+      if (!matches(cap, searchQuery, displayLocale)) return false;
       if (statusTab !== "all" && cap.status !== statusTab) return false;
       if (selectedCategory) {
         const key = cap.category || UNCATEGORIZED;
@@ -225,7 +174,7 @@ export default function CapabilitiesPage() {
       }
       return true;
     });
-  }, [capabilities, searchQuery, selectedCategory, statusTab]);
+  }, [capabilities, searchQuery, selectedCategory, statusTab, displayLocale]);
 
   const filteredDeclarative = useMemo(
     () =>
@@ -254,38 +203,40 @@ export default function CapabilitiesPage() {
   const isFiltering = searchQuery.length > 0 || selectedCategory !== null || statusTab !== "all";
 
   const statusItems = [
-    { value: "all" as const, label: "All" },
-    { value: "available" as const, label: "Available" },
-    { value: "coming_soon" as const, label: "Coming Soon" },
-    { value: "deprecated" as const, label: "Deprecated" },
-    { value: "needs_identity" as const, label: "Needs Identity" },
+    { value: "all" as const, label: ui("All") },
+    { value: "available" as const, label: ui("Available") },
+    { value: "coming_soon" as const, label: ui("Coming soon") },
+    { value: "deprecated" as const, label: ui("Deprecated") },
+    { value: "needs_identity" as const, label: ui("Needs identity") },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Capabilities" }]} />
+      <PageBreadcrumb items={[{ label: ui("Capabilities") }]} />
 
       <PageMasthead
         icon={<CapabilitiesIcon />}
-        title="Capabilities"
-        description="Building blocks — system prompt additions and tools agents and harnesses can use."
+        title={ui("Capabilities")}
+        description={ui(
+          "Building blocks: system prompt additions and tools agents and harnesses can use.",
+        )}
         actions={
           <LinkButton variant="accent" href="/capabilities/declarative/new">
             <Plus className="size-4" />
-            New Declarative
+            {ui("New declarative")}
           </LinkButton>
         }
       />
 
       {error && (
         <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          Error loading capabilities: {error.message}
+          {ui("Error loading capabilities:")} {error.message}
         </div>
       )}
 
       <PageControlStrip className="flex flex-wrap items-center gap-3">
         <SearchInput
-          placeholder="Search by name, description, ID, or category…"
+          placeholder={ui("Search by name, description, ID, or category…")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           containerClassName="w-72"
@@ -294,14 +245,17 @@ export default function CapabilitiesPage() {
           value={selectedCategory ?? "all"}
           onValueChange={(value) => setSelectedCategory(value === "all" ? null : value)}
         >
-          <SelectTrigger aria-label="Category" className="w-44">
+          <SelectTrigger aria-label={ui("Category")} className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
+            <SelectItem value="all">{ui("All categories")}</SelectItem>
             {categories.map((category) => (
-              <SelectItem key={category} value={category}>
-                {category}
+              <SelectItem
+                key={localizedCapabilityCategory(category, displayLocale)}
+                value={localizedCapabilityCategory(category, displayLocale)}
+              >
+                {localizedCapabilityCategory(category, displayLocale)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -321,7 +275,7 @@ export default function CapabilitiesPage() {
         {filteredDeclarative.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Declarative Capabilities</CardTitle>
+              <CardTitle className="text-base">{ui("Declarative Capabilities")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {filteredDeclarative.map((capability) => (
@@ -348,17 +302,17 @@ export default function CapabilitiesPage() {
         ) : totalCount === 0 ? (
           <Card className="p-8 text-center">
             <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No capabilities available</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("No capabilities available")}</h3>
             <p className="text-muted-foreground">
-              Capabilities will appear here once they are configured.
+              {ui("Capabilities will appear here once they are configured.")}
             </p>
           </Card>
         ) : filteredCount === 0 ? (
           <Card className="p-8 text-center">
             <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No matches</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("No matches")}</h3>
             <p className="text-muted-foreground mb-4">
-              No capabilities match the current search and filters.
+              {ui("No capabilities match the current search and filters.")}
             </p>
             <Button
               variant="outline"
@@ -368,19 +322,19 @@ export default function CapabilitiesPage() {
                 setStatusTab("all");
               }}
             >
-              Clear filters
+              {ui("Clear filters")}
             </Button>
           </Card>
         ) : (
           <div className="space-y-8">
             {grouped.map(([category, caps]) => (
-              <section key={category}>
+              <section key={localizedCapabilityCategory(category, displayLocale)}>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    {category}
+                  <h2 className="text-sm font-semibold text-muted-foreground">
+                    {localizedCapabilityCategory(category, displayLocale)}
                   </h2>
                   <span className="text-xs text-muted-foreground">
-                    {formatCountLabel(caps.length, "capability", "capabilities")}
+                    {formatCountLabel(caps.length, "capability", "capabilities", displayLocale)}
                   </span>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
@@ -398,8 +352,14 @@ export default function CapabilitiesPage() {
         <PageFooter>
           <span>
             {isFiltering
-              ? `Showing ${filteredCount} of ${totalCount} ${pluralize(totalCount, "capability", "capabilities")}`
-              : `Showing ${formatCountLabel(totalCount, "capability", "capabilities")}`}
+              ? ui("Showing {value0} of {value1} {value2}", {
+                  value0: filteredCount,
+                  value1: totalCount,
+                  value2: pluralize(totalCount, "capability", "capabilities", displayLocale),
+                })
+              : ui("Showing {value0}", {
+                  value0: formatCountLabel(totalCount, "capability", "capabilities", displayLocale),
+                })}
           </span>
           {isFiltering && (
             <button
@@ -411,7 +371,7 @@ export default function CapabilitiesPage() {
               }}
               className="text-primary transition-colors hover:underline"
             >
-              Clear filters →
+              {ui("Clear filters →")}
             </button>
           )}
         </PageFooter>

@@ -9,7 +9,7 @@
 
 import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { forwardRef, type SVGProps } from "react";
-import { BarChart3, SquareDashed } from "lucide-react";
+import { Activity, BarChart3, Bot, SquareDashed } from "lucide-react";
 import { capabilityIconMap, type IconComponent } from "@/lib/capability-icons";
 
 /**
@@ -45,6 +45,9 @@ export const harnessIconMap: Record<string, IconComponent> = {
   everruns: EverrunsIcon,
   "square-dashed": SquareDashed,
   "bar-chart": BarChart3,
+  // Starter prompts reuse this map; Platform Chat's starters name these two.
+  activity: Activity,
+  bot: Bot,
 };
 
 /** Resolve a harness icon name, falling back to the neutral harness glyph. */

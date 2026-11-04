@@ -104,10 +104,13 @@ async fn create_test_sandbox(api_key: String, label: &str) -> (DaytonaClient, Sa
     let client = DaytonaClient::new(api_key);
 
     let info = client
-        .create_sandbox(json!({
-            "snapshot": "daytona-small",
-            "labels": {"everruns-test": label}
-        }))
+        .create_sandbox(
+            serde_json::from_value(json!({
+                "snapshot": "daytona-small",
+                "labels": {"everruns-test": label}
+            }))
+            .expect("valid create body"),
+        )
         .await
         .expect("Failed to create sandbox");
 
@@ -558,6 +561,13 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
     for _ in 0..60 {
         match client.get_sandbox(&instance.external_id).await {
             Err(err) if err.contains("404 Not Found") || err.contains("(404)") => {
+                sandbox_is_absent = true;
+                break;
+            }
+            // Daytona can keep a deleted sandbox in `destroying` for over a
+            // minute before it answers 404 (EVE-1280); the provider reports
+            // that as lost too.
+            Ok(info) if matches!(info.state.as_str(), "destroying" | "destroyed") => {
                 sandbox_is_absent = true;
                 break;
             }
@@ -1039,11 +1049,14 @@ async fn test_live_computer_use_desktop() {
     let client = DaytonaClient::new(api_key.clone());
     // No snapshot: Daytona's default image is the one with the desktop.
     let info = client
-        .create_sandbox(json!({
-            "autoStopInterval": 5,
-            "env": {"VNC_RESOLUTION": "1024x768"},
-            "labels": {"everruns-test": "computer-use"}
-        }))
+        .create_sandbox(
+            serde_json::from_value(json!({
+                "autoStopInterval": 5,
+                "env": {"VNC_RESOLUTION": "1024x768"},
+                "labels": {"everruns-test": "computer-use"}
+            }))
+            .expect("valid create body"),
+        )
         .await
         .expect("Failed to create sandbox");
     let guard = SandboxGuard::new(info.id.clone());
@@ -1164,50 +1177,279 @@ mod base64_check {
     }
 }
 
-/// The capability's `computer` tool opens a session-owned desktop sandbox on
-/// the first call and reuses it on the next.
+/// A Session Sandbox created with the desktop option opens its own desktop:
+/// the `sandbox_desktop` capability drives the same sandbox the agent's
+/// shell runs in.
 #[tokio::test]
-async fn test_live_computer_use_capability_reuses_the_desktop() {
-    use everruns_contracts::runtime::capabilities::Capability;
-    use everruns_contracts::runtime::computer_use::COMPUTER_USE_DISPLAY_KV_PREFIX;
-    use everruns_contracts::runtime::tools::ToolExecutionResult;
-    use everruns_integrations::daytona::computer::DaytonaDesktopComputerUseCapability;
+async fn test_live_session_sandbox_desktop() {
+    use everruns_contracts::runtime::computer_use::{DisplaySize, png_dimensions};
 
     let api_key = require_api_key!();
     let context = live_provider_context(api_key);
-    let storage = context.storage_store.clone().unwrap();
-    let key = format!("{COMPUTER_USE_DISPLAY_KV_PREFIX}daytona");
-    let tools = DaytonaDesktopComputerUseCapability
-        .tools_with_config(&json!({"display_width": 1024, "display_height": 768}));
-    let tool = &tools[0];
+    let provider = create_session_sandbox_provider("daytona")
+        .expect("session_sandbox Daytona provider should be registered");
+    let config = SessionSandboxConfig {
+        provider: "daytona".to_string(),
+        credential: live_provider_credential(),
+        auto_start: true,
+        idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
+        provider_config: json!({
+            "desktop": {"display_width": 1024, "display_height": 768},
+            "title": "live-session-sandbox-desktop"
+        }),
+        init: Default::default(),
+    };
 
-    let first = tool
-        .execute_with_context(json!({"action": "screenshot"}), &context)
-        .await;
-    let sandbox_id = storage
-        .get_value(context.session_id, &key)
+    let instance = provider
+        .create(&context, &config)
         .await
-        .unwrap()
-        .expect("the desktop sandbox is recorded");
-    let _guard = SandboxGuard::new(sandbox_id.clone());
-    match &first {
-        ToolExecutionResult::SuccessWithImages { images, .. } => assert_eq!(images.len(), 1),
-        other => panic!("screenshot failed: {other:?}"),
+        .expect("desktop session sandbox create failed");
+    let _guard = SandboxGuard::new(instance.external_id.clone());
+
+    // The desktop is up before the first `computer` action, and the shell
+    // points at it, so a browser started from the shell lands on screen.
+    let probe = provider
+        .exec(
+            &context,
+            &config,
+            &instance,
+            &everruns_contracts::session_sandbox::SessionSandboxExecRequest {
+                command: r#"test -S "/tmp/.X11-unix/X${DISPLAY#:}" && echo "display $DISPLAY""#
+                    .to_string(),
+                cwd: None,
+                timeout_ms: Some(30_000),
+                output_mode: "auto".to_string(),
+            },
+        )
+        .await
+        .unwrap_or_else(|e| panic!("exec failed: {e:?}"));
+    assert_eq!(probe.stdout.trim(), "display :0", "{probe:?}");
+
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let mut session = provider
+        .open_desktop(&context, &config, &instance, display)
+        .await
+        .unwrap_or_else(|e| panic!("open_desktop failed: {e:?}"));
+    let frame = session.screenshot().await.expect("screenshot failed");
+    assert_eq!(
+        png_dimensions(&base64_check::decode(&frame.base64)).unwrap(),
+        (1024, 768)
+    );
+    session.release().await;
+}
+
+/// Snapshot listing is paginated (`PaginatedSnapshots`), not a bare array.
+#[tokio::test]
+async fn test_live_list_snapshots() {
+    let api_key = require_api_key!();
+    let client = DaytonaClient::new(api_key);
+    let snapshots = client.list_snapshots().await.expect("list_snapshots");
+    assert!(
+        snapshots
+            .iter()
+            .all(|s| !s.id.is_empty() && !s.name.is_empty()),
+        "every snapshot has an id and a name: {snapshots:?}"
+    );
+}
+
+/// The template network policy and the session access list reach Daytona on
+/// create, and a resumed sandbox follows the session's current list.
+#[tokio::test]
+async fn test_live_session_sandbox_enforces_network_policy() {
+    use everruns_contracts::runtime::network_access::NetworkAccessList;
+
+    let api_key = require_api_key!();
+    let mut context = live_provider_context(api_key);
+    context.network_access = Some(NetworkAccessList::allow_only(["github.com"]));
+    let provider = create_session_sandbox_provider("daytona")
+        .expect("session_sandbox Daytona provider should be registered");
+    let config = SessionSandboxConfig {
+        provider: "daytona".to_string(),
+        credential: live_provider_credential(),
+        auto_start: true,
+        idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
+        provider_config: json!({
+            "snapshot": "daytona-small",
+            "workspace_path": "/home/daytona/workspace",
+            "title": "live-session-sandbox-network",
+            "network": {"mode": "allowlist", "domains": ["github.com", "example.com"]}
+        }),
+        init: Default::default(),
+    };
+
+    let instance = provider
+        .create(&context, &config)
+        .await
+        .expect("managed session sandbox create failed");
+    let guard = SandboxGuard::new(instance.external_id.clone());
+
+    let reaches = |context: ToolContext,
+                   instance: everruns_contracts::session_sandbox::SessionSandboxInstance,
+                   host: &'static str| {
+        let provider = &provider;
+        let config = &config;
+        async move {
+            let exec = provider
+                .exec(
+                    &context,
+                    config,
+                    &instance,
+                    &SessionSandboxExecRequest {
+                        command: format!(
+                            "curl -s -o /dev/null -w '%{{http_code}}' --max-time 10 https://{host}/ || true"
+                        ),
+                        cwd: instance.workspace_path.clone(),
+                        timeout_ms: Some(30_000),
+                        output_mode: "normal".to_string(),
+                    },
+                )
+                .await
+                .expect("network probe exec failed");
+            let code = exec.stdout.trim().to_string();
+            eprintln!("[test] {host} -> {code}");
+            !code.is_empty() && code != "000"
+        }
+    };
+
+    // Template allows github.com and example.com; the session narrows to github.com.
+    assert!(reaches(context.clone(), instance.clone(), "github.com").await);
+    assert!(!reaches(context.clone(), instance.clone(), "example.com").await);
+
+    let paused = provider
+        .pause(&context, &config, &instance)
+        .await
+        .expect("managed session sandbox pause failed");
+    context.network_access = Some(NetworkAccessList::allow_only(["example.com"]));
+    let resumed = provider
+        .resume(&context, &config, &paused)
+        .await
+        .expect("managed session sandbox resume failed");
+
+    // The runner applies an update asynchronously; give it a few seconds.
+    let mut switched = false;
+    for _ in 0..5 {
+        if reaches(context.clone(), resumed.clone(), "example.com").await
+            && !reaches(context.clone(), resumed.clone(), "github.com").await
+        {
+            switched = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    assert!(
+        switched,
+        "resumed sandbox did not follow the new access list"
+    );
+
+    provider
+        .delete(&context, &config, &resumed)
+        .await
+        .expect("managed session sandbox delete failed");
+    std::mem::forget(guard);
+}
+
+/// Desktop recording: a recording started on the desktop captures input and
+/// comes back as a video when collected, after which the sandbox holds none.
+#[tokio::test]
+async fn test_live_desktop_recording() {
+    use everruns_contracts::runtime::computer_use::{ComputerAction, ComputerSession, DisplaySize};
+    use everruns_integrations::daytona::computer::DaytonaDesktopSession;
+    use everruns_integrations::daytona::recording;
+
+    let api_key = require_api_key!();
+    let client = DaytonaClient::new(api_key.clone());
+    let info = client
+        .create_sandbox(
+            serde_json::from_value(json!({
+                "autoStopInterval": 5,
+                "env": {"VNC_RESOLUTION": "1024x768"},
+                "labels": {"everruns-test": "desktop-recording"}
+            }))
+            .expect("valid create body"),
+        )
+        .await
+        .expect("Failed to create sandbox");
+    let guard = SandboxGuard::new(info.id.clone());
+    client
+        .wait_for_ready(&info.id)
+        .await
+        .expect("Sandbox did not become ready");
+
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let mut session = DaytonaDesktopSession::start(
+        DaytonaClient::new(api_key.clone()),
+        guard.sandbox_id.clone(),
+        display,
+    )
+    .await
+    .expect("desktop did not start");
+    recording::ensure_started(&client, &guard.sandbox_id)
+        .await
+        .expect("recording did not start");
+    // Idempotent: a second start while one runs keeps the one recording.
+    recording::ensure_started(&client, &guard.sandbox_id)
+        .await
+        .expect("second start failed");
+    let running = recording::list(&client, &guard.sandbox_id)
+        .await
+        .expect("list failed");
+    assert_eq!(
+        running.iter().filter(|r| r.is_active()).count(),
+        1,
+        "{running:?}"
+    );
+
+    for arguments in [
+        json!({"action": "mouse_move", "coordinate": [100, 200]}),
+        json!({"action": "double_click", "coordinate": [512, 384]}),
+        json!({"action": "wait", "duration": 3}),
+        json!({"action": "screenshot"}),
+    ] {
+        let action = ComputerAction::from_arguments(&arguments).expect("valid action");
+        session.perform(&action).await.expect("action failed");
     }
 
-    let second = tool
-        .execute_with_context(
-            json!({"action": "left_click", "coordinate": [200, 150]}),
-            &context,
-        )
-        .await;
+    let client = std::sync::Arc::new(client);
+    let mut collected = recording::collect(client.clone(), &guard.sandbox_id)
+        .await
+        .expect("collect failed");
+    assert_eq!(collected.len(), 1, "{collected:?}");
+    let recording = collected.remove(0);
+    let video: Vec<u8> = futures::TryStreamExt::try_concat(recording.body.expect("video kept"))
+        .await
+        .expect("video streamed");
+    assert!(video.len() > 1000, "video is {} bytes", video.len());
     assert!(
-        matches!(second, ToolExecutionResult::SuccessWithImages { .. }),
-        "click failed: {second:?}"
+        recording.file_name.starts_with("desktop-"),
+        "{}",
+        recording.file_name
     );
+    eprintln!(
+        "[recording] {} {} bytes, {:?}s",
+        recording.file_name,
+        video.len(),
+        recording.duration_seconds
+    );
+    // Still in the Sandbox until the stored recording is removed.
     assert_eq!(
-        storage.get_value(context.session_id, &key).await.unwrap(),
-        Some(sandbox_id),
-        "the second call reuses the desktop"
+        recording::list(&client, &guard.sandbox_id)
+            .await
+            .expect("list failed")
+            .len(),
+        1
     );
+    recording.remove.await.expect("remove failed");
+    let left = recording::list(&client, &guard.sandbox_id)
+        .await
+        .expect("list failed");
+    assert!(left.is_empty(), "{left:?}");
+    drop(guard);
 }

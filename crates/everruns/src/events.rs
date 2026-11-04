@@ -48,6 +48,19 @@ use tokio::sync::broadcast;
 /// the turn — the runner must never block on an observer.
 pub const EVENT_STREAM_CAPACITY: usize = 4096;
 
+/// A validated, session-scoped continuation for canonical event replay.
+pub use everruns_core::host::EventCursor as SessionEventCursor;
+
+/// One bounded snapshot of canonical session events.
+pub struct SessionEventPage {
+    /// Persisted envelopes in sequence order.
+    pub events: Vec<SessionEvent>,
+    /// Continue this snapshot; absent once its watermark is reached.
+    pub next_cursor: Option<SessionEventCursor>,
+    /// Sequence that fixed this snapshot.
+    pub high_watermark: i32,
+}
+
 /// A single observed event from a running [`Session`](crate::Session).
 ///
 /// Two surfaces, deliberately separated:
@@ -63,7 +76,7 @@ pub const EVENT_STREAM_CAPACITY: usize = 4096;
 ///   not covered by this crate's stability guarantees.
 ///
 /// Envelope fields — timestamp, optional persisted sequence, correlation
-/// context, metadata, and tags — are complete on both. For
+/// context and tags — are complete on both; reviewed metadata contains only public provenance. For
 /// streaming delta events, the redundant `data.accumulated` prefix is
 /// omitted from both to keep buffered stream memory proportional to output size
 /// rather than quadratic in it. Incremental text and reasoning remain in the
@@ -296,8 +309,8 @@ impl SessionEvent {
 
     /// The event envelope as JSON, carrying the reviewed `data` projection.
     ///
-    /// Envelope fields — timestamp, sequence, correlation context, metadata,
-    /// tags — are complete. `data` holds the same reviewed projection as
+    /// Timestamp, sequence, correlation context and tags are complete;
+    /// metadata contains only reviewed public provenance. `data` holds the same reviewed projection as
     /// [`data`](Self::data) rather than the raw internal payload, so a new
     /// internal field cannot become part of this crate's public surface, or
     /// reach whatever an application forwards these envelopes to, without
@@ -373,6 +386,9 @@ impl SessionEvent {
         // Kept whole before `raw` is narrowed to the reviewed projection, so
         // `canonical_json` can still hand back everything the runtime emitted.
         let canonical = raw.clone();
+        if let Some(metadata) = raw.get_mut("metadata") {
+            *metadata = everruns_contracts::public_metadata::event(metadata);
+        }
         let turn_id = event.context.turn_id.map(|id| id.to_string());
         let kind = match event.event_type.as_str() {
             events::INPUT_MESSAGE => match &event.data {
@@ -712,12 +728,19 @@ pub struct EventStream {
     /// by the caller). Live durable events at or below it are duplicates of
     /// the replay and are dropped; sequence-less ephemeral events pass.
     replayed_through: Option<i32>,
+    authority: Option<(
+        std::sync::Arc<dyn crate::hosting::SessionHosting>,
+        SessionId,
+        i32,
+    )>,
 }
 
 /// Why an [`EventStream`] could not deliver the next event losslessly.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EventStreamError {
+    /// The authority could not provide a replay page. Retry from the last cursor.
+    Unavailable,
     /// The consumer fell behind the bounded stream buffer.
     ///
     /// The next call can continue from the oldest retained event, but the
@@ -733,6 +756,7 @@ pub enum EventStreamError {
 impl std::fmt::Display for EventStreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Unavailable => f.write_str("session event authority unavailable"),
             Self::Lagged { missed } => write!(f, "event stream lagged by {missed} events"),
         }
     }
@@ -746,7 +770,18 @@ impl EventStream {
             rx,
             backlog: VecDeque::new(),
             replayed_through: None,
+            authority: None,
         }
+    }
+
+    pub(crate) fn with_authority(
+        mut self,
+        hosting: std::sync::Arc<dyn crate::hosting::SessionHosting>,
+        session: SessionId,
+        after: i32,
+    ) -> Self {
+        self.authority = Some((hosting, session, after.max(0)));
+        self
     }
 
     /// Put `backlog` ahead of the live feed and suppress live duplicates of
@@ -785,6 +820,42 @@ impl EventStream {
             return Ok(Some(event));
         }
         loop {
+            if let Some((hosting, session, after)) = &mut self.authority {
+                use everruns_core::host::{EventCursor, EventReadLimit, EventReadRequest};
+                let cursor = EventCursor::after(*session, *after)
+                    .map_err(|_| EventStreamError::Unavailable)?;
+                let page = hosting
+                    .reader(*session)
+                    .event_log
+                    .read_page(EventReadRequest::from_cursor(
+                        cursor,
+                        EventReadLimit::default(),
+                    ))
+                    .await
+                    .map_err(|_| EventStreamError::Unavailable)?;
+                if let Some(last) = page.events.last().and_then(|event| event.sequence) {
+                    *after = last;
+                    self.replayed_through = Some(last);
+                    self.backlog
+                        .extend(page.events.iter().map(SessionEvent::from_core_event));
+                    return Ok(self.backlog.pop_front());
+                }
+                tokio::select! {
+                    _ = everruns_contracts::rt::sleep(std::time::Duration::from_millis(50)) => continue,
+                    event = self.rx.recv() => match event {
+                        // Canonical events use the cursor reader, so a local
+                        // notification cannot skip an unseen journal gap.
+                        Ok(event) if event.sequence().is_none() => return Ok(Some(event)),
+                        Err(broadcast::error::RecvError::Closed) => return Ok(None),
+                        Err(broadcast::error::RecvError::Lagged(missed)) => return Err(EventStreamError::Lagged { missed }),
+                        // A canonical event landed: read the journal now.
+                        // If it is not visible yet, the next pass waits on
+                        // the feed or the poll above, so this cannot spin;
+                        // sleeping here delayed every live event by 50 ms.
+                        Ok(_) => continue,
+                    }
+                }
+            }
             match self.rx.recv().await {
                 Ok(event) if self.is_replayed(&event) => continue,
                 Ok(event) => return Ok(Some(event)),
@@ -807,6 +878,9 @@ impl EventStream {
         }
         loop {
             match self.rx.try_recv() {
+                // Canonical delivery for hosted streams must follow the
+                // authority cursor. Local notifications can arrive out of order.
+                Ok(event) if self.authority.is_some() && event.sequence().is_some() => continue,
                 Ok(event) if self.is_replayed(&event) => continue,
                 Ok(event) => return Ok(Some(event)),
                 Err(broadcast::error::TryRecvError::Lagged(missed)) => {
@@ -1006,6 +1080,26 @@ impl FacadeEventBus {
 }
 
 impl EventSink for FacadeEventBus {
+    fn prepare_causal_context(
+        &self,
+        request: &everruns_core::events::EventRequest,
+    ) -> Option<String> {
+        self.observers.prepare_causal_context(request)
+    }
+    fn turn_causal_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+    ) -> crate::CausalContext {
+        self.observers.turn_causal_context(context)
+    }
+    fn restore_turn_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        self.observers.restore_turn_context(context, metadata);
+    }
+
     fn try_send(&self, event: Event) -> Result<(), EventSinkError> {
         self.observe(&event)
     }

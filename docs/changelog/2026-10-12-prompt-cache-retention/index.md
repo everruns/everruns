@@ -29,3 +29,11 @@ One hour writes cost twice the input rate, and cost estimates now include that.
 The `explicit` strategy now works on Claude too: it caches the tool definitions
 and system prompt but not the conversation, for agents whose history changes
 from call to call.
+
+## Update 2026-11-03
+
+Direct OpenAI Responses calls at `api.openai.com` on supporting models now
+default to `12h`. Set `retention: "30m"` for the shorter write tier or
+`enabled: false` to remove Everruns-managed controls.
+See [12-hour prompt caching](/changelog/2026-11-03-twelve-hour-prompt-cache/)
+for endpoint restrictions and write costs.

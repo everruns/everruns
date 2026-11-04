@@ -1,4 +1,5 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 // The session Trace tab: control strip, turn rail, virtualized turn list and
 // inspector. See knowledge/ui/session-trace.md.
@@ -8,6 +9,7 @@
 // view, the error filter and the selected step live in the URL so a debugging
 // link can be shared.
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -44,9 +46,12 @@ import {
   stepHoldingSequence,
   stepKey,
   type TraceView as View,
+  reactionsByTurn,
 } from "./trace-model";
+import { useMessageReactionList } from "@/hooks/use-message-reactions";
 import { TraceSearch } from "./trace-search";
 import { TurnRail } from "./turn-rail";
+import { DreamingTrace } from "./dreaming-trace";
 
 const VIEWS: { value: View; label: string }[] = [
   { value: "all", label: "Everything" },
@@ -73,13 +78,20 @@ export interface TraceViewProps {
 }
 
 export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const view = (VIEWS.find((v) => v.value === searchParams.get("view"))?.value ?? "all") as View;
   const errorsOnly = searchParams.get("errors") === "1";
   const showLifecycle = searchParams.get("lifecycle") === "1";
+  const plainText = searchParams.get("text") === "plain";
   const selectedStep = parseStepKey(searchParams.get("step"));
+  const failureSequence = Number(searchParams.get("failure") || 0);
+  const linkedFailure =
+    Number.isSafeInteger(failureSequence) && failureSequence > 0 ? failureSequence : 0;
   const initialTurn = selectedStep?.turn ?? Number(searchParams.get("turn") || 0);
 
   const setParams = useCallback(
@@ -96,7 +108,14 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   );
 
   const overview = useSessionTraceOverview(sessionId);
-  const data = useSessionTraceTurns(sessionId, initialTurn > 0 ? { around: initialTurn } : null);
+  const data = useSessionTraceTurns(
+    sessionId,
+    linkedFailure ? { sequence: linkedFailure } : initialTurn > 0 ? { around: initialTurn } : null,
+  );
+  const failedTurn = data.turns.find(
+    (turn) =>
+      linkedFailure >= turn.start_sequence && linkedFailure <= (turn.end_sequence ?? Infinity),
+  );
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
   const [batch, setBatch] = useState<{ turn: number; batch: TraceBatch } | null>(null);
   const [full, setFull] = useState(false);
@@ -116,6 +135,11 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     [data.turns, collapsed],
   );
   const lifecycle = useTraceLifecycle(sessionId, openTurns, showLifecycle);
+  const reactionList = useMessageReactionList(sessionId);
+  const turnReactions = useMemo(
+    () => reactionsByTurn(data.turns, reactionList.data),
+    [data.turns, reactionList.data],
+  );
 
   const rows = useMemo(
     () =>
@@ -158,20 +182,36 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   useEffect(() => {
     if (openedRef.current || data.loading || rows.length === 0) return;
     openedRef.current = true;
-    if (!pending) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
-  }, [data.loading, rows.length, pending, virtualizer]);
+    if (!pending && !linkedFailure) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
+  }, [data.loading, rows.length, pending, virtualizer, linkedFailure]);
 
   // Scroll to a turn (or a step in it) once its rows exist.
+  //
+  // Decision: the scroll waits one frame. When a far jump replaces the loaded
+  // window, the list's height changes in the same commit; scrolling before the
+  // browser lays that out leaves the reader where they were, clamped to the
+  // old height, so a minimap click looked like it did nothing.
+  const scrollFrameRef = useRef<number | null>(null);
   useEffect(() => {
     if (!pending) return;
     const headerIndex = rows.findIndex((r) => r.key === `t${pending.turn}`);
     if (headerIndex === -1) return;
     const stepIndex =
       pending.step !== undefined ? rowIndexOfStep(rows, pending.turn, pending.step) : -1;
-    if (stepIndex !== -1) virtualizer.scrollToIndex(stepIndex, { align: "center" });
-    else virtualizer.scrollToIndex(headerIndex, { align: "start" });
+    if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      if (stepIndex !== -1) virtualizer.scrollToIndex(stepIndex, { align: "center" });
+      else virtualizer.scrollToIndex(headerIndex, { align: "start" });
+    });
     setPending(null);
   }, [pending, rows, virtualizer]);
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    },
+    [],
+  );
 
   // Live: refresh the tail when new trace events arrive and the tail is loaded.
   const lastLoaded = data.turns[data.turns.length - 1]?.turn ?? 0;
@@ -275,6 +315,36 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     [sessionId, selectStep, jump],
   );
 
+  // A terminal failure often falls after its model/tool step's event range.
+  // Select the last recorded failed step rather than treating the terminal
+  // event as if it were itself an assistant message or tool result.
+  const openedFailure = useRef(0);
+  const jumpToFailure = data.jumpTo;
+  useEffect(() => {
+    if (!linkedFailure || data.loading || openedFailure.current === linkedFailure) return;
+    openedFailure.current = linkedFailure;
+    const open = async () => {
+      const turn = failedTurn ?? (await findTraceSequence(sessionId, linkedFailure));
+      if (!turn || turn.status !== "failed") {
+        // The terminal event can arrive before the asynchronous trace index.
+        // Allow a later trace refresh to resolve and select the failure.
+        openedFailure.current = 0;
+        return;
+      }
+      let step: number | undefined;
+      for (const item of turn.items) {
+        if (item.type === "step" && item.status === "error") step = item.step;
+        if (item.type === "batch" && item.failures.length) step = item.failures.at(-1)?.step;
+      }
+      setParams({ turn: String(turn.turn), step: step ? stepKey(turn.turn, step) : null });
+      setPending({ turn: turn.turn, step });
+      if (!failedTurn) await jumpToFailure(turn.turn);
+    };
+    void open().catch(() => {
+      openedFailure.current = 0;
+    });
+  }, [linkedFailure, data.loading, failedTurn, sessionId, setParams, jumpToFailure]);
+
   const target: InspectorTarget | null = batch
     ? { type: "batch", turn: batch.turn, batch: batch.batch }
     : childStep
@@ -293,61 +363,101 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   }, [overview.data, data.turns, firstLoaded, tailLoaded]);
 
   const activeTurn = (childStep ? null : selectedStep?.turn) ?? batch?.turn ?? null;
+  // Turns with rows on screen, for the minimap's "in view" marker.
+  const visibleItems = virtualizer.getVirtualItems();
+  const scrollTop = virtualizer.scrollOffset ?? 0;
+  const viewportHeight = virtualizer.scrollRect?.height ?? 0;
+  const visibleTurns = new Set<number>();
+  for (const item of visibleItems) {
+    if (item.end <= scrollTop || item.start >= scrollTop + viewportHeight) continue;
+    const row = rows[item.index];
+    if (row && row.type !== "unloaded") visibleTurns.add(row.turn.turn);
+  }
   const totals = overview.data;
 
   return (
-    <section aria-label="Session trace" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b bg-card px-6 py-3">
-        <div role="radiogroup" aria-label="View" className="flex border">
-          {VIEWS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={view === option.value}
-              onClick={() => setParams({ view: option.value === "all" ? null : option.value })}
-              className={cn(
-                "h-7 px-3 text-xs font-medium",
-                view === option.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
+    <section aria-label={ui("Session trace")} className="flex min-h-0 flex-1 flex-col">
+      <DreamingTrace sessionId={sessionId} />
+      {linkedFailure > 0 && !data.loading && (
+        <div
+          className="border-b border-destructive/30 bg-destructive/5 px-6 py-3 text-sm"
+          role="status"
+        >
+          {failedTurn?.status === "failed" ? (
+            <>
+              <span className="font-medium text-destructive">
+                {ui("Turn")} {failedTurn.turn} {ui("failed")}
+              </span>
+              {failedTurn.ended_at && (
+                <span className="ml-3 text-xs text-muted-foreground">
+                  {new Date(failedTurn.ended_at).toLocaleString(displayLocale)}
+                </span>
               )}
-            >
-              {option.label}
-            </button>
-          ))}
+              <p className="mt-1 break-words">
+                {failedTurn.error?.trim() || ui("No error details recorded")}
+              </p>
+            </>
+          ) : (
+            <p>
+              {ui(
+                "The recorded failure could not be located in this trace. Check the Events view for the terminal event.",
+              )}
+            </p>
+          )}
         </div>
+      )}
+      <div className="flex flex-wrap items-center gap-3 border-b bg-card px-6 py-3">
+        <SegmentedControl
+          label={ui("View")}
+          value={view}
+          onValueChange={(value) => setParams({ view: value === "all" ? null : value })}
+          options={VIEWS}
+        />
+        <SegmentedControl
+          label={ui("Message format")}
+          value={plainText ? "plain" : "markdown"}
+          onValueChange={(value) => setParams({ text: value === "plain" ? "plain" : null })}
+          options={[
+            { value: "markdown", label: ui("Markdown") },
+            { value: "plain", label: ui("Plain text") },
+          ]}
+        />
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
             checked={errorsOnly}
             onCheckedChange={(checked) => setParams({ errors: checked ? "1" : null })}
           />
-          Errors only
+          {ui("Errors only")}
         </label>
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
             checked={showLifecycle}
             onCheckedChange={(checked) => setParams({ lifecycle: checked ? "1" : null })}
           />
-          Lifecycle events
+          {ui("Lifecycle events")}
         </label>
         <TraceSearch sessionId={sessionId} onPick={(sequence) => void goToSequence(sequence)} />
         {totals && (
           <div className="ml-auto font-mono text-[11px] text-muted-foreground">
-            {formatCount(totals.turn_count)} turns · {formatCount(totals.step_count)} steps
+            {formatCount(totals.turn_count)} {ui("turns ·")} {formatCount(totals.step_count)}{" "}
+            {ui("steps")}
             {totals.error_count > 0 && (
-              <span className="text-destructive"> · {formatCount(totals.error_count)} errors</span>
+              <span className="text-destructive">
+                {" "}
+                · {formatCount(totals.error_count)} {ui("errors")}
+              </span>
             )}
           </div>
         )}
       </div>
 
       <div className="bg-brand-dots grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_clamp(320px,32vw,420px)] xl:grid-cols-[232px_minmax(0,1fr)_clamp(320px,32vw,420px)]">
-        <aside className="hidden min-h-0 overflow-y-auto xl:block" aria-label="Turns">
+        <aside className="hidden min-h-0 overflow-y-auto xl:block" aria-label={ui("Turns")}>
           <TurnRail
             overview={overview.data}
             turns={data.turns}
             activeTurn={activeTurn}
+            visibleTurns={visibleTurns}
             onJump={jump}
             onScrollTo={(turn) => {
               const index = rows.findIndex((r) => r.key === `t${turn}`);
@@ -360,6 +470,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
 
         <div
           ref={scrollRef}
+          data-trace-list="true"
           className="min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5"
           onScroll={(e) => {
             const el = e.currentTarget;
@@ -374,11 +485,11 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             </div>
           ) : data.error ? (
             <div className="border bg-card p-4 text-sm text-destructive">
-              Could not load the trace: {data.error.message}
+              {ui("Could not load the trace:")} {data.error.message}
             </div>
           ) : rows.length === 0 ? (
             <div className="border bg-card p-6 text-sm text-muted-foreground">
-              No turns yet. Turns appear here as the session runs.
+              {ui("No turns yet. Turns appear here as the session runs.")}
             </div>
           ) : (
             <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -420,6 +531,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                     {row.type === "turn" && (
                       <TurnHeader
                         turn={row.turn}
+                        reactions={turnReactions.get(row.turn.turn)?.prompt}
                         collapsed={row.collapsed}
                         showScale
                         onToggle={() =>
@@ -437,6 +549,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         turn={row.turn}
                         step={row.step}
                         view={view}
+                        plainText={plainText}
                         selected={
                           !batch &&
                           !childStep &&
@@ -462,6 +575,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         turn={row.turn}
                         step={row.step}
                         view={view}
+                        plainText={plainText}
                         nested
                         selected={
                           !batch &&
@@ -527,7 +641,12 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                       />
                     )}
                     {row.type === "empty" && <EmptyTurnRow />}
-                    {row.type === "footer" && <TurnFooter turn={row.turn} />}
+                    {row.type === "footer" && (
+                      <TurnFooter
+                        turn={row.turn}
+                        reactions={turnReactions.get(row.turn.turn)?.reply}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -541,12 +660,12 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             "min-h-0 overflow-y-auto bg-card lg:static lg:z-auto lg:block lg:border-l",
             target ? "fixed inset-0 z-40 block" : "hidden",
           )}
-          aria-label="Step inspector"
+          aria-label={ui("Step inspector")}
         >
           {target && (
             <div className="sticky top-0 z-10 flex justify-end border-b bg-card px-3 py-2 lg:hidden">
               <Button variant="ghost" size="sm" onClick={clearSelection}>
-                Back to trace
+                {ui("Back to trace")}
               </Button>
             </div>
           )}

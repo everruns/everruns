@@ -53,7 +53,7 @@ These are conventions, not a fixed enum.
 When a tool returns `ConnectionRequired`, the worker checks the session's `setup_connection` hint:
 
 - **Hint `true`:** Worker emits synthetic `setup_connection` tool calls and sets session to `waiting_for_tool_results`. The UI renders an inline connection card.
-- **Hint absent/`false`:** Worker skips synthetic tool calls and lets the workflow continue. The tool result already contains `{"connection_required": "<provider>"}` with `success: false`, so the LLM can inform the user that a connection is needed.
+- **Hint absent/`false`:** Worker skips synthetic tool calls and lets the workflow continue. The tool result already contains `{"connection_required": "<provider>", "error": "..."}` and sets `error`, so the call is a failed `tool.completed` and the LLM reads that the tool did not run and a connection is needed. It is never reported as a successful empty result.
 
 The Chat UI auto-declares `setup_connection: true` in `useCreateSession()` so all UI-created sessions get the interactive flow. API-only clients that don't handle synthetic tool calls simply omit the hint and get the fallback behavior.
 

@@ -60,6 +60,12 @@ impl InputMessage {
         }
     }
 
+    /// Attach validated causal links without carrying baggage or sampling state.
+    pub fn with_causal_context(mut self, context: &super::causal::CausalContext) -> Self {
+        context.write_metadata(&mut self.metadata);
+        self
+    }
+
     /// Set one metadata entry.
     pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
         self.metadata

@@ -55,13 +55,13 @@ An Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A
 - Each channel belongs to exactly one Agent and has its own publish state, credentials, identity, and session routing.
 - An Agent can own several channels, each published or revoked independently.
 
-Create and manage channels from the Agent's **Integrations** tab. See [Channels](/features/channels/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.
+Create and manage channels from the Agent's **Channels and triggers** tab. See [Channels](/features/channels/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.
 
 ### Everruns user and virtual user
 
 An **Everruns user** signs in to manage organizations, agents, permissions, and personal access tokens. A **virtual user** is the organization-scoped account that uses agents. It owns an agent-facing profile, preferences, and provider connections.
 
-Each organization membership has a default end-user virtual user. Chats and **Settings → My agent experience** use that account. Verified external callers, such as an authenticated public-chat visitor or Slack user, get virtual users without becoming Everruns organization members. Provider, issuer or workspace, and subject identify each external binding; matching email addresses do not merge accounts.
+Each organization membership has a default end-user virtual user. Chats and **Settings → Profile**, **Connections**, **MCP servers**, and **AI clients** use that account. Verified external callers, such as an authenticated public-chat visitor or Slack user, get virtual users without becoming Everruns organization members. Provider, issuer or workspace, and subject identify each external binding; matching email addresses do not merge accounts.
 
 A service virtual user is an agent's account for unattended execution. User connections resolve from the speaker of the current turn. Service connections resolve from the responding agent's service account. Neither inherits credentials from a session owner's management identity.
 

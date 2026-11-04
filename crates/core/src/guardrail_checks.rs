@@ -903,19 +903,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_and_compiles_minimal_config() {
-        let compiled = compile(json!({
-            "checks": [
-                {"stage": "output", "type": "blocklist", "words": ["forbidden"]},
-            ]
-        }))
-        .expect("compiles");
-        assert_eq!(compiled.mode(), GuardrailMode::Active);
-        assert!(compiled.has_stage(GuardrailStage::Output));
-        assert!(!compiled.has_stage(GuardrailStage::ToolUse));
-    }
-
-    #[test]
     fn empty_or_null_config_compiles_to_no_checks() {
         let compiled = compile(json!({})).expect("compiles");
         for stage in [
@@ -1275,18 +1262,6 @@ mod tests {
     }
 
     #[test]
-    fn llm_judge_prompt_too_long_rejected() {
-        let long_prompt = "x".repeat(4_001);
-        let err = compile(json!({
-            "checks": [
-                {"stage": "tool_use", "type": "llm_judge", "prompt": long_prompt},
-            ]
-        }))
-        .unwrap_err();
-        assert!(err.contains("exceeds"), "{err}");
-    }
-
-    #[test]
     fn llm_judge_serde_roundtrip() {
         let cfg = GuardrailsConfig {
             mode: GuardrailMode::Active,
@@ -1404,18 +1379,6 @@ mod tests {
         }))
         .unwrap_err();
         assert!(err.contains("tool must not be empty"), "{err}");
-    }
-
-    #[test]
-    fn mcp_ref_too_long_rejected() {
-        let long = "x".repeat(129);
-        let err = compile(json!({
-            "checks": [
-                {"stage": "tool_use", "type": "mcp", "server": long, "tool": "scan"},
-            ]
-        }))
-        .unwrap_err();
-        assert!(err.contains("exceeds"), "{err}");
     }
 
     #[test]

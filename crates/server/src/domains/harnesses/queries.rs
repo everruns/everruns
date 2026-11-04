@@ -22,6 +22,7 @@ use super::types::HarnessRow;
 
 pub fn row_to_harness(row: HarnessRow, capabilities: Vec<AgentCapabilityConfig>) -> Harness {
     Harness {
+        localizations: row.localizations.clone(),
         id: row.id,
         name: row.name,
         display_name: row.display_name,
@@ -345,6 +346,7 @@ pub fn merge_preview_layer(
         return (system_prompt.to_string(), capabilities.to_vec());
     };
     let draft = Harness {
+        localizations: Default::default(),
         id: HarnessId::new(),
         name: "preview".to_string(),
         display_name: Some("Preview".to_string()),
@@ -499,6 +501,7 @@ mod tests {
 
     fn harness_row(name: &str, parent_harness_id: Option<HarnessId>) -> CreateHarnessRow {
         CreateHarnessRow {
+            localizations: Default::default(),
             name: name.to_string(),
             display_name: Some(name.to_string()),
             icon: None,

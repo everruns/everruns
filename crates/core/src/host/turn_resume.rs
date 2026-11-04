@@ -51,7 +51,11 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
 use crate::ExecutionContext;
 use crate::engine::{ActInput, ActPlan, TurnPlan, TurnState};
-use crate::events::{Event, EventContext, EventData, EventRequest, TokenUsage, ToolCompletedData};
+#[cfg(feature = "actor-runtime")]
+use crate::events::TurnCompletedData;
+use crate::events::{
+    Event, EventContext, EventData, EventRequest, RecoveryMode, TokenUsage, ToolCompletedData,
+};
 use crate::host::runtime_host::{RuntimeHostAdapter, reason_turn_context};
 use crate::runtime_context::AssembledTurnContext;
 
@@ -60,6 +64,8 @@ use crate::runtime_context::AssembledTurnContext;
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct InterruptedToolCalls {
+    /// Original admitted input, retained across executor replacement.
+    pub input_message_id: MessageId,
     /// The cut-off turn; resuming it keeps this id.
     pub turn_id: TurnId,
     /// The calls without a recorded result, in the order the model made them.
@@ -82,11 +88,14 @@ pub type WaitsOnPersonFn = dyn Fn(&ToolCall) -> bool + Send + Sync;
 /// event. Built by [`TurnLogFold`].
 #[derive(Debug, Clone)]
 pub struct OpenTurn {
+    trace_metadata: Option<serde_json::Value>,
     session_id: SessionId,
     turn_id: TurnId,
     input_message_id: MessageId,
     started_at: DateTime<Utc>,
     reasons: u32,
+    #[cfg(feature = "actor-runtime")]
+    latest_reason_completed: bool,
     tool_call_count: u32,
     /// Failed `tool.completed` calls so far: issues the turn carries on from.
     issue_count: u32,
@@ -98,12 +107,22 @@ pub struct OpenTurn {
     settled: HashSet<String>,
     /// Calls with a `tool.started`: they may have run.
     started: HashSet<String>,
-    /// The latest agent message made no tool calls: the turn has its answer
-    /// and only its end is missing.
+    /// The latest agent message made no tool calls, and no steering reached
+    /// the turn after the reason that wrote it started: the turn has its
+    /// answer and only its end is missing.
     answered: bool,
+    /// Turn input (steering) reached the log after the turn's latest
+    /// `reason.started`, so that reason did not read it.
+    steered_since_reason: bool,
 }
 
 impl OpenTurn {
+    pub(crate) fn restore_causal_context<A: RuntimeHostAdapter>(&self, adapter: &A) {
+        adapter.event_emitter().restore_turn_context(
+            &crate::events::EventContext::turn(self.turn_id, self.input_message_id),
+            self.trace_metadata.as_ref(),
+        );
+    }
     /// The session the turn runs in.
     pub fn session_id(&self) -> SessionId {
         self.session_id
@@ -129,9 +148,43 @@ impl OpenTurn {
         self.usage.as_ref()
     }
 
-    /// Whether the turn's latest agent message made no tool calls: it has
-    /// its answer and only its end is missing, so resuming it would answer
-    /// twice.
+    /// Complete a saved answer without discarding its identity and work summary.
+    #[cfg(feature = "actor-runtime")]
+    pub(crate) fn completed_data(&self, now: DateTime<Utc>) -> TurnCompletedData {
+        // Output can commit before reason.completed. Its saved answer proves
+        // that final phase ran, but its missing usage must not become a partial
+        // total presented as the complete turn's usage.
+        let calls = self
+            .reasons
+            .saturating_add(u32::from(!self.latest_reason_completed));
+        TurnCompletedData {
+            turn_id: self.turn_id,
+            iterations: calls,
+            duration_ms: Some(
+                u64::try_from(
+                    now.signed_duration_since(self.started_at)
+                        .num_milliseconds(),
+                )
+                .unwrap_or_default(),
+            ),
+            usage: if self.latest_reason_completed {
+                self.usage.clone()
+            } else {
+                None
+            },
+            final_message_id: self.final_message_id,
+            tool_call_count: Some(self.tool_call_count),
+            llm_call_count: Some(calls),
+            issue_count: Some(self.issue_count),
+            status: Some("completed".to_string()),
+            ..Default::default()
+        }
+    }
+
+    /// Whether the turn's latest agent message made no tool calls and was
+    /// written by a reason that read every steering message the turn got: it
+    /// has its answer and only its end is missing, so resuming it would
+    /// answer twice.
     pub fn is_answered(&self) -> bool {
         self.answered
     }
@@ -185,11 +238,20 @@ impl TurnLogFold {
         match &event.data {
             EventData::TurnStarted(data) => {
                 *open = Some(OpenTurn {
+                    trace_metadata: event
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("everruns.turn_traceparent"))
+                        .and_then(|value| value.as_str())
+                        .filter(|value| value.len() == 55)
+                        .map(|value| serde_json::json!({"everruns.turn_traceparent":value})),
                     session_id: event.session_id,
                     turn_id: data.turn_id,
                     input_message_id: data.input_message_id,
                     started_at: event.ts,
                     reasons: 0,
+                    #[cfg(feature = "actor-runtime")]
+                    latest_reason_completed: false,
                     tool_call_count: 0,
                     issue_count: 0,
                     usage: None,
@@ -198,6 +260,7 @@ impl TurnLogFold {
                     settled: HashSet::new(),
                     started: HashSet::new(),
                     answered: false,
+                    steered_since_reason: false,
                 });
                 return;
             }
@@ -205,6 +268,22 @@ impl TurnLogFold {
             EventData::TurnFailed(data) if ends(&data.turn_id) => *open = None,
             EventData::TurnCancelled(data) if ends(&data.turn_id) => *open = None,
             EventData::TurnSealed(data) if ends(&data.turn_id) => *open = None,
+            // Steering: input without a turn id that joined the open turn.
+            // An answer from a reason that started before it does not answer
+            // it (chaos harness, EVE-1279): the holder took it for one more
+            // reason, committed it as consumed, and died before that reason
+            // answered. Read as answered, the survivor completed the turn and
+            // the message was never answered. The turn reasons again instead.
+            EventData::InputMessage(data) if event.context.turn_id.is_none() => {
+                if let Some(turn) = open
+                    .as_mut()
+                    .filter(|turn| data.message.id != turn.input_message_id)
+                {
+                    turn.steered_since_reason = true;
+                    turn.answered = false;
+                }
+                return;
+            }
             _ => {}
         }
         let Some(turn) = open
@@ -214,8 +293,30 @@ impl TurnLogFold {
             return;
         };
         match event.data {
+            // A reason reads the log as it stands when it starts; a restarted
+            // one (`reason.recovered`, mode restart) reads it again. A
+            // finalized one completes the dead attempt's text, which read
+            // only what was there at that attempt's `reason.started`.
+            EventData::ReasonStarted(_) => {
+                turn.steered_since_reason = false;
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = false;
+                }
+            }
+            EventData::ReasonRecovered(data) if matches!(data.mode, RecoveryMode::Restart) => {
+                turn.steered_since_reason = false;
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = false;
+                }
+            }
             EventData::ReasonCompleted(data) => {
                 turn.reasons = turn.reasons.saturating_add(1);
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = true;
+                }
                 turn.tool_call_count = turn.tool_call_count.saturating_add(data.tool_call_count);
                 if let Some(usage) = &data.usage {
                     match &mut turn.usage {
@@ -236,9 +337,17 @@ impl TurnLogFold {
                         arguments: call.arguments.clone(),
                     })
                     .collect();
-                turn.answered = turn.calls.is_empty();
+                turn.answered = turn.calls.is_empty() && !turn.steered_since_reason;
                 turn.settled.clear();
                 turn.started.clear();
+            }
+            // A completion check's automatic continuation joins the turn like
+            // steering: the answer before it does not end the turn, so a turn
+            // cut off after the continuation was stored reasons again on it
+            // instead of completing on the unfinished answer.
+            EventData::InputMessage(data) if data.message.is_turn_continuation() => {
+                turn.steered_since_reason = true;
+                turn.answered = false;
             }
             EventData::ToolStarted(data) => {
                 turn.started.insert(data.tool_call.id);
@@ -317,6 +426,7 @@ pub async fn interrupted_tool_calls<A: RuntimeHostAdapter>(
     Ok(decide(adapter, org_id, turn, waits_on_person)
         .await?
         .map(|decision| InterruptedToolCalls {
+            input_message_id: decision.turn.input_message_id,
             turn_id: decision.turn.turn_id,
             tool_calls: decision.turn.unfinished_calls(),
             not_rerun: decision.not_rerun,
@@ -342,6 +452,7 @@ pub async fn resume_open_turn<A: RuntimeHostAdapter>(
     turn: OpenTurn,
     waits_on_person: Option<&WaitsOnPersonFn>,
 ) -> Result<Option<(TurnState, ActPlan)>> {
+    turn.restore_causal_context(adapter);
     let Some(ResumeDecision {
         turn,
         rerun: tool_calls,

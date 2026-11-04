@@ -166,7 +166,7 @@ profile confirms rather than assumes it:
 | Target | Implied | Choice available |
 |---|---|---|
 | bashkit | isolated, network default-deny | none, fixed by the target |
-| daytona, modal, e2b, container | isolated | egress policy only |
+| daytona, modal, e2b, container | isolated | egress policy only (enforced by Daytona, E2B and Modal; container accepts only `allow` for now) |
 | host, machine | none | `native` kernel policy, later |
 
 Naming note: `sandbox` is the plainer wire name for this field, and it makes the
@@ -317,6 +317,13 @@ and `none` is valid only for targets that need no provider credential. Session
 creation replaces the rule with stable owner/account ids in the pinned
 snapshot. Multiple organization accounts for the same provider are therefore
 unambiguous, and fixed Agent policies remain non-overridable by Sessions.
+
+A Session with no user (trigger and channel ingress run as an internal caller)
+has no person for `session_user` to name. Creation then rebinds the snapshot to
+`organization` with the organization's sole account for the provider, and fails
+with an error naming the cause when there are none or several: picking among
+several would silently charge an arbitrary account. The Agent's sandbox editor
+warns about this when the Agent has triggers.
 
 Two consequences worth stating, because they are where the diagram stops being
 symmetric: a `host` or `machine` Sandbox has instances but no checkpoints,
@@ -871,6 +878,24 @@ GET /v1/sessions/{session_id}/sandbox
 deliberately no switch endpoint: a session's environment is fixed once it
 starts, and moving work elsewhere is a fork with a different environment.
 
+### Idle pause and retention
+
+A cluster job (`crates/server/src/background/sandbox_idle_sweep.rs`) pauses
+running Sandboxes once `lifecycle.idle_after_seconds` passes without activity,
+and deletes paused ones after `lifecycle.delete_after_seconds` (one day when
+the field is absent, never when it is `null`), or on the next sweep when
+`idle_action` is `delete`. The provider Sandbox is disposable; its record is
+permanent (rows are marked deleted, never purged). Two cases drove the rules:
+
+- A session stuck in `active` (a turn that never finished) used to keep its
+  Sandbox running indefinitely. The sweep now pauses it too once the Sandbox
+  itself has been unused for six hours. Pausing is safe: the next Sandbox call
+  resumes it.
+- Trigger-started sessions are never deleted, so their paused Sandboxes piled
+  up as provider storage. Retention deletes the provider Sandbox and its state,
+  not the session; a later turn provisions a fresh one. Active sessions are
+  never deleted from under a turn.
+
 ### Targets this deployment can actually offer
 
 The UI cannot render an honest picker from provider names alone.
@@ -971,7 +996,7 @@ model-facing control tool. Exit: two sessions bound to one Workspace, one on
 Bashkit and one on Daytona, read and write the same files.
 
 **P3, machine target and consolidation.** SSH or daemon transport, then port
-E2B, Deno, Sprites, and container behind the driver contract as already planned.
+E2B, Sprites, and container behind the driver contract as already planned.
 
 **Done, kernel containment.** Yolop's Seatbelt and Landlock providers are
 `everruns_core::host::containment`, and `HostCompute::contained` makes them

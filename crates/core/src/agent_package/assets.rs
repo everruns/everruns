@@ -1,6 +1,6 @@
 use super::{
-    AgentPackage, File, FileSource, Format, MAX_FILE_BYTES, MAX_FILES, MAX_PACKAGE_BYTES, Result,
-    error,
+    AgentPackage, Diagnostic, File, FileSource, Format, MAX_FILE_BYTES, MAX_FILES,
+    MAX_PACKAGE_BYTES, MEMBERS_DIR, PackageError, Result, error,
 };
 use crate::{InitialFile, session_file::SessionFile};
 use globset::Glob;
@@ -109,6 +109,24 @@ pub(super) fn asset_path(path: &str) -> Result<String> {
     Ok(path.into())
 }
 
+pub(crate) fn is_member_path(path: &str) -> bool {
+    path.strip_prefix(MEMBERS_DIR)
+        .is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// Report a bundled agent's problems under its location in the package.
+fn within(location: &str, PackageError(errors): PackageError) -> PackageError {
+    PackageError(
+        errors
+            .into_iter()
+            .map(|e| Diagnostic {
+                path: format!("{location}: {}", e.path),
+                message: e.message,
+            })
+            .collect(),
+    )
+}
+
 pub(crate) fn allowed(path: &Path) -> bool {
     path.components().all(|component| {
         let Component::Normal(name) = component else {
@@ -181,6 +199,14 @@ impl AgentPackage {
                 .any(|path| path.starts_with(&format!("{source}/")))
         })?);
         let mut selected = std::collections::BTreeSet::new();
+        if self.discovers_members() {
+            selected.extend(
+                paths
+                    .iter()
+                    .filter(|path| is_member_path(path) && allowed(Path::new(path)))
+                    .map(|path| (*path).to_string()),
+            );
+        }
         if self.manifest.instructions.is_empty() {
             selected.insert(
                 self.manifest
@@ -213,6 +239,20 @@ impl AgentPackage {
         entries: BTreeMap<String, Vec<u8>>,
         defaults: bool,
     ) -> Result<()> {
+        self.resolve_assets_tracked(entries, defaults, &mut BTreeMap::new())
+    }
+
+    pub(super) fn resolve_assets_tracked(
+        &mut self,
+        entries: BTreeMap<String, Vec<u8>>,
+        defaults: bool,
+        sources: &mut BTreeMap<String, String>,
+    ) -> Result<()> {
+        // Bundled agents are agents, never this agent's starting files.
+        let entries: BTreeMap<_, _> = entries
+            .into_iter()
+            .filter(|(path, _)| !is_member_path(path))
+            .collect();
         let files_declared = self.files_declared;
         let default_skills = self
             .skill_sources(|source| entries.keys().any(|p| p.starts_with(&format!("{source}/"))))?;
@@ -276,9 +316,11 @@ impl AgentPackage {
                     Some(target) => target.clone(),
                     None => format!("/{path}"),
                 };
+                let target = workspace_path(&target)?;
+                sources.insert(target.clone(), path.clone());
                 let (content, encoding) = SessionFile::encode_content(bytes);
                 resolved.push(File::Inline(InitialFile {
-                    path: workspace_path(&target)?,
+                    path: target,
                     content,
                     encoding,
                     is_readonly: readonly,
@@ -333,9 +375,11 @@ impl AgentPackage {
                         continue;
                     }
                     if let Some(relative) = path.strip_prefix(&format!("{prefix}{dir}/")) {
+                        let target = format!("/.agents/skills/{dir}/{relative}");
+                        sources.insert(target.clone(), path.clone());
                         let (content, encoding) = SessionFile::encode_content(bytes);
                         resolved.push(File::Inline(InitialFile {
-                            path: format!("/.agents/skills/{dir}/{relative}"),
+                            path: target,
                             content,
                             encoding,
                             is_readonly: true,
@@ -378,7 +422,7 @@ impl AgentPackage {
             if file.is_dir() {
                 continue;
             }
-            let path = asset_path(file.name())?;
+            let path = asset_path(&file.name().map_err(|e| error("zip", e))?)?;
             if file
                 .unix_mode()
                 .is_some_and(|mode| mode & 0o170000 == 0o120000)
@@ -409,22 +453,6 @@ impl AgentPackage {
     /// Materialize a bounded package from a host-provided virtual directory.
     /// Entries are relative names and bytes, never worker-host filesystem paths.
     pub fn from_entries(entries: BTreeMap<String, Vec<u8>>) -> Result<Self> {
-        if entries.len() > MAX_FILES + 20
-            || entries.values().map(Vec::len).sum::<usize>() > MAX_PACKAGE_BYTES
-        {
-            return Err(error("assets", "package exceeds limits"));
-        }
-        for (path, bytes) in &entries {
-            asset_path(path)?;
-            let limit = if path.starts_with("agent.") {
-                MAX_PACKAGE_BYTES
-            } else {
-                MAX_FILE_BYTES
-            };
-            if bytes.len() > limit {
-                return Err(error(path, "file exceeds size limit"));
-            }
-        }
         let names = [
             "agent.toml",
             "agent.md",
@@ -443,12 +471,97 @@ impl AgentPackage {
                 "archive root must contain exactly one agent manifest",
             ));
         }
-        let manifest = &manifests[0];
-        let text = std::str::from_utf8(&entries[manifest]).map_err(|e| error("manifest", e))?;
+        Self::from_manifest_entries(entries, &manifests[0])
+    }
+
+    /// Materialize a virtual directory using an explicitly selected root manifest.
+    /// Other manifest-looking files remain ordinary assets, including name collisions.
+    pub fn from_manifest_entries(
+        entries: BTreeMap<String, Vec<u8>>,
+        manifest: &str,
+    ) -> Result<Self> {
+        asset_path(manifest)?;
+        if manifest.contains('/') {
+            return Err(error("manifest", "select a manifest at the package root"));
+        }
+        if entries.len() > MAX_FILES + 20
+            || entries.values().map(Vec::len).sum::<usize>() > MAX_PACKAGE_BYTES
+        {
+            return Err(error("assets", "package exceeds limits"));
+        }
+        for (path, bytes) in &entries {
+            asset_path(path)?;
+            let limit = if path == manifest || path.starts_with("agent.") {
+                MAX_PACKAGE_BYTES
+            } else {
+                MAX_FILE_BYTES
+            };
+            if bytes.len() > limit {
+                return Err(error(path, "file exceeds size limit"));
+            }
+        }
+        let bytes = entries
+            .get(manifest)
+            .ok_or_else(|| error("manifest", "selected manifest is missing"))?;
+        let text = std::str::from_utf8(bytes).map_err(|e| error("manifest", e))?;
         let mut package = Self::parse(text, Format::from_extension(Path::new(manifest)))?;
+        let members = package.discover_members(&entries)?;
         package.resolve_assets(entries, true)?;
+        package.manifest.agents.extend(members);
         package.files()?;
         Ok(package)
+    }
+
+    /// Whether `.agents/agents/` is read; `members = []` turns it off.
+    pub(super) fn discovers_members(&self) -> bool {
+        self.manifest.members.as_ref().is_none_or(|m| !m.is_empty())
+    }
+
+    /// Read the agents bundled under `.agents/agents/` in a virtual folder:
+    /// a folder with its own manifest, or a single Markdown agent file.
+    pub(super) fn discover_members(
+        &self,
+        entries: &BTreeMap<String, Vec<u8>>,
+    ) -> Result<Vec<super::Manifest>> {
+        if !self.discovers_members() {
+            return Ok(Vec::new());
+        }
+        let prefix = format!("{MEMBERS_DIR}/");
+        let mut folders: BTreeMap<&str, BTreeMap<String, Vec<u8>>> = BTreeMap::new();
+        let mut members = Vec::new();
+        for (path, bytes) in entries {
+            let Some(relative) = path.strip_prefix(&prefix) else {
+                continue;
+            };
+            match relative.split_once('/') {
+                Some((folder, rest)) => {
+                    folders
+                        .entry(folder)
+                        .or_default()
+                        .insert(rest.to_string(), bytes.clone());
+                }
+                None if relative.ends_with(".md") => {
+                    let text = std::str::from_utf8(bytes).map_err(|e| error(path, e))?;
+                    let member = Self::parse(text, Format::Markdown)
+                        .and_then(|member| member.files().map(|_| member))
+                        .map_err(|e| within(path, e))?;
+                    members.push(member.manifest);
+                }
+                None => {
+                    return Err(error(
+                        path,
+                        "expected an agent folder or a Markdown agent file",
+                    ));
+                }
+            }
+        }
+        for (folder, files) in folders {
+            let path = format!("{prefix}{folder}");
+            let member = Self::from_entries(files).map_err(|e| within(&path, e))?;
+            members.push(member.manifest);
+        }
+        members.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(members)
     }
 
     pub fn folder_entries(&self) -> Result<BTreeMap<String, Vec<u8>>> {
@@ -495,6 +608,12 @@ impl AgentPackage {
         }
         // Explicit files already contain the complete skill trees.
         manifest.skills.clear();
+        for agent in std::mem::take(&mut manifest.agents) {
+            let name = agent.name.clone();
+            for (path, bytes) in AgentPackage::new(agent)?.folder_entries()? {
+                entries.insert(format!("{MEMBERS_DIR}/{name}/{path}"), bytes);
+            }
+        }
         let text = toml::to_string_pretty(&manifest).map_err(|e| error("toml", e))?;
         entries.insert("agent.toml".into(), text.into_bytes());
         Ok(entries)

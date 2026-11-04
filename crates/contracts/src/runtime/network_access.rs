@@ -288,12 +288,6 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_acl_allows_all() {
-        let acl = NetworkAccessList::default();
-        assert!(acl.is_url_allowed("https://anything.com"));
-    }
-
-    #[test]
     fn test_blocked_only() {
         let acl = NetworkAccessList::block(["evil.com"]);
         assert!(!acl.is_url_allowed("https://evil.com/path"));

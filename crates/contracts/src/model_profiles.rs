@@ -7,7 +7,7 @@ use crate::model::{ModelProfile, ModelVendor};
 use crate::provider::DriverId;
 
 pub use crate::model_profile_data::{
-    ModelProfileEntry, all_profile_entries, all_profiles, selected_profiles,
+    CostBreakdown, ModelProfileEntry, all_profile_entries, all_profiles, selected_profiles,
 };
 
 /// Enumerate profiles for a driver with the same capability masks as lookup.
@@ -52,6 +52,26 @@ pub fn estimate_cost_usd(
     )
 }
 
+/// [`estimate_cost_usd`] split by token bucket. See
+/// `crate::model_profile_data::estimate_cost_breakdown_usd`.
+pub fn estimate_cost_breakdown_usd(
+    provider_type: &DriverId,
+    model_id: &str,
+    input_tokens: u32,
+    output_tokens: u32,
+    cache_read_tokens: u32,
+    cache_creation_tokens: u32,
+) -> Option<CostBreakdown> {
+    crate::model_profile_data::estimate_cost_breakdown_usd(
+        provider_type.as_str(),
+        model_id,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+    )
+}
+
 /// [`estimate_cost_usd`] priced at the service tier that served the request.
 /// See `crate::model_profile_data::estimate_cost_usd_for_speed`.
 pub fn estimate_cost_usd_for_speed(
@@ -87,6 +107,28 @@ pub fn cache_write_1h_surcharge_usd(
         model_id,
         prompt_tokens,
         one_hour_write_tokens,
+    )
+}
+
+/// Extra cost of provider-reported 12-hour writes above the ordinary write
+/// estimate. Both prices use the same prompt length and served service tier.
+pub fn cache_write_12h_surcharge_usd(
+    provider_type: &DriverId,
+    model_id: &str,
+    prompt_tokens: u32,
+    twelve_hour_write_tokens: u32,
+    served_tier: Option<&str>,
+) -> Option<f64> {
+    if *provider_type != DriverId::OpenAI || twelve_hour_write_tokens == 0 || prompt_tokens == 0 {
+        return None;
+    }
+    let input =
+        estimate_cost_usd_for_speed(provider_type, model_id, prompt_tokens, 0, 0, 0, served_tier)?;
+    let write =
+        estimate_cost_usd_for_speed(provider_type, model_id, 0, 0, 0, prompt_tokens, served_tier)?;
+    Some(
+        (2.5 * input - write).max(0.0) * f64::from(twelve_hour_write_tokens)
+            / f64::from(prompt_tokens),
     )
 }
 

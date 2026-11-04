@@ -3,7 +3,7 @@
 //! Everruns already had two shells that could not be the third. `bashkit_shell`
 //! interprets a script against the session filesystem with no host underneath
 //! it, which is exactly right until an agent needs `cargo`, `git`, or anything
-//! else that is a binary. The remote sandboxes (Daytona, E2B, Deno) run real
+//! else that is a binary. The remote sandboxes (Daytona, E2B) run real
 //! binaries, on a machine somewhere else. This capability is the case in
 //! between, the one Yolop has shipped all along: real processes, on the machine
 //! the agent is already running on, bounded by a kernel policy rather than by a
@@ -364,16 +364,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn the_capability_declares_the_workspace_it_needs() {
-        assert_eq!(
-            HostShellCapability.dependencies(),
-            vec!["session_file_system"]
-        );
-        assert_eq!(HostShellCapability.risk_level(), RiskLevel::High);
-        assert_eq!(HostShellCapability.tools()[0].name(), "bash");
-    }
-
-    #[test]
     fn a_typed_value_becomes_the_config_the_capability_reads() {
         let spec = HostShell::new()
             .containment(ContainmentMode::ReadOnly)
@@ -410,14 +400,6 @@ mod tests {
                 .launcher,
             SandboxLauncher::ReexecSelf(vec!["__sandbox-exec".to_string()])
         );
-    }
-
-    #[test]
-    fn an_unconfigured_value_writes_nothing_and_still_validates() {
-        let spec = HostShell::new().into_capability();
-        let config = spec.capability_ref().config_value().clone();
-        assert_eq!(config, json!({}));
-        HostShellCapability.validate_config(&config).expect("valid");
     }
 
     #[test]

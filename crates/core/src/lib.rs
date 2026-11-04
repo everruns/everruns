@@ -81,6 +81,7 @@ pub use everruns_contracts::runtime::user_hook_types;
 pub mod decision_driver;
 pub use everruns_contracts::runtime::decisions;
 pub use everruns_contracts::runtime::deployment;
+pub use everruns_contracts::runtime::dreaming;
 pub use everruns_contracts::runtime::egress;
 pub use everruns_contracts::runtime::exec_tool_result;
 pub use everruns_contracts::runtime::execution_context;
@@ -98,6 +99,7 @@ pub use everruns_contracts::runtime::localization;
 
 // Telemetry conventions (neutral gen-ai span metadata contracts)
 pub mod telemetry;
+pub use everruns_contracts::runtime::causal;
 pub use everruns_contracts::runtime::tool_narration;
 
 // Event listeners (pluggable observability backends)
@@ -109,6 +111,10 @@ pub mod error_reporter;
 // Shared classification for database failures that strike many subsystems at
 // once, so one incident reports as one incident (EVE-1071).
 pub mod database_failure;
+
+// Bounds how often one call site reports a failure that keeps repeating, so a
+// datastore outage cannot exhaust the embedder's error budget (EVE-1328).
+pub mod report_throttle;
 
 // Observability implementations live behind the opt-in `otel`/`braintrust` host features
 // (EVE-651, EVE-876): exporter listeners (Braintrust, OpenTelemetry), the
@@ -181,6 +187,7 @@ pub use everruns_contracts::runtime::channel;
 pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
+pub use everruns_contracts::runtime::completion_check;
 pub use everruns_contracts::runtime::conversation;
 pub mod permissions;
 pub use everruns_contracts::runtime::resource_names;
@@ -193,9 +200,11 @@ pub mod plugins;
 
 /// Durable orchestration state for the opt-in OpenAI Agents API backend.
 pub mod agents_api_store;
+pub use capabilities::ModelToolBudget;
 pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
+pub use everruns_contracts::runtime::tool_surface;
 pub mod compaction_checkpoint;
 pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;
@@ -258,7 +267,6 @@ pub use everruns_contracts::runtime::truncation_info;
 mod test_fixtures;
 
 // Stable completion semantics; execution state and planning live in everruns_core::engine.
-pub mod turn;
 pub mod turn_completion;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) live in
@@ -356,7 +364,7 @@ pub use database_failure::{DatabaseFailureKind, log_database_failure};
 pub use egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
     EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
-    ScopedEgressService,
+    SandboxProxyCredential, ScopedEgressService,
 };
 pub use system_allowlist::{
     AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
@@ -475,20 +483,22 @@ pub use events::{
     ContextCompactionSkippedData, Event, EventBuilder, EventContext, EventData, EventRequest,
     FILE_WRITTEN, FileWrittenData, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
     LlmCompactionInfo, LlmCostComponent, LlmGenerationData, LlmGenerationMetadata,
-    LlmGenerationOutput, LlmRetryInfo, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
+    LlmGenerationOutput, LlmRetryInfo, MAX_REACTION_EMOJI_BYTES, MESSAGE_REACTION_ADDED,
+    MESSAGE_REACTION_REMOVED, MessageReactionData, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
     OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED, OUTPUT_MESSAGE_STARTED,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM, REASON_RECOVERED, REASON_STARTED,
-    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReasonCompletedData,
-    ReasonItemData, ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED,
-    SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED,
-    SessionActivatedData, SessionIdledData, SessionModelChangedData, SessionStartedData,
-    SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS,
-    TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
-    TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolOutputDeltaData,
-    ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
-    TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReactionActor,
+    ReactionActorKind, ReasonCompletedData, ReasonItemData, ReasonRecoveredData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode,
+    SESSION_ACTIVATED, SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED,
+    SESSION_TITLE_UPDATED, SessionActivatedData, SessionIdledData, SessionModelChangedData,
+    SessionStartedData, SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED,
+    TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+    TURN_SEALED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
+    TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    normalize_reaction_emoji,
 };
 pub use finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
@@ -523,7 +533,7 @@ pub use mcp_deferred::{
 };
 pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
-    build_mcp_proxy_tools,
+    build_mcp_proxy_tools, report_mcp_call_progress,
 };
 pub use mcp_resources::{
     LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
@@ -638,9 +648,16 @@ pub mod engine;
 // The inherited host module contains audited Unix ownership and containment calls.
 #[allow(unsafe_code)]
 pub mod host;
+/// Portable host orchestration for isolate execution.
+#[cfg(all(feature = "execution-host", not(feature = "host")))]
+#[path = "portable_host.rs"]
+pub mod host;
 /// MCP client, auth, and tool adaptation over injected transports.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+/// Transactional session command semantics shared by Framework and platform hosts.
+#[cfg(all(feature = "engine", feature = "builtins"))]
+pub mod session_commands;
 
 #[cfg(feature = "a2a")]
 pub mod a2a;

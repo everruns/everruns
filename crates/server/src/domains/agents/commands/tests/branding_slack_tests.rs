@@ -211,6 +211,7 @@ async fn branding_upsert_uses_name_fallback_and_history_restore_restores_identit
         entity_ref: agent.public_id.to_string(),
         kind: None,
         revision: 1,
+        ..Default::default()
     }
     .run(&ctx)
     .await

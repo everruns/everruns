@@ -7,6 +7,13 @@
 //! Workers claim the queue's activities that are not turns (cleanup, the
 //! session task reaper, scheduled invocations); turns run on session actor
 //! leases (`actors.rs`).
+//!
+//! Logging decision (EVERRUNS-2S): `PostgresWorkflowEventStore` already logs
+//! every database failure at `error` (pool exhaustion and dropped connections
+//! through the shared classifier), so a handler that only relays a store error
+//! logs it at `warn`, never a second `error`. Messages stay constant and the
+//! error goes in the `error` field: interpolating it made every distinct
+//! driver message a new Sentry issue.
 
 use super::support::*;
 use crate::worker_link::grpc_service::*;
@@ -24,7 +31,7 @@ impl WorkerServiceImpl {
             .claim_task(&req.worker_id, &req.activity_types, req.max_tasks as usize)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to claim tasks: {}", e);
+                everruns_core::report_repeated_failure!(warn, error = %e, "Failed to claim tasks");
                 Status::internal("Failed to claim tasks")
             })?;
 
@@ -85,7 +92,7 @@ impl WorkerServiceImpl {
                 }))
             }
             Err(e) => {
-                tracing::error!("Failed to complete task: {}", e);
+                tracing::warn!(%task_id, error = %e, "Failed to complete task");
                 Err(Status::internal("Failed to complete task"))
             }
         }
@@ -128,7 +135,9 @@ impl WorkerServiceImpl {
                 }));
             }
             Err(e) => {
-                tracing::error!("Failed to fail task: {}", e);
+                // fail_task_with_retry does not log its own failures, so this
+                // stays the one `error` for them.
+                tracing::error!(%task_id, error = %e, "Failed to fail task");
                 return Err(Status::internal("Failed to fail task"));
             }
         };
@@ -190,7 +199,7 @@ impl WorkerServiceImpl {
             .heartbeat_task(task_id, &req.worker_id, None)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to heartbeat task: {}", e);
+                tracing::warn!(%task_id, error = %e, "Failed to heartbeat task");
                 Status::internal("Failed to heartbeat task")
             })?;
 
@@ -207,6 +216,9 @@ impl WorkerServiceImpl {
         let req = request.into_inner();
         let store = self.durable_store()?;
 
+        // Protocol 0 is a worker built before workers reported one.
+        let metadata = (req.protocol_version > 0)
+            .then(|| serde_json::json!({ "protocol_version": req.protocol_version }));
         let worker_info = WorkerInfo {
             id: req.worker_id,
             worker_group: req.worker_group,
@@ -218,22 +230,51 @@ impl WorkerServiceImpl {
             backpressure_reason: None,
             started_at: chrono::Utc::now(),
             last_heartbeat_at: chrono::Utc::now(),
-            hostname: None,
-            version: None,
-            metadata: None,
+            hostname: req.hostname,
+            version: req.version,
+            metadata,
             tasks_completed: 0,
             tasks_failed: 0,
             avg_task_duration_ms: None,
         };
 
         store.register_worker(worker_info).await.map_err(|e| {
-            tracing::error!("Failed to register worker: {}", e);
+            tracing::warn!(error = %e, "Failed to register worker");
             Status::internal("Failed to register worker")
         })?;
 
         Ok(Response::new(RegisterDurableWorkerResponse {
             registered: true,
         }))
+    }
+
+    pub(crate) async fn handle_report_durable_worker_checks(
+        &self,
+        request: Request<ReportDurableWorkerChecksRequest>,
+    ) -> Result<Response<ReportDurableWorkerChecksResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+        let checks: Vec<serde_json::Value> = req
+            .checks
+            .into_iter()
+            .map(|check| {
+                serde_json::json!({
+                    "id": check.id,
+                    "title": check.title,
+                    "status": check.status,
+                    "summary": check.summary,
+                    "fix": check.fix,
+                })
+            })
+            .collect();
+        store
+            .record_worker_checks(&req.worker_id, serde_json::Value::Array(checks))
+            .await
+            .map_err(|e| {
+                tracing::warn!(worker_id = %req.worker_id, error = %e, "Failed to record worker checks");
+                Status::internal("Failed to record worker checks")
+            })?;
+        Ok(Response::new(ReportDurableWorkerChecksResponse {}))
     }
 
     pub(crate) async fn handle_heartbeat_durable_worker(
@@ -251,7 +292,7 @@ impl WorkerServiceImpl {
             )
             .await
             .map_err(|e| {
-                tracing::error!("Failed to heartbeat worker: {}", e);
+                everruns_core::report_repeated_failure!(warn, worker_id = %req.worker_id, error = %e, "Failed to heartbeat worker");
                 Status::internal("Failed to heartbeat worker")
             })?;
 
@@ -271,7 +312,7 @@ impl WorkerServiceImpl {
         let store = self.durable_store()?;
 
         store.drain_worker(&req.worker_id).await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to drain worker");
+            tracing::warn!(error = %e, "Failed to drain worker");
             Status::internal("Failed to drain worker")
         })?;
         tracing::info!(worker_id = %req.worker_id, "Worker draining itself for shutdown");
@@ -287,7 +328,7 @@ impl WorkerServiceImpl {
         let store = self.durable_store()?;
 
         let tasks_reclaimed = store.deregister_worker(&req.worker_id).await.map_err(|e| {
-            tracing::error!("Failed to deregister worker: {}", e);
+            tracing::warn!(error = %e, "Failed to deregister worker");
             Status::internal("Failed to deregister worker")
         })?;
 

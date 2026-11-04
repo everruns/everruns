@@ -9,6 +9,9 @@
 //! Run with: `cargo test -p everruns-server --test server_integration -- --test-threads=1`
 //! Run one module: `cargo test -p everruns-server --test server_integration <module>:: -- --test-threads=1`
 
+// Nothing cancels a test mid-`BEGIN`; see the root clippy.toml.
+#![allow(clippy::disallowed_methods)]
+
 #[path = "../test_harness.rs"]
 mod test_harness;
 
@@ -24,6 +27,7 @@ mod platform_chat_starter_test;
 mod platform_chat_upgrade_test;
 mod repository_conformance_test;
 mod repository_integration_test;
+mod sandbox_builds_test;
 mod sandbox_fleet_test;
 mod sandbox_orphan_scan_test;
 mod sandbox_state_test;

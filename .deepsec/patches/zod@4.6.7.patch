@@ -1,0 +1,72 @@
+diff --git a/v3/types.cjs b/v3/types.cjs
+index 7c3fa90509fe0149fde8ad5e647b9657014c538f..cb3c71b4bc4fc7e8a03befff8ebc502ecc2c6e43 100644
+--- a/v3/types.cjs
++++ b/v3/types.cjs
+@@ -1792,6 +1792,7 @@ class ZodArray extends ZodType {
+                     exact: true,
+                     message: def.exactLength.message,
+                 });
++                if (tooBig) return parseUtil_js_1.INVALID;
+                 status.dirty();
+             }
+         }
+@@ -1818,7 +1819,7 @@ class ZodArray extends ZodType {
+                     exact: false,
+                     message: def.maxLength.message,
+                 });
+-                status.dirty();
++                return parseUtil_js_1.INVALID;
+             }
+         }
+         if (ctx.common.async) {
+@@ -2849,7 +2850,7 @@ class ZodSet extends ZodType {
+                     exact: false,
+                     message: def.maxSize.message,
+                 });
+-                status.dirty();
++                return parseUtil_js_1.INVALID;
+             }
+         }
+         const valueType = this._def.valueType;
+@@ -3796,3 +3797,5 @@ exports.NEVER = parseUtil_js_1.INVALID;
+   }
+   Object.freeze(exports);
+ })();
++
++/* everruns: zod-v3-bound-before-walk */
+diff --git a/v3/types.js b/v3/types.js
+index ea2be4dba5775eabf4d5b5fecdead5e1a0ca52ff..d8fd0f1b2648f1e1316cc94e0d004998bc220894 100644
+--- a/v3/types.js
++++ b/v3/types.js
+@@ -1771,6 +1771,7 @@ export class ZodArray extends ZodType {
+                     exact: true,
+                     message: def.exactLength.message,
+                 });
++                if (tooBig) return INVALID;
+                 status.dirty();
+             }
+         }
+@@ -1797,7 +1798,7 @@ export class ZodArray extends ZodType {
+                     exact: false,
+                     message: def.maxLength.message,
+                 });
+-                status.dirty();
++                return INVALID;
+             }
+         }
+         if (ctx.common.async) {
+@@ -2820,7 +2821,7 @@ export class ZodSet extends ZodType {
+                     exact: false,
+                     message: def.maxSize.message,
+                 });
+-                status.dirty();
++                return INVALID;
+             }
+         }
+         const valueType = this._def.valueType;
+@@ -3695,3 +3696,5 @@ export const coerce = {
+ };
+ export { anyType as any, arrayType as array, bigIntType as bigint, booleanType as boolean, dateType as date, discriminatedUnionType as discriminatedUnion, effectsType as effect, enumType as enum, functionType as function, instanceOfType as instanceof, intersectionType as intersection, lazyType as lazy, literalType as literal, mapType as map, nanType as nan, nativeEnumType as nativeEnum, neverType as never, nullType as null, nullableType as nullable, numberType as number, objectType as object, oboolean, onumber, optionalType as optional, ostring, pipelineType as pipeline, preprocessType as preprocess, promiseType as promise, recordType as record, setType as set, strictObjectType as strictObject, stringType as string, symbolType as symbol, effectsType as transformer, tupleType as tuple, undefinedType as undefined, unionType as union, unknownType as unknown, voidType as void, };
+ export const NEVER = INVALID;
++
++/* everruns: zod-v3-bound-before-walk */

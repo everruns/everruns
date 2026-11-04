@@ -4,7 +4,7 @@ const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
 const HARNESS_ID = "harness_019fd9b43fa37512b8f25226b21c2c8b";
 
-async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
+async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent", chat = false) {
   await page.route("**/api/v1/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
@@ -27,6 +27,7 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
+        chat_mode: chat,
         evals: true,
         plugins: true,
         voice: false,
@@ -76,6 +77,8 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         archived_at: null,
         deleted_at: null,
       };
+    } else if (pathname === `/api/v1/agents/${AGENT_ID}/source`) {
+      json = null;
     } else if (
       pathname === `/api/v1/agents/${AGENT_ID}/channels` ||
       pathname === `/api/v1/agents/${AGENT_ID}/triggers` ||
@@ -139,6 +142,101 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
     }
 
     await route.fulfill({ json });
+  });
+}
+
+for (const scenario of [
+  { name: "split page", chat: true, width: 1280, height: 633, open: true },
+  { name: "mobile page", chat: true, width: 390, height: 633, open: false },
+  { name: "workspace off", chat: false, width: 1280, height: 633, open: false },
+]) {
+  test(`a trigger row opens its page with Save reachable on ${scenario.name}`, async ({
+    page,
+    context,
+    baseURL,
+  }, testInfo) => {
+    // The dev server compiles the agent page and the trigger page on first visit, which
+    // on a cold CI runner takes longer than the default navigation and assertion budgets.
+    test.slow();
+    await context.addCookies([
+      { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
+    ]);
+    await mockAgentDetailApi(page, "Jokes Agent", scenario.chat);
+    await page.route(`**/api/v1/agents/${AGENT_ID}/github`, (route) =>
+      route.fulfill({
+        json: {
+          connected: false,
+          app_created: false,
+          everruns_app_installations: [],
+          suggested_owners: [],
+          missing_permissions: [],
+        },
+      }),
+    );
+    await page.route("**/api/v1/budgets?**", (route) => route.fulfill({ json: [] }));
+    const triggerId = "trg_00000000000000000000000000000001";
+    const trigger = {
+      id: triggerId,
+      agent_id: AGENT_ID,
+      trigger_type: "schedule",
+      enabled: false,
+      config: {
+        cron_expression: "0 0 9 1 1 * *",
+        timezone: "UTC",
+        session_mode: "shared_session",
+        message: "Fictional scheduled report",
+      },
+      created_at: "2026-10-28T00:00:00Z",
+      updated_at: "2026-10-28T00:00:00Z",
+    };
+    let saved: Record<string, unknown> | undefined;
+    await page.route(`**/api/v1/agents/${AGENT_ID}/triggers**`, async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (route.request().method() === "PATCH") {
+        saved = route.request().postDataJSON();
+        trigger.config.message = saved!.message as string;
+        await route.fulfill({ json: trigger });
+      } else if (path.endsWith("/triggers")) await route.fulfill({ json: [trigger] });
+      else if (path.endsWith(`/triggers/${triggerId}`)) await route.fulfill({ json: trigger });
+      else await route.fulfill({ json: [] });
+    });
+    await page.route(`**/api/v1/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/agents/${AGENT_ID}?tab=integrations`);
+    // The quick-edit dialog is gone: each trigger row opens the trigger's own page.
+    const row = page.getByRole("link", {
+      name: "At 09:00 AM, on day 1 of the month, only in January",
+    });
+    await expect(row).toBeVisible();
+    if (scenario.open) {
+      await page.keyboard.press("Control+j");
+      await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
+    }
+    await row.click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_ID}/triggers/${triggerId}$`), {
+      timeout: 60_000,
+    });
+    const message = page.getByRole("textbox", { name: "Message", exact: true });
+    await expect(message).toHaveValue("Fictional scheduled report");
+    await message.fill("Reviewed report");
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    const bounds = scenario.chat
+      ? (await page.getByRole("region", { name: "Current page" }).boundingBox())!
+      : { x: 0, y: 0, width: scenario.width, height: scenario.height };
+    await save.scrollIntoViewIfNeeded();
+    await expect
+      .poll(async () => {
+        const box = await save.boundingBox();
+        return !!box && box.y >= bounds.y && box.y + box.height <= bounds.y + bounds.height;
+      })
+      .toBe(true);
+    await testInfo.attach("Trigger page", {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
+    await save.click();
+    await expect.poll(() => saved).toMatchObject({ message: "Reviewed report", enabled: false });
   });
 }
 
@@ -418,7 +516,7 @@ test.describe("Agent settings drawer animation", () => {
         theme === "dark",
       );
       for (const title of [
-        "Primary sandbox",
+        "Sandbox",
         "Network access",
         "Files",
         "Token usage",
@@ -507,10 +605,8 @@ test.describe("Agent settings drawer animation", () => {
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
     for (const dismissal of ["Done", "Escape", "backdrop"]) {
-      await page.getByRole("button", { name: /^Primary sandbox/ }).click();
-      await expect(
-        drawer.getByRole("heading", { name: "Primary sandbox", exact: true }),
-      ).toBeVisible();
+      await page.getByRole("button", { name: /^Sandbox/ }).click();
+      await expect(drawer.getByRole("heading", { name: "Sandbox", exact: true })).toBeVisible();
       if (dismissal === "Done")
         await drawer.getByRole("button", { name: "Done", exact: true }).click();
       else if (dismissal === "Escape") await page.keyboard.press("Escape");
@@ -525,12 +621,8 @@ test.describe("Agent settings drawer animation", () => {
 
   test("respects reduced motion when opening and closing settings", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const opening = await sampleDrawerFrames(
-      page.getByRole("button", { name: /^Primary sandbox/ }),
-    );
-    expect(opening.some((frame) => frame.title === "Primary sandbox" && frame.opacity === 1)).toBe(
-      true,
-    );
+    const opening = await sampleDrawerFrames(page.getByRole("button", { name: /^Sandbox/ }));
+    expect(opening.some((frame) => frame.title === "Sandbox" && frame.opacity === 1)).toBe(true);
     expect(opening.every((frame) => frame.opacity === 0 || frame.opacity === 1)).toBe(true);
     const drawer = page.locator('[data-slot="drawer-content"]');
     expect(await drawer.evaluate((element) => getComputedStyle(element).transitionProperty)).toBe(
@@ -541,13 +633,10 @@ test.describe("Agent settings drawer animation", () => {
   });
 
   test("can close partway through opening without a blank frame", async ({ page }) => {
-    const frames = await sampleDrawerFrames(
-      page.getByRole("button", { name: /^Primary sandbox/ }),
-      true,
-    );
+    const frames = await sampleDrawerFrames(page.getByRole("button", { name: /^Sandbox/ }), true);
     const visible = frames.filter((frame) => frame.opacity > 0);
     expect(visible.length).toBeGreaterThan(1);
-    expect(visible.every((frame) => frame.title === "Primary sandbox")).toBe(true);
+    expect(visible.every((frame) => frame.title === "Sandbox")).toBe(true);
     expect(visible.every((frame) => Math.abs(frame.width - visible[0].width) < 1)).toBe(true);
     await expect(page.locator('[data-slot="drawer-content"]')).toHaveCount(0);
   });

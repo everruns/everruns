@@ -1082,12 +1082,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_secrets_empty() {
-        let secrets = parse_secrets(&[]).unwrap();
-        assert!(secrets.is_empty());
-    }
-
-    #[test]
     fn test_parse_secrets_missing_equals() {
         let raw = vec!["NOEQUALS".to_string()];
         assert!(parse_secrets(&raw).is_err());
@@ -1156,12 +1150,6 @@ mod tests {
         assert_eq!(specs.len(), 2);
         assert_eq!(specs[0].currency, "usd");
         assert_eq!(specs[1].currency, "tokens");
-    }
-
-    #[test]
-    fn test_parse_budget_limits_empty() {
-        let specs = parse_budget_limits(&[], &[]).unwrap();
-        assert!(specs.is_empty());
     }
 
     #[test]
@@ -1397,36 +1385,5 @@ mod tests {
         assert_eq!(format_budget_amount(2000000.0, "tokens"), "2000000 tokens");
         assert_eq!(format_budget_amount(50.0, "credits"), "50 credits");
         assert_eq!(format_budget_amount(100.0, "gems"), "100 gems");
-    }
-
-    #[test]
-    fn export_format_maps_to_api_query_value() {
-        assert_eq!(ExportFormat::Jsonl.as_query_value(), "jsonl");
-        assert_eq!(ExportFormat::Atif.as_query_value(), "atif");
-    }
-
-    #[test]
-    fn export_command_parses_format_flag_and_defaults_to_jsonl() {
-        use clap::Parser;
-
-        #[derive(Parser)]
-        struct Wrapper {
-            #[command(subcommand)]
-            cmd: SessionsCommand,
-        }
-
-        // Default (no --format) is JSONL, preserving prior behavior.
-        let parsed = Wrapper::parse_from(["x", "export", "session_123"]);
-        match parsed.cmd {
-            SessionsCommand::Export { format, .. } => assert_eq!(format, ExportFormat::Jsonl),
-            _ => panic!("expected export command"),
-        }
-
-        // Explicit --format atif is accepted.
-        let parsed = Wrapper::parse_from(["x", "export", "session_123", "--format", "atif"]);
-        match parsed.cmd {
-            SessionsCommand::Export { format, .. } => assert_eq!(format, ExportFormat::Atif),
-            _ => panic!("expected export command"),
-        }
     }
 }

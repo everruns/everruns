@@ -14,9 +14,9 @@ sessions, and observe execution through one application-facing API.
 
 Use the framework in your application. When you need a shared runtime and
 production operations, run the Everruns platform yourself or use
-[Everruns Cloud](https://app.everruns.com).
+[Everruns Demo](https://app.everruns.com).
 
-[Build with the framework](https://everruns.com/docs/framework/quickstart/) · [Read the docs](https://everruns.com/docs/framework/) · [Use Everruns Cloud](https://everruns.com/docs/getting-started/cloud/)
+[Build with the framework](https://everruns.com/docs/framework/quickstart/) · [Read the docs](https://everruns.com/docs/framework/) · [Try Demo](https://everruns.com/docs/getting-started/cloud/)
 
 <p align="center">
   <img src="./assets/readme/banner.png" alt="Everruns" width="100%" />
@@ -89,13 +89,13 @@ loop explicit and embeddable:
 
 ## Choose how you run Everruns
 
-| Framework | Self-hosted platform | Everruns Cloud |
+| Framework | Self-hosted platform | Everruns Demo |
 | --- | --- | --- |
-| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[Docker Compose quickstart →](https://everruns.com/docs/getting-started/docker-compose/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Everruns Cloud quickstart →](https://everruns.com/docs/getting-started/cloud/) · [Open app.everruns.com →](https://app.everruns.com) |
+| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[On your machine →](https://everruns.com/docs/getting-started/run-locally/) · [Docker Compose →](https://everruns.com/docs/getting-started/docker-compose/) · [Kubernetes →](https://everruns.com/docs/getting-started/kubernetes/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) | Explore the hosted open-source platform with available promotional credit or your own provider keys.<br><br>[Everruns Demo quickstart →](https://everruns.com/docs/getting-started/cloud/) · [Try Demo →](https://app.everruns.com) |
 
 ### Platform capabilities
 
-The Platform, self-hosted or on Everruns Cloud, adds durable execution, a stateless worker
+The Platform, self-hosted or on Everruns Demo, adds durable execution, a stateless worker
 pool, a web UI, and a remote API. It also publishes agents to Slack, web chat,
 A2A, webhooks, schedules, voice, HTTP, and MCP; manages organizations and
 permissions; and supports observation, budgeting, and evaluation.
@@ -108,7 +108,8 @@ Full documentation lives at **[everruns.com/docs](https://everruns.com/docs)**.
 
 - [Everruns Framework](https://everruns.com/docs/framework/) — build and run agents inside a Rust application
 - [Framework quickstart](https://everruns.com/docs/framework/quickstart/) — install the crate and configure a provider
-- [Docker Compose quickstart](https://everruns.com/docs/getting-started/docker-compose/) — run the full platform stack
+- [Run on your machine](https://everruns.com/docs/getting-started/run-locally/) — `everruns docker up` starts the full Platform in Docker
+- [Docker Compose](https://everruns.com/docs/getting-started/docker-compose/) and [Kubernetes](https://everruns.com/docs/getting-started/kubernetes/) — run it on a server or a cluster
 - [How-to guides](https://everruns.com/docs/how-to/) — give agents tools, stream events, publish to Slack, and enforce budgets
 - [API reference](https://everruns.com/docs/api/) — OpenAPI 3.0
 - [SDKs](https://everruns.com/docs/features/sdk/) — Rust, Python, and TypeScript clients
@@ -131,9 +132,6 @@ and, where feasible, test coverage.
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and
 [AGENTS.md](./AGENTS.md) for the conventions used by both human and AI
 contributors.
-
-The [crate layout](./knowledge/project/crate-layout.md) describes ownership and
-the guards that keep database connections in the server and durable crates.
 
 ## License
 

@@ -296,6 +296,48 @@ async fn invalid_refresh_token_marks_the_claimed_generation_for_reconnect() {
     assert!(row.refresh_token_encrypted.is_none());
 }
 
+/// A Slack outage during a refresh must not cost the workspace its
+/// connection: the refresh token most likely still works, so the stored
+/// tokens stay and a later sweep retries.
+#[tokio::test]
+async fn a_failed_refresh_keeps_the_connection_for_the_next_sweep() {
+    let server = MockServer::start().await;
+    let outage = Mock::given(method("POST"))
+        .and(path("/tooling.tokens.rotate"))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(1)
+        .mount_as_scoped(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    let row = db
+        .upsert_org_slack_connection(stored(41, "T1", chrono::Duration::minutes(10)))
+        .await
+        .unwrap();
+
+    provisioner.rotate_due_connections().await.unwrap();
+    drop(outage);
+    let kept = db
+        .get_org_slack_connection(41, row.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.state, "connected");
+    assert_eq!(kept.refresh_token_encrypted, row.refresh_token_encrypted);
+
+    mount_rotate(&server, "T1").await;
+    provisioner.rotate_due_connections().await.unwrap();
+    let rotated = db
+        .get_org_slack_connection(41, row.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(rotated.state, "connected");
+    assert!(
+        rotated.access_token_expires_at.unwrap()
+            > chrono::Utc::now() + chrono::Duration::minutes(30)
+    );
+}
+
 #[tokio::test]
 async fn with_several_workspaces_the_caller_must_name_one() {
     let server = MockServer::start().await;
@@ -358,6 +400,71 @@ async fn app_creation_encodes_the_generated_yaml_as_json_for_slack() {
         .await
         .unwrap();
     assert_eq!(created.app_id, "A1");
+}
+
+#[tokio::test]
+async fn a_refused_manifest_reports_which_fields_slack_rejected() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.create"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "invalid_manifest",
+            "errors": [
+                {"message": "Must be 139 characters or fewer", "pointer": "/display_information/description"},
+                {"message": "Something without a pointer"}
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    db.upsert_org_slack_connection(stored(42, "T1", chrono::Duration::hours(1)))
+        .await
+        .unwrap();
+
+    let error = provisioner
+        .create_app(42, Some("T1"), "{}")
+        .await
+        .unwrap_err();
+
+    match error {
+        SlackProvisioningError::RejectedWithProblems { code, problems } => {
+            assert_eq!(code, "invalid_manifest");
+            assert_eq!(
+                problems,
+                vec![
+                    "/display_information/description: Must be 139 characters or fewer",
+                    "Something without a pointer",
+                ]
+            );
+        }
+        other => panic!("expected the problems to be kept, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn other_refusals_keep_the_bare_code_callers_match_on() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.create"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "ratelimited",
+            "response_metadata": {"messages": ["[ERROR] slow down"]}
+        })))
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    db.upsert_org_slack_connection(stored(43, "T1", chrono::Duration::hours(1)))
+        .await
+        .unwrap();
+
+    let error = provisioner
+        .create_app(43, Some("T1"), "{}")
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, SlackProvisioningError::Rejected(code) if code == "ratelimited"));
 }
 
 #[tokio::test]
@@ -457,8 +564,11 @@ async fn manager_consent_asks_only_for_app_configuration_and_names_the_org() {
         .manager_authorize_url(
             41,
             "https://api.example.com/v1/slack/workspaces/oauth/callback",
+            "browser-secret",
         )
-        .unwrap();
+        .await
+        .unwrap()
+        .0;
 
     assert!(url.starts_with(SLACK_OAUTH_AUTHORIZE_URL));
     assert_eq!(query_param(&url, "client_id"), "111.222");
@@ -472,7 +582,12 @@ async fn manager_consent_asks_only_for_app_configuration_and_names_the_org() {
         "https://api.example.com/v1/slack/workspaces/oauth/callback"
     );
     let state = query_param(&url, "state");
-    assert_eq!(provisioner.open_manager_state(&state), Some(41));
+    assert_eq!(
+        provisioner
+            .open_manager_state(&state)
+            .map(|state| state.org_id),
+        Some(41)
+    );
 }
 
 #[tokio::test]
@@ -489,33 +604,93 @@ async fn a_forged_altered_foreign_or_expired_connect_state_names_no_org() {
     let valid = seal(&ManagerConnectState {
         purpose: MANAGER_CONNECT_STATE_PURPOSE.to_string(),
         org_id: 41,
-        expires_at: chrono::Utc::now().timestamp() + 60,
+        transaction_id: uuid::Uuid::new_v4(),
+        expires_at: chrono::Utc::now() + chrono::Duration::minutes(1),
     });
-    assert_eq!(provisioner.open_manager_state(&valid), Some(41));
+    assert_eq!(
+        provisioner
+            .open_manager_state(&valid)
+            .map(|state| state.org_id),
+        Some(41)
+    );
 
     let mut altered = valid.into_bytes();
     let last = altered.len() - 2;
     altered[last] = if altered[last] == b'A' { b'B' } else { b'A' };
     assert_eq!(
-        provisioner.open_manager_state(&String::from_utf8(altered).unwrap()),
-        None
-    );
-    assert_eq!(provisioner.open_manager_state("not-a-state"), None);
-    assert_eq!(
-        provisioner.open_manager_state(&seal(&ManagerConnectState {
-            purpose: "github_setup".to_string(),
-            org_id: 41,
-            expires_at: chrono::Utc::now().timestamp() + 60,
-        })),
+        provisioner
+            .open_manager_state(&String::from_utf8(altered).unwrap())
+            .map(|state| state.org_id),
         None
     );
     assert_eq!(
-        provisioner.open_manager_state(&seal(&ManagerConnectState {
-            purpose: MANAGER_CONNECT_STATE_PURPOSE.to_string(),
-            org_id: 41,
-            expires_at: chrono::Utc::now().timestamp() - 1,
-        })),
+        provisioner
+            .open_manager_state("not-a-state")
+            .map(|state| state.org_id),
         None
+    );
+    assert_eq!(
+        provisioner
+            .open_manager_state(&seal(&ManagerConnectState {
+                purpose: "github_setup".to_string(),
+                org_id: 41,
+                transaction_id: uuid::Uuid::new_v4(),
+                expires_at: chrono::Utc::now() + chrono::Duration::minutes(1),
+            }))
+            .map(|state| state.org_id),
+        None
+    );
+    assert_eq!(
+        provisioner
+            .open_manager_state(&seal(&ManagerConnectState {
+                purpose: MANAGER_CONNECT_STATE_PURPOSE.to_string(),
+                org_id: 41,
+                transaction_id: uuid::Uuid::new_v4(),
+                expires_at: chrono::Utc::now() - chrono::Duration::seconds(1),
+            }))
+            .map(|state| state.org_id),
+        None
+    );
+}
+
+#[tokio::test]
+async fn manager_transactions_bind_the_browser_and_org_and_survive_api_recreation() {
+    let server = MockServer::start().await;
+    let (provisioner, db) = manager_provisioner(&server);
+    let (url, _) = provisioner
+        .manager_authorize_url(41, "https://example.test/cb", "browser-one")
+        .await
+        .unwrap();
+    let state = query_param(&url, "state");
+    let mut pending = provisioner.open_manager_state(&state).unwrap();
+    assert!(
+        !provisioner
+            .consume_manager_state(&pending, "browser-two")
+            .await
+            .unwrap()
+    );
+    pending.org_id = 42;
+    assert!(
+        !provisioner
+            .consume_manager_state(&pending, "browser-one")
+            .await
+            .unwrap()
+    );
+    pending.org_id = 41;
+    let restarted = SlackApiProvisioner::with_api_base(db, encryption(), &server.uri()).unwrap();
+    let (first, second) = tokio::join!(
+        provisioner.consume_manager_state(&pending, "browser-one"),
+        restarted.consume_manager_state(&pending, "browser-one"),
+    );
+    assert_eq!(
+        usize::from(first.unwrap()) + usize::from(second.unwrap()),
+        1
+    );
+    assert!(
+        !restarted
+            .consume_manager_state(&pending, "browser-one")
+            .await
+            .unwrap()
     );
 }
 
@@ -525,7 +700,9 @@ async fn without_a_manager_app_there_is_no_consent_to_start() {
     let (provisioner, _db) = provisioner(&server);
     assert!(!provisioner.manager_app_configured());
     assert!(matches!(
-        provisioner.manager_authorize_url(41, "https://example.test/cb"),
+        provisioner
+            .manager_authorize_url(41, "https://example.test/cb", "browser-secret")
+            .await,
         Err(SlackProvisioningError::Unavailable)
     ));
 }
@@ -760,4 +937,50 @@ async fn a_manager_grant_is_kept_when_the_deployment_drops_its_manager_app() {
     assert_eq!(row.state, "connected");
     assert!(row.refresh_token_encrypted.is_some());
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_manifest_check_reports_each_case_slack_refuses() {
+    let server = MockServer::start().await;
+    // Slack refuses any manifest whose app is named "Bot" (the
+    // tricky-characters case) and accepts the rest.
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.validate"))
+        .and(header("authorization", "Bearer access"))
+        .and(wiremock::matchers::body_string_contains(
+            r#"\"name\":\"Bot\""#,
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "invalid_manifest",
+            "errors": [{"message": "too long", "pointer": "/display_information/description"}]
+        })))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.validate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
+        .with_priority(2)
+        .expect(5)
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    assert_eq!(
+        provisioner.check_manifests().await,
+        manifest_health::SlackManifestOutcome::NoWorkspace
+    );
+    db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(6)))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        provisioner.check_manifests().await,
+        manifest_health::SlackManifestOutcome::Refused {
+            refusals: vec![(
+                "tricky-characters".to_string(),
+                vec!["/display_information/description: too long".to_string()]
+            )]
+        }
+    );
 }

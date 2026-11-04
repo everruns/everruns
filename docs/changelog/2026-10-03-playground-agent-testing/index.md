@@ -7,7 +7,6 @@ significance: major
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.38.0"
-visual: "Playground library with grouped conversation rows and the New Playground chat setup with an agent selected; route /playground; crop to the list and setup panel."
 links:
   docs: [/features/ui/, /built-ins/harnesses/platform-chat/]
   prs: [everruns/everruns#4060, everruns/everruns#4076, everruns/everruns#4121, everruns/everruns#4129]
@@ -20,6 +19,10 @@ searched, filtered by agent or user, and archived, and each links to its
 session. On an agent page, **Test in Playground** opens setup with that agent
 selected.
 
+![Playground list of shared conversations grouped by day with agent and user](./playground-library@2x.png)
+
+![New Playground chat setup with an agent and virtual user selected](./playground-new-chat@2x.png)
+
 **Chat** now always uses the managed Platform Chat agent. The sidebar opens your
 permanent conversation, **New chat** starts a side conversation, and
 **All chats** lists only your personal conversations. Platform Chat runs on
@@ -28,3 +31,7 @@ the shell-based implementation for every organization.
 See [Chat and Threads](/features/ui/#chat-and-threads) and
 [Platform Chat](/built-ins/harnesses/platform-chat/). PRs [#4060](https://github.com/everruns/everruns/pull/4060),
 [#4076](https://github.com/everruns/everruns/pull/4076), [#4121](https://github.com/everruns/everruns/pull/4121), [#4129](https://github.com/everruns/everruns/pull/4129).
+
+## Update 2026-10-24
+
+Setup now supports search. **Test in Playground** opens normal setup; its existing **Dry run** checkbox selects simulated actions. See [Agent actions and searchable Playground setup](/changelog/2026-10-24-agent-actions-playground-search/).

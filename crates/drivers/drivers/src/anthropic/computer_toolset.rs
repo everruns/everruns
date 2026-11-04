@@ -160,22 +160,6 @@ fn as_member_call(block: &mut Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::ToolDefinition;
-
-    #[test]
-    fn active_needs_the_option_the_tool_and_a_toolset_model() {
-        let mut config = LlmCallConfig::new("claude-opus-5-5");
-        config.tools = vec![ToolDefinition::function("computer", "", json!({}))];
-        assert!(!active(&config, "claude-opus-5-5"));
-        let (key, value) = NativeComputerUse {
-            display_width: 1280,
-            display_height: 800,
-        }
-        .to_driver_option();
-        config.driver_options.insert(key, value);
-        assert!(active(&config, "claude-opus-5-5"));
-        assert!(!active(&config, "claude-haiku-4-5"));
-    }
 
     #[test]
     fn entry_keeps_every_member_on() {

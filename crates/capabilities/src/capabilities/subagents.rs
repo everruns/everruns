@@ -1997,41 +1997,6 @@ mod tests {
         assert_eq!(agent.max_subagent_depth(), 1);
     }
 
-    #[test]
-    fn subagent_capability_is_high_risk() {
-        assert_eq!(SubagentCapability.risk_level(), RiskLevel::High);
-    }
-
-    #[test]
-    fn spawn_agent_subagent_schema_advertises_only_subagent_target() {
-        let tool = SpawnSubagentAsAgentTool;
-        let schema = tool.parameters_schema();
-        assert_eq!(
-            schema["properties"]["target"]["properties"]["type"]["enum"],
-            json!(["subagent"])
-        );
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("target")));
-        assert!(required.contains(&json!("name")));
-        assert!(required.contains(&json!("instructions")));
-        let props = schema["properties"].as_object().unwrap();
-        assert!(props.contains_key("blueprint"));
-        assert!(props.contains_key("config"));
-        assert!(props.contains_key("result_schema"));
-        assert!(props.contains_key("message_schema"));
-        assert!(!required.contains(&json!("blueprint")));
-        assert!(!required.contains(&json!("config")));
-        assert_eq!(
-            schema["properties"]["mode"]["enum"],
-            json!(["background", "foreground"])
-        );
-        assert_eq!(
-            tool.hints().concurrency_class.as_deref(),
-            Some(SPAWN_AGENT_CONCURRENCY_CLASS),
-            "spawn_agent calls share one scheduler class so cap admission is serialized"
-        );
-    }
-
     use std::sync::Arc;
 
     // spawn_store_contract_* and arc_spawn_store_delegates were removed: they

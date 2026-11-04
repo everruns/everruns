@@ -1,3 +1,21 @@
+import type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
+export type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
+export type {
+  ArtifactSpec,
+  CreateEvalCaseRequest,
+  CreateEvalRunRequest,
+  EvalCase,
+  EvalInputMessage,
+  Scorer,
+  SimulatedUser,
+  ToolFixture,
+} from "./eval-case-types";
+export type {
+  Organization,
+  UpdateOrganizationRequest,
+  SystemDecisionsSource,
+} from "./organization-types";
+
 import type {
   Model,
   ModelWithProvider,
@@ -52,7 +70,6 @@ import type {
   ChannelStatus,
   ConversationMessageData,
   LlmRetryInfo,
-  SessionActivity,
   SessionSource,
 } from "./schema-types";
 
@@ -654,43 +671,10 @@ export interface OrganizationMembership {
   role: OrgRole;
 }
 
-/** Full organization details (from API) */
-export interface Organization {
-  id: string;
-  name: string;
-  default_model_id: string | null;
-  default_harness_id: string | null;
-  base_harness_id: string | null;
-  /** Default provider per service kind (EVE-569); empty object when none. */
-  default_provider_per_service: Record<string, string>;
-  /** Who answers guardrail jev checks and the Slack relevance check. */
-  system_decisions: SystemDecisionsSource;
-  created_at: string;
-  updated_at: string;
-  /**
-   * When the org's creator finished or skipped the setup wizard. `null` means
-   * onboarding is incomplete; the resume redirect sends the user to /setup.
-   */
-  onboarding_completed_at: string | null;
-}
-
 /** Request to create an organization */
 export interface CreateOrganizationRequest {
   name: string;
 }
-
-/** Request to update an organization */
-export interface UpdateOrganizationRequest {
-  name?: string;
-  default_model_id?: string | null;
-  default_harness_id?: string;
-  base_harness_id?: string;
-  /** Default provider per service kind (EVE-569); replaces the whole map. */
-  default_provider_per_service?: Record<string, string>;
-  system_decisions?: SystemDecisionsSource;
-}
-
-export type SystemDecisionsSource = "deployment" | "organization";
 
 export interface UserInfoResponse {
   id: string;
@@ -773,7 +757,6 @@ export type {
 } from "./connection-provider-types";
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// NOTE: CapabilityId is defined in common-types for proper ordering
 export type CapabilityStatus =
   | "available"
   | "coming_soon"
@@ -810,10 +793,11 @@ export interface Capability {
   harness_count?: number;
   /** Slug under https://dev.everruns.com/capabilities/ for the public docs page */
   docs_slug?: string;
+  /** Rollout flag that gates this capability, when one is required. */
+  feature_flag?: string;
   /**
    * Localized display strings keyed by lowercase language tag (e.g. "uk").
-   * The "en" entry carries only config_description, since the base
-   * name/description/config_schema strings are already English.
+   * The "en" entry carries only config_description; base strings are English.
    */
   localizations?: Record<string, CapabilityLocalization>;
 }
@@ -1417,15 +1401,15 @@ export interface CreateScheduleRequest {
 
 /** Request to update a schedule */
 export interface UpdateScheduleRequest {
-  description?: string;
+  description?: string | null;
   cron_expression?: string;
   timezone?: string;
   target?: ScheduleTarget;
   enabled?: boolean;
-  max_concurrent?: number;
+  max_concurrent?: number | null;
   catch_up_missed?: boolean;
-  max_catch_up?: number;
-  retry_policy?: Record<string, unknown>;
+  max_catch_up?: number | null;
+  retry_policy?: Record<string, unknown> | null;
 }
 
 /** Schedules list response */
@@ -1492,107 +1476,12 @@ export interface Eval {
   tags: string[];
   status: "active" | "archived" | "deleted";
   case_count: number;
+  /** Counts changes to the cases (the dataset); runs record the one they ran. */
+  version?: number;
   last_run?: EvalRunSummaryView;
   created_at: string;
   updated_at: string;
 }
-
-export interface EvalRunSummaryView {
-  id: string;
-  status: EvalRunStatus;
-  summary?: RunSummary;
-  created_at: string;
-}
-
-export type EvalRunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
-
-export interface RunSummary {
-  total: number;
-  passed: number;
-  failed: number;
-  errored: number;
-  pass_rate: number;
-  avg_score: number;
-  avg_turns: number;
-  avg_latency_ms: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-}
-
-export interface EvalCase {
-  id: string;
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface EvalInputMessage {
-  content: string;
-}
-
-export interface ArtifactSpec {
-  name: string;
-  path: string;
-}
-
-export type Scorer =
-  | {
-      type: "contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "not_contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "regex";
-      pattern: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_called";
-      tool: string;
-      min?: number;
-      weight?: number;
-    }
-  | {
-      type: "tool_not_called";
-      tool: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_call_count";
-      min?: number;
-      max?: number;
-      weight?: number;
-    }
-  | {
-      type: "turns_within";
-      max: number;
-      weight?: number;
-    }
-  | {
-      type: "file_contains";
-      path: string;
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "json_schema";
-      schema: object;
-      weight?: number;
-    };
 
 // Provenance for an externally-executed (imported) run. Open-vocab; the
 // producing system (e.g. Mira) fills what it has.
@@ -1613,6 +1502,9 @@ export interface EvalRun {
   target?: EvalTarget;
   model_override?: string;
   filter_tags?: string[];
+  /** The experiment this run is a variant of. */
+  experiment_id?: string | null;
+  variant_label?: string | null;
   status: EvalRunStatus;
   triggered_by: string;
   started_at?: string;
@@ -1735,132 +1627,6 @@ export interface UpdateEvalRequest {
   target?: EvalTarget;
   model_override?: string;
   tags?: string[];
-}
-
-export interface CreateEvalCaseRequest {
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags?: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position?: number;
-}
-
-export interface CreateEvalRunRequest {
-  target?: EvalTarget;
-  model_override?: string;
-}
-
-// ============================================
-// Observer types (online scoring of production sessions)
-// ============================================
-// Hand-written (not generated): the backend exposes a flattened tagged union for
-// scorer configs and a snake_case tagged union for rule scorers. See the
-// `/v1/observers` API contract.
-
-export type ObserverStatus = "active" | "paused" | "archived";
-
-/** Match rules deciding which production turns an observer samples. */
-export interface ObserverMatch {
-  agent_ids?: string[];
-  harness_ids?: string[];
-  session_tags?: string[];
-}
-
-/**
- * Deterministic rule scorer variants (snake_case, discriminated by `type`).
- * Mirrors the eval Scorer union, minus `file_contains` (rejected by the server
- * for observers). `weight` defaults to 1.0 server-side.
- */
-export type ScorerRule =
-  | { type: "contains"; text: string; weight?: number }
-  | { type: "not_contains"; text: string; weight?: number }
-  | { type: "regex"; pattern: string; weight?: number }
-  | { type: "tool_called"; tool: string; min?: number; weight?: number }
-  | { type: "tool_not_called"; tool: string; weight?: number }
-  | { type: "tool_call_count"; min?: number; max?: number; weight?: number }
-  | { type: "turns_within"; max: number; weight?: number }
-  | { type: "json_schema"; schema: object; weight?: number };
-
-/** Scope a scorer evaluates against. Only `turn` is currently supported. */
-export type ObserverScorerScope = "turn" | "session" | "tool";
-
-/**
- * Per-scorer configuration. FLATTENED tagged union discriminated by `method`:
- * the method-specific fields sit alongside `key`/`scope`, not nested.
- */
-export type ObserverScorerConfig =
-  | {
-      key: string;
-      scope: ObserverScorerScope;
-      method: "rule";
-      rule: ScorerRule;
-    }
-  | {
-      key: string;
-      scope: ObserverScorerScope;
-      method: "llm_judge";
-      rubric: string;
-      model_id?: string;
-      pass_threshold: number;
-    };
-
-export interface Observer {
-  id: string;
-  name: string;
-  description?: string;
-  match: ObserverMatch;
-  sampling_rate: number;
-  scorers: ObserverScorerConfig[];
-  status: ObserverStatus;
-  created_at: string;
-  updated_at: string;
-  archived_at?: string;
-}
-
-export interface CreateObserverRequest {
-  name: string;
-  description?: string;
-  match?: ObserverMatch;
-  sampling_rate?: number;
-  scorers: ObserverScorerConfig[];
-}
-
-export interface UpdateObserverRequest {
-  name?: string;
-  description?: string;
-  match?: ObserverMatch;
-  sampling_rate?: number;
-  scorers?: ObserverScorerConfig[];
-  status?: ObserverStatus;
-}
-
-export type TraceScoreStatus = "pending" | "scoring" | "completed" | "errored" | "skipped";
-
-/** A single scored production turn produced by an observer. */
-export interface TraceScore {
-  id: string;
-  observer_id: string;
-  scorer_key: string;
-  session_id: string;
-  turn_id: string;
-  agent_id?: string;
-  harness_id?: string;
-  status: TraceScoreStatus;
-  pass?: boolean;
-  value?: number;
-  label?: string;
-  reason?: string;
-  judge_input_tokens?: number;
-  judge_output_tokens?: number;
-  judge_cost_usd?: number;
-  error_message?: string;
-  created_at: string;
-  updated_at: string;
 }
 
 // From legacy event-types.ts; retained as UI compatibility over generated OpenAPI schemas.
@@ -3038,129 +2804,7 @@ export interface UpdateInstalledPluginRequest {
 // ============================================
 // LLM Provider types
 // ============================================
-export type ProviderStatus = "active" | "disabled";
-
-/**
- * Configuration for linking from the chat UI to a provider's observability
- * dashboard ("trace"/"logs"). URL templates support the `{response_id}`,
- * `{session_id}`, `{turn_id}` and `{model}` placeholders. The backend resolves
- * driver defaults overlaid with the org's stored overrides; `enabled` gates
- * whether links are shown at all.
- */
-export interface ProviderTraceConfig {
-  enabled: boolean;
-  generation_url_template?: string;
-  session_url_template?: string;
-}
-
-/** One extra HTTP header sent with every request to a provider connection. */
-export interface ProviderRequestHeader {
-  name: string;
-  value: string;
-}
-
-/** Per-connection extra request headers and prompt-cache diagnostics opt-in (Anthropic today). */
-export interface ProviderRequestOptions {
-  headers?: ProviderRequestHeader[];
-  cache_diagnostics?: boolean;
-}
-
-export interface Provider {
-  id: string;
-  name: string;
-  provider_type: DriverId;
-  base_url?: string;
-  api_key_set: boolean;
-  status: ProviderStatus;
-  /** Whether this provider is host-managed (read-only to org admins). */
-  managed: boolean;
-  /** Most recent successful model sync from the provider's API. */
-  last_synced_at?: string;
-  /** When someone last reviewed this provider's discovered models. */
-  models_reviewed_at?: string;
-  created_at: string;
-  updated_at: string;
-  /** Resolved trace/observability link configuration (driver defaults + overrides). */
-  trace?: ProviderTraceConfig;
-  /** Extra headers and diagnostics options applied to every request to this provider. */
-  request_options?: ProviderRequestOptions;
-}
-
-export interface CreateProviderRequest {
-  name: string;
-  provider_type: DriverId;
-  base_url?: string;
-  api_key?: string;
-  /** Typed credential fields keyed by the driver's credential-schema field names. */
-  credentials?: Record<string, string>;
-  trace?: ProviderTraceConfig;
-  request_options?: ProviderRequestOptions;
-}
-
-export interface CheckCredentialsRequest {
-  provider_type: DriverId;
-  api_key?: string;
-  /** Typed credential fields keyed by the driver's credential-schema field names. */
-  credentials?: Record<string, string>;
-  base_url?: string;
-}
-
-/**
- * Outcome of probing a candidate API key against the provider. Only
- * `rejected` proves the key is bad: `unsupported` (driver has no check) and
- * `unreachable` (outage/network) must not block the user.
- */
-export type CredentialCheckResult =
-  | { status: "valid"; models: number }
-  | { status: "rejected"; message: string }
-  | { status: "unsupported" }
-  | { status: "unreachable"; message: string };
-
-export interface UpdateProviderRequest {
-  name?: string;
-  provider_type?: DriverId;
-  base_url?: string;
-  api_key?: string;
-  /** Typed credential fields keyed by the driver's credential-schema field names. */
-  credentials?: Record<string, string>;
-  status?: ProviderStatus;
-  trace?: ProviderTraceConfig;
-  request_options?: ProviderRequestOptions;
-}
-
-/** A single declared credential field (mirrors core `FormField`). */
-export interface CredentialFormField {
-  name: string;
-  label: string;
-  field_type: "password" | "text" | "url";
-  required: boolean;
-  placeholder?: string;
-  help_text?: string;
-  /** Default value the form pre-fills (e.g. an OAuth scope or AWS region). */
-  default_value?: string;
-  /** Mutually-exclusive group label; fields sharing it are one credential method. */
-  group?: string;
-}
-
-/** A driver's declared credential schema (mirrors core `CredentialFormSchema`). */
-export interface CredentialFormSchema {
-  fields: CredentialFormField[];
-  instructions_markdown: string;
-}
-
-/** Per-driver credential schema from `GET /v1/providers/config`. */
-export interface DriverCredentialInfo {
-  services?: import("./model-types").ModelService[];
-  driver: DriverId;
-  credential_schema: CredentialFormSchema;
-  supports_oauth: boolean;
-}
-
-/** Response shape of `GET /v1/providers/config`. */
-export interface ProvidersConfigResponse {
-  policies: Record<string, boolean>;
-  drivers: DriverCredentialInfo[];
-}
+export type * from "./provider-config-types";
 
 // Response from syncing models from a provider
 export type SyncModelsResponse =
@@ -3311,123 +2955,7 @@ export interface ReportingBackfillResult {
   usage_ledger: number;
 }
 
-// From legacy session-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// ============================================
-// Session types (M2)
-// ============================================
-// Session status values:
-// - "started": Session just created, no turn executed yet
-// - "active": A turn is currently running
-// - "idle": Turn completed, session waiting for next input
-// - "waiting_for_tool_results": Session paused, waiting for client-side tool results
-export type SessionStatus = "started" | "active" | "idle" | "waiting_for_tool_results";
-
-export interface Session {
-  id: string;
-  /** Organization this session belongs to */
-  organization_id: string;
-  /**
-   * Workspace this session is attached to (wsp_<32-hex>); owns the virtual
-   * filesystem. For the default 1:1 case this equals the session id. Optional
-   * here until the UI consumes it directly instead of deriving from the id.
-   */
-  workspace_id?: string;
-  harness_id: string;
-  agent_id: string | null;
-  /** Revision of the agent's history this session started on. */
-  agent_revision?: number | null;
-  virtual_user_id?: string | null;
-  /** Fixed end-user subject for an organisation-shared Playground conversation. */
-  playground_user_id?: string | null;
-  owner_principal_id: string;
-  resolved_owner_user_id?: string | null;
-  owner?: PrincipalSummary | null;
-  effective_owner?: PrincipalSummary | null;
-  title: string | null;
-  /** Objective shown in session lists and injected into the agent prompt */
-  goal?: string | null;
-  locale?: string | null;
-  /** Preview text from the first user message (truncated) */
-  preview?: string | null;
-  /** Preview text from the last assistant response (truncated) */
-  output_preview?: string | null;
-  tags: string[];
-  model_id: string | null;
-  /** Tool definitions (including client-side tools), defaults to [] */
-  tools?: ToolDefinition[];
-  status: SessionStatus;
-  /**
-   * How the session was started (EVE-852). Server-owned for every ingress
-   * except `chat`/`api`, which is what makes the Sessions source facet
-   * trustworthy. Optional here so responses from an older server still parse.
-   */
-  source?: SessionSource;
-  /**
-   * Outcome-oriented view of the session, derived server-side from its status
-   * and the outcome of its most recent turn. `status` alone has no notion of
-   * failure, which is why the list and the facet rail read this instead.
-   */
-  activity?: SessionActivity;
-  /**
-   * Generated one-sentence description of what the run did, and where it
-   * failed (EVE-867). Absent for chat threads, for runs with no terminal turn
-   * yet, and on deployments with no utility LLM — readers must have a fallback.
-   */
-  run_summary?: string;
-  created_at: string;
-  updated_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-  /** Cumulative token usage for all LLM calls in this session */
-  usage?: TokenUsage;
-  /** Whether this session is pinned by the current user */
-  is_pinned?: boolean;
-  /**
-   * When this session was archived; absent means active. Archived sessions are
-   * hidden from default list results and shown by passing
-   * `include_archived=true`. Unlike `is_pinned`, archive is a property of the
-   * session itself rather than of the viewer.
-   */
-  archived_at?: string | null;
-  /** Number of active schedules for this session */
-  active_schedule_count?: number;
-  /**
-   * Total events recorded for this session. Denormalized counter, omitted when
-   * zero — an empty tab carries no badge (EVE-868).
-   */
-  event_count?: number;
-  /**
-   * Background work the session owns — subagents, external agents, background
-   * tools. This is what the Work tab holds; `active_schedule_count` describes
-   * only the schedules it also lists. Omitted when zero.
-   */
-  task_count?: number;
-  /**
-   * Non-directory files in this session's workspace. Persisted files only:
-   * capability-provided virtual mounts are served from memory and excluded.
-   * Omitted when zero.
-   */
-  file_count?: number;
-  /** Aggregated UI features from all active capabilities (harness + agent + session) */
-  features?: string[];
-  /** Session-level system prompt override (prepended to agent prompt) */
-  system_prompt?: string | null;
-  /** Session-level initial files (additive to agent initial_files) */
-  initial_files?: InitialFile[];
-  /** Session-level client hints (defaults for every turn) */
-  hints?: Record<string, unknown>;
-  /** Network access list for URL filtering */
-  network_access?: NetworkAccessList | null;
-  /**
-   * Session this one was forked from (knowledge/runtime-resources/forking-sessions.md).
-   * NULL for sessions that were not forked. Distinct from a subagent's parent.
-   */
-  forked_from_session_id?: string | null;
-  /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
-  forked_from_sequence?: number | null;
-  /** Parent session for subagents and coordinator threads. NULL for top-level sessions. */
-  parent_session_id?: string | null;
-}
+export type { Session, SessionStatus } from "./session-types";
 
 /** Session counts grouped by status */
 export interface SessionStats {
@@ -3500,9 +3028,7 @@ export interface UpdateSessionRequest {
   model_id?: string | null;
 }
 
-// ============================================
 // Session Schedule types
-// ============================================
 export type ScheduleType = "oneshot" | "recurring";
 
 export interface SessionSchedule {
@@ -3523,6 +3049,8 @@ export interface SessionSchedule {
   trigger_count: number;
   created_at: string;
   updated_at: string;
+  /** Set when the schedule was deleted. The row stays on the session recording. */
+  deleted_at?: string | null;
 }
 
 export interface UpdateSessionScheduleRequest {

@@ -32,6 +32,16 @@ pub const CHANGE_REASON_HEADER: &str = "everruns-change-reason";
 /// Request header carrying the manager context revision the caller read before
 /// a change, on REST routes.
 pub const CONTEXT_REVISION_HEADER: &str = "everruns-context-revision";
+pub const EXPECTED_CHANGE_HEADER: &str = "everruns-expected-change";
+pub const COMMITTED_CHANGE_HEADER: &str = "everruns-committed-change";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommittedChange {
+    pub kind: String,
+    pub id: String,
+    pub revision: i64,
+    pub from_revision: Option<i64>,
+}
 
 /// Param names the command shells treat as invocation metadata rather than as
 /// command params (`update_agent --id a --reason "..."`). No command may
@@ -89,6 +99,11 @@ impl ChangeSurface {
 /// derived by the server; the reason is caller text and never authoritative.
 #[derive(Debug, Clone, Default)]
 pub struct ChangeIntent {
+    /// Optional compare-and-swap guard supplied by a reviewed browser save.
+    /// It never supplies actor/session attribution or changes permissions.
+    pub expected_change: Option<String>,
+    pub expected_change_checked: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub committed_change: std::sync::Arc<parking_lot::Mutex<Option<CommittedChange>>>,
     /// The caller's reason, as sent (validated by `Command::run`).
     pub reason: Option<String>,
     pub surface: Option<ChangeSurface>,
@@ -167,6 +182,11 @@ impl ChangeIntent {
         }
         if self.context_revision.is_none() {
             self.context_revision = outer.context_revision;
+        }
+        if self.expected_change.is_none() {
+            self.expected_change = outer.expected_change.clone();
+            self.expected_change_checked = outer.expected_change_checked.clone();
+            self.committed_change = outer.committed_change.clone();
         }
         self
     }
@@ -252,13 +272,29 @@ pub async fn http_change_intent_layer(req: Request, next: Next) -> Response {
         .get::<crate::middleware::RequestId>()
         .map(|id| id.0.clone());
     let intent = ChangeIntent {
+        expected_change: req
+            .headers()
+            .get(EXPECTED_CHANGE_HEADER)
+            .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned()),
         reason,
         surface: Some(ChangeSurface::Api),
         request_id,
         context_revision,
         ..ChangeIntent::default()
     };
-    HTTP_INTENT.scope(intent, next.run(req)).await
+    let committed = intent.committed_change.clone();
+    let mut response = HTTP_INTENT.scope(intent, next.run(req)).await;
+    // Public identifiers and integers only; no snapshot data.
+    if response.status().is_success()
+        && let Some(change) = committed.lock().as_ref()
+        && let Ok(value) = serde_json::to_string(change)
+        && let Ok(header) = axum::http::HeaderValue::from_str(&value)
+    {
+        response
+            .headers_mut()
+            .insert(COMMITTED_CHANGE_HEADER, header);
+    }
+    response
 }
 
 fn decode_header_reason(bytes: &[u8]) -> String {

@@ -86,6 +86,7 @@ pub fn safe_git_clone_error(
 
 fn valid_github_component(part: &str) -> bool {
     !part.is_empty()
+        && !matches!(part, "." | "..")
         && part.len() <= 100
         && part
             .chars()
@@ -121,6 +122,9 @@ mod tests {
             "",
             "bashkit",
             "owner/repo/extra",
+            "../repo",
+            "owner/..",
+            "owner/.",
             "http://github.com/owner/repo",
             "https://gitlab.com/owner/repo",
             "https://user@github.com/owner/repo",

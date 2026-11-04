@@ -2,8 +2,10 @@
 // See knowledge/evaluation/online-evals.md.
 
 pub mod commands;
+pub mod evidence;
 pub mod judge;
 pub mod listener;
+pub mod matching;
 pub mod record;
 pub mod service;
 pub mod types;

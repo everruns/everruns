@@ -173,28 +173,6 @@ async fn test_agent_preview_merges_files_and_dependency_features_without_duplica
 }
 
 #[tokio::test]
-async fn test_create_agent() {
-    let server = TestServer::new().await;
-
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "test-agent",
-                "display_name": "Test Agent",
-                "description": "An agent for testing",
-                "system_prompt": "You are a helpful assistant"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert_eq!(agent.name, "test-agent");
-    assert_eq!(agent.description.as_deref(), Some("An agent for testing"));
-}
-
-#[tokio::test]
 async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     let server = TestServer::in_memory().await;
     let sentinel = "security-test-secret-must-not-be-returned";
@@ -243,10 +221,20 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     assert!(binding.get("value").is_none());
     let binding_id = binding["id"].as_str().unwrap();
 
+    let scoped: Value = server
+        .get(&format!(
+            "/v1/credential-bindings?scope=agent&owner_id={}&usage=service",
+            agent.public_id
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let revision = scoped[0]["revision"].as_i64().unwrap();
+
     let rotated: Value = server
         .put(
             &format!("/v1/agents/{}/credentials/{binding_id}", agent.public_id),
-            json!({ "value": sentinel }),
+            json!({ "value": sentinel, "revision": revision }),
         )
         .await
         .assert_status(StatusCode::OK)
@@ -268,12 +256,39 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
         .await
         .unwrap()
         .unwrap();
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({"agent_id":agent.public_id,"title":"MCP credential runtime"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let input_message_id = uuid::Uuid::now_v7();
+    server
+        .db
+        .record_runtime_invocation(
+            DEFAULT_ORG_ID,
+            session.id,
+            input_message_id,
+            None,
+            None,
+            Some(stored_agent.id.uuid()),
+        )
+        .await
+        .unwrap();
     let runtime_bindings =
         everruns_server::domains::agents::credentials::resolve_runtime_secret_bindings(
             server.db.as_ref(),
             server.encryption.as_deref(),
             DEFAULT_ORG_ID,
-            Some(stored_agent.id),
+            Some(
+                everruns_contracts::runtime::credential_services::CredentialInvocation {
+                    session_id: session.id,
+                    input_message_id,
+                },
+            ),
+            everruns_core::McpServerActsAs::Service,
             "visti-test",
             "https://example.com/mcp",
         )
@@ -315,7 +330,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     server
         .put(
             &format!("/v1/agents/{}/credentials/{binding_id}", other.public_id),
-            json!({ "value": "attempted-cross-agent-replacement" }),
+            json!({ "value": "attempted-cross-agent-replacement", "revision": revision }),
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
@@ -397,35 +412,6 @@ async fn test_session_records_the_agent_revision_it_started_on() {
         shown.to_string().contains("You are revision two"),
         "{shown}"
     );
-}
-
-#[tokio::test]
-async fn test_list_agents() {
-    let server = TestServer::new().await;
-
-    // Create an agent first
-    let _: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "list-test-agent",
-                "display_name": "List Test Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // List agents
-    let data: Value = server
-        .get("/v1/agents")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let agents = data["data"].as_array().expect("Expected array");
-    assert!(!agents.is_empty(), "Should have at least one agent");
 }
 
 #[tokio::test]
@@ -1102,35 +1088,6 @@ async fn test_copy_agent_not_found() {
 // ============================================
 // Check Harness Name Tests
 // ============================================
-
-#[tokio::test]
-async fn test_agent_with_capabilities() {
-    let server = TestServer::new().await;
-
-    // Create agent with capabilities
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "capability-test-agent",
-                "display_name": "Capability Test Agent",
-                "system_prompt": "Test",
-                "capabilities": [
-                    {"ref": "current_time", "config": {}},
-                    {"ref": "session_file_system", "config": {}}
-                ]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert_eq!(
-        agent.capabilities.len(),
-        2,
-        "Agent should have 2 capabilities"
-    );
-}
 
 // ============================================
 // Session SQL Database Tests

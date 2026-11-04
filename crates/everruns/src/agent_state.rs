@@ -90,6 +90,14 @@ impl AgentBuilder {
     /// Mutually exclusive with [`local`](Self::local): [`build`](Self::build)
     /// returns [`BuildError::ConflictingBackends`](crate::BuildError::ConflictingBackends)
     /// when both are set.
+    ///
+    /// Deprecated: this selects the legacy facade lane. Implement a session
+    /// hosting profile (`everruns::hosting::spi`) and pass it to
+    /// `Engine::builder().hosting(..)` instead.
+    #[deprecated(
+        since = "0.48.0",
+        note = "legacy facade lane; implement a session hosting profile and use Engine::builder().hosting(..)"
+    )]
     pub fn backends(mut self, backends: HostBackends) -> Self {
         self.backends = Some(backends);
         self

@@ -8,21 +8,32 @@ function labels(items: ReturnType<typeof getAgentTabItems>): string[] {
 // One tab row: MCP and Credentials became config-column sheets, Sessions got
 // its own tab, and Versions moved to the header overflow menu.
 describe("agent tab definitions", () => {
-  it("renders the single tab row in order", () => {
-    expect(labels(getAgentTabItems())).toEqual([
-      "Agent",
-      "Preview",
-      "Integrations",
-      "Stats",
-      "Sessions",
-    ]);
-  });
-
   it("shows the session count on the Sessions tab", () => {
     expect(labels(getAgentTabItems(12)).at(-1)).toBe("Sessions12");
   });
 
+  it("adds Evals before Sessions only when evals are on", () => {
+    expect(labels(getAgentTabItems(undefined, undefined, undefined, { evals: true }))).toEqual([
+      "Agent",
+      "Preview",
+      "Channels and triggers",
+      "Stats",
+      "Evals",
+      "Sessions",
+    ]);
+    expect(labels(getAgentTabItems())).not.toContain("Evals");
+  });
+
+  it("shows Agents after Agent only for an agent that uses other agents", () => {
+    expect(labels(getAgentTabItems(undefined, undefined, undefined, { agents: 3 }))[1]).toBe(
+      "Agents3",
+    );
+    expect(labels(getAgentTabItems())).not.toContain("Agents");
+  });
+
   it.each([
+    ["agents", "agents", null, null],
+    ["evals", "evals", null, null],
     ["mcp", "agent", "mcp", null],
     ["credentials", "agent", "credentials", null],
     ["versions", "agent", null, "history"],

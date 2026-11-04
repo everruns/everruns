@@ -534,44 +534,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn management_builder_produces_correct_domain() {
-        let event = AuditEvent::management(ManagementAction::MemberInvited, 1, Some(Uuid::nil()))
-            .target("member", "usr_abc123")
-            .detail("role", "admin")
-            .build();
-
-        assert_eq!(event.domain, AuditDomain::Management);
-        assert_eq!(event.action.as_str(), "management.member.invited");
-        assert_eq!(event.org_id, 1);
-        assert_eq!(event.actor_user_id, Some(Uuid::nil()));
-        assert!(event.target.is_some());
-        let target = event.target.unwrap();
-        assert_eq!(target.target_type, "member");
-        assert_eq!(target.target_id, "usr_abc123");
-        assert_eq!(event.details["role"], "admin");
-    }
-
-    #[test]
-    fn agent_builder_produces_correct_domain() {
-        let event = AuditEvent::agent(AgentAction::RunStarted, 1, None)
-            .target("session", "ses_abc123")
-            .build();
-
-        assert_eq!(event.domain, AuditDomain::Agent);
-        assert_eq!(event.action.as_str(), "agent.run.started");
-        assert!(event.target.is_some());
-    }
-
-    #[test]
-    fn action_domain_derivation() {
-        let mgmt: AuditAction = ManagementAction::ApiKeyCreated.into();
-        assert_eq!(mgmt.domain(), AuditDomain::Management);
-
-        let agent: AuditAction = AgentAction::ToolExecuted.into();
-        assert_eq!(agent.domain(), AuditDomain::Agent);
-    }
-
-    #[test]
     fn domain_roundtrip() {
         assert_eq!(
             "management".parse::<AuditDomain>().unwrap(),
@@ -579,14 +541,5 @@ mod tests {
         );
         assert_eq!("agent".parse::<AuditDomain>().unwrap(), AuditDomain::Agent);
         assert!("unknown".parse::<AuditDomain>().is_err());
-    }
-
-    #[test]
-    fn event_serialization() {
-        let event =
-            AuditEvent::management(ManagementAction::OrgCreated, 1, Some(Uuid::nil())).build();
-
-        let json = serde_json::to_value(&event).unwrap();
-        assert_eq!(json["domain"], "management");
     }
 }

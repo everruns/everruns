@@ -98,12 +98,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let SessionEventKind::ToolProgress { message, .. } = &event.kind {
             eprintln!("progress: {message}");
         }
-        if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+        if event.kind.is_terminal() {
             break;
         }
     }
 
     let turn = pending.wait().await?;
     println!("{}", turn.response);
+    // A failed turn (bad key, exhausted quota) still returns `Ok`; report it
+    // so the live example run fails instead of printing an empty answer.
+    if !turn.success {
+        return Err(format!("turn failed: {}", turn.error.unwrap_or_default()).into());
+    }
     Ok(())
 }

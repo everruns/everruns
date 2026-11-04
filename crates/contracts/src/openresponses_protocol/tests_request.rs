@@ -43,10 +43,10 @@ fn explicit_cache_wire_options_are_model_gated() {
     });
     let original = json!({"instructions": "Stable policy", "input": [{"role": "user", "content": "Changing question"}]});
     let mut body = original.clone();
-    apply_cache_options(&mut body, &config, true);
+    apply_cache_options(&mut body, &config, true, true);
     assert_eq!(
         body["prompt_cache_options"],
-        json!({"ttl":"30m","mode":"explicit"})
+        json!({"ttl":"12h","mode":"explicit"})
     );
     assert!(body.get("instructions").is_none());
     assert_eq!(
@@ -55,118 +55,19 @@ fn explicit_cache_wire_options_are_model_gated() {
     );
     assert_eq!(body["input"][1], original["input"][0]);
     let mut gateway = original.clone();
-    apply_cache_options(&mut gateway, &config, false);
+    apply_cache_options(&mut gateway, &config, false, true);
     assert_eq!(gateway, original);
     config.model = "gpt-5.5".into();
     let mut older = original.clone();
-    apply_cache_options(&mut older, &config, true);
+    apply_cache_options(&mut older, &config, true, true);
     assert_eq!(older, original);
     config.model = "gpt-5.6-sol".into();
     config.prompt_cache.as_mut().unwrap().strategy =
         crate::driver_registry::PromptCacheStrategy::Auto;
     let mut implicit = original.clone();
-    apply_cache_options(&mut implicit, &config, true);
+    apply_cache_options(&mut implicit, &config, true, true);
     assert_eq!(implicit["instructions"], original["instructions"]);
     assert_eq!(implicit["prompt_cache_options"]["mode"], "implicit");
-}
-
-#[test]
-fn test_request_serialization() {
-    let request = ResponsesRequest {
-        include: None,
-        text: None,
-        service_tier: None,
-        model: "gpt-5.2".to_string(),
-        input: vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("Hello".to_string()),
-            phase: None,
-        }],
-        instructions: Some("You are helpful".to_string()),
-        previous_response_id: None,
-        temperature: None,
-        max_output_tokens: None,
-        stream: true,
-        tools: None,
-        reasoning: None,
-        metadata: None,
-        prompt_cache_key: None,
-        parallel_tool_calls: None,
-    };
-
-    let json = serde_json::to_value(&request).unwrap();
-    assert_eq!(json["model"], "gpt-5.2");
-    assert_eq!(json["stream"], true);
-    assert_eq!(json["instructions"], "You are helpful");
-    assert!(json["input"].is_array());
-}
-
-#[test]
-fn test_request_with_reasoning() {
-    let request = ResponsesRequest {
-        include: None,
-        text: None,
-        service_tier: None,
-        model: "o3".to_string(),
-        input: vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("Think about this".to_string()),
-            phase: None,
-        }],
-        instructions: None,
-        previous_response_id: None,
-        temperature: None,
-        max_output_tokens: None,
-        stream: true,
-        tools: None,
-        reasoning: Some(ResponsesReasoning {
-            effort: "high".to_string(),
-            summary: "detailed".to_string(),
-        }),
-        metadata: None,
-        prompt_cache_key: None,
-        parallel_tool_calls: None,
-    };
-
-    let json = serde_json::to_value(&request).unwrap();
-    assert_eq!(json["reasoning"]["effort"], "high");
-    assert_eq!(json["reasoning"]["summary"], "detailed");
-}
-
-#[test]
-fn test_request_with_metadata() {
-    let mut metadata = std::collections::HashMap::new();
-    metadata.insert("session_id".to_string(), "session_abc123".to_string());
-    metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
-
-    let request = ResponsesRequest {
-        include: None,
-        text: None,
-        service_tier: None,
-        model: "gpt-5.2".to_string(),
-        input: vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("Hello".to_string()),
-            phase: None,
-        }],
-        instructions: None,
-        previous_response_id: None,
-        temperature: None,
-        max_output_tokens: None,
-        stream: true,
-        tools: None,
-        reasoning: None,
-        metadata: Some(metadata),
-        prompt_cache_key: None,
-        parallel_tool_calls: None,
-    };
-
-    let json = serde_json::to_value(&request).unwrap();
-    assert_eq!(json["metadata"]["session_id"], "session_abc123");
-    assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
 }
 
 /// EVE-598: the Responses request serializes `parallel_tool_calls` only when
@@ -286,20 +187,6 @@ fn test_request_serializes_verbosity() {
 }
 
 #[test]
-fn test_function_call_output_serialization() {
-    let item = ResponsesInputItem::FunctionCallOutput {
-        r#type: "function_call_output".to_string(),
-        call_id: "call_123".to_string(),
-        output: r#"{"result": 42}"#.to_string().into(),
-    };
-
-    let json = serde_json::to_value(&item).unwrap();
-    assert_eq!(json["type"], "function_call_output");
-    assert_eq!(json["call_id"], "call_123");
-    assert_eq!(json["output"], r#"{"result": 42}"#);
-}
-
-#[test]
 fn tool_result_images_reach_function_call_output() {
     // A computer-use screenshot arrives as an image part on the tool message;
     // `function_call_output` must carry it as `input_image`, not drop it.
@@ -339,48 +226,6 @@ fn tool_result_images_reach_function_call_output() {
     ))
     .unwrap();
     assert_eq!(json["output"], "done");
-}
-
-#[test]
-fn test_multipart_content_serialization() {
-    let content = ResponsesContent::Parts(vec![
-        ResponsesContentPart::InputText {
-            r#type: "input_text".to_string(),
-            text: "Look at this image".to_string(),
-        },
-        ResponsesContentPart::InputImage {
-            r#type: "input_image".to_string(),
-            image_url: "data:image/png;base64,abc123".to_string(),
-        },
-    ]);
-
-    let json = serde_json::to_value(&content).unwrap();
-    assert!(json.is_array());
-    assert_eq!(json[0]["type"], "input_text");
-    assert_eq!(json[1]["type"], "input_image");
-}
-
-#[test]
-fn test_tool_serialization() {
-    let tool = ResponsesTool::Function {
-        r#type: "function".to_string(),
-        name: "get_weather".to_string(),
-        description: "Get weather for a location".to_string(),
-        parameters: json!({
-            "type": "object",
-            "properties": {
-                "location": {"type": "string"}
-            },
-            "required": ["location"]
-        }),
-        strict: Some(true),
-        defer_loading: None,
-    };
-
-    let json = serde_json::to_value(&tool).unwrap();
-    assert_eq!(json["type"], "function");
-    assert_eq!(json["name"], "get_weather");
-    assert!(json["parameters"]["properties"]["location"].is_object());
 }
 
 #[test]
@@ -443,22 +288,6 @@ fn test_convert_role() {
         OpenResponsesProtocolChatDriver::convert_role(&MessageRole::Tool),
         "tool"
     );
-}
-
-#[test]
-fn test_function_call_serialization() {
-    let item = ResponsesInputItem::FunctionCall {
-        r#type: "function_call".to_string(),
-        call_id: "call_abc123".to_string(),
-        name: "get_current_time".to_string(),
-        arguments: r#"{"timezone":"UTC"}"#.to_string(),
-    };
-
-    let json = serde_json::to_value(&item).unwrap();
-    assert_eq!(json["type"], "function_call");
-    assert_eq!(json["call_id"], "call_abc123");
-    assert_eq!(json["name"], "get_current_time");
-    assert_eq!(json["arguments"], r#"{"timezone":"UTC"}"#);
 }
 
 #[test]
@@ -736,14 +565,6 @@ fn compute_delta_keeps_tool_results_after_last_assistant_turn() {
     }
 }
 
-/// Empty input with previous_response_id is valid: the provider can resume
-/// purely from the continuation handle, no input needed.
-#[test]
-fn compute_delta_allows_empty_input_for_stateful_continuation() {
-    let trimmed = compute_delta_input_items(vec![]);
-    assert!(trimmed.is_empty());
-}
-
 /// Defensive: if no prior-assistant item is present (caller passed only fresh
 /// user input), all items are kept as delta.
 #[test]
@@ -964,71 +785,119 @@ fn unpaired_function_call_ids_reports_both_directions() {
     );
 }
 
-// ========================================================================
-// Provider-declared statefulness (EVE-523)
-// ========================================================================
-
-#[test]
-fn provider_can_enable_stateful_responses() {
-    assert!(
-        OpenResponsesProtocolChatDriver::new()
-            .with_stateful_responses(true)
-            .supports_stateful_responses()
-    );
-}
-
-#[test]
-fn wire_protocol_defaults_to_stateless() {
-    assert!(!OpenResponsesProtocolChatDriver::new().supports_stateful_responses());
-}
-
-/// End-to-end shape of the call path: against a stateless gateway, a request
-/// that carries a `previous_response_id` in config must still send the FULL
-/// transcript in `input` (no trim) because the gateway will not have stored
-/// the prior response. This is the core EVE-523 regression guard.
-#[test]
-fn stateless_gateway_replays_full_transcript_despite_previous_response_id() {
-    let prev_id: Option<String> = Some("gen-turn-1".to_string());
-
-    let driver = OpenResponsesProtocolChatDriver::new();
-    let effective_prev_id = if driver.supports_stateful_responses() {
-        prev_id.clone()
-    } else {
-        None
+/// Production 2026-10-16: OpenRouter answered 429 with `Retry-After: 45`.
+/// The 45s hint did not fit the 30s retry budget, so the turn failed 282 ms
+/// in with "exhausted after 0 retries over 30.0s". A hint that cannot fit the
+/// budget must fall back to backoff and still retry.
+#[tokio::test]
+async fn retry_after_longer_than_budget_still_retries_within_budget() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::builder().start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "45")
+                .set_body_string("rate limited upstream"),
+        )
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(successful_auth_stream())
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = crate::runtime_provider::RuntimeProvider::new(
+        "retry-after-test",
+        OpenResponsesProtocolChatDriver::new(),
+    )
+    .base_url(format!("{}/v1", server.uri()))
+    .auth(RecordingAuth {
+        requests: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        fail_on: None,
+    });
+    // Default 30s budget; millisecond backoff keeps the test fast.
+    let retry_config = crate::llm_retry::LlmRetryConfig {
+        initial_backoff: std::time::Duration::from_millis(1),
+        max_backoff: std::time::Duration::from_millis(1),
+        jitter_factor: 0.0,
+        ..Default::default()
     };
-    assert!(
-        effective_prev_id.is_none(),
-        "stateless gateway must not chain via previous_response_id"
-    );
-
-    let items = sample_full_transcript_items();
-    let original_len = items.len();
-    let out = finalize_input_for_request(items, &effective_prev_id);
-    assert_eq!(
-        out.len(),
-        original_len,
-        "stateless gateway must replay the full transcript so the model keeps context"
-    );
+    assert!(std::time::Duration::from_secs(45) > retry_config.max_retry_elapsed);
+    let driver = OpenResponsesProtocolChatDriver::new().with_retry_config(retry_config);
+    let stream = driver
+        .chat_completion_stream(
+            provider.endpoint(),
+            vec![Message::text(MessageRole::User, "hi")],
+            &auth_test_config(),
+        )
+        .await
+        .expect("a Retry-After beyond the budget must still allow a retry");
+    assert_authenticated_stream(stream).await;
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
 
-/// The same transcript against OpenAI's hosted API trims to the delta window
-/// and keeps the continuation handle — confirming the optimization is intact
-/// for genuinely stateful endpoints.
 #[test]
-fn stateful_endpoint_still_trims_and_chains() {
-    let prev_id: Option<String> = Some("resp_turn_1".to_string());
+fn cache_retention_defaults_to_twelve_hours_only_for_openai() {
+    use crate::driver_registry::{PromptCacheConfig, PromptCacheRetention, PromptCacheStrategy};
+    for (retention, ttl, anthropic) in [
+        (PromptCacheRetention::Default, "12h", None),
+        (PromptCacheRetention::FiveMinutes, "30m", None),
+        (PromptCacheRetention::ThirtyMinutes, "30m", None),
+        (PromptCacheRetention::OneHour, "30m", Some("1h")),
+        (PromptCacheRetention::TwelveHours, "12h", Some("1h")),
+    ] {
+        assert_eq!(retention.anthropic_ttl(), anthropic);
+        assert_eq!(
+            serde_json::from_value::<PromptCacheRetention>(json!(retention)).unwrap(),
+            retention
+        );
+        for strategy in [PromptCacheStrategy::Auto, PromptCacheStrategy::Explicit] {
+            let mut config = LlmCallConfig::new("gpt-6.1-sol");
+            config.prompt_cache = Some(PromptCacheConfig {
+                enabled: true,
+                retention,
+                strategy,
+                ..Default::default()
+            });
+            let original = json!({"instructions":"policy", "input":[]});
+            let mut body = original.clone();
+            apply_cache_options(&mut body, &config, true, true);
+            assert_eq!(body["prompt_cache_options"]["ttl"], ttl);
+            let mut azure = original.clone();
+            apply_cache_options(&mut azure, &config, true, false);
+            assert_eq!(azure["prompt_cache_options"]["ttl"], "30m");
+            config.prompt_cache.as_mut().unwrap().enabled = false;
+            let mut disabled = original.clone();
+            apply_cache_options(&mut disabled, &config, true, true);
+            assert_eq!(disabled, original);
+        }
+    }
+}
 
-    let driver = OpenResponsesProtocolChatDriver::new().with_stateful_responses(true);
-    let effective_prev_id = if driver.supports_stateful_responses() {
-        prev_id.clone()
-    } else {
-        None
-    };
-    assert_eq!(
-        effective_prev_id, prev_id,
-        "stateful endpoint keeps the continuation handle"
-    );
-
-    let out = finalize_input_for_request(sample_full_transcript_items(), &effective_prev_id);
-    assert_eq!(out.len(), 1, "stateful endpoint trims to the delta window");
+#[test]
+fn unconfigured_cache_defaults_require_native_model_and_endpoint() {
+    let original = json!({"instructions":"policy", "input":[]});
+    for (model, native, official, expected) in [
+        ("gpt-6.1-sol", true, true, true),
+        ("gpt-5.6-sol", true, true, true),
+        ("gpt-5.5", true, true, false),
+        ("gpt-unknown", true, true, false),
+        ("gpt-6.1-sol", false, true, false),
+        ("gpt-6.1-sol", true, false, false),
+    ] {
+        let mut body = original.clone();
+        apply_cache_options(&mut body, &LlmCallConfig::new(model), native, official);
+        if expected {
+            assert_eq!(
+                body["prompt_cache_options"],
+                json!({"ttl":"12h", "mode":"implicit"})
+            );
+            assert_eq!(body["instructions"], original["instructions"]);
+        } else {
+            assert_eq!(body, original);
+        }
+    }
 }

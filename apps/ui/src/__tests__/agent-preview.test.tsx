@@ -146,6 +146,18 @@ describe("AgentPreview", () => {
     expect(screen.getByText("hello")).toBeInTheDocument();
   });
 
+  it("hides the files section when the agent has no filesystem", () => {
+    mockUsePreviewAgent.mockReturnValue(
+      makeMutationStub({ data: { ...sampleResponse, features: ["secrets"] } }),
+    );
+
+    render(<AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={[]} />);
+
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
+    expect(screen.queryByText("No files configured.")).not.toBeInTheDocument();
+    expect(screen.getByText("Secrets")).toBeInTheDocument();
+  });
+
   it("shows the error card when the preview mutation fails", () => {
     mockUsePreviewAgent.mockReturnValue(makeMutationStub({ error: new Error("boom") }));
 

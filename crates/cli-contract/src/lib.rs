@@ -210,8 +210,21 @@ impl ContractCommand {
 
         command = command.after_help(self.after_help());
 
+        // Every spelling a flag already owns, so an alias never shadows another
+        // argument (clap rejects duplicate names).
+        let taken: Vec<&str> = self
+            .args
+            .iter()
+            .flat_map(|arg| [arg.long.as_str(), arg.field.as_str()])
+            .chain([
+                REASON_FIELD,
+                CONTEXT_REVISION_FIELD,
+                "context-revision",
+                "help",
+            ])
+            .collect();
         for arg in &self.args {
-            command = command.arg(flag(arg));
+            command = command.arg(flag(arg, &taken));
             if arg.position.is_some() {
                 command = command.arg(positional(arg));
             }
@@ -254,7 +267,7 @@ impl ContractCommand {
 /// reports itself rather than a silent winner.
 pub const POSITIONAL_SUFFIX: &str = "\u{1}positional";
 
-fn flag(arg: &ContractArg) -> Arg {
+fn flag(arg: &ContractArg, taken: &[&str]) -> Arg {
     let mut built = Arg::new(arg.field.clone()).long(arg.long.clone());
 
     // Parameters are named in snake_case because they are generated from Rust
@@ -262,6 +275,13 @@ fn flag(arg: &ContractArg) -> Arg {
     // so a script written against either keeps working.
     if arg.long != arg.field {
         built = built.alias(arg.field.clone());
+    }
+    // A renamed long (`harness_name` spelled `--harness`) still answers to the
+    // parameter's kebab spelling (`--harness-name`): callers derive flags from
+    // the schema, and a guess that names the real parameter should land.
+    let kebab = arg.field.replace('_', "-");
+    if kebab != arg.long && kebab != arg.field && !taken.contains(&kebab.as_str()) {
+        built = built.alias(kebab);
     }
     if let Some(short) = arg.short {
         built = built.short(short);
@@ -669,6 +689,47 @@ mod round_trip {
             parse("w_1 --harness_name generic")["harness_name"],
             "generic"
         );
+    }
+
+    /// A renamed long also answers to the parameter's kebab spelling, so
+    /// `--harness-name`, derived from the schema's `harness_name`, lands too.
+    #[test]
+    fn a_renamed_flag_accepts_the_parameters_kebab_spelling() {
+        assert_eq!(
+            parse("w_1 --harness-name generic")["harness_name"],
+            "generic"
+        );
+    }
+
+    /// The kebab alias never takes a spelling another argument owns, and a
+    /// near miss is still refused rather than guessed.
+    #[test]
+    fn the_kebab_alias_yields_to_an_argument_that_owns_the_spelling() {
+        let mut contract = contract();
+        let mut owner = contract
+            .args
+            .iter()
+            .find(|arg| arg.field == "harness_name")
+            .cloned()
+            .expect("harness_name arg");
+        owner.field = "harness_label".to_string();
+        owner.long = "harness-name".to_string();
+        owner.short = None;
+        contract.args.push(owner);
+        let parse = |args: &[&str]| {
+            let argv = std::iter::once("everruns widgets update")
+                .chain(args.iter().copied())
+                .map(ToOwned::to_owned);
+            contract
+                .clap_command("everruns widgets update")
+                .try_get_matches_from(argv)
+                .map(|matches| params_from(&contract, &matches))
+        };
+
+        let params = parse(&["w_1", "--harness-name", "x"]).expect("owned spelling parses");
+        assert_eq!(params["harness_label"], "x");
+        assert!(params.get("harness_name").is_none(), "{params}");
+        assert!(parse(&["w_1", "--harnes-name", "x"]).is_err());
     }
 
     #[test]

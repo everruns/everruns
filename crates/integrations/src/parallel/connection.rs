@@ -92,38 +92,3 @@ To use authenticated mode:\n\
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn provider_metadata() {
-        let p = ParallelConnector;
-        assert_eq!(p.provider_id(), "parallel");
-        assert_eq!(p.display_name(), "Parallel");
-        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
-        assert_eq!(p.icon(), "search");
-        // Its organization accounts are search accounts, and the contract's
-        // list of providers with a search driver names it.
-        assert!(p.capabilities().contains(&"web_search"));
-        assert!(
-            everruns_contracts::runtime::web_search::WEB_SEARCH_ACCOUNT_PROVIDERS
-                .contains(&p.provider_id())
-        );
-    }
-
-    #[test]
-    fn form_schema_describes_optional_key() {
-        let p = ParallelConnector;
-        let schema = p.form_schema().expect("should have form schema");
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.instructions_markdown.contains("without a key"));
-        assert!(
-            schema
-                .instructions_markdown
-                .contains("platform.parallel.ai")
-        );
-    }
-}

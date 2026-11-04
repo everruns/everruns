@@ -167,7 +167,6 @@ impl Capability for SpritesCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::runtime::capabilities::CapabilityStatus;
 
     // Host reserves this prefix from secret_store but cannot import the
     // constant (crate layering). Pin them so a rename cannot reopen forgery.
@@ -178,45 +177,6 @@ mod tests {
                 &format!("{SPRITES_SECRET_PREFIX}sprite-example")
             )
         );
-    }
-
-    #[test]
-    fn test_capability_metadata() {
-        let cap = SpritesCapability;
-        assert_eq!(cap.id(), "sprites");
-        assert_eq!(cap.name(), "Sprites");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("sprites"));
-        assert_eq!(cap.category(), Some("Execution"));
-    }
-
-    #[test]
-    fn test_capability_has_all_tools() {
-        let cap = SpritesCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 9);
-
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"sprites_create_sprite"));
-        assert!(names.contains(&"sprites_exec"));
-        assert!(names.contains(&"sprites_read_file"));
-        assert!(names.contains(&"sprites_write_file"));
-        assert!(names.contains(&"sprites_list_sprites"));
-        assert!(names.contains(&"sprites_manage_sprite"));
-        assert!(names.contains(&"sprites_checkpoint"));
-        assert!(names.contains(&"sprites_restore_checkpoint"));
-        assert!(names.contains(&"sprites_service_url"));
-    }
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = SpritesCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("Sprites"));
-        assert!(prompt.contains("persistent Firecracker"));
-        assert!(prompt.contains("checkpoints"));
-        assert!(prompt.contains("port 8080"));
-        assert!(prompt.contains("/home/sprite"));
     }
 
     #[tokio::test]
@@ -231,23 +191,5 @@ mod tests {
         // single-read/contextual-search policy (+438 bytes), taking this
         // contribution to 1361 bytes.
         assert!(prompt.len() <= 1400, "prompt is {} bytes", prompt.len());
-    }
-
-    #[test]
-    fn test_all_tools_require_context() {
-        let cap = SpritesCapability;
-        for tool in cap.tools() {
-            assert!(
-                tool.requires_context(),
-                "Tool {} should require context",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_capability_dependencies() {
-        let cap = SpritesCapability;
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
     }
 }

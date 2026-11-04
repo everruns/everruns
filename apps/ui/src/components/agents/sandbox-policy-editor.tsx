@@ -1,10 +1,12 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Box, Check, Cpu, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
 import { useOrganizationConnections, useSandboxTargets, useSandboxTemplates } from "@/hooks";
 import type { OrganizationConnection } from "@/lib/api/organization-connections";
+import { ProviderIcon } from "@/components/connections/provider-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +48,47 @@ function targetLabel(target: Pick<SandboxTargetDescriptor, "kind" | "provider">)
   return target.provider ? `${target.provider} (${target.kind})` : target.kind;
 }
 
+type CredentialSource = "session_user" | "agent" | "organization";
+
+/**
+ * Provider account choices, in plain words: whose connection the sandbox uses
+ * and therefore who pays the provider. Mirrors the server's resolution in
+ * sessions/service/create.rs (session_user → the caller's default Virtual
+ * User; agent → the Agent's Virtual User; organization → a named account).
+ */
+function credentialChoices(provider: string): Array<{
+  value: CredentialSource;
+  label: string;
+  description: string;
+}> {
+  return [
+    {
+      value: "session_user",
+      label: `${provider} · Personal`,
+      description: `Each person who starts a Session uses their own ${provider} connection, and their account pays.`,
+    },
+    {
+      value: "agent",
+      label: `${provider} · This Agent`,
+      description: `Uses the ${provider} connection on this Agent's Virtual User; that account pays for every Session.`,
+    },
+    {
+      value: "organization",
+      label: `${provider} · Organization account`,
+      description: `A shared organization ${provider} account pays, whoever starts the Session.`,
+    },
+  ];
+}
+
+function ProviderOptionLabel({ iconName, label }: { iconName: string; label: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <ProviderIcon iconName={iconName} className="size-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
 function specTargetKey(spec: SandboxTemplateSpec): string {
   return `${spec.target.kind}:${spec.target.provider ?? ""}`;
 }
@@ -66,6 +109,27 @@ function recoveryDescription(durability: string | null | undefined): string {
     default:
       return "Recovery depends on the selected sandbox target.";
   }
+}
+
+// Paused Sandboxes still cost provider storage, so the server deletes them after
+// a retention period (one day unless the template says otherwise). "Never"
+// is an explicit null; "Default" leaves the field out so the server default applies.
+const RETENTION_CHOICES: {
+  value: string;
+  label: string;
+  seconds?: number | null;
+}[] = [
+  { value: "default", label: "Default (1 day)" },
+  { value: "1d", label: "1 day", seconds: 86_400 },
+  { value: "3d", label: "3 days", seconds: 3 * 86_400 },
+  { value: "7d", label: "7 days", seconds: 7 * 86_400 },
+  { value: "30d", label: "30 days", seconds: 30 * 86_400 },
+  { value: "never", label: "Never", seconds: null },
+];
+
+function retentionChoice(seconds: number | null | undefined): string {
+  if (seconds === undefined) return "default";
+  return RETENTION_CHOICES.find((option) => option.seconds === seconds)?.value ?? "custom";
 }
 
 export function createSandboxTemplateSpec(target: SandboxTargetDescriptor): SandboxTemplateSpec {
@@ -120,6 +184,7 @@ function TemplateBindingNameInput({
   disabled: boolean;
   onRename: (name: string) => void;
 }) {
+  const ui = useUiTranslations();
   const [draft, setDraft] = useState(name);
   const error = validateBindingName(draft, name, templates);
 
@@ -131,7 +196,7 @@ function TemplateBindingNameInput({
   return (
     <div className="min-w-0 flex-1 space-y-1">
       <Input
-        aria-label={`Sandbox binding name ${name}`}
+        aria-label={ui("Sandbox binding name {value0}", { value0: name })}
         value={draft}
         onChange={(event) => setDraft(event.target.value.toLowerCase())}
         onBlur={commit}
@@ -157,96 +222,26 @@ function optionString(options: Record<string, unknown>, key: string): string {
 /** Modal fields; the server and provider validate the same ranges. */
 type NetworkPolicy = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>["network"]>;
 
-function ModalOptionFields({
+/**
+ * Outbound network policy for providers that enforce it themselves (Modal,
+ * Daytona, E2B). Renders grid cells, so it sits inside a two-column grid.
+ */
+export function NetworkPolicyFields({
   name,
-  options,
   network,
   disabled,
-  setOption,
   onNetworkChange,
 }: {
   name: string;
-  options: Record<string, unknown>;
   network: NetworkPolicy;
   disabled: boolean;
-  setOption: (key: string, value: unknown) => void;
   onNetworkChange: (network: NetworkPolicy) => void;
 }) {
-  const injected = Array.isArray(options.inject_connections) ? options.inject_connections : [];
-  const injectGithub = injected.includes("github");
-  // Modal cannot inject credentials when egress is blocked or limited to domains.
-  const injectionAllowed = network.mode === "allow";
-  const numeric = (key: string) => (event: React.ChangeEvent<HTMLInputElement>) =>
-    setOption(key, event.target.value ? Number(event.target.value) : "");
+  const ui = useUiTranslations();
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <>
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-runtime-${name}`}>Runtime</Label>
-        <Select
-          value={typeof options.runtime === "string" ? options.runtime : "vm"}
-          onValueChange={(value) => setOption("runtime", value === "vm" ? "" : value)}
-          disabled={disabled}
-        >
-          <SelectTrigger id={`sandbox-runtime-${name}`} className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="vm">VM (own kernel)</SelectItem>
-            <SelectItem value="gvisor">gVisor container</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`sandbox-image-${name}`}>Image</Label>
-        <Input
-          id={`sandbox-image-${name}`}
-          value={optionString(options, "image")}
-          onChange={(event) => setOption("image", event.target.value)}
-          placeholder="python:3.13-slim with git and curl"
-          disabled={disabled}
-          className="font-mono"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`sandbox-cpu-${name}`}>CPU cores</Label>
-        <Input
-          id={`sandbox-cpu-${name}`}
-          type="number"
-          min={0.125}
-          max={64}
-          step={0.125}
-          value={optionString(options, "cpu")}
-          onChange={numeric("cpu")}
-          placeholder="Provider default"
-          disabled={disabled}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`sandbox-memory-${name}`}>Memory (MiB)</Label>
-        <Input
-          id={`sandbox-memory-${name}`}
-          type="number"
-          min={128}
-          max={262_144}
-          value={optionString(options, "memory_mb")}
-          onChange={numeric("memory_mb")}
-          placeholder="Provider default"
-          disabled={disabled}
-        />
-      </div>
-      <div className="space-y-2 sm:col-span-2">
-        <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
-        <Input
-          id={`sandbox-workspace-${name}`}
-          value={optionString(options, "workspace_path")}
-          onChange={(event) => setOption("workspace_path", event.target.value)}
-          placeholder="/workspace"
-          disabled={disabled}
-          className="font-mono"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`sandbox-network-${name}`}>Outbound network</Label>
+        <Label htmlFor={`sandbox-network-${name}`}>{ui("Outbound network")}</Label>
         <Select
           value={network.mode}
           onValueChange={(mode) =>
@@ -262,29 +257,15 @@ function ModalOptionFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="allow">Open</SelectItem>
-            <SelectItem value="allowlist">Only listed domains</SelectItem>
-            <SelectItem value="deny">Blocked</SelectItem>
+            <SelectItem value="allow">{ui("Open")}</SelectItem>
+            <SelectItem value="allowlist">{ui("Only listed domains")}</SelectItem>
+            <SelectItem value="deny">{ui("Blocked")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
-      <div className="flex items-start gap-3 pt-6">
-        <Switch
-          id={`sandbox-inject-github-${name}`}
-          aria-label="Use my GitHub connection"
-          checked={injectGithub && injectionAllowed}
-          onCheckedChange={(checked) => setOption("inject_connections", checked ? ["github"] : "")}
-          disabled={disabled || !injectionAllowed}
-        />
-        <p className="text-xs text-muted-foreground">
-          Use my GitHub connection for api.github.com and git. Modal adds the token to requests, so
-          the agent never sees it.
-          {injectionAllowed ? "" : " Needs open network."}
-        </p>
-      </div>
       {network.mode === "allowlist" ? (
         <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor={`sandbox-domains-${name}`}>Allowed domains</Label>
+          <Label htmlFor={`sandbox-domains-${name}`}>{ui("Allowed domains")}</Label>
           <Textarea
             id={`sandbox-domains-${name}`}
             value={network.allowed_hosts.join("\n")}
@@ -303,6 +284,155 @@ function ModalOptionFields({
           />
         </div>
       ) : null}
+    </>
+  );
+}
+
+function ModalOptionFields({
+  name,
+  options,
+  network,
+  disabled,
+  setOption,
+  onNetworkChange,
+}: {
+  name: string;
+  options: Record<string, unknown>;
+  network: NetworkPolicy;
+  disabled: boolean;
+  setOption: (key: string, value: unknown) => void;
+  onNetworkChange: (network: NetworkPolicy) => void;
+}) {
+  const ui = useUiTranslations();
+  const injected = Array.isArray(options.inject_connections) ? options.inject_connections : [];
+  const injectGithub = injected.includes("github");
+  // Modal cannot inject credentials when egress is blocked or limited to domains.
+  const injectionAllowed = network.mode === "allow";
+  const numeric = (key: string) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    setOption(key, event.target.value ? Number(event.target.value) : "");
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-runtime-${name}`}>{ui("Runtime")}</Label>
+        <Select
+          value={typeof options.runtime === "string" ? options.runtime : "vm"}
+          onValueChange={(value) => setOption("runtime", value === "vm" ? "" : value)}
+          disabled={disabled}
+        >
+          <SelectTrigger id={`sandbox-runtime-${name}`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="vm">{ui("VM (own kernel)")}</SelectItem>
+            <SelectItem value="gvisor">{ui("gVisor container")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-image-${name}`}>{ui("Image")}</Label>
+        <Input
+          id={`sandbox-image-${name}`}
+          value={optionString(options, "image")}
+          onChange={(event) => setOption("image", event.target.value)}
+          placeholder={ui("python:3.13-slim with git and curl")}
+          disabled={disabled}
+          className="font-mono"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-cpu-${name}`}>{ui("CPU cores")}</Label>
+        <Input
+          id={`sandbox-cpu-${name}`}
+          type="number"
+          min={0.125}
+          max={64}
+          step={0.125}
+          value={optionString(options, "cpu")}
+          onChange={numeric("cpu")}
+          placeholder={ui("Provider default")}
+          disabled={disabled}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-memory-${name}`}>{ui("Memory (MiB)")}</Label>
+        <Input
+          id={`sandbox-memory-${name}`}
+          type="number"
+          min={128}
+          max={262_144}
+          value={optionString(options, "memory_mb")}
+          onChange={numeric("memory_mb")}
+          placeholder={ui("Provider default")}
+          disabled={disabled}
+        />
+      </div>
+      <div className="space-y-2 sm:col-span-2">
+        <Label htmlFor={`sandbox-workspace-${name}`}>{ui("Workspace path")}</Label>
+        <Input
+          id={`sandbox-workspace-${name}`}
+          value={optionString(options, "workspace_path")}
+          onChange={(event) => setOption("workspace_path", event.target.value)}
+          placeholder="/workspace"
+          disabled={disabled}
+          className="font-mono"
+        />
+      </div>
+      <div className="flex items-start gap-3 pt-6">
+        <Switch
+          id={`sandbox-inject-github-${name}`}
+          aria-label={ui("Use my GitHub connection")}
+          checked={injectGithub && injectionAllowed}
+          onCheckedChange={(checked) => setOption("inject_connections", checked ? ["github"] : "")}
+          disabled={disabled || !injectionAllowed}
+        />
+        <p className="text-xs text-muted-foreground">
+          {ui(
+            "Use my GitHub connection for api.github.com and git. Modal adds the token to requests, so the agent never sees it.",
+          )}
+          {injectionAllowed ? "" : ui(" Needs open network.")}
+        </p>
+      </div>
+      <NetworkPolicyFields
+        name={name}
+        network={network}
+        disabled={disabled}
+        onNetworkChange={onNetworkChange}
+      />
+    </div>
+  );
+}
+
+function DesktopField({
+  name,
+  options,
+  disabled,
+  onDesktopChange,
+}: {
+  name: string;
+  options: Record<string, unknown>;
+  disabled: boolean;
+  onDesktopChange: (on: boolean) => void;
+}) {
+  const ui = useUiTranslations();
+  const on =
+    options.desktop === true || (typeof options.desktop === "object" && options.desktop !== null);
+  return (
+    <div className="flex items-start gap-3 sm:col-span-2">
+      <Switch
+        id={`sandbox-desktop-${name}`}
+        aria-label={ui("Desktop")}
+        checked={on}
+        onCheckedChange={onDesktopChange}
+        disabled={disabled}
+      />
+      <div className="space-y-1">
+        <Label htmlFor={`sandbox-desktop-${name}`}>{ui("Desktop")}</Label>
+        <p className="text-xs text-muted-foreground">
+          {ui(
+            "Start the sandbox with a Linux desktop and give the agent the computer tool to see and use it. Screenshots cost image tokens.",
+          )}
+        </p>
+      </div>
     </div>
   );
 }
@@ -310,29 +440,34 @@ function ModalOptionFields({
 function E2BOptionFields({
   name,
   options,
+  network,
   disabled,
   setOption,
+  onNetworkChange,
 }: {
   name: string;
   options: Record<string, unknown>;
+  network: NetworkPolicy;
   disabled: boolean;
   setOption: (key: string, value: unknown) => void;
+  onNetworkChange: (network: NetworkPolicy) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-template-${name}`}>E2B template</Label>
+        <Label htmlFor={`sandbox-template-${name}`}>{ui("E2B template")}</Label>
         <Input
           id={`sandbox-template-${name}`}
           value={optionString(options, "template")}
           onChange={(event) => setOption("template", event.target.value)}
-          placeholder="base"
+          placeholder={ui("base")}
           disabled={disabled}
           className="font-mono"
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-timeout-${name}`}>Provider timeout (seconds)</Label>
+        <Label htmlFor={`sandbox-timeout-${name}`}>{ui("Provider timeout (seconds)")}</Label>
         <Input
           id={`sandbox-timeout-${name}`}
           type="number"
@@ -347,7 +482,7 @@ function E2BOptionFields({
         />
       </div>
       <div className="space-y-2 sm:col-span-2">
-        <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+        <Label htmlFor={`sandbox-workspace-${name}`}>{ui("Workspace path")}</Label>
         <Input
           id={`sandbox-workspace-${name}`}
           value={optionString(options, "workspace_path")}
@@ -357,6 +492,18 @@ function E2BOptionFields({
           className="font-mono"
         />
       </div>
+      <DesktopField
+        name={name}
+        options={options}
+        disabled={disabled}
+        onDesktopChange={(on) => setOption("desktop", on ? true : "")}
+      />
+      <NetworkPolicyFields
+        name={name}
+        network={network}
+        disabled={disabled}
+        onNetworkChange={onNetworkChange}
+      />
     </div>
   );
 }
@@ -368,6 +515,7 @@ function TemplateSpecEditor({
   isDefault,
   targets,
   organizationConnections,
+  hasTriggers,
   disabled,
   onChange,
   onRename,
@@ -380,22 +528,47 @@ function TemplateSpecEditor({
   isDefault: boolean;
   targets: SandboxTargetDescriptor[];
   organizationConnections: OrganizationConnection[];
+  hasTriggers: boolean;
   disabled: boolean;
   onChange: (spec: SandboxTemplateSpec) => void;
   onRename: (name: string) => void;
   onDefault: () => void;
   onRemove: () => void;
 }) {
+  const ui = useUiTranslations();
   const descriptor = targets.find((target) => targetKey(target) === specTargetKey(spec));
   const options = targetOptions(spec);
   const managed = spec.target.kind === "managed";
   const modal = managed && spec.target.provider === "modal";
   const e2b = managed && spec.target.provider === "e2b";
+  const daytona = managed && spec.target.provider === "daytona";
+  const network = spec.containment?.network ?? { mode: "allow" as const };
+  const setNetwork = (next: NetworkPolicy) =>
+    onChange({
+      ...spec,
+      containment: {
+        level: "isolated" as const,
+        ...spec.containment,
+        network: next,
+      },
+    });
+  const providerName = descriptor?.display_name || targetLabel(spec.target);
+  const providerIconName = descriptor?.icon || spec.target.provider || "cloud";
+  const credentialSource = spec.target.credential?.source ?? "session_user";
+  const credentials = credentialChoices(providerName);
+  const selectedCredential = credentials.find((choice) => choice.value === credentialSource);
+  const providerAccounts = organizationConnections.filter(
+    (account) => account.provider === spec.target.provider,
+  );
   const lifecycle = {
+    ...spec.lifecycle,
     idle_after_seconds: spec.lifecycle?.idle_after_seconds ?? DEFAULT_IDLE_SECONDS,
     idle_action: spec.lifecycle?.idle_action ?? "checkpoint_and_stop",
   };
+  const retention = retentionChoice(spec.lifecycle?.delete_after_seconds);
 
+  const daytonaDesktop =
+    options.desktop === true || (typeof options.desktop === "object" && options.desktop !== null);
   const setOption = (key: string, value: unknown) => {
     const next = targetOptions(spec);
     if (value === "" || value === undefined) delete next[key];
@@ -404,7 +577,10 @@ function TemplateSpecEditor({
   };
 
   return (
-    <section className="space-y-5 border bg-background p-4" aria-label={`Sandbox ${name}`}>
+    <section
+      className="space-y-5 border bg-background p-4"
+      aria-label={ui("Sandbox {value0}", { value0: name })}
+    >
       <div className="flex items-start gap-2">
         <TemplateBindingNameInput
           name={name}
@@ -418,10 +594,14 @@ function TemplateSpecEditor({
           size="sm"
           onClick={onDefault}
           disabled={disabled || isDefault}
-          aria-label={isDefault ? `${name} is the default sandbox` : `Make ${name} default`}
+          aria-label={
+            isDefault
+              ? ui("{value0} is the default sandbox", { value0: name })
+              : ui("Make {value0} default", { value0: name })
+          }
         >
           <Star className="size-3.5" />
-          {isDefault ? "Default" : "Make default"}
+          {isDefault ? ui("Default") : ui("Make default")}
         </Button>
         <Button
           type="button"
@@ -429,14 +609,14 @@ function TemplateSpecEditor({
           size="icon"
           onClick={onRemove}
           disabled={disabled}
-          aria-label={`Remove ${name}`}
+          aria-label={ui("Remove {value0}", { value0: name })}
         >
           <Trash2 className="size-4" />
         </Button>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-target-${name}`}>Runs in</Label>
+        <Label htmlFor={`sandbox-target-${name}`}>{ui("Runs in")}</Label>
         <Select
           value={specTargetKey(spec)}
           onValueChange={(value) => {
@@ -465,7 +645,7 @@ function TemplateSpecEditor({
                 disabled={!target.available}
               >
                 {target.display_name || targetLabel(target)}
-                {target.available ? "" : " — unavailable"}
+                {target.available ? "" : ui(" (unavailable)")}
               </SelectItem>
             ))}
           </SelectContent>
@@ -473,7 +653,7 @@ function TemplateSpecEditor({
         {descriptor && !descriptor.available ? (
           <p className="flex items-start gap-1.5 text-xs text-destructive">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-            {descriptor.reason || "This target is unavailable on this deployment."}
+            {descriptor.reason || ui("This target is unavailable on this deployment.")}
           </p>
         ) : null}
       </div>
@@ -489,7 +669,7 @@ function TemplateSpecEditor({
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            Recovery: {descriptor.durability.replaceAll("_", " ")} · Containment:{" "}
+            {ui("Recovery:")} {descriptor.durability.replaceAll("_", " ")} {ui("· Containment:")}{" "}
             {descriptor.containment_levels.join(", ")}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -501,84 +681,145 @@ function TemplateSpecEditor({
       {managed ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={`sandbox-credential-${name}`}>Provider account</Label>
+            <Label htmlFor={`sandbox-credential-${name}`}>{ui("Provider account")}</Label>
             <Select
-              value={spec.target.credential?.source ?? "session_user"}
+              value={credentialSource}
               onValueChange={(source) =>
                 onChange({
                   ...spec,
                   target: {
                     ...spec.target,
-                    credential: { source: source as "session_user" | "agent" | "organization" },
+                    credential: { source: source as CredentialSource },
                   },
                 })
               }
+              // The trigger shows the compact label; descriptions live in the list.
+              items={Object.fromEntries(
+                credentials.map((choice) => [
+                  choice.value,
+                  <ProviderOptionLabel
+                    key={choice.value}
+                    iconName={providerIconName}
+                    label={choice.label}
+                  />,
+                ]),
+              )}
               disabled={disabled}
             >
               <SelectTrigger id={`sandbox-credential-${name}`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="session_user">Person starting the Session</SelectItem>
-                <SelectItem value="agent">This Agent</SelectItem>
-                <SelectItem value="organization">Organization provider account</SelectItem>
+                {credentials.map((choice) => (
+                  <SelectItem key={choice.value} value={choice.value} className="items-start">
+                    <span className="flex min-w-0 flex-col items-start gap-0.5">
+                      <ProviderOptionLabel iconName={providerIconName} label={choice.label} />
+                      <span className="pl-6 text-xs whitespace-normal text-muted-foreground">
+                        {choice.description}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {selectedCredential ? (
+              <p className="text-xs text-muted-foreground">{selectedCredential.description}</p>
+            ) : null}
             <p className="text-xs text-muted-foreground">
-              User connections are managed in{" "}
-              <Link href="/settings/agent-experience" className="underline underline-offset-2">
-                My agent experience
+              {ui("Personal connections are managed in")}{" "}
+              <Link href="/settings/connections" className="underline underline-offset-2">
+                {ui("Connections")}
               </Link>
-              ; Agent connections belong to its Virtual User.
+              {ui("; Agent connections belong to its Virtual User.")}
             </p>
+            {hasTriggers && credentialSource === "session_user" ? (
+              // A trigger starts its session without a person, so the server
+              // falls back to the organization's sole account for the provider.
+              <p className="flex items-start gap-1.5 text-xs text-warning">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                {ui("Triggered runs have no user account; they use the organization account.")}
+              </p>
+            ) : null}
           </div>
           {spec.target.credential?.source === "organization" ? (
             <div className="space-y-2">
-              <Label htmlFor={`sandbox-organization-account-${name}`}>Organization account</Label>
-              <Select
-                value={spec.target.credential.connection_id ?? ""}
-                onValueChange={(connection_id) =>
-                  onChange({
-                    ...spec,
-                    target: {
-                      ...spec.target,
-                      credential: { source: "organization", connection_id },
-                    },
-                  })
+              <Label
+                htmlFor={
+                  providerAccounts.length > 0 ? `sandbox-organization-account-${name}` : undefined
                 }
-                disabled={disabled}
               >
-                <SelectTrigger id={`sandbox-organization-account-${name}`} className="w-full">
-                  <SelectValue placeholder="Select an account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {organizationConnections
-                    .filter((account) => account.provider === spec.target.provider)
-                    .map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                <Link href="/sandboxes/accounts" className="underline underline-offset-2">
-                  Manage organization provider accounts
-                </Link>
-              </p>
+                {ui("Organization account")}
+              </Label>
+              {providerAccounts.length > 0 ? (
+                <>
+                  <Select
+                    value={spec.target.credential.connection_id ?? ""}
+                    onValueChange={(connection_id) =>
+                      onChange({
+                        ...spec,
+                        target: {
+                          ...spec.target,
+                          credential: { source: "organization", connection_id },
+                        },
+                      })
+                    }
+                    disabled={disabled}
+                  >
+                    <SelectTrigger id={`sandbox-organization-account-${name}`} className="w-full">
+                      <SelectValue placeholder={ui("Select an account")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providerAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          <ProviderOptionLabel
+                            iconName={providerIconName}
+                            label={ui("{value0} · {value1}", {
+                              value0: providerName,
+                              value1: account.name,
+                            })}
+                          />
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    <Link href="/sandboxes/accounts" className="underline underline-offset-2">
+                      {ui("Manage organization provider accounts")}
+                    </Link>
+                  </p>
+                </>
+              ) : (
+                <div className="flex items-start gap-2 border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
+                  <ProviderIcon iconName={providerIconName} className="mt-0.5 size-4 shrink-0" />
+                  <p>
+                    {ui("This organization has no")} {providerName} {ui("account yet.")}{" "}
+                    <Link
+                      href="/sandboxes/accounts"
+                      className="text-foreground underline underline-offset-2"
+                    >
+                      {ui("Add a")} {providerName} {ui("account")}
+                    </Link>{" "}
+                    {ui("in Provider accounts, then pick it here.")}
+                  </p>
+                </div>
+              )}
             </div>
           ) : null}
           {modal ? (
             <ModalOptionFields
               name={name}
               options={options}
-              network={spec.containment?.network ?? { mode: "allow" }}
+              network={network}
               disabled={disabled}
               setOption={setOption}
               onNetworkChange={(network) => {
                 const next = {
                   ...spec,
-                  containment: { level: "isolated" as const, ...spec.containment, network },
+                  containment: {
+                    level: "isolated" as const,
+                    ...spec.containment,
+                    network,
+                  },
                 };
                 // Injection needs open egress; drop it rather than save a template Modal rejects.
                 if (network.mode !== "allow") {
@@ -593,41 +834,43 @@ function TemplateSpecEditor({
             <E2BOptionFields
               name={name}
               options={options}
+              network={network}
               disabled={disabled}
               setOption={setOption}
+              onNetworkChange={setNetwork}
             />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-size-${name}`}>Compute size</Label>
+                <Label htmlFor={`sandbox-size-${name}`}>{ui("Compute size")}</Label>
                 <Select
                   value={typeof options.size === "string" ? options.size : "default"}
                   onValueChange={(value) => setOption("size", value === "default" ? "" : value)}
-                  disabled={disabled}
+                  disabled={disabled || daytonaDesktop}
                 >
                   <SelectTrigger id={`sandbox-size-${name}`} className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">Provider default</SelectItem>
-                    <SelectItem value="small">Small</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="large">Large</SelectItem>
+                    <SelectItem value="default">{ui("Provider default")}</SelectItem>
+                    <SelectItem value="small">{ui("Small")}</SelectItem>
+                    <SelectItem value="medium">{ui("Medium")}</SelectItem>
+                    <SelectItem value="large">{ui("Large")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-snapshot-${name}`}>Snapshot</Label>
+                <Label htmlFor={`sandbox-snapshot-${name}`}>{ui("Snapshot")}</Label>
                 <Input
                   id={`sandbox-snapshot-${name}`}
                   value={typeof options.snapshot === "string" ? options.snapshot : ""}
                   onChange={(event) => setOption("snapshot", event.target.value)}
-                  placeholder="Provider default"
+                  placeholder={daytonaDesktop ? ui("Desktop image") : ui("Provider default")}
                   disabled={disabled}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+                <Label htmlFor={`sandbox-workspace-${name}`}>{ui("Workspace path")}</Label>
                 <Input
                   id={`sandbox-workspace-${name}`}
                   value={typeof options.workspace_path === "string" ? options.workspace_path : ""}
@@ -638,7 +881,9 @@ function TemplateSpecEditor({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-auto-stop-${name}`}>Provider auto-stop (minutes)</Label>
+                <Label htmlFor={`sandbox-auto-stop-${name}`}>
+                  {ui("Provider auto-stop (minutes)")}
+                </Label>
                 <Input
                   id={`sandbox-auto-stop-${name}`}
                   type="number"
@@ -653,18 +898,43 @@ function TemplateSpecEditor({
                       event.target.value ? Number(event.target.value) : "",
                     )
                   }
-                  placeholder="Provider default"
+                  placeholder={ui("Provider default")}
                   disabled={disabled}
                 />
               </div>
+              {daytona ? (
+                <DesktopField
+                  name={name}
+                  options={options}
+                  disabled={disabled}
+                  onDesktopChange={(on) => {
+                    // The desktop ships in Daytona's default image, so it
+                    // replaces any size or snapshot choice.
+                    const next = targetOptions(spec);
+                    delete next.size;
+                    delete next.snapshot;
+                    if (on) next.desktop = true;
+                    else delete next.desktop;
+                    onChange({ ...spec, target: { ...spec.target, options: next } });
+                  }}
+                />
+              ) : null}
+              {daytona ? (
+                <NetworkPolicyFields
+                  name={name}
+                  network={network}
+                  disabled={disabled}
+                  onNetworkChange={setNetwork}
+                />
+              ) : null}
             </div>
           )}
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
-          <Label htmlFor={`sandbox-idle-action-${name}`}>When idle</Label>
+          <Label htmlFor={`sandbox-idle-action-${name}`}>{ui("When idle")}</Label>
           <Select
             value={lifecycle.idle_action}
             onValueChange={(idle_action) =>
@@ -682,14 +952,15 @@ function TemplateSpecEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="checkpoint_and_stop">Checkpoint and stop</SelectItem>
-              <SelectItem value="stop">Stop</SelectItem>
-              <SelectItem value="keep_running">Keep running</SelectItem>
+              <SelectItem value="checkpoint_and_stop">{ui("Checkpoint and stop")}</SelectItem>
+              <SelectItem value="stop">{ui("Stop")}</SelectItem>
+              <SelectItem value="keep_running">{ui("Keep running")}</SelectItem>
+              <SelectItem value="delete">{ui("Delete")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`sandbox-idle-after-${name}`}>Idle after (seconds)</Label>
+          <Label htmlFor={`sandbox-idle-after-${name}`}>{ui("Idle after (seconds)")}</Label>
           <Input
             id={`sandbox-idle-after-${name}`}
             type="number"
@@ -708,11 +979,44 @@ function TemplateSpecEditor({
             disabled={disabled || lifecycle.idle_action === "keep_running"}
           />
         </div>
+        <div className="space-y-2">
+          <Label htmlFor={`sandbox-delete-after-${name}`}>{ui("Delete after paused")}</Label>
+          <Select
+            value={retention}
+            onValueChange={(choice) => {
+              const next: SandboxTemplateSpec["lifecycle"] = { ...lifecycle };
+              if (choice === "custom") return;
+              const seconds = RETENTION_CHOICES.find((option) => option.value === choice)?.seconds;
+              if (seconds === undefined) delete next.delete_after_seconds;
+              else next.delete_after_seconds = seconds;
+              onChange({ ...spec, lifecycle: next });
+            }}
+            disabled={disabled}
+          >
+            <SelectTrigger id={`sandbox-delete-after-${name}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RETENTION_CHOICES.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              {retention === "custom" ? (
+                <SelectItem value="custom">
+                  {ui("{value0} hours", {
+                    value0: Math.round((spec.lifecycle?.delete_after_seconds ?? 0) / 3_600),
+                  })}
+                </SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {managed ? (
         <div className="space-y-2">
-          <Label htmlFor={`sandbox-bootstrap-${name}`}>Bootstrap commands</Label>
+          <Label htmlFor={`sandbox-bootstrap-${name}`}>{ui("Bootstrap commands")}</Label>
           <Textarea
             id={`sandbox-bootstrap-${name}`}
             value={(spec.bootstrap?.commands ?? []).join("\n")}
@@ -733,7 +1037,9 @@ function TemplateSpecEditor({
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
-            Runs once when Everruns creates replacement compute. Do not put credentials here.
+            {ui(
+              "Runs once when Everruns creates replacement compute. Do not put credentials here.",
+            )}
           </p>
         </div>
       ) : null}
@@ -746,13 +1052,17 @@ export function SandboxPolicyEditor({
   onChange,
   disabled = false,
   definitionMode = false,
+  hasTriggers = false,
 }: {
   value: SandboxPolicy | null;
   onChange: (value: SandboxPolicy | null) => void;
   disabled?: boolean;
+  /** The Agent has triggers, whose sessions start without a person. */
+  hasTriggers?: boolean;
   /** Edit one reusable Sandbox Template definition, not an Agent binding policy. */
   definitionMode?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { data, isLoading, error } = useSandboxTargets();
   const { data: sandboxTemplates = [] } = useSandboxTemplates();
   const { data: organizationConnections = [] } = useOrganizationConnections();
@@ -832,7 +1142,7 @@ export function SandboxPolicyEditor({
     <div className="space-y-5">
       {!definitionMode ? (
         <div className="space-y-2">
-          <Label htmlFor="sandbox-policy">Session choice</Label>
+          <Label htmlFor="sandbox-policy">{ui("Session choice")}</Label>
           <Select
             value={value?.mode ?? "fixed"}
             onValueChange={(mode) =>
@@ -845,17 +1155,20 @@ export function SandboxPolicyEditor({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="fixed" disabled={entries.length > 1}>
-                Fixed — sessions cannot override
+                {ui("Fixed: sessions cannot override")}
               </SelectItem>
-              <SelectItem value="selectable">Selectable — declared sandboxes only</SelectItem>
+              <SelectItem value="selectable">
+                {ui("Selectable: declared sandboxes only")}
+              </SelectItem>
               <SelectItem value="configurable">
-                Configurable — allow constrained one-offs
+                {ui("Configurable: allow constrained one-offs")}
               </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Fixed is the safe default. Playground only shows a picker for selectable or configurable
-            Agents.
+            {ui(
+              "Fixed is the safe default. Playground only shows a picker for selectable or configurable Agents.",
+            )}
           </p>
         </div>
       ) : null}
@@ -869,6 +1182,7 @@ export function SandboxPolicyEditor({
           isDefault={value?.default === name}
           targets={targets}
           organizationConnections={organizationConnections}
+          hasTriggers={hasTriggers}
           disabled={disabled}
           onChange={(next) => update(name, { ...next, template_revision_id: undefined })}
           onRename={(next) => rename(name, next)}
@@ -880,7 +1194,7 @@ export function SandboxPolicyEditor({
       {error ? (
         <p className="flex items-start gap-1.5 text-sm text-destructive">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          Could not load the execution targets offered by this deployment.
+          {ui("Could not load the execution targets offered by this deployment.")}
         </p>
       ) : null}
 
@@ -888,7 +1202,9 @@ export function SandboxPolicyEditor({
         <div className="space-y-2">
           {!definitionMode && sandboxTemplates.length > 0 ? (
             <>
-              <p className="text-xs font-medium text-muted-foreground">Use a Sandbox Template</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                {ui("Use a Sandbox Template")}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {sandboxTemplates.map((sandboxTemplate) => (
                   <Button
@@ -906,14 +1222,14 @@ export function SandboxPolicyEditor({
                 ))}
               </div>
               <Link href="/sandboxes/templates" className="text-xs text-muted-foreground underline">
-                Manage Sandbox Templates
+                {ui("Manage Sandbox Templates")}
               </Link>
             </>
           ) : null}
-          <p className="text-xs font-medium text-muted-foreground">Add a sandbox target</p>
+          <p className="text-xs font-medium text-muted-foreground">{ui("Add a sandbox target")}</p>
           <div className="flex flex-wrap gap-2">
             {isLoading ? (
-              <span className="text-sm text-muted-foreground">Loading targets…</span>
+              <span className="text-sm text-muted-foreground">{ui("Loading targets…")}</span>
             ) : null}
             {availableTargets.map((target) => (
               <Button

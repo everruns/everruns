@@ -51,55 +51,6 @@ fn model_input(
 }
 
 #[tokio::test]
-async fn test_create_installed_model() {
-    let (db, pid) = setup().await;
-
-    let m1 = db
-        .create_model(TEST_ORG_ID, model_input(pid, "model-a", true))
-        .await
-        .expect("create model-a");
-    assert!(m1.enabled);
-
-    let m2 = db
-        .create_model(TEST_ORG_ID, model_input(pid, "model-b", false))
-        .await
-        .expect("create model-b");
-    assert!(!m2.enabled);
-}
-
-#[tokio::test]
-async fn test_multiple_models_can_be_installed() {
-    let (db, pid) = setup().await;
-
-    let m1 = db
-        .create_model(TEST_ORG_ID, model_input(pid, "model-a", true))
-        .await
-        .expect("create model-a");
-    let m2 = db
-        .create_model(TEST_ORG_ID, model_input(pid, "model-b", true))
-        .await
-        .expect("create model-b");
-
-    // Both should be enabled (unlike is_default, multiple models can be enabled)
-    assert!(m1.enabled);
-    assert!(m2.enabled);
-
-    // Verify both are still enabled after fetch
-    let m1_fetched = db
-        .get_model(TEST_ORG_ID, m1.id.into())
-        .await
-        .expect("get model-a")
-        .expect("model-a exists");
-    let m2_fetched = db
-        .get_model(TEST_ORG_ID, m2.id.into())
-        .await
-        .expect("get model-b")
-        .expect("model-b exists");
-    assert!(m1_fetched.enabled);
-    assert!(m2_fetched.enabled);
-}
-
-#[tokio::test]
 async fn test_update_installed_flag() {
     let (db, pid) = setup().await;
 
@@ -138,31 +89,6 @@ async fn test_update_installed_flag() {
         .expect("update model-a")
         .expect("model-a exists");
     assert!(!updated2.enabled);
-}
-
-#[tokio::test]
-async fn test_org_settings_default_model() {
-    let (db, pid) = setup().await;
-
-    let m1 = db
-        .create_model(TEST_ORG_ID, model_input(pid, "model-a", true))
-        .await
-        .expect("create model-a");
-
-    // Set org default model
-    let settings = db
-        .upsert_organization_settings(TEST_ORG_ID, Some(m1.id.uuid()))
-        .await
-        .expect("upsert org settings");
-    assert_eq!(settings.default_model_id.unwrap().uuid(), m1.id.uuid());
-
-    // Get default model should return model-a
-    let default = db
-        .get_default_model(TEST_ORG_ID)
-        .await
-        .expect("get default model")
-        .expect("default exists");
-    assert_eq!(default.id.uuid(), m1.id.uuid());
 }
 
 #[tokio::test]

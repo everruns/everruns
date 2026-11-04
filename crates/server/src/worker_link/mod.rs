@@ -11,3 +11,8 @@ pub mod grpc_service;
 // portable delegation projection runtime callers opt into.
 pub mod platform_command_surface;
 pub(crate) mod runtime_command_view;
+
+pub(crate) mod consumer_delegation;
+
+// Restricted customer-hosted execution, separate from the trusted worker link.
+pub mod custom_workers;

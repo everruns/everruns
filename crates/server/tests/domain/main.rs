@@ -16,6 +16,9 @@
 //! See the "Run domain integration tests" step in `.github/workflows/ci.yml`
 //! for the current list.
 
+// Nothing cancels a test mid-`BEGIN`; see the root clippy.toml.
+#![allow(clippy::disallowed_methods)]
+
 #[path = "../test_harness.rs"]
 mod test_harness;
 
@@ -26,13 +29,11 @@ mod agent_api_channel_test;
 mod agent_api_end_user_test;
 mod agent_api_retry_cors_test;
 mod agent_api_spend_members_test;
-mod agent_budget_subject_test;
 mod agent_channels_migration_test;
 mod agent_trigger_invocation_integration_test;
 mod agent_versions_retirement_migration_test;
 mod api_endpoint_check_migration_test;
 mod api_endpoint_conversion_test;
-mod app_budget_retirement_test;
 mod app_invocation_channels_integration_test;
 mod auth_integration_test;
 mod change_history_test;
@@ -43,6 +44,7 @@ mod channel_a2a_pact_delegated_send_test;
 mod channel_a2a_pact_delegation_test;
 mod channel_a2a_pact_test;
 mod channel_a2a_protocol_test;
+mod channel_a2a_reactions_test;
 mod channel_attribution_test;
 mod channel_poppy_test;
 mod channel_rename_test;
@@ -55,8 +57,12 @@ mod command_transaction_test;
 mod concurrent_session_create_test;
 mod db_pool_isolation_test;
 mod dev_grade;
+mod evals_experiments_test;
 mod evals_integration_test;
+mod evals_multistep_test;
+mod evals_trials_test;
 mod fcp_integration_test;
+mod github_person_installs_migration_test;
 mod guardrails_integration_test;
 mod llm_model_default_test;
 mod mcp_acts_as_grpc_test;
@@ -67,6 +73,7 @@ mod mcp_event_triggers_test;
 mod mcp_events_test;
 mod mcp_files_test;
 mod mcp_oauth_user_switch_test;
+mod mcp_tasks_interop_test;
 mod mcp_tool_labels_test;
 mod migration_baseline_test;
 mod migration_history_test;
@@ -91,10 +98,12 @@ mod session_git_integration_test;
 mod session_tab_counts_integration_test;
 mod session_workspace_attach_test;
 mod skills_integration_test;
+mod stale_models_repair_migration_test;
 mod subagent_spawn_handles_test;
 mod thread_binding_ambiguity_migration_test;
 mod trigger_budget_subject_test;
 mod webhook_trigger_migration_test;
+mod work_chat_test;
 mod workspace_files_integration_test;
 
 mod virtual_users_migration_test;

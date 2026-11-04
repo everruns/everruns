@@ -3,7 +3,7 @@
 //! Its own file rather than another block in `tests.rs`, which is on the size
 //! ratchet's debt list and may not grow.
 
-use super::tests::test_worker_service;
+use super::tests::{test_worker_service, trusted_request};
 use super::*;
 
 #[tokio::test]
@@ -86,7 +86,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         .await
         .unwrap();
     let response = service
-        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+        .invoke_platform_command_surface(trusted_request(InvokePlatformCommandSurfaceRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -148,7 +148,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         .await
         .expect("create session without platform");
     let missing_capability = service
-        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+        .invoke_platform_command_surface(trusted_request(InvokePlatformCommandSurfaceRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -226,7 +226,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         .await
         .unwrap();
     let via_dependency = service
-        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+        .invoke_platform_command_surface(trusted_request(InvokePlatformCommandSurfaceRequest {
             input_message_id: Some(proto::Uuid {
                 value: session_via_dependency.id.uuid().to_string(),
             }),
@@ -258,7 +258,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         ),
     ] {
         let response = service
-            .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            .invoke_platform_command_surface(trusted_request(InvokePlatformCommandSurfaceRequest {
                 input_message_id: Some(proto::Uuid {
                     value: session.id.uuid().to_string(),
                 }),
@@ -287,7 +287,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     }
 
     let denied = service
-        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+        .invoke_platform_command_surface(trusted_request(InvokePlatformCommandSurfaceRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -318,7 +318,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     // Run takes the worker shell's parsed (name, params) and goes through the
     // same gate and policy as Execute.
     let run = |command: &str, params: serde_json::Value| {
-        Request::new(InvokePlatformCommandSurfaceRequest {
+        trusted_request(InvokePlatformCommandSurfaceRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -394,7 +394,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     assert!(!invalid.is_empty());
 
     let foreign = service
-        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+        .invoke_platform_command_surface(trusted_request(InvokePlatformCommandSurfaceRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),

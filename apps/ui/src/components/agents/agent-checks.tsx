@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import { useAnalyzeAgent, usePreviewAgent } from "@/hooks/use-agents";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function AgentChecks({
   tools = [],
   onApplyFix,
 }: AgentChecksProps) {
+  const ui = useUiTranslations();
   const previewMutation = usePreviewAgent();
   const request: PreviewAgentRequest = {
     system_prompt: systemPrompt,
@@ -75,12 +77,12 @@ export function AgentChecks({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <AlertCircle className="w-5 h-5" />
-            Checks Error
+            {ui("Checks Error")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Failed to run checks: {previewMutation.error.message}
+            {ui("Failed to run checks:")} {previewMutation.error.message}
           </p>
         </CardContent>
       </Card>
@@ -102,8 +104,9 @@ export function AgentChecks({
 }
 
 function ChecksSkeleton() {
+  const ui = useUiTranslations();
   return (
-    <Card aria-label="Refreshing checks" className="min-w-0 overflow-hidden">
+    <Card aria-label={ui("Refreshing checks")} className="min-w-0 overflow-hidden">
       <CardHeader className="p-4">
         <Skeleton className="h-5 w-28" />
       </CardHeader>
@@ -128,6 +131,7 @@ interface FindingsCardProps {
 }
 
 function FindingsCard({ findings, request, requestKey, onApplyFix }: FindingsCardProps) {
+  const ui = useUiTranslations();
   const analyzeMutation = useAnalyzeAgent();
   const latestRequestKey = useRef(requestKey);
   latestRequestKey.current = requestKey;
@@ -147,7 +151,7 @@ function FindingsCard({ findings, request, requestKey, onApplyFix }: FindingsCar
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="flex min-w-0 items-center gap-2 text-base">
             <ShieldCheck className="size-4 shrink-0" />
-            Checks
+            {ui("Checks")}
             {shown.length > 0 && <Badge variant="secondary">{shown.length}</Badge>}
           </CardTitle>
           <Button
@@ -168,24 +172,24 @@ function FindingsCard({ findings, request, requestKey, onApplyFix }: FindingsCar
             }}
           >
             <Sparkles className="size-4" />
-            {analyzeMutation.isPending ? "Analyzing…" : "Analyze"}
+            {analyzeMutation.isPending ? ui("Analyzing…") : ui("Analyze")}
           </Button>
         </div>
         <CardDescription className="text-xs leading-relaxed">
-          Advisory only. Analyze runs a deeper AI review and may take about 30 seconds.
+          {ui("Advisory only. Analyze runs a deeper AI review and may take about 30 seconds.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="min-w-0 px-4 pb-4">
         {analyzeMutation.error && (
           <p className="text-sm text-destructive mb-3">
-            Analysis failed: {analyzeMutation.error.message}
+            {ui("Analysis failed:")} {analyzeMutation.error.message}
           </p>
         )}
         {shown.length === 0 ? (
           <p className="text-sm text-muted-foreground italic">
             {analysis
-              ? "No issues found by built-in rules or AI analysis."
-              : "No issues found by built-in rules."}
+              ? ui("No issues found by built-in rules or AI analysis.")
+              : ui("No issues found by built-in rules.")}
           </p>
         ) : (
           <ul className="min-w-0 space-y-3">
@@ -210,6 +214,7 @@ function FindingRow({
   finding: AgentFinding;
   onApplyFix?: (start: number, end: number, replacement: string) => void;
 }) {
+  const ui = useUiTranslations();
   const fixSpan =
     finding.fix !== undefined &&
     finding.location?.field === "system_prompt" &&
@@ -232,7 +237,9 @@ function FindingRow({
         <p className="break-words text-sm">{finding.message}</p>
         {finding.fix !== undefined && (
           <details className="min-w-0 border bg-muted/50 p-2 text-xs">
-            <summary className="cursor-pointer text-muted-foreground">Suggested fix</summary>
+            <summary className="cursor-pointer text-muted-foreground">
+              {ui("Suggested fix")}
+            </summary>
             <pre className="mt-2 whitespace-pre-wrap break-words font-mono [overflow-wrap:anywhere]">
               {finding.fix}
             </pre>
@@ -244,7 +251,7 @@ function FindingRow({
                 className="mt-2 max-w-full"
                 onClick={() => onApplyFix(fixSpan.start, fixSpan.end, finding.fix ?? "")}
               >
-                Apply fix
+                {ui("Apply fix")}
               </Button>
             )}
           </details>

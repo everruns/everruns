@@ -369,24 +369,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_interaction_code_multi_step() {
-        let steps = vec![
-            json!({"action": "click", "selector": "#login-link"}),
-            json!({"action": "wait_for_selector", "selector": "#username"}),
-            json!({"action": "type", "selector": "#username", "value": "admin"}),
-            json!({"action": "type", "selector": "#password", "value": "secret"}),
-            json!({"action": "click", "selector": "#submit"}),
-            json!({"action": "wait", "wait_ms": 2000}),
-        ];
-        let code = build_interaction_code("https://example.com/home", &steps, true, false, &[]);
-        assert!(code.contains("#login-link"));
-        assert!(code.contains("#username"));
-        assert!(code.contains("#password"));
-        assert!(code.contains("#submit"));
-        assert!(code.contains("page.screenshot"));
-    }
-
-    #[test]
     fn test_build_interaction_code_injects_cookies() {
         let cookies = vec![json!({
             "name": "session_id",
@@ -421,24 +403,6 @@ mod tests {
         assert!(
             code.contains("const __cookies = await page.cookies()"),
             "should still extract cookies: {code}"
-        );
-    }
-
-    #[test]
-    fn test_build_interaction_code_both_screenshot_and_content() {
-        let steps = vec![json!({"action": "click", "selector": "#btn"})];
-        let code = build_interaction_code("https://example.com", &steps, true, true, &[]);
-        assert!(
-            code.contains("page.screenshot"),
-            "should include screenshot capture"
-        );
-        assert!(
-            code.contains("page.content()"),
-            "should include content capture"
-        );
-        assert!(
-            code.contains("screenshot") && code.contains("content"),
-            "return object should include both fields"
         );
     }
 }

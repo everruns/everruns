@@ -1,13 +1,17 @@
 import {
-  AgentExperienceIcon,
   AccountIcon,
+  ChatIcon,
   FeaturesIcon,
   HealthIcon,
   OrganizationIcon,
   PaymentsIcon,
+  PluginsIcon,
+  ProviderIcon,
   TeamIcon,
   TokenIcon,
+  VirtualUserIcon,
 } from "@/components/icons/facet-icons";
+import { Activity, Gauge, Receipt } from "lucide-react";
 import { SlackIcon } from "@/components/icons/slack-icon";
 import type { NavigationSection } from "@/lib/navigation";
 import { registryDomainIcons } from "@/lib/registry-navigation";
@@ -33,6 +37,13 @@ export const settingsNavigationSections: NavigationSection[] = [
         description: "Manage organization defaults and memberships",
       },
       {
+        name: "Chat",
+        href: "/settings/chat",
+        keywords: ["chat", "model", "default", "assistant"],
+        icon: ChatIcon,
+        description: "Choose the organization model for Everruns Chat",
+      },
+      {
         name: "Team members",
         href: "/settings/members",
         keywords: ["team", "invite"],
@@ -41,7 +52,7 @@ export const settingsNavigationSections: NavigationSection[] = [
       },
       {
         // Admin registry of MCP presets. Shown only to people who can manage it;
-        // everyone else adds their own servers in My agent experience.
+        // everyone else adds their own servers in Settings > MCP servers.
         name: "MCP catalog",
         href: "/settings/mcp-catalog",
         keywords: ["mcp", "mcp servers", "presets", "tool", "integration"],
@@ -56,10 +67,31 @@ export const settingsNavigationSections: NavigationSection[] = [
         description: "Connect Slack workspaces your agents can join",
       },
       {
+        name: "Tracing",
+        href: "/settings/tracing",
+        icon: Activity,
+        keywords: ["braintrust", "otel", "otlp", "traces"],
+        description: "Manage agent trace exports",
+      },
+      {
         name: "Health",
         href: "/settings/health",
         icon: HealthIcon,
         description: "Review pending integration issues and recovery actions",
+      },
+      {
+        name: "Costs",
+        href: "/settings/costs",
+        keywords: ["budget", "usage policy", "limit", "price list", "rates", "spend", "cost"],
+        icon: Receipt,
+        description: "See what agents cost, set your own rates, and limit usage",
+      },
+      {
+        name: "Limits",
+        href: "/settings/limits",
+        keywords: ["schedule", "unattended", "spend", "cap", "runaway"],
+        icon: Gauge,
+        description: "Limit what schedules and other unattended work may run and spend",
       },
       {
         name: "Features",
@@ -89,11 +121,32 @@ export const settingsNavigationSections: NavigationSection[] = [
         description: "Manage your Everruns account",
       },
       {
-        name: "My agent experience",
-        href: "/settings/agent-experience",
-        keywords: ["connections", "github", "gitlab", "virtual user", "locale", "timezone"],
-        icon: AgentExperienceIcon,
-        description: "Your virtual user and connections in this organization",
+        name: "Profile",
+        href: "/settings/user-profile",
+        keywords: ["locale", "timezone", "language", "virtual user", "name"],
+        icon: VirtualUserIcon,
+        description: "Your name, locale, and timezone in this organization",
+      },
+      {
+        name: "Connections",
+        href: "/settings/connections",
+        keywords: ["credentials", "secrets", "github", "gitlab", "daytona", "sign-in"],
+        icon: ProviderIcon,
+        description: "Provider sign-ins and credentials agents use as you",
+      },
+      {
+        name: "MCP servers",
+        href: "/settings/mcp-servers",
+        keywords: ["mcp", "mcp servers", "tools"],
+        icon: registryDomainIcons.mcpServers,
+        description: "MCP servers you add and sign in to for yourself",
+      },
+      {
+        name: "AI clients",
+        href: "/settings/ai-clients",
+        keywords: ["coding agent", "codex", "claude", "cursor", "chatgpt", "connected clients"],
+        icon: PluginsIcon,
+        description: "AI apps you approved to use Everruns as you",
       },
       {
         name: "Personal access tokens",

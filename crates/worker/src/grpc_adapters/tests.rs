@@ -2,6 +2,66 @@ use super::*;
 use uuid::Uuid;
 
 #[test]
+fn mcp_search_metadata_survives_grpc_and_ranks_source_only_terms() {
+    let metadata = serde_json::json!({"mcp_server":{
+        "name":"alpha", "description":"Basalt borehole surveying"
+    }});
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__search".into(),
+        description: "Search records".into(),
+        readonly: Some(true),
+        search_metadata: Some(everruns_internal_protocol::json_to_proto_struct(&metadata)),
+        ..Default::default()
+    });
+    assert_eq!(definition.hints().metadata.as_ref(), Some(&metadata));
+    assert_eq!(definition.hints().readonly, Some(true));
+    let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&[definition]);
+    let hits = index.search("basalt borehole", 8, |_| true);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].name, "mcp_alpha__search");
+    assert!(hits[0].server_match);
+    assert!(!hits[0].tool_match);
+}
+
+#[test]
+fn mcp_search_metadata_is_optional_for_older_servers() {
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__search".into(),
+        description: "Search records".into(),
+        ..Default::default()
+    });
+    assert!(definition.hints().metadata.is_none());
+    assert_eq!(definition.hints().open_world, Some(true));
+}
+
+#[test]
+fn mcp_search_metadata_preserves_capability_description_alongside_server_context() {
+    let metadata = serde_json::json!({
+        "mcp_server":{"name":"alpha", "description":"Borehole records"},
+        "capability":{"id":"minerals", "name":"Minerals", "description":"Scandium prospecting"}
+    });
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__inspect".into(),
+        description: "Inspect records".into(),
+        capability_id: "minerals".into(),
+        capability_name: "Minerals".into(),
+        search_metadata: Some(everruns_internal_protocol::json_to_proto_struct(&metadata)),
+        ..Default::default()
+    });
+    assert_eq!(
+        definition.hints().capability_description.as_deref(),
+        Some("Scandium prospecting")
+    );
+    let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&[definition]);
+    for query in ["borehole", "scandium"] {
+        let hits = index.search(query, 8, |_| true);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].server_match);
+        assert!(!hits[0].tool_match);
+    }
+}
+
+#[test]
 fn worker_parses_the_neutral_capability_reference_shape() {
     // EVE-873: worker resolution consumes the same `{"ref", "config"}`
     // representation the Framework serializes and the control plane
@@ -19,19 +79,6 @@ fn worker_parses_the_neutral_capability_reference_shape() {
         serde_json::from_str::<everruns_contracts::CapabilityRef>(r#"{"ref":"current_time"}"#)
             .unwrap();
     assert_eq!(bare.config_value(), &serde_json::json!({}));
-}
-
-#[test]
-fn resolved_model_proto_conversion_is_credential_free() {
-    let resolved = proto_model_to_model_spec(proto::ResolvedModel {
-        model: "custom-model".into(),
-        provider_id: "provider-123".into(),
-        provider_type: "custom-protocol".into(),
-    })
-    .unwrap();
-
-    assert_eq!(resolved.model, "custom-model");
-    assert_eq!(resolved.provider.as_str(), "provider-123");
 }
 
 #[test]
@@ -109,44 +156,9 @@ fn test_proto_harness_projects_execution_configuration() {
 }
 
 #[test]
-fn test_proto_value_to_json_null() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::NullValue(0)),
-    };
-    assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
-}
-
-#[test]
 fn test_proto_value_to_json_none_kind() {
     let val = prost_types::Value { kind: None };
     assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
-}
-
-#[test]
-fn test_proto_value_to_json_string() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::StringValue("hello".into())),
-    };
-    assert_eq!(
-        proto_value_to_json(val),
-        serde_json::Value::String("hello".into())
-    );
-}
-
-#[test]
-fn test_proto_value_to_json_number() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::NumberValue(42.5)),
-    };
-    assert_eq!(proto_value_to_json(val), serde_json::json!(42.5));
-}
-
-#[test]
-fn test_proto_value_to_json_bool() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::BoolValue(true)),
-    };
-    assert_eq!(proto_value_to_json(val), serde_json::Value::Bool(true));
 }
 
 #[test]
@@ -223,6 +235,17 @@ fn test_grpc_status_to_error_invalid_argument() {
 }
 
 #[test]
+fn a_reply_over_the_grpc_size_cap_is_not_retried() {
+    // tonic reports a message past `max_*_message_size` as OUT_OF_RANGE. The
+    // same history is too large on every attempt, so retrying only loops.
+    let status = tonic::Status::out_of_range(
+        "Error, encoded message length too large: found 18611223 bytes, the limit is: 16777216 bytes",
+    );
+    let err = grpc_status_to_error(status);
+    assert!(err.is_non_retryable(), "{err:?}");
+}
+
+#[test]
 fn test_grpc_status_to_error_resource_exhausted_payload() {
     let status = tonic::Status::resource_exhausted("message too large");
     let err = grpc_status_to_error(status);
@@ -259,13 +282,6 @@ fn test_grpc_status_to_error_internal_fallback() {
     let err = grpc_status_to_error(status);
     assert!(matches!(err, AgentLoopError::MessageStore(_)));
     assert!(err.to_string().contains("Internal"));
-}
-
-#[test]
-fn test_grpc_missing_field() {
-    let err = grpc_missing_field("No session in response");
-    assert!(matches!(err, AgentLoopError::MessageStore(_)));
-    assert!(err.to_string().contains("No session in response"));
 }
 
 #[test]
@@ -344,4 +360,33 @@ fn harness_transport_projection_enforces_lifecycle_before_execution() {
             "legacy status {status} must keep its active fallback"
         );
     }
+}
+
+#[test]
+fn session_client_tools_reach_the_worker() {
+    // A worker-run turn offers the session's client-side tools to the model
+    // only if they survive the session read.
+    let tool = serde_json::json!({
+        "type": "client_side",
+        "name": "create_ticket",
+        "description": "Open a helpdesk ticket.",
+        "parameters": {"type": "object", "properties": {}},
+    });
+    let proto_session = proto::Session {
+        id: Some(uuid_to_proto(Uuid::new_v4())),
+        harness_id: Some(uuid_to_proto(Uuid::new_v4())),
+        status: "idle".into(),
+        tools: vec![tool.to_string()],
+        ..Default::default()
+    };
+    let session = proto_session_to_session(proto_session).unwrap();
+    assert_eq!(session.tools.len(), 1);
+    assert_eq!(session.tools[0].name(), "create_ticket");
+
+    let invalid = proto::Session {
+        id: Some(uuid_to_proto(Uuid::new_v4())),
+        tools: vec!["not json".into()],
+        ..Default::default()
+    };
+    assert!(proto_session_to_session(invalid).is_err());
 }

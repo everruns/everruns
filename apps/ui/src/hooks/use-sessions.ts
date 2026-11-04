@@ -10,6 +10,8 @@ import {
   getSession,
   getSessionResolvedModel,
   getSessionContextReport,
+  getSessionCost,
+  getSessionRun,
   getSessionFacets,
   getSessionStats,
   listSessions,
@@ -19,6 +21,7 @@ import {
   unpinSession,
   archiveSession,
   unarchiveSession,
+  type SessionListFilters,
 } from "@/lib/api/sessions";
 import { DEFAULT_EXCLUDED_EVENTS, getSseUrl, listEventsPaginated } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
@@ -40,10 +43,10 @@ import {
 import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
-import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
+import { createEventStream, eventStreamScope, type EventStreamLike } from "@/lib/event-stream";
 import { listSessionTasks } from "@/lib/api/session-tasks";
 import { isTerminalTaskState } from "@/lib/api/types";
-import { subscribeSessionActivity } from "@/lib/session-activity";
+import { subscribeSessionActivity, notifySessionChange } from "@/lib/session-activity";
 import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 /**
@@ -53,14 +56,20 @@ import { useResourceOrgFallback } from "./use-resource-org-fallback";
  */
 export function useSessions(
   agentId?: string,
-  params?: PaginationParams,
+  params?: PaginationParams & Pick<SessionListFilters, "includeArchived">,
   options: { enabled?: boolean } = {},
 ) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
+    queryKey: queryKeys.sessions.list(
+      org,
+      agentId,
+      params?.offset ?? 0,
+      params?.limit ?? 20,
+      params?.includeArchived ?? false,
+    ),
     queryFn: () => listSessions({ ...params, agentId }),
     enabled: !!org && (options.enabled ?? true),
   });
@@ -166,6 +175,42 @@ export function useSession(
   return {
     ...query,
     isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
+  };
+}
+
+/** What the session spent; refreshed while the Cost tab is open and the session runs. */
+export function useSessionCost(sessionId: string | undefined, live = false) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.cost(org, sessionId),
+    queryFn: () => getSessionCost(sessionId!),
+    enabled: !!org && !!sessionId,
+    refetchInterval: live ? 15_000 : false,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
+
+/** The session's whole run: every agent session in it, with turns and spend. */
+export function useSessionRun(sessionId: string | undefined, live = false) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.run(org, sessionId),
+    queryFn: () => getSessionRun(sessionId!),
+    enabled: !!org && !!sessionId,
+    refetchInterval: live ? 15_000 : false,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
   };
 }
 
@@ -410,6 +455,8 @@ const SSE_EVENT_TYPES = [
   "session.model.changed",
   "task.created",
   "task.updated",
+  "message.reaction.added",
+  "message.reaction.removed",
 ];
 
 /** Default page size for paginated event loading */
@@ -425,7 +472,15 @@ const MAX_EVENTS_IN_MEMORY = 5_000;
 function isSettledTail(events: Event[], settled = false): boolean {
   for (const event of events) {
     if (event.type === "session.idled" || event.type === "session.started") settled = true;
-    else if (!["task.created", "task.updated", "session.model.changed"].includes(event.type)) {
+    else if (
+      ![
+        "task.created",
+        "task.updated",
+        "session.model.changed",
+        "message.reaction.added",
+        "message.reaction.removed",
+      ].includes(event.type)
+    ) {
       settled = false;
     }
   }
@@ -449,6 +504,7 @@ export interface UseEventsOptions {
  * Pagination uses X-Total-Count header for scroll estimation.
  */
 export function useEvents(sessionId: string | undefined, options?: UseEventsOptions) {
+  const streamCache = useQueryClient();
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
@@ -693,7 +749,10 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
         sessionId,
         lastEventIdRef.current ? { sinceId: lastEventIdRef.current } : { afterSequence: 0 },
       );
-      const eventSource = createEventStream(sseUrl, { withCredentials: true });
+      const eventSource = createEventStream(sseUrl, {
+        withCredentials: true,
+        shareScope: eventStreamScope(streamCache, org),
+      });
       eventSourceRef.current = eventSource;
       const isCurrent = () => !disposed && eventSourceRef.current === eventSource;
 
@@ -740,6 +799,19 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
             // sequence): reconnecting with one as `since_id` matches nothing,
             // so durable events missed during the gap were never replayed.
             if (event.sequence != null) lastEventIdRef.current = event.id;
+            if (
+              [
+                "session.activated",
+                "session.idled",
+                "turn.completed",
+                "turn.failed",
+                "turn.cancelled",
+                "task.created",
+                "task.updated",
+              ].includes(event.type)
+            ) {
+              notifySessionChange(org, sessionId);
+            }
             // Keep this updater pure: React may invoke a state updater more than
             // once for a single update (StrictMode, concurrent replays). The
             // dedup set is reconciled to the in-memory window by the effect
@@ -782,12 +854,17 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
           if (!pending) void checkIdle();
         });
     const wake = () => {
-      if (!eventSourceRef.current) connectSSE();
+      if (navigator.onLine && !eventSourceRef.current) {
+        reconnectRef.current.forceReset();
+        connectSSE();
+      }
     };
-    if (!followIdle) {
-      window.addEventListener("focus", wake);
-      window.addEventListener("online", wake);
-    }
+    const visible = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", visible);
     if (!eventSourceRef.current) connectSSE();
 
     return () => {
@@ -795,10 +872,11 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
       unsubscribe();
       window.removeEventListener("focus", wake);
       window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", visible);
       resumeRef.current = () => {};
       close();
     };
-  }, [org, sessionId, isEnabled, restLoaded, followIdle, cleanup]);
+  }, [org, sessionId, isEnabled, restLoaded, followIdle, cleanup, streamCache]);
 
   return {
     data: events,

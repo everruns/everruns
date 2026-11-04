@@ -18,15 +18,20 @@ agents check-rules delete	--context-revision --reason --rule-id!
 agents check-rules list	--context-revision --reason
 agents check-rules upsert	--category --context-revision --enabled! --kind! --match-mode --message --pattern --reason --rubric --rule-id! --severity
 agents copy	--context-revision --id --reason <id>
+agents cost-plan	--agent! --context-revision --guidance --locale --reason
+agents costs get	--agent-id --context-revision --reason <agent_id>
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable
 agents credentials create	--agent-id --auth --context-revision --description --env-name --header-name --label! --mcp-server-name --parameter-name --reason --tool-name --url
 agents delete	--context-revision --id --reason <id>
 agents destroy	--context-revision --id --reason <id>
 agents diff	--against --target <file>!
 agents draft	--context-revision --draft --messages! --reason
+agents examples adopt	--context-revision --name --reason <name>
+agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
-agents exposures resume	--agent --context-revision --reason <agent_id>
-agents exposures suspend	--agent --context-revision --reason <agent_id>
+agents external-worker disable	--agent-id! --context-revision --reason
+agents external-worker get	--agent-id! --context-revision --reason
+agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
 agents get	--context-revision --id --reason <id>
 agents github connect	--agent-id! --context-revision --owner-org --reason --return-to
 agents github disconnect	--agent-id! --context-revision --reason
@@ -38,31 +43,40 @@ agents health-checks list	--agent-id! --context-revision --reason
 agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --reason --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
+agents pause	--agent --context-revision --reason <agent_id>
 agents preview	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents resume	--agent --context-revision --reason <agent_id>
 agents scripts create	--agent-id! --body! --context-revision --description! --input-schema --name! --reason
 agents scripts delete	--agent-id! --context-revision --reason --script-id!
 agents scripts get	--agent-id! --context-revision --reason --script-id!
 agents scripts list	--agent-id --context-revision --include-archived --reason <agent_id>
 agents scripts update	--agent-id! --body --context-revision --description --input-schema --reason --script-id!
-agents triggers create	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --timezone --token --trigger-type
+agents source accounts list	--agent-id! --context-revision --reason
+agents source connect	--agent-digest! --agent-id! --branch! --commit! --context-revision --expected-generation --github-account --mode --path --reason --repository!
+agents source disconnect	--agent-id! --context-revision --reason
+agents source get	--agent-id! --context-revision --reason
+agents source options get	--agent-id! --branch --context-revision --github-account --path --reason --repository!
+agents source preview	--agent-id! --branch! --context-revision --github-account --path --reason --repository!
+agents source sync	--agent-id! --context-revision --reason
+agents triggers create	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-type
 agents triggers delete	--agent-id! --context-revision --reason --trigger-id!
 agents triggers deliveries list	--agent-id! --context-revision --limit --reason --trigger-id!
 agents triggers get	--agent-id! --context-revision --reason --trigger-id!
 agents triggers list	--agent-id --context-revision --include-archived --reason <agent_id>
 agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
-agents triggers trigger	--agent-id! --context-revision --reason --trigger-id!
-agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --timezone --token --trigger-id!
+agents triggers trigger	--agent-id! --context-revision --event --reason --trigger-id!
+agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --communication --completion-check --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --owner-agent-id --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
 budgets check	--budget-id! --context-revision --reason
-budgets create	--context-revision --currency! --limit! --metadata --period --reason --soft-limit --subject-id! --subject-type!
+budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id --context-revision --reason <budget_id>
 budgets get	--budget-id --context-revision --reason <budget_id>
 budgets ledger list	--budget-id! --context-revision --limit --offset --reason
 budgets list	--context-revision --reason --subject-id --subject-type
 budgets top-up top	--amount! --budget-id! --context-revision --description --reason
-budgets update	--budget-id! --context-revision --limit --metadata --reason --soft-limit --status
+budgets update	--budget-id! --context-revision --limit --metadata --policy --reason --soft-limit --status
 capabilities create	--context-revision --definition! --reason
 capabilities declarative delete	--context-revision --id --reason <id>
 capabilities declarative destroy	--context-revision --id --reason <id>
@@ -81,6 +95,23 @@ context append	--context-revision --entity-ref --kind --reason --text! <entity_r
 context clear	--context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
 context get	--context-revision --entity-ref --kind --reason <entity_ref>
 context set	--content! --context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
+costs rates create	--context-revision --effective-from --list-price-multiplier --match --meter! --reason --unit-price-usd
+costs rates list	--context-revision --reason
+costs rates retire	--context-revision --effective-from --rate-id! --reason
+costs settings get	--context-revision --reason
+costs settings update	--context-revision --reason --timezone
+costs summary get	--agent-id --context-revision --from --reason --to
+credential-bindings create	--binding --context-revision --label! --mcp --name --owner-id --reason --scope! --source --usage!
+credential-bindings list	--context-revision --owner-id --reason --scope! --usage!
+credential-bindings revoke	--context-revision --id! --reason --revision!
+docker doctor	--name
+docker logs	--name --no-follow <service>
+docker open	--name
+docker reset	--name --yes/-y
+docker status	--name
+docker stop	--name
+docker up	--admin-email --auth --image-tag --name --no-open --port --provider --yes/-y
+docker upgrade	--image-tag --name --no-backup --yes/-y
 durable executions get	--context-revision --execution-id --reason <execution_id>
 durable schedules create	--catch-up-missed --context-revision --cron-expression! --description --enabled --max-catch-up --max-concurrent --name! --reason --retry-policy --target! --timezone
 durable schedules delete	--context-revision --reason --schedule-id!
@@ -93,20 +124,34 @@ durable schedules stats get	--context-revision --reason --schedule-id!
 durable schedules trigger	--context-revision --reason --schedule-id!
 durable schedules update	--catch-up-missed --context-revision --cron-expression --description --enabled --max-catch-up --max-concurrent --reason --retry-policy --schedule-id! --target --timezone
 evals atif-import import	--body! --context-revision --eval-id! --reason
-evals cases create	--artifacts --context-revision --conversation! --description --eval-id! --max-turns --name! --position --post --reason --scorers! --tags... --target --timeout-seconds
+evals cases create	--artifacts --context-revision --conversation --description --eval-id! --max-turns --name! --position --post --reason --scorers! --simulated-user --tags... --target --timeout-seconds --tool-fixtures
 evals cases delete	--case-id! --context-revision --eval-id! --reason
 evals cases get	--case-id! --context-revision --eval-id! --reason
 evals cases list	--context-revision --eval-id! --reason
-evals cases update	--artifacts --case-id! --context-revision --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --tags... --target --timeout-seconds
+evals cases update	--artifacts --case-id! --context-revision --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --simulated-user --tags... --target --timeout-seconds --tool-fixtures
 evals create	--context-revision --description --model-override --name! --reason --tags... --target
 evals delete	--context-revision --eval-id! --reason
+evals experiments create	--context-revision --eval-id! --max-cost-usd --name --reason --trials --variants!
+evals experiments gate	--context-revision --eval-id! --experiment-id! --min-pass-rate --min-passed-every-trial --no-regression --reason --variant
+evals experiments get	--context-revision --eval-id! --experiment-id! --reason
+evals experiments list	--context-revision --eval-id! --reason
+evals experiments recent	--context-revision --reason
+evals fixes apply	--context-revision --fix-id! --reason
+evals fixes check	--context-revision --eval-id --fix-id! --max-cost-usd --reason --trials
+evals fixes list	--agent-id --context-revision --issue-id --open --reason
+evals fixes reject	--context-revision --fix-id! --note! --reason
+evals fixes update	--addition! --context-revision --fix-id! --reason --summary
 evals get	--context-revision --eval-id --reason <eval_id>
-evals import	--context-revision --evals! --reason --source!
+evals import	--context-revision --evals! --experiment --reason --source!
 evals import-preflight	--context-revision --reason
 evals list	--context-revision --include-archived --reason --search
+evals proposals accept	--context-revision --eval-id! --proposal-id! --reason
+evals proposals create	--agent-id! --context-revision --reason
+evals proposals dismiss	--context-revision --note --proposal-id! --reason
+evals proposals list	--agent-id! --context-revision --reason
 evals runs artifacts export	--context-revision --eval-id! --reason --run-id!
 evals runs cancel	--context-revision --eval-id! --reason --run-id!
-evals runs create	--context-revision --eval-id! --model-override --reason --target
+evals runs create	--case-ids... --context-revision --eval-id! --max-cost-usd --model-override --reason --target --trials
 evals runs dataset export	--context-revision --eval-id! --filters --format --reason --redaction --run-id!
 evals runs dataset get	--context-revision --dataset-id! --eval-id! --reason --run-id!
 evals runs get	--context-revision --eval-id! --reason --run-id!
@@ -116,6 +161,8 @@ evals runs scores bulk	--context-revision --eval-id! --metadata --reason --resul
 evals runs share create	--context-revision --eval-id! --reason --run-id!
 evals runs share get	--context-revision --eval-id! --reason --run-id!
 evals runs share revoke	--context-revision --eval-id! --reason --run-id!
+evals samples export	--context-revision --eval-id! --reason
+evals samples import	--context-revision --eval-id! --reason --samples!
 evals update	--context-revision --description --eval-id! --model-override --name --reason --tags... --target
 files ls	--long/-l --recursive/-r --session/-s! <path>
 files pull	--delete --dry-run --session/-s! <local_dir>
@@ -123,46 +170,48 @@ files push	--delete --dry-run --session/-s! <local_dir>
 files sync	--conflict --delete --dry-run --exclude... --interval --no-gitignore --session/-s! --verbose/-v <local_dir>
 harnesses check-name check	--context-revision --exclude-id --name! --reason
 harnesses copy	--context-revision --id --reason <id>
-harnesses create	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
+harnesses create	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --localizations --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
 harnesses delete	--context-revision --id --reason <id>
 harnesses destroy	--context-revision --id --reason <id>
 harnesses get	--context-revision --id --reason <id>
 harnesses list	--context-revision --include-archived --reason --search
 harnesses preview	--capabilities --context-revision --mcp-servers --parent-harness-id --reason --system-prompt
-harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
+harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --localizations --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
+health-issues actions list	--context-revision --issue-id! --reason
+health-issues actions take	--context-revision --issue-id! --kind! --reason
+health-issues actions undo	--action-id! --context-revision --issue-id! --reason
 health-issues check	--context-revision --issue-id! --reason
+health-issues dismiss	--context-revision --issue-id! --note! --reason
+health-issues fix	--context-revision --issue-id! --kind! --reason
 health-issues get	--context-revision --issue-id! --reason
 health-issues list	--channel-id --context-revision --limit --offset --reason
 health-issues snooze	--context-revision --issue-id! --reason
 history diff	--context-revision --entity-ref --from! --kind --reason --to <entity_ref>
 history list	--action --before --context-revision --entity-ref --kind --limit --reason <entity_ref>
 history org	--action --actor-user-id --before --context-revision --kind --limit --reason --since --via-agent
-history restore	--context-revision --entity-ref --kind --reason --revision! <entity_ref>
+history restore	--context-revision --entity-ref --expected-revision --fields... --kind --reason --revision! <entity_ref>
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason
-knowledge-bases create	--context-revision --description --embedding-model-id --name! --reason
-knowledge-bases delete	--context-revision --kb-id! --reason
-knowledge-bases entries create	--body! --context-revision --kb-id! --kind --reason --resource --tags... --title!
-knowledge-bases entries delete	--context-revision --entry-id! --kb-id! --reason
-knowledge-bases entries get	--context-revision --entry-id! --kb-id! --reason
-knowledge-bases entries list	--context-revision --kb-id! --kind --reason --search
-knowledge-bases entries update	--body --context-revision --entry-id! --kb-id! --kind --reason --resource --tags... --title
-knowledge-bases get	--context-revision --kb-id --reason <kb_id>
-knowledge-bases list	--context-revision --include-archived --reason --search
-knowledge-bases okf-import import	--bundle-base64 --context-revision --files --kb-id! --prune --reason
-knowledge-bases update	--context-revision --description --embedding-model-id --kb-id! --name --reason
-knowledge-indexes create	--context-revision --description --embedding-model-id! --name! --reason --source-config --source-type
-knowledge-indexes delete	--context-revision --index-id! --reason
-knowledge-indexes documents list	--context-revision --index-id --reason <index_id>
-knowledge-indexes get	--context-revision --index-id --reason <index_id>
-knowledge-indexes list	--context-revision --include-archived --reason --search
-knowledge-indexes sync	--context-revision --index-id --reason <index_id>
-knowledge-indexes update	--context-revision --description --embedding-model-id --index-id! --name --reason --source-config
+knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
+knowledge delete	--collection-id! --context-revision --reason
+knowledge files delete	--collection-id! --context-revision --path! --reason
+knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
+knowledge files update	--collection-id! --context-revision --indexable --metadata --path! --readable --reason
+knowledge files write	--collection-id! --content --content-base64 --context-revision --indexable --metadata --mime-type --path! --readable --reason
+knowledge get	--collection-id! --context-revision --reason
+knowledge indexers create	--context-revision --credential-binding-id! --endpoint! --name! --reason
+knowledge indexers list	--context-revision --reason
+knowledge list	--after --context-revision --limit --reason
+knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
+knowledge search	--collections... --context-revision --lexical-only --limit --metadata --path --query! --reason
+knowledge sources add	--collection-id! --config --connection-owner --context-revision --kind! --reason --root-path
+knowledge sync	--collection-id! --context-revision --reason
+knowledge update	--collection-id! --context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 login	--token
 logout
 mcp-servers check-connection	--context-revision --id --reason <id>
-mcp-servers create	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --name! --protocol-mode --reason --service-connection-provider --transport-type --url!
+mcp-servers create	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --name! --protocol-mode --reason --service-connection-provider --tool-timeout-ms --transport-type --url!
 mcp-servers delete	--context-revision --id --reason <id>
 mcp-servers destroy	--context-revision --id --reason <id>
 mcp-servers get	--context-revision --id --reason <id>
@@ -170,7 +219,7 @@ mcp-servers label-tool	--context-revision --id --label --reason --tool-name <id>
 mcp-servers list	--context-revision --include-archived --reason --search
 mcp-servers suggest-labels	--context-revision --id --reason <id>
 mcp-servers tools	--context-revision --id --reason <id>
-mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --name --protocol-mode --reason --service-connection-provider --status --transport-type --url <id>
+mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --name --protocol-mode --reason --service-connection-provider --status --tool-timeout-ms --transport-type --url <id>
 memories create	--context-revision --description --name! --reason --source
 memories delete	--context-revision --memory-id! --reason
 memories get	--context-revision --memory-id --reason <memory_id>
@@ -183,23 +232,33 @@ models default get	--context-revision --reason
 models delete	--context-revision --id --reason <id>
 models get	--context-revision --id --reason <id>
 models list	--context-revision --favorites-only --include-stale --reason --service --source
+models selection apply	--changes! --context-revision --reason
+models selection undo	--changes! --context-revision --reason
 models update	--capabilities... --context-revision --display-name --enabled --id! --is-favorite --model-id --profile-key --provider-id --reason --service
 notifications list	--context-revision --limit --reason
 notifications view mark	--context-revision --notification-id --reason <notification_id>
-observers create	--context-revision --description --match --name! --reason --sampling-rate --scorers!
+observers backfill	--context-revision --limit --observer-id! --reason --sample --since-hours
+observers create	--alert --context-revision --description --match --name! --reason --sampling-rate --scorers!
 observers delete	--context-revision --observer-id! --reason
 observers get	--context-revision --observer-id --reason <observer_id>
 observers list	--context-revision --include-archived --reason
-observers scores list	--context-revision --limit --observer-id! --offset --reason --session-id
-observers update	--context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
+observers scores list	--context-revision --limit --observer-id! --offset --reason --review-queue --session-id
+observers scores review	--agrees! --context-revision --note --observer-id! --reason --score-id!
+observers summary	--agent-id --context-revision --days --observer-id --reason
+observers update	--alert --context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
+organization-accounts get	--context-revision --id! --reason
+organization-accounts update	--context-revision --id! --name! --reason
 orgs audit-logs list	--action --actor-id --before --context-revision --domain --event-type --limit --reason
+orgs decision-settings get	--context-revision --org! --reason
 orgs egress-allowlist get	--context-revision --org! --reason
 orgs egress-allowlist grant set	--context-revision --granted --open --org! --reason
 orgs egress-allowlist set	--context-revision --org! --patterns!... --reason
 orgs get	--context-revision --org --reason <org>
 orgs list	--context-revision --reason
+orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --self-healing --small-model-id --system-decisions --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason
@@ -225,7 +284,7 @@ plugins patch	--context-revision --id --mcp-server-identities --reason --status 
 plugins uninstall	--context-revision --id --reason <id>
 plugins update	--context-revision --id --reason <id>
 providers check-credentials check	--api-key! --base-url --context-revision --provider-type! --reason
-providers create	--api-key --base-url --context-revision --name! --provider-type! --reason --request-options --trace
+providers create	--api --api-key --base-url --context-revision --name! --provider-type! --reason --request-options --trace
 providers delete	--context-revision --id --reason <id>
 providers get	--context-revision --id --reason <id>
 providers list	--context-revision --reason
@@ -233,7 +292,7 @@ providers models create	--capabilities... --context-revision --display-name! --e
 providers models list	--context-revision --provider-id! --reason
 providers models review	--context-revision --id! --reason
 providers sync-models sync	--context-revision --id! --reason
-providers update	--api-key --base-url --context-revision --id! --name --provider-type --reason --request-options --status --trace
+providers update	--api --api-key --base-url --context-revision --id! --name --provider-type --reason --request-options --status --trace
 reports admin backfill	--context-revision --limit --reason
 reports admin diagnostics get	--context-revision --reason
 reports catalog get	--context-revision --reason
@@ -247,7 +306,18 @@ reports saved get	--context-revision --reason --report-id!
 reports saved list	--context-revision --reason
 reports saved run	--context-revision --reason --report-id!
 reports saved update	--context-revision --reason --report-id! --request!
+resources grants grant	--constraints --consumer-id --consumer-scope! --context-revision --expires-at --id! --reason --usage!
+resources grants list	--context-revision --id! --reason
+resources grants revoke	--context-revision --grant-id! --id! --reason
 sandbox-targets list	--context-revision --reason
+sandbox-template-metadata get	--context-revision --id! --reason
+sandbox-template-metadata update	--context-revision --description --display-name --id! --reason
+sandbox-templates builds apply	--context-revision --id! --reason
+sandbox-templates builds cancel	--context-revision --id! --reason
+sandbox-templates builds discard	--context-revision --id! --reason
+sandbox-templates builds get	--context-revision --id! --reason
+sandbox-templates builds list	--context-revision --id! --offset --reason
+sandbox-templates builds start	--build-network --context-revision --id! --install-script! --metadata-path --reason --source-revision-id! --timeout-seconds --verification-command
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
@@ -257,6 +327,7 @@ sessions budget-check check	--context-revision --reason --session-id <session_id
 sessions budgets list	--context-revision --reason --session-id <session_id>
 sessions cancel	--context-revision --reason --session <session_id>
 sessions context	--context-revision --reason --session <session_id>
+sessions cost get	--context-revision --reason --session-id <session_id>
 sessions create	--agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --reason --secret... --system-prompt --tag/-t... --title --virtual-user
 sessions databases create	--context-revision --name! --reason --session-id!
 sessions databases delete	--context-revision --name! --reason --session-id!
@@ -287,6 +358,9 @@ sessions messages create	--addressed-participant-id --client-message-id --contex
 sessions messages list	--context-revision --limit --reason --session-id <session_id>
 sessions messages rate	--comment --context-revision --message-id --rating --reason --session <message_id> <session_id>
 sessions messages ratings	--context-revision --reason --session <session_id>
+sessions messages react	--context-revision --emoji --message-id --reason --session <emoji> <message_id> <session_id>
+sessions messages reactions	--context-revision --message-id --reason --session <session_id>
+sessions messages unreact	--context-revision --emoji --message-id --reason --session <emoji> <message_id> <session_id>
 sessions participants add	--agent-id --context-revision --kind! --reason --role --session!
 sessions participants leave	--context-revision --participant-id! --reason --session!
 sessions participants list	--context-revision --reason --session!
@@ -294,6 +368,7 @@ sessions pin	--context-revision --reason --session <session_id>
 sessions platform-chat ensure	--context-revision --reason
 sessions resources list	--context-revision --reason --session-id <session_id>
 sessions resume	--context-revision --reason --session-id <session_id>
+sessions run get	--context-revision --reason --session-id <session_id>
 sessions sandbox get	--context-revision --reason --session-id <session_id>
 sessions sandbox manage	--action! --context-revision --reason --session-id!
 sessions sse stream	--context-revision --reason --session-id <session_id>
@@ -320,6 +395,7 @@ sessions unarchive	--context-revision --reason --session <session_id>
 sessions unpin	--context-revision --reason --session <session_id>
 sessions update	--context-revision --goal --locale --model-id --reason --session --tags... --title --virtual-user-id <session_id>
 sessions watch	<session>!
+sessions work get	--context-revision --reason --session-id --turn-id <session_id>
 skills content	--context-revision --id --reason <id>
 skills create	--context-revision --reason --skill-md!
 skills delete	--context-revision --id --reason <id>
@@ -329,16 +405,26 @@ skills list	--context-revision --include-archived --reason --search
 skills update	--context-revision --id --reason --skill-md --status <id>
 skills usage	--context-revision --reason
 status
+system detections	--context-revision --limit --offset --reason
+system doctor	--context-revision --reason --refresh
 system health	--context-revision --reason
 tasks list	--context-revision --created-after --kind --limit --reason --root-session-id --state
+tracing destinations get	--context-revision --id! --reason
+tracing destinations update	--context-revision --enabled --id! --name --reason
+tracing routing get	--context-revision --id! --reason
+tracing routing update	--context-revision --destination-ids!... --expected-revision --id! --mode! --reason
 user connections list	--context-revision --provider --reason
 user connections providers list	--context-revision --reason --search
 users list	--context-revision --reason --search
+users me update	--context-revision --id! --name! --reason
+users profile get	--context-revision --id! --reason
 virtual-users create	--avatar-url --context-revision --description --locale --name! --reason --timezone --usage
 virtual-users delete	--context-revision --id --reason <id>
 virtual-users destroy	--context-revision --id --reason <id>
 virtual-users get	--context-revision --id --reason <id>
 virtual-users list	--context-revision --include-archived --limit --offset --reason --search --usage
+virtual-users self-profile get	--context-revision --id! --reason
+virtual-users self-profile update	--avatar-url --context-revision --description --id! --locale --name --reason --status --timezone
 virtual-users update	--avatar-url --context-revision --description --id --locale --name --reason --status --timezone <id>
 whoami
 workspaces delete	--context-revision --reason --workspace-id <workspace_id>

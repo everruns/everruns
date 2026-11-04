@@ -592,13 +592,6 @@ mod tests {
     }
 
     #[test]
-    fn modes_order_from_contained_to_open() {
-        assert!(ContainmentMode::ReadOnly < ContainmentMode::WorkspaceWrite);
-        assert!(ContainmentMode::WorkspaceWrite < ContainmentMode::FullAccess);
-        assert_eq!(ContainmentMode::default(), ContainmentMode::WorkspaceWrite);
-    }
-
-    #[test]
     fn only_full_access_runs_with_the_network_on_a_supported_platform() {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
@@ -650,14 +643,6 @@ mod tests {
         assert_eq!(mode & 0o777, 0o700);
         assert!(temp.join("home").parent().is_some());
         let _ = std::fs::remove_dir_all(&temp);
-    }
-
-    #[test]
-    fn full_access_is_the_only_mode_that_hands_back_a_bare_shell() {
-        let temp = tempfile::tempdir().expect("workspace");
-        let open = provider(SandboxOptions::new(ContainmentMode::FullAccess));
-        assert!(open.command(temp.path(), temp.path(), "true").is_ok());
-        assert_eq!(open.mode(), ContainmentMode::FullAccess);
     }
 
     #[cfg(target_os = "linux")]

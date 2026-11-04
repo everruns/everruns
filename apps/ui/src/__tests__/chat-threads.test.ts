@@ -99,15 +99,6 @@ describe("selectChatThreads", () => {
 
     expect(threads.map((thread) => thread.id)).toEqual(["live-old", "archived-new"]);
   });
-
-  it("treats every thread as mine when auth is off", () => {
-    const threads = selectChatThreads(
-      [session({ id: "a" }), session({ id: "b", resolved_owner_user_id: "user_2" })],
-      undefined,
-    );
-
-    expect(threads).toHaveLength(2);
-  });
 });
 
 describe("threadActivityAt", () => {

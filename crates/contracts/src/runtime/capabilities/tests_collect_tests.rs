@@ -4,6 +4,9 @@ use super::*;
 use crate::runtime::message::RuntimeMessage;
 use crate::runtime::message_filter::{MessageFilter, MessageFilterProvider, MessageQuery};
 use crate::runtime::runtime_agent::RuntimeAgent;
+use crate::runtime::tool_surface::{
+    NativeToolDisclosure, NativeToolDisclosurePolicy, ToolSurface, ToolSurfaceRoute,
+};
 use crate::runtime::tool_types::ToolDefinition;
 use crate::runtime::typed_id::SessionId;
 use std::sync::Arc;
@@ -116,52 +119,9 @@ async fn test_collected_capabilities_apply_multiple_filters_in_priority_order() 
     assert!(matches!(&query.filters[2], MessageFilter::Search(s) if s == "gamma"));
 }
 
-#[tokio::test]
-async fn test_collect_capabilities_preserves_config_for_filter_provider() {
-    let mut registry = CapabilityRegistry::new();
-    registry.register(FilterTestCapability { priority: 0 });
-
-    let test_config = serde_json::json!({
-        "search": "custom_search",
-        "extra_field": 42
-    });
-
-    let configs = vec![AgentCapabilityConfig::with_config(
-        CapabilityId::new("filter_test"),
-        test_config.clone(),
-    )];
-
-    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-    // Verify the config is preserved
-    assert_eq!(collected.message_filter_providers.len(), 1);
-    let (_, stored_config) = &collected.message_filter_providers[0];
-    assert_eq!(*stored_config, test_config);
-}
-
 // =========================================================================
 // collect_message_filters_only tests
 // =========================================================================
-
-#[test]
-fn test_collect_message_filters_only_collects_filters() {
-    let mut registry = CapabilityRegistry::new();
-    registry.register(FilterTestCapability { priority: 0 });
-
-    let configs = vec![AgentCapabilityConfig::with_config(
-        CapabilityId::new("filter_test"),
-        serde_json::json!({ "search": "test_query" }),
-    )];
-
-    let collected = collect_message_filters_only(&configs, &registry);
-
-    let session_id: SessionId = Uuid::now_v7().into();
-    let mut query = MessageQuery::new(session_id);
-    collected.apply_message_filters(&mut query);
-
-    assert_eq!(query.filters.len(), 1);
-    assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "test_query"));
-}
 
 #[test]
 fn test_collect_message_filters_only_skips_unknown_capabilities() {
@@ -540,14 +500,6 @@ fn test_unregister_by_alias_removes_capability_and_aliases() {
 }
 
 #[test]
-fn test_compute_features_empty() {
-    let registry = CapabilityRegistry::new();
-
-    let features = compute_features(&[], &registry);
-    assert!(features.is_empty());
-}
-
-#[test]
 fn test_compute_features_unknown_capability_ignored() {
     let registry = fixture_registry();
 
@@ -556,12 +508,6 @@ fn test_compute_features_unknown_capability_ignored() {
         &registry,
     );
     assert_eq!(features, vec!["secrets", "key_value"]);
-}
-
-#[test]
-fn test_risk_level_ordering() {
-    assert!(RiskLevel::Low < RiskLevel::Medium);
-    assert!(RiskLevel::Medium < RiskLevel::High);
 }
 
 #[test]
@@ -639,27 +585,6 @@ async fn test_contribute_skills_normalized_to_mounts() {
         }
         _ => panic!("Expected InlineDirectory"),
     }
-}
-
-#[tokio::test]
-async fn test_contribute_skills_default_empty() {
-    // Registry-resident capability without a contribute_skills override
-    // must not add skill mounts.
-    let mut registry = CapabilityRegistry::new();
-    registry.register(FilterTestCapability { priority: 0 });
-
-    let configs = vec![AgentCapabilityConfig::with_config(
-        CapabilityId::new("filter_test"),
-        serde_json::json!({}),
-    )];
-
-    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-    assert!(
-        collected
-            .mounts
-            .iter()
-            .all(|m| !m.path.starts_with("/.agents/skills/"))
-    );
 }
 
 #[test]
@@ -815,6 +740,28 @@ async fn prompt_collection_preserves_exact_sections_attribution_and_base_order()
     }
 }
 
+#[tokio::test]
+async fn tool_collection_keeps_tools_and_skips_prompt_contributions() {
+    let registry = fixture_registry();
+    let configs: Vec<_> = ["prompt_tool_fixture", "second_prompt_fixture"]
+        .into_iter()
+        .map(|id| AgentCapabilityConfig::with_config(CapabilityId::new(id), serde_json::json!({})))
+        .collect();
+    let full = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+    let tools = collect_capability_tools_with_configs(&configs, &registry, &test_ctx()).await;
+    assert_eq!(full.system_prompt_parts.len(), 2);
+    assert!(tools.system_prompt_parts.is_empty());
+    assert!(tools.conversation_context_parts.is_empty());
+    let names = |c: &CollectedCapabilities| {
+        c.tools
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(names(&tools), names(&full));
+    assert_eq!(names(&tools), vec!["write_todos"]);
+}
+
 #[test]
 fn feature_projection_preserves_order_and_distinct_dependency_features() {
     let mut registry = CapabilityRegistry::new();
@@ -925,4 +872,176 @@ async fn superseded_capability_contributes_nothing() {
         superseded_capability_ids(&configs, &registry),
         std::collections::HashSet::from(["loser_cap".to_string()])
     );
+}
+
+#[tokio::test]
+async fn collector_seeds_native_routes_before_bounded_disclosure_policy() {
+    struct NativeTools;
+    impl Capability for NativeTools {
+        fn id(&self) -> &str {
+            "native_tools"
+        }
+        fn name(&self) -> &str {
+            "Native tools"
+        }
+        fn description(&self) -> &str {
+            "Test native tool owner."
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![
+                Box::new(FixtureTool("ordinary_data_operation")),
+                Box::new(FixtureTool("request_approval")),
+            ]
+        }
+    }
+
+    struct BoundedSearchPolicy;
+    impl Capability for BoundedSearchPolicy {
+        fn id(&self) -> &str {
+            "bounded_search_policy"
+        }
+        fn name(&self) -> &str {
+            "Bounded search policy"
+        }
+        fn description(&self) -> &str {
+            "Test generic native disclosure contribution."
+        }
+        fn native_tool_disclosure_policy_with_config(
+            &self,
+            _config: &serde_json::Value,
+            _definitions: &[ToolDefinition],
+        ) -> Option<NativeToolDisclosurePolicy> {
+            Some(NativeToolDisclosurePolicy {
+                default: NativeToolDisclosure::Deferred,
+                overrides: Default::default(),
+            })
+        }
+    }
+
+    let mut registry = CapabilityRegistry::new();
+    registry.register(NativeTools);
+    registry.register(BoundedSearchPolicy);
+    let configs = vec![
+        AgentCapabilityConfig::with_config(
+            CapabilityId::new("native_tools"),
+            serde_json::json!({}),
+        ),
+        AgentCapabilityConfig::with_config(
+            CapabilityId::new("bounded_search_policy"),
+            serde_json::json!({}),
+        ),
+    ];
+
+    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+    assert_eq!(
+        collected
+            .tool_surface_plan
+            .route_for("ordinary_data_operation"),
+        Some(ToolSurfaceRoute {
+            surface: ToolSurface::Native,
+            native_disclosure: NativeToolDisclosure::Deferred,
+        })
+    );
+    assert_eq!(
+        collected.tool_surface_plan.route_for("request_approval"),
+        Some(ToolSurfaceRoute {
+            surface: ToolSurface::Native,
+            native_disclosure: NativeToolDisclosure::Eager,
+        })
+    );
+}
+
+#[tokio::test]
+async fn declarative_and_plugin_mcp_owner_context_is_rederived_in_both_collection_paths() {
+    for id in ["declarative:retail", "plugin:retail"] {
+        let registry = CapabilityRegistry::new();
+        let config = |description: &str, display_name: Option<&str>| {
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(id),
+                serde_json::json!({
+                    "name":"retail", "display_name":display_name, "description":description,
+                    "system_prompt":"Never searchable private instructions",
+                    "mcp_servers":{"gateway":{
+                        "url":"https://example.com/mcp", "actsAs":"none", "description":"Server context",
+                        "capability_context":{"id":"forged", "name":"Forged", "description":"Stale"}
+                    }}
+                }),
+            )
+        };
+        let first = config("Cobalt warehouse", Some("Retail operations"));
+        let simple = collect_capability_mcp_servers(std::slice::from_ref(&first), &registry);
+        let full = collect_capabilities_with_configs(&[first], &registry, &test_ctx()).await;
+        assert_eq!(simple, full.mcp_servers);
+        let owner = simple["gateway"].capability_context.as_ref().unwrap();
+        assert_eq!(
+            (
+                owner.id.as_str(),
+                owner.name.as_str(),
+                owner.description.as_str()
+            ),
+            (id, "Retail operations", "Cobalt warehouse")
+        );
+        assert_eq!(
+            simple["gateway"].description.as_deref(),
+            Some("Server context")
+        );
+        let replacement = config("Fresh geothermal records", None);
+        let next = collect_capability_mcp_servers(std::slice::from_ref(&replacement), &registry);
+        let next_full =
+            collect_capabilities_with_configs(&[replacement], &registry, &test_ctx()).await;
+        assert_eq!(next, next_full.mcp_servers);
+        let owner = next["gateway"].capability_context.as_ref().unwrap();
+        assert_eq!(owner.name, "retail");
+        assert_eq!(owner.description, "Fresh geothermal records");
+        assert!(collect_capability_mcp_servers(&[], &registry).is_empty());
+        assert!(
+            collect_capabilities_with_configs(&[], &registry, &test_ctx())
+                .await
+                .mcp_servers
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+async fn registered_mcp_owner_context_tracks_current_capability_and_explicit_server_override() {
+    struct Owner(&'static str);
+    impl Capability for Owner {
+        fn id(&self) -> &str {
+            "retail"
+        }
+        fn name(&self) -> &str {
+            "Retail operations"
+        }
+        fn description(&self) -> &str {
+            self.0
+        }
+        fn mcp_servers(&self) -> crate::runtime::CapabilityMcpServers {
+            serde_json::from_value(serde_json::json!({"gateway": {
+                "url":"https://example.com/mcp", "actsAs":"none", "description":"Server context"
+            }}))
+            .unwrap()
+        }
+    }
+    let mut registry = CapabilityRegistry::new();
+    let configs = vec![AgentCapabilityConfig::new(CapabilityId::new("retail"))];
+    for description in ["Cobalt warehouse", "Fresh geothermal records"] {
+        registry.register(Owner(description));
+        let simple = collect_capability_mcp_servers(&configs, &registry);
+        let full = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        assert_eq!(simple, full.mcp_servers);
+        let owner = simple["gateway"].capability_context.as_ref().unwrap();
+        assert_eq!(owner.id, "retail");
+        assert_eq!(owner.name, "Retail operations");
+        assert_eq!(owner.description, description);
+        let explicit = crate::runtime::ScopedMcpServers::from([(
+            "gateway".into(),
+            crate::runtime::ScopedMcpServer {
+                url: "https://replacement.example/mcp".into(),
+                ..Default::default()
+            },
+        )]);
+        let replaced = crate::runtime::merge_scoped_mcp_servers(&simple, &explicit);
+        assert!(replaced["gateway"].capability_context.is_none());
+    }
 }

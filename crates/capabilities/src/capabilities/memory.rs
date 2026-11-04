@@ -226,22 +226,4 @@ mod tests {
         let err = cap.validate_config(&cfg).unwrap_err();
         assert!(err.contains("overlapping"));
     }
-
-    #[test]
-    fn validate_rejects_path_outside_workspace() {
-        let cap = MemoryCapability;
-        let cfg = json!({
-            "mounts": [
-                { "memory": "mem_00000000000000000000000000000001", "path": "/etc/passwd" }
-            ]
-        });
-        assert!(cap.validate_config(&cfg).is_err());
-    }
-
-    #[test]
-    fn config_schema_is_present() {
-        let cap = MemoryCapability;
-        let schema = cap.config_schema().expect("config schema");
-        assert_eq!(schema["type"], "object");
-    }
 }

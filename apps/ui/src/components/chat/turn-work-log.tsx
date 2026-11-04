@@ -9,7 +9,8 @@
  *   failed tool call went back to the model and the turn carried on, so it is
  *   an "issue": amber warning triangle, never destructive red. Red is kept for
  *   runtime-marked errors, i.e. work that stopped (EVE-1236).
- * - `attention` renders outside the collapsible body, so cards that need the
+ * - `pinned` (the work report's plan while running, its result once done) and
+ *   `attention` render outside the collapsible body, so the plan and cards that need the
  *   user (approvals, ask_user, connection setup) are never hidden by the fold.
  * - The body mounts only while open (and through the collapse transition). A
  *   turn can carry thousands of tool calls; rendering them folded made every
@@ -29,7 +30,7 @@ import { formatWorkLogErrorCount, formatWorkLogIssueCount } from "@/lib/i18n";
 import { FailureIcon, failureTextClass } from "@/components/chat/failure-severity";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { useLocale } from "@/providers/locale-provider";
-import { isLiveTurnPhase, type TurnRowPhase } from "@/lib/chat-turn-state";
+import { STILL_STARTING_MS, isLiveTurnPhase, type TurnRowPhase } from "@/lib/chat-turn-state";
 
 interface TurnWorkLogProps {
   /** Turn status row phase; when set it drives the label instead of `label`/`isActive`. */
@@ -49,6 +50,8 @@ interface TurnWorkLogProps {
   issueCount?: number;
   /** Failures the runtime marked fatal. */
   errorCount?: number;
+  /** Work report content shown under the header: the plan, or the result. */
+  pinned?: ReactNode;
   /** Content that must stay visible regardless of the fold. */
   attention?: ReactNode;
   children: ReactNode | (() => ReactNode);
@@ -77,6 +80,7 @@ export function TurnWorkLog({
   status,
   issueCount = 0,
   errorCount = 0,
+  pinned,
   attention,
   children,
 }: TurnWorkLogProps) {
@@ -113,8 +117,10 @@ export function TurnWorkLog({
     headerLabel = t("working_for", {
       duration: `${seconds < 60 ? `${seconds}s` : formatWorkedDuration(seconds * 1000)}`,
     });
-    if (phase === "starting") statusText = t("turn_starting");
-    else if (phase === "thinking") statusText = status || t("turn_thinking");
+    if (phase === "starting") {
+      statusText =
+        (elapsedMs ?? 0) >= STILL_STARTING_MS ? t("turn_waiting_for_worker") : t("turn_starting");
+    } else if (phase === "thinking") statusText = status || t("turn_thinking");
   } else {
     headerLabel = isActive
       ? elapsedMs != null && elapsedMs >= 1000
@@ -208,6 +214,7 @@ export function TurnWorkLog({
         </span>
       </button>
 
+      {pinned != null && <div className="ml-7">{pinned}</div>}
       {attention != null && <div className="ml-7 space-y-3">{attention}</div>}
 
       <div

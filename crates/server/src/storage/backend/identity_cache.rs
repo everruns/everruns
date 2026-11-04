@@ -18,11 +18,15 @@ use super::StorageBackend;
 const CAPACITY: u64 = 10_000;
 const TTL: Duration = Duration::from_secs(600);
 
-/// A session's org and parent session, neither of which ever changes.
+/// A session's org, parent session, workspace and agent, none of which
+/// changes once set. (`agent_id` is only ever filled in, by the one-off
+/// platform-chat migration at startup, never changed.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionLineage {
     pub org_id: i64,
     pub parent_session_id: Option<SessionId>,
+    pub workspace_id: uuid::Uuid,
+    pub agent_id: Option<AgentId>,
 }
 
 #[derive(Clone)]
@@ -58,6 +62,8 @@ impl StorageBackend {
         let lineage = SessionLineage {
             org_id: row.org_id,
             parent_session_id: row.parent_session_id,
+            workspace_id: row.workspace_id,
+            agent_id: row.agent_id,
         };
         self.identity.sessions.insert(id, lineage).await;
         Ok(Some(lineage))

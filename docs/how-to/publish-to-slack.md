@@ -14,10 +14,10 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 
 ## Add the Channel
 
-1. Open the Agent and select **Integrations**.
+1. Open the Agent and select **Channels and triggers**.
 2. Select **Add channel**, then select **Slack**.
 3. Choose a session strategy.
-4. Leave the Slack credentials empty and select **Save channel**.
+4. Leave the Slack credentials empty and select **Create channel**.
 
 ## Choose a session strategy
 
@@ -61,11 +61,17 @@ behavior.
 
 Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/capabilities/slack/#connect-a-slack-workspace).
 
+If your deployment connects workspaces through a Slack manager app, complete its
+consent in the same browser that started the connection. Each attempt expires
+after thirty minutes and can finish once. Separate tabs keep independent
+attempts. After cancellation, expiry, or an exchange failure, start a new
+connection from **Settings** > **Slack workspaces**.
+
 1. Select **Publish** in the channel editor.
 2. If more than one workspace is connected, choose which one.
 3. Select **Add to Slack**.
 4. Approve Slack's consent screen. The workspace is already selected.
-5. If one-click setup is unavailable, return to **Integrations**, expand the channel, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
+5. If one-click setup is unavailable, return to **Channels and triggers**, expand the channel, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
 
 Publish first because Slack verifies the manifest's channel Request URL when it creates the Slack app. New installs use `/v1/channels/{channel_id}/slack/events`.
 
@@ -80,7 +86,7 @@ A manually created Slack app needs its name and description updated in Slack.
 
 1. In Slack, enter `/invite @botname` in a channel.
 2. Mention the bot.
-3. Return to the Agent's **Integrations** tab and expand the Slack channel.
+3. Return to the Agent's **Channels and triggers** tab and expand the Slack channel.
 4. Confirm that the checklist records the first message.
 
 To stop new Slack messages without deleting the configuration, select **Unpublish** on this channel. Existing sessions remain available.
@@ -114,11 +120,22 @@ Open **Settings** > **Health** to review pending Slack permission or credential 
 The same warning appears beside the endpoint and under **Action required** in notifications.
 Reading or snoozing an announcement leaves the issue open.
 
-For an app Everruns created, select **Reconnect Slack** and approve the additional permissions.
-For a manually configured app, add the listed bot scopes in Slack, reinstall the existing app,
-and save the refreshed bot token in the endpoint editor. Your Slack administrator may need
-to approve the change. Use **Check again** to verify the installation; unavailable or stale
-permission evidence keeps the issue open until a current check succeeds.
+Select **Fix in Slack** on the issue. Everruns adds the missing bot scopes to the app's
+manifest, keeping its other settings, and opens Slack so you can approve them:
+
+- For an app Everruns created, Slack's approval screen opens and returns you to the
+  issue, which is checked again.
+- For an app you configured by hand, Everruns updates it through the organization's
+  connected Slack workspace and opens the app's **Install App** page. Reinstall it there;
+  the bot token stays the same. Come back to the Health page and it checks again. This
+  works when the person who connected the workspace can edit the app in Slack. If not,
+  the issue says why and lists the manual steps: add the listed bot scopes in Slack,
+  reinstall the existing app, and save the refreshed bot token in the endpoint editor.
+
+When several apps need the same fix, **Fix N Slack apps** goes through them one at a
+time. Your Slack administrator may need to approve the change. Use **Check again** to
+verify the installation; unavailable or stale permission evidence keeps the issue open
+until a current check succeeds.
 
 ## See also
 

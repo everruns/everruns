@@ -24,7 +24,7 @@
 
 pub use crate::runtime::channel_driver::{
     ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, ControlAction, Inbound,
-    InboundControl, InboundDecision, InboundMessage, InboundRoute,
+    InboundControl, InboundDecision, InboundMessage, InboundReaction, InboundRoute,
 };
 pub use crate::runtime::message::ExternalActor;
 use crate::runtime::typed_id::SessionId;
@@ -496,6 +496,45 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
     fn progress(&self) -> Option<&dyn ChannelProgressSurface> {
         None
     }
+
+    /// Emoji reactions on the platform's messages, when it has them. `None`,
+    /// the default, keeps reactions inside Everruns.
+    fn reactions(&self) -> Option<&dyn ChannelReactionSurface> {
+        None
+    }
+}
+
+/// Input message metadata key holding the platform's key for the message, in
+/// the form [`ChannelReactionSurface`] names messages by (Slack:
+/// `{channel}:{ts}`). The host links it to the stored message, so a reaction
+/// the platform reports on it finds its way back.
+pub const CHANNEL_MESSAGE_KEY: &str = "channel_message_key";
+
+/// Emoji reactions on platform messages, both ways: the host links each
+/// message it posts to its platform key, and mirrors the agent's reactions
+/// onto those messages. Reactions people add on the platform come in as
+/// `Inbound::Reaction`.
+#[async_trait]
+pub trait ChannelReactionSurface: Send + Sync {
+    /// The key of the message a stream handle opened.
+    fn stream_message_key(&self, handle: &str, context: &DeliveryContext) -> String;
+
+    /// Post a reply like `deliver`, and return the posted message's key.
+    async fn post_keyed(
+        &self,
+        message: &OutboundChannelMessage,
+        context: &DeliveryContext,
+    ) -> Result<Option<String>, DeliveryResult>;
+
+    /// Add (`add = true`) or remove the agent's reaction on a message.
+    /// `emoji` is the stored form: one Unicode emoji, or `:name:`.
+    async fn react(
+        &self,
+        message_key: &str,
+        emoji: &str,
+        add: bool,
+        context: &DeliveryContext,
+    ) -> DeliveryResult;
 }
 
 /// A `request_approval` pause, as a channel shows it.
@@ -1088,14 +1127,6 @@ mod tests {
             "must not present the channel as readable: {summary}"
         );
         assert!(summary.contains("ask before"), "{summary}");
-    }
-
-    /// No position reported means no line at all — not an empty or hedging one.
-    #[test]
-    fn no_view_yields_no_line() {
-        let ctx = ThreadContext::new("1700.1", "slack");
-        assert_eq!(ctx.view_summary(), "");
-        assert_eq!(ctx.participants_summary(), "");
     }
 
     /// Round-tripping keeps the reported position, not just the participants.

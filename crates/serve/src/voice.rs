@@ -199,7 +199,7 @@ async fn call_session(
 }
 
 fn top_level(host: &Host, agent: &str) -> crate::Result<()> {
-    if host.app.agent(agent).is_none_or(|entry| entry.sub) {
+    if host.app.agent(agent).is_none() {
         return Err(ApiError::NotFound(format!("agent {agent}")).into());
     }
     Ok(())
@@ -467,7 +467,6 @@ pub(crate) fn card(host: &Host) -> Value {
         .inner
         .agents
         .iter()
-        .filter(|agent| !agent.sub)
         .map(|agent| (agent.name.clone(), json!(route(&agent.name))))
         .collect();
     let model = match config.mode {

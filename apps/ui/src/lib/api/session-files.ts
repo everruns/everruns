@@ -48,6 +48,13 @@ function actionPath(workspaceId: string, action: string): string {
  * everruns. Each path segment is percent-encoded; `/` stays a separator to match
  * the `{*path}` wildcard route.
  */
+/** Raw bytes of a workspace file, with its content type; playable by `<video>`. */
+export function fileDownloadUrl(workspaceId: string, path: string): string {
+  const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+  const encodedPath = normalizedPath.split("/").map(encodeURIComponent).join("/");
+  return `${getApiBaseUrl()}/v1/workspaces/${workspaceId}/fs/_/download/${encodedPath}`;
+}
+
 export function htmlPreviewUrl(workspaceId: string, path: string): string {
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
   const encodedPath = normalizedPath.split("/").map(encodeURIComponent).join("/");

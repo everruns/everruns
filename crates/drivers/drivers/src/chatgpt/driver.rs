@@ -33,6 +33,10 @@ pub const REJECTED_FIELDS: &[&str] = &[
 ];
 struct PlanRequest;
 impl OpenResponsesRequestExtension for PlanRequest {
+    fn supports_native_non_streaming(&self) -> bool {
+        false
+    }
+
     fn decorate(&self, body: &mut Value, _config: &LlmCallConfig) -> Result<()> {
         let Some(body) = body.as_object_mut() else {
             return Err(AgentLoopError::llm("Invalid ChatGPT request"));
@@ -57,7 +61,7 @@ impl OpenResponsesRequestExtension for PlanRequest {
                 )
             }) {
                 return Err(AgentLoopError::llm(
-                    "This tool is unavailable with the ChatGPT plan. Use a local tool or choose an API provider.",
+                    "This tool is unavailable with the ChatGPT Plan. Use a local tool or choose an API provider.",
                 ));
             }
             // The plan route accepts client-executed tools inside namespaces.
@@ -153,7 +157,7 @@ impl ChatDriver for ChatGptChatDriver {
         }) {
             return Err(AgentLoopError::llm_kind(
                 everruns_contracts::LlmErrorKind::InvalidRequest,
-                "This hosted tool is unavailable with the ChatGPT plan. Use a local tool or choose an API provider.",
+                "This hosted tool is unavailable with the ChatGPT Plan. Use a local tool or choose an API provider.",
             ));
         }
         let mut config = config.clone();
@@ -172,49 +176,60 @@ impl ChatDriver for ChatGptChatDriver {
         &self,
         endpoint: &ProviderEndpoint,
     ) -> Result<Option<Vec<DiscoveredModel>>> {
-        let url = endpoint
-            .url("models")
-            .ok_or_else(|| AgentLoopError::llm("ChatGPT endpoint is not configured"))?;
-        let resolved = endpoint.resolve("GET", url, &[]).await?;
-        let mut request = self.inner.client().get(&resolved.url);
-        for (name, value) in resolved.headers {
-            request = request.header(name, value);
-        }
-        let response = request
-            .send()
+        list_catalog(&self.inner.client(), endpoint, "models", "ChatGPT")
             .await
-            .map_err(|_| AgentLoopError::llm("ChatGPT model discovery failed"))?;
-        if !response.status().is_success() {
-            return Err(AgentLoopError::llm_http(
-                response.status().as_u16(),
-                "",
-                "ChatGPT model discovery failed. Reconnect the account or manage its usage.",
-            ));
-        }
-        let body: Value = response
-            .json()
-            .await
-            .map_err(|_| AgentLoopError::llm("Invalid ChatGPT model catalog"))?;
-        let models = body["models"]
-            .as_array()
-            .ok_or_else(|| AgentLoopError::llm("ChatGPT returned no model catalog"))?;
-        Ok(Some(
-            models
-                .iter()
-                .filter(|m| m["visibility"] == "list")
-                .filter_map(|m| {
-                    Some(DiscoveredModel {
-                        model_id: m["slug"].as_str()?.into(),
-                        display_name: m["display_name"].as_str().map(str::to_owned),
-                        capabilities: vec!["chat".into()],
-                        created_at: None,
-                        owned_by: None,
-                        discovered_profile: None,
-                    })
-                })
-                .collect(),
-        ))
+            .map(Some)
     }
+}
+/// Fetch a ChatGPT-backend model catalog (`{"models":[{"slug",..}]}`), shared by
+/// the plan and Codex routes. Keeps listed models in the provider's order.
+pub(crate) async fn list_catalog(
+    client: &reqwest::Client,
+    endpoint: &ProviderEndpoint,
+    path: &str,
+    label: &str,
+) -> Result<Vec<DiscoveredModel>> {
+    let url = endpoint
+        .url(path)
+        .ok_or_else(|| AgentLoopError::llm(format!("{label} endpoint is not configured")))?;
+    let resolved = endpoint.resolve("GET", url, &[]).await?;
+    let mut request = client.get(&resolved.url);
+    for (name, value) in resolved.headers {
+        request = request.header(name, value);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|_| AgentLoopError::llm(format!("{label} model discovery failed")))?;
+    if !response.status().is_success() {
+        // The body may echo account details; keep only the status.
+        return Err(AgentLoopError::llm_http(
+            response.status().as_u16(),
+            "",
+            format!("{label} model discovery failed. Reconnect the account or manage its usage."),
+        ));
+    }
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|_| AgentLoopError::llm(format!("Invalid {label} model catalog")))?;
+    let models = body["models"]
+        .as_array()
+        .ok_or_else(|| AgentLoopError::llm(format!("{label} returned no model catalog")))?;
+    Ok(models
+        .iter()
+        .filter(|m| m["visibility"] == "list")
+        .filter_map(|m| {
+            Some(DiscoveredModel {
+                model_id: m["slug"].as_str()?.into(),
+                display_name: m["display_name"].as_str().map(str::to_owned),
+                capabilities: vec!["chat".into()],
+                created_at: None,
+                owned_by: None,
+                discovered_profile: None,
+            })
+        })
+        .collect())
 }
 pub fn provider(
     id: impl Into<everruns_contracts::ProviderKey>,
@@ -231,7 +246,7 @@ pub fn descriptor() -> DriverDescriptor {
             .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
             .into_boxed_driver()
     });
-    descriptor.display_name = "ChatGPT plan".into();
+    descriptor.display_name = "ChatGPT Plan".into();
     descriptor.credential_schema = CredentialFormSchema::api_key(
         "",
         "Connect with your ChatGPT account. Credentials are managed by the host.",

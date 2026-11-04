@@ -20,7 +20,7 @@ tags:
 
 > **Status: implemented.** Core’s `mcp` feature exposes the shared client; the runtime
 > builds `mcp_tool_definitions` from its scoped servers
-> (`crates/core/src/host/mcp.rs`, `crates/core/src/host/runtime.rs`). The paragraph
+> (`crates/core/src/host/mcp.rs`, `crates/core/src/host/runtime/mod.rs`). The paragraph
 > below records the original problem state that motivated the extraction.
 
 The MCP client already works on the control plane: org-managed and scoped
@@ -39,6 +39,20 @@ depend on, wire it into the runtime's discovery + execution path, add an
 **optional stdio transport behind a cargo feature** (hard-off in hosted
 builds), and make **credential acquisition pluggable** so non-web (CLI) hosts
 can authenticate. Acceptance is MCP working in the example coding CLI.
+
+## HTTP response bounds
+
+Every response from an MCP server is untrusted, including initialization,
+continuations, task polls, resources, and error bodies. The [HTTP reader](../../crates/core/src/mcp/http/body.rs)
+counts streamed bytes before retaining them and drops oversized bodies. A single
+request deadline covers response headers and body reading; HTTP failures retain
+their status and a bounded excerpt even if the body fails or stalls. This keeps
+credential refresh and cache invalidation independent of error-body quality.
+
+Operators can raise the ordinary response bound for legitimate large results;
+see [MCP HTTP response limits](../../docs/sre/environment-variables.md#mcp-http-response-limits).
+Discovery keeps its existing aggregate catalog budgets. DNS pinning, egress
+policy, sessions, and multi-round-trip negotiation use the same request path.
 
 ## Motivation and constraints
 
@@ -155,6 +169,18 @@ is the issuer), the token is bound to the server with a `resource` indicator
 (RFC 8707), and `prepare_login`/`complete_login` split the flow so the host
 supplies only the callback leg, a loopback listener for a CLI, a redirect
 route for the control plane. Persistence is the `McpTokenStore` trait.
+
+Outbound login can negotiate Client ID Metadata Documents (CIMD) through
+`prepare_login_with_options`. A host-supplied configured or saved registration
+wins; otherwise an explicitly advertised CIMD capability selects the host's
+published HTTPS metadata URL as a public client, falling back to DCR when that
+option is unavailable. Hosts retain ownership of issuer-scoped registrations
+and must publish a document covering their redirect URIs. The client validates
+the identifier's syntax and preserves its exact spelling, but never fetches
+it. Authorization and token errors do not trigger a second registration attempt.
+PKCE, callback state/issuer checks, resource binding and token persistence use
+the same path for all client types. This is independent of inbound `/oauth/*`
+support, which does not gain arbitrary-URL metadata fetching.
 
 Every OAuth request goes through `EgressService` with DNS pinning. The
 authorization-server URL is discovered *from the remote MCP server*, so it is
@@ -317,7 +343,7 @@ modules while the default kernel dependency graph remains portable.
 | stdio transport | `everruns-core` (`mcp` feature), `#[cfg(feature = "mcp-stdio")]` |
 | Auth provider trait | `everruns-core` (`mcp` feature); web-OAuth adapter in `server`/`worker` |
 | Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/contracts/src/runtime/mcp_server.rs` |
-| Runtime discovery | `crates/core/src/host/runtime.rs` (replace `vec![]`), `crates/core/src/host/mcp.rs` (live per-turn discovery) |
+| Runtime discovery | `crates/core/src/host/runtime/mod.rs` (replace `vec![]`), `crates/core/src/host/mcp.rs` (live per-turn discovery) |
 | Runtime execution | `crates/core/src/host/runtime_host.rs::execute_act_activity` (composite executor) |
 | Adapter hook | `RuntimeHostAdapter::mcp_executor()` |
 | Coding CLI | `examples/coding-cli` (`.mcp.json`, `/mcp`, auth provider) |
@@ -353,6 +379,21 @@ Landed:
   `Mcp-Method`, `Mcp-Name`). Pure pieces in `crates/core/src/mcp/protocol.rs`,
   orchestration in `http.rs`. Contract detail in
   [mcp-servers.md](mcp-servers.md) ("Multi-era protocol support").
+- MCP Tasks client (`2026-07-28`, `io.modelcontextprotocol/tasks`): the HTTP
+  transport declares the extension on `tools/call` and `tasks/*`, waits for a
+  `CreateTaskResult` by polling `tasks/get` (task id in the param and the
+  `Mcp-Name` header, the server's `pollIntervalMs` bounded to 250 ms..30 s),
+  answers `input_required` through the same URL and form elicitation handlers
+  as MRTR (each key once) with `tasks/update`, and sends `tasks/cancel` for a
+  task it stops waiting for: wait limit, a question that stands the call down
+  for a person, or a dropped call. A rerun creates a new task. Each change of
+  the server's `statusMessage` becomes a `tool.progress` event on the call
+  (`report_mcp_call_progress`, a task-local the MCP proxy tool scopes around
+  the call; server text trimmed and cut to 200 characters). Decisions in the
+  header of `crates/core/src/mcp/tasks.rs`; tests in
+  `crates/core/tests/consolidated/mcp/tasks.rs`, and against Everruns' own
+  `/mcp` in `crates/server/tests/domain/mcp_tasks_interop_test.rs`. stdio and
+  the connection-less `http_call_tool` do not declare it.
 
 Remaining follow-up:
 

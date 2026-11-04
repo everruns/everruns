@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Bound Secrets"
-description: "Secrets bound to one URL and auth form: write-only values the platform puts on outbound HTTP requests while the agent only ever sees a placeholder."
+description: "Scoped write-only credential bindings, secure HTTP injection and response capture, durable consent, and per-request revocation."
 tags:
   - everruns
   - security
@@ -10,114 +10,128 @@ tags:
 ---
 # Bound Secrets
 
-> Status: **Approved 2026-10-12.** Steps 1 and 3 built; step 2 (in-chat card) next.
+Status: **Implemented; controlled HTTPS capture and reuse qualified.**
 
-## Problem
+A bound credential combines an encrypted write-only value with a destination
+and placement. The model uses `$NAME`; the host substitutes its value only at
+the authorized transport boundary. Ordinary capability-owned session secrets
+remain separate. Memory ownership and storage are excluded from this change.
 
-A Bashkit agent that calls a regular HTTP API needs a key. Before bound
-secrets the only route was a session secret that the model read with `secret_store get`
-([session storage](../../crates/core/src/host/session_services/capabilities/session_storage.rs))
-and pastes into a curl command or a file. The key then lives in the
-transcript, tool events, traces, the workspace and the Files view. Session
-secrets are also per session, so every new session, and every trigger that
-creates one, needs the key again.
+## Ownership and authority
 
-## Decision
+[Resource access](resource-access.md) owns the common contract: tenant, typed
+owner, verified invocation, explicit grants, and revocation. Credential owners
+may be a session, agent, virtual user, or organization. User and service usage
+are explicit; there is no scope-precedence or identity-fallback chain. Multiple
+authorized bindings with the same reference name fail as ambiguous.
 
-A **bound secret** is a secret stored with where it may be sent and how. The
-model only handles a placeholder; the platform puts the real value on the
-wire, and only for requests to the bound URL.
+Personal use requires the persisted invocation's verified virtual user in a
+private Console/API transcript and a workspace used by one session. Channel/App
+delivery surfaces have no proved private audience and refuse personal use;
+explicit service grants remain available. It cannot borrow the session owner, a previous
+speaker, or administrative impersonation. Agent credentials follow the actual
+active responder. Organization ownership grants no implicit runtime access.
+A use grant never permits management or resharing.
 
-| Field | Meaning |
-|---|---|
-| `name` | Env var the shell sees, e.g. `JEV_API_KEY` |
-| value | Write-only, envelope-encrypted like every secret ([encryption](encryption.md)) |
-| `url` | `scheme://host[:port][/path-prefix]` the value may be sent to |
-| `auth` | `bearer` (`Authorization: Bearer <v>`) or `header` with a header name |
-| scope | `session`, or `agent` (every session and trigger of the agent) |
+## One binding domain
 
-The agent writes ordinary code:
+`credential_bindings` replaces `agent_mcp_secret_bindings` and owns both HTTP
+and MCP parameter values. Typed shared access headers and grants have tenant
+foreign keys. Metadata APIs never return encrypted or plaintext values.
+The shared command tree exposes metadata declaration, listing, revocation and
+explicit grant administration with worked CLI examples. It never accepts a bound
+credential value; secure entry stays on the dedicated authenticated HTTP form.
 
-```bash
-curl -sS https://api.typesafe.ai/v1/systemone \
-  -H "Authorization: Bearer $JEV_API_KEY" --data @req.json
-```
+Legacy agent APIs adapt to this domain. Bound `session_secrets` migrate with
+stable IDs and encrypted bytes to session-wide service bindings, preserving
+their original explicit session lifetime. No personal or durable agent grant
+is inferred. Capability-owned unbound secrets stay in `session_secrets`.
+Old workers cannot write bound values to that retired store or resolve values
+using only a session ID; server and workers must upgrade together.
 
-`$JEV_API_KEY` holds `bk_placeholder_<hex>`. Bashkit's
-`credential_placeholder` replaces the placeholder in outbound headers only for
-requests matching the bound URL, after its allowlist check and per redirect
-hop. Elsewhere the placeholder goes out unchanged and is worthless.
+HTTP bindings allow HTTPS origin plus path prefix, bearer authorization, a
+named header, or a named form field. URL matching is structural and path-bound;
+encoded separators/dot segments and transport-owned headers fail closed.
+References in URLs, JSON, arbitrary bodies, and mixed field strings are refused.
+Form values are encoded only after substitution. Bindings never widen egress.
 
-### Rules
+MCP bindings name an exact server endpoint, tool, and top-level parameter. The
+model-visible schema omits the bound parameter. The server authorizes and
+injects immediately before sending, then redacts known values from results.
 
-- **Write-only.** No API, tool or internal command returns a bound value.
-  `secret_store get` refuses a bound name and points at `$NAME`; since
-  2026-10-13 it refuses every name, so no session secret reaches the model
-  (TM-AGENT-038);
-  `secret_store list` shows name, URL and auth so the model knows what to use.
-- **Agent scope.** An agent-scoped bound secret is an agent credential of kind
-  `http`, next to the MCP tool-parameter kind on the agent's **Credentials**
-  tab, not a separate store: one place lists every write-only key an agent
-  holds. It is declared without a value (Platform Chat or **Add binding**) and
-  the person pastes the value there. It resolves from the session's agent, so
-  shared sessions and per-invocation trigger sessions get it. A session secret
-  with the same name wins.
-- **No network by itself.** The bound URL must still pass the agent's network
-  access list and the egress policy; binding never widens egress.
-- **Rebinding clears the value.** Changing an existing secret's URL or auth
-  requires the value again, so a key is never redirected silently.
-- **Known-value redaction.** Bound values are redacted from shell output, the
-  same way MCP credential injection redacts injected values
-  ([executor](../../crates/core/src/mcp/executor.rs)), so an API that echoes
-  headers back still cannot leak the key into the transcript.
-- **Headers only.** Query-string or body credentials are not covered.
+## HTTP capture and consent
 
-## Setting a bound secret
+[Secure web_fetch credentials](../execution/web-fetch-credentials-request.md)
+owns detailed acceptance requirements; implementation and exported schemas own
+field shapes. A request may capture up to eight declared JSON-pointer fields.
+The host reads a complete bounded response, rejects duplicate JSON keys and
+invalid/missing captures, extracts all values, replaces their fields with
+references, and redacts known literal, JSON-escaped, and form-encoded echoes.
+Only then may a result reach hooks, events, output files, or the model.
 
-1. **In chat, like a connection.** The agent calls `request_secret` (name,
-   URL, auth, scope, reason). The chat shows a **Secret** card: masked field,
-   bound URL, scope, Save / Decline. The browser posts the value to the API;
-   it never passes through the model or the transcript. The agent is told
-   only "`JEV_API_KEY` saved, use `$JEV_API_KEY`".
-2. **Over MCP.** The platform MCP tool `session_set_secret` already collects
-   values through URL elicitation, so the value never passes through the
-   calling model ([elicitation](../../crates/server/src/api/mcp_endpoint/elicitation.rs)).
-   It gains optional `url`, `auth`, `header` and an agent scope; the signed
-   elicitation token carries the binding.
-3. **API, CLI and agent page.** `PUT /v1/sessions/{id}/storage/secrets`
-   accepts bindings; agent-scoped ones are agent credentials
-   (`/v1/agents/{id}/credentials` with `env_name` and `url`), shown on the
-   existing **Credentials** tab.
+All captures and the sanitized result commit atomically. Failed validation or
+persistence withholds the entire response. Authentication polling returns only
+allowlisted error codes; pending/slow-down responses can retry the same approved
+plan. An uncertain already-dispatched request is never automatically replayed.
 
-## Replay and redirection protection
+Persistent capture, replacing a value, or a cross-origin destination requires
+durable, expiring, single-use consent before dispatch. Consent binds the exact
+request, owner, names, destinations, placements, and expiry extraction. The UI
+shows those facts and offers approve/decline only. Ordinary always-allow rules
+cannot authorize capture. Approval requires the authenticated owner-management
+policy; a runtime or unrelated participant cannot consent for a personal owner.
 
-- **Single-use requests.** `request_secret` creates a pending request (id,
-  session, agent, name, binding, scope, random nonce, 15-minute expiry). The
-  card submits `{request_id, nonce, value}` only. The server checks pending,
-  unexpired, same session, and that the submitter may write the session (and
-  manage the agent for agent scope), then stores and marks it consumed in one
-  transaction. Replays, second tabs and stale cards get "already used or
-  expired".
-- **Binding is server-side.** URL, auth, name and scope come from the request
-  row (or the signed elicitation token), never from the browser payload.
-- **Injected requests.** The card shows the bound host in full, and the host
-  must already pass the agent's network access list and egress policy.
-- **Placeholders do not replay.** A fresh placeholder per shell call; one
-  copied out of a transcript maps to nothing.
-- **API sets** use normal auth and the `/v1/commands` idempotency key.
+## Runtime and lifecycle
 
-## Threats
+Bashkit receives fresh opaque environment references, never values. Its egress
+adapter resolves authorization at **each HTTP send**, including a long shell
+call. Header/form validation and bounded response redaction run before any
+response bytes enter the interpreter. Normal requests retain their existing
+transport and output behavior. `web_fetch` uses the same credential service,
+URL matcher, and redactor; capture cannot crawl, render, extract, or save files.
+Credential responses cannot redirect secrets to another destination.
 
-TM-BASH-030 (bound value disclosed to the model), TM-BASH-031 (bound value
-sent to another host) and TM-BASH-032 (replayed or forged secret request) in
-the [threat model](threat-model.md).
+Secure entry uses a masked field with no readback or prefill. Forms clear on
+success, failure, cancellation, or owner/organization change. Revision checks
+bind rotation to the reviewed target; revocation cannot resurrect a stale
+capture. Expiry blocks use with renewal guidance. Settings shows expiry and
+recent use; org/agent/session and virtual-user surfaces use the same panel.
+Credential/grant changes have atomic payload-free access audit entries.
 
-## Rollout
+Connection-backed bindings retain a reference rather than copying OAuth tokens.
+Provider adapters must enforce audience and narrowing. GitHub App HTTP bindings
+require the native selected service identity, explicit repository/permission
+limits, `api.github.com`, and installation-scope evidence. Personal tokens cannot
+satisfy restricted exposure. GitHub's existing App/person selection, setup,
+refresh, and verified inbound event routing remain provider-owned.
 
-1. Store, API, Bashkit injection and redaction: binding column on
-   `session_secrets`, `http` credential kind on agent credentials, write-only
-   `secret_store`.
-2. `request_secret` tool, pending requests, in-chat Secret card.
-3. MCP `session_set_secret` binding and agent scope.
-4. Later: the same rule at the egress boundary, for managed sandboxes and
-   `web_fetch`.
+## Limits
+
+Credential use does not change the organization’s existing session-history
+management permissions. Private execution excludes other runtime participants
+and shared workspaces; transcript/export governance remains owned by session
+policies.
+
+Revocation blocks subsequent authorized sends; it cannot recall requests already
+sent or data already disclosed. Redaction covers declared captured values and
+known injected literals/JSON/form encodings. Arbitrary reversible transforms
+such as base64 are outside that guarantee. Every expected credential response
+field must be declared; a host cannot infer unknown token fields reliably.
+
+Threats: TM-BASH-030/031/032/033 and TM-AGENT-038 in the
+[threat model](threat-model.md). The common resource contract owns connection
+access; this decision does not migrate memory authorization.
+
+## Qualification
+
+Migration and authorization tests cover preserved encrypted values, exact
+subjects/responders, consent replay, stale revisions, provider narrowing and
+per-send revocation. [UI acceptance](../test-cases/ui/agent_credentials/TC004_scoped_credentials_and_capture.md)
+covers all four owner surfaces and exact-request consent. A disposable HTTPS
+response was captured through the live approval UI, reused across sessions,
+agents and Bashkit, and revoked; events, exports, persisted output and logs
+contained no captured value.
+
+The real Shipmail account acceptance remains blocked on the handoff's auth.md
+URL and authorized account context. Controlled-fixture qualification does not
+claim completion of that provider account flow.

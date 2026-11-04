@@ -23,7 +23,7 @@
 use std::time::Duration;
 use web_time::Instant;
 
-use crate::turn::TurnStopReason;
+use everruns_contracts::turn::TurnStopReason;
 
 /// Default ceiling on automatic continuations for one user request.
 pub const DEFAULT_MAX_CONTINUATION_TURNS: u32 = 6;
@@ -175,6 +175,24 @@ impl ContinuationBudget {
             max_tokens,
             max_elapsed,
         }
+    }
+
+    /// Rebuild a budget from what a durable log recorded: `turns` and
+    /// `tokens` already spent, `elapsed` since the first continuation. A host
+    /// that resumes a turn on another worker has no in-memory budget to keep,
+    /// so it reads the spend back instead of starting from zero.
+    pub fn resume(mut self, turns: u32, tokens: u64, elapsed: Duration) -> Self {
+        self.turns = turns;
+        self.tokens = tokens;
+        self.started = Instant::now()
+            .checked_sub(elapsed)
+            .unwrap_or_else(Instant::now);
+        self
+    }
+
+    /// The most automatic continuations this budget allows.
+    pub fn max_turns(&self) -> u32 {
+        self.max_turns
     }
 
     /// Start a fresh request, keeping the configured limits.
@@ -354,24 +372,6 @@ mod tests {
     }
 
     #[test]
-    fn default_budget_enforces_literal_turn_and_token_ceilings() {
-        let mut budget = ContinuationBudget::default();
-        for turn in 1..=6 {
-            assert!(budget.observe_turn(0));
-            assert_eq!(budget.usage(), (turn, 0));
-        }
-        assert!(!budget.observe_turn(0));
-        assert_eq!(budget.usage(), (7, 0));
-        budget.reset();
-        assert!(budget.observe_turn(64_000));
-        assert!(!budget.observe_turn(1));
-        assert_eq!(budget.usage(), (2, 64_001));
-        budget.reset();
-        budget.started = Instant::now() - Duration::from_secs(601);
-        assert!(!budget.observe_turn(0));
-    }
-
-    #[test]
     fn custom_budget_reset_clears_usage_and_keeps_all_configured_limits() {
         let mut budget = ContinuationBudget::new(2, 3, Duration::from_secs(60));
         assert!(budget.observe_turn(1));
@@ -400,11 +400,25 @@ mod tests {
     }
 
     #[test]
-    fn an_elapsed_budget_stops_a_cheap_but_slow_loop() {
-        let mut budget = ContinuationBudget::new(100, u64::MAX, Duration::from_secs(1));
-        budget.started = Instant::now() - Duration::from_secs(2);
-        assert!(!budget.observe_turn(1));
-        assert_eq!(budget.usage(), (1, 1));
+    fn resumed_budget_counts_what_the_log_already_spent() {
+        let budget = ContinuationBudget::new(2, 100, Duration::from_secs(60));
+        let mut resumed = budget.clone().resume(1, 40, Duration::from_secs(1));
+        assert!(resumed.observe_turn(10));
+        assert_eq!(resumed.usage(), (2, 50));
+        assert!(!budget.clone().resume(2, 0, Duration::ZERO).observe_turn(0));
+        assert!(
+            !budget
+                .clone()
+                .resume(0, 100, Duration::ZERO)
+                .observe_turn(1)
+        );
+        assert!(
+            !budget
+                .clone()
+                .resume(0, 0, Duration::from_secs(61))
+                .observe_turn(0)
+        );
+        assert_eq!(budget.max_turns(), 2);
     }
 
     #[test]

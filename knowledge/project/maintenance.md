@@ -100,7 +100,7 @@ Before a release, maintenance should cover:
 - examples and demos actually run: compiling an example proves nothing about whether it works, so the Framework examples that drive a real model run live ([`scripts/run-live-examples.sh`](../../scripts/run-live-examples.sh), also a job in the weekly Integration Live Sweep), and examples, docs snippets, and published READMEs name current flagship models rather than a superseded family
 - feature completeness across product surfaces: changed or recently shipped features should have their intended UI, backend, MCP, CLI, docs, tests, and manual-test coverage checked for disconnected, stubbed, or contradictory behavior
 - crate documentation for every crate whose public surface changed: its `README.md` and crate-level rustdoc must still meet the crate documentation standard in `knowledge/foundations/code-organization.md` (abstract, ecosystem line, example, docs links, license; no publishing mechanics or internal `knowledge/` links; badges only on published crates)
-- the plugin surfaces reviewed against recent upstream plugin-platform changes: the `everruns` coding-agent plugin in [everruns/plugins](https://github.com/everruns/plugins) (its CI checks generated manifests and that its core skill covers every MCP tool) and the per-host manifests under `plugins/resend/`; run `scripts/test-plugins.sh` to prove version parity and that first-party plugins were not re-added here
+- the plugin surfaces reviewed against recent upstream plugin-platform changes: the `everruns` coding-agent plugin in [everruns/plugins](https://github.com/everruns/plugins) (its CI checks generated manifests and that its MCP skill covers every MCP tool) and the per-host manifests under `plugins/resend/`; run `scripts/test-plugins.sh` to prove version parity and that first-party plugins were not re-added here
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
 
@@ -116,3 +116,53 @@ Maintenance output should make it easy to evaluate readiness:
 ## Frequency
 
 Run maintenance before each release and whenever repo health visibly drifts. Sections can be handled independently during normal development.
+
+## Installed Zod compatibility and collection guards
+
+Resolve official Zod4.6.7 everywhere, including legacy consumers. A bare major
+replacement changes their API: `zod-v3-compatibility.json` pins exact upstream
+consumer files and redirects only their module imports/declarations to the
+package's public `zod/v3` API. Supported v4 imports remain v4; application/vendor
+strings are unchanged. No package is relabeled and no advisory is ignored.
+
+The compatibility engine and vendored engines still need the narrow upstream
+leading-size-check backport: reject oversized constrained collections before
+walking elements. `patch-zod-v3.mjs` authenticates both original and patched
+bytes, rejects unknown consumers/versions/sources and replaces inodes atomically
+without modifying pnpm's shared store. Normal install and UI Docker builds run
+it before compilation. Shared-hook/data changes trigger all affected CI/image
+preparation (including OSS docs). `--check` verifies without writing.
+
+Coverage includes both design.md CLI/library copies, CopilotKit license-verifier,
+Next's config/dev-MCP validators and Playwright protocol tooling when installed,
+plus direct compatibility ESM/CJS. The actual AG-UI v3 schema still parses the
+same request and works with the legacy JSON-schema converter; supported v4
+consumers use patched v4. Tests reproduce the original three-element walk and
+prove zero element visits after rejection, valid/lower-bound/custom-error and
+sync/async compatibility, map/set bounds, module-only redirection and integrity.
+Unconstrained collections still need application bounds; v4 preserves a preceding
+custom collection check that may rewrite its input. This is not an arbitrary
+new input limit or a claim about all resource-exhaustion cases.
+
+SaaS CopilotKit Node routes belong to the parked support app; other consumers
+are browser/build/automation code. No exploitation or incident cause is claimed.
+Keep effective installed-byte evidence separate from registry audit counts.
+Replace temporary backports with verified compatible upstream fixes when they
+exist; retain the compatibility imports while consumers require API3. Library
+publication is separate from a source merge or a SaaS deployment.
+
+The same bounded review found older app dependencies in full production audits:
+UI Next16.3.8 and UI/docs DOMPurify3.4.16. Update to official16.4.2/3.4.17,
+without changing the strict seven-day release-age policy. Next16.4.2 was already
+validated by the SaaS wrapper; the OSS pin in SaaS stays unchanged.
+
+Docs' Astro7.3.5 also resolves http-cache-semantics4.2.0. Its upstream maintainer
+disputes GHSA-ch52-4w7c-c8xp in issue56; advisory metadata lists no fixed release.
+The authentic upstream4.3.0 source/registry release is outside the affected
+range and remains compatible with Astro's declared range; this is a package
+update, not a claim of proven CVE exploitation or a security-policy exception.
+Astro's actual build-time remote-image helper only uses storable/timeToLive,
+constructs its own requests and never passes client max-stale to the reported
+satisfiesWithoutRevalidation path. The docs Worker serves built assets; it does
+not act as an authenticated shared HTTP cache. Keep that applicability evidence
+separate from scanner counts. No audit finding is ignored.

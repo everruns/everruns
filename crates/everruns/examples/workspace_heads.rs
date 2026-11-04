@@ -3,6 +3,7 @@
 //! ```text
 //! cargo run -p everruns --features local,openai --example workspace_heads -- /path/to/repo /path/to/state
 //! ```
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::path::PathBuf;
 use std::sync::Arc;

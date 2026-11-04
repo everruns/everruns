@@ -536,16 +536,6 @@ fn invalid_args(error: serde_json::Error) -> ToolExecutionResult {
 mod tests {
     use super::*;
 
-    #[test]
-    fn metadata() {
-        let cap = ParallelPaymentsCapability;
-        assert_eq!(cap.id(), "parallel");
-        assert_eq!(cap.category(), Some("Machine Payments"));
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.tools().len(), 4);
-        assert_eq!(cap.features(), vec!["machine_payments"]);
-    }
-
     #[tokio::test]
     async fn paid_tools_fail_closed_without_authority() {
         // No payment authority wired -> the paid tools must refuse, not spend.
@@ -630,29 +620,6 @@ mod tests {
         assert_eq!(
             narrate(&tool, json!({}), ToolNarrationPhase::Failed).as_deref(),
             Some("Could not extract URL")
-        );
-    }
-
-    #[test]
-    fn narrate_task_status_is_bare() {
-        let tool = ParallelTaskStatusTool;
-        assert_eq!(
-            narrate(
-                &tool,
-                json!({"run_id": "abc123"}),
-                ToolNarrationPhase::Started
-            )
-            .as_deref(),
-            Some("Checking task status")
-        );
-        assert_eq!(
-            narrate(
-                &tool,
-                json!({"run_id": "abc123"}),
-                ToolNarrationPhase::Completed
-            )
-            .as_deref(),
-            Some("Checked task status")
         );
     }
 

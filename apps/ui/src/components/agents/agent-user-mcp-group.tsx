@@ -9,6 +9,7 @@
 // servers whose name an agent or capability server already uses is reported
 // as skipped, because the agent's server wins a name clash.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { AlertTriangle, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -53,29 +54,41 @@ function settingValue(config: Record<string, unknown>, setting: (typeof SETTINGS
 export function AgentUserMcpGroup({
   agent,
   attachments,
+  readOnly = false,
 }: {
   agent: Agent;
   attachments: AgentMcpAttachment[];
+  readOnly?: boolean;
 }) {
   const capability = agent.capabilities.find((c) => c.ref === USER_MCP_CAPABILITY_ID);
   if (!capability) return null;
-  return <UserMcpGroup agent={agent} attachments={attachments} config={capability.config ?? {}} />;
+  return (
+    <UserMcpGroup
+      agent={agent}
+      attachments={attachments}
+      config={capability.config ?? {}}
+      definitionReadOnly={readOnly}
+    />
+  );
 }
 
 function UserMcpGroup({
   agent,
   attachments,
   config,
+  definitionReadOnly,
 }: {
   agent: Agent;
   attachments: AgentMcpAttachment[];
   config: Record<string, unknown>;
+  definitionReadOnly: boolean;
 }) {
+  const ui = useUiTranslations();
   const updateAgent = useUpdateAgent();
   const { data: myServers = [] } = useUserMcpServers("me");
   const [error, setError] = useState<string | null>(null);
 
-  const readOnly = agent.is_built_in === true;
+  const readOnly = definitionReadOnly || agent.is_built_in === true;
   const manage = settingValue(config, SETTINGS[1]);
   const byName = new Map(attachments.map((attachment) => [attachment.name, attachment]));
   const clashes = myServers.filter((server) => byName.has(server.name));
@@ -97,12 +110,13 @@ function UserMcpGroup({
       <CardHeader className="space-y-1">
         <CardTitle className="flex flex-wrap items-center gap-2">
           <UserRound className="size-4" />
-          User servers of the person chatting
-          <Badge variant="outline">Acts as the person</Badge>
+          {ui("User servers of the person chatting")}
+          <Badge variant="outline">{ui("Acts as the person")}</Badge>
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Each person&apos;s own servers from Settings &gt; My MCP servers. Not used by unattended
-          runs or conversations with several people.
+          {ui(
+            "Each person's own servers from Settings > My MCP servers. Not used by unattended runs or conversations with several people.",
+          )}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -129,14 +143,14 @@ function UserMcpGroup({
           })}
           {readOnly && (
             <p className="text-xs text-muted-foreground">
-              Built-in agent: these settings are managed by the platform.
+              {ui("Built-in agent: these settings are managed by the platform.")}
             </p>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 
         {clashes.length > 0 && (
-          <ul className="space-y-1" aria-label="Skipped user servers">
+          <ul className="space-y-1" aria-label={ui("Skipped user servers")}>
             {clashes.map((server) => {
               const winner = byName.get(server.name);
               const kind = winner?.source === "capability" ? "capability" : "agent";
@@ -147,10 +161,11 @@ function UserMcpGroup({
                 >
                   <AlertTriangle className="mt-0.5 size-3 shrink-0 text-destructive" />
                   <span>
-                    Your server <span className="font-mono text-foreground">{server.name}</span> is
-                    skipped here: name clash with {kind} server{" "}
-                    <span className="font-mono text-foreground">{server.name}</span>, which is used
-                    instead.
+                    {ui("Your server")}{" "}
+                    <span className="font-mono text-foreground">{server.name}</span>{" "}
+                    {ui("is skipped here: name clash with")} {kind} {ui("server")}{" "}
+                    <span className="font-mono text-foreground">{server.name}</span>
+                    {ui(", which is used instead.")}
                   </span>
                 </li>
               );
@@ -158,8 +173,8 @@ function UserMcpGroup({
           </ul>
         )}
 
-        <LinkButton href="/settings/agent-experience" variant="outline" size="sm">
-          My MCP servers
+        <LinkButton href="/settings/mcp-servers" variant="outline" size="sm">
+          {ui("My MCP servers")}
         </LinkButton>
       </CardContent>
     </Card>

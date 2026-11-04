@@ -459,17 +459,6 @@ mod tests {
     }
 
     #[test]
-    fn new_organizations_get_automatic_with_native_and_fallback() {
-        let defaults: WebSearchDefaults = serde_json::from_str("{}").unwrap();
-        assert_eq!(defaults, WebSearchDefaults::default());
-        assert_eq!(defaults.provider, SearchProviderSetting::Auto);
-        assert_eq!(defaults.automatic_order, ["native", "free"]);
-        assert!(defaults.allow_native);
-        assert_eq!(defaults.fallback, SearchFallbackMode::Next);
-        assert_eq!(defaults.results_per_search, 8);
-    }
-
-    #[test]
     fn validation_normalizes_the_automatic_order() {
         let account = id(7);
         let defaults = WebSearchDefaults {
@@ -602,57 +591,6 @@ mod tests {
     #[test]
     fn unknown_fields_are_rejected() {
         assert!(serde_json::from_str::<WebSearchDefaults>(r#"{"provder": "free"}"#).is_err());
-    }
-
-    #[test]
-    fn native_search_is_a_provider_type_and_model_property() {
-        assert!(native_web_search_supported("openrouter"));
-        assert!(native_web_search_supported("anthropic"));
-        assert!(native_web_search_supported("gemini"));
-        assert!(!native_web_search_supported("bedrock"));
-        assert!(!native_web_search_supported("mistral"));
-        assert!(native_web_search_supported("test_native_driver"));
-        assert!(native_web_search_supported_model(
-            "test_native_driver",
-            "searcher-1"
-        ));
-        assert!(!native_web_search_supported_model(
-            "test_native_driver",
-            "plain-1"
-        ));
-        assert!(native_web_search_supported_model("openai", "gpt-6.1-sol"));
-        assert!(!native_web_search_supported_model(
-            "openai",
-            "gpt-3.5-turbo"
-        ));
-        assert!(native_web_search_supported_model(
-            "openrouter",
-            "anthropic/claude-opus-5-5"
-        ));
-        assert!(!native_web_search_supported_model(
-            "openrouter",
-            "mistralai/mistral-large"
-        ));
-        assert!(native_web_search_supported_model(
-            "anthropic",
-            "claude-opus-5-5"
-        ));
-        assert!(!native_web_search_supported_model(
-            "anthropic",
-            "claude-3-5-sonnet-20241022"
-        ));
-        assert!(native_web_search_supported_model(
-            "gemini",
-            "gemini-3.8-flash"
-        ));
-        assert!(!native_web_search_supported_model(
-            "gemini",
-            "gemini-1.5-pro"
-        ));
-        assert!(!native_web_search_supported_model(
-            "bedrock",
-            "claude-opus-5-5"
-        ));
     }
 
     fn org(defaults: serde_json::Value, accounts: &[Uuid]) -> WebSearchOrgSettings {

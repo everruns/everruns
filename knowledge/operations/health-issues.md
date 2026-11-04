@@ -34,9 +34,25 @@ the `everruns_org_active_turn_cap_rejections_total` counter. Recording is best e
 and outside the refused request. The issue resolves once the organization runs fewer
 turns than the limit: a one-minute sweep and **Check again** recount, since sessions
 leave the active state in many places. The limit is protective and approximate,
-so the issue may open slightly above or below it. Custom
-detectors, automatic repairs, background LLM analysis and external delivery are outside
-this delivery's scope.
+so the issue may open slightly above or below it.
+
+Further detectors watch unattended background work: runaway schedules, schedules
+stopped by their budget, the org's daily unattended budget, unattended spend spikes
+and large uncached session contexts. They are keyed on a subject (schedule, agent,
+session or org) rather than a channel, and unlike the detectors above they announce
+an opened issue to specific people right away. See
+[Background Work Limits](background-limits.md). Model detectors report a model that chats cannot rely on. These are an agent's model
+(`agent.model_unavailable`) and the organization default (`org.default_model_unavailable`).
+"Usable" follows the rule the model pickers apply: the model is enabled, still listed by its
+provider, a chat model, and on an active provider. An issue appears exactly when a picker
+flags the setting. An agent without its own model is covered by the default's single issue,
+so a broken default opens one issue rather than one per agent. The 15-minute sweep
+judges every configured model. A provider sync, a model change or an agent's model or
+archive change rechecks that organization at once, so fixing the cause resolves the
+issue without waiting. The issue goes to the agent's authors, or to the org's owners.
+Custom
+detectors, background LLM analysis and external delivery are outside this delivery's
+scope; one-click repairs are [fixers](#fixers).
 
 ## User experience
 
@@ -55,12 +71,38 @@ Missing `reactions:write` says the bot cannot add emoji reactions. It does not c
 message replies are healthy or declare the whole agent unavailable. Other missing
 permissions use a broader partial-functionality warning.
 
-Managed installations reconnect through the existing Slack consent flow. The existing
-app manifest is exported and its required scopes are extended while preserving other
-configuration. Customer-managed installations get instructions to add the scopes,
-reinstall the app and save refreshed credentials through the existing channel editor.
-No replacement bot is created to repair an installed app. Slack may require a workspace
-administrator to approve the change.
+Repairs are offered as fixers (below). No replacement bot is created to repair an
+installed app. Slack may require a workspace administrator to approve the change.
+
+## Fixers
+
+A fixer is a repair the server declares on an issue: it resolves the condition, or
+prepares the change and sends the person to the one step only they can take
+(approving it in the provider). Issues carry `fixers`, and
+`POST /v1/health-issues/{id}/fix` runs one by kind. The server runs only the fixers it
+offers for that issue now; a request names a kind, never a URL or command. A consent
+URL is built on the provider's fixed origin and checked again in the browser against
+an allowlist. A fixer never resolves an issue: only a fresh check does. Each run is
+recorded once per episode as a finding action, so the issue shows who fixed it.
+
+- **Slack app created by Everruns** (`slack.add_permissions`, or `slack.reconnect` for
+  rejected credentials): the exported manifest gains the required bot scopes and keeps
+  its other configuration, then Slack's OAuth consent opens. The callback stores the
+  credentials, checks again and returns the browser to the issue.
+- **Slack app configured by hand** (`slack.add_permissions`): the app is found from its
+  own bot token (`auth.test` names the bot, `bots.info` its app) and its manifest is
+  updated through the organization's connected workspace, which works when the person
+  who connected it can edit the app. The person reinstalls the app from Slack's install
+  page; reinstalling keeps the bot token. The page checks again when they return. When
+  the workspace is not connected, or Slack refuses the edit, the fixer says why and the
+  manual steps (add scopes, reinstall, save the token) remain.
+- **Runaway schedule** (`schedule.pause`): the finding's existing pause action, with
+  undo, also offered as a fix.
+
+When several open issues offer the same fixer, the Health page walks through them one
+at a time, since Slack approves each app separately. Detectors without a fixer keep
+their links and **Check again**. Automatic repair without a click remains out of scope:
+provider consent needs a person, and schedule self-healing has its own policy.
 
 See [Slack One-Click Install](../integrations/slack-one-click-install.md) and Slack's
 [scope installation guidance](https://docs.slack.dev/app-management/quickstart-app-settings/).
@@ -104,8 +146,8 @@ Every list, detail, count and action enforces organization scope and the deploym
 active agent policy resolver. Membership is rechecked at delivery, including on an
 already-open notification stream. Stale notification rows cannot preserve revoked
 access. Repair additionally requires agent management. Recovery uses the existing
-settings and OAuth handlers; no provider-supplied command or arbitrary repair URL is
-executed. New Slack permissions are granted only through provider consent.
+settings and OAuth handlers, through the fixers the server declares; no
+provider-supplied command or arbitrary repair URL is executed. New Slack permissions are granted only through provider consent.
 
 ## Success bar and implementation
 
@@ -120,14 +162,18 @@ Source owns concrete shapes and commands:
 
 - [API](../../crates/server/src/api/health_issues.rs),
   [commands](../../crates/server/src/domains/health_issues/commands.rs),
+  [fixers](../../crates/server/src/domains/health_issues/fixers.rs),
   [storage](../../crates/server/src/storage/repositories/health_issues.rs).
 - [Bell](../../apps/ui/src/components/layout/notification-bell.tsx),
   Health page: `apps/ui/src/app/(main)/settings/health/page.tsx`,
-  [issue details](../../apps/ui/src/components/health/health-issue-details.tsx).
+  [issue details](../../apps/ui/src/components/health/health-issue-details.tsx),
+  [fix card](../../apps/ui/src/components/health/health-fixer.tsx),
+  [several-issue walk-through](../../apps/ui/src/components/health/health-fix-queue.tsx).
 - [Slack manifest](../../crates/server/src/channels/slack/events/manifest.rs),
   [install flow](../../crates/server/src/channels/slack/install.rs),
   [provisioning](../../crates/server/src/channels/slack/provisioning/mod.rs),
   [typed runtime errors](../../crates/server/src/channels/slack/actions/mod.rs).
 - [Domain tests](../../crates/server/src/domains/health_issues/tests.rs),
+  [fixer tests](../../crates/server/src/domains/health_issues/fixers_tests.rs),
   [API tests](../../crates/server/tests/domain/health_issues_test.rs),
   [OAuth tests](../../crates/server/tests/domain/slack_install_integration_test.rs).

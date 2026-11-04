@@ -1,7 +1,7 @@
 use crate::domains::common::{CliExample, CliRoute, Command, CommandError, Ctx, command};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
 use crate::storage::{
-    AgentMcpSecretBindingRow, UpsertAgentHttpCredentialRow, UpsertAgentMcpSecretBindingRow,
+    CredentialBindingRow, UpsertAgentHttpCredentialRow, UpsertCredentialBindingRow,
 };
 use everruns_contracts::runtime::{SecretAuth, SecretBinding};
 use everruns_core::mcp::McpCapabilityIdExt;
@@ -99,7 +99,7 @@ pub struct AgentCredentialBinding {
 }
 
 impl AgentCredentialBinding {
-    pub fn from_row(row: AgentMcpSecretBindingRow, public_agent_id: &str) -> Self {
+    pub fn from_row(row: CredentialBindingRow, public_agent_id: &str) -> Self {
         Self {
             id: row.id,
             agent_id: public_agent_id.to_string(),
@@ -256,7 +256,7 @@ impl Command for CreateAgentCredentialBinding {
 
         let row = ctx
             .db
-            .upsert_agent_mcp_secret_binding(UpsertAgentMcpSecretBindingRow {
+            .upsert_credential_binding(UpsertCredentialBindingRow {
                 org_id: ctx.org_id(),
                 agent_id: agent.id,
                 mcp_server_name,
@@ -338,14 +338,6 @@ pub(crate) async fn store_agent_http_credential(
             "Credential value must be between 1 byte and 64 KiB",
         ));
     }
-    let encryption = ctx.encryption.as_deref().ok_or_else(|| {
-        CommandError::bad_request(
-            "Encryption not configured. Set SECRETS_ENCRYPTION_KEY environment variable.",
-        )
-    })?;
-    let encrypted = encryption
-        .encrypt_string(value)
-        .map_err(CommandError::internal)?;
     let row = ctx
         .db
         .upsert_agent_http_credential(UpsertAgentHttpCredentialRow {
@@ -357,10 +349,18 @@ pub(crate) async fn store_agent_http_credential(
             description: None,
         })
         .await?;
-    ctx.db
-        .set_agent_mcp_secret_binding_value(ctx.org_id(), agent_id, row.id, encrypted)
-        .await?
-        .ok_or_else(|| CommandError::not_found("Credential binding"))?;
+    let revision:Option<i64>=sqlx::query_scalar("SELECT r.revision FROM resource_access r JOIN credential_bindings c ON c.id=r.id WHERE r.org_id=$1 AND r.id=$2 AND r.revoked_at IS NULL AND c.binding=$3").bind(ctx.org_id()).bind(row.id).bind(serde_json::json!(row.binding)).fetch_optional(ctx.db.pool()).await.map_err(|e|CommandError::internal(e.into()))?;
+    let revision = revision.ok_or_else(|| {
+        CommandError::bad_request("Credential binding changed; retry secure setup")
+    })?;
+    crate::domains::credentials::management::set_value(
+        ctx,
+        row.id,
+        value.to_string(),
+        None,
+        revision,
+    )
+    .await?;
     Ok(())
 }
 
@@ -374,7 +374,7 @@ pub(crate) async fn agent_http_credential_configured(
 ) -> Result<bool, CommandError> {
     Ok(ctx
         .db
-        .list_agent_mcp_secret_bindings(ctx.org_id(), agent_id)
+        .list_credential_bindings(ctx.org_id(), agent_id)
         .await?
         .into_iter()
         .any(|row| {
@@ -424,87 +424,144 @@ async fn resolve_attached_server_url(
     )))
 }
 
+/// Preserve the worker's connection-required result for an unattended user OAuth attachment.
+///
+/// A descriptor is not credential authority. Only a proved invocation with no
+/// user may defer to OAuth here; unknown invocations, private-context denials,
+/// non-OAuth attachments, and storage failures still use strict resolution.
+pub async fn resolve_runtime_server_secret_bindings(
+    db: &crate::storage::StorageBackend,
+    encryption: Option<&crate::storage::EncryptionService>,
+    org_id: i64,
+    invocation: Option<everruns_contracts::runtime::credential_services::CredentialInvocation>,
+    server: &crate::domains::mcp_servers::McpServerResolved,
+) -> anyhow::Result<HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>> {
+    if let Some(invocation) = invocation
+        && server.acts_as == everruns_core::McpServerActsAs::User
+        && server.auth_mode == everruns_core::McpServerAuthMode::OAuth
+        && server.oauth_provider_id.is_some()
+        && server.api_key.is_none()
+        && !server
+            .headers
+            .keys()
+            .any(|name| name.eq_ignore_ascii_case("authorization"))
+    {
+        let unattended: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (
+                SELECT 1 FROM runtime_invocations i
+                JOIN sessions s ON s.id=i.session_id AND s.org_id=i.org_id
+                WHERE i.org_id=$1 AND i.session_id=$2 AND i.input_message_id=$3
+                  AND i.virtual_user_id IS NULL
+            )"#,
+        )
+        .bind(org_id)
+        .bind(invocation.session_id.uuid())
+        .bind(invocation.input_message_id)
+        .fetch_one(db.pool())
+        .await?;
+        if unattended {
+            // The worker must resolve this OAuth grant before sending. With no
+            // invoking user it returns connection_required, never an owner's
+            // token. Do not fetch or decrypt any parameter bindings first.
+            return Ok(HashMap::new());
+        }
+    }
+    resolve_runtime_secret_bindings(
+        db,
+        encryption,
+        org_id,
+        invocation,
+        server.acts_as,
+        &server.name,
+        &server.url,
+    )
+    .await
+}
+
+/// Scope and current invocation are checked again immediately before MCP send.
 pub async fn resolve_runtime_secret_bindings(
     db: &crate::storage::StorageBackend,
     encryption: Option<&crate::storage::EncryptionService>,
     org_id: i64,
-    agent_id: Option<AgentId>,
+    invocation: Option<everruns_contracts::runtime::credential_services::CredentialInvocation>,
+    acts_as: everruns_core::McpServerActsAs,
     server_name: &str,
     server_url: &str,
 ) -> anyhow::Result<HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>> {
-    let Some(agent_id) = agent_id else {
+    let Some(invocation) = invocation else {
         return Ok(HashMap::new());
     };
-    let public_id = db
-        .get_agent_public_id(org_id, agent_id)
-        .await?
-        .unwrap_or_else(|| agent_id.to_string());
-    let setup_url = format!("/agents/{public_id}?tab=credentials");
-    let rows = db.list_agent_mcp_secret_bindings(org_id, agent_id).await?;
-    let mut bindings: HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>> = HashMap::new();
+    let ctx = credential_context(db, encryption, org_id);
+    let rows = crate::domains::credentials::service::mcp_rows(&ctx, invocation, acts_as).await?;
+    let mut result: HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>> = HashMap::new();
     for row in rows
         .into_iter()
-        .filter(|row| row.mcp_server_name.as_deref() == Some(server_name))
+        .filter(|r| r.mcp_server_name == server_name)
     {
-        let (Some(row_url), Some(tool_name), Some(parameter_name)) =
-            (row.mcp_server_url, row.tool_name, row.parameter_name)
-        else {
-            continue;
-        };
-        let value = if row_url != server_url {
-            None
-        } else {
+        let value = if url::Url::parse(&row.mcp_server_url)
+            .is_ok_and(|bound| url::Url::parse(server_url).is_ok_and(|target| bound == target))
+            && row.expires_at.is_none_or(|e| e > chrono::Utc::now())
+        {
             match (row.value_encrypted.as_deref(), encryption) {
-                (Some(ciphertext), Some(encryption)) => {
-                    Some(encryption.decrypt_to_string(ciphertext)?)
-                }
+                (Some(v), Some(e)) => Some(e.decrypt_to_string(v)?),
                 _ => None,
             }
+        } else {
+            None
         };
-        bindings
-            .entry(tool_name)
-            .or_default()
-            .push(everruns_core::mcp::McpSecretBinding {
-                parameter_name,
-                value,
-                setup_url: setup_url.clone(),
-                label: row.label,
-            });
+        let bindings = result.entry(row.tool_name).or_default();
+        if bindings
+            .iter()
+            .any(|b| b.parameter_name == row.parameter_name)
+        {
+            anyhow::bail!("Ambiguous MCP credential; select a unique binding");
+        }
+        bindings.push(everruns_core::mcp::McpSecretBinding {
+            parameter_name: row.parameter_name,
+            value,
+            setup_url: row.setup_url,
+            label: row.label,
+        });
     }
-    Ok(bindings)
+    Ok(result)
+}
+fn credential_context(
+    db: &crate::storage::StorageBackend,
+    encryption: Option<&crate::storage::EncryptionService>,
+    org_id: i64,
+) -> Ctx {
+    Ctx::minimal(
+        everruns_core::Caller::internal(org_id),
+        std::sync::Arc::new(db.clone()),
+        encryption.cloned().map(std::sync::Arc::new),
+        std::sync::Arc::new(everruns_core::DefaultPermissionResolver),
+    )
 }
 
-/// `known_public_id` skips the public id lookup when the caller already
-/// loaded the agent.
 pub async fn list_secret_binding_metadata(
     db: &crate::storage::StorageBackend,
     org_id: i64,
-    agent_id: Option<AgentId>,
-    known_public_id: Option<String>,
+    invocation: Option<everruns_contracts::runtime::credential_services::CredentialInvocation>,
 ) -> anyhow::Result<Vec<everruns_core::McpSecretBindingMetadata>> {
-    let Some(agent_id) = agent_id else {
+    let Some(invocation) = invocation else {
         return Ok(Vec::new());
     };
-    let public_id = match known_public_id {
-        Some(public_id) => public_id,
-        None => db
-            .get_agent_public_id(org_id, agent_id)
-            .await?
-            .unwrap_or_else(|| agent_id.to_string()),
-    };
-    let setup_url = format!("/agents/{public_id}?tab=credentials");
-    Ok(db
-        .list_agent_mcp_secret_bindings(org_id, agent_id)
-        .await?
+    let ctx = credential_context(db, None, org_id);
+    let rows = crate::domains::credentials::service::mcp_rows(
+        &ctx,
+        invocation,
+        everruns_core::McpServerActsAs::UserOrService,
+    )
+    .await?;
+    Ok(rows
         .into_iter()
-        .filter_map(|row| {
-            Some(everruns_core::McpSecretBindingMetadata {
-                server_name: row.mcp_server_name?,
-                tool_name: row.tool_name?,
-                parameter_name: row.parameter_name?,
-                configured: row.value_encrypted.is_some(),
-                setup_url: setup_url.clone(),
-            })
+        .map(|r| everruns_core::McpSecretBindingMetadata {
+            server_name: r.mcp_server_name,
+            tool_name: r.tool_name,
+            parameter_name: r.parameter_name,
+            configured: r.value_encrypted.is_some()
+                && r.expires_at.is_none_or(|e| e > chrono::Utc::now()),
+            setup_url: r.setup_url,
         })
         .collect())
 }

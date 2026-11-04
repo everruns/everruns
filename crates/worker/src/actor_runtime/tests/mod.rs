@@ -6,7 +6,12 @@
 //! running out. Another worker on the same index then resumes from the log.
 
 mod cancels;
+mod completion_check;
+mod completion_recovery;
+mod credit_shortfall;
+mod detached;
 mod resolutions;
+mod stalls;
 mod store;
 mod turns;
 mod wakeups;
@@ -146,6 +151,14 @@ struct ModelGate {
     /// When set, every model call answers that the session is gone, as the
     /// control plane does once the session was deleted (EVE-1235).
     deleted_session: Mutex<Option<SessionId>>,
+    /// Provider refusals the next model calls answer with, in order.
+    refusals: Mutex<std::collections::VecDeque<everruns_contracts::error::AgentLoopError>>,
+    /// Every model call's max output tokens.
+    max_tokens: Mutex<Vec<Option<u32>>>,
+    /// What the next balance reads answer; `None` once empty (no balance API).
+    balances:
+        Mutex<std::collections::VecDeque<Option<everruns_contracts::provider_limit::CreditStatus>>>,
+    balance_reads: AtomicUsize,
 }
 
 impl Default for ModelGate {
@@ -156,6 +169,10 @@ impl Default for ModelGate {
             entered: Notify::new(),
             seen: Mutex::default(),
             deleted_session: Mutex::default(),
+            refusals: Mutex::default(),
+            max_tokens: Mutex::default(),
+            balances: Mutex::default(),
+            balance_reads: AtomicUsize::new(0),
         }
     }
 }
@@ -196,9 +213,22 @@ impl ChatDriver for GatedModel {
             self.gate.entered.notify_one();
             std::future::pending::<()>().await;
         }
+        self.gate.max_tokens.lock().unwrap().push(config.max_tokens);
+        if let Some(refusal) = self.gate.refusals.lock().unwrap().pop_front() {
+            return Err(refusal);
+        }
         self.inner
             .chat_completion_stream(endpoint, messages, config)
             .await
+    }
+
+    async fn credit_status(
+        &self,
+        _endpoint: &ProviderEndpoint,
+    ) -> everruns_contracts::error::Result<Option<everruns_contracts::provider_limit::CreditStatus>>
+    {
+        self.gate.balance_reads.fetch_add(1, Ordering::SeqCst);
+        Ok(self.gate.balances.lock().unwrap().pop_front().flatten())
     }
 }
 
@@ -216,11 +246,20 @@ struct Probe {
     running: Mutex<HashSet<SessionId>>,
     overlapped: AtomicBool,
     on_turn_ended: Mutex<Option<Hook>>,
+    /// Runs (once) inside the flush it names (1-based), before it returns.
+    at_flush: Mutex<Option<(usize, Hook)>>,
     /// The fence of the latest turn host, as its appends would carry it.
     fence: Mutex<Option<crate::actor_lease_store::ActorFence>>,
     /// Runs (once) where a fresh turn's host is built: after its input was
     /// taken, before its `turn.started`.
     at_turn_host: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// Hold the next fresh turn's input assignment (a pre-turn control-plane
+    /// write that writes no event) forever, once.
+    hang_inputs_consumed: AtomicBool,
+    checkpoints: AtomicUsize,
+    /// The checkpoint (1-based) that never returns; 0 = none. The lease's
+    /// first is its setup's, the second the one before its release.
+    hang_at_checkpoint: AtomicUsize,
 }
 
 #[derive(Clone)]
@@ -249,8 +288,50 @@ impl ActorHosts for TestHosts {
         self.runtime.clone()
     }
 
+    async fn checkpoint(
+        &self,
+        _host: &InProcessRuntime,
+        _tail: &[Event],
+    ) -> everruns_contracts::error::Result<()> {
+        let checkpoint = self.probe.checkpoints.fetch_add(1, Ordering::SeqCst) + 1;
+        if checkpoint == self.probe.hang_at_checkpoint.load(Ordering::SeqCst) {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
+    }
+
+    async fn inputs_consumed(
+        &self,
+        _drive: &TurnDrive,
+        _inputs: &[MessageId],
+    ) -> everruns_contracts::error::Result<()> {
+        if self
+            .probe
+            .hang_inputs_consumed
+            .swap(false, Ordering::SeqCst)
+        {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
+    }
+
     async fn flush(&self, _host: &InProcessRuntime) -> everruns_contracts::error::Result<()> {
         let flush = self.probe.flushes.fetch_add(1, Ordering::SeqCst) + 1;
+        let hook = {
+            let mut at_flush = self.probe.at_flush.lock().unwrap();
+            match at_flush.take() {
+                Some((at, hook)) if at == flush => Some(hook),
+                other => {
+                    *at_flush = other;
+                    None
+                }
+            }
+        };
+        if let Some(hook) = hook {
+            hook.await;
+        }
         if flush == self.probe.hang_at_flush.load(Ordering::SeqCst) {
             self.probe.hung.notify_one();
             std::future::pending::<()>().await;
@@ -280,6 +361,8 @@ struct Fixture {
     gate: Arc<ToolGate>,
     model: Arc<ModelGate>,
     poison_attempts: u32,
+    stall_timeout: Duration,
+    control_plane_retries: u32,
 }
 
 fn call(id: &str, name: &str) -> ToolCall {
@@ -297,8 +380,33 @@ fn model(answer: &str, calls: Vec<Vec<ToolCall>>) -> LlmSimConfig {
     LlmSimConfig::fixed(answer).with_tool_call_sequence(sequence)
 }
 
+/// How a [`Fixture`]'s agent and session are set up.
+struct Setup {
+    completion_check: crate::core::completion_check::CompletionCheck,
+    /// The session was started by a trigger or schedule.
+    unattended: bool,
+    max_iterations: usize,
+    /// The session's schedule store, when the test needs one.
+    schedules: Option<crate::host::ScheduleStoreFactory>,
+}
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self {
+            completion_check: Default::default(),
+            unattended: false,
+            max_iterations: 8,
+            schedules: None,
+        }
+    }
+}
+
 impl Fixture {
     async fn new(model: LlmSimConfig) -> Self {
+        Self::with_setup(model, Setup::default()).await
+    }
+
+    async fn with_setup(model: LlmSimConfig, setup: Setup) -> Self {
         let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
         let session_id = SessionId::new();
@@ -318,10 +426,15 @@ impl Fixture {
             .tool(client_tool(
                 everruns_contracts::tool_approval_types::APPROVE_TOOL_CALL_TOOL,
             ))
+            .unattended(setup.unattended)
             .build();
         // A client is connected to answer a pause.
         session.hints = Some([("setup_connection".to_string(), json!(true))].into());
-        let runtime = InProcessRuntime::builder()
+        let mut builder = InProcessRuntime::builder();
+        if let Some(schedules) = setup.schedules {
+            builder = builder.with_schedule_store_factory(schedules);
+        }
+        let runtime = builder
             .capability(GatedTools(gate.clone()))
             .harness(
                 HarnessBuilder::new("actors", "You are a test assistant.")
@@ -332,7 +445,8 @@ impl Fixture {
             .agent(
                 AgentBuilder::new("actor-agent", "Use the tools when asked.")
                     .id(agent_id)
-                    .max_iterations(8)
+                    .max_iterations(setup.max_iterations)
+                    .completion_check(setup.completion_check)
                     .build(),
             )
             .session(session)
@@ -356,6 +470,8 @@ impl Fixture {
             gate,
             model: model_gate,
             poison_attempts: 3,
+            stall_timeout: crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
+            control_plane_retries: crate::host::session_actor::DEFAULT_ACTOR_CONTROL_PLANE_RETRIES,
         }
     }
 
@@ -379,6 +495,9 @@ impl Fixture {
             // Small pages, so the journal reads page.
             journal_page: 3,
             max_leased_per_org: None,
+            stall_timeout: self.stall_timeout,
+            control_plane_retries: self.control_plane_retries,
+            control_plane_backoff: Duration::from_millis(10),
         };
         (ActorRuntime::new(hosts, self.store.clone(), config), probe)
     }

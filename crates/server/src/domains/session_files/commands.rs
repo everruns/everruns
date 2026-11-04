@@ -135,20 +135,25 @@ impl Command for GetWorkspaceFile {
         let path = q::normalize_path(&self.path);
         access.ensure_user_memory_access(&path)?;
         let stat = q::service(ctx)
-            .stat(access.workspace_key, &path)
+            .stat(access.read_key(session_id, &path), &path)
             .await
             .map_err(q::classify_storage)?;
 
         match stat {
             Some(s) if s.is_directory => {
+                if self.recursive && everruns_contracts::knowledge::is_mount(&path) {
+                    return Err(CommandError::bad_request(
+                        "Use the paginated Knowledge file catalog for recursive listing",
+                    ));
+                }
                 let mut files = if self.recursive {
                     q::service(ctx)
-                        .list_all(access.workspace_key)
+                        .list_all(access.read_key(session_id, &path))
                         .await
                         .map_err(q::classify_storage)?
                 } else {
                     q::service(ctx)
-                        .list_directory(access.workspace_key, &path)
+                        .list_directory(access.read_key(session_id, &path), &path)
                         .await
                         .map_err(q::classify_storage)?
                 };
@@ -159,7 +164,7 @@ impl Command for GetWorkspaceFile {
             }
             Some(_) => {
                 let file = q::service(ctx)
-                    .read_file(access.workspace_key, &path)
+                    .read_file(access.read_key(session_id, &path), &path)
                     .await
                     .map_err(q::classify_storage)?
                     .ok_or_else(|| CommandError::not_found("File"))?;
@@ -201,7 +206,7 @@ impl Command for CreateWorkspaceFile {
         access.ensure_user_memory_mutation_access(&path)?;
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
-                "Paths starting with '_' are reserved for system actions",
+                "The top-level folder '_' is reserved for file actions",
             ));
         }
 
@@ -290,7 +295,7 @@ impl Command for UpdateWorkspaceFile {
         access.ensure_user_memory_mutation_access(&path)?;
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
-                "Paths starting with '_' are reserved for system actions",
+                "The top-level folder '_' is reserved for file actions",
             ));
         }
 
@@ -499,7 +504,7 @@ impl Command for GrepWorkspaceFiles {
         let access = q::verify_session(ctx, session_id).await?;
         let results = q::service(ctx)
             .grep(
-                access.workspace_key,
+                access.read_key(session_id, self.req.path_pattern.as_deref().unwrap_or("")),
                 GrepInput {
                     pattern: self.req.pattern,
                     path_pattern: self.req.path_pattern,
@@ -564,7 +569,7 @@ impl Command for SearchWorkspaceFiles {
 
         let result = q::service(ctx)
             .grep_with_options_excluding(
-                access.workspace_key,
+                access.read_key(session_id, options.path_pattern.as_deref().unwrap_or("")),
                 &self.req.pattern,
                 &options,
                 (!access.user_memory_allowed).then_some(q::USER_MEMORY_MOUNT_PATH),
@@ -611,7 +616,7 @@ impl Command for StatWorkspaceFile {
         let path = q::normalize_path(&self.req.path);
         access.ensure_user_memory_access(&path)?;
         q::service(ctx)
-            .stat(access.workspace_key, &path)
+            .stat(access.read_key(session_id, &path), &path)
             .await
             .map_err(q::classify_storage)?
             .ok_or_else(|| CommandError::not_found("Path"))
@@ -1313,5 +1318,30 @@ mod tests {
             matches!(err.kind, CommandErrorKind::Forbidden(_)),
             "{err:?}"
         );
+    }
+
+    /// The session's own runtime is answered from cached identity, which must
+    /// still hold the org boundary: declaring a session from another org finds
+    /// nothing.
+    #[tokio::test]
+    async fn declared_runtime_in_another_org_does_not_find_the_session() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db
+            .create_session(session_row(None))
+            .await
+            .expect("create session");
+
+        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID + 1), db, None)
+            .acting_for_session(session.id);
+
+        let err = GetWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/memory/user/secret.md".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("another org's runtime must not reach the session");
+        assert!(matches!(err.kind, CommandErrorKind::NotFound(_)), "{err:?}");
     }
 }

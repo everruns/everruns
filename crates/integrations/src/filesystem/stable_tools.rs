@@ -181,12 +181,13 @@ impl Tool for GrepTool {
         tool_call: &crate::filesystem::tool_types::ToolCall,
         phase: crate::filesystem::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::filesystem::tool_narration::ToolNarrationContext<'_>,
+        ctx: crate::filesystem::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::filesystem::tool_narration::narrate_grep_files(
             &tool_call.arguments,
             phase,
             locale,
+            ctx,
         ))
     }
 

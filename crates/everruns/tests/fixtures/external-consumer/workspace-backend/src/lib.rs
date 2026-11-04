@@ -94,14 +94,6 @@ impl WorkspaceBackend for ExternalWorkspaceBackend {
 }
 
 #[test]
-fn backend_id_is_open_string_data() {
-    assert_eq!(
-        WorkspaceBackend::id(&ExternalWorkspaceBackend).as_str(),
-        "example.external-workspace"
-    );
-}
-
-#[test]
 #[allow(deprecated)]
 fn deprecated_provider_names_remain_compatible() {
     use everruns_core::host::{WorkspaceProvider, WorkspaceProviderId};

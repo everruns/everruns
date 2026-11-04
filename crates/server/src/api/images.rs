@@ -495,7 +495,6 @@ pub async fn delete_image(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_is_valid_content_type() {
@@ -548,38 +547,5 @@ mod tests {
             Some(ImageFormat::WebP)
         ));
         assert!(format_from_content_type("image/svg+xml").is_none());
-    }
-
-    #[test]
-    fn test_image_info_serializes_prefixed_id() {
-        let image_id = ImageId::from_seed(1);
-        let info = ImageInfo {
-            id: image_id,
-            filename: "upload.png".to_string(),
-            content_type: "image/png".to_string(),
-            size_bytes: 42,
-            metadata: json!({"session_id": "session_123"}),
-            created_at: Utc::now(),
-        };
-
-        let value = serde_json::to_value(info).expect("image info should serialize");
-
-        assert_eq!(value["id"], json!(image_id.to_string()));
-    }
-
-    #[test]
-    fn test_image_upload_response_serializes_prefixed_id() {
-        let image_id = ImageId::from_seed(2);
-        let response = ImageUploadResponse {
-            id: image_id,
-            filename: "upload.png".to_string(),
-            content_type: "image/png".to_string(),
-            size_bytes: 42,
-            created_at: Utc::now(),
-        };
-
-        let value = serde_json::to_value(response).expect("upload response should serialize");
-
-        assert_eq!(value["id"], json!(image_id.to_string()));
     }
 }

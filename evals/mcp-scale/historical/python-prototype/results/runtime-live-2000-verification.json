@@ -1,0 +1,56 @@
+{
+  "task": "synthetic incident owner and linked ticket status",
+  "task_passed": true,
+  "checks": {
+    "scoped_incident_lookup": true,
+    "linked_ticket_read": true,
+    "read_only_backend_calls": true,
+    "owner_and_status_match_state": true,
+    "linked_ticket_in_answer": true,
+    "all_2000_tools_paged": true
+  },
+  "backend_calls": [
+    {
+      "arguments": {
+        "environment": "staging",
+        "service": "billing-api"
+      },
+      "at": "2026-10-18T21:59:32.099672+00:00",
+      "method": "tools/call",
+      "ok": true,
+      "tool": "list_incidents"
+    },
+    {
+      "arguments": {
+        "ticket_id": "OPS-8421"
+      },
+      "at": "2026-10-18T21:59:36.828955+00:00",
+      "method": "tools/call",
+      "ok": true,
+      "tool": "get_ticket"
+    }
+  ],
+  "fixture_tool_count": 2000,
+  "gateway_tool_count": 2,
+  "catalog_refreshes": 6,
+  "catalog_pages_per_refresh": 20,
+  "runtime": {
+    "success": true,
+    "iterations": 7,
+    "duration_ms": 25392,
+    "usage": {
+      "actual_cost_usd": 0.0017980899999999998,
+      "cache_creation_tokens": 10338,
+      "cache_read_tokens": 13294,
+      "effective_cost_usd": 0.0017980899999999998,
+      "input_tokens": 1534,
+      "output_tokens": 439
+    }
+  },
+  "fixture_state": {
+    "incident_owner": "Ava Li",
+    "incident_linked_ticket": "OPS-8421",
+    "ticket_status": "in_progress",
+    "state_call_count": 2
+  }
+}

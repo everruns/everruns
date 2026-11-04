@@ -8,6 +8,7 @@ import * as React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SessionCard } from "@/components/session/session-card";
 import { downloadSessionExport } from "@/lib/session-export";
+import { setBlobDownloadHandler } from "@/lib/download";
 import type { Session } from "@/lib/api/types";
 
 // Mock next/link - using span with data-href to avoid linting issues
@@ -206,6 +207,21 @@ describe("downloadSessionExport", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
+  it("surfaces a host save failure without attempting a browser download", async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse());
+    const previous = setBlobDownloadHandler(async () => {
+      throw new Error("Host declined the download");
+    });
+    const notify = jest.fn();
+    try {
+      await downloadSessionExport(SESSION_ID, "jsonl", "en", notify);
+      expect(downloads).toEqual([]);
+      expect(notify).toHaveBeenCalledWith({ title: "Host declined the download", body: "" });
+    } finally {
+      setBlobDownloadHandler(previous);
+    }
+  });
+
   it("downloads ATIF via ?format=atif as {sessionId}.atif.json", async () => {
     fetchMock.mockResolvedValueOnce(mockResponse());
     const notify = jest.fn();
@@ -218,26 +234,6 @@ describe("downloadSessionExport", () => {
     );
     expect(downloads).toEqual([`${SESSION_ID}.atif.json`]);
     expect(notify).not.toHaveBeenCalled();
-  });
-
-  it("shows the server message as an error toast on 413", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: false,
-        status: 413,
-        statusText: "Payload Too Large",
-        body: JSON.stringify({ detail: "ATIF document exceeds the 10 MiB export cap" }),
-      }),
-    );
-    const notify = jest.fn();
-
-    await downloadSessionExport(SESSION_ID, "atif", "en", notify);
-
-    expect(downloads).toEqual([]);
-    expect(notify).toHaveBeenCalledWith({
-      title: "ATIF export failed",
-      body: "ATIF document exceeds the 10 MiB export cap",
-    });
   });
 
   it("falls back to a clear message when the 413 body is not parseable", async () => {

@@ -14,6 +14,10 @@ links:
 
 ![Connect provider sheet with the ChatGPT plan option and its Sign in action](./chatgpt-option@2x.png)
 
+## Update 2026-10-17
+
+ChatGPT Plan was [removed from Platform setup](/changelog/2026-10-17-chatgpt-plan-ui-removal/). The framework driver remains available.
+
 Connecting a personal ChatGPT plan used to depend on an organization feature
 flag that hosted deployments kept off. The flag is gone: connecting the
 provider is the opt-in, and each connection already belongs only to the user

@@ -107,9 +107,14 @@ impl EgressService for MockOAuthAndMcpServers {
 
     async fn send_stream(
         &self,
-        _request: EgressRequest,
+        request: EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        panic!("streaming egress is not used by this test")
+        let response = self.send(request).await?;
+        Ok(everruns_core::EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 }
 
@@ -330,6 +335,8 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("service-oauth-{}", &server_id.to_string()[..8]),
                 display_name: None,

@@ -26,6 +26,7 @@ what the company said, in its words. If the company needs the person to sign \
 in, say so.";
 
 /// Build the personal agent. Session state lives in `state_dir`.
+#[allow(deprecated)] // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
 pub fn personal_agent(
     model: Model,
     poppy: PoppyPersonalAgent,

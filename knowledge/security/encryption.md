@@ -112,6 +112,10 @@ database; otherwise encrypted records written with it cannot be unwrapped.
 
 ### Encrypted Fields
 
-The following database fields are encrypted:
-- `providers.api_key_encrypted`: API keys for LLM provider integrations
-- (Future) Additional sensitive credentials as needed
+The [encrypted-column registry](../../crates/server/src/storage/encryption.rs) owns
+coverage, including private background-maintenance state. Maintenance has a global
+rotation identity independent of its tenant-scoped lookup key. The
+[rotation implementation](../../crates/server/src/storage/encryption_rotation/mod.rs)
+uses stable keyset traversal and compares the old ciphertext before replacing it,
+so cleanup cannot skip retained rows and concurrent writes cannot be rolled back.
+The CLI and database-backed regression tests use that same implementation.

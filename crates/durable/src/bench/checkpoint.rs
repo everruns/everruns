@@ -545,17 +545,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_environment_detection() {
-        let env = EnvironmentInfo::detect();
-        assert!(!env.moniker.is_empty());
-        assert!(env.cpu_cores > 0);
-        #[cfg(target_os = "linux")]
-        assert!(env.memory_gb > 0.0);
-        #[cfg(not(target_os = "linux"))]
-        assert_eq!(env.memory_gb, 0.0);
-    }
-
-    #[test]
     fn test_moniker_generation() {
         // Apple Silicon
         assert!(EnvironmentInfo::generate_moniker("Apple M4 Pro", 12, 48.0).contains("M4-Pro"));

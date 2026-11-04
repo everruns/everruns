@@ -24,6 +24,7 @@ use crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker;
 use crate::domains::mcp_servers::record::{McpConnectionCheck, McpConnectionCheckStatus};
 use crate::domains::mcp_servers::{McpServerService, McpServerSettings};
 use crate::kernel_imports::{McpServerAuthMode, mcp_oauth_provider_id_for_uuid};
+use crate::oauth_client::org_scoped_egress;
 
 /// Runs the connection check with the OAuth connect flow's state.
 pub struct OAuthConnectionChecker {
@@ -43,7 +44,10 @@ impl McpOAuthConnectionChecker for OAuthConnectionChecker {
             return McpConnectionCheck::not_checked();
         };
         let settings = McpServerService::settings_from_row(&row);
-        let egress = HostRecordingEgress::new(self.state.mcp_service.egress_service());
+        let egress = HostRecordingEgress::new(org_scoped_egress(
+            self.state.mcp_service.egress_service(),
+            org_id,
+        ));
         let outcome = probe(&self.state, &egress, &row, settings).await;
         let (check, registered) = match outcome {
             Ok(registered) => (
@@ -56,14 +60,31 @@ impl McpOAuthConnectionChecker for OAuthConnectionChecker {
                 Some(registered),
             ),
             Err(error) => {
-                let check = failed_check(&error, egress.last_host());
-                tracing::warn!(
-                    mcp_server_id = %server_id,
-                    status = %error.0,
-                    error = %error.1,
-                    connection_check = ?check.status,
-                    "MCP catalog connection check failed"
-                );
+                let host = egress.last_host();
+                let check = failed_check(&error, host.clone());
+                let host = host.as_deref().unwrap_or_default();
+                // A third-party sign-in service that does not answer is an
+                // outcome the check records for the admin, not a fault here;
+                // policy blocks and failed setup stay warnings.
+                if check.status == McpConnectionCheckStatus::Unreachable {
+                    tracing::info!(
+                        mcp_server_id = %server_id,
+                        host,
+                        status = %error.0,
+                        error = %error.1,
+                        connection_check = ?check.status,
+                        "MCP catalog connection check: sign-in service unreachable"
+                    );
+                } else {
+                    tracing::warn!(
+                        mcp_server_id = %server_id,
+                        host,
+                        status = %error.0,
+                        error = %error.1,
+                        connection_check = ?check.status,
+                        "MCP catalog connection check failed"
+                    );
+                }
                 (check, None)
             }
         };

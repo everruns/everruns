@@ -1,0 +1,83 @@
+---
+title: Durable Object hosting reference
+description: Run ordinary Everruns Rust agents with durable admission, leases, event logs and alarm-driven recovery owned by a Durable Object.
+slug: framework/durable-objects
+sidebar:
+  order: 4
+---
+
+import desktopDiagram from "./durable-objects.svg?url&no-inline";
+import mobileDiagram from "./durable-objects-mobile.svg?url&no-inline";
+
+The source-only `everruns-durable-object` reference demonstrates the
+[pluggable session hosting SPI](/framework/hosting/) beneath `everruns::Engine`.
+It is independently resolved and is not a published Framework dependency or a
+first-class Cloudflare service integration. Application code defines ordinary Framework
+Agents and uses the same Session API on native execution and Wasm inside an
+object. The reference and deployment APIs remain experimental; their guarantees
+cover the failure domains exercised by the qualification tests.
+
+<picture className="er-responsive-diagram">
+  <source media="(max-width: 40rem)" srcSet={mobileDiagram} />
+  <img
+    src={desktopDiagram}
+    alt="Durable Object authority: a Framework Engine admits input to a Durable Object, whose alarm activates a native or Wasm Engine executor. The executor writes fenced journal and state back to the object, and runs the shared Everruns runtime with providers and tools."
+  />
+</picture>
+
+Create an Engine with `ObjectHosting::new(client)` and register trusted Agent
+builds under immutable `AgentBuild` identities. `create_registered` asynchronously
+commits a session binding at a caller-retained session ID. `Session::send_with_id`
+commits input, its deduplicated receipt and an independent wakeup obligation.
+Retain those identities across uncertain transport responses.
+
+Admission precedes turn assignment. Reopen an admission by its message identity
+to observe pending assignment, a durable wait, suspension or finalized outcome.
+Dropping a handle or SSE connection does not cancel accepted work. Approval and
+tool answers name their exact logical turn; cancellation names a retained input.
+Acceptance of cancellation is separate from reaching a cancelled terminal state.
+
+Framework start/completion hooks run on the executor under the same ownership
+epoch. Invocation records conservatively handle uncertain external effects;
+explicitly idempotent hooks can opt into recovery. A turn result becomes final
+only after its awaited Framework completion hooks settle.
+
+## Native and isolate placements
+
+The [native example](https://github.com/everruns/everruns/tree/main/crates/durable-object/examples)
+registers an ordinary Agent on Engine and supplies that Engine to an authenticated
+`Executor`. Activation validates the authoritative binding and retained registry.
+The [Wasm application](https://github.com/everruns/everruns/tree/main/examples/durable-object-agent)
+uses the same [Agent definition](https://github.com/everruns/everruns/blob/main/crates/durable-object/examples/shared/agent.rs),
+which imports only `everruns`. Its Workers `/v1` adapter calls Engine for creation,
+admission and queries, and uses bounded canonical pages for SSE replay. JavaScript
+handles transport, storage and alarms; Rust owns agent and tool policy.
+
+[serve on celld](/framework/serve-celld/) selects this hosting profile and exposes
+its same Engine for native activation. The celld isolate bootstrap imports the
+shared Wasm application. There is no application runtime factory or celld step
+machine to implement.
+
+## Hosting boundaries
+
+Keep API, authority and executor credentials separate. Tenant scope comes from
+trusted host configuration. Privileged authority credentials stay on trusted
+hosts; browsers use the user API. Production native authority/executor endpoints
+require HTTPS. Retain exact builds and Environment references while sessions
+need them; unavailable behavior suspends rather than silently selecting the latest.
+
+Every canonical/session-state mutation checks an unexpired epoch at the authority.
+An old owner cannot commit after replacement. External effects still need their
+own idempotency or reconciliation: a started tool with at-most-once recovery is
+reported interrupted when its effect is uncertain, and is not blindly repeated.
+This does not promise exactly-once external effects.
+
+Workspace and compute services are explicit retained Environment factories.
+A journal does not preserve ephemeral container files, secrets, background tasks,
+channels or schedules. Unsupported requirements must be refused before admission.
+The adapter's default secret backend refuses plaintext storage.
+
+See the [adapter setup and tests](https://github.com/everruns/everruns/tree/main/crates/durable-object)
+for workerd, Cloudflare and replicated celld qualification. A test qualifies its
+specific revision, placement and failure domain; local fleet results do not
+establish production bucket or network-partition guarantees.

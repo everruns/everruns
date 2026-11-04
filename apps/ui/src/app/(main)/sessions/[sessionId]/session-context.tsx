@@ -14,10 +14,12 @@ import { useAgent, useSession, useEvents, useModel, useSessionResolvedModel } fr
 import { cancelTurn } from "@/lib/api/sessions";
 import { sendChatMessage } from "@/lib/api/messages";
 import { useChatSends, type ChatSends } from "@/hooks/use-chat-sends";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { isChatThread } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
+import { AuthContext } from "@/providers/auth-provider";
+import { chatRecoveryKey } from "@/lib/chat-recovery";
 import { useLocale } from "@/providers/locale-provider";
 import type {
   Agent,
@@ -41,6 +43,7 @@ import { latestStreamingMessage } from "@/lib/streaming-message-state";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { useWebMcp } from "@/providers/webmcp-context";
+import { queryKeys } from "@/lib/query-keys";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 /** Accumulated streamed output for a single tool call */
@@ -152,9 +155,11 @@ export function SessionProvider({
 }: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
+  const auth = useContext(AuthContext);
   const webmcp = useWebMcp();
   const { locale } = useLocale();
   const org = currentOrg?.public_id;
+  const queryClient = useQueryClient();
 
   // Fetch session first to get agent_id
   const { data: session, isLoading: sessionLoading } = useSession(sessionId);
@@ -221,6 +226,7 @@ export function SessionProvider({
   );
   const chatSends = useChatSends({
     sessionId,
+    storageKey: auth?.user?.id && org ? chatRecoveryKey(auth.user.id, org, sessionId) : undefined,
     events,
     send: sendChat,
     cancel: cancelTurnRequest,
@@ -241,14 +247,19 @@ export function SessionProvider({
     }) => chatSends.submit({ text: content, controls, addressedParticipantId }),
   });
 
-  // Update local status from SSE events (session.activated, session.idled)
+  // Update local status from SSE, including pauses that do not idle the session.
   useEffect(() => {
     if (!events || events.length === 0) return;
 
     // Find the most recent session status event
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i];
-      if (event.type === "session.activated") {
+      if (event.type === "tool.call_requested") {
+        setLocalStatus("waiting_for_tool_results");
+        setIsWaitingForResponse(false);
+        break;
+      }
+      if (event.type === "session.activated" || event.type === "reason.started") {
         setLocalStatus("active");
         break;
       }
@@ -313,7 +324,12 @@ export function SessionProvider({
   }, [sessionId]);
 
   // Use local status if available, otherwise fall back to session status
-  const effectiveStatus = localStatus ?? session?.status;
+  // The current API enum spells this wire value without underscores. Keep the
+  // UI state canonical, including when a page opens during an existing wait.
+  const serverStatus: string | undefined = session?.status;
+  const effectiveStatus =
+    localStatus ??
+    (serverStatus === "waitingfortoolresults" ? "waiting_for_tool_results" : session?.status);
 
   // Determine if session is actively processing
   // "active" = turn running, "waiting_for_tool_results" = paused for client-side tool
@@ -519,6 +535,7 @@ export function SessionProvider({
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    costUsd: 0,
     hasLlmEvents: false,
   });
 
@@ -532,6 +549,7 @@ export function SessionProvider({
       outputTokens: 0,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      costUsd: 0,
       hasLlmEvents: false,
     };
   }
@@ -565,6 +583,12 @@ export function SessionProvider({
         acc.outputTokens += llmData.metadata.usage.output_tokens;
         acc.cacheReadTokens += llmData.metadata.usage.cache_read_tokens ?? 0;
         acc.cacheCreationTokens += llmData.metadata.usage.cache_creation_tokens ?? 0;
+        // Same precedence the server uses for a call's recorded cost.
+        acc.costUsd +=
+          llmData.metadata.usage.effective_cost_usd ??
+          llmData.metadata.usage.actual_cost_usd ??
+          llmData.metadata.usage.estimated_cost_usd ??
+          0;
       }
 
       if (eventSequence != null) {
@@ -582,6 +606,7 @@ export function SessionProvider({
         output_tokens: acc.outputTokens,
         cache_read_tokens: acc.cacheReadTokens > 0 ? acc.cacheReadTokens : undefined,
         cache_creation_tokens: acc.cacheCreationTokens > 0 ? acc.cacheCreationTokens : undefined,
+        effective_cost_usd: acc.costUsd > 0 ? acc.costUsd : undefined,
       };
     }
 
@@ -634,6 +659,16 @@ export function SessionProvider({
     },
     [],
   );
+
+  const latestTerminalId = events?.findLast((event) =>
+    ["turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
+  )?.id;
+  // Refresh the authoritative outcome on terminal events; worker clocks need
+  // not agree with database timestamps, so do not infer freshness from time.
+  useEffect(() => {
+    if (latestTerminalId)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions.detail(org, sessionId) });
+  }, [latestTerminalId, org, sessionId, queryClient]);
 
   const value: SessionContextValue = {
     agentId,

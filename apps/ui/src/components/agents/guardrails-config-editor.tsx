@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -385,6 +386,7 @@ export function GuardrailsConfigEditor({
   onChange,
   disabled,
 }: GuardrailsConfigEditorProps) {
+  const ui = useUiTranslations();
   const examples = useGuardrailExamples();
   const written = useRef(config);
   const [draft, setDraft] = useState(() => parseGuardrailsDraft(config));
@@ -408,7 +410,7 @@ export function GuardrailsConfigEditor({
 
   return (
     <div className="space-y-3 pt-2">
-      <Field label="Mode" htmlFor="guardrails-mode">
+      <Field label={ui("Mode")} htmlFor="guardrails-mode">
         <Select
           value={draft.mode}
           onValueChange={(value) => commit({ ...draft, mode: value as GuardrailMode })}
@@ -423,16 +425,19 @@ export function GuardrailsConfigEditor({
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Advisory runs all checks but only logs hits. Use it to tune checks against false positives
-          before enforcing.
+          {ui(
+            "Advisory runs all checks but only logs hits. Use it to tune checks against false positives before enforcing.",
+          )}
         </p>
       </Field>
 
       <div className="space-y-1.5">
-        <Label className="text-xs font-normal text-muted-foreground">Checks</Label>
+        <Label className="text-xs font-normal text-muted-foreground">{ui("Checks")}</Label>
         {draft.checks.length === 0 && (
           <p className="text-xs text-muted-foreground">
-            Nothing is checked yet. Add a preset, or add a check and choose what it looks at.
+            {ui(
+              "Nothing is checked yet. Add a preset, or add a check and choose what it looks at.",
+            )}
           </p>
         )}
         {draft.checks.map((check, index) => (
@@ -464,12 +469,12 @@ export function GuardrailsConfigEditor({
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
             <Plus className="size-3.5" />
-            Add preset
+            {ui("Add preset")}
           </DropdownMenuTrigger>
           <DropdownMenuPositioner align="start">
             <DropdownMenuContent className="w-80">
               {presets.length === 0 ? (
-                <DropdownMenuItem disabled>No presets</DropdownMenuItem>
+                <DropdownMenuItem disabled>{ui("No presets")}</DropdownMenuItem>
               ) : (
                 presets.map((preset) => (
                   <DropdownMenuItem
@@ -491,7 +496,7 @@ export function GuardrailsConfigEditor({
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
             <Plus className="size-3.5" />
-            Add check
+            {ui("Add check")}
           </DropdownMenuTrigger>
           <DropdownMenuPositioner align="start">
             <DropdownMenuContent className="w-72">
@@ -509,19 +514,22 @@ export function GuardrailsConfigEditor({
           </DropdownMenuPositioner>
         </DropdownMenu>
       </div>
-      {examples.error && <p className="text-xs text-destructive">Presets could not be loaded.</p>}
+      {examples.error && (
+        <p className="text-xs text-destructive">{ui("Presets could not be loaded.")}</p>
+      )}
     </div>
   );
 }
 
 function PresetLabel({ preset }: { preset: GuardrailExample }) {
+  const ui = useUiTranslations();
   return (
     <>
       <span>{preset.display_name}</span>
       <span className="text-xs text-muted-foreground line-clamp-3">{preset.description}</span>
       {preset.data_egress === "utility_llm" && (
         <span className="text-xs text-muted-foreground">
-          Sends an excerpt to the utility model.
+          {ui("Sends an excerpt to the utility model.")}
         </span>
       )}
     </>
@@ -539,6 +547,7 @@ function CheckCard({
   onChange: (check: GuardrailCheckDraft) => void;
   onRemove: () => void;
 }) {
+  const ui = useUiTranslations();
   const problems = guardrailCheckProblems(check);
   const patch = (next: Partial<GuardrailCheckDraft>) => onChange({ ...check, ...next });
   const changeType = (type: GuardrailCheckType) => {
@@ -552,11 +561,12 @@ function CheckCard({
         <div className="min-w-0 flex-1">
           {check.raw ? (
             <p className="text-xs text-muted-foreground">
-              This check uses a shape the editor does not recognize. Removing it is the only edit
-              that keeps the rest of the config.
+              {ui(
+                "This check uses a shape the editor does not recognize. Removing it is the only edit that keeps the rest of the config.",
+              )}
             </p>
           ) : (
-            <Field label="Type" htmlFor={`${check.key}-type`}>
+            <Field label={ui("Type")} htmlFor={`${check.key}-type`}>
               <LabeledOptions
                 id={`${check.key}-type`}
                 value={check.type}
@@ -571,7 +581,7 @@ function CheckCard({
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Remove check"
+          aria-label={ui("Remove check")}
           disabled={disabled}
           className={cn("text-muted-foreground hover:text-destructive", !check.raw && "mt-5")}
           onClick={onRemove}
@@ -583,7 +593,7 @@ function CheckCard({
       {!check.raw && (
         <>
           <p className="text-xs text-muted-foreground">{TYPE_HINTS[check.type]}</p>
-          <Field label="Stage" htmlFor={`${check.key}-stage`}>
+          <Field label={ui("Stage")} htmlFor={`${check.key}-stage`}>
             <LabeledOptions
               id={`${check.key}-stage`}
               value={check.stage}
@@ -598,7 +608,7 @@ function CheckCard({
               }))}
             />
           </Field>
-          <Field label="When it matches" htmlFor={`${check.key}-on-fail`}>
+          <Field label={ui("When it matches")} htmlFor={`${check.key}-on-fail`}>
             <LabeledOptions
               id={`${check.key}-on-fail`}
               value={check.onFail}
@@ -611,17 +621,17 @@ function CheckCard({
             />
           </Field>
           <TypeFields check={check} disabled={disabled} onChange={patch} />
-          <Field label="Id" htmlFor={`${check.key}-id`}>
+          <Field label={ui("Id")} htmlFor={`${check.key}-id`}>
             <Input
               id={`${check.key}-id`}
               value={check.id}
-              placeholder="Shown in logs"
+              placeholder={ui("Shown in logs")}
               disabled={disabled}
               className="h-8 text-sm"
               onChange={(event) => patch({ id: event.target.value })}
             />
           </Field>
-          <Field label="Message when blocked" htmlFor={`${check.key}-replacement`}>
+          <Field label={ui("Message when blocked")} htmlFor={`${check.key}-replacement`}>
             <Input
               id={`${check.key}-replacement`}
               value={check.replacement}
@@ -650,15 +660,16 @@ function TypeFields({
   disabled?: boolean;
   onChange: (next: Partial<GuardrailCheckDraft>) => void;
 }) {
+  const ui = useUiTranslations();
   switch (check.type) {
     case "regex":
       return (
         <LineField
           id={`${check.key}-patterns`}
-          label="Patterns"
+          label={ui("Patterns")}
           value={check.patterns}
           disabled={disabled}
-          placeholder="One pattern per line"
+          placeholder={ui("One pattern per line")}
           onChange={(patterns) => onChange({ patterns })}
         />
       );
@@ -667,10 +678,10 @@ function TypeFields({
         <>
           <LineField
             id={`${check.key}-words`}
-            label="Words"
+            label={ui("Words")}
             value={check.words}
             disabled={disabled}
-            placeholder="One word or phrase per line"
+            placeholder={ui("One word or phrase per line")}
             onChange={(words) => onChange({ words })}
           />
           <div className="flex items-center gap-2">
@@ -681,7 +692,7 @@ function TypeFields({
               onCheckedChange={(caseSensitive) => onChange({ caseSensitive })}
             />
             <Label htmlFor={`${check.key}-case`} className="text-xs font-normal">
-              Case sensitive
+              {ui("Case sensitive")}
             </Label>
           </div>
         </>
@@ -690,7 +701,7 @@ function TypeFields({
       return (
         <LineField
           id={`${check.key}-tools`}
-          label="Tool names"
+          label={ui("Tool names")}
           value={check.tools}
           disabled={disabled}
           placeholder={"bash*\n*exec*"}
@@ -700,12 +711,12 @@ function TypeFields({
     case "llm_judge":
       return (
         <>
-          <Field label="Policy" htmlFor={`${check.key}-prompt`}>
+          <Field label={ui("Policy")} htmlFor={`${check.key}-prompt`}>
             <Textarea
               id={`${check.key}-prompt`}
               value={check.prompt}
               disabled={disabled}
-              placeholder="Block any tool call that deletes customer records."
+              placeholder={ui("Block any tool call that deletes customer records.")}
               className="min-h-16 text-[13px]"
               onChange={(event) => onChange({ prompt: event.target.value })}
             />
@@ -716,7 +727,7 @@ function TypeFields({
     case "mcp":
       return (
         <>
-          <Field label="Server" htmlFor={`${check.key}-server`}>
+          <Field label={ui("Server")} htmlFor={`${check.key}-server`}>
             <Input
               id={`${check.key}-server`}
               value={check.server}
@@ -725,7 +736,7 @@ function TypeFields({
               onChange={(event) => onChange({ server: event.target.value })}
             />
           </Field>
-          <Field label="Tool" htmlFor={`${check.key}-tool`}>
+          <Field label={ui("Tool")} htmlFor={`${check.key}-tool`}>
             <Input
               id={`${check.key}-tool`}
               value={check.mcpTool}
@@ -741,11 +752,11 @@ function TypeFields({
         <>
           <LineField
             id={`${check.key}-categories`}
-            label="Categories"
+            label={ui("Categories")}
             hint="Leave empty for hate, harassment, self-harm, sexual, violence, and illicit."
             value={check.categories}
             disabled={disabled}
-            placeholder="One category per line"
+            placeholder={ui("One category per line")}
             onChange={(categories) => onChange({ categories })}
           />
           <EngineField check={check} disabled={disabled} onChange={onChange} />
@@ -763,10 +774,11 @@ function EngineField({
   disabled?: boolean;
   onChange: (next: Partial<GuardrailCheckDraft>) => void;
 }) {
+  const ui = useUiTranslations();
   const showThreshold = check.type === "moderation" || check.engine === "jev";
   return (
     <>
-      <Field label="Answered by" htmlFor={`${check.key}-engine`}>
+      <Field label={ui("Answered by")} htmlFor={`${check.key}-engine`}>
         <LabeledOptions
           id={`${check.key}-engine`}
           value={check.engine}
@@ -779,12 +791,12 @@ function EngineField({
         />
         <p className="text-xs text-muted-foreground">
           {check.engine === "jev"
-            ? "Jev returns a probability. The check trips at or above the threshold."
-            : "The utility model returns allow or block."}
+            ? ui("Jev returns a probability. The check trips at or above the threshold.")
+            : ui("The utility model returns allow or block.")}
         </p>
       </Field>
       {showThreshold && (
-        <Field label="Threshold" htmlFor={`${check.key}-threshold`}>
+        <Field label={ui("Threshold")} htmlFor={`${check.key}-threshold`}>
           <Input
             id={`${check.key}-threshold`}
             value={check.threshold}

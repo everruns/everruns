@@ -26,6 +26,19 @@ pub enum PhaseEffect {
 /// phase algorithms no longer invoke the persistence-shaped operation directly.
 #[async_trait]
 pub trait PhaseEffectSink: Send + Sync {
+    fn turn_causal_context(
+        &self,
+        _context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        Default::default()
+    }
+    fn restore_turn_context(
+        &self,
+        _context: &crate::events::EventContext,
+        _metadata: Option<&serde_json::Value>,
+    ) {
+    }
+
     /// Apply one phase effect and return the accepted canonical event.
     async fn apply_phase_effect(&self, effect: PhaseEffect) -> Result<Event>;
 
@@ -72,6 +85,20 @@ impl AsRef<dyn EventEmitter> for PhaseEffectEmitter<dyn PhaseEffectSink> {
 
 #[async_trait]
 impl<T: EventEmitter + ?Sized> PhaseEffectSink for T {
+    fn turn_causal_context(
+        &self,
+        context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        EventEmitter::turn_causal_context(self, context)
+    }
+    fn restore_turn_context(
+        &self,
+        context: &crate::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        EventEmitter::restore_turn_context(self, context, metadata);
+    }
+
     async fn apply_phase_effect(&self, effect: PhaseEffect) -> Result<Event> {
         match effect {
             PhaseEffect::EmitEvent(request) => self.emit(request).await,
@@ -81,6 +108,20 @@ impl<T: EventEmitter + ?Sized> PhaseEffectSink for T {
 
 #[async_trait]
 impl<T: PhaseEffectSink + ?Sized> EventEmitter for PhaseEffectEmitter<T> {
+    fn turn_causal_context(
+        &self,
+        context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        self.inner.turn_causal_context(context)
+    }
+    fn restore_turn_context(
+        &self,
+        context: &crate::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        self.inner.restore_turn_context(context, metadata);
+    }
+
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         PhaseEffectEmitter::emit(self, request).await
     }

@@ -17,11 +17,13 @@ pub mod capabilities;
 pub mod capability_dto;
 pub mod capability_mcp_server;
 pub mod capability_types;
+pub mod causal;
 pub mod channel;
 pub mod channel_driver;
 pub mod command;
 pub mod command_host;
 pub mod compaction_policy;
+pub mod completion_check;
 pub mod computer_use;
 pub mod config_layer;
 pub mod connection_services;
@@ -30,6 +32,7 @@ pub mod decisions;
 pub mod delegation_services;
 pub mod dependency_blocker;
 pub mod deployment;
+pub mod dreaming;
 pub mod egress;
 pub mod event_emitter;
 pub mod events;
@@ -52,7 +55,10 @@ pub mod mcp_resources;
 pub mod mcp_server;
 pub mod message;
 pub mod message_filter;
+pub use crate::message_origin;
+pub use crate::message_reactions;
 pub mod message_retriever;
+pub mod monitor_probe;
 pub mod mount_fs;
 pub mod network_access;
 pub mod org_egress_allowlist;
@@ -65,6 +71,7 @@ pub mod resource_names;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod sandbox_context;
+pub mod sandbox_egress;
 pub mod sandbox_workspace;
 pub mod saved_scripts;
 pub mod session;
@@ -78,16 +85,19 @@ pub mod session_task;
 pub mod skill;
 pub mod subagent_delegation;
 pub mod system_allowlist;
+pub mod tool_catalog;
 pub mod tool_context;
 pub mod tool_execution;
 pub mod tool_hooks;
 pub mod tool_narration;
 pub mod tool_output_sanitizer;
+pub mod tool_surface;
 pub mod tools;
 pub mod truncation_info;
 pub mod user_hook_types;
 pub mod utility_llm;
 pub mod web_search;
+pub mod work_report;
 
 pub use self::agent_definition::AgentDefinition;
 pub use self::background::{
@@ -142,12 +152,15 @@ pub use self::decisions::{
     DecisionsService, DisabledDecisionsService,
 };
 pub use self::delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
+pub mod credential_http;
+pub mod credential_services;
+pub mod resource_access;
 pub use self::dependency_blocker::DependencyBlocker;
 pub use self::deployment::DeploymentGrade;
 pub use self::egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
     EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
-    ScopedEgressService,
+    SandboxProxyCredential, ScopedEgressService,
 };
 pub use self::event_emitter::EventEmitter;
 pub use self::events::{
@@ -158,21 +171,23 @@ pub use self::events::{
     ContextCompactionSkippedData, Event, EventBuilder, EventContext, EventData, EventRequest,
     FILE_WRITTEN, FileWrittenData, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
     LlmCompactionInfo, LlmCostComponent, LlmGenerationData, LlmGenerationMetadata,
-    LlmGenerationOutput, LlmRetryInfo, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
+    LlmGenerationOutput, LlmRetryInfo, MAX_REACTION_EMOJI_BYTES, MESSAGE_REACTION_ADDED,
+    MESSAGE_REACTION_REMOVED, MessageReactionData, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
     OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED, OUTPUT_MESSAGE_STARTED,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM, REASON_RECOVERED, REASON_STARTED,
-    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReasonCompletedData,
-    ReasonItemData, ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED,
-    SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED,
-    SessionActivatedData, SessionIdledData, SessionModelChangedData, SessionStartedData,
-    SessionTitleUpdatedData, TIMER_CANCELLED, TIMER_FIRED, TIMER_SET, TOOL_CALL_REQUESTED,
-    TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
-    TURN_FAILED, TURN_SEALED, TURN_STARTED, TimerCancelledData, TimerFiredData, TimerPurpose,
-    TimerSetData, TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData,
-    ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData,
-    TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReactionActor,
+    ReactionActorKind, ReasonCompletedData, ReasonItemData, ReasonRecoveredData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode,
+    SESSION_ACTIVATED, SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED,
+    SESSION_TITLE_UPDATED, SessionActivatedData, SessionIdledData, SessionModelChangedData,
+    SessionStartedData, SessionTitleUpdatedData, TIMER_CANCELLED, TIMER_FIRED, TIMER_SET,
+    TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED,
+    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED, TimerCancelledData,
+    TimerFiredData, TimerPurpose, TimerSetData, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
+    TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    normalize_reaction_emoji,
 };
 pub use self::execution_context::ExecutionContext;
 pub use self::execution_features::{
@@ -200,7 +215,7 @@ pub use self::mcp_deferred::{
 };
 pub use self::mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
-    build_mcp_proxy_tools,
+    build_mcp_proxy_tools, report_mcp_call_progress,
 };
 pub use self::mcp_resources::{
     LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
@@ -263,8 +278,9 @@ pub use self::session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };
 pub use self::session_services::{
-    BoundSecret, BoundSecretInfo, KeyInfo, LeasedResourceStore, SecretAuth, SecretBinding,
-    SecretInfo, SecretScope, SessionResourceRegistry, SessionStorageStore,
+    BoundSecret, BoundSecretInfo, FRAMEWORK_SESSION_KV_PREFIX, KeyInfo, LeasedResourceStore,
+    SecretAuth, SecretBinding, SecretInfo, SecretScope, SessionResourceRegistry,
+    SessionStorageStore,
 };
 pub use self::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRecoveryGuard,

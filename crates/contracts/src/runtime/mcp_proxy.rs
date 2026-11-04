@@ -113,6 +113,40 @@ pub enum McpServerTools {
     ConnectionRequired(crate::runtime::tool_types::ToolResult),
 }
 
+tokio::task_local! {
+    /// The running MCP proxy call's context, so a transport several layers
+    /// down can report progress without every layer carrying it.
+    static CALL_PROGRESS: Arc<CallProgress>;
+}
+
+/// Where an in-flight MCP call reports progress: the calling tool's context.
+struct CallProgress {
+    context: ToolContext,
+    tool_name: String,
+}
+
+/// Longest progress message forwarded. The text comes from the remote server
+/// (an MCP task's `statusMessage`) and lands in the event log and the UI.
+const MAX_PROGRESS_CHARS: usize = 200;
+
+/// Report progress for the MCP call running in this task, as a
+/// `tool.progress` event on its tool call. A no-op outside an MCP proxy call
+/// or without an event emitter. The message is trimmed and cut to
+/// 200 characters.
+pub async fn report_mcp_call_progress(message: &str) {
+    let Ok(progress) = CALL_PROGRESS.try_with(Arc::clone) else {
+        return;
+    };
+    let message: String = message.trim().chars().take(MAX_PROGRESS_CHARS).collect();
+    if message.is_empty() {
+        return;
+    }
+    progress
+        .context
+        .emit_progress(&progress.tool_name, &message)
+        .await;
+}
+
 /// Per-call slot the engine puts in a tool's context extensions so an MCP
 /// proxy tool can report which account its call ran as. The engine reads it
 /// back into the call's `tool.completed` event (`acted_as`).
@@ -304,6 +338,28 @@ impl McpProxyTool {
         }
     }
 
+    async fn execute_scoped(&self, arguments: Value, context: &ToolContext) -> ToolExecutionResult {
+        let tool_call_id = context.tool_call_id.clone().unwrap_or_default();
+        let identity = context.extensions.get::<McpCallIdentity>();
+        let key = context.idempotency_key.as_deref();
+        if let Some(id) = context
+            .event_context
+            .as_ref()
+            .and_then(|c| c.input_message_id)
+            && let Some(invoker) = self.invoker.for_execution(id.uuid())
+        {
+            let scoped = Self {
+                definition: self.definition.clone(),
+                invoker,
+            };
+            return scoped
+                .invoke(tool_call_id, arguments, identity.as_deref(), key)
+                .await;
+        }
+        self.invoke(tool_call_id, arguments, identity.as_deref(), key)
+            .await
+    }
+
     async fn invoke(
         &self,
         tool_call_id: String,
@@ -371,24 +427,12 @@ impl Tool for McpProxyTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let tool_call_id = context.tool_call_id.clone().unwrap_or_default();
-        let identity = context.extensions.get::<McpCallIdentity>();
-        let key = context.idempotency_key.as_deref();
-        if let Some(id) = context
-            .event_context
-            .as_ref()
-            .and_then(|c| c.input_message_id)
-            && let Some(invoker) = self.invoker.for_execution(id.uuid())
-        {
-            let scoped = Self {
-                definition: self.definition.clone(),
-                invoker,
-            };
-            return scoped
-                .invoke(tool_call_id, arguments, identity.as_deref(), key)
-                .await;
-        }
-        self.invoke(tool_call_id, arguments, identity.as_deref(), key)
+        let progress = Arc::new(CallProgress {
+            context: context.clone(),
+            tool_name: self.definition.name.clone(),
+        });
+        CALL_PROGRESS
+            .scope(progress, self.execute_scoped(arguments, context))
             .await
     }
 }
@@ -840,5 +884,75 @@ mod tests {
                 .is_none()
         );
         assert!(scoped.list_server_tools("wiki", session).await.is_err());
+    }
+
+    /// Reports progress from inside the call, as a transport polling an MCP
+    /// task does, then returns.
+    struct ReportingInvoker;
+
+    #[async_trait]
+    impl McpToolInvoker for ReportingInvoker {
+        async fn invoke(&self, _tool_call: &ToolCall) -> Result<ToolResult> {
+            report_mcp_call_progress("  Building  ").await;
+            report_mcp_call_progress("   ").await;
+            report_mcp_call_progress(&"x".repeat(500)).await;
+            Ok(ok_result(serde_json::json!("done")))
+        }
+    }
+
+    #[derive(Default)]
+    struct ProgressEmitter {
+        events: Mutex<Vec<crate::runtime::events::EventRequest>>,
+    }
+
+    #[async_trait]
+    impl crate::runtime::event_emitter::EventEmitter for ProgressEmitter {
+        async fn emit(
+            &self,
+            request: crate::runtime::events::EventRequest,
+        ) -> Result<crate::runtime::events::Event> {
+            self.events.lock().unwrap().push(request.clone());
+            Ok(request.into_event(crate::runtime::typed_id::EventId::new(), 1))
+        }
+    }
+
+    #[tokio::test]
+    async fn progress_reported_inside_a_call_lands_on_its_tool_call() {
+        let emitter = Arc::new(ProgressEmitter::default());
+        let tool = McpProxyTool::new(builtin_def("mcp_ci__build"), Arc::new(ReportingInvoker));
+        let mut context = ToolContext::new(crate::runtime::typed_id::SessionId::from_seed(1));
+        context.tool_call_id = Some("call-1".into());
+        context.event_context = Some(crate::runtime::events::EventContext::empty());
+        context.event_emitter = Some(emitter.clone());
+
+        tool.execute_with_context(serde_json::json!({}), &context)
+            .await;
+
+        let messages: Vec<(String, String, String)> = emitter
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| match &request.data {
+                crate::runtime::events::EventData::ToolProgress(data) => (
+                    data.tool_call_id.clone(),
+                    data.tool_name.clone(),
+                    data.message.clone(),
+                ),
+                other => panic!("unexpected event {other:?}"),
+            })
+            .collect();
+        // Trimmed, blank skipped, and server text cut to 200 characters.
+        assert_eq!(
+            messages,
+            vec![
+                ("call-1".into(), "mcp_ci__build".into(), "Building".into()),
+                ("call-1".into(), "mcp_ci__build".into(), "x".repeat(200)),
+            ]
+        );
+
+        // Outside a proxy call there is nowhere to report, and nothing fails.
+        report_mcp_call_progress("ignored").await;
+        assert_eq!(emitter.events.lock().unwrap().len(), 2);
     }
 }

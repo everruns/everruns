@@ -6,7 +6,7 @@ core_kernel_source_files() {
     \( -path crates/core/src/host -o -path crates/core/src/mcp \
        -o -path crates/core/src/ag_ui -o -path crates/core/src/a2a \
        -o -path crates/core/src/channel_auth \) -prune -o \
-    -name '*.rs' ! -path crates/core/src/a2a.rs -type f -print
+    -name '*.rs' ! -path crates/core/src/a2a.rs ! -path crates/core/src/portable_host.rs -type f -print
 }
 
 assert_core_feature_module_gates() {
@@ -19,5 +19,8 @@ for module, feature in [("host", "host"), ("engine", "engine"), ("builtins", "bu
     pattern = r'#\[cfg\(feature = "' + re.escape(feature) + r'"\)\]\s*(?:(?:#\[[^\n]*\]|//[^\n]*)\s*)*pub mod ' + module + ';'
     if not re.search(pattern, source):
         raise SystemExit(f"core::{module} must stay behind feature {feature}")
+portable = r'#\[cfg\(all\(feature = "execution-host", not\(feature = "host"\)\)\)\]\s*#\[path = "portable_host.rs"\]\s*pub mod host;'
+if not re.search(portable, source):
+    raise SystemExit("portable core::host must stay behind execution-host without native host")
 PY_GATE
 }

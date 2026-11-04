@@ -1,12 +1,12 @@
 //! Reqwest-backed implementation of the neutral Everruns egress contract.
 
-use super::egress_proxy::ProxyRoute;
+use super::egress_proxy::{ProxyRoute, SandboxProxyRoute};
 use super::org_egress_allowlist::{
     ORG_EGRESS_ALLOWLIST_CACHE_TTL, OrgAllowlistCache, OrgAllowlistSource,
 };
 use crate::{
-    EgressError, EgressRequest, EgressResponse, EgressResult, EgressService, EgressSigning,
-    EgressStreamResponse, SystemAllowlist,
+    EgressError, EgressRequest, EgressResponse, EgressResult, EgressScope, EgressService,
+    EgressSigning, EgressStreamResponse, SystemAllowlist,
 };
 use async_trait::async_trait;
 use everruns_contracts::runtime::org_egress_allowlist::OrgEgressAllowlist;
@@ -41,16 +41,24 @@ pub struct DirectEgressService {
     open_reads: Arc<OpenReadMeter>,
     /// Optional domain reputation consulted before an open read.
     reputation: Option<Arc<super::egress_reputation::DomainReputation>>,
+    /// Optional threat-intelligence domain lists, refused like the deny list.
+    deny_feeds: Option<Arc<super::egress_deny_feeds::DenyFeeds>>,
     /// Where org allowlist extensions come from. Consulted only for a request
     /// the system policy would refuse as not allowlisted.
     org_allowlist: OrgAllowlistSource,
     /// Where tenant requests leave from: directly, or through the tenant
     /// egress proxy (`EVERRUNS_EGRESS_PROXY_URL`).
     proxy: ProxyRoute,
+    /// Whether sandbox providers tunnel sandbox traffic to the proxy's SOCKS5
+    /// listener (`EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS`).
+    sandbox_proxy: SandboxProxyRoute,
     /// Optional DNS override for `dns_pinning_required` requests. Production
     /// leaves this unset and uses the system resolver; tests install a
     /// controlled resolver to prove private answers are denied before connect.
     dns_resolver: Option<DnsResolver>,
+    /// Platform Web Bot Auth signer for requests that ask for
+    /// `EgressSigning::PlatformDefault` or `Required`. `None` = not configured.
+    web_bot_auth: Option<Arc<super::web_bot_auth::WebBotAuth>>,
 }
 
 impl std::fmt::Debug for DirectEgressService {
@@ -66,21 +74,43 @@ impl Default for DirectEgressService {
     }
 }
 
-impl DirectEgressService {
-    pub fn new() -> Self {
-        Self {
-            client: reqwest::Client::builder()
+/// The HTTP client behind every unpinned, unproxied egress request.
+///
+/// Decision: one client per process, cloned into each service. Building a
+/// reqwest client loads and parses every system root certificate (the
+/// platform verifier). The server builds egress services per API request
+/// (`Ctx::minimal` -> `CapabilityService` -> `McpServerService`), so on the
+/// production load test that parse was the largest CPU cost of posting a
+/// message. The client carries no per-service state: policy, meters, and
+/// proxy routing stay on each service, and proxied or pinned requests still
+/// build their own client.
+fn shared_direct_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(DEFAULT_REQUEST_TIMEOUT)
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
-                .expect("build direct egress HTTP client"),
+                .expect("build direct egress HTTP client")
+        })
+        .clone()
+}
+
+impl DirectEgressService {
+    pub fn new() -> Self {
+        Self {
+            client: shared_direct_client(),
             system_policy: None,
             open_reads: Arc::new(OpenReadMeter::from_env()),
             reputation: None,
+            deny_feeds: None,
             org_allowlist: OrgAllowlistSource::None,
             proxy: ProxyRoute::Direct,
+            sandbox_proxy: SandboxProxyRoute::Off,
             dns_resolver: None,
+            web_bot_auth: None,
         }
     }
 
@@ -90,9 +120,12 @@ impl DirectEgressService {
             system_policy: None,
             open_reads: Arc::new(OpenReadMeter::from_env()),
             reputation: None,
+            deny_feeds: None,
             org_allowlist: OrgAllowlistSource::None,
             proxy: ProxyRoute::Direct,
+            sandbox_proxy: SandboxProxyRoute::Off,
             dns_resolver: None,
+            web_bot_auth: None,
         }
     }
 
@@ -131,15 +164,39 @@ impl DirectEgressService {
     pub fn from_env() -> Self {
         let mut service = Self::new()
             .with_system_policy(SystemEgressPolicy::from_env())
-            .with_reputation(super::egress_reputation::DomainReputation::from_env().map(Arc::new));
+            .with_reputation(super::egress_reputation::DomainReputation::from_env().map(Arc::new))
+            .with_deny_feeds(super::egress_deny_feeds::runtime_deny_feeds());
         service.org_allowlist = OrgAllowlistSource::Runtime;
         service.proxy = ProxyRoute::from_env();
+        service.sandbox_proxy = SandboxProxyRoute::from_env();
+        service.web_bot_auth = super::web_bot_auth::WebBotAuth::from_env();
         service
+    }
+
+    /// Sign requests that opt into platform signing with `signer`.
+    pub fn with_web_bot_auth(
+        mut self,
+        signer: Option<Arc<super::web_bot_auth::WebBotAuth>>,
+    ) -> Self {
+        self.web_bot_auth = signer;
+        self
     }
 
     /// Send tenant requests through `proxy` (or directly with `None`).
     pub fn with_tenant_proxy(mut self, proxy: Option<super::TenantEgressProxy>) -> Self {
         self.proxy = proxy.map_or(ProxyRoute::Direct, ProxyRoute::Proxy);
+        self
+    }
+
+    /// Route sandboxes to the proxy's SOCKS5 listener at `address` (`host:port`),
+    /// over TLS unless `tls` is false; `None` turns sandbox routing off.
+    pub fn with_sandbox_proxy(mut self, address: Option<&str>, tls: bool, secret: Vec<u8>) -> Self {
+        self.sandbox_proxy = match address {
+            Some(address) => {
+                SandboxProxyRoute::new(address, if tls { "true" } else { "false" }, secret)
+            }
+            None => SandboxProxyRoute::Off,
+        };
         self
     }
 
@@ -149,6 +206,16 @@ impl DirectEgressService {
         reputation: Option<Arc<super::egress_reputation::DomainReputation>>,
     ) -> Self {
         self.reputation = reputation;
+        self
+    }
+
+    /// Attach (or clear) deny feeds. Every request the curated allowlist does
+    /// not admit is refused when its host is listed.
+    pub fn with_deny_feeds(
+        mut self,
+        deny_feeds: Option<Arc<super::egress_deny_feeds::DenyFeeds>>,
+    ) -> Self {
+        self.deny_feeds = deny_feeds;
         self
     }
 
@@ -181,11 +248,36 @@ impl DirectEgressService {
         self
     }
 
+    /// Decide the policy for one request: the system policy, then the deny
+    /// feeds for anything the curated allowlist did not admit.
+    async fn decide_policy(&self, request: &EgressRequest) -> PolicyDecision {
+        let decision = self.decide_system_policy(request).await;
+        if matches!(
+            decision,
+            PolicyDecision::Allowlisted
+                | PolicyDecision::AllowlistedOrg
+                | PolicyDecision::Denied(_)
+        ) {
+            return decision;
+        }
+        if let Some(feeds) = &self.deny_feeds {
+            feeds.start();
+            if let Some(host) = reqwest::Url::parse(&request.url)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string))
+                && feeds.is_listed(&host)
+            {
+                return PolicyDecision::DenyFeed;
+            }
+        }
+        decision
+    }
+
     /// Decide the system policy for one request. The org's grant is
     /// consulted only when the policy alone would not allow the request
     /// outright: an open grant lifts everything but the deny list, and an
     /// allowlist extension can admit a request refused as not allowlisted.
-    async fn decide_policy(&self, request: &EgressRequest) -> PolicyDecision {
+    async fn decide_system_policy(&self, request: &EgressRequest) -> PolicyDecision {
         let Some(policy) = &self.system_policy else {
             return PolicyDecision::NoPolicy;
         };
@@ -278,6 +370,14 @@ impl DirectEgressService {
                     url: request.url.clone(),
                 });
             }
+            PolicyDecision::DenyFeed => {
+                return Err(EgressError::NetworkAccessDenied {
+                    url: format!(
+                        "{} (domain on a threat-intelligence deny feed)",
+                        request.url
+                    ),
+                });
+            }
         }
         Ok(())
     }
@@ -288,9 +388,7 @@ impl DirectEgressService {
         decision: PolicyDecision,
     ) -> EgressResult<EgressRequest> {
         self.validate_request(&request, decision)?;
-        if request.signing == EgressSigning::Required {
-            return Err(EgressError::SigningUnavailable);
-        }
+        self.sign(&mut request)?;
         // The reputation lookup and the DNS-pinning resolution are independent
         // network round trips, so a first read of an unknown host pays for one,
         // not both. The reputation verdict still decides first.
@@ -321,6 +419,47 @@ impl DirectEgressService {
             request = request.pinned_addrs(pin_host, resolved_addrs);
         }
         Ok(request)
+    }
+
+    /// Add Web Bot Auth headers when the caller asked for platform signing.
+    ///
+    /// Runs after policy validation, so a refused request is never signed.
+    /// `PlatformDefault` sends unsigned when signing is not configured or the
+    /// URL cannot be signed (plain http); `Required` fails instead. A request
+    /// that already carries its own RFC 9421 signature keeps it.
+    fn sign(&self, request: &mut EgressRequest) -> EgressResult<()> {
+        if request.signing == EgressSigning::Disabled {
+            return Ok(());
+        }
+        let has_own_signature = request.headers.keys().any(|name| {
+            name.eq_ignore_ascii_case("signature") || name.eq_ignore_ascii_case("signature-input")
+        });
+        if has_own_signature {
+            return Ok(());
+        }
+        let signed = self
+            .web_bot_auth
+            .as_ref()
+            .map(|signer| signer.sign_request(&request.method, &request.url));
+        match signed {
+            Some(Ok(headers)) => {
+                request
+                    .headers
+                    .retain(|name, _| !name.eq_ignore_ascii_case("signature-agent"));
+                for (name, value) in headers {
+                    request.headers.insert(name.to_string(), value);
+                }
+                Ok(())
+            }
+            Some(Err(error)) if request.signing == EgressSigning::Required => {
+                tracing::debug!(%error, "required request signing failed");
+                Err(EgressError::SigningUnavailable)
+            }
+            None if request.signing == EgressSigning::Required => {
+                Err(EgressError::SigningUnavailable)
+            }
+            Some(Err(_)) | None => Ok(()),
+        }
     }
 
     /// Open reads and open-org requests reach hosts nobody curated, so ask the
@@ -434,6 +573,14 @@ impl EgressService for DirectEgressService {
     fn name(&self) -> &'static str {
         "DirectEgressService"
     }
+
+    fn sandbox_proxy_credential(
+        &self,
+        scope: Option<&EgressScope>,
+        valid_for: Duration,
+    ) -> EgressResult<Option<crate::SandboxProxyCredential>> {
+        self.sandbox_proxy.credential(scope, valid_for)
+    }
 }
 
 impl DirectEgressService {
@@ -522,6 +669,8 @@ enum PolicyDecision {
     /// The org holds an open grant: any host the deny list allows.
     OpenOrg,
     Denied(EgressPolicyDenial),
+    /// The host is on a deny feed and the allowlist did not admit it.
+    DenyFeed,
 }
 
 impl PolicyDecision {
@@ -533,6 +682,7 @@ impl PolicyDecision {
             Self::OpenRead => "open_read".to_string(),
             Self::OpenOrg => "open_org".to_string(),
             Self::Denied(denial) => format!("denied:{}", denial.reason()),
+            Self::DenyFeed => "denied:deny_feed".to_string(),
         }
     }
 }

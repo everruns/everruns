@@ -39,7 +39,19 @@ pub(crate) fn session_not_found_status(
 }
 
 pub(crate) fn internal_status(context: &'static str, error: impl std::fmt::Display) -> Status {
-    tracing::error!(%error, "{}", context);
+    // Every worker RPC fails at once when the datastore saturates, so the
+    // report is bounded per context; repeats are still logged (EVE-1328).
+    let throttle = &everruns_core::report_throttle::REPEATED_FAILURES;
+    match throttle.admit("server.worker_link.rpc", context) {
+        Some(suppressed) => tracing::error!(
+            %error,
+            suppressed_since_last_report = suppressed,
+            report_interval_seconds = throttle.interval().as_secs(),
+            "{}",
+            context
+        ),
+        None => tracing::info!(%error, report_suppressed = true, "{}", context),
+    }
     Status::internal(context)
 }
 
@@ -77,6 +89,7 @@ pub(crate) fn resolved_mcp_server_to_proto(
         auth_mode: resolved.auth_mode.to_string(),
         protocol_mode: resolved.protocol_mode.to_string(),
         elicitation_policy: resolved.elicitation_policy.to_string(),
+        tool_timeout_ms: resolved.tool_timeout_ms,
         oauth_provider_id: resolved.oauth_provider_id,
         secret_bindings: flatten_secret_bindings(secret_bindings),
         acts_as: resolved.acts_as.to_string(),
@@ -85,7 +98,8 @@ pub(crate) fn resolved_mcp_server_to_proto(
 }
 
 /// Send an MCP tool definition to the worker with its hints, so a saved risk
-/// label (and the tool's own annotations) reach tool approval there.
+/// label (and the tool's own annotations) reach tool approval there. Preserve
+/// MCP source context separately so worker-side search can rank descriptions.
 pub(crate) fn mcp_tool_definition_to_proto(
     tool: &everruns_contracts::tool_types::ToolDefinition,
 ) -> McpToolDef {
@@ -110,6 +124,35 @@ pub(crate) fn mcp_tool_definition_to_proto(
         idempotent: hints.idempotent,
         open_world: hints.open_world,
         display_name: tool.display_name().map(str::to_string),
+        search_metadata: {
+            let mut metadata = serde_json::Map::new();
+            if let Some(source) = hints
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("mcp_server"))
+                .filter(|source| source.is_object())
+            {
+                metadata.insert("mcp_server".into(), serde_json::json!({
+                        "name": source.get("name").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                        "description": source.get("description").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                }));
+            }
+            if let Some(description) = hints.capability_description.as_deref() {
+                metadata.insert(
+                    "capability".into(),
+                    serde_json::json!({
+                        "id": hints.capability_id,
+                        "name": hints.capability_name,
+                        "description": description,
+                    }),
+                );
+            }
+            (!metadata.is_empty()).then(|| {
+                everruns_internal_protocol::json_to_proto_struct(&serde_json::Value::Object(
+                    metadata,
+                ))
+            })
+        },
     }
 }
 
@@ -278,6 +321,47 @@ pub(crate) fn workflow_status_to_proto(status: WorkflowStatus) -> DurableWorkflo
 #[cfg(test)]
 mod tests {
 
+    #[test]
+    fn mcp_search_metadata_reaches_worker_without_unrelated_extensions() {
+        let tool = serde_json::from_value(serde_json::json!({
+            "type": "builtin", "name": "mcp_alpha__search", "description": "Search records",
+            "parameters": {"type":"object"},
+            "hints": {"readonly":true,"metadata":{
+                "mcp_server":{"name":"alpha","description":"Basalt borehole surveying"},
+                "unrelated_extension":"kept server-side"
+            }}
+        }))
+        .unwrap();
+        let wire = super::mcp_tool_definition_to_proto(&tool);
+        assert_eq!(wire.readonly, Some(true));
+        assert_eq!(
+            everruns_internal_protocol::proto_struct_to_json(
+                wire.search_metadata.as_ref().unwrap()
+            ),
+            serde_json::json!({"mcp_server":{"name":"alpha","description":"Basalt borehole surveying"}})
+        );
+    }
+
+    #[test]
+    fn platform_capability_search_context_crosses_the_mcp_worker_boundary() {
+        let tool: everruns_contracts::tool_types::ToolDefinition = serde_json::from_value(serde_json::json!({
+            "type":"builtin", "name":"mcp_alpha__inspect", "description":"Inspect records",
+            "parameters":{"type":"object"}, "hints":{"metadata":{"private_extension":"excluded"}}
+        })).unwrap();
+        let tool =
+            tool.with_capability_context("minerals", Some("Minerals"), "Scandium prospecting");
+        let wire = super::mcp_tool_definition_to_proto(&tool);
+        let metadata = everruns_internal_protocol::proto_struct_to_json(
+            wire.search_metadata.as_ref().unwrap(),
+        );
+        assert_eq!(
+            metadata,
+            serde_json::json!({"capability":{
+                "id":"minerals", "name":"Minerals", "description":"Scandium prospecting"
+            }})
+        );
+    }
+
     /// Every `.rs` file under `dir`, recursively. The guard above covers a tree, so
     /// a handler module added tomorrow is covered without anyone remembering to list
     /// it here.
@@ -300,6 +384,72 @@ mod tests {
 
     const RAW_STORAGE_ERROR: &str = "error returned from database: relation \"agents\" does not \
                                      exist at sqlx-postgres/src/connection.rs:666";
+
+    /// Levels of every event `emit` produced, under a capturing subscriber.
+    fn captured_levels(emit: impl FnOnce()) -> Vec<tracing::Level> {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::Layer;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        struct Levels(Arc<Mutex<Vec<tracing::Level>>>);
+        impl<S: tracing::Subscriber> Layer<S> for Levels {
+            fn on_event(
+                &self,
+                event: &tracing::Event<'_>,
+                _ctx: tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                self.0.lock().unwrap().push(*event.metadata().level());
+            }
+        }
+
+        let levels = Arc::new(Mutex::new(Vec::new()));
+        let subscriber =
+            tracing_subscriber::registry::Registry::default().with(Levels(Arc::clone(&levels)));
+        tracing::subscriber::with_default(subscriber, emit);
+        levels.lock().unwrap().clone()
+    }
+
+    /// EVE-1328: a saturated datastore fails every worker RPC. The first is
+    /// reported at once; the rest stay in the logs below `warn`, which the
+    /// embedder's error reporter would otherwise turn into one event each.
+    #[test]
+    fn internal_status_reports_a_sustained_outage_a_bounded_number_of_times() {
+        let levels = captured_levels(|| {
+            for _ in 0..100 {
+                internal_status("EVE-1328 sustained outage fixture", RAW_STORAGE_ERROR);
+            }
+        });
+        assert_eq!(levels.len(), 100, "every occurrence is still logged");
+        assert_eq!(levels[0], tracing::Level::ERROR);
+        assert!(
+            levels[1..]
+                .iter()
+                .all(|level| *level == tracing::Level::INFO),
+            "{levels:?}"
+        );
+    }
+
+    /// The same bound through the call-site macro the other sites use.
+    #[test]
+    fn repeated_failure_macro_bounds_reports_at_the_requested_level() {
+        let levels = captured_levels(|| {
+            for _ in 0..50 {
+                everruns_core::report_repeated_failure!(
+                    warn,
+                    error = "pool timed out",
+                    "repeating failure fixture"
+                );
+            }
+        });
+        assert_eq!(levels.len(), 50);
+        assert_eq!(levels[0], tracing::Level::WARN);
+        assert!(
+            levels[1..]
+                .iter()
+                .all(|level| *level == tracing::Level::INFO),
+            "{levels:?}"
+        );
+    }
 
     #[test]
     fn internal_status_keeps_the_source_error_server_side() {
@@ -441,6 +591,7 @@ mod tests {
                 auth_mode: everruns_core::McpServerAuthMode::None,
                 protocol_mode: everruns_core::McpProtocolMode::Auto,
                 elicitation_policy: Default::default(),
+                tool_timeout_ms: None,
                 oauth_provider_id: None,
                 acts_as,
                 connect_in_chat: everruns_core::McpConnectInChat::Never,

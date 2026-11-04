@@ -78,6 +78,8 @@ pub struct EverrunsAppLink {
 pub struct LinkQuery {
     /// Same-origin path; defaults to Settings > Organization.
     pub return_to: Option<String>,
+    /// Finish in a popup that reports back to its opener and closes.
+    pub popup: Option<bool>,
 }
 
 fn internal(context: &str, error: impl std::fmt::Display) -> (StatusCode, String) {
@@ -125,7 +127,7 @@ pub(crate) async fn list_links(
     }))
 }
 
-#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app/authorize", summary = "Link an Everruns GitHub App installation", description = "Start linking a shared Everruns GitHub App installation to the organization.", params(("org" = String, Path), ("return_to" = Option<String>, Query)), responses((status = 303, description = "Redirect to GitHub"), (status = 403, description = "Admin access required")), tag = "Organizations")]
+#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app/authorize", summary = "Link an Everruns GitHub App installation", description = "Start linking a shared Everruns GitHub App installation to the organization.", params(("org" = String, Path), ("return_to" = Option<String>, Query), ("popup" = Option<bool>, Query)), responses((status = 303, description = "Redirect to GitHub"), (status = 403, description = "Admin access required")), tag = "Organizations")]
 pub(crate) async fn authorize_link(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -154,7 +156,7 @@ pub(crate) async fn authorize_link(
         session_id: None,
         agent_id: None,
         virtual_user_id: None,
-        popup: false,
+        popup: query.popup.unwrap_or(false),
         code_verifier: String::new(),
         github_installation_id: None,
     };
@@ -296,27 +298,15 @@ pub(super) async fn store_org_link(
     }
 }
 
-/// Refuse to attach a shared App installation directly to an agent's service
-/// virtual user: agents act as the shared App only through an org link (D3).
-/// People's own connections are untouched until they move to `person` (3b).
-pub(super) async fn refuse_service_target(
-    state: &AppState,
-    org_id: i64,
-    target_id: uuid::Uuid,
-) -> Result<(), (StatusCode, String)> {
-    let target = state
-        .db
-        .get_virtual_user(org_id, VirtualUserId::from_uuid(target_id))
-        .await
-        .map_err(|e| internal("Failed to load virtual user", e))?;
-    if target.is_some_and(|target| target.usage == "service") {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Agents use the Everruns GitHub App through the organization: an org admin links an \
-             installation in Settings > Organization, then choose \"Use the Everruns app\" on the \
-             agent's GitHub section"
-                .into(),
-        ));
-    }
-    Ok(())
+/// The answer to installing the shared App on a virtual user's own connection,
+/// a person's or an agent's: installations are the org's, linked by an org
+/// admin, and an agent then chooses one (D3, step 3b). People sign in instead.
+pub(super) fn refused_shared_app_install() -> (StatusCode, String) {
+    (
+        StatusCode::BAD_REQUEST,
+        "Agents use the Everruns GitHub App through the organization: an org admin links an \
+         installation in Settings > Organization, then choose \"Use the Everruns app\" on the \
+         agent's GitHub section"
+            .into(),
+    )
 }

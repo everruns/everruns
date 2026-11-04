@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 everruns-serve.workspace = true
-# Serves the celld container contract (`/celld/*`) on :8080 around the app.
+# Serves ordinary /v1 and authenticated /execute using the same Framework Engine.
 everruns-serve-celld.workspace = true
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

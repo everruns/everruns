@@ -111,13 +111,18 @@ async fn public_skills_round_trip_with_complete_verified_manifests() {
     assert_eq!(list["result"]["cacheScope"], "public");
     assert!(list["result"]["ttlMs"].as_u64().is_some());
     let skills = list["result"]["skills"].as_array().expect("skills");
-    assert_eq!(skills.len(), 2);
+    assert_eq!(skills.len(), 4);
     assert_eq!(
         skills
             .iter()
             .map(|s| s["frontmatter"]["name"].as_str().unwrap())
             .collect::<std::collections::BTreeSet<_>>(),
-        std::collections::BTreeSet::from(["everruns-mcp", "everruns-agent-authoring"])
+        std::collections::BTreeSet::from([
+            "everruns",
+            "everruns-cli",
+            "everruns-mcp",
+            "everruns-agent-authoring"
+        ])
     );
     for skill in skills {
         let get = call(&server, "skills/get", json!({"uri": skill["uri"]})).await;
@@ -173,10 +178,10 @@ async fn skill_lookup_is_direct_and_rejects_unknown_or_traversing_uris() {
     );
     for uri in [
         "skill://missing/SKILL.md",
-        "skill://everruns/SKILL.md",
-        "skill://everruns/references/crates.md",
-        "skill://everruns",
-        "skill://everruns/references",
+        "skill://everruns-framework/SKILL.md",
+        "skill://everruns-framework/references/crates.md",
+        "skill://everruns-framework",
+        "skill://everruns-framework/references",
         "skill://everruns-mcp/../everruns/SKILL.md",
         "skill://everruns-mcp/%2e%2e/everruns/SKILL.md",
         "file:///etc/passwd",

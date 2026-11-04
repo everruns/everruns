@@ -518,6 +518,12 @@
   cursor: wait;
 }
 
+.er-f-subscribe-hint a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .er-f-subscribe-honeypot {
   position: absolute;
   left: -9999px;
@@ -542,6 +548,21 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 40px 24px;
+}
+
+/* Six short columns (four to five links each) in one row on wide screens,
+   so no column runs far below the brand and subscribe block. */
+@media (min-width: 960px) and (max-width: 1099px) {
+  .er-f-footer-columns {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .er-f-footer-columns {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 40px 20px;
+  }
 }
 
 .er-f-footer-column {

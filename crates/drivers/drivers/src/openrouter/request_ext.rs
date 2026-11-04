@@ -14,7 +14,7 @@
 //   - `HTTP-Referer` / `X-Title` — app attribution headers
 
 use std::borrow::Cow;
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::openrouter::options::{
     OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_ROUTING_OPTION_KEY,
@@ -24,9 +24,9 @@ use crate::openrouter::options::{
 use everruns_contracts::OpenResponsesRequestExtension;
 use everruns_contracts::driver_registry::{LlmCallConfig, PromptCacheStrategy};
 use everruns_contracts::error::{AgentLoopError, BillingPressureReason, LlmErrorKind, Result};
+use everruns_contracts::http_transport::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use everruns_contracts::llm_retry::{RateLimitInfo, RateLimitType};
 use everruns_contracts::native_web_search::{NativeWebSearch, WEB_SEARCH_FUNCTION_TOOL};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use serde_json::{Value, json};
 
 const HTTP_REFERER_HEADER: HeaderName = HeaderName::from_static("http-referer");

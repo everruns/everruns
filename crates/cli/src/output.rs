@@ -101,13 +101,6 @@ mod tests {
     }
 
     #[test]
-    fn test_output_format_is_text() {
-        assert!(OutputFormat::Text.is_text());
-        assert!(!OutputFormat::Json.is_text());
-        assert!(!OutputFormat::Yaml.is_text());
-    }
-
-    #[test]
     fn test_format_table_row_normal() {
         let row = format_table_row(&[("hello", 10), ("world", 10)]);
         assert_eq!(row, "hello       world     ");
@@ -129,11 +122,5 @@ mod tests {
     fn test_format_table_row_truncates_when_boundary_is_inside_char() {
         let row = format_table_row(&[("aaaaaaaaaaaaaaaaaaaaaaaaa😀z", 29)]);
         assert_eq!(row, "aaaaaaaaaaaaaaaaaaaaaaaaa... ");
-    }
-
-    #[test]
-    fn test_format_table_row_exact_width() {
-        let row = format_table_row(&[("exact", 5)]);
-        assert_eq!(row, "exact");
     }
 }

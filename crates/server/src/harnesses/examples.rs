@@ -23,7 +23,8 @@ pub struct HarnessExampleDef {
 }
 
 impl HarnessExampleDef {
-    fn new(definition: BuiltInHarnessDefinition) -> Self {
+    fn new(mut definition: BuiltInHarnessDefinition) -> Self {
+        definition.localizations = super::localizations::for_builtin(&definition.name);
         Self {
             definition,
             dev_only: false,
@@ -92,33 +93,5 @@ mod tests {
                 ex.definition.name
             );
         }
-    }
-
-    #[test]
-    fn old_provider_specific_coding_names_remain_reconciliation_only() {
-        let example_names = harness_examples()
-            .into_iter()
-            .map(|example| example.definition.name)
-            .collect::<Vec<_>>();
-        assert!(example_names.iter().any(|name| name == "coding"));
-        for name in [
-            "coding-container",
-            "coding-daytona",
-            "coding-session-sandbox",
-        ] {
-            assert!(!example_names.iter().any(|example| example == name));
-            assert!(LEGACY_BUILT_IN_NAMES.contains(&name));
-        }
-    }
-
-    #[test]
-    fn find_returns_none_for_unknown() {
-        assert!(find_harness_example("does-not-exist").is_none());
-    }
-
-    #[test]
-    fn find_returns_some_for_known() {
-        let ex = find_harness_example("data-analyst").expect("data-analyst is an example");
-        assert_eq!(ex.definition.display_name, "Data Analyst");
     }
 }

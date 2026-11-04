@@ -42,6 +42,9 @@ export async function updateOrganizationConnection(
   id: string,
   input: SaveOrganizationConnection,
 ): Promise<OrganizationConnection> {
+  if (!input.apiKey.trim() && !Object.values(input.extraFields ?? {}).some((value) => value.trim()))
+    return (await api.patch<OrganizationConnection>(`${base(org)}/${id}`, { name: input.name }))
+      .data;
   return (
     await api.put<OrganizationConnection>(`${base(org)}/${id}`, {
       name: input.name,

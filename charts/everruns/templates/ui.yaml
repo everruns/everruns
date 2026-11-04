@@ -1,0 +1,57 @@
+{{- $name := include "everruns.name" (list . "ui") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "ui") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "ui") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ui
+          image: {{ include "everruns.image" (list . "ui") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 9305 }
+          env:
+            - { name: PORT, value: "9305" }
+            - { name: HOSTNAME, value: "0.0.0.0" }
+            - { name: AUTH_MODE, value: {{ .Values.auth.mode | quote }} }
+            - { name: UI_SERVER_API_URL, value: {{ printf "http://%s:9000/api" (include "everruns.name" (list . "server")) | quote }} }
+            {{- with .Values.ui.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.ui.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+      {{- with .Values.ui.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  selector: {{- include "everruns.selector" (list . "ui") | nindent 4 }}
+  ports:
+    - { name: http, port: 9305, targetPort: http }

@@ -5,13 +5,15 @@
 //! This one needs a model key and nothing else, so the suite can be part of
 //! ordinary work rather than an occasion.
 //!
-//! It is not a replacement. It fakes persistence, so it cannot measure
+//! It is not a replacement. Its backend simulates resource state and does not run
+//! production domain services, authorization or durable storage. It cannot measure
 //! authorization or anything that depends on a command's real output values;
 //! `scheduled_agent_state`, which grades persisted server state, scores N/A
 //! here. What it does measure is the thing the command contract is for: whether
 //! a model can find a command, spell it, and pass flags that exist. The prompt,
-//! the tool schemas, the operation catalog and the argument parser are all the
-//! shipped ones, generated from the server.
+//! operation schemas, catalog, help and argument parser come from the server.
+//! Matched comparison cases use a shared policy prompt; ordinary CLI cases
+//! retain the captured shipped prompt.
 //!
 //! Selected with `EVERRUNS_EVAL_MODE=offline`.
 
@@ -20,7 +22,10 @@ use std::time::Instant;
 use mira::{RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
 
-use crate::control_plane::{FakeControlPlane, Harness, system_prompt, tool_definitions};
+use crate::bounded::BoundedSurface;
+use crate::control_plane::{
+    FakeControlPlane, Harness, comparison_prompt, system_prompt, tool_definitions,
+};
 
 /// Ceiling on assistant turns, independent of a sample's own `max_iterations`.
 /// A model that never stops calling tools would otherwise burn a key.
@@ -30,8 +35,7 @@ pub struct OfflineSubject {
     base_url: String,
     api_key: String,
     client: reqwest::Client,
-    /// Which shipped surface this arm reproduces. The A/B runs the same
-    /// dataset twice, changing only this.
+    /// Captured production CLI, historical baseline, or experimental native interface.
     harness: Harness,
 }
 
@@ -41,6 +45,7 @@ impl OfflineSubject {
     /// - `EVERRUNS_EVAL_OFFLINE_BASE_URL` (default OpenRouter)
     /// - `EVERRUNS_EVAL_HARNESS` (`platform-chat`, the default, or
     ///   `legacy`, the historical baseline)
+    /// - `EVERRUNS_EVAL_SURFACE` (`cli`, `native-eager`, `native-bounded`, overrides harness)
     pub fn from_env() -> Self {
         Self {
             base_url: std::env::var("EVERRUNS_EVAL_OFFLINE_BASE_URL")
@@ -48,7 +53,10 @@ impl OfflineSubject {
                 .trim_end_matches('/')
                 .to_string(),
             api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(180))
+                .build()
+                .expect("HTTP client"),
             harness: Harness::from_env(),
         }
     }
@@ -71,13 +79,13 @@ impl OfflineSubject {
             }))
             .send()
             .await
-            .map_err(|e| format!("request failed: {e}"))?;
+            .map_err(|e| format!("request failed: {}", error_chain(&e)))?;
 
         let status = response.status();
         let body = response
             .text()
             .await
-            .map_err(|e| format!("read body failed: {e}"))?;
+            .map_err(|e| format!("read body failed: {}", error_chain(&e)))?;
         if !status.is_success() {
             return Err(format!("provider returned {status}: {body}"));
         }
@@ -101,11 +109,33 @@ impl Subject for OfflineSubject {
         }
 
         let control_plane = FakeControlPlane::new(self.harness);
-        let tools = tool_definitions(self.harness);
-        let mut messages =
-            vec![json!({ "role": "system", "content": system_prompt(self.harness) })];
+        if let Some(count) = sample
+            .metadata
+            .get("fixture_agent_count")
+            .and_then(Value::as_u64)
+            && let Err(error) = control_plane.seed_agents(count.min(1000) as usize)
+        {
+            return Transcript::infra_error(error);
+        }
+        let mut bounded = (self.harness == Harness::NativeBounded).then(BoundedSurface::new);
+        let fixed_tools = tool_definitions(self.harness);
+        let prompt = if sample
+            .metadata
+            .get("surface_comparison")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            comparison_prompt(self.harness)
+        } else {
+            system_prompt(self.harness)
+        };
+        let mut messages = vec![json!({ "role": "system", "content": prompt })];
         let mut events: Vec<Value> = Vec::new();
         let mut transcript = Transcript::default();
+        transcript.metadata.insert(
+            "initial_control_plane_state".into(),
+            control_plane.snapshot(),
+        );
 
         let max_iterations = sample
             .metadata
@@ -151,6 +181,16 @@ impl Subject for OfflineSubject {
             .metadata
             .insert("harness".to_string(), json!(self.harness.name()));
 
+        transcript
+            .metadata
+            .insert("surface".into(), json!(self.harness.name()));
+        transcript
+            .metadata
+            .insert("subject".into(), json!("in-process-control-plane"));
+        transcript
+            .metadata
+            .insert("usage_convention".into(), json!("everruns-disjoint-v1"));
+        let mut footprint = Footprint::default();
         let mut iterations = 0usize;
         let mut tool_calls: Vec<String> = Vec::new();
         let mut final_response = String::new();
@@ -177,6 +217,11 @@ impl Subject for OfflineSubject {
                 }
                 iterations += 1;
 
+                let tools = bounded.as_mut().map_or_else(
+                    || fixed_tools.clone(),
+                    |surface| surface.request_tools(messages.len()),
+                );
+                footprint.record_request(&messages, &tools);
                 let completion = match self.completion(model, &messages, &tools).await {
                     Ok(value) => value,
                     Err(error) => {
@@ -193,6 +238,8 @@ impl Subject for OfflineSubject {
                 };
 
                 if let Some(usage) = completion.get("usage") {
+                    record_usage(&mut transcript, usage);
+                    footprint.record_usage(usage);
                     events.push(json!({ "type": "usage", "data": usage }));
                 }
                 messages.push(message.clone());
@@ -230,12 +277,39 @@ impl Subject for OfflineSubject {
                     // The shapes the shared scorers read, so nothing downstream
                     // knows which subject produced the transcript.
                     let call_id = call.get("id").cloned().unwrap_or(json!(""));
+                    let started_event = events.len();
                     events.push(json!({
                         "type": "tool.started",
                         "data": { "tool_call": { "id": call_id, "name": name, "arguments": arguments } }
                     }));
 
-                    let output = control_plane.call(&name, &arguments).await;
+                    let before = control_plane.snapshot()["operations"]
+                        .as_array()
+                        .map_or(0, Vec::len);
+                    let output = if let Some(surface) = bounded.as_mut() {
+                        if name == "tool_search" {
+                            surface.search(&arguments)
+                        } else if surface.callable(&name) {
+                            control_plane.call(&name, &arguments).await
+                        } else {
+                            control_plane.reject_native(
+                                &name,
+                                &arguments,
+                                "operation_not_active",
+                                "Operation is unavailable in the current visible/revealed native view. Search for its schema before calling it.",
+                            )
+                        }
+                    } else {
+                        control_plane.call(&name, &arguments).await
+                    };
+                    footprint.record_tool_result(&name, &output);
+                    let snapshot = control_plane.snapshot();
+                    let operation_calls =
+                        &snapshot["operations"].as_array().expect("operation audit")[before..];
+                    // Attach executor evidence after dispatch. Parsing the script
+                    // cannot distinguish help, quoted text, loops and actual
+                    // mutations reliably. Scorers consume this audit instead.
+                    events[started_event]["data"]["operation_calls"] = json!(operation_calls);
                     tool_calls.push(name.clone());
                     // The output rides along in the live event's shape, so the
                     // friction count reads what the model read on either subject.
@@ -244,6 +318,7 @@ impl Subject for OfflineSubject {
                         "data": {
                             "tool_call_id": call_id,
                             "tool_name": name,
+                            "operation_calls": operation_calls,
                             "result": [{ "type": "text", "text": output }],
                         }
                     }));
@@ -257,6 +332,50 @@ impl Subject for OfflineSubject {
             }
         }
 
+        let snapshot = control_plane.snapshot();
+        let operations = snapshot["operations"].as_array().expect("operation audit");
+        let completed: Vec<_> = operations
+            .iter()
+            .filter(|operation| operation["status"] == "completed")
+            .collect();
+        transcript.record_metric("platform.operations", completed.len() as f64);
+        transcript.record_metric("platform.attempted_operations", operations.len() as f64);
+        transcript.record_metric(
+            "platform.rejected_operations",
+            (operations.len() - completed.len()) as f64,
+        );
+        let unique_operations: std::collections::BTreeSet<_> = completed
+            .iter()
+            .filter_map(|operation| operation["name"].as_str())
+            .collect();
+        transcript.record_metric("platform.unique_operations", unique_operations.len() as f64);
+        if let Some(surface) = &bounded {
+            surface.finish(&mut transcript);
+        } else {
+            let disclosed = if self.harness == Harness::NativeEager {
+                fixed_tools.len()
+            } else {
+                0
+            };
+            transcript.record_metric("platform.disclosed_operations", disclosed as f64);
+            transcript.record_metric("platform.unique_disclosed_operations", disclosed as f64);
+            transcript.record_metric("platform.search_calls", 0.0);
+            transcript.record_metric("platform.peak_active_operations", disclosed as f64);
+            transcript.record_metric(
+                "platform.peak_active_schema_bytes",
+                if disclosed > 0 {
+                    serde_json::to_vec(&fixed_tools)
+                        .expect("tools serialize")
+                        .len() as f64
+                } else {
+                    0.0
+                },
+            );
+        }
+        transcript
+            .metadata
+            .insert("control_plane_state".into(), snapshot);
+        footprint.finish(&mut transcript);
         transcript.tool_calls_count = tool_calls.len();
         transcript.tool_calls = tool_calls;
         transcript.iterations = iterations;
@@ -265,5 +384,560 @@ impl Subject for OfflineSubject {
         crate::scorers::record_friction(&mut transcript);
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
         transcript
+    }
+}
+
+/// Preserve proxy/DNS/TLS diagnostics without printing request headers or keys.
+fn error_chain(error: &reqwest::Error) -> String {
+    use std::error::Error;
+    let mut message = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        message.push_str(": ");
+        message.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    message
+}
+
+/// Provider prompt tokens include cache hits; Everruns records disjoint buckets.
+/// Consume this exact response block once, never a recursive event walk.
+fn record_usage(transcript: &mut Transcript, usage: &Value) {
+    let input = usage["prompt_tokens"].as_u64().unwrap_or(0);
+    let cached = usage
+        .pointer("/prompt_tokens_details/cached_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    transcript.usage.input_tokens += input.saturating_sub(cached);
+    transcript.usage.cache_read_tokens += cached;
+    transcript.usage.output_tokens += usage["completion_tokens"].as_u64().unwrap_or(0);
+    transcript.usage.reasoning_tokens += usage
+        .pointer("/completion_tokens_details/reasoning_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    transcript.usage.cost_usd += usage["cost"].as_f64().unwrap_or(0.0);
+}
+
+#[derive(Default)]
+struct Footprint {
+    requests: usize,
+    first_tools: usize,
+    peak_tools: usize,
+    first_tool_bytes: usize,
+    peak_tool_bytes: usize,
+    first_request_bytes: usize,
+    peak_request_bytes: usize,
+    tool_result_bytes: usize,
+    peak_tool_result_bytes: usize,
+    discovery_result_bytes: usize,
+    peak_discovery_result_bytes: usize,
+    first_context_tokens: u64,
+    peak_context_tokens: u64,
+    usage_calls: usize,
+    cost_calls: usize,
+}
+
+impl Footprint {
+    fn record_tool_result(&mut self, name: &str, output: &str) {
+        self.tool_result_bytes += output.len();
+        self.peak_tool_result_bytes = self.peak_tool_result_bytes.max(output.len());
+        if matches!(name, "tool_search" | "discover") {
+            self.discovery_result_bytes += output.len();
+            self.peak_discovery_result_bytes = self.peak_discovery_result_bytes.max(output.len());
+        }
+    }
+
+    fn record_request(&mut self, messages: &[Value], tools: &[Value]) {
+        let tool_bytes = serde_json::to_vec(tools).expect("tools serialize").len();
+        let request_bytes = serde_json::to_vec(&json!({"messages": messages, "tools": tools}))
+            .expect("request serialize")
+            .len();
+        if self.requests == 0 {
+            self.first_tools = tools.len();
+            self.first_tool_bytes = tool_bytes;
+            self.first_request_bytes = request_bytes;
+        }
+        self.requests += 1;
+        self.peak_tools = self.peak_tools.max(tools.len());
+        self.peak_tool_bytes = self.peak_tool_bytes.max(tool_bytes);
+        self.peak_request_bytes = self.peak_request_bytes.max(request_bytes);
+    }
+
+    fn record_usage(&mut self, usage: &Value) {
+        if let Some(tokens) = usage["prompt_tokens"].as_u64() {
+            if self.usage_calls == 0 {
+                self.first_context_tokens = tokens;
+            }
+            self.peak_context_tokens = self.peak_context_tokens.max(tokens);
+            self.usage_calls += 1;
+        }
+        if usage["cost"].as_f64().is_some() {
+            self.cost_calls += 1;
+        }
+    }
+
+    fn finish(&self, transcript: &mut Transcript) {
+        for (name, value) in [
+            ("model_calls", self.requests as f64),
+            ("first_tool_count", self.first_tools as f64),
+            ("peak_tool_count", self.peak_tools as f64),
+            ("first_tool_bytes", self.first_tool_bytes as f64),
+            ("peak_tool_bytes", self.peak_tool_bytes as f64),
+            ("first_request_bytes", self.first_request_bytes as f64),
+            ("peak_request_bytes", self.peak_request_bytes as f64),
+            ("tool_result_bytes", self.tool_result_bytes as f64),
+            ("peak_tool_result_bytes", self.peak_tool_result_bytes as f64),
+            ("discovery_result_bytes", self.discovery_result_bytes as f64),
+            (
+                "peak_discovery_result_bytes",
+                self.peak_discovery_result_bytes as f64,
+            ),
+            ("first_input_tokens", self.first_context_tokens as f64),
+            ("peak_input_tokens", self.peak_context_tokens as f64),
+            (
+                "total_input_tokens",
+                (transcript.usage.input_tokens + transcript.usage.cache_read_tokens) as f64,
+            ),
+            ("usage_calls", self.usage_calls as f64),
+            ("actual_cost_calls", self.cost_calls as f64),
+        ] {
+            transcript.record_metric(format!("platform.{name}"), value);
+        }
+        transcript.metadata.insert(
+            "actual_cost_complete".into(),
+            json!(self.cost_calls == self.requests && self.requests > 0),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, Read, Write};
+    use std::sync::{Arc, Mutex};
+
+    fn mock_provider(
+        replies: Vec<Value>,
+    ) -> (String, Arc<Mutex<Vec<Value>>>, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let captured = requests.clone();
+        let thread = std::thread::spawn(move || {
+            for reply in replies {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(15)))
+                    .unwrap();
+                let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+                let mut length = 0;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse::<usize>().unwrap();
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).unwrap();
+                captured
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::from_slice(&body).unwrap());
+                let body = serde_json::to_vec(&reply).unwrap();
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+                stream.write_all(&body).unwrap();
+            }
+        });
+        (format!("http://{address}"), requests, thread)
+    }
+
+    fn reply(calls: Vec<(&str, Value)>) -> Value {
+        let message = if calls.is_empty() {
+            json!({"role":"assistant","content":"Updated the Triage description."})
+        } else {
+            json!({"role":"assistant","content":null,"tool_calls":calls.iter().enumerate().map(|(i,(name,args))| json!({"id":format!("call_{i}"),"type":"function","function":{"name":name,"arguments":args.to_string()}})).collect::<Vec<_>>()})
+        };
+        json!({"choices":[{"message":message}],"usage":{"prompt_tokens":100,"completion_tokens":10,"prompt_tokens_details":{"cached_tokens":20},"completion_tokens_details":{"reasoning_tokens":3},"cost":0.001}})
+    }
+
+    #[tokio::test]
+    async fn actual_http_loop_dispatches_and_scores_both_surfaces_and_usage_once() {
+        let dataset = mira::Dataset::from_jsonl_str(crate::DATASET).unwrap();
+        let sample = dataset
+            .samples
+            .iter()
+            .find(|s| s.id == "surface-update-description")
+            .unwrap();
+        for harness in [Harness::PlatformChat, Harness::NativeEager] {
+            let calls = match harness {
+                Harness::NativeEager => vec![
+                    vec![(
+                        "get_manager_context",
+                        json!({"params":{"entity_ref":"agent_01triage"}}),
+                    )],
+                    vec![(
+                        "update_agent",
+                        json!({"params":{"id":"agent_01triage","description":"Support intake owner"},"reason":"User requested the description","context_revision":3}),
+                    )],
+                ],
+                _ => vec![
+                    vec![(
+                        "bash",
+                        json!({"commands":"everruns context get agent_01triage"}),
+                    )],
+                    vec![(
+                        "bash",
+                        json!({"commands":"everruns agents update agent_01triage --description 'Support intake owner' --reason 'User requested the description' --context-revision 3"}),
+                    )],
+                ],
+            };
+            let (base_url, requests, thread) = mock_provider(vec![
+                reply(calls[0].clone()),
+                reply(calls[1].clone()),
+                reply(vec![]),
+            ]);
+            let subject = OfflineSubject {
+                base_url,
+                api_key: "test-key".into(),
+                client: reqwest::Client::new(),
+                harness,
+            };
+            let transcript = subject
+                .run(
+                    sample,
+                    &RunCx::new(mira::Target::new("test", "test", "test")),
+                )
+                .await;
+            thread.join().unwrap();
+            assert!(transcript.error.is_none(), "{:?}", transcript.error);
+            let score = crate::scorers::operation_state()
+                .score(sample, &transcript)
+                .await;
+            assert!(score.pass, "{}", score.reason);
+            let mut wrong_state = transcript.clone();
+            wrong_state.metadata.get_mut("control_plane_state").unwrap()["families"]["agents"][0]
+                ["description"] = json!("claimed but not changed");
+            assert!(
+                !crate::scorers::operation_state()
+                    .score(sample, &wrong_state)
+                    .await
+                    .pass
+            );
+            let safety = dataset
+                .samples
+                .iter()
+                .find(|s| s.id == "surface-destructive-refusal")
+                .unwrap();
+            assert!(
+                !crate::scorers::operation_state()
+                    .score(safety, &transcript)
+                    .await
+                    .pass,
+                "a dispatched update must fail the read-only safety case"
+            );
+            assert_eq!(transcript.iterations, 3);
+            assert_eq!(transcript.usage.input_tokens, 240);
+            assert_eq!(transcript.usage.cache_read_tokens, 60);
+            assert_eq!(transcript.usage.output_tokens, 30);
+            assert_eq!(transcript.usage.reasoning_tokens, 9);
+            assert!((transcript.usage.cost_usd - 0.003).abs() < 1e-9);
+            assert_eq!(transcript.metrics["platform.operations"], 2.0);
+            assert_eq!(transcript.metrics["platform.model_calls"], 3.0);
+            assert_eq!(transcript.metrics["platform.total_input_tokens"], 300.0);
+            let requests = requests.lock().unwrap();
+            assert_eq!(
+                transcript.metrics["platform.first_tool_bytes"],
+                serde_json::to_vec(&requests[0]["tools"]).unwrap().len() as f64
+            );
+            assert!(
+                transcript.metrics["platform.peak_request_bytes"]
+                    >= transcript.metrics["platform.first_request_bytes"]
+            );
+            assert_eq!(transcript.metadata["actual_cost_complete"], true);
+
+            for request in requests.iter() {
+                assert_eq!(request["tools"], json!(tool_definitions(harness)));
+            }
+            assert_eq!(
+                requests[0]["tools"].as_array().unwrap().len(),
+                if harness == Harness::NativeEager {
+                    crate::control_plane::catalog().len()
+                } else {
+                    1
+                }
+            );
+            assert!(requests[2]["messages"].as_array().unwrap().iter().any(|m| {
+                m["role"] == "tool"
+                    && m["content"]
+                        .as_str()
+                        .unwrap_or("")
+                        .contains("Support intake owner")
+            }));
+        }
+    }
+
+    #[tokio::test]
+    async fn bounded_http_reveals_full_schemas_and_preserves_append_only_message_prefix() {
+        let dataset = mira::Dataset::from_jsonl_str(crate::DATASET).unwrap();
+        let sample = dataset
+            .samples
+            .iter()
+            .find(|sample| sample.id == "surface-update-description")
+            .unwrap();
+        let (base_url, requests, thread) = mock_provider(vec![
+            reply(vec![(
+                "tool_search",
+                json!({"query":"get_manager_context"}),
+            )]),
+            reply(vec![(
+                "get_manager_context",
+                json!({"params":{"entity_ref":"agent_01triage"}}),
+            )]),
+            reply(vec![("tool_search", json!({"query":"update_agent"}))]),
+            reply(vec![(
+                "update_agent",
+                json!({"params":{"id":"agent_01triage","description":"Support intake owner"},"reason":"User requested the description","context_revision":3}),
+            )]),
+            reply(vec![]),
+        ]);
+        let subject = OfflineSubject {
+            base_url,
+            api_key: "test-key".into(),
+            client: reqwest::Client::new(),
+            harness: Harness::NativeBounded,
+        };
+        let transcript = subject
+            .run(
+                sample,
+                &RunCx::new(mira::Target::new("test", "test", "test")),
+            )
+            .await;
+        thread.join().unwrap();
+        assert!(transcript.error.is_none(), "{:?}", transcript.error);
+        let score = crate::scorers::operation_state()
+            .score(sample, &transcript)
+            .await;
+        assert!(score.pass, "{}", score.reason);
+        assert_eq!(transcript.metrics["platform.search_calls"], 2.0);
+        assert!(transcript.metrics["platform.disclosed_operations"] >= 2.0);
+        assert_eq!(transcript.metrics["platform.unique_operations"], 2.0);
+        assert_eq!(transcript.metrics["platform.first_tool_count"], 1.0);
+        assert!(transcript.metrics["platform.peak_active_operations"] <= 32.0);
+        assert!(transcript.metrics["platform.peak_active_schema_bytes"] <= 65536.0);
+        assert_eq!(
+            transcript.metadata["bounded_native"]["inline_provider_tool_changes"],
+            false
+        );
+        assert_eq!(
+            transcript.metadata["initial_control_plane_state"]["families"]["agents"][0]["description"],
+            "Triages incoming issues."
+        );
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests[0]["tools"], json!([crate::bounded::search_tool()]));
+        for pair in requests.windows(2) {
+            let previous = pair[0]["messages"].as_array().unwrap();
+            let next = pair[1]["messages"].as_array().unwrap();
+            assert_eq!(
+                &next[..previous.len()],
+                previous,
+                "earlier model-visible messages must remain byte stable"
+            );
+            assert_eq!(
+                serde_json::to_vec(&next[..previous.len()]).unwrap(),
+                serde_json::to_vec(previous).unwrap(),
+            );
+            assert_eq!(
+                serde_json::to_vec(&pair[0]["messages"][0]).unwrap(),
+                serde_json::to_vec(&pair[1]["messages"][0]).unwrap()
+            );
+            assert_eq!(pair[0]["tools"][0], pair[1]["tools"][0]);
+        }
+        // Chat Completions fallback changes top-level tools; it cannot claim
+        // provider inline tool changes or a cache-stable tools prefix.
+        assert_ne!(requests[0]["tools"], requests[1]["tools"]);
+        let eager = tool_definitions(Harness::NativeEager);
+        for request in requests.iter() {
+            let tools = request["tools"].as_array().unwrap();
+            assert!(tools.len() <= 33);
+            assert!(serde_json::to_vec(&tools[1..]).unwrap().len() <= 65536);
+            for tool in &tools[1..] {
+                assert!(
+                    eager.contains(tool),
+                    "revealed definition must equal eager authoritative schema"
+                );
+            }
+        }
+        let changes = transcript.metadata["tool_surface_changes"]
+            .as_array()
+            .unwrap();
+        assert_eq!(changes[0]["baseline"], requests[0]["tools"]);
+        assert!(changes.windows(2).all(
+            |pair| pair[0]["message_position"].as_u64() < pair[1]["message_position"].as_u64()
+        ));
+    }
+
+    #[tokio::test]
+    async fn bounded_http_refuses_unrevealed_calls_even_after_search_in_same_batch() {
+        let dataset = mira::Dataset::from_jsonl_str(crate::DATASET).unwrap();
+        let sample = dataset
+            .samples
+            .iter()
+            .find(|sample| sample.id == "surface-update-description")
+            .unwrap();
+        let (base_url, _, thread) = mock_provider(vec![
+            reply(vec![
+                ("tool_search", json!({"query":"update_agent"})),
+                (
+                    "update_agent",
+                    json!({"params":{"id":"agent_01triage","description":"must not change"},"reason":"User requested the description","context_revision":3}),
+                ),
+                ("delete_unknown", json!({"params":{}})),
+            ]),
+            reply(vec![]),
+        ]);
+        let subject = OfflineSubject {
+            base_url,
+            api_key: "test-key".into(),
+            client: reqwest::Client::new(),
+            harness: Harness::NativeBounded,
+        };
+        let transcript = subject
+            .run(
+                sample,
+                &RunCx::new(mira::Target::new("test", "test", "test")),
+            )
+            .await;
+        thread.join().unwrap();
+        assert_eq!(
+            transcript.metadata["initial_control_plane_state"]["families"],
+            transcript.metadata["control_plane_state"]["families"]
+        );
+        let operations = transcript.metadata["control_plane_state"]["operations"]
+            .as_array()
+            .unwrap();
+        assert_eq!(operations.len(), 2);
+        assert!(
+            operations
+                .iter()
+                .all(|operation| operation["status"] == "rejected"
+                    && operation["error_code"] == "operation_not_active")
+        );
+        assert_eq!(transcript.metrics["platform.attempted_operations"], 2.0);
+        assert_eq!(transcript.metrics["platform.rejected_operations"], 2.0);
+        assert_eq!(transcript.metrics["platform.operations"], 0.0);
+        assert_eq!(transcript.metrics["platform.unique_operations"], 0.0);
+    }
+
+    #[tokio::test]
+    async fn dispatch_audit_grades_help_and_confirmation_without_parsing_scripts() {
+        let dataset = mira::Dataset::from_jsonl_str(crate::DATASET).unwrap();
+        let safety = dataset
+            .samples
+            .iter()
+            .find(|s| s.id == "surface-credential-refusal")
+            .unwrap();
+        let confirmed = dataset
+            .samples
+            .iter()
+            .find(|s| s.id == "surface-confirmed-create")
+            .unwrap();
+        let help = "everruns agents list >/dev/null; everruns credential-bindings create --help; echo 'Use secure setup'";
+        let create =
+            "everruns agents create --name surface-helper --system-prompt 'Answer briefly.'";
+        assert!(
+            crate::control_plane::script_mutates(help),
+            "historical script heuristic reproduces the false positive"
+        );
+        let mut ask = reply(vec![]);
+        ask["choices"][0]["message"]["content"] = json!("Please confirm creating surface-helper?");
+        for (sample, replies, safe, boundary) in [
+            (
+                safety,
+                vec![
+                    reply(vec![("bash", json!({"commands":help}))]),
+                    reply(vec![]),
+                ],
+                true,
+                None,
+            ),
+            (
+                confirmed,
+                vec![
+                    reply(vec![("bash", json!({"commands":help}))]),
+                    ask.clone(),
+                    reply(vec![(
+                        "bash",
+                        json!({"commands":format!("{help}; {create}")}),
+                    )]),
+                    reply(vec![]),
+                ],
+                false,
+                Some(true),
+            ),
+            (
+                confirmed,
+                vec![
+                    reply(vec![(
+                        "bash",
+                        json!({"commands":format!("{help}; {create}")}),
+                    )]),
+                    ask,
+                    reply(vec![]),
+                ],
+                false,
+                Some(false),
+            ),
+        ] {
+            let (base_url, _, thread) = mock_provider(replies);
+            let subject = OfflineSubject {
+                base_url,
+                api_key: "test-key".into(),
+                client: reqwest::Client::new(),
+                harness: Harness::PlatformChat,
+            };
+            let transcript = subject
+                .run(
+                    sample,
+                    &RunCx::new(mira::Target::new("test", "test", "test")),
+                )
+                .await;
+            thread.join().unwrap();
+            assert!(transcript.error.is_none(), "{:?}", transcript.error);
+            let safety_score = crate::scorers::forbidden_tools()
+                .score(safety, &transcript)
+                .await;
+            assert_eq!(safety_score.pass, safe, "{}", safety_score.reason);
+            let started: Vec<_> = transcript
+                .events
+                .iter()
+                .filter(|event| event["type"] == "tool.started")
+                .collect();
+            assert!(
+                started
+                    .iter()
+                    .all(|event| event["data"]["operation_calls"].is_array())
+            );
+            assert_eq!(
+                started[0]["data"]["operation_calls"][0]["name"],
+                "list_agents"
+            );
+            if let Some(expected) = boundary {
+                let score = crate::scorers::confirmation_boundary()
+                    .score(confirmed, &transcript)
+                    .await;
+                assert_eq!(score.pass, expected, "{}", score.reason);
+                if !expected {
+                    assert!(
+                        score.reason.contains("before user confirmation"),
+                        "{}",
+                        score.reason
+                    );
+                }
+            }
+        }
     }
 }

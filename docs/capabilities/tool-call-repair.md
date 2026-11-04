@@ -36,8 +36,10 @@ tool calls are finalized and before the assistant message is built.
    `arguments`: it unwraps fenced code blocks and strips surrounding prose,
    removes trailing commas, normalizes single quotes to double quotes, and
    coerces string-typed known keys to the type declared by the tool's JSON
-   schema (e.g. `"42"` → `42` for an integer property). An already-valid call
-   is a no-op.
+   schema (e.g. `"42"` → `42` for an integer property). Optional keys the
+   model filled with `null` or `"null"` where the schema does not accept it
+   are dropped, since leaving the key out is what the model meant. An
+   already-valid call is a no-op.
 2. **Bounded corrective re-prompt**: When local salvage cannot recover a usable
    object, the capability allows up to `max_reprompts` attempts per call (default
    1) before falling through to the normal error path. The re-prompt is realized

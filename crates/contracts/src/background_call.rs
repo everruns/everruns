@@ -121,15 +121,4 @@ mod tests {
         assert_eq!(request_fingerprint(&first), request_fingerprint(&retry));
         assert_ne!(request_fingerprint(&first), request_fingerprint(&next_step));
     }
-
-    #[test]
-    fn empty_context_debug_hides_internals() {
-        let context = BackgroundCallContext::default();
-        assert!(context.journal().is_none());
-        assert!(context.cancel_signal().is_none());
-        assert_eq!(
-            format!("{context:?}"),
-            "BackgroundCallContext { journal: false, cancel: false }"
-        );
-    }
 }

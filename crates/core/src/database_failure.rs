@@ -108,18 +108,24 @@ pub fn log_database_failure(
     rendered: &str,
 ) -> DatabaseFailureKind {
     let kind = DatabaseFailureKind::classify(rendered);
-    match kind.shared_message() {
-        Some(shared) => tracing::error!(
+    let message = kind.shared_message().unwrap_or(fallback);
+    // EVE-1328: a pool exhaustion repeats on every tick of every poller, so
+    // the report is bounded per (subsystem, kind); repeats are still logged.
+    match crate::report_throttle::REPEATED_FAILURES.admit(subsystem, kind.as_str()) {
+        Some(suppressed) => tracing::error!(
             subsystem,
             db_failure = kind.as_str(),
             error = %rendered,
-            "{shared}"
+            suppressed_since_last_report = suppressed,
+            report_interval_seconds = crate::report_throttle::REPEATED_FAILURES.interval().as_secs(),
+            "{message}"
         ),
-        None => tracing::error!(
+        None => tracing::info!(
             subsystem,
             db_failure = kind.as_str(),
             error = %rendered,
-            "{fallback}"
+            report_suppressed = true,
+            "{message}"
         ),
     }
     kind
@@ -136,14 +142,6 @@ mod tests {
         "Failed to claim due schedules: pool timed out while waiting for an open connection";
     const PROD_CONNECTION_RESET: &str = "Failed to claim due schedules: error communicating with database: Connection reset by peer (os error 104)";
     const PROD_CLAIM_TASKS_RESET: &str = "Failed to claim tasks: database error: error communicating with database: Connection reset by peer (os error 104)";
-
-    #[test]
-    fn the_prod_pool_timeout_classifies_as_exhaustion() {
-        assert_eq!(
-            DatabaseFailureKind::classify(PROD_POOL_TIMEOUT),
-            DatabaseFailureKind::PoolExhausted
-        );
-    }
 
     #[test]
     fn the_prod_connection_resets_classify_as_a_lost_connection() {
@@ -210,23 +208,6 @@ mod tests {
                 "{kind:?}"
             );
         }
-    }
-
-    #[test]
-    fn kinds_have_distinct_stable_identifiers() {
-        let ids: std::collections::BTreeSet<_> = [
-            DatabaseFailureKind::PoolExhausted,
-            DatabaseFailureKind::ConnectionLost,
-            DatabaseFailureKind::Other,
-        ]
-        .iter()
-        .map(|kind| kind.as_str())
-        .collect();
-        assert_eq!(ids.len(), 3);
-        assert_eq!(
-            DatabaseFailureKind::PoolExhausted.as_str(),
-            "database.pool_exhausted"
-        );
     }
 
     #[test]

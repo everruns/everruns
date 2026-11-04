@@ -5,6 +5,7 @@ date: 2026-10-13
 kind: breaking
 significance: notable
 products: [platform]
+release: "0.49.0"
 surfaces: [api]
 links:
   docs: [/sre/environment-variables/]

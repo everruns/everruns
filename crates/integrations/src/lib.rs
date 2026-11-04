@@ -43,3 +43,6 @@ pub mod web_fetch;
 pub mod web_search;
 #[cfg(feature = "webhook-channel")]
 pub mod webhook_channel;
+
+#[cfg(all(test, any(feature = "bashkit", feature = "web-fetch")))]
+mod credential_test_support;

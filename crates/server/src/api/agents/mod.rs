@@ -24,8 +24,7 @@ use axum::{
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::host::HostComposition;
 use everruns_core::{
-    Caller, DeploymentGrade, OrgRole, PermissionResolver, ResourceConfigResponse,
-    evaluate_policies_with,
+    Caller, DeploymentGrade, PermissionResolver, ResourceConfigResponse, evaluate_policies_with,
 };
 
 use super::common::{
@@ -245,6 +244,7 @@ pub fn routes(state: AppState) -> Router {
             get(get_health_check),
         )
         .merge(super::agent_activity::routes())
+        .command::<crate::domains::agents::failures::ListAgentFailures>()
         .merge(super::agent_mcp_attachments::routes())
         .merge(super::agent_avatars::routes())
         .route(
@@ -257,8 +257,12 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
         .command::<crate::domains::agents::DestroyAgent>()
         .command::<crate::domains::agents::DraftAgent>()
+        .command::<crate::domains::agents::cost_plan::PlanAgentCosts>()
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
+        .route("/v1/agents/{agent_id}/pause", post(pause_agent))
+        .route("/v1/agents/{agent_id}/resume", post(resume_agent))
+        // Deprecated aliases from when pausing was "suspend exposures".
         .route(
             "/v1/agents/{agent_id}/exposures/suspend",
             post(suspend_agent_exposures),
@@ -268,28 +272,6 @@ pub fn routes(state: AppState) -> Router {
             post(resume_agent_exposures),
         )
         .with_state(state)
-}
-
-/// TM-AGENT-005: Reject if any requested capabilities are high-risk and the
-/// caller does not have at least Admin role.
-pub(crate) fn require_admin_for_high_risk(
-    org: &ResolvedOrg,
-    caps: &[everruns_contracts::CapabilityRef],
-    capability_service: &CapabilityService,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if caps.is_empty() || org.role.has_permission(OrgRole::Admin) {
-        return Ok(());
-    }
-    let refs: Vec<&str> = caps.iter().map(|c| c.capability_id()).collect();
-    let high = capability_service.high_risk_ids(&refs);
-    if !high.is_empty() {
-        return Err(ErrorResponse::new(format!(
-            "Admin role required to assign high-risk capabilities: {}",
-            high.join(", ")
-        ))
-        .into_response(StatusCode::FORBIDDEN));
-    }
-    Ok(())
 }
 
 /// POST /v1/agents - Create a new agent
@@ -516,7 +498,58 @@ pub async fn copy_agent(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline
+/// POST /v1/agents/{agent_id}/pause - Pause an agent
+///
+/// Its channels stop accepting messages and its triggers and schedules do not
+/// run until it is resumed. Each channel keeps its own published state.
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/pause",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Agent paused", body = WithUrls<Agent>),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn pause_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<WithUrls<Agent>> {
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::agents::PauseAgent { agent_id })
+        .await
+}
+
+/// POST /v1/agents/{agent_id}/resume - Resume a paused agent
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/resume",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Agent resumed", body = WithUrls<Agent>),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn resume_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<WithUrls<Agent>> {
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::agents::ResumeAgent { agent_id })
+        .await
+}
+
+/// POST /v1/agents/{agent_id}/exposures/suspend - Deprecated alias of pause
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/exposures/suspend",
@@ -524,23 +557,20 @@ pub async fn copy_agent(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Exposures suspended", body = WithUrls<Agent>),
+        (status = 200, description = "Agent paused", body = WithUrls<Agent>),
         (status = 404, description = "Agent not found", body = ErrorResponse),
     ),
     tag = "agents"
 )]
 pub async fn suspend_agent_exposures(
     org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    state: State<AppState>,
+    path: Path<String>,
 ) -> ApiResult<WithUrls<Agent>> {
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::agents::SuspendAgentExposures { agent_id })
-        .await
+    pause_agent(org, state, path).await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again
+/// POST /v1/agents/{agent_id}/exposures/resume - Deprecated alias of resume
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/exposures/resume",
@@ -548,20 +578,17 @@ pub async fn suspend_agent_exposures(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Exposures resumed", body = WithUrls<Agent>),
+        (status = 200, description = "Agent resumed", body = WithUrls<Agent>),
         (status = 404, description = "Agent not found", body = ErrorResponse),
     ),
     tag = "agents"
 )]
 pub async fn resume_agent_exposures(
     org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    state: State<AppState>,
+    path: Path<String>,
 ) -> ApiResult<WithUrls<Agent>> {
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::agents::ResumeAgentExposures { agent_id })
-        .await
+    resume_agent(org, state, path).await
 }
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
@@ -630,6 +657,7 @@ pub async fn upsert_agent(
                 .map_err(crate::domains::common::classify_anyhow)?
                 .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
                 let update_req = UpdateAgentRequest {
+                    localizations: Some(req.localizations.clone()),
                     service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
                     name: Some(req.name),
@@ -656,6 +684,7 @@ pub async fn upsert_agent(
                         crate::storage::UpdateField::Set,
                     ),
                     communication: Some(req.communication),
+                    completion_check: Some(req.completion_check),
                     status: None,
                 };
                 let agent = crate::domains::agents::UpdateAgentCmd {
@@ -809,130 +838,18 @@ pub async fn import_agent(
     ))
 }
 
-/// Import an agent from a built-in example by name.
-/// Tag prefix that records the example an agent was adopted from.
-pub const EXAMPLE_TAG_PREFIX: &str = "example:";
-
+/// Import an agent from a built-in example by name: the `adopt_agent_example`
+/// command, so REST, CLI and MCP adopt through one path.
 async fn import_from_example(
     org: ResolvedOrg,
     state: &AppState,
     name: &str,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    let seed = crate::agent_templates::find_agent_example(name)
-        .ok_or_else(|| ErrorResponse::not_found(&format!("agent example '{name}'")))?;
-
-    // Check dev-only
-    if seed.dev_only && !state.grade.experimental_features_enabled() {
-        return Err(ErrorResponse::not_found(&format!("agent example '{name}'")));
+    let agent = crate::domains::agents::AdoptAgentExample {
+        name: name.to_string(),
     }
-
-    // Check capabilities registered
-    let missing: Vec<&str> = seed
-        .capabilities
-        .iter()
-        .map(|c| c.id)
-        .filter(|id| !state.host_composition.capability_registry().has(id))
-        .collect();
-    if !missing.is_empty() {
-        return Err(ErrorResponse::new(format!(
-            "Example requires unregistered capabilities: {missing:?}"
-        ))
-        .into_response(StatusCode::BAD_REQUEST));
-    }
-
-    let capabilities: Vec<everruns_contracts::CapabilityRef> = seed
-        .capabilities
-        .iter()
-        .map(|cap| {
-            let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
-            everruns_contracts::CapabilityRef::with_config(cap.id.to_string(), config)
-        })
-        .collect();
-
-    // TM-AGENT-005: High-risk capabilities require admin role
-    require_admin_for_high_risk(&org, &capabilities, &state.capability_service)?;
-
-    let _caller = Caller::from(&org);
-
-    // If an agent with the same name exists, keep trying suffixed variants
-    // to avoid one-shot collisions and reduce failures under concurrency.
-    let unique_name = {
-        use rand::RngExt;
-
-        let base = seed.name;
-        let mut selected = None;
-
-        for attempt in 0..10 {
-            let candidate = if attempt == 0 {
-                base.to_string()
-            } else {
-                let suffix: String = rand::rng()
-                    .sample_iter(&rand::distr::Alphanumeric)
-                    .take(5)
-                    .map(|c| (c as char).to_ascii_lowercase())
-                    .collect();
-                format!("{base}-{suffix}")
-            };
-
-            let result = crate::domains::agents::CheckAgentName {
-                name: candidate.clone(),
-                exclude_id: None,
-            }
-            .run(&state.ctx(&org))
-            .await?;
-            let available = result.available;
-
-            if available {
-                selected = Some(candidate);
-                break;
-            }
-        }
-
-        selected.ok_or_else(ErrorResponse::internal_error)?
-    };
-
-    let req = CreateAgentRequest {
-        service_virtual_user_id: None,
-
-        id: None,
-        name: unique_name,
-        display_name: Some(seed.display_name.to_string()),
-        description: Some(seed.description.to_string()),
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt: seed.system_prompt.to_string(),
-        default_model_id: None,
-        harness_id: None,
-        harness_name: Some(seed.harness_name.to_string()),
-        // `example:<name>` records which example the agent was adopted from,
-        // so the Agents page can tell a guided example whose setup never
-        // finished (no trigger yet) from an agent someone built by hand.
-        tags: seed
-            .tags
-            .iter()
-            .map(|s| s.to_string())
-            .chain(std::iter::once(format!(
-                "{EXAMPLE_TAG_PREFIX}{}",
-                seed.name
-            )))
-            .collect(),
-        capabilities,
-        sandbox_policy: None,
-        initial_files: vec![],
-        tools: vec![],
-        mcp_servers: Default::default(),
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        max_output_tokens: None,
-        communication: Default::default(),
-    };
-
-    let agent = crate::domains::agents::CreateAgent(req)
-        .run(&state.ctx(&org))
-        .await?;
-
+    .run(&state.ctx(&org))
+    .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
@@ -1179,11 +1096,8 @@ pub async fn get_latest_health_check(
     Ok(Json(result))
 }
 
-// Regression tests for fix(capabilities): restore high-risk levels for
-// bash/fetch (#1500). `require_admin_for_high_risk` is the HTTP-side gate
-// that enforces TM-AGENT-005: a member cannot assign `bashkit_shell` or
-// `web_fetch` to an agent. The fix re-classified both capabilities as
-// High; without that classification this gate silently becomes a no-op
-// for the two most dangerous capabilities.
+// HTTP-side authorization helpers and response shapes. TM-AGENT-005 (a
+// member cannot assign high-risk capabilities) is enforced in the agent
+// domain commands (`check_high_risk_caps`), which every route runs through.
 #[cfg(test)]
 mod high_risk_admin_gate_tests;

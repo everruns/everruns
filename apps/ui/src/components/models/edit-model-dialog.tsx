@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -30,14 +33,17 @@ export function EditModelDialog({
   providers,
   open,
   onOpenChange,
+  writable = false,
   onSubmit,
 }: {
   model: ModelWithProvider;
   providers: Provider[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  writable?: boolean;
   onSubmit: (modelId: string, data: UpdateModelRequest) => Promise<boolean>;
 }) {
+  const ui = useUiTranslations();
   const [providerId, setProviderId] = useState(model.provider_id);
   const [modelId, setModelId] = useState(model.model_id);
   const [displayName, setDisplayName] = useState(model.display_name);
@@ -45,22 +51,67 @@ export function EditModelDialog({
   const [profileKey, setProfileKey] = useState(model.profile_key);
   const [saving, setSaving] = useState(false);
 
+  const adopted = !!usePageChatMode();
+  const seededModel = useRef<string | null>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      seededModel.current = null;
+      return;
+    }
+    if (adopted && seededModel.current === model.id) return;
+    seededModel.current = model.id;
     setProviderId(model.provider_id);
     setModelId(model.model_id);
     setDisplayName(model.display_name);
     setEnabled(model.enabled);
     setProfileKey(model.profile_key);
-  }, [model, open]);
+  }, [model, open, adopted]);
 
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.id === providerId),
     [providerId, providers],
   );
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["model_id", "display_name", "provider_id", "service", "profile_key", "enabled"],
+    values: {
+      model_id: modelId,
+      display_name: displayName,
+      provider_id: providerId,
+      service: modelService(model),
+      profile_key: profileKey ?? "",
+      enabled: String(enabled),
+    },
+    readonlyFields: ["provider_id", "service", "profile_key", "enabled"],
+    entityId: model.id,
+    entityType: "model",
+    formId: "details",
+    label: model.display_name,
+    baseline: JSON.stringify([
+      model.provider_id,
+      model.model_id,
+      model.display_name,
+      model.enabled,
+      model.profile_key,
+    ]),
+    dirty:
+      providerId !== model.provider_id ||
+      modelId !== model.model_id ||
+      displayName !== model.display_name ||
+      enabled !== model.enabled ||
+      profileKey !== model.profile_key,
+    writable: writable && !saving,
+    enabled: open,
+    priority: 30,
+    apply: (values) => {
+      setModelId(values.model_id);
+      setDisplayName(values.display_name);
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatDraft.blocked) return;
     setSaving(true);
     try {
       const succeeded = await onSubmit(model.id, {
@@ -81,17 +132,18 @@ export function EditModelDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Model</DialogTitle>
+          <DialogTitle>{ui("Edit Model")}</DialogTitle>
           <DialogDescription>
-            Update the model ID, display name, provider, or visibility.
+            {ui("Update the model ID, display name, provider, or visibility.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chatDraft.notice}
           <div className="space-y-2">
-            <Label htmlFor={`edit-model-provider-${model.id}`}>Provider</Label>
+            <Label htmlFor={`edit-model-provider-${model.id}`}>{ui("Provider")}</Label>
             <Select value={providerId} onValueChange={setProviderId}>
               <SelectTrigger id={`edit-model-provider-${model.id}`} className="w-full">
-                <SelectValue placeholder="Select provider">
+                <SelectValue placeholder={ui("Select provider")}>
                   {selectedProvider?.name ?? model.provider_name}
                 </SelectValue>
               </SelectTrigger>
@@ -118,7 +170,7 @@ export function EditModelDialog({
             onChange={(profile) => setProfileKey(profile?.key)}
           />
           <div className="space-y-2">
-            <Label htmlFor={`edit-model-id-${model.id}`}>Model ID</Label>
+            <Label htmlFor={`edit-model-id-${model.id}`}>{ui("Model ID")}</Label>
             <Input
               id={`edit-model-id-${model.id}`}
               value={modelId}
@@ -127,7 +179,7 @@ export function EditModelDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`edit-model-display-name-${model.id}`}>Display Name</Label>
+            <Label htmlFor={`edit-model-display-name-${model.id}`}>{ui("Display Name")}</Label>
             <Input
               id={`edit-model-display-name-${model.id}`}
               value={displayName}
@@ -142,18 +194,20 @@ export function EditModelDialog({
               onCheckedChange={(checked) => setEnabled(checked === true)}
             />
             <Label htmlFor={`edit-model-enabled-${model.id}`}>
-              Enable model (visible in UI model pickers)
+              {ui("Enable model (visible in UI model pickers)")}
             </Label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               type="submit"
-              disabled={saving || !providerId || !modelId.trim() || !displayName.trim()}
+              disabled={
+                chatDraft.blocked || saving || !providerId || !modelId.trim() || !displayName.trim()
+              }
             >
-              {saving ? "Saving..." : "Save Changes"}
+              {saving ? ui("Saving...") : ui("Save Changes")}
             </Button>
           </DialogFooter>
         </form>

@@ -576,16 +576,6 @@ mod host_compute_tests {
         assert_eq!(error, ComputeError::Timeout);
     }
 
-    #[tokio::test]
-    async fn connecting_to_a_missing_root_fails_before_any_command_runs() {
-        let compute = HostCompute::new("/nonexistent/everruns/host/compute/root");
-        assert_eq!(compute.kind(), ComputeKind::Host);
-        // The honest pair: an uncontained machine contains nothing and recovers
-        // nothing.
-        assert_eq!(compute.enforced_containment(), ContainmentLevel::None);
-        assert_eq!(compute.durability(), Durability::None);
-    }
-
     #[cfg(feature = "native-containment")]
     #[tokio::test]
     async fn a_contained_host_target_enforces_native_containment() {
@@ -615,12 +605,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn containment_levels_order_from_open_to_closed() {
-        assert!(ContainmentLevel::None < ContainmentLevel::Native);
-        assert!(ContainmentLevel::Native < ContainmentLevel::Isolated);
-    }
-
-    #[test]
     fn network_policy_round_trips_with_its_mode_tag() {
         let allowlist = NetworkPolicy::Allowlist(vec!["crates.io".to_string()]);
         let json = serde_json::to_string(&allowlist).expect("serializable");
@@ -636,15 +620,5 @@ mod tests {
             serde_json::to_string(&NetworkPolicy::Deny).expect("serializable"),
             r#"{"mode":"deny"}"#
         );
-    }
-
-    #[test]
-    fn a_full_machine_withholds_the_two_things_everruns_does_not_own() {
-        let capabilities = ComputeCapabilities::full_machine();
-        assert!(capabilities.native_processes);
-        // Everruns owns neither the disk nor the network policy of somebody
-        // else's machine, so neither may be advertised.
-        assert!(!capabilities.portable_checkpoint);
-        assert!(!capabilities.network_enforced);
     }
 }

@@ -1,8 +1,8 @@
 //! A turn cut off in its act, then resumed from the session log.
 //!
-//! The cut: the tool's first run waits forever, and every handle to the
-//! session is dropped while it does, which drops the turn's future mid-act
-//! and gives its lease up. The log keeps a turn with a tool call and no
+//! The cut: the tool's first run waits forever. Dropping frontend handles
+//! leaves it running; aborting the independent executor drops the turn mid-act.
+//! Its lease must expire before a replacement can claim it. The log keeps a turn with a tool call and no
 //! result, exactly what a process exit leaves. The engine reopens the session, and `resume_interrupted_turn` runs
 //! the unfinished call again when its tool is idempotent, or records it as
 //! interrupted when it is not, and lets the turn carry on.
@@ -14,7 +14,10 @@ use everruns::{Agent, FunctionTool, LlmSimConfig, Model, ToolCall};
 use serde_json::json;
 use tokio::sync::Notify;
 
-use crate::support::{Observed, has_event, run_on};
+use crate::support::{Observed, Outcome, TurnShape, has_event};
+#[path = "../support/session_hosting.rs"]
+mod session_hosting;
+use session_hosting::External;
 
 /// Observes the tool across the cut.
 #[derive(Clone, Default)]
@@ -76,55 +79,99 @@ fn agent_with_waiting_tool(idempotent: bool) -> (Agent, Probe) {
 }
 
 /// Cut the turn off in its act, resume it, and note what happened.
-async fn cut_off_and_resume(idempotent: bool) -> crate::support::Outcome {
-    run_on(
-        move || agent_with_waiting_tool(idempotent),
-        |engine, session, probe| async move {
-            let session_id = session.session_id();
-            let sent = session.send("Deploy.").await.expect("send");
-            probe.entered.notified().await;
-
-            // The cut: nothing holds the session while its act waits.
-            drop(sent);
-            drop(session);
-            probe.dropped.notified().await;
-
-            let session = engine
-                .resume(session_id)
-                .await
-                .expect("the session reopens");
-            let interrupted = session
-                .interrupted_turn()
-                .await
-                .expect("the log reads")
-                .expect("the cut-off turn is interrupted");
-            let ids = |calls: &[ToolCall]| -> Vec<String> {
-                calls.iter().map(|call| call.id.clone()).collect()
-            };
-            let calls = ids(&interrupted.tool_calls);
-            let not_rerun = ids(&interrupted.not_rerun);
-            let resumed = session
-                .resume_interrupted_turn()
-                .await
-                .expect("resume starts")
-                .expect("there is a turn to resume");
-            let turn = resumed.wait().await.expect("the resumed turn finishes");
-            let same_turn = turn.turn_id == interrupted.turn_id;
-            let after = session.interrupted_turn().await.expect("the log reads");
-
-            Observed::turns(vec![turn])
-                .note(format!(
-                    "interrupted calls: {calls:?}, same turn: {same_turn}"
-                ))
-                .note(format!("not rerun: {not_rerun:?}"))
-                .note(format!("tool runs: {}", probe.runs.load(Ordering::SeqCst)))
-                .note(format!("interrupted after: {}", after.is_some()))
-        },
-    )
-    .await
+async fn cut_off_and_resume(idempotent: bool) -> Outcome {
+    let profile = everruns::hosting::MemoryHosting::default();
+    let build = everruns::hosting::AgentBuild::new("interrupted", "v1");
+    let (agent, probe) = agent_with_waiting_tool(idempotent);
+    let make = || {
+        everruns::Engine::builder()
+            .hosting(External(profile.clone()))
+            .register(build.clone(), agent.clone())
+            .build()
+    };
+    let engine = make();
+    let session_id = everruns::SessionId::new();
+    let session = engine.create_registered(session_id, &build).await.unwrap();
+    let sent = session.send("Deploy.").await.unwrap();
+    let executor = tokio::spawn({
+        let engine = engine.clone();
+        async move { engine.activate(session_id).await }
+    });
+    probe.entered.notified().await;
+    assert!(
+        session.interrupted_turn().await.unwrap().is_none(),
+        "a live epoch is not interrupted"
+    );
+    let message = sent.message_id.parse().unwrap();
+    drop(sent);
+    drop(session);
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(10),
+            probe.dropped.notified()
+        )
+        .await
+        .is_err(),
+        "dropping a frontend must not cancel accepted work"
+    );
+    executor.abort();
+    let _ = executor.await;
+    probe.dropped.notified().await;
+    drop(engine);
+    tokio::time::advance(std::time::Duration::from_secs(11)).await;
+    let replacement = make();
+    let session = replacement.resume(session_id).await.unwrap();
+    let interrupted = session
+        .interrupted_turn()
+        .await
+        .unwrap()
+        .expect("expired executor leaves interrupted work");
+    let ids =
+        |calls: &[ToolCall]| -> Vec<String> { calls.iter().map(|call| call.id.clone()).collect() };
+    let calls = ids(&interrupted.tool_calls);
+    let not_rerun = ids(&interrupted.not_rerun);
+    let resumed = session
+        .resume_interrupted_turn()
+        .await
+        .unwrap()
+        .expect("original admission is recoverable");
+    replacement.activate(session_id).await.unwrap();
+    let turn = resumed.wait().await.unwrap();
+    assert_eq!(
+        session
+            .admission(message)
+            .await
+            .unwrap()
+            .unwrap()
+            .wait()
+            .await
+            .unwrap()
+            .turn_id,
+        turn.turn_id
+    );
+    let same_turn = turn.turn_id == interrupted.turn_id;
+    let after = session.interrupted_turn().await.unwrap();
+    let observed = Observed::turns(vec![turn])
+        .note(format!(
+            "interrupted calls: {calls:?}, same turn: {same_turn}"
+        ))
+        .note(format!("not rerun: {not_rerun:?}"))
+        .note(format!("tool runs: {}", probe.runs.load(Ordering::SeqCst)))
+        .note(format!("interrupted after: {}", after.is_some()));
+    Outcome {
+        turns: observed.turns.into_iter().map(TurnShape::from).collect(),
+        notes: observed.notes,
+        event_types: session
+            .events_after(0)
+            .await
+            .unwrap()
+            .iter()
+            .map(|event| event.event_type().to_string())
+            .collect(),
+    }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
     let outcome = cut_off_and_resume(true).await;
     assert_eq!(
@@ -139,7 +186,10 @@ async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
     let turn = &outcome.turns[0];
     assert!(turn.success, "{turn:?}");
     assert_eq!(turn.response, "Deployed.");
-    assert_eq!(turn.iterations, 1, "the resumed run reasons once");
+    assert_eq!(
+        turn.iterations, 2,
+        "the finalized outcome includes both model calls"
+    );
     assert_eq!(
         turn.tool_calls, 1,
         "the resumed run reruns the cut-off call"
@@ -147,7 +197,7 @@ async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
     assert!(has_event(&outcome, "turn.completed"), "{outcome:?}");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_call_that_may_not_run_twice_is_settled_as_interrupted() {
     let outcome = cut_off_and_resume(false).await;
     assert_eq!(

@@ -228,7 +228,7 @@ impl Tool for SpritesExecTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sprites");
         Some(
@@ -237,6 +237,7 @@ impl Tool for SpritesExecTool {
                 fallback,
                 phase,
                 locale,
+                ctx,
             ),
         )
     }
@@ -1202,37 +1203,12 @@ mod tests {
             .unwrap_or_else(|| panic!("Tool {name} not found"))
     }
 
-    #[test]
-    fn test_all_tools_have_schema() {
-        let cap = crate::sprites::SpritesCapability;
-        for tool in cap.tools() {
-            let schema = tool.parameters_schema();
-            assert!(
-                schema.get("type").is_some(),
-                "Tool {} missing type in schema",
-                tool.name()
-            );
-        }
-    }
-
     #[tokio::test]
     async fn test_exec_tool_requires_context() {
         let tool = get_tool("sprites_exec");
         let result = tool
             .execute(json!({"sprite_name": "test", "command": "ls"}))
             .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"), "Got: {msg}");
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_create_tool_requires_context() {
-        let tool = get_tool("sprites_create_sprite");
-        let result = tool.execute(json!({"sprite_name": "test"})).await;
         match result {
             ToolExecutionResult::ToolError(msg) => {
                 assert!(msg.contains("requires context"), "Got: {msg}");

@@ -18,7 +18,7 @@ use crate::{
     ScopedMcpServers, merge_scoped_mcp_servers,
 };
 use everruns_contracts::tool_types::ToolDefinition;
-use futures::{StreamExt, stream};
+use futures::{StreamExt, TryStreamExt, stream};
 use uuid::Uuid;
 
 use crate::host::mcp_cache::{DiscoveryFailure, McpDiscoveryCache};
@@ -26,6 +26,72 @@ use sha2::{Digest, Sha256};
 
 /// Maximum scoped MCP server discoveries run concurrently for one turn.
 const MAX_DISCOVERY_CONCURRENCY: usize = 16;
+
+struct CatalogByteCounter {
+    written: usize,
+    limit: usize,
+}
+
+impl std::io::Write for CatalogByteCounter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.written = self.written.saturating_add(bytes.len());
+        if self.written > self.limit {
+            return Err(std::io::Error::other(
+                "MCP session catalog exceeds byte limit",
+            ));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn append_discovered_tools(
+    catalog: &mut Vec<ToolDefinition>,
+    catalog_bytes: usize,
+    tools: Vec<ToolDefinition>,
+) -> anyhow::Result<usize> {
+    let tool_count = catalog.len().saturating_add(tools.len());
+    if tool_count > crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS {
+        return Err(crate::mcp::McpDiscoveryError::LimitExceeded {
+            resource: "session tools",
+            limit: crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS,
+        }
+        .into());
+    }
+
+    let remaining = crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES.saturating_sub(catalog_bytes);
+    let added_bytes = serialized_tool_bytes(&tools, remaining)?;
+    catalog.extend(tools);
+    Ok(catalog_bytes.saturating_add(added_bytes))
+}
+
+fn serialized_tool_bytes(tools: &[ToolDefinition], limit: usize) -> anyhow::Result<usize> {
+    let mut writer = CatalogByteCounter { written: 0, limit };
+    for tool in tools {
+        if serde_json::to_writer(&mut writer, tool).is_err() {
+            return Err(crate::mcp::McpDiscoveryError::LimitExceeded {
+                resource: "session serialized bytes",
+                limit: crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES,
+            }
+            .into());
+        }
+    }
+    Ok(writer.written)
+}
+
+fn validate_session_catalog(tools: &[ToolDefinition]) -> anyhow::Result<usize> {
+    if tools.len() > crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS {
+        return Err(crate::mcp::McpDiscoveryError::LimitExceeded {
+            resource: "session tools",
+            limit: crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS,
+        }
+        .into());
+    }
+    serialized_tool_bytes(tools, crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES)
+}
 
 /// Merge harness → agent → session scoped MCP servers (last layer wins). The
 /// harness definition is already inheritance-resolved (EVE-881).
@@ -72,6 +138,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                     auth_mode: server.auth_mode.clone(),
                     protocol_mode: server.protocol_mode,
                     elicitation_policy: server.elicitation_policy,
+                    tool_timeout_ms: server.tool_timeout_ms,
                     oauth_provider_id: server.oauth_provider_id.clone(),
                     pending_oauth_provider: None,
                     connect_in_chat: server.connect_in_chat,
@@ -172,17 +239,33 @@ pub(crate) async fn discover_tool_definitions(
                     .await
             }
         });
-    stream::iter(discoveries)
+    let result = stream::iter(discoveries)
         // `buffered` (not `buffer_unordered`) caps concurrency while preserving
         // input order, so the merged tool list stays deterministic — scoped MCP
         // servers iterate from a `BTreeMap`, and stable ordering keeps prompts /
         // provider KV-cache reuse stable.
         .buffered(MAX_DISCOVERY_CONCURRENCY)
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .flatten()
-        .collect()
+        .map(Ok::<_, anyhow::Error>)
+        .try_fold(
+            (Vec::new(), 0usize),
+            |(mut catalog, bytes), tools| async move {
+                let bytes = append_discovered_tools(&mut catalog, bytes, tools)?;
+                Ok((catalog, bytes))
+            },
+        )
+        .await;
+    match result {
+        Ok((catalog, _bytes)) => catalog,
+        Err(error) => {
+            tracing::error!(
+                %error,
+                max_tools = crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS,
+                max_bytes = crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES,
+                "MCP session discovery exceeded aggregate bounds; exposing no MCP tools"
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// A turn's MCP tool definitions: listed tools for eager and revealed
@@ -206,12 +289,83 @@ pub(crate) async fn discover_turn_tool_definitions(
     let (listed, deferred) = crate::partition_deferred_mcp_servers(servers, &revealed);
     let mut definitions =
         discover_tool_definitions(cache, client, session_id.uuid(), &listed).await;
-    definitions.extend(
-        deferred
-            .iter()
-            .map(|name| crate::deferred_mcp_server_definition(name, None)),
-    );
+    if definitions.len().saturating_add(deferred.len())
+        > crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS
+    {
+        tracing::error!(
+            current_tools = definitions.len(),
+            deferred_servers = deferred.len(),
+            max_tools = crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS,
+            "MCP session discovery exceeded aggregate tool bound; exposing no MCP tools"
+        );
+        return Vec::new();
+    }
+    definitions.extend(deferred.iter().map(|name| {
+        crate::deferred_mcp_server_definition(
+            name,
+            servers
+                .get(name)
+                .and_then(|server| server.description.as_deref()),
+        )
+    }));
+    attach_server_search_metadata(&mut definitions, servers);
+    if let Err(error) = validate_session_catalog(&definitions) {
+        tracing::error!(
+            %error,
+            tool_count = definitions.len(),
+            max_tools = crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS,
+            max_bytes = crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES,
+            "MCP session definitions exceeded aggregate bounds after server metadata; exposing no MCP tools"
+        );
+        return Vec::new();
+    }
     definitions
+}
+
+/// Apply current source context after discovery-cache lookup and placeholder assembly.
+fn attach_server_search_metadata(definitions: &mut [ToolDefinition], servers: &ScopedMcpServers) {
+    let by_prefix: HashMap<_, _> = servers
+        .iter()
+        .map(|(name, server)| {
+            (
+                crate::mcp_server::sanitize_mcp_server_name(name),
+                (name, server),
+            )
+        })
+        .collect();
+    for definition in definitions {
+        let prefix = crate::deferred_mcp_server_prefix(definition.name())
+            .map(str::to_owned)
+            .or_else(|| {
+                crate::mcp_server::parse_mcp_tool_name(definition.name()).map(|(prefix, _)| prefix)
+            });
+        let Some((name, server)) = prefix
+            .as_deref()
+            .and_then(|prefix| by_prefix.get(prefix).copied())
+        else {
+            continue;
+        };
+        let ToolDefinition::Builtin(tool) = definition else {
+            continue;
+        };
+        if let Some(context) = &server.capability_context {
+            tool.hints.capability_id = Some(context.id.clone());
+            tool.hints.capability_name = Some(context.name.clone());
+            tool.hints.capability_description = Some(context.description.clone());
+        }
+        let metadata = tool
+            .hints
+            .metadata
+            .get_or_insert_with(|| serde_json::json!({}));
+        if let Some(metadata) = metadata.as_object_mut() {
+            metadata.insert(
+                "mcp_server".into(),
+                serde_json::json!({
+                    "name": name, "description": server.description.as_deref().unwrap_or_default(),
+                }),
+            );
+        }
+    }
 }
 
 /// Map a server's raw `tools/list` result into prefixed tool definitions.
@@ -244,6 +398,69 @@ pub(crate) fn build_executor(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+
+    fn test_tool(name: &str, description: impl Into<String>) -> ToolDefinition {
+        ToolDefinition::Builtin(BuiltinTool {
+            name: name.into(),
+            display_name: None,
+            description: description.into(),
+            parameters: serde_json::json!({"type":"object"}),
+            policy: ToolPolicy::default(),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        })
+    }
+
+    #[test]
+    fn aggregate_catalog_accepts_ten_thousand_tools_and_rejects_one_more() {
+        let mut catalog = Vec::new();
+        let definitions = (0..crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS)
+            .map(|index| test_tool(&format!("server__tool_{index}"), ""))
+            .collect();
+        let bytes = append_discovered_tools(&mut catalog, 0, definitions).unwrap();
+        assert_eq!(catalog.len(), crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS);
+        assert!(bytes <= crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES);
+
+        let error =
+            append_discovered_tools(&mut catalog, bytes, vec![test_tool("another__tool", "")])
+                .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<crate::mcp::McpDiscoveryError>(),
+            Some(crate::mcp::McpDiscoveryError::LimitExceeded {
+                resource: "session tools",
+                limit: crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS,
+            })
+        ));
+        assert_eq!(catalog.len(), crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS);
+    }
+
+    #[test]
+    fn aggregate_catalog_accepts_exact_byte_limit_and_rejects_one_more() {
+        let empty = test_tool("server__tool", "");
+        let base_bytes = serialized_tool_bytes(std::slice::from_ref(&empty), usize::MAX).unwrap();
+        let exact = test_tool(
+            "server__tool",
+            "x".repeat(crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES - base_bytes),
+        );
+        let mut catalog = Vec::new();
+        let bytes = append_discovered_tools(&mut catalog, 0, vec![exact]).unwrap();
+        assert_eq!(bytes, crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES);
+
+        let error =
+            append_discovered_tools(&mut catalog, bytes, vec![test_tool("other__tool", "")])
+                .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<crate::mcp::McpDiscoveryError>(),
+            Some(crate::mcp::McpDiscoveryError::LimitExceeded {
+                resource: "session serialized bytes",
+                limit: crate::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES,
+            })
+        ));
+        assert_eq!(catalog.len(), 1);
+    }
 
     fn servers_with(name: &str, server: ScopedMcpServer) -> ScopedMcpServers {
         let mut servers = ScopedMcpServers::default();
@@ -277,9 +494,14 @@ mod tests {
         }
         async fn send_stream(
             &self,
-            _request: crate::EgressRequest,
+            request: crate::EgressRequest,
         ) -> crate::EgressResult<crate::EgressStreamResponse> {
-            Err(crate::EgressError::Transport("stream not used".into()))
+            let response = self.send(request).await?;
+            Ok(crate::EgressStreamResponse {
+                status: response.status,
+                headers: response.headers,
+                body: Box::pin(futures::stream::iter([Ok(response.body)])),
+            })
         }
     }
 
@@ -475,5 +697,96 @@ mod tests {
         let resolved = resolve_servers(&servers_with("docs_api", server));
         assert_eq!(resolved.len(), 1);
         assert_eq!(resolved[0].connection.name, "docs_api");
+    }
+
+    #[tokio::test]
+    async fn current_owner_context_updates_cached_tools_and_deferred_placeholders() {
+        use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
+        for deferred in [false, true] {
+            let egress = Arc::new(DiscoveryEgress {
+                requests: AtomicUsize::new(0),
+                status: AtomicU16::new(200),
+            });
+            let client = Arc::new(McpClient::new(
+                egress.clone(),
+                Arc::new(crate::mcp::NoAuthProvider),
+            ));
+            let cache = Arc::new(McpDiscoveryCache::new());
+            let storage = crate::host::in_memory::InMemorySessionStorageStore::new();
+            let session_id = crate::typed_id::SessionId::new();
+            let mut servers = servers_with(
+                "gateway",
+                ScopedMcpServer {
+                    url: "https://93.184.216.34/mcp".into(),
+                    deferred,
+                    description: Some("Geothermal telemetry".into()),
+                    capability_context: Some(crate::mcp_server::McpCapabilityContext {
+                        id: "retail".into(),
+                        name: "Retail operations".into(),
+                        description: "Cobalt warehouse".into(),
+                    }),
+                    ..Default::default()
+                },
+            );
+            let definitions = discover_turn_tool_definitions(
+                &cache,
+                client.clone(),
+                session_id,
+                &servers,
+                &storage,
+            )
+            .await;
+            assert_eq!(definitions.len(), 1);
+            assert_eq!(
+                definitions[0].hints().capability_description.as_deref(),
+                Some("Cobalt warehouse")
+            );
+            let index =
+                everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&definitions);
+            for query in ["cobalt", "geothermal"] {
+                let hits = index.search(query, 8, |_| true);
+                assert_eq!(hits.len(), 1, "{query}");
+                assert!(hits[0].server_match);
+                assert_eq!(hits[0].source.as_ref().unwrap().id, "gateway");
+            }
+            assert_eq!(
+                definitions[0].hints().metadata.as_ref().unwrap()["mcp_server"]["description"],
+                "Geothermal telemetry"
+            );
+            let requests = egress.requests.load(Ordering::SeqCst);
+            servers
+                .get_mut("gateway")
+                .unwrap()
+                .capability_context
+                .as_mut()
+                .unwrap()
+                .description = "Fresh invoice reconciliation".into();
+            let updated = discover_turn_tool_definitions(
+                &cache,
+                client.clone(),
+                session_id,
+                &servers,
+                &storage,
+            )
+            .await;
+            let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&updated);
+            assert!(index.search("cobalt", 8, |_| true).is_empty());
+            assert_eq!(index.search("reconciliation", 8, |_| true).len(), 1);
+            servers.get_mut("gateway").unwrap().capability_context = None;
+            let unowned =
+                discover_turn_tool_definitions(&cache, client, session_id, &servers, &storage)
+                    .await;
+            assert!(
+                everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&unowned)
+                    .search("reconciliation", 8, |_| true)
+                    .is_empty()
+            );
+            assert_eq!(
+                egress.requests.load(Ordering::SeqCst),
+                requests,
+                "owner metadata must not invalidate transport discovery cache"
+            );
+            assert_eq!(requests == 0, deferred);
+        }
     }
 }

@@ -92,6 +92,14 @@ pub use everruns_contracts::capability::definition::{
     serde, serde_json,
 };
 
+/// Model tool definition budget requested by a capability.
+pub use everruns_contracts::runtime::capabilities::ModelToolBudget;
+/// Tool routing and native schema disclosure policy exposed by the runtime.
+pub use everruns_contracts::runtime::tool_surface::{
+    NativeToolDisclosure, NativeToolDisclosurePolicy, ToolSurface, ToolSurfaceMode,
+    ToolSurfacePlan, ToolSurfaceRoute,
+};
+
 // ============================================================================
 // Runtime adapters (private): neutral contract -> in-process engine
 // ============================================================================

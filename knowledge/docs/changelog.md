@@ -50,7 +50,44 @@ picture when one helps.
 - An entry per PR. Internal refactors, CI, dependency bumps and PRs that are a
   step inside a larger program get no entry of their own.
 
+## Social cards
+
+Every entry gets a 1200x630 Open Graph card, generated at docs build time by
+[`social-card.mjs`](../../apps/docs/scripts/lib/social-card.mjs): the mark, a
+gold eyebrow with the kind, the title, the date and products on the left, an
+illustration on the right. The illustration follows significance, so the work
+asked of the author follows how much the entry matters:
+
+| Entry | Card |
+|---|---|
+| `minor` | Plain: title, description and date, no illustration |
+| `notable` | Generated art from the app's [Facet icons](../ui/iconography.md), picked from the title, description and docs links; an entry about only Yolop, Mira or Bashkit shows that product's mark |
+| `major` and releases | The entry's own `social.svg`, drawn by whoever writes the entry; generated art when it is missing |
+
+`social.svg` sits in the entry folder and draws one picture of the feature on
+a 520x560 stage (`viewBox="0 0 520 560"`): the thing itself, such as the real
+avatar presets on a plane, a cost chart against its policy, or a release's
+highlights wired to its version, not decoration. It uses the card palette
+(navy, gold, the Slate grays), Geist and Geist Mono, and may reference
+repository images by relative path (presets, logos, a screenshot); the build
+inlines them. `icons: [hero, ...satellites]` in the frontmatter overrides the
+icon pick by Facet name.
+
+The changelog check rejects a `social.svg` with scripts, event handlers,
+embedded documents, remote or `data:` references, a different stage or over
+200 KB, and warns, never fails, when a major entry or release from 2026-11-03
+on has none. The blog on everruns.com uses the same renderer, with the post's
+cover photo as the background (`npm run sync:social-card` there).
+
 ## What gets an entry
+
+An entry must describe a meaningful change to what users can do, how the product
+behaves, or what users must change. Being visible is not enough. Cosmetic polish
+(such as docs badge colors), typo fixes, and routine documentation upkeep get no
+entry unless they meet one of the impact criteria below. A substantial usability
+or accessibility fix can qualify; a styling change alone does not. A trivial fix
+or a follow-up to work that already has an entry gets no entry of its own: when
+it changes what that entry says, it updates that entry.
 
 | Kind | When | Example |
 |---|---|---|
@@ -91,6 +128,8 @@ one paragraph that serves neither.
 **Significance: how much I should care.** `major` (changes how people use the
 product; at most a few a month), `notable` (the default), `minor` (small, but
 someone asked for it). Breaking changes are always at least `notable`.
+Significance is assigned only after a change qualifies for an entry; `minor`
+does not make an otherwise ineligible change eligible.
 
 The index page filters on all three plus kind. Filters are query parameters
 (`/changelog/?product=yolop&significance=major`), so a filtered view is a link
@@ -153,6 +192,11 @@ Rules for the body:
   describing it; a breaking change shows the before and after. The changelog
   check fails an entry without one, unless a UI-only entry names the screenshot
   still to capture in `visual:` (a build warning until it is captured).
+- Entries describing Framework API or behavior changes must include a short,
+  compilable Rust example showing the affected public API, including relevant
+  imports and required Cargo features. An example-launch command, screenshot
+  or link alone does not satisfy this requirement. Show before and after for
+  breaking changes. Compile-check provider examples without executing live calls.
 - Docs links sit in the text, with the page title or the feature name as
   the link text in the sentence that needs it, never as a list beside the
   entry. `links.docs` stays as the machine-readable index, and the check fails
@@ -204,8 +248,8 @@ Entries live in the existing Starlight `docs` collection, with the schema in
 `apps/docs/src/content.config.ts` extended by the fields above. That choice gives
 the changelog everything the docs already have, with no parallel pipeline:
 
-- **HTML** pages with the site chrome and a per-entry Open Graph card (its
-  first screenshot becomes the card's image).
+- **HTML** pages with the site chrome and a per-entry Open Graph card (see
+  [Social cards](#social-cards)).
 - **Search**: Pagefind indexes entries like any other page; results show the
   entry date and kind. Changelog pages are excluded from the sidebar, not from
   search.
@@ -226,10 +270,12 @@ Writing the entry belongs to the PR that completes the feature, in whichever
 repository that PR lives:
 
 1. **The PR template** in every repository gets one line under "What changed":
-   `Changelog: <entry link> | part of <program or Linear issue> | not user-facing`.
+   `Changelog: <entry link> | part of <program or Linear issue> | not user-facing | no entry: <reason>`.
+   Use `no entry: <reason>` for visible changes below the impact threshold,
+   such as cosmetic polish or routine docs upkeep.
    An empty line is a review finding.
 2. **The ship skills** treat the entry as a synced artifact (shipping outcome 4).
-   When the PR completes a user-facing feature or closes a significant incident,
+   When the PR completes a change that meets the impact criteria above,
    the entry is part of the change; when the PR is a step in a program, the line
    names the program so the last PR knows it owes the entry.
 3. **Entries always land in `everruns/everruns`**, because the docs site lives

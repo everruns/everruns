@@ -4,6 +4,8 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { WORK_LOG_PAGE_SIZE } from "@/components/chat/turn-work-log";
 import type { Event } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+
 jest.mock("streamdown", () => ({
   Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));
@@ -19,6 +21,7 @@ jest.mock("@/hooks", () => ({
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({
     locale: "en",
     t: (key: string) => key,
@@ -76,12 +79,6 @@ function renderEmpty(emptyState?: React.ReactNode) {
 }
 
 describe("ChatMessageList empty state", () => {
-  it("invites a first message by default", () => {
-    renderEmpty();
-
-    expect(screen.getByText("no_messages_yet")).toBeInTheDocument();
-  });
-
   it("replaces that invitation with the override rather than stacking both", () => {
     renderEmpty(<div>Nothing to chat with</div>);
 
@@ -663,7 +660,7 @@ describe("ChatMessageList full work log", () => {
 });
 
 describe("ChatMessageList platform messages", () => {
-  function renderMessages(messages: { text: string; metadata?: Record<string, string> }[]) {
+  function renderMessages(messages: { text: string; metadata?: Record<string, unknown> }[]) {
     const chatEvents = messages.map(({ text, metadata }, index) =>
       event("m".repeat(index + 1), "input.message", {
         message: { role: "user", content: [{ type: "text", text }], metadata },
@@ -690,7 +687,7 @@ describe("ChatMessageList platform messages", () => {
     );
   }
 
-  it("shows an automatic update without the task id", () => {
+  it("folds an automatic update and keeps the task id out of the report", () => {
     renderMessages([
       {
         text: 'Task "Releases" (task_01abc) finished: succeeded.\n- summary: Found v0.44.0.',
@@ -699,8 +696,82 @@ describe("ChatMessageList platform messages", () => {
     ]);
     expect(screen.getByText("automatic_update")).toBeInTheDocument();
     expect(screen.getByText("task_update_done")).toBeInTheDocument();
+    expect(screen.queryByText("Found v0.44.0.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /automatic_update/ }));
+
     expect(screen.getByText("Found v0.44.0.")).toBeInTheDocument();
     expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
+  });
+
+  it("shows no row for a reaction note; the chip is the record", () => {
+    renderMessages([
+      {
+        text: '[Reactions, not typed messages]\nAlice reacted 👍 on your reply "Done." (message_1)',
+        metadata: { everruns_origin: { kind: "reaction" } },
+      },
+    ]);
+    expect(screen.queryByText(/Alice reacted/)).not.toBeInTheDocument();
+    expect(screen.queryByText("origin_reaction")).not.toBeInTheDocument();
+  });
+
+  it("leaves an automatic update with no report as a line", () => {
+    renderMessages([
+      {
+        text: 'Task "Draft" (task_1) finished: failed.',
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.getByText("task_update_failed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /automatic_update/ })).not.toBeInTheDocument();
+  });
+
+  it("folds an automatic update it cannot read", () => {
+    renderMessages([
+      {
+        text: "Task exploded in a way the parser misses",
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.queryByText("Task exploded in a way the parser misses")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "automatic_update" }));
+    expect(screen.getByText("Task exploded in a way the parser misses")).toBeInTheDocument();
+  });
+
+  it("shows a scheduled run as a platform row, not a person's message", () => {
+    renderMessages([
+      {
+        text: "Shipmail claim poll for Everruns Worker agent. Read the state file.",
+        metadata: {
+          everruns_origin: {
+            kind: "schedule",
+            source_id: "sched_1",
+            name: "Shipmail claim poll for Everruns Worker agent",
+            run: { number: 12, limit: 96 },
+          },
+        },
+      },
+    ]);
+    expect(screen.getByTestId("automatic-update")).toBeInTheDocument();
+    expect(screen.getByText("scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Shipmail claim poll for Everruns Worker agent")).toBeInTheDocument();
+    expect(screen.getByText("origin_run")).toBeInTheDocument();
+    // The prompt is folded until opened.
+    expect(screen.queryByText(/Read the state file/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /scheduled/ }));
+    expect(screen.getByText(/Read the state file/)).toBeInTheDocument();
+  });
+
+  it("reads a schedule message written before origins existed", () => {
+    renderMessages([
+      {
+        text: "Check the build",
+        metadata: { source: "schedule", schedule_id: "sched_2" },
+      },
+    ]);
+    expect(screen.getByText("scheduled")).toBeInTheDocument();
+    expect(screen.queryByText("Check the build")).not.toBeInTheDocument();
   });
 
   it("shows a coordinator brief without the worker's instructions", () => {

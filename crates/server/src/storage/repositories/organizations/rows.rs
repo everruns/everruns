@@ -91,6 +91,8 @@ pub type ServiceProviderDefaults = std::collections::HashMap<ServiceKind, Provid
 pub struct OrganizationSettingsRow {
     pub org_id: i64,
     pub default_model_id: Option<ModelId>,
+    pub small_model_id: Option<ModelId>,
+    pub chat_model_id: Option<ModelId>,
     pub default_harness_id: Option<HarnessId>,
     pub base_harness_id: Option<HarnessId>,
     /// Org-level default provider per service (EVE-569); empty means none.
@@ -103,6 +105,8 @@ pub struct OrganizationSettingsRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateOrganizationSettings {
     pub default_model_id: UpdateField<ModelId>,
+    pub small_model_id: UpdateField<ModelId>,
+    pub chat_model_id: UpdateField<ModelId>,
     pub default_harness_id: UpdateField<HarnessId>,
     pub base_harness_id: UpdateField<HarnessId>,
     /// Replaces the whole per-service map: `Set` overwrites, `Clear` empties.

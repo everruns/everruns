@@ -69,7 +69,6 @@ pub mod resource_links;
 // Push delivery: event fan-out and task/event/notification broadcasters
 pub mod live_updates;
 pub use live_updates::event_delivery::EventDelivery;
-pub use live_updates::event_notifications::EventNotificationBroadcaster;
 pub use live_updates::notification_notifications::NotificationNotificationBroadcaster;
 pub use live_updates::task_notifications::{TaskBroadcaster, TaskNotificationBroadcaster};
 
@@ -99,11 +98,17 @@ pub mod session_sqldb;
 // The server's turn requests on the `TurnBackend` entry point
 pub mod turns;
 
+// Tenant egress proxy (`everruns-egress-proxy` binary)
+pub mod egress_proxy;
+
 // `--health-check` probe for distroless container healthchecks
 pub mod health_probe;
 
 // Server configuration and router helpers
 pub mod server;
+
+// Graceful drain on SIGTERM: linger, close SSE, finish requests, stop gRPC
+pub mod shutdown;
 pub use server::ServerConfig;
 
 // Valkey (Redis-compatible) client for distributed rate limiting
@@ -112,6 +117,7 @@ pub mod valkey;
 // Per-agent GitHub Apps: manifest creation, installation, token minting
 pub mod github_apps;
 mod github_installation_token;
+pub mod github_user_token;
 
 // Channel-specific plumbing (Slack: delivery, actions, events, install)
 pub mod channels;

@@ -144,7 +144,14 @@ mod driver_tests {
                     } else {
                         json!({"model":"gpt-5.4","input":[{"type":"message","role":"user","content":"new"}],"previous_response_id":"prior-response","stream":true,"parallel_tool_calls":false})
                     };
-                    assert_eq!(requests[0].body_json::<Value>().unwrap(), expected);
+                    let mut body = requests[0].body_json::<Value>().unwrap();
+                    // Responses requests always carry the session cache routing key.
+                    let cache_key = body.as_object_mut().unwrap().remove("prompt_cache_key");
+                    assert_eq!(
+                        cache_key.and_then(|key| key.as_str().map(str::len)),
+                        (!completions).then_some(64)
+                    );
+                    assert_eq!(body, expected);
                 }
             }
         }
@@ -260,4 +267,30 @@ mod provider_tests {
             ])
         );
     }
+}
+
+#[test]
+fn connection_api_selection_is_validated_and_preserves_services() {
+    use everruns_contracts::{DriverId, DriverRegistry, ProviderConfig, ServiceKind};
+    let mut registry = DriverRegistry::new();
+    super::register_driver(&mut registry);
+    for api in ["default", "responses", "chat_completions"] {
+        let config = ProviderConfig::new(DriverId::OpenAI)
+            .with_api_key("synthetic-key")
+            .with_api(api);
+        let provider = registry.create_provider(&config).unwrap();
+        assert!(provider.supports_service(ServiceKind::Chat));
+        assert!(provider.supports_service(ServiceKind::Embeddings));
+        assert!(provider.supports_service(ServiceKind::Decisions));
+        assert!(provider.supports_service(ServiceKind::Realtime));
+        assert_eq!(
+            provider.driver().unwrap().supports_stateful_responses(),
+            api != "chat_completions"
+        );
+    }
+    let invalid = ProviderConfig::new(DriverId::OpenAI)
+        .with_api_key("synthetic-key")
+        .with_api("messages");
+    assert!(registry.create_chat_driver(&invalid).is_err());
+    assert!(registry.create_provider(&invalid).is_err());
 }

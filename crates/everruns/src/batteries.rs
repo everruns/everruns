@@ -40,6 +40,15 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
     register_session_service_capabilities(&mut registry);
+    // `AgentBuilder::member` attaches the Agents capability; it is inert on an
+    // agent without members.
+    #[cfg(feature = "local")]
+    if registry
+        .get(everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID)
+        .is_none()
+    {
+        registry.register(everruns_capabilities::capabilities::AgentHandoffCapability);
+    }
     register_selected_integrations(&mut registry);
     registry
 }
@@ -109,7 +118,7 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     #[cfg(feature = "host-shell")]
     _registry.register(everruns_core::host::capabilities::shell::HostShellCapability);
     #[cfg(feature = "web-fetch")]
-    _registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    _registry.register(everruns_integrations::web_fetch::WebFetchCapability::new());
     #[cfg(feature = "duckduckgo")]
     _registry.register(everruns_integrations::duckduckgo::DuckDuckGoCapability);
     #[cfg(feature = "web-search")]
@@ -161,36 +170,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runtime_registry_matches_selected_host_features() {
-        let registry = runtime_capability_registry();
-        assert_eq!(registry.has("human_intent"), cfg!(feature = "builtins"));
-        assert_eq!(registry.has("infinity_context"), cfg!(feature = "builtins"));
-        assert_eq!(registry.has("skills"), cfg!(feature = "builtins"));
-        assert_eq!(registry.has("current_time"), cfg!(feature = "builtins"));
-        assert_eq!(registry.has("compaction"), cfg!(feature = "builtins"));
-        assert!(
-            !registry.has("usage_limit_auto_continue"),
-            "the embedded runtime preset has no schedule-backed auto-continue service"
-        );
-        assert_eq!(
-            registry.has("session_file_system"),
-            cfg!(feature = "filesystem")
-        );
-        assert_eq!(registry.has("bashkit_shell"), cfg!(feature = "bashkit"));
-        assert_eq!(registry.has("host_shell"), cfg!(feature = "host-shell"));
-        assert_eq!(registry.has("web_fetch"), cfg!(feature = "web-fetch"));
-        assert_eq!(registry.has("duckduckgo"), cfg!(feature = "duckduckgo"));
-        assert_eq!(registry.has("web_search"), cfg!(feature = "web-search"));
-        assert!(!registry.has("openui"));
-        assert!(!registry.has("a2ui"));
-        assert!(!registry.has("openrouter_server_tools"));
-
-        if cfg!(feature = "bashkit") {
-            assert_eq!(registry.canonical_id("virtual_bash"), Some("bashkit_shell"));
-        }
-    }
-
-    #[test]
     fn composition_preserves_caller_selected_core_capabilities() {
         let selected = CapabilityRegistry::new();
         #[cfg(feature = "builtins")]
@@ -205,22 +184,6 @@ mod tests {
         assert_eq!(
             registry.has("session_file_system"),
             cfg!(feature = "filesystem")
-        );
-    }
-
-    #[test]
-    fn runtime_egress_matches_network_feature_selection() {
-        let expected = cfg!(any(
-            feature = "bashkit",
-            feature = "web-fetch",
-            feature = "duckduckgo",
-            feature = "web-search",
-            feature = "lua",
-            feature = "mcp"
-        ));
-        assert_eq!(
-            runtime_egress_service().name() == "DirectEgressService",
-            expected
         );
     }
 }

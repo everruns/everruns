@@ -51,7 +51,7 @@ everruns-contracts = { workspace = true, default-features = false }
 
 [build-dependencies]
 tonic-prost-build.workspace = true
-protox = "0.9"
+protox = "0.10"
 
 [lints]
 workspace = true

@@ -469,11 +469,6 @@ mod tests {
     }
 
     #[test]
-    fn no_method_means_no_auth() {
-        assert!(Auth::new(Vec::new(), None).unwrap().is_none());
-    }
-
-    #[test]
     fn unenforceable_methods_fail_at_boot() {
         let anonymous = ChannelAuthConfig {
             mode: ChannelAuthMode::Anonymous,
@@ -566,6 +561,7 @@ mod tests {
         assert!(is_public(&get, "/v1/channels/support/voice"));
         for (method, path) in [
             (&get, "/v1/agent"),
+            (&get, "/v1/doctor"),
             (&post, "/v1/sessions"),
             (&get, "/v1/sessions/s1/sse"),
             (&post, "/v1/channels/support/sessions"),

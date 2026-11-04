@@ -11,13 +11,12 @@ everruns-integrations = { workspace = true, features = ["bashkit", "filesystem"]
 
 clap = { workspace = true, features = ["string", "color"] }
 everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["http"] }
-everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai"] }
 async-trait.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 everruns-core = { path = "../../crates/core", default-features = false, features = ["host"] }
-everruns = { path = "../../crates/everruns", default-features = false, features = ["bashkit", "filesystem"] }
+everruns = { path = "../../crates/everruns", default-features = false, features = ["bashkit", "filesystem", "openai", "anthropic"] }
 [dev-dependencies]
 # Tests script the model's shell calls; the example binary runs a real model.
 everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }

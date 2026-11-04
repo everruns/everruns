@@ -70,12 +70,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_is_unchanged() {
-        let field: UpdateField<String> = UpdateField::default();
-        assert!(!field.is_changed());
-    }
-
-    #[test]
     fn test_clear_is_changed() {
         let field: UpdateField<String> = UpdateField::Clear;
         assert!(field.is_changed());

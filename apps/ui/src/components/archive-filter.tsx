@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Filter } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -19,11 +20,12 @@ interface ArchiveFilterProps {
 }
 
 export function ArchiveFilter({ showArchived, onShowArchivedChange }: ArchiveFilterProps) {
+  const ui = useUiTranslations();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}>
         <Filter className="size-4" />
-        Filter
+        {ui("Filter")}
         {showArchived && (
           <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-xs">1</span>
         )}
@@ -31,9 +33,9 @@ export function ArchiveFilter({ showArchived, onShowArchivedChange }: ArchiveFil
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-56">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>Filters</DropdownMenuLabel>
+            <DropdownMenuLabel>{ui("Filters")}</DropdownMenuLabel>
             <DropdownMenuCheckboxItem checked={showArchived} onCheckedChange={onShowArchivedChange}>
-              Show archived
+              {ui("Show archived")}
             </DropdownMenuCheckboxItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

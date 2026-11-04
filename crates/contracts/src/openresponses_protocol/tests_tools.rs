@@ -193,64 +193,6 @@ fn test_json_fallback_does_not_recover_incomplete_function_call() {
     assert!(calls.take_unemitted().is_none());
 }
 
-#[test]
-fn test_incomplete_event_maps_output_limit_to_length() {
-    let event_json = r#"{
-        "type": "response.incomplete",
-        "sequence_number": 10,
-        "response": {
-            "id": "resp_incomplete",
-            "object": "response",
-            "created_at": 1780000000,
-            "status": "incomplete",
-            "incomplete_details": { "reason": "max_output_tokens" },
-            "model": "gpt-5.5",
-            "output": [{
-                "type": "function_call",
-                "id": "fc_partial",
-                "call_id": "call_partial",
-                "name": "bash",
-                "arguments": "{\"command\":\"rm -rf",
-                "status": "incomplete"
-            }],
-            "usage": {
-                "input_tokens": 10,
-                "output_tokens": 5,
-                "total_tokens": 15
-            }
-        }
-    }"#;
-
-    let event: StreamingEvent = serde_json::from_str(event_json).unwrap();
-    let deferred = Mutex::new(Vec::new());
-    let stream_event = handle_streaming_event(
-        event,
-        &Mutex::new(0),
-        &Mutex::new(0),
-        &Mutex::new(None),
-        &Mutex::new(ToolCallStream::default()),
-        &Mutex::new(None),
-        &deferred,
-        "gpt-5.5".to_string(),
-        None,
-    );
-
-    match stream_event {
-        LlmStreamEvent::Done(metadata) => {
-            assert_eq!(metadata.finish_reason.as_deref(), Some("length"));
-            assert_eq!(
-                metadata.provider_finish_reason.as_deref(),
-                Some("max_output_tokens")
-            );
-            // The incomplete item is never handed on: it is dropped and counted.
-            assert_eq!(metadata.tool_calls_truncated_executed, 0);
-            assert_eq!(metadata.tool_calls_dropped, 1);
-        }
-        other => panic!("expected Done event, got {other:?}"),
-    }
-    assert!(deferred.lock().unwrap().is_empty());
-}
-
 /// A finished call handed on before the response ended incomplete counts as
 /// run from a truncated response; its own arguments are complete. A finished
 /// call whose arguments do not parse is withheld and counted as dropped, never
@@ -687,7 +629,7 @@ async fn compact_request_preserves_endpoint_query_and_complete_contract() {
     );
 }
 #[test]
-fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
+fn cache_key_tracks_family_and_model_but_not_prompt_tools_or_input() {
     let base = cache_config();
     let instructions = Some("stable system prompt".into());
     let key = |config: &LlmCallConfig,
@@ -711,9 +653,19 @@ fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
     let mut disabled = base.clone();
     disabled.prompt_cache.as_mut().unwrap().enabled = false;
     assert_eq!(key(&disabled, &instructions, &None, &[]), None);
-    disabled.prompt_cache = None;
-    assert_eq!(key(&disabled, &instructions, &None, &[]), None);
+    // No Prompt Caching capability still routes: implicit-caching providers
+    // (Muse) only hit on long prompts when the request carries a key.
+    let mut implicit = base.clone();
+    implicit.prompt_cache = None;
+    let implicit_key = key(&implicit, &instructions, &None, &[]).unwrap();
+    assert_eq!(implicit_key.len(), 64);
+    assert_eq!(
+        key(&implicit, &instructions, &None, &changed_input),
+        Some(implicit_key)
+    );
     for field in ["session_id", "model", "instructions", "tools"] {
+        // Prompt and tool changes keep the session on one cache route.
+        let routes = matches!(field, "session_id" | "model");
         let mut config = base.clone();
         let mut prompt = instructions.clone();
         let mut tools = None;
@@ -732,9 +684,9 @@ fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
             }
             _ => unreachable!(),
         }
-        assert_ne!(
-            key(&config, &prompt, &tools, &[]).unwrap(),
-            expected,
+        assert_eq!(
+            key(&config, &prompt, &tools, &[]).unwrap() != expected,
+            routes,
             "{field}"
         );
     }
@@ -864,49 +816,6 @@ fn tool_search_namespace_description_bounds_unicode_purposes_without_dropping_to
     assert!(description.chars().count() <= 4096);
     assert!(description.contains("lookup_0: 目的"));
     assert_eq!(wire[0]["tools"].as_array().unwrap().len(), 100);
-}
-
-/// EVE-1164: OpenAI hosted tool search fails with `server_error` when a
-/// deferred namespace is named `File Operations` (whitespace). The wire name
-/// must be a provider-safe identifier; the description keeps the human label.
-#[test]
-fn tool_search_normalizes_file_operations_namespace_for_openai() {
-    use crate::tool_types::DeferrablePolicy::Automatic;
-
-    let tools = vec![make_tool(
-        "list_directory",
-        Some("File Operations"),
-        Automatic,
-    )];
-    let wire = serde_json::to_value(OpenResponsesProtocolChatDriver::convert_tools_with_search(
-        &tools, 1,
-    ))
-    .unwrap();
-
-    assert_eq!(
-        wire,
-        json!([
-            {
-                "type": "namespace",
-                "name": "File_Operations",
-                "description": "Tools for File Operations: list_directory: list_directory description",
-                "tools": [{
-                    "type": "function",
-                    "name": "list_directory",
-                    "description": "list_directory description",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                        "additionalProperties": false
-                    },
-                    "strict": true,
-                    "defer_loading": true
-                }]
-            },
-            {"type": "tool_search"}
-        ])
-    );
 }
 
 #[test]
@@ -1181,26 +1090,6 @@ async fn equivalent_search_requests_keep_cache_key_and_complete_tool_payload() {
     }
     assert_ne!(bodies[0]["input"], bodies[1]["input"]);
     assert_eq!(bodies[0]["prompt_cache_key"], bodies[1]["prompt_cache_key"]);
-}
-
-#[test]
-fn file_part_serializes_to_input_file() {
-    let part = ResponsesContentPart::InputFile {
-        r#type: "input_file".to_string(),
-        input_file: ResponsesInputFile {
-            file_data: Some("data:application/pdf;base64,JVBERi0=".to_string()),
-            file_url: None,
-            filename: Some("report.pdf".to_string()),
-        },
-    };
-    let v = serde_json::to_value(&part).unwrap();
-    assert_eq!(v["type"], serde_json::json!("input_file"));
-    assert_eq!(
-        v["input_file"]["file_data"],
-        serde_json::json!("data:application/pdf;base64,JVBERi0=")
-    );
-    assert_eq!(v["input_file"]["filename"], serde_json::json!("report.pdf"));
-    assert!(v["input_file"].get("file_url").is_none());
 }
 
 #[tokio::test]

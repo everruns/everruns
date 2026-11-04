@@ -340,6 +340,22 @@ impl Schedules for InMemoryWorkflowEventStore {
         Ok(count as u32)
     }
 
+    async fn last_scheduled_task_pending(&self, schedule_id: Uuid) -> Result<bool, StoreError> {
+        let last_task = self
+            .schedule_executions
+            .read()
+            .values()
+            .filter(|e| e.row.schedule_id == schedule_id && e.row.task_id.is_some())
+            .max_by_key(|e| e.row.created_at)
+            .and_then(|e| e.row.task_id);
+        Ok(last_task.is_some_and(|id| {
+            self.tasks
+                .read()
+                .get(&id)
+                .is_some_and(|task| task.status == TaskStatus::Pending)
+        }))
+    }
+
     async fn get_schedule_stats(&self, schedule_id: Uuid) -> Result<ScheduleStats, StoreError> {
         let executions = self.schedule_executions.read();
         let schedule_execs: Vec<_> = executions

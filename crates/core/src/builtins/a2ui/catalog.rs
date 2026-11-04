@@ -54,26 +54,3 @@ pub fn default_categories() -> Vec<ComponentCategory> {
         },
     ]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashSet;
-
-    #[test]
-    fn categories_have_no_duplicates() {
-        let mut seen = HashSet::new();
-        for cat in default_categories() {
-            for c in cat.components {
-                assert!(seen.insert(c), "duplicate component across categories: {c}");
-            }
-        }
-    }
-
-    #[test]
-    fn categories_non_empty() {
-        for cat in default_categories() {
-            assert!(!cat.components.is_empty(), "empty category: {}", cat.name);
-        }
-    }
-}

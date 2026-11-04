@@ -41,6 +41,26 @@ pub fn config_dir() -> Option<PathBuf> {
     }
 }
 
+/// The user's data directory, for state that is not configuration.
+///
+/// Linux: `$XDG_DATA_HOME`, else `~/.local/share`.
+/// macOS: `~/Library/Application Support`.
+/// Windows: `%LOCALAPPDATA%`.
+pub fn data_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        home_dir().map(|home| home.join("Library").join("Application Support"))
+    }
+    #[cfg(windows)]
+    {
+        non_empty("LOCALAPPDATA")
+    }
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
+    {
+        xdg_dir("XDG_DATA_HOME", ".local/share")
+    }
+}
+
 /// Reads an environment variable, treating an empty value as unset.
 fn non_empty(key: &str) -> Option<PathBuf> {
     env::var_os(key)
@@ -81,7 +101,14 @@ mod tests {
         for (variables, expected) in cases {
             let mut child = std::process::Command::new(env::current_exe().unwrap());
             child.args(["--exact", &format!("user_dirs::tests::{test_name}")]);
-            for key in ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "APPDATA"] {
+            for key in [
+                "HOME",
+                "USERPROFILE",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "APPDATA",
+                "LOCALAPPDATA",
+            ] {
                 child.env_remove(key);
             }
             let output = child
@@ -145,6 +172,27 @@ mod tests {
                     &[("XDG_CONFIG_HOME", "/custom/config")],
                     Some("/custom/config"),
                 ),
+                (&[], None),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
+    fn data_dir_falls_back_to_local_share() {
+        check_isolated(
+            "data_dir_falls_back_to_local_share",
+            data_dir,
+            &[
+                (
+                    &[("HOME", "/test/home"), ("XDG_DATA_HOME", "/custom/data")],
+                    Some("/custom/data"),
+                ),
+                (
+                    &[("HOME", "/test/home"), ("XDG_DATA_HOME", "relative")],
+                    Some("/test/home/.local/share"),
+                ),
+                (&[("HOME", "/test/home")], Some("/test/home/.local/share")),
                 (&[], None),
             ],
         );

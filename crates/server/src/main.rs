@@ -28,6 +28,15 @@ struct Args {
     /// Probe GET /health on HTTP_ADDR and exit 0 when healthy (for container healthchecks)
     #[arg(long)]
     health_check: bool,
+
+    /// Run the system doctor against this environment's services, print the
+    /// report and exit: 1 when a check is a problem, 0 otherwise
+    #[arg(long)]
+    doctor: bool,
+
+    /// With --doctor, print the report as JSON
+    #[arg(long, requires = "doctor")]
+    json: bool,
 }
 
 #[tokio::main]
@@ -45,6 +54,17 @@ async fn main() -> Result<()> {
         }
     }
 
+    if args.doctor {
+        use everruns_server::domains::system::doctor::preflight;
+        let report = preflight::run().await?;
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            print!("{}", preflight::render(&report));
+        }
+        std::process::exit(preflight::exit_code(&report));
+    }
+
     // Initialize telemetry (guard must stay alive for the lifetime of the application)
     let mut telemetry_config = TelemetryConfig::from_env();
     if telemetry_config.service_name == "everruns" {
@@ -55,6 +75,8 @@ async fn main() -> Result<()> {
     }
     telemetry_config.service_version = Some(env!("CARGO_PKG_VERSION").to_string());
     let _telemetry_guard = init_telemetry(telemetry_config);
+    // Pre-compile the embedded CPython payload (see ensure_cpython_warm).
+    everruns_integrations::bashkit::tools_in_shell::ensure_cpython_warm();
 
     // Load server config from environment
     let mut config = ServerConfig::from_env();

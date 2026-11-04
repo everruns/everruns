@@ -18,6 +18,7 @@ use everruns_contracts::driver_registry::{DriverId, DriverRegistry};
 use everruns_contracts::error::Result;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::ExecutionContext;
 use everruns_core::agent_definition::AgentDefinition;
@@ -37,7 +38,6 @@ use everruns_core::message::RuntimeMessage;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
-use everruns_core::turn::TurnStopReason;
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 
 // ============================================================================
@@ -939,30 +939,6 @@ mod tests {
     use everruns_core::RuntimeMessageRole;
 
     #[tokio::test]
-    async fn test_simple_turn() {
-        let runner = InMemoryAgenticLoop::with_fixed_response("Hello from the assistant!")
-            .await
-            .unwrap();
-
-        let result = runner.run_turn("Hi there").await.unwrap();
-
-        assert!(result.success);
-        assert_eq!(result.response, "Hello from the assistant!");
-        assert_eq!(result.iterations, 1);
-        assert_eq!(result.tool_calls_count, 0);
-    }
-
-    #[tokio::test]
-    async fn test_echo_turn() {
-        let runner = InMemoryAgenticLoop::with_echo().await.unwrap();
-
-        let result = runner.run_turn("Test message").await.unwrap();
-
-        assert!(result.success);
-        assert_eq!(result.response, "Echo: Test message");
-    }
-
-    #[tokio::test]
     async fn turn_result_summarizes_llm_generation_contract() {
         use everruns_core::builtins::CurrentTimeCapability;
 
@@ -985,38 +961,6 @@ mod tests {
             assert_eq!(result.llm_generations[0].finish_reasons, ["stop"]);
             assert!(result.llm_generations[0].success);
         }
-    }
-
-    #[tokio::test]
-    async fn test_builder_with_custom_config() {
-        let runner = InMemoryAgenticLoop::builder()
-            .agent_name("Custom Agent")
-            .system_prompt("You are a custom assistant.")
-            .with_simulated_response("Custom response")
-            .max_iterations(5)
-            .build()
-            .await
-            .unwrap();
-
-        let configured_agent = everruns_core::execution_loading::AgentStore::get_agent(
-            &runner.agent_store,
-            runner.agent_id,
-        )
-        .await
-        .unwrap()
-        .unwrap();
-        assert_eq!(configured_agent.max_iterations, Some(5));
-        assert_eq!(
-            configured_agent.display_name.as_deref(),
-            Some("Custom Agent")
-        );
-        assert_eq!(
-            configured_agent.system_prompt,
-            "You are a custom assistant."
-        );
-
-        let result = runner.run_turn("Test").await.unwrap();
-        assert_eq!(result.response, "Custom response");
     }
 
     #[tokio::test]

@@ -1,0 +1,24 @@
+Everruns ({{ .Values.image.tag | default .Chart.AppVersion }}) is starting. The first start runs database migrations.
+
+Reach it:
+{{- if .Values.ingress.enabled }}
+  {{ .Values.publicUrl | default (printf "http://%s" .Values.ingress.host) }}
+{{- else }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "everruns.fullname" . }} 9300:{{ .Values.proxy.service.port }}
+  then open http://localhost:9300
+{{- end }}
+{{- if ne .Values.auth.mode "none" }}
+
+Sign in as {{ .Values.auth.adminEmail }} with the password from:
+  kubectl --namespace {{ .Release.Namespace }} get secret {{ include "everruns.secretName" . }} -o jsonpath='{.data.AUTH_ADMIN_PASSWORD}' | base64 -d
+{{- end }}
+{{- if not .Values.secrets.existingSecret }}
+
+Secret {{ include "everruns.secretName" . }} holds the encryption key for stored
+provider keys and secrets. It is kept on uninstall; back it up with the database.
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+
+The bundled PostgreSQL is for trying Everruns out: it has no backups or failover.
+Use a managed database (database.url) for anything you keep.
+{{- end }}

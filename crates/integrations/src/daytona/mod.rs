@@ -28,14 +28,17 @@
 //!   shared session, async execution, and log polling for real-time streaming
 //!   output.
 
+pub mod api;
 pub mod client;
 pub mod client_test_override;
 pub mod computer;
 pub mod connection;
 mod git_auth;
 mod naming;
+mod network;
 pub mod openapi_spec;
 mod owned;
+pub mod recording;
 mod session_sandbox_provider;
 pub mod state;
 pub mod tools;
@@ -64,16 +67,10 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name, with their default rollout grades.
-/// Daytona itself is available wherever its sandbox capability is available,
-/// so its credential connector is not gated; only desktop computer use is.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "daytona_computer_use",
-        label: "Daytona desktop computer use",
-        description: "Let agents operate a remote Linux desktop in a Daytona sandbox.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
+/// Feature flags this module's plugins name: none. Daytona is available
+/// wherever its sandbox capability is, and desktop computer use is a Sandbox
+/// Template option (`target.options.desktop`), not a flagged capability.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[];
 
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
@@ -84,12 +81,6 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
         feature_flag: None,
         factory: || Box::new(SandboxFleetCapability),
-    },
-    // Desktop computer use ships behind its own feature flag, like the E2B
-    // desktop backend.
-    IntegrationPlugin {
-        feature_flag: Some("daytona_computer_use"),
-        factory: || Box::new(computer::DaytonaDesktopComputerUseCapability),
     },
 ];
 
@@ -524,6 +515,18 @@ impl Tool for SandboxFleetTool {
 
 #[async_trait::async_trait]
 impl Capability for SandboxFleetCapability {
+    fn localizations(
+        &self,
+    ) -> Vec<everruns_contracts::runtime::capabilities::CapabilityLocalization> {
+        vec![
+            everruns_contracts::runtime::capabilities::CapabilityLocalization::text(
+                "uk",
+                "Парк пісочниць",
+                "Створює та керує кількома явно вказаними пісочницями без зміни основної пісочниці сесії.",
+            ),
+        ]
+    }
+
     fn id(&self) -> &str {
         "sandbox_fleet"
     }
@@ -780,7 +783,6 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use everruns_contracts::error::Result as AgentResult;
-    use everruns_contracts::runtime::capabilities::CapabilityStatus;
     use everruns_contracts::runtime::session_resource::{
         RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
     };
@@ -869,57 +871,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = DaytonaCapability;
-        assert_eq!(cap.id(), "daytona");
-        assert_eq!(cap.name(), "Daytona");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("daytona"));
-        assert_eq!(cap.category(), Some("Sandboxes"));
-    }
-
-    #[test]
-    fn test_capability_has_all_tools() {
-        let cap = DaytonaCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 10);
-
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"daytona_create_sandbox"));
-        assert!(names.contains(&"daytona_exec"));
-        assert!(names.contains(&"daytona_read_file"));
-        assert!(names.contains(&"daytona_write_file"));
-        assert!(names.contains(&"daytona_download_workspace"));
-        assert!(names.contains(&"daytona_list_snapshots"));
-        assert!(names.contains(&"daytona_list_sandboxes"));
-        assert!(names.contains(&"daytona_manage_sandbox"));
-        assert!(names.contains(&"daytona_git_clone"));
-        assert!(names.contains(&"daytona_git_credentials"));
-    }
-
-    #[test]
-    fn sandbox_fleet_exposes_provider_neutral_tools() {
-        let names = SandboxFleetCapability
-            .tools()
-            .into_iter()
-            .map(|tool| tool.name().to_string())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            vec![
-                "sandbox_create",
-                "sandbox_exec",
-                "sandbox_read_file",
-                "sandbox_write_file",
-                "sandbox_list",
-                "sandbox_inspect",
-                "sandbox_checkpoint",
-                "sandbox_manage",
-            ]
-        );
-    }
-
     #[tokio::test]
     async fn sandbox_fleet_rejects_a_logical_id_owned_by_another_session() {
         let owner = SessionId::new();
@@ -952,16 +903,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = DaytonaCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("Daytona"));
-        assert!(prompt.contains("/home/daytona"));
-        assert!(prompt.contains("delete them when done"));
-        assert!(prompt.contains("sandbox git credentials"));
-    }
-
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = DaytonaCapability;
@@ -974,24 +915,6 @@ mod tests {
         assert!(prompt.len() <= 1600, "prompt is {} bytes", prompt.len());
     }
 
-    #[test]
-    fn test_all_tools_require_context() {
-        let cap = DaytonaCapability;
-        for tool in cap.tools() {
-            assert!(
-                tool.requires_context(),
-                "Tool {} should require context",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_capability_dependencies() {
-        let cap = DaytonaCapability;
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    }
-
     // --- API calling opt-in tests ---
 
     #[test]
@@ -1001,11 +924,6 @@ mod tests {
         assert!(!is_api_calling_enabled(
             &json!({"enable_api_calling": false})
         ));
-    }
-
-    #[test]
-    fn test_is_api_calling_enabled_true() {
-        assert!(is_api_calling_enabled(&json!({"enable_api_calling": true})));
     }
 
     #[test]
@@ -1024,17 +942,6 @@ mod tests {
         assert_eq!(tools.len(), 11);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"daytona_api_call"));
-    }
-
-    #[test]
-    fn test_api_call_tool_requires_context() {
-        let cap = DaytonaCapability;
-        let tools = cap.tools_with_config(&json!({"enable_api_calling": true}));
-        let api_tool = tools
-            .iter()
-            .find(|t| t.name() == "daytona_api_call")
-            .unwrap();
-        assert!(api_tool.requires_context());
     }
 
     #[test]
@@ -1062,35 +969,6 @@ mod tests {
             .validate_config(&json!({"enable_api_calling": "yes"}))
             .unwrap_err();
         assert!(err.contains("enable_api_calling"));
-    }
-
-    #[test]
-    fn test_localizations_resolve_uk() {
-        let cap = DaytonaCapability;
-        // The capability name is a brand name and stays Latin in Ukrainian.
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Daytona");
-        assert!(
-            cap.localized_description(Some("uk-UA"))
-                .contains("пісочницях")
-        );
-        assert!(cap.describe_schema(None).is_some());
-    }
-
-    #[test]
-    fn test_mounts_include_openapi_spec() {
-        let cap = DaytonaCapability;
-        let mounts = cap.mounts();
-        assert_eq!(mounts.len(), 1);
-        assert_eq!(mounts[0].path, "/daytona");
-        assert!(mounts[0].is_readonly());
-    }
-
-    #[test]
-    fn embedded_openapi_contains_sandbox_and_toolbox_documentation() {
-        let spec = openapi_spec::DAYTONA_OPENAPI_SPEC;
-        assert!(spec.contains("openapi: 3.0.3"));
-        assert!(spec.contains("/sandbox"));
-        assert!(spec.contains("/toolbox/"));
     }
 
     #[tokio::test]

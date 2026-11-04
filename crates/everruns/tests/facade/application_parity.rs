@@ -2,6 +2,7 @@
 //!
 //! This integration crate imports only `everruns`; it uses temporary files and
 //! local simulation, never credentials or the network.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use std::fs;
 

@@ -17,6 +17,13 @@ use serde_json::Value;
 /// The child context drops `tool_registry`, so a code-mode tool cannot itself
 /// open code mode (no recursion).
 pub(crate) async fn call(ctx: &ToolContext, name: &str, args: Value) -> Result<Value, String> {
+    if ctx
+        .visible_tool_names
+        .as_ref()
+        .is_some_and(|names| !names.contains(name))
+    {
+        return Err(format!("tool not available in this turn: {name}"));
+    }
     let reg = ctx
         .tool_registry
         .as_ref()

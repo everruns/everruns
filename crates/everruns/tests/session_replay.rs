@@ -1,4 +1,5 @@
 //! Durable event replay on `Session`: `events_after` and `events_from`.
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 
 use everruns::prelude::*;
 

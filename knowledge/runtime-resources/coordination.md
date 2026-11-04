@@ -72,13 +72,16 @@ assignment as needing attention, so the coordinator always hears back
 
 Task state changes wake the coordinator with an injected user-role message that
 carries `everruns_origin = task_wake` metadata. The model sees it prefixed as an
-automatic update, the UI labels it, and client-supplied metadata cannot forge it
+automatic update. The transcript shows one folded line, because the report is
+for the coordinator, and client-supplied metadata cannot forge the origin
 (`strip_reserved_message_metadata` in `crates/contracts/src/runtime/message.rs`).
 
 Wake texts and the briefs a thread receives stay written for the model (task
-ids, the worker's instructions). The UI shows a readable version and falls back
-to the raw text when a message does not match
-([`chat-thread-messages.ts`](../../apps/ui/src/lib/chat-thread-messages.ts)).
+ids, the worker's instructions). The line is a readable headline, with the
+report folded under it, and falls back to the raw text, still folded, when a
+message does not match
+([`chat-thread-messages.ts`](../../apps/ui/src/lib/chat-thread-messages.ts),
+[`automatic-update.tsx`](../../apps/ui/src/components/chat/automatic-update.tsx)).
 
 ## Framework
 

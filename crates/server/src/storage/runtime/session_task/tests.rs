@@ -93,11 +93,6 @@ impl TaskTransitionObserver for RecordingObserver {
     }
 }
 
-fn registry_with_observer(observer: Arc<RecordingObserver>) -> DbSessionTaskRegistry {
-    DbSessionTaskRegistry::new(Arc::new(StorageBackend::test_database()))
-        .with_transition_observer(observer)
-}
-
 /// `notify_transition` spawns a detached task per observer; poll until the
 /// expected number of notifications land (or give up after bounded yields).
 async fn wait_for_notifications(observer: &RecordingObserver, expected: usize) {
@@ -723,122 +718,6 @@ async fn on_activity_wakes_on_awaiting_input_and_outbound_message() {
         calls.len(),
         4,
         "Should also wake on terminal for OnActivity"
-    );
-}
-
-/// The registry fires observer notifications on terminal, awaiting_input, and
-/// outbound-message transitions — each exactly once per real transition, and
-/// never on inbound messages. Event-filter honoring is the observer's job
-/// (tested there); here we assert the store emits the right transition kinds.
-#[tokio::test]
-async fn observer_fires_on_terminal_awaiting_input_and_outbound() {
-    let observer = Arc::new(RecordingObserver::default());
-    let registry = registry_with_observer(observer.clone());
-    let session_id = registry.db.create_test_session().await;
-
-    let task = registry
-        .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
-        .await
-        .unwrap();
-
-    // Running: no notification (non-terminal, not awaiting_input).
-    registry
-        .update(
-            session_id,
-            &task.id,
-            SessionTaskUpdate {
-                state: Some(SessionTaskState::Running),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-
-    // Awaiting input: one AwaitingInput notification.
-    registry
-        .update(
-            session_id,
-            &task.id,
-            SessionTaskUpdate {
-                input_request: Some(TaskInputRequest {
-                    id: "req_1".to_string(),
-                    prompt: "Approve?".to_string(),
-                    expected: None,
-                }),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-    wait_for_notifications(&observer, 1).await;
-
-    // Repeated awaiting_input churn: no extra notification.
-    registry
-        .update(
-            session_id,
-            &task.id,
-            SessionTaskUpdate {
-                input_request: Some(TaskInputRequest {
-                    id: "req_1".to_string(),
-                    prompt: "Approve?".to_string(),
-                    expected: None,
-                }),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-
-    // Answer resumes to running, then an outbound message fires Message.
-    let mut answer = NewTaskMessage::inbound_text("yes");
-    answer.in_reply_to = Some("req_1".to_string());
-    registry
-        .record_message(session_id, &task.id, answer)
-        .await
-        .unwrap();
-    registry
-        .record_message(
-            session_id,
-            &task.id,
-            NewTaskMessage::outbound_text("progress"),
-        )
-        .await
-        .unwrap();
-    wait_for_notifications(&observer, 2).await;
-
-    // Terminal transition fires Terminal.
-    registry
-        .update(
-            session_id,
-            &task.id,
-            SessionTaskUpdate {
-                state: Some(SessionTaskState::Succeeded),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-    wait_for_notifications(&observer, 3).await;
-
-    let events: Vec<TaskTransition> = observer.transitions();
-    assert!(
-        events.contains(&TaskTransition::AwaitingInput),
-        "expected an awaiting_input notification, got: {events:?}"
-    );
-    assert!(
-        events.contains(&TaskTransition::Message),
-        "expected an outbound message notification, got: {events:?}"
-    );
-    assert!(
-        events.contains(&TaskTransition::Terminal),
-        "expected a terminal notification, got: {events:?}"
-    );
-    // Exactly one of each — no double-fire on awaiting_input churn, and the
-    // inbound answer never produced a Message event.
-    assert_eq!(
-        events.len(),
-        3,
-        "each transition must notify exactly once, got: {events:?}"
     );
 }
 

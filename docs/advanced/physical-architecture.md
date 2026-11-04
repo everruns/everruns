@@ -17,9 +17,10 @@ The [getting-started architecture](/explanation/architecture/) page describes th
 | Control plane (server) | REST API, SSE event streams, gRPC server for workers, owns all state | Yes | 9301 (HTTP), 9001 (gRPC) |
 | Worker pool | Stateless executors of the agentic loop: each leases a session and runs its whole turn | Yes | – (outbound only) |
 | PostgreSQL 17 | Durable storage for agents, sessions, events, durable task queue | Yes | 5432 |
-| NATS JetStream | Push-based ephemeral event delivery and task notifications | Optional | 4222 |
+| NATS JetStream | Live session events across control-plane instances, task notifications | Optional for one control-plane instance, required for more | 4222 |
 | Valkey | Distributed sliding-window rate limiting across control-plane instances | Optional | 6379 |
 | Management UI | Operator interface for agent and provider configuration | Optional | – (served by proxy) |
+| Tenant egress proxy | Gives tenant outbound traffic its own address, per-org limits and usage counts | Optional | 4750 (proxy), 4751 (health) |
 
 Workers never talk to PostgreSQL, NATS, or Valkey directly. Every read and write goes through the control plane's gRPC service on port 9001. This is what lets workers run with no database credentials, no encryption keys, and no awareness of the data tier.
 
@@ -43,18 +44,21 @@ Operational requirements:
 
 See [`docs/sre/environment-variables.md`](/sre/environment-variables/) for the full list of database-related variables.
 
-## NATS JetStream, optional push delivery
+## NATS JetStream, required for more than one control-plane instance
 
-NATS is not required, but turning it on materially reduces PostgreSQL write pressure and SSE tail latency for busy deployments.
+Live session events (what a chat streams over SSE) are pushed from the instance that published them to the instances serving the clients. NATS carries that push between instances. How a control-plane instance delivers them depends on its setup, and `/health` reports the choice as `event_delivery`:
 
-Without NATS, Everruns uses PostgreSQL for both storage *and* delivery: ephemeral events persist to PG and SSE clients poll PG with `LISTEN/NOTIFY` wakeups; workers are notified of new tasks the same way. This works, and it is the default. The cost is write amplification, every streaming-token delta lands in PG even though no client will ever re-read it.
+| Setup | `event_delivery` | Behavior |
+|-------|------------------|----------|
+| `NATS_URL` set and reachable | `nats` | Events reach every instance. Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through JetStream. Durable events still persist to PG, so SSE reconnection via `since_id` keeps working. |
+| One instance, no `NATS_URL` | `in_memory` | Events are pushed inside the one process. Every event, deltas included, is also written to PG. Correct for a single control-plane instance only. |
+| `NATS_URL` set but unreachable at startup, or `EXPECTED_INSTANCES` above 1 with no `NATS_URL` | `polling` | Each open stream polls PostgreSQL for new events (100 ms while busy, backing off to 1 s while quiet). Every event is written to PG. Streams stay correct across instances, at the cost of extra queries and latency. `/health` reports `status: degraded`, and the system doctor shows a warning. |
 
-With `NATS_URL` set and JetStream enabled, Everruns rewires two hot paths:
+Run more than one control-plane instance only with NATS, and set `EXPECTED_INSTANCES` so an instance started without NATS falls back to polling instead of in-memory delivery. The system doctor flags a problem when several instances run and any of them uses in-memory delivery, because clients on one instance would miss events published through another.
 
-- **Ephemeral event delivery.** Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL entirely and flow only through NATS JetStream. SSE streams subscribe to per-session subjects with short-term retention. Durable events (`output.message.completed`, `turn.started`, `tool.completed`, etc.) still persist to PG so SSE reconnection via `since_id` continues to work, missed deltas are acceptable because the completed event carries the full content.
-- **Task notifications.** `task.available.{activity_type}` subjects replace PG NOTIFY for worker wakeup, dropping notification latency from ~30 ms to ~1 ms.
+The NATS event stream is memory-backed and retains at most one hour of events, evicting oldest messages when its byte limit is reached. Set `NATS_EVENT_STREAM_MAX_BYTES` to a positive byte count to choose the limit for newly created streams; the default is 1 GiB. Size it below both the broker's JetStream memory budget and its container memory limit, leaving room for consumers, connections, and broker overhead. Existing streams are not rewritten by this setting; coordinate a stream or broker restart with all servers configured consistently. Memory-backed ephemeral deltas do not survive a broker restart, while durable events can be replayed from PostgreSQL.
 
-NATS is fail-graceful: if the connection fails at startup, the control plane logs a warning and falls back to the PG-backed paths. Only the control plane connects to NATS, workers still talk to the server via gRPC.
+NATS also carries task notifications: `task.available.{activity_type}` subjects replace PG `NOTIFY` for worker wakeup, dropping notification latency from about 30 ms to about 1 ms. Only the control plane connects to NATS; workers talk to the server via gRPC.
 
 ## Valkey, optional distributed rate limiting
 
@@ -96,6 +100,46 @@ A reverse proxy (or platform ingress that enforces the same routes) is mandatory
 
 TLS terminates at the proxy. Worker gRPC traffic stays on the private network, never expose port 9001 publicly. See [`local/Caddyfile`](https://github.com/everruns/everruns/blob/main/local/Caddyfile) and [`examples/docker-compose-full.yaml`](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml) for working configurations.
 
+## Outbound traffic
+
+The control plane and workers both make outbound calls, and Everruns splits them in two:
+
+- **Platform traffic** is what the deployment itself owns: LLM providers, the utility model, system email, sandbox provider APIs. It always leaves directly, from the deployment's own address.
+- **Tenant traffic** is what an agent, a capability, an MCP server or an integration chooses: web fetches, tool calls to third-party APIs, remote MCP servers. Every such request goes through one boundary, the egress service, which applies the policy below and writes an audit line with its org, session and decision (`everruns::egress::audit` log target).
+
+### Egress policy
+
+`EVERRUNS_EGRESS_POLICY` decides which public hosts tenant traffic may reach:
+
+| Mode | Behavior |
+|------|----------|
+| `open` (default) | Any public host. |
+| `curated-writes` | GET and HEAD reach any public host; writes, MCP and integration traffic need the built-in allowlist. |
+| `curated-all` | Every request needs the allowlist. |
+
+In both curated modes a built-in deny list is checked first, URLs are capped at 2048 characters and IP-literal hosts are refused. An organization can be granted extra hosts or open egress for its own traffic; see [Network Access Control](/advanced/network-access/). Private, loopback and cloud metadata addresses are refused in every mode, with DNS pinned so a lookup cannot be swapped between the check and the connection.
+
+### Tenant egress proxy
+
+Set `EVERRUNS_EGRESS_PROXY_URL` and `EVERRUNS_EGRESS_PROXY_SECRET` on the control plane and workers, and tenant traffic leaves through `everruns-egress-proxy` instead of directly. Platform traffic never uses it. You get two things:
+
+- **Its own outbound address.** Give the proxy host a separate public IP. If a tenant's traffic gets that address blocked somewhere, model calls, email and billing keep working, and the address can be replaced without touching the rest of the deployment.
+- **Per-org limits and usage.** Each request carries a five-minute token, signed with the shared secret, that names its org and session. The proxy verifies the token, resolves the destination again and refuses non-public addresses and SMTP ports, applies per-org caps, and counts bytes and requests per org and session each minute.
+
+The binary ships in the server image. Limits are off unless you set them, and usage goes to the log (`everruns::egress::usage` target). A control endpoint (`EGRESS_PROXY_CONTROL_URL`) can supply limits per org and receive usage instead. A proxy URL with a missing or short secret fails closed: tenant requests error rather than leave directly. Variables: [Tenant egress proxy](/sre/environment-variables/#tenant-egress-proxy).
+
+```bash
+# Proxy host
+EVERRUNS_EGRESS_PROXY_SECRET=<32+ random bytes>
+EGRESS_PROXY_ORG_RPM=600              # optional caps
+EGRESS_PROXY_ORG_BYTES_PER_DAY=5000000000
+everruns-egress-proxy
+
+# Control plane and workers
+EVERRUNS_EGRESS_PROXY_URL=http://egress-proxy:4750
+EVERRUNS_EGRESS_PROXY_SECRET=<same value>
+```
+
 ## Development modes
 
 The same binaries collapse into smaller deployments for local work:
@@ -111,7 +155,7 @@ Multiple control-plane instances can run behind a load balancer with no session 
 | Concern | How it stays correct |
 |---------|---------------------|
 | Database connections | `EXPECTED_INSTANCES=N` divides the pool so `pool × instances ≤ 80% of PG_MAX_CONNECTIONS` |
-| SSE delivery | `LISTEN/NOTIFY` or NATS subjects fan out to every instance; reconnects are idempotent |
+| SSE delivery | NATS subjects fan out to every instance (required for more than one instance; without it, instances poll PostgreSQL and report `degraded`); reconnects are idempotent |
 | Turn and task claiming | `SKIP LOCKED` on session leases and the durable task queue partitions work naturally; a session's fenced lease keeps one worker on it |
 | Migrations | PostgreSQL advisory lock prevents concurrent runs |
 | Rate limits | Valkey-backed sliding-window counters are shared; in-memory falls back to per-instance |
@@ -122,5 +166,6 @@ Workers do not require coordination, add as many as you need, in as many regions
 
 - [Architecture (Getting Started)](/explanation/architecture/), the logical model
 - [Environment Variables](/sre/environment-variables/), every knob and its default
+- [Network Access Control](/advanced/network-access/), per-agent and per-org outbound rules
 - [Docker Compose](/getting-started/docker-compose/), a production-shaped local setup
 - [Custom backends](/framework/custom-backends/), low-level execution-host composition

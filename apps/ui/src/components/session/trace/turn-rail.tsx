@@ -2,7 +2,14 @@
 
 // Left rail of the Trace tab: go-to-turn, the session minimap built from
 // server-side turn buckets, and the list of loaded turns.
+//
+// Decision: a minimap cell keeps its activity or error colour at all times and
+// the cells whose turns are on screen get the gold active ring, so the map
+// answers "where am I" and a click visibly moves the ring. Cells used to turn
+// solid black when their turns were merely loaded, which hid their errors and
+// read as a selection that did nothing.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import type { TraceItem, TraceOverview, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -40,6 +47,7 @@ export function TurnRail({
   overview,
   turns,
   activeTurn,
+  visibleTurns,
   onJump,
   onScrollTo,
   goToRef,
@@ -47,21 +55,24 @@ export function TurnRail({
   overview: TraceOverview | undefined;
   turns: TraceTurn[];
   activeTurn: number | null;
+  /** Turns with rows on screen in the trace list. */
+  visibleTurns: ReadonlySet<number>;
   onJump: (turn: number) => void;
   onScrollTo: (turn: number) => void;
   goToRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const ui = useUiTranslations();
   const [goTo, setGoTo] = useState("");
   const turnCount = overview?.turn_count ?? 0;
   const bucketSize = overview?.bucket_size ?? 1;
-  const loadedBuckets = new Set(turns.map((t) => bucketIndex(t.turn, bucketSize)));
+  const inViewBuckets = new Set([...visibleTurns].map((turn) => bucketIndex(turn, bucketSize)));
   const maxSteps = Math.max(0, ...(overview?.buckets.map((b) => b.steps) ?? [0]));
 
   return (
     <div className="flex flex-col gap-3 py-5 pl-6">
       <div className="flex items-baseline justify-between pr-1">
         <span className="text-[10px] font-medium tracking-[0.12em] text-muted-foreground">
-          TURNS
+          {ui("TURNS")}
         </span>
         <span className="font-mono text-[11px] text-muted-foreground">
           {formatCount(turnCount)}
@@ -83,33 +94,45 @@ export function TurnRail({
           value={goTo}
           onChange={(e) => setGoTo(e.target.value.replace(/\D/g, ""))}
           inputMode="numeric"
-          placeholder="Go to turn"
-          aria-label="Go to turn"
+          placeholder={ui("Go to turn")}
+          aria-label={ui("Go to turn")}
           className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
-        <kbd className="font-mono text-[11px] text-muted-foreground">⌘G</kbd>
+        <kbd className="font-mono text-[11px] text-muted-foreground">{ui("⌘G")}</kbd>
       </form>
 
       {overview && overview.buckets.length > 0 && (
         <div>
-          <div className="grid grid-cols-14 gap-0.5" role="list" aria-label="Session minimap">
+          <div className="grid grid-cols-14 gap-0.5" role="list" aria-label={ui("Session minimap")}>
             {overview.buckets.map((bucket) => {
               const index = bucketIndex(bucket.from_turn, bucketSize);
-              const loaded = loadedBuckets.has(index);
+              const inView = inViewBuckets.has(index);
               const opacity = 0.12 + 0.45 * bucketIntensity(bucket.steps, maxSteps);
               return (
                 <button
                   key={bucket.from_turn}
                   type="button"
                   role="listitem"
-                  title={`Turns ${formatCount(bucket.from_turn)}–${formatCount(bucket.to_turn)}`}
-                  aria-label={`Turns ${bucket.from_turn} to ${bucket.to_turn}${bucket.errors ? ", has errors" : ""}`}
+                  title={ui("Turns {value0}–{value1}", {
+                    value0: formatCount(bucket.from_turn),
+                    value1: formatCount(bucket.to_turn),
+                  })}
+                  aria-label={ui("Turns {value0} to {value1}{value2}", {
+                    value0: bucket.from_turn,
+                    value1: bucket.to_turn,
+                    value2: bucket.errors ? ", has errors" : "",
+                  })}
+                  aria-current={inView ? "true" : undefined}
                   onClick={() => onJump(bucket.from_turn)}
-                  className="aspect-square"
+                  className={cn(
+                    "aspect-square outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    inView
+                      ? "relative z-10 ring-2 ring-ring ring-offset-2 ring-offset-background"
+                      : "hover:ring-1 hover:ring-foreground/40",
+                  )}
                   style={{
-                    background: loaded
-                      ? "hsl(var(--primary))"
-                      : bucket.errors > 0
+                    background:
+                      bucket.errors > 0
                         ? "hsl(var(--destructive) / 0.75)"
                         : `hsl(var(--accent) / ${opacity.toFixed(2)})`,
                   }}
@@ -119,9 +142,19 @@ export function TurnRail({
           </div>
           <div className="mt-1.5 flex justify-between pr-1 text-[11px] text-muted-foreground">
             <span>
-              1 cell = {formatCount(bucketSize)} turn{bucketSize === 1 ? "" : "s"}
+              {ui("1 cell =")} {formatCount(bucketSize)} {ui("turn")}
+              {bucketSize === 1 ? "" : "s"}
             </span>
-            <span className="text-destructive">■ errors</span>
+            <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1">
+                <span
+                  className="mr-1 size-2 ring-2 ring-ring ring-offset-2 ring-offset-background"
+                  aria-hidden
+                />
+                {ui("in view")}
+              </span>
+              <span className="text-destructive">{ui("■ errors")}</span>
+            </span>
           </div>
         </div>
       )}
@@ -129,7 +162,7 @@ export function TurnRail({
       {turns.length > 0 && (
         <div>
           <div className="mb-1 text-[10px] font-medium tracking-[0.12em] text-muted-foreground">
-            LOADED
+            {ui("LOADED")}
           </div>
           <ul>
             {turns.map((turn) => (
@@ -146,11 +179,11 @@ export function TurnRail({
                     <span>T{turn.turn}</span>
                     <span>{formatClock(turn.started_at)}</span>
                     {turn.error_count > 0 && (
-                      <span className="size-1.5 bg-destructive" aria-label="has errors" />
+                      <span className="size-1.5 bg-destructive" aria-label={ui("has errors")} />
                     )}
                   </div>
                   <div className="mt-0.5 line-clamp-2 text-[13px]">
-                    {turn.prompt || "No prompt"}
+                    {turn.prompt || ui("No prompt")}
                   </div>
                   <div className="mt-1.5 flex h-1 gap-px" aria-hidden>
                     {sparkSegments(turn.items).map((segment) => (

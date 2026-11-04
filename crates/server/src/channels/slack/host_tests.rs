@@ -98,23 +98,23 @@ const SECRET: &str = "secret";
 
 /// A channel installed in workspace `T1`: its senders' identities are
 /// scoped to that workspace.
-fn slack_config(binding: SessionBinding) -> SlackChannelConfig {
+pub(crate) fn slack_config(binding: SessionBinding) -> SlackChannelConfig {
     SlackChannelConfig {
         team_id: Some("T1".into()),
         ..test_config(binding)
     }
 }
 
-struct Slack {
-    db: Arc<StorageBackend>,
-    state: SlackState,
-    context: IngressContext,
-    channel: IngressChannel,
+pub(crate) struct Slack {
+    pub(crate) db: Arc<StorageBackend>,
+    pub(crate) state: SlackState,
+    pub(crate) context: IngressContext,
+    pub(crate) channel: IngressChannel,
     runner: Arc<IdleRunner>,
 }
 
 impl Slack {
-    async fn new(config: SlackChannelConfig) -> Self {
+    pub(crate) async fn new(config: SlackChannelConfig) -> Self {
         let db = Arc::new(StorageBackend::test_database());
         let harness = Uuid::now_v7();
         db.create_test_harness(DEFAULT_ORG_ID, harness).await;
@@ -199,7 +199,7 @@ impl Slack {
         }
     }
 
-    async fn send(&self, body: Value) -> Result<ChannelResponse, ChannelError> {
+    pub(crate) async fn send(&self, body: Value) -> Result<ChannelResponse, ChannelError> {
         let request = self.signed(&body, SECRET);
         self.state
             .channels
@@ -210,14 +210,14 @@ impl Slack {
             .await
     }
 
-    async fn bound(&self, key: &str) -> Option<String> {
+    pub(crate) async fn bound(&self, key: &str) -> Option<String> {
         PgChannelStore::new(self.db.clone())
             .session_for(&self.channel.internal_id.to_string(), key)
             .await
             .unwrap()
     }
 
-    async fn bindings(&self) -> i64 {
+    pub(crate) async fn bindings(&self) -> i64 {
         sqlx::query_scalar("SELECT COUNT(*) FROM channel_bindings WHERE channel_id = $1")
             .bind(self.channel.internal_id)
             .fetch_one(self.db.database().pool())
@@ -235,7 +235,7 @@ impl Slack {
     }
 }
 
-fn message(channel: &str, ts: &str, thread_ts: Option<&str>) -> Value {
+pub(crate) fn message(channel: &str, ts: &str, thread_ts: Option<&str>) -> Value {
     json!({
         "type": "event_callback",
         "team_id": "T1",
@@ -268,7 +268,7 @@ fn pane_event(event_type: &str, ts: &str, extra: Value) -> Value {
     })
 }
 
-fn session_of(response: &ChannelResponse) -> String {
+pub(crate) fn session_of(response: &ChannelResponse) -> String {
     response.body["session_id"]
         .as_str()
         .expect("the message started a session")
@@ -605,4 +605,66 @@ async fn a_top_level_dm_is_answered_in_the_dm_and_a_thread_keeps_its_thread() {
         !inline(message("C1", "3.0", None)).await,
         "a channel message"
     );
+}
+
+fn reaction(event_type: &str, user: &str, ts: &str, name: &str) -> Value {
+    json!({
+        "type": "event_callback",
+        "team_id": "T1",
+        "event": {
+            "type": event_type,
+            "user": user,
+            "reaction": name,
+            "item": { "type": "message", "channel": "C1", "ts": ts },
+        }
+    })
+}
+
+#[tokio::test]
+async fn a_slack_reaction_reaches_the_message_it_is_on() {
+    let slack = Slack::new(slack_config(SessionBinding::Thread)).await;
+    slack.state.bot_user_cache.insert(
+        slack.channel.public_id.to_string(),
+        Some("UBOT".to_string()),
+    );
+    let session = session_of(&slack.send(message("C1", "1.0", None)).await.unwrap());
+    let session_uuid = session.parse::<SessionId>().unwrap().uuid();
+
+    // A message the host never saw, and the bot's own reaction, are ignored.
+    let unknown = slack
+        .send(reaction("reaction_added", "U2", "9.9", "eyes"))
+        .await
+        .unwrap();
+    assert!(unknown.body.get("session_id").is_none());
+    slack
+        .send(reaction("reaction_added", "UBOT", "1.0", "eyes"))
+        .await
+        .unwrap();
+    assert!(
+        slack
+            .db
+            .list_reaction_events(session_uuid)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let added = slack
+        .send(reaction("reaction_added", "U2", "1.0", "+1::skin-tone-2"))
+        .await
+        .unwrap();
+    assert_eq!(added.body["session_id"], session);
+    slack
+        .send(reaction("reaction_removed", "U2", "1.0", "thumbsup"))
+        .await
+        .unwrap();
+
+    let events = slack.db.list_reaction_events(session_uuid).await.unwrap();
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert_eq!(events[0].event_type, "message.reaction.added");
+    assert_eq!(events[0].data["emoji"], "👍");
+    assert_eq!(events[0].data["actor"]["id"], "slack:U2");
+    assert_eq!(events[0].data["actor"]["name"], "Person U2");
+    assert_eq!(events[0].data["source"], "slack");
+    assert_eq!(events[1].event_type, "message.reaction.removed");
 }

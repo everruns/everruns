@@ -25,12 +25,13 @@ Running and archived sessions, their state and participants.
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
-| [`sessions resume`](#sessions-resume) | Resume all paused session budgets for a session. |
+| [`sessions resume`](#sessions-resume) | Continue a session past a usage policy's ask step. |
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
 | [`sessions budget-check check`](#sessions-budget-check-check) | Check all budgets for a session. |
 | [`sessions budgets list`](#sessions-budgets-list) | List all budgets for a session. |
+| [`sessions cost get`](#sessions-cost-get) | Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time. |
 | [`sessions databases create`](#sessions-databases-create) | Create a new SQL database inside a session. |
 | [`sessions databases delete`](#sessions-databases-delete) | Delete a session SQL database. |
 | [`sessions databases get`](#sessions-databases-get) | Get metadata for a session SQL database. |
@@ -50,15 +51,19 @@ Running and archived sessions, their state and participants.
 | [`sessions fs - stat`](#sessions-fs---stat) | Get file metadata in the session filesystem. |
 | [`sessions mcp-servers list`](#sessions-mcp-servers-list) | List the MCP servers added to one chat only. |
 | [`sessions mcp-servers remove`](#sessions-mcp-servers-remove) | Remove an MCP server added to one chat only. |
+| [`sessions messages react`](#sessions-messages-react) | Put an emoji reaction on a user or agent message. |
 | [`sessions messages create`](#sessions-messages-create) | Create a user message in a session and start the next run. |
 | [`sessions messages ratings`](#sessions-messages-ratings) | List your good and bad ratings of the messages in a session. |
+| [`sessions messages reactions`](#sessions-messages-reactions) | List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did. |
 | [`sessions messages list`](#sessions-messages-list) | List materialized messages in a session, optionally limited to the most recent N. |
+| [`sessions messages unreact`](#sessions-messages-unreact) | Take your emoji reaction off a message. |
 | [`sessions messages rate`](#sessions-messages-rate) | Rate one message in a session good or bad, with an optional comment. |
 | [`sessions participants add`](#sessions-participants-add) | Add a member participant to a session. |
 | [`sessions participants leave`](#sessions-participants-leave) | Mark a session member participant as having left. |
 | [`sessions participants list`](#sessions-participants-list) | List the participant history for a session. |
 | [`sessions platform-chat ensure`](#sessions-platform-chat-ensure) | Open the current user's permanent platform conversation. |
 | [`sessions resources list`](#sessions-resources-list) | List all resources registered in a session. |
+| [`sessions run get`](#sessions-run-get) | Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend. |
 | [`sessions sandbox get`](#sessions-sandbox-get) | Inspect a Session's primary Sandbox and what it may touch. |
 | [`sessions sandbox manage`](#sessions-sandbox-manage) | Pause, resume, or delete the managed sandbox for a session. |
 | [`sessions sse stream`](#sessions-sse-stream) | Stream events via SSE. |
@@ -80,6 +85,7 @@ Running and archived sessions, their state and participants.
 | [`sessions trace turns steps get`](#sessions-trace-turns-steps-get) | Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. |
 | [`sessions trace turns steps list`](#sessions-trace-turns-steps-list) | Page through the steps of one turn of a session's trace, optionally only the failed ones. |
 | [`sessions trace turns steps request list`](#sessions-trace-turns-steps-request-list) | Page through the messages a model call in a session's trace was sent, with each message's full content. |
+| [`sessions work get`](#sessions-work-get) | Show what a session's turn is doing or got done. |
 
 ## sessions create
 
@@ -351,7 +357,7 @@ everruns sessions pin session_01h9 --reason 'Active incident'
 
 ## sessions resume
 
-Resume all paused session budgets for a session.
+Continue a session past a usage policy's ask step.
 
 ```bash
 everruns sessions resume [OPTIONS] [SESSION_ID]
@@ -364,8 +370,8 @@ everruns sessions resume [OPTIONS] [SESSION_ID]
 Example:
 
 ```bash
-# Restart a session that paused when a budget ran out
-everruns sessions resume session_01h9 --reason 'Budget topped up'
+# Let a session continue after a usage policy asked before going further
+everruns sessions resume session_01h9 --reason 'Finish the report'
 ```
 
 ## sessions unarchive
@@ -470,6 +476,25 @@ Example:
 ```bash
 # List every budget that constrains a session
 everruns sessions budgets list session_01h9
+```
+
+## sessions cost get
+
+Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.
+
+```bash
+everruns sessions cost get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# See where a session's spend went
+everruns sessions cost get session_01h9
 ```
 
 ## sessions databases create
@@ -888,9 +913,30 @@ Example:
 everruns sessions mcp-servers remove --session-id session_01h9 --name github --reason 'No longer needed in this chat'
 ```
 
+## sessions messages react
+
+Put an emoji reaction on a user or agent message. Adding one you already put there changes nothing. Reactions on the agent's replies reach the agent as a short note, by default with its next turn.
+
+```bash
+everruns sessions messages react [OPTIONS] [SESSION] [MESSAGE_ID] [EMOJI]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Message to react to (`message_...`), a user or agent message of the session. |
+| `--emoji <EMOJI>` | One emoji, or a custom emoji as `:name:`. |
+
+Example:
+
+```bash
+# Give an agent reply a thumbs up
+everruns sessions messages react session_01h9 message_01h9 👍
+```
+
 ## sessions messages create
 
-Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{"type":"text","text":"Tell me a short, family-friendly joke."}]'.
+Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{"content":[{"type":"text","text":"Tell me a short, family-friendly joke."}]}'.
 
 ```bash
 everruns sessions messages create [OPTIONS] --message <message> --session-id <session_id>
@@ -934,6 +980,26 @@ Example:
 everruns sessions messages ratings session_01h9
 ```
 
+## sessions messages reactions
+
+List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did.
+
+```bash
+everruns sessions messages reactions [OPTIONS] [SESSION]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Only this message's reactions. |
+
+Example:
+
+```bash
+# See who reacted to what in a session
+everruns sessions messages reactions session_01h9
+```
+
 ## sessions messages list
 
 List materialized messages in a session, optionally limited to the most recent N.
@@ -952,6 +1018,27 @@ Example:
 ```bash
 # Read the latest messages of a session
 everruns sessions messages list session_01h9 --limit 20
+```
+
+## sessions messages unreact
+
+Take your emoji reaction off a message. Removing one that is not there changes nothing. The history is kept in the session's events.
+
+```bash
+everruns sessions messages unreact [OPTIONS] [SESSION] [MESSAGE_ID] [EMOJI]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Message the reaction is on (`message_...`). |
+| `--emoji <EMOJI>` | The emoji to take off. |
+
+Example:
+
+```bash
+# Take back a thumbs up
+everruns sessions messages unreact session_01h9 message_01h9 👍
 ```
 
 ## sessions messages rate
@@ -1069,6 +1156,25 @@ Example:
 ```bash
 # List the files and other resources registered in a session
 everruns sessions resources list session_01h9
+```
+
+## sessions run get
+
+Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.
+
+```bash
+everruns sessions run get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# See every agent in a session's run
+everruns sessions run get session_01h9
 ```
 
 ## sessions sandbox get
@@ -1514,4 +1620,24 @@ Example:
 ```bash
 # See exactly what a model call was sent
 everruns sessions trace turns steps request list --session-id session_01h9 --turn 12 --step 3
+```
+
+## sessions work get
+
+Show what a session's turn is doing or got done.
+
+```bash
+everruns sessions work get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+| `--turn-id <TURN_ID>` | Turn to report on. |
+
+Example:
+
+```bash
+# See what a session's agent is doing or what it got done
+everruns sessions work get session_01h9
 ```

@@ -56,6 +56,18 @@ pub struct CreateAgentTriggerRequest {
     /// asking the model. The run is recorded under `message`.
     #[serde(default)]
     pub script: Option<ScriptRun>,
+    /// Schedule only: the agent's channel whose conversation each run speaks
+    /// in, instead of a session of the trigger's own. Needs
+    /// `target_binding_key`.
+    #[serde(default)]
+    #[schema(example = "appchan_01933b5a000070008000000000000001")]
+    pub target_channel_id: Option<String>,
+    /// Schedule only: the conversation on `target_channel_id`, keyed the way
+    /// the channel binds sessions: `slack:user:{user_id}` (a direct message)
+    /// or `slack:channel:{channel_id}` (top-level posts).
+    #[serde(default)]
+    #[schema(example = "slack:user:U0123ABCD")]
+    pub target_binding_key: Option<String>,
     /// Shared secret for webhook triggers.
     #[serde(default)]
     pub token: Option<String>,
@@ -128,6 +140,15 @@ pub struct UpdateAgentTriggerRequest {
     /// trigger asks the model again.
     #[serde(default)]
     pub script: Option<ScriptRun>,
+    /// Replacement target channel. An empty string removes the target, so
+    /// runs use a session of the trigger's own again.
+    #[serde(default)]
+    #[schema(example = "appchan_01933b5a000070008000000000000001")]
+    pub target_channel_id: Option<String>,
+    /// Replacement target conversation; given with `target_channel_id`.
+    #[serde(default)]
+    #[schema(example = "slack:user:U0123ABCD")]
+    pub target_binding_key: Option<String>,
     /// Replacement webhook token.
     #[serde(default)]
     pub token: Option<String>,

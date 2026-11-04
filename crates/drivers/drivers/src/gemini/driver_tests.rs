@@ -13,15 +13,15 @@ async fn long_decode_resumes_only_at_a_safe_checkpoint_and_bills_committed_usage
         Mock::given(method("POST"))
             .and(body_partial_json(json!({"continuationToken":"checkpoint"})))
             .respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").insert_header("Connection","close")
-                .set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"last\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":13,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":3}}\n\n"))
+                .set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"last\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":13,\"toolUsePromptTokenCount\":7,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":3}}\n\n"))
             .expect(if later_output {0} else {1}).mount(&server).await;
-        let checkpoint = json!({"candidates":[{"content":{"parts":[{"text":"first"}]},"continuationToken":"checkpoint"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":1,"thoughtsTokenCount":2}});
+        let checkpoint = json!({"candidates":[{"content":{"parts":[{"text":"first"}]},"continuationToken":"checkpoint"}],"usageMetadata":{"promptTokenCount":10,"toolUsePromptTokenCount":4,"candidatesTokenCount":1,"thoughtsTokenCount":2}});
         let tail = if later_output {
             json!({"candidates":[{"content":{"parts":[{"text":"extra"}]}}]})
         } else {
             // Usage after the checkpoint describes work that is not committed
             // on a dropped stream and must not be charged again on resume.
-            json!({"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":1000,"thoughtsTokenCount":500}})
+            json!({"usageMetadata":{"promptTokenCount":100,"toolUsePromptTokenCount":900,"candidatesTokenCount":1000,"thoughtsTokenCount":500}})
         };
         let mut chunks = vec![Ok(format!("data: {checkpoint}\n\ndata: {tail}\n\n")
             .into_bytes()
@@ -30,7 +30,8 @@ async fn long_decode_resumes_only_at_a_safe_checkpoint_and_bills_committed_usage
             chunks.push(Err(driver_helpers::shared_streaming_http_client()
                 .get("http://[invalid")
                 .build()
-                .unwrap_err()));
+                .unwrap_err()
+                .into()));
         }
         let bytes: ByteStream = Box::pin(futures::stream::iter(chunks));
         let context = ContinuationRequest {
@@ -84,7 +85,8 @@ async fn long_decode_resumes_only_at_a_safe_checkpoint_and_bills_committed_usage
             let Some(LlmStreamEvent::Done(meta)) = events.last() else {
                 panic!("missing completion")
             };
-            assert_eq!(meta.prompt_tokens, Some(23));
+            assert_eq!(meta.prompt_tokens, Some(34));
+            assert_eq!(meta.total_tokens, Some(41));
             assert_eq!(meta.completion_tokens, Some(7));
             assert_eq!(meta.reasoning_tokens, Some(5));
         }
@@ -570,6 +572,49 @@ fn grounding_queries_become_hosted_calls_and_billed_searches() {
     assert!(metadata.hosted_tool_calls.is_empty());
 }
 
+#[test]
+fn grounding_search_accounting_is_scoped_to_each_request() {
+    for (model, billed) in [("gemini-4-argon", 4), ("gemini-2.5-flash", 2)] {
+        let mut state = GeminiStreamState {
+            model: model.into(),
+            grounded: true,
+            ..Default::default()
+        };
+        let grounding: GeminiGroundingMetadata = serde_json::from_value(json!({
+            "webSearchQueries": ["q", "r", "q", " "]
+        }))
+        .unwrap();
+        state.record_searches(&grounding);
+        state.record_searches(&grounding);
+        state.next_hop();
+        state.record_searches(&grounding);
+        state.record_searches(&grounding);
+        state.next_hop();
+        // An ungrounded final hop adds no search charge.
+        state.finish();
+        let calls: Vec<_> = state
+            .pending
+            .iter()
+            .filter_map(|event| match event {
+                LlmStreamEvent::HostedToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 4);
+        for (index, call) in calls.iter().enumerate() {
+            assert_eq!(call.id, format!("google_search_{}", index + 1));
+        }
+        let Some(LlmStreamEvent::Done(metadata)) = state.pending.back() else {
+            panic!("expected done");
+        };
+        assert_eq!(
+            metadata.hosted_tool_calls.get("web_search_call"),
+            Some(&billed),
+            "{model}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn native_search_request_sends_google_search_instead_of_the_function() {
     use everruns_contracts::native_web_search::NativeWebSearch;
@@ -695,4 +740,41 @@ fn function_response_is_followed_by_returned_pdf() {
             {"inlineData":{"mimeType":"application/pdf","data":"JVBERi0="}}
         ]})
     );
+}
+
+#[test]
+fn tool_use_usage_handles_optional_counts_and_resets_between_hops() {
+    for (usage, expected) in [
+        (json!({"promptTokenCount": 10}), 10),
+        (
+            json!({"promptTokenCount": 10, "toolUsePromptTokenCount": null}),
+            10,
+        ),
+        (
+            json!({"promptTokenCount": null, "toolUsePromptTokenCount": 7}),
+            7,
+        ),
+        (json!({"toolUsePromptTokenCount": 7}), 7),
+        (
+            json!({"promptTokenCount": 10, "toolUsePromptTokenCount": 0}),
+            10,
+        ),
+        (
+            json!({"promptTokenCount": u32::MAX, "toolUsePromptTokenCount": 7}),
+            u32::MAX,
+        ),
+    ] {
+        let mut state = GeminiStreamState::default();
+        state.response(serde_json::from_value(json!({"usageMetadata": usage})).unwrap());
+        state.next_hop();
+        state.response(
+            serde_json::from_value(json!({"usageMetadata": {"promptTokenCount": 2}})).unwrap(),
+        );
+        state.finish();
+        let Some(LlmStreamEvent::Done(meta)) = state.pending.back() else {
+            panic!("missing completion")
+        };
+        assert_eq!(meta.prompt_tokens, Some(expected.saturating_add(2)));
+        assert_eq!(meta.total_tokens, meta.prompt_tokens);
+    }
 }

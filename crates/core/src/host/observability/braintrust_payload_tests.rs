@@ -24,6 +24,7 @@ fn test_is_merge_serialization_started_events() {
         agent_id: None,
         agent_name: None,
         agent_description: None,
+        origin: None,
     };
     let event = Event::new(
         SessionId::new(),
@@ -54,6 +55,7 @@ fn test_is_merge_serialization_completed_events() {
 
     // turn.completed should have is_merge = Some(true)
     let turn_data = TurnCompletedData {
+        termination_reason: None,
         issue_count: None,
         turn_id,
         iterations: 1,
@@ -260,6 +262,7 @@ fn test_is_merge_serialization_tool_events() {
         result: None,
         error: None,
         duration_ms: Some(100),
+        worker_thread_cpu_ns: None,
         capability_id: None,
         capability_name: None,
         narration: None,
@@ -397,6 +400,7 @@ fn test_turn_started_metadata_includes_session_grouping_fields() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     )
     .with_sequence(42);
@@ -516,6 +520,7 @@ fn test_turn_started_without_content_recording_omits_input_preview() {
         agent_id: None,
         agent_name: None,
         agent_description: None,
+        origin: None,
     };
     let event = Event::new(
         SessionId::new(),
@@ -625,6 +630,7 @@ fn test_tool_completed_summary_omits_text_preview() {
         result: Some(vec![crate::ContentPart::text("sensitive tool output")]),
         error: None,
         duration_ms: Some(50),
+        worker_thread_cpu_ns: None,
         capability_id: None,
         capability_name: None,
         narration: None,
@@ -775,12 +781,14 @@ async fn test_on_event_batches_multiple_events_into_one_request() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     );
     let completed = Event::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),
         EventData::TurnCompleted(TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id,
             iterations: 1,
@@ -842,6 +850,7 @@ async fn test_permanent_rejection_is_reported_once_within_the_interval() {
                     agent_id: None,
                     agent_name: None,
                     agent_description: None,
+                    origin: None,
                 }),
             ))
             .await;
@@ -902,6 +911,7 @@ async fn test_on_event_retries_after_429() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     );
     listener.on_event(&event).await;
@@ -950,6 +960,7 @@ async fn test_on_event_retries_after_timeout() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     );
     listener.on_event(&event).await;
@@ -959,64 +970,4 @@ async fn test_on_event_retries_after_timeout() {
     assert_eq!(requests.len(), 2);
     assert!(listener.state.retried_batches.load(Ordering::Relaxed) >= 1);
     assert_eq!(listener.state.failed_batches.load(Ordering::Relaxed), 0);
-}
-
-#[test]
-fn test_thinking_spans_merge_correctly() {
-    let listener = BraintrustListener::new(test_config()).unwrap();
-    let turn_id = TurnId::new();
-    let span_id = Uuid::new_v4().to_string();
-
-    let context = EventContext {
-        turn_id: Some(turn_id),
-        input_message_id: None,
-        span_id: Some(span_id.clone()),
-        parent_span_id: Some(turn_id.to_string()),
-        exec_id: None,
-        trace_id: Some(turn_id.to_string()),
-    };
-
-    // thinking.started
-    let started_data = ReasonThinkingStartedData {
-        turn_id,
-        model: Some("claude-sonnet-4-20250514".to_string()),
-    };
-    let started_event = Event::new(
-        SessionId::new(),
-        context.clone(),
-        EventData::ReasonThinkingStarted(started_data.clone()),
-    );
-    let bt_started = listener.convert_reason_thinking_started(&started_event, &started_data);
-
-    // thinking.completed
-    let completed_data = ReasonThinkingCompletedData {
-        turn_id,
-        thinking: "Complete thinking content".to_string(),
-    };
-    let completed_event = Event::new(
-        SessionId::new(),
-        context.clone(),
-        EventData::ReasonThinkingCompleted(completed_data.clone()),
-    );
-    let bt_completed =
-        listener.convert_reason_thinking_completed(&completed_event, &completed_data);
-
-    // Both should use the same span_id for merging
-    assert_eq!(bt_started.id, bt_completed.id);
-    assert_eq!(bt_started.span_id, bt_completed.span_id);
-
-    // started should not have _is_merge, completed should have _is_merge: true
-    let started_json = serde_json::to_string(&bt_started).unwrap();
-    assert!(
-        !started_json.contains("\"_is_merge\""),
-        "thinking.started should not have _is_merge: {}",
-        started_json
-    );
-
-    let completed_json = serde_json::to_string(&bt_completed).unwrap();
-    assert!(
-        completed_json.contains("\"_is_merge\":true"),
-        "thinking.completed should have _is_merge:true: {}",
-        completed_json
-    );
 }

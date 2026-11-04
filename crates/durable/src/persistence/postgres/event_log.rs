@@ -465,7 +465,7 @@ impl EventLog for PostgresWorkflowEventStore {
         // Atomic CAS: transition from terminal/pending → running.
         // Also cancels stale pending tasks in the same transaction.
         // Uses SELECT FOR UPDATE to prevent concurrent claims across replicas.
-        let mut tx = self.pool.begin().await.map_err(|e| {
+        let mut tx = begin_transaction(&self.pool).await.map_err(|e| {
             error!(error = %e, "Failed to begin transaction");
             StoreError::Database(e.to_string())
         })?;
@@ -557,7 +557,7 @@ impl EventLog for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!(error = %e, "Failed to commit workflow claim");
             StoreError::Database(e.to_string())
         })?;
@@ -624,7 +624,7 @@ impl EventLog for PostgresWorkflowEventStore {
             .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        let mut tx = self.pool.begin().await.map_err(|e| {
+        let mut tx = begin_transaction(&self.pool).await.map_err(|e| {
             error!(error = %e, "Failed to begin transaction");
             StoreError::Database(e.to_string())
         })?;
@@ -722,7 +722,7 @@ impl EventLog for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!(error = %e, "Failed to commit continue_as_new");
             StoreError::Database(e.to_string())
         })?;

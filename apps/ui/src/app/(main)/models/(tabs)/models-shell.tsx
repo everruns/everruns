@@ -1,6 +1,7 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
-// Registries → Models: models, the providers that serve them, and org defaults.
+// Library → Models: models, the providers that serve them, and org defaults.
 //
 // Providers moved here from Settings: they are something people build and
 // maintain, like agents or MCP servers, and connecting one, syncing it and
@@ -13,6 +14,7 @@
 // drawers and notices it owns survive switching tabs. Old `?tab=` links and
 // `/settings/providers` redirect here (lib/tab-routes.ts).
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -49,6 +51,8 @@ import { ApiError } from "@/lib/api/client";
 import { updateModel } from "@/lib/api/providers";
 import type { DriverId, ModelWithProvider, Provider } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { applyModelSelection } from "@/lib/api/model-selection";
 import { selectionChanges } from "@/lib/model-selection";
 import { tabFromPath, tabHref } from "@/lib/tab-routes";
 
@@ -68,8 +72,12 @@ type Selection =
   | { kind: "choose"; provider: Provider };
 
 export function ModelsShell({ children }: { children?: ReactNode }) {
-  usePageTitle("Models");
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Models"));
   const queryClient = useQueryClient();
+  const chatMode = useChatMode();
+  const [applyingSelection, setApplyingSelection] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -122,10 +130,12 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
   const connected = searchParams.get("connected");
   useEffect(() => {
     if (!connected) return;
-    setNotice({
-      kind: "success",
-      text: `${getProviderLabel(connected as DriverId)} connected. Review its models from the provider card.`,
-    });
+    if (connected !== "chatgpt") {
+      setNotice({
+        kind: "success",
+        text: `${getProviderLabel(connected as DriverId)} connected. Review its models from the provider card.`,
+      });
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("connected");
     router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
@@ -169,7 +179,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
   };
 
   const handleDelete = async (modelId: string) => {
-    if (!confirm("Are you sure you want to delete this model?")) return;
+    if (!(await requestConfirmation("Are you sure you want to delete this model?"))) return;
     await run("Failed to delete model", () => deleteModel.mutateAsync(modelId));
   };
 
@@ -180,10 +190,33 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         ? models.filter((model) => model.provider_id === selection.provider.id)
         : [];
 
-  const applySelection = async (selected: Set<string>) => {
+  const applySelection = async (selected: Set<string>, reviewedModels: ModelWithProvider[]) => {
     setSelectionError(null);
-    const changes = selectionChanges(selectionModels, selected);
-    const { failed } = await setModelsEnabled.mutateAsync(changes);
+    const changes = selectionChanges(chatMode ? reviewedModels : selectionModels, selected);
+    let failed: string[] = [];
+    if (chatMode) {
+      setApplyingSelection(true);
+      try {
+        await applyModelSelection(
+          changes.map((change) => {
+            const original = reviewedModels.find((model) => model.id === change.id)!;
+            return {
+              ...change,
+              provider_id: original.provider_id,
+              expected_enabled: original.enabled,
+            };
+          }),
+        );
+        await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      } catch (error) {
+        setSelectionError(errorDetail(error));
+        return;
+      } finally {
+        setApplyingSelection(false);
+      }
+    } else {
+      failed = (await setModelsEnabled.mutateAsync(changes)).failed;
+    }
     if (failed.length > 0) {
       setSelectionError(
         `${failed.length} of ${changes.length} models could not be updated. Try again.`,
@@ -208,43 +241,43 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
     {
       value: "models",
       href: tabPath("models"),
-      label: "Models",
+      label: ui("Models"),
       icon: <Cpu className="icon-sharp size-3.5" />,
       count: counts.models,
     },
     {
       value: "providers",
       href: tabPath("providers"),
-      label: "Providers",
+      label: ui("Providers"),
       icon: <PlugZap className="icon-sharp size-3.5" />,
       count: counts.providers,
     },
     {
       value: "defaults",
       href: tabPath("defaults"),
-      label: "Defaults",
+      label: ui("Defaults"),
       icon: <SlidersHorizontal className="icon-sharp size-3.5" />,
     },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Models" }]} />
+      <PageBreadcrumb items={[{ label: ui("Models") }]} />
       <PageMasthead
         icon={<ModelsIcon />}
-        title="Models"
-        description="Connect providers and choose which of their models your agents can use."
+        title={ui("Models")}
+        description={ui("Connect providers and choose which of their models your agents can use.")}
         actions={
           canManage ? (
             <Button variant="accent" onClick={() => setConnectOpen(true)}>
               <Plus className="size-4" />
-              Connect provider
+              {ui("Connect provider")}
             </Button>
           ) : undefined
         }
       />
 
-      <SectionTabs aria-label="Models sections" value={tab} items={tabs} />
+      <SectionTabs aria-label={ui("Models sections")} value={tab} items={tabs} />
 
       {notice && (
         <Notice
@@ -258,7 +291,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
               className="text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setNotice(null)}
             >
-              Dismiss
+              {ui("Dismiss")}
             </button>
           </NoticeDescription>
         </Notice>
@@ -320,7 +353,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
       </PageMain>
 
       <ConnectProviderSheet
-        open={connectOpen}
+        open={connectOpen && canManage}
         onOpenChange={setConnectOpen}
         providers={providers}
         onConnected={(text) => {
@@ -329,27 +362,32 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         }}
       />
       <ModelSelectionDrawer
-        open={selection !== null}
+        open={selection !== null && canManage}
         onOpenChange={(open) => !open && setSelection(null)}
         title={
           selection?.kind === "choose"
-            ? `Choose ${selection.provider.name} models`
-            : "Review new models"
+            ? ui("Choose {value0} models", { value0: selection.provider.name })
+            : ui("Review new models")
         }
         description={
           selection?.kind === "choose"
-            ? "Ticked models are enabled for agents. Unticking one disables it."
-            : "These models appeared since the last review. Recommended ones are ticked."
+            ? ui("Ticked models are enabled for agents. Unticking one disables it.")
+            : ui("These models appeared since the last review. Recommended ones are ticked.")
         }
         models={selectionModels}
         mode={selection?.kind === "choose" ? "edit" : "enable"}
         recommend={selection?.kind === "review"}
         showProvider={selection?.kind === "review"}
-        onApply={(selected) => void applySelection(selected)}
+        onApply={(selected, reviewedModels) => void applySelection(selected, reviewedModels)}
         applying={setModelsEnabled.isPending || reviewModels.isPending}
         error={selectionError}
       />
-      <AddModelDialog providers={providers} open={addModelOpen} onOpenChange={setAddModelOpen} />
+      <AddModelDialog
+        writable={canManage}
+        providers={providers}
+        open={addModelOpen && canManage}
+        onOpenChange={setAddModelOpen}
+      />
       {children}
     </PageContainer>
   );

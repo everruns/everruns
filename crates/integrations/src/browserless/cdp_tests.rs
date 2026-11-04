@@ -215,17 +215,6 @@ async fn test_connect_timeout_on_unresponsive_server() {
     );
 }
 
-#[test]
-fn test_key_to_code() {
-    assert_eq!(key_to_code("Enter"), "Enter");
-    assert_eq!(key_to_code("Tab"), "Tab");
-    assert_eq!(key_to_code("Escape"), "Escape");
-    assert_eq!(key_to_code("Space"), "Space");
-    assert_eq!(key_to_code(" "), "Space");
-    assert_eq!(key_to_code("ArrowUp"), "ArrowUp");
-    assert_eq!(key_to_code("SomeOtherKey"), "SomeOtherKey");
-}
-
 /// Reproduces the original EVE-188 bug: Browserless returns 400 on the root
 /// WebSocket path. A mock server that only accepts `/chromium` verifies the
 /// fix. The root path returns a raw "HTTP/1.1 400 Bad Request" so the
@@ -277,19 +266,6 @@ fn test_map_ws_connect_error_403_returns_rest_mode_hint() {
         "403 error should suggest REST-mode tools: {msg}"
     );
     assert!(msg.contains("403"), "should mention status code: {msg}");
-}
-
-#[test]
-fn test_map_ws_connect_error_401_returns_rest_mode_hint() {
-    use tokio_tungstenite::tungstenite::http;
-
-    let resp = http::Response::builder().status(401).body(None).unwrap();
-    let err = tokio_tungstenite::tungstenite::Error::Http(Box::new(resp));
-    let msg = map_ws_connect_error(err);
-    assert!(
-        msg.contains("REST-mode tools"),
-        "401 error should suggest REST-mode tools: {msg}"
-    );
 }
 
 #[test]

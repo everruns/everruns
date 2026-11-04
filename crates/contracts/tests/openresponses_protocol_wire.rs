@@ -1062,7 +1062,7 @@ async fn astra_cache_wire_and_usage_buckets() {
             "id":"resp_cache", "object":"response", "created_at":1780000000,
             "status":"completed", "model":"gpt-6-astra", "output":[],
             "usage":{"input_tokens":2000,"output_tokens":20,"total_tokens":2020,
-                "input_tokens_details":{"cached_tokens":800,"cache_write_tokens":1000}}
+                "input_tokens_details":{"cached_tokens":800,"cache_write_tokens":1000,"cache_write_tokens_details":{"ttl_30m_tokens":600,"ttl_12h_tokens":400}}}
         }});
         if typed {
             event["sequence_number"] = json!(1);
@@ -1099,6 +1099,7 @@ async fn astra_cache_wire_and_usage_buckets() {
         assert_eq!(response.metadata.prompt_tokens, Some(200));
         assert_eq!(response.metadata.cache_read_tokens, Some(800));
         assert_eq!(response.metadata.cache_creation_tokens, Some(1000));
+        assert_eq!(response.metadata.cache_creation_12h_tokens, Some(400));
         assert_eq!(response.metadata.total_tokens, Some(2020));
         let requests = server.received_requests().await.unwrap();
         let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();

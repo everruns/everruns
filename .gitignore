@@ -54,3 +54,6 @@ __pycache__/
 # Tools
 .sqlx.envrc
 .serve/
+
+# Local Workers development state
+/.wrangler/

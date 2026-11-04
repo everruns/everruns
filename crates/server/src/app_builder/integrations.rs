@@ -36,3 +36,14 @@ impl ServerAppBuilder {
         self
     }
 }
+
+pub(super) fn optional_connection_resolver(
+    db: &Arc<StorageBackend>,
+    encryption: &Option<Arc<EncryptionService>>,
+    auth_config: &auth::AuthConfig,
+    egress: Arc<dyn everruns_core::EgressService>,
+) -> Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>> {
+    encryption
+        .as_ref()
+        .map(|enc| build_connection_resolver(db, enc, auth_config, egress))
+}

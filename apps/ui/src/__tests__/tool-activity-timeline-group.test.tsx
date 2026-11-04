@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
+import { ToolErrorDisclosureProvider } from "@/components/chat/tool-error-disclosure";
 import { LocaleProvider } from "@/providers/locale-provider";
 
 function renderWithLocale(ui: ReactElement) {
@@ -8,6 +9,40 @@ function renderWithLocale(ui: ReactElement) {
 }
 
 describe("ToolActivityTimelineGroup", () => {
+  const failedRow = {
+    id: "tool-1",
+    label: "Could not ask user: Create agent?",
+    state: "issue" as const,
+    result: {
+      tool_call_id: "tool-1",
+      tool_name: "ask_user",
+      success: false,
+      status: "error" as const,
+      error: "invalid ask_user arguments: unknown field `serif`",
+      result: [],
+    },
+  };
+
+  it("keeps a raw tool error behind Details in chat", () => {
+    renderWithLocale(
+      <ToolErrorDisclosureProvider value="details">
+        <ToolActivityTimelineGroup headline="Asking" rows={[failedRow]} />
+      </ToolErrorDisclosureProvider>,
+    );
+
+    const error = screen.getByText(/unknown field `serif`/);
+    expect(error.closest("[aria-hidden='true']")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /details/i }));
+    expect(error.closest("[aria-hidden='true']")).toBeNull();
+  });
+
+  it("prints a raw tool error inline where people debug agents", () => {
+    renderWithLocale(<ToolActivityTimelineGroup headline="Asking" rows={[failedRow]} />);
+
+    const error = screen.getByText(/unknown field `serif`/);
+    expect(error.closest("[aria-hidden='true']")).toBeNull();
+  });
+
   it("renders single row inline without duplicate headline", () => {
     renderWithLocale(
       <ToolActivityTimelineGroup

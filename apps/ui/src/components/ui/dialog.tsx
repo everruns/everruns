@@ -1,11 +1,24 @@
+"use client";
+
+import { useUiTranslations } from "@/providers/locale-provider";
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+  const mode = usePageChatMode();
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      {...props}
+      modal={mode?.open ? false : props.modal}
+      disablePointerDismissal={mode?.open || props.disablePointerDismissal}
+    />
+  );
 }
 
 function DialogTrigger({
@@ -24,7 +37,18 @@ function DialogTrigger({
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
+  const mode = usePageChatMode();
+  // Keep the portal container stable when Chat opens: moving a mounted form
+  // between body and pane would remount it and discard unsaved React state.
+  return (
+    <DialogPrimitive.Portal
+      data-slot="dialog-portal"
+      {...props}
+      container={
+        props.container ?? mode?.pageContainerElement ?? mode?.pageContainer.current ?? undefined
+      }
+    />
+  );
 }
 
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
@@ -48,21 +72,28 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  chatProtected,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
+  chatProtected?: string;
 }) {
+  const ui = useUiTranslations();
+  const mode = usePageChatMode();
+  const scoped = !!(mode?.pageContainerElement ?? mode?.pageContainer.current);
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay className={scoped ? "absolute" : undefined} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "bg-background data-[open]:animate-in data-[open]:fade-in-0 data-[open]:zoom-in-95 data-[closed]:animate-out data-[closed]:fade-out-0 data-[closed]:zoom-out-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 border p-6 shadow-lg duration-200 sm:max-w-lg",
+          "bg-background data-[open]:animate-in data-[open]:fade-in-0 data-[open]:zoom-in-95 data-[closed]:animate-out data-[closed]:fade-out-0 data-[closed]:zoom-out-95 fixed top-[50%] left-[50%] z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto border p-6 shadow-lg duration-200 sm:max-w-lg",
           className,
+          scoped && "absolute max-h-[calc(100%-2rem)]",
         )}
         {...props}
       >
+        {chatProtected && <ManualPageContext label={chatProtected} />}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
@@ -70,7 +101,7 @@ function DialogContent({
             className="ring-offset-background focus:ring-ring data-[open]:bg-muted data-[open]:text-muted-foreground absolute top-4 right-4 opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{ui("Close")}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>

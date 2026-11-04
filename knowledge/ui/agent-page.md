@@ -38,7 +38,11 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   that shows its current value ("Inherited", "2 files") and opens a side sheet, so the whole
   configuration reads without opening anything. Side sheets, not accordions, because Branding and
   Files are large editors. Service account is a More row. Its sheet saves immediately, like MCP
-  servers and Credentials, and stays editable on a built-in agent.
+  servers and Credentials, and stays editable on a built-in agent. The Files row, and the Files
+  card on Preview, appear only when the effective agent has a filesystem: a capability that
+  contributes one (including through a dependency or the harness) or starter files already set.
+  Without a filesystem, the empty Files section stays hidden. Adding a filesystem capability
+  reveals the row. Source: `apps/ui/src/components/agents/agent-files-visibility.ts`.
 - **Page-level edit mode.** Edit, change several things, then one **Save changes** or
   **Discard**. A prompt edit and the capability change that goes with it land in one update.
   Changing any config control in view mode enters edit mode with that change pending, so nothing
@@ -52,6 +56,10 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   stay under Integrations (EVE-1009). History, Manager notes and archive/delete live in the header
   [Entity Actions Menu](entity-actions-menu.md), replacing the danger-zone card. Old
   `?tab=mcp` and `?tab=credentials` links open the matching sheet; `?tab=versions` opens History.
+- **The Sessions tab is the agent's full history.** It includes archived sessions because the
+  tab badge counts them, and marks those cards as Archived. The ordinary Sessions and Chats
+  lists still hide archived sessions by default. Cards show the source/channel, creation time,
+  and latest conversational-message time; a session edit or tool event is not a new message.
 - **Checks sit next to what they check.** In edit mode prompt findings render under the prompt
   editor; the behavioral health check is a More row.
 - **Button tiers.** Gold is only **Test in Playground**. It opens Playground setup with the Agent
@@ -59,3 +67,35 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   Chats remain bound to the managed Platform Chat. In edit mode navy Save changes replaces
   the action, with Discard beside it, and the header states that changes apply to new sessions
   only.
+
+## Page-aware Chat rollout
+
+Organizations enrolled in [Chat mode](chat-mode.md) can keep this page beside
+Platform Chat. Chat reads and patches the page's live form, including unsaved
+manual edits. Changes remain in the existing draft until Save, with separate
+draft markers and guarded local Undo. Agent definition saves attributed to that
+conversation refresh the page and receive persisted-change markers with guarded
+undo. A concurrent saved change blocks a dirty draft's Save until the operator discards and
+reviews the latest definition. Marker dismissal never bypasses that conflict.
+
+- **Localization is a draft section.** A More row opens locale-keyed display-name and
+  description overrides. Add or remove any supported language tag, then use the
+  page-level Save changes or Discard. Built-in resources keep their read-only policy.
+  Display text falls back per field; stable addresses and execution configuration
+  remain independent.
+
+- **External agents replace the prompt pane.** An agent can run its turns on the customer's
+  own HTTPS endpoint ([custom workers](../operations/custom-workers.md)). That endpoint owns the
+  system prompt, model and tools, so a greyed-out copy of them would only mislead: while an
+  endpoint is bound (connected or disconnected), the page hides the prompt, harness,
+  capabilities, model, communication, the execution More rows (MCP servers, credentials, files,
+  network, sandbox, token limit, health check, GitHub), the Preview and Agents tabs and the cost
+  estimate. An Endpoint pane takes the prompt's place (status, URL, last run, last error) and
+  the header carries an External agent badge. The hidden values stay stored. Setup is the
+  **External agent** More row and side sheet, never a card above the tabs: most agents never
+  use it, and the row is hidden where the installation does not allow it (`available` on the
+  status endpoint). Source: `apps/ui/src/components/agents/external-agent.tsx`.
+
+- **Cost planning is a header action.** Estimate cost opens a side sheet for the current draft
+  without saving or running it. Task choices and daily volume produce task and monthly estimates;
+  technical controls stay under Advanced assumptions. See [Agent Cost Estimation](agent-cost-estimation.md).

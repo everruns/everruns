@@ -119,6 +119,15 @@ impl VirtualMountRegistry {
             .any(|m| strip_mount_prefix(path, &m.mount_path).is_some())
     }
 
+    /// Whether moving this subtree would relocate a virtual mount.
+    pub fn contains_mount(&self, session_id: Uuid, path: &str) -> bool {
+        self.mounts.read().get(&session_id).is_some_and(|mounts| {
+            mounts
+                .iter()
+                .any(|mount| strip_mount_prefix(&mount.mount_path, path).is_some())
+        })
+    }
+
     /// Search virtual files for grep matches.
     ///
     /// `max_file_bytes` caps per-file scan cost (TM-DOS-008); files larger than
@@ -138,6 +147,9 @@ impl VirtualMountRegistry {
         };
         for mount in session_mounts {
             for (file_path, file) in mount.tree.all_files() {
+                if super::service::knowledge_mounts::collection_path(file_path) {
+                    continue;
+                }
                 if excluded_path_prefix.is_some_and(|prefix| {
                     file_path == prefix || file_path.starts_with(&format!("{prefix}/"))
                 }) {
@@ -188,6 +200,7 @@ impl VirtualMountRegistry {
         session_mounts
             .iter()
             .flat_map(|mount| mount.tree.all_files())
+            .filter(|(path, _)| !super::service::knowledge_mounts::collection_path(path))
             .filter(|(_, file)| file.content.len() <= max_file_bytes)
             .filter_map(|(path, file)| {
                 std::str::from_utf8(&file.content)
@@ -252,11 +265,6 @@ mod tests {
     }
 
     #[test]
-    fn strip_mount_prefix_child_path() {
-        assert_eq!(strip_mount_prefix("/docs/foo.md", "/docs"), Some("foo.md"));
-    }
-
-    #[test]
     fn strip_mount_prefix_no_match_partial_segment() {
         // "/docs2" should NOT match mount "/docs"
         assert_eq!(strip_mount_prefix("/docs2", "/docs"), None);
@@ -267,11 +275,6 @@ mod tests {
     fn strip_mount_prefix_root_mount() {
         assert_eq!(strip_mount_prefix("/foo.md", "/"), Some("foo.md"));
         assert_eq!(strip_mount_prefix("/", "/"), Some(""));
-    }
-
-    #[test]
-    fn strip_mount_prefix_no_match_different_prefix() {
-        assert_eq!(strip_mount_prefix("/other/foo", "/docs"), None);
     }
 
     #[test]

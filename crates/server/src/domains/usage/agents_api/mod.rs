@@ -391,6 +391,7 @@ impl AgentsApiUsageReconciler {
         );
         config.api_key = resolved.api_key;
         config.base_url = resolved.base_url;
+        config.api = resolved.api;
         // THREAT[TM-LLM-043]: provider ids and the key go only to the
         // official API, exactly as for turns.
         let endpoint = official_endpoint(&config)?;

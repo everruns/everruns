@@ -47,10 +47,13 @@ fn assistant() -> Agent {
     Agent::builder()
         .model("sim")
         .instructions("Test agent.")
-        .offline(script(
+        // Durable approval settles the deferred attempt and tells the model
+        // to retry with the stored grant. A fresh process must request that
+        // retry before claiming the report was shared.
+        .offline(sim::script([
             sim::call("share", json!({ "to": "team" })),
-            "shared",
-        ))
+            sim::reply("shared"),
+        ]))
         .build()
 }
 
@@ -294,7 +297,7 @@ async fn parked_requests_survive_a_restart_on_the_same_storage() {
     assert_eq!(
         SHARED.load(Ordering::SeqCst),
         1,
-        "the approved call ran once"
+        "the approved call ran once; resumed events: {resumed:?}"
     );
 
     // The `/v1` session view still shows its approval; denying it finishes
@@ -315,9 +318,9 @@ async fn parked_requests_survive_a_restart_on_the_same_storage() {
     .await;
     assert_eq!(denial.status(), 200);
     let events = finished(&client, &second, &denied_id).await;
-    let rejected = completed(&events, "share");
+    let rejected = completed(&events, "approve_tool_call");
     assert!(
-        rejected["data"].to_string().contains("rejected"),
+        rejected["data"].to_string().contains("reject"),
         "{rejected}"
     );
     assert_eq!(SHARED.load(Ordering::SeqCst), 1, "a denied call never runs");

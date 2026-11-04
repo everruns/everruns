@@ -6,7 +6,14 @@
 // size; editing turns the same pane into the selector, so add, reorder, and
 // configure happen where the list was.
 
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { Pencil, Shield } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
@@ -14,11 +21,12 @@ import type { HarnessDraft } from "@/components/harnesses/use-harness-draft";
 import type { Capability } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
+  capabilitySummary,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
 import { pluralize } from "@/lib/formatting";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 
 interface HarnessCapabilitiesPaneProps {
@@ -40,24 +48,26 @@ export function HarnessCapabilitiesPane({
   hasParent,
   className,
 }: HarnessCapabilitiesPaneProps) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { locale } = useLocale();
   const capabilityById = new Map(allCapabilities.map((cap) => [cap.id, cap]));
   const selected = draft.capabilities;
-  const countLabel = `${selected.length} ${pluralize(selected.length, "capability", "capabilities")}`;
+  const countLabel = `${selected.length} ${pluralize(selected.length, "capability", "capabilities", displayLocale)}`;
 
   return (
     <section
-      aria-label="Capabilities"
+      aria-label={ui("Capabilities")}
       className={cn("flex min-w-0 flex-col bg-background", className)}
     >
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5 sm:px-6">
-        <h2 className="text-sm font-medium">Capabilities</h2>
+        <h2 className="text-sm font-medium">{ui("Capabilities")}</h2>
         <span className="font-mono text-xs text-muted-foreground">{countLabel}</span>
         {!editing && onEdit && (
           <div className="ml-auto">
             <Button variant="outline" size="sm" onClick={onEdit}>
               <Pencil className="size-4" />
-              Edit capabilities
+              {ui("Edit capabilities")}
             </Button>
           </div>
         )}
@@ -69,7 +79,7 @@ export function HarnessCapabilitiesPane({
             capabilities={allCapabilities}
             selected={selected}
             onChange={draft.setCapabilities}
-            label="Local capabilities"
+            label={ui("Local capabilities")}
           />
         </div>
       ) : (
@@ -77,14 +87,18 @@ export function HarnessCapabilitiesPane({
           {selected.length === 0 ? (
             <p className="text-sm italic text-muted-foreground">
               {hasParent
-                ? "No local capabilities. Inherited ones show in Preview."
-                : "No capabilities enabled."}
+                ? ui("No local capabilities. Inherited ones show in Preview.")
+                : ui("No capabilities enabled.")}
             </p>
           ) : (
-            <ol className="flex flex-col gap-2" aria-label="Enabled capabilities">
+            <ol className="flex flex-col gap-2" aria-label={ui("Enabled capabilities")}>
               {selected.map((config) => {
                 const cap = capabilityById.get(config.ref);
-                const description = cap ? localizedCapabilityDescription(cap, locale) : "";
+                const description = cap
+                  ? capabilitySummary(localizedCapabilityDescription(cap, locale))
+                  : "";
+                const name = cap ? localizedCapabilityName(cap, locale) : config.ref;
+                const detailsHref = cap ? `/capabilities/${cap.id}` : null;
                 return (
                   <li
                     key={config.ref}
@@ -93,18 +107,37 @@ export function HarnessCapabilitiesPane({
                     {cap && <CapabilityIcon icon={cap.icon} className="mt-0.5 size-4 shrink-0" />}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="min-w-0 truncate text-sm font-medium">
-                          {cap ? localizedCapabilityName(cap, locale) : config.ref}
-                        </p>
+                        {detailsHref ? (
+                          <Link
+                            href={detailsHref}
+                            className="min-w-0 truncate text-sm font-medium hover:underline"
+                          >
+                            {name}
+                          </Link>
+                        ) : (
+                          <p className="min-w-0 truncate text-sm font-medium">{name}</p>
+                        )}
                         {cap?.is_guardrail && (
                           <Badge variant="outline" className="gap-0.5">
                             <Shield />
-                            Guardrail
+                            {ui("Guardrail")}
                           </Badge>
                         )}
                       </div>
                       {description && (
                         <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
+                      )}
+                      {detailsHref && (
+                        <Link
+                          href={detailsHref}
+                          className="mt-1 inline-block text-xs text-primary hover:underline"
+                        >
+                          {ui("More details")}
+                          <span className="sr-only">
+                            {" "}
+                            {ui("about")} {name}
+                          </span>
+                        </Link>
                       )}
                     </div>
                   </li>

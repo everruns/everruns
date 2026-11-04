@@ -8,6 +8,7 @@ const API_BASE = "/api";
 // set headers, such as SSE (EventSource).
 
 import { withOrgHeader } from "./active-org";
+import { beforeResourceWrite } from "./write-observer";
 
 function safeErrorMessage(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -68,13 +69,21 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   });
+  const observed = await beforeResourceWrite(options.method ?? "GET", endpoint.split(/[?#]/, 1)[0]);
+  Object.assign(headers, observed?.headers);
 
-  const doFetch = () =>
-    fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      credentials: "include", // Include cookies for auth (access_token, everruns_org)
-      headers,
-    });
+  const doFetch = async () => {
+    try {
+      return await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        credentials: "include", // Include cookies for auth (access_token, everruns_org)
+        headers,
+      });
+    } catch (error) {
+      observed?.failed();
+      throw error;
+    }
+  };
 
   let response = await doFetch();
 
@@ -92,7 +101,38 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 
   if (!response.ok) {
+    observed?.failed();
     await throwApiError(response);
+  }
+
+  // Recording the review must never turn a committed save into a retryable
+  // mutation error. The observer retains its own refresh/error state.
+  try {
+    let committed:
+      | { kind: string; id: string; revision: number; from_revision?: number }
+      | undefined;
+    const raw = response.headers?.get("Everruns-Committed-Change");
+    if (raw) {
+      try {
+        const value = JSON.parse(raw);
+        if (
+          typeof value.kind === "string" &&
+          typeof value.id === "string" &&
+          Number.isSafeInteger(value.revision) &&
+          value.revision >= 0 &&
+          (value.from_revision == null ||
+            (Number.isSafeInteger(value.from_revision) &&
+              value.from_revision > 0 &&
+              value.from_revision <= value.revision))
+        )
+          committed = value;
+      } catch {
+        /* The observer reports missing revision metadata without retrying a save. */
+      }
+    }
+    await observed?.succeeded(committed);
+  } catch {
+    observed?.failed();
   }
 
   // Handle empty responses (204 No Content or empty body)
@@ -124,7 +164,11 @@ export const api = {
   },
 
   get: <T>(url: string, options?: RequestOptions) =>
-    request<T>(url, { method: "GET", headers: options?.headers }),
+    request<T>(url, {
+      method: "GET",
+      headers: options?.headers,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    }),
 
   post: <T>(url: string, body?: unknown, options?: RequestOptions) =>
     request<T>(url, {

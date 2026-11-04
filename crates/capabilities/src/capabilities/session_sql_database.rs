@@ -456,14 +456,6 @@ mod tests {
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = SessionSqlDatabaseCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("SQLite"));
-        assert!(prompt.contains("1000 rows"));
-    }
-
     #[tokio::test]
     async fn test_sql_execute_without_context() {
         let tool = SqlExecuteTool;

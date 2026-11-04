@@ -102,7 +102,7 @@ export function ComposerAutocomplete<T extends ComposerAutocompleteItem>({
             className={cn(
               "flex w-full items-center gap-2 px-2 py-2 text-left text-sm outline-none select-none",
               index === selectedIndex
-                ? "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)] text-foreground"
+                ? "bg-[hsl(var(--accent)/0.12)] text-foreground"
                 : "text-popover-foreground",
             )}
             onMouseEnter={() => setSelectedIndex(index)}

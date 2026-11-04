@@ -86,8 +86,20 @@ pub struct TraceTurn {
     /// The user message that started the turn.
     #[schema(example = "Check the links on the docs site")]
     pub prompt: Option<String>,
+    /// Who wrote the input when no person did: `kind` (`schedule`,
+    /// `agent_trigger`, `channel_schedule`, `webhook`, `task_wake`, `system`),
+    /// and when known `source_id`, `name` and `run` (`number`, `limit`,
+    /// `ends_at`, `stop_when`). Absent when a person started the turn.
+    #[schema(value_type = Option<Object>, example = json!({"kind": "schedule", "source_id": "sched_01a124cd7e9571ac95c312b3c6d0cd82", "name": "Shipmail claim poll", "run": {"number": 12, "limit": 96}}))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<serde_json::Value>,
     /// Why the turn failed, when it did.
     pub error: Option<String>,
+    /// Classified failure (`provider_quota_exhausted`, `provider_rate_limited`,
+    /// `provider_unavailable`, ...), when the turn failed with one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "provider_quota_exhausted")]
+    pub error_code: Option<String>,
     /// When the turn started.
     pub started_at: DateTime<Utc>,
     /// When the turn ended; absent while running.
@@ -190,6 +202,14 @@ pub struct TraceStep {
     /// Tool calls this model call asked for.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requested_tool_call_ids: Vec<String>,
+    /// Retries a model call made before it succeeded or gave up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 3)]
+    pub retry_attempts: Option<i32>,
+    /// Time spent waiting between those retries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 42000)]
+    pub retry_wait_ms: Option<i64>,
     /// Session a `spawn_agent` call started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_session_id: Option<String>,

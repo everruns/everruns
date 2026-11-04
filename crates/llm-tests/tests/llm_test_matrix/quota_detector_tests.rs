@@ -6,8 +6,8 @@ use super::{
     is_model_unavailable, is_quota_exhausted, is_transient_transport_error,
     is_upstream_shared_pool_rate_limited, live_retry_backoff,
 };
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::TurnId;
-use everruns_core::turn::TurnStopReason;
 use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 
 /// Label for the synthetic retry/skip tests below. Deliberately not a real
@@ -18,6 +18,7 @@ use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 /// resolve a real credential however the environment is configured.
 fn synthetic_descriptor() -> everruns_contracts::driver_registry::DriverDescriptor {
     everruns_contracts::driver_registry::DriverDescriptor {
+        apis: Vec::new(),
         credential_schema: everruns_contracts::credential_schema::CredentialFormSchema::empty(),
         ..everruns_contracts::driver_registry::DriverDescriptor::chat_only(
             super::DriverId::Anthropic,

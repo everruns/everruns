@@ -734,10 +734,15 @@ impl EgressService for MockMcpOAuthServer {
         }
     }
 
-    async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
-        Err(EgressError::Transport(
-            "mock MCP/OAuth harness does not stream".to_string(),
-        ))
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        // MCP discovery bounds response bodies through the streaming seam,
+        // including ordinary JSON replies. Keep recording and OAuth identical.
+        let response = self.send(request).await?;
+        Ok(EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 
     fn name(&self) -> &'static str {

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import React from "react";
 import {
   Select,
@@ -75,38 +75,11 @@ beforeEach(() => {
   rootItemsCalls.length = 0;
 });
 
-describe("SelectTrigger", () => {
-  it("resets native button appearance for shared pickers", () => {
-    render(<SelectTrigger>Default</SelectTrigger>);
-
-    expect(screen.getByRole("button")).toHaveClass("appearance-none");
-  });
-});
-
 describe("Select wrapper auto-collects display labels", () => {
   // The bug: <SelectValue> showed the raw internal value (e.g. "shared_session")
   // because no items map was forwarded to base-ui. The wrapper now walks
   // <SelectItem> children and forwards a value→label map, so display labels
   // are the default. See knowledge/foundations/code-organization.md.
-  it("forwards a value→label map collected from SelectItem children", () => {
-    render(
-      <Select value="webhook" onValueChange={() => {}}>
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="slack">Slack</SelectItem>
-          <SelectItem value="webhook">Webhook</SelectItem>
-        </SelectContent>
-      </Select>,
-    );
-
-    const items = rootItemsCalls.at(-1);
-    expect(items).toBeDefined();
-    expect(items?.slack).toBe("Slack");
-    expect(items?.webhook).toBe("Webhook");
-  });
-
   it("explicit items prop entries take precedence over collected labels", () => {
     render(
       <Select

@@ -90,7 +90,7 @@ describe("SetupConnectionToolCall", () => {
     expect(open).toHaveBeenCalledWith("/agents/agent_123?tab=mcp", "_blank", "noopener,noreferrer");
     expect(submitToolResults).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "I've connected — continue" }));
+    fireEvent.click(screen.getByRole("button", { name: "I've connected, continue" }));
     await waitFor(() =>
       expect(submitToolResults).toHaveBeenCalledWith("session_1", [
         {
@@ -133,11 +133,7 @@ describe("SetupConnectionToolCall", () => {
     renderCard({ provider: "daytona" });
 
     fireEvent.click(screen.getByRole("button", { name: "Open connections" }));
-    expect(open).toHaveBeenCalledWith(
-      "/settings/agent-experience",
-      "_blank",
-      "noopener,noreferrer",
-    );
+    expect(open).toHaveBeenCalledWith("/settings/connections", "_blank", "noopener,noreferrer");
   });
 
   it("keeps the card open with a plain reason when the popup sign-in fails", () => {

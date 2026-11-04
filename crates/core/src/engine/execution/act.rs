@@ -11,7 +11,7 @@ use web_time::Instant;
 
 use super::ExecutionContext;
 use super::act_hooks::{self, PostActHook};
-use super::tool_scheduler;
+use super::{tool_detach, tool_scheduler};
 use crate::engine::error::Result;
 use crate::engine::events::{
     ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCompletedData,
@@ -158,9 +158,12 @@ where
     // Held as `Arc` so individual `cpu_bound` tool calls can be offloaded to
     // their own task (`tokio::spawn`) without borrowing `self` for `'static`.
     tool_executor: Arc<T>,
+    thread_cpu_clock: Option<Arc<dyn super::cpu_time::ThreadCpuClock>>,
     event_emitter: PhaseEffectEmitter<E>,
     /// Runtime-owned service snapshot cloned into every per-call ToolContext.
     context_services: crate::engine::tool_context::ToolContextServices,
+    /// Surface routes assembled for this execution turn.
+    tool_surface_plan: everruns_contracts::runtime::tool_surface::ToolSurfacePlan,
     /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// When present, each tool call increments the org counter; calls that
     /// exceed the per-org window return a tool error rather than a hard failure.
@@ -200,8 +203,10 @@ where
     pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
             tool_executor: Arc::new(tool_executor),
+            thread_cpu_clock: None,
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             context_services: crate::engine::tool_context::ToolContextServices::default(),
+            tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             hooks: Self::default_hooks(),
@@ -220,11 +225,13 @@ where
     ) -> Self {
         Self {
             tool_executor: Arc::new(tool_executor),
+            thread_cpu_clock: None,
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             context_services: crate::engine::tool_context::ToolContextServices {
                 file_store: Some(file_store),
                 ..Default::default()
             },
+            tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             hooks: Self::default_hooks(),
@@ -233,17 +240,6 @@ where
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
-    }
-
-    /// Replace the complete runtime-owned service snapshot used for every
-    /// per-call [`ToolContext`](crate::ToolContext). Production hosts should prefer this over
-    /// assembling individual services on the atom.
-    pub fn with_context_services(
-        mut self,
-        services: crate::engine::tool_context::ToolContextServices,
-    ) -> Self {
-        self.context_services = services;
-        self
     }
 
     /// Add a custom post-act hook.
@@ -729,11 +725,14 @@ where
             serialize_all: parallel_tool_calls == Some(false),
             ..tool_scheduler::ScheduleConfig::default()
         };
-        let mut results =
+        let schedule =
             tool_scheduler::schedule(tool_calls.len(), &classes, schedule_config, |index| {
                 let tool_call = &tool_calls[index];
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
-                self.execute_single_tool(
+                // Boxed: a tool that runs a child turn (handoff, subagent)
+                // re-enters this act inline, and an inline per-call future made
+                // each nesting level's debug-build stack frame overflow 2 MiB.
+                Box::pin(self.execute_single_tool(
                     &context,
                     tool_call.clone(),
                     tool_def,
@@ -742,10 +741,28 @@ where
                     locale.as_deref(),
                     network_access.as_ref(),
                     visible_tool_names.clone(),
-                )
-            })
-            .await;
+                ))
+            });
+        // A call detaches only when nothing in its act waits on the client.
+        // Boxed, like each call: a child turn re-enters this act inline.
+        let mut results = if client_tool_calls.is_empty() && client_policy_results.is_empty() {
+            Box::pin(schedule).await
+        } else {
+            Box::pin(tool_detach::without(schedule)).await
+        };
         results.extend(over_cap);
+        if results
+            .iter()
+            .any(|result| result.status == tool_detach::DETACHED_STATUS)
+        {
+            return Box::pin(self.park_on_detached(
+                &context,
+                results,
+                &tool_definitions,
+                locale.as_deref(),
+            ))
+            .await;
+        }
 
         // Count successes and errors, including client calls already settled
         // by the pre-tool chain. Those never reach the server scheduler.
@@ -1442,7 +1459,7 @@ where
         // Same context as the client-side pre-tool gate (one session either way). The
         // guard fires on drop (cancelled turn) and normal return; tool work holding a
         // clone dies with the call.
-        let (tool_context, call_cancellation) = client_policy::tool_context_for_call(
+        let (mut tool_context, call_cancellation) = client_policy::tool_context_for_call(
             self,
             context,
             &event_context,
@@ -1450,8 +1467,6 @@ where
             network_access,
             &visible_tool_names,
         );
-        let _cancel_on_call_end = call_cancellation.drop_guard();
-
         let authored_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
 
         // Run pre-tool-use hooks (capability-contributed). They can mutate the
@@ -1467,281 +1482,78 @@ where
         // EVE-1209: tool.completed records hook-rewritten arguments of a call
         // that ran. A blocked or deferred call ran nothing, so it records none.
         let authored_arguments = match pre_hook_result {
-            None => &authored_tool_call.arguments,
-            Some(_) => &execution_tool_call.arguments,
+            None => authored_tool_call.arguments,
+            Some(_) => execution_tool_call.arguments.clone(),
         };
 
-        let result = if let Some(pre_hook_result) = pre_hook_result {
-            Ok(pre_hook_result)
-        } else if tool_def.is_cpu_bound() {
-            // CPU-bound / non-yielding in-process tools (e.g. the bash
-            // interpreter) get their own task so a long synchronous burst
-            // cannot starve the cooperative polling of I/O-bound tools running
-            // alongside them in this act batch. On the multi-thread runtime the
-            // spawned task can also progress on another worker thread.
-            let executor = self.tool_executor.clone();
-            let call = execution_tool_call.clone();
-            let def = tool_def.clone();
-            let ctx = tool_context.clone();
-            match AbortOnDropJoinHandle::new(everruns_contracts::rt::spawn(async move {
-                executor.execute_with_context(&call, &def, &ctx).await
-            }))
-            .await
-            {
-                Ok(result) => result,
-                Err(join_err) => Err(crate::engine::error::AgentLoopError::tool(format!(
-                    "tool task failed to complete: {join_err}"
-                ))),
-            }
-        } else {
-            self.tool_executor
-                .execute_with_context(&execution_tool_call, tool_def, &tool_context)
+        // A call that may outlive its act writes through a switch, so its
+        // events can follow it to its host once it detaches (`tool_detach`).
+        let detacher = tool_detach::active()
+            .filter(|_| pre_hook_result.is_none() && tool_detach::may_detach(tool_def));
+        let act_emitter: Arc<dyn EventEmitter> = Arc::new(self.event_emitter.clone());
+        let switches = detacher.as_ref().map(|_| {
+            let tool_emitter = tool_context
+                .event_emitter
+                .clone()
+                .unwrap_or_else(|| act_emitter.clone());
+            let tool = Arc::new(tool_detach::SwitchEmitter::new(tool_emitter));
+            tool_context.event_emitter = Some(tool.clone());
+            [
+                Arc::new(tool_detach::SwitchEmitter::new(act_emitter.clone())),
+                tool,
+            ]
+        });
+        let tail = call_tail::CallTail {
+            emitter: match &switches {
+                Some([tail, _]) => tail.clone(),
+                None => act_emitter,
+            },
+            post_tool_hooks: self.post_tool_hooks.clone(),
+            final_post_tool_hooks: self.final_post_tool_hooks.clone(),
+            narrator: self.narrator(context),
+            claim: self.durable_tool_result_store.clone().zip(claim_token),
+            context: context.clone(),
+            event_context,
+            tool_call,
+            execution_tool_call,
+            authored_arguments,
+            tool_def: tool_def.clone(),
+            tool_context,
+            locale: locale.map(str::to_string),
+            tool_start,
+            tool_call_fingerprint,
+            display_name,
+            capability_id,
+            capability_name,
+            _cancel_on_call_end: call_cancellation.drop_guard(),
+        };
+        if let Some(pre_hook_result) = pre_hook_result {
+            return Box::pin(tail.finish(Ok(pre_hook_result), None)).await;
+        }
+        // Each branch boxed: a tool that runs a child turn re-enters the act
+        // inline, and these futures inline made the nested debug-build stack
+        // overflow 2 MiB.
+        match detacher.zip(switches) {
+            Some((detacher, switches)) => {
+                Box::pin(act_detach::run(
+                    detacher,
+                    switches,
+                    tail,
+                    self.tool_executor.clone(),
+                    self.thread_cpu_clock.clone(),
+                ))
                 .await
-        };
-
-        match result {
-            Ok(mut tool_result) => {
-                // Run post-tool-exec hooks (capability then final/infrastructure)
-                act_hooks::run_post_tool_exec_hooks(
-                    &self.post_tool_hooks,
-                    &self.final_post_tool_hooks,
-                    &execution_tool_call,
-                    tool_def,
-                    &mut tool_result,
-                    &tool_context,
-                )
-                .await;
-
-                let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
-                let success = tool_result.error.is_none();
-                let status = if success { "success" } else { "error" };
-
-                // A delivered send_message is something the agent said. Record
-                // it before the tool completes so every surface sees the
-                // message no later than the call that sent it. Replays never
-                // re-emit: the call settled, and so did its message.
-                if success
-                    && let Some(sent) = crate::conversation::sent_message(
-                        &tool_call.name,
-                        &tool_call.id,
-                        &execution_tool_call.arguments,
-                        tool_result.result.as_ref(),
-                    )
-                    && let Err(e) = self
-                        .event_emitter
-                        .emit(EventRequest::new(
-                            context.session_id,
-                            event_context.clone(),
-                            sent,
-                        ))
-                        .await
-                {
-                    tracing::warn!(
-                        tool_call_id = %tool_call.id,
-                        error = %e,
-                        "ActAtom: failed to emit conversation.message"
-                    );
-                }
-
-                // Emit tool.completed event
-                let completed_data = if success {
-                    let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
-                    // Convert result to ContentPart (text + optional images)
-                    let mut result_content = tool_result
-                        .result
-                        .as_ref()
-                        .map(|r| vec![ContentPart::tool_result_text(r)])
-                        .unwrap_or_default();
-                    // Append images as native Image content parts
-                    if let Some(ref images) = tool_result.images {
-                        for img in images {
-                            result_content.push(ContentPart::Image(
-                                crate::engine::message::ImageContentPart::from_base64(
-                                    &img.base64,
-                                    &img.media_type,
-                                ),
-                            ));
-                        }
-                    }
-                    ToolCompletedData::success(
-                        tool_call.id.clone(),
-                        tool_call.name.clone(),
-                        result_content,
-                        Some(tool_duration_ms),
-                    )
-                    .with_fingerprints(tool_call_fingerprint.clone(), result_fingerprint)
-                    .with_display_name(display_name.clone())
-                    .with_capability_attribution(capability_id.clone(), capability_name.clone())
-                    .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
-                    .with_acted_as(client_policy::mcp_acted_as(&tool_context))
-                    .with_details(tool_result.details.clone())
-                    .with_narration(Some(
-                        self.render_tool_narration_with_result(
-                            context,
-                            Some(tool_def),
-                            &tool_call,
-                            ToolNarrationPhase::Completed,
-                            locale,
-                            Some(&tool_result),
-                        ),
-                    ))
-                } else {
-                    let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
-                    ToolCompletedData::failure(
-                        tool_call.id.clone(),
-                        tool_call.name.clone(),
-                        status.to_string(),
-                        tool_result.error.clone().unwrap_or_default(),
-                        Some(tool_duration_ms),
-                    )
-                    .with_fingerprints(tool_call_fingerprint.clone(), result_fingerprint)
-                    .with_display_name(display_name.clone())
-                    .with_capability_attribution(capability_id.clone(), capability_name.clone())
-                    .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
-                    .with_acted_as(client_policy::mcp_acted_as(&tool_context))
-                    .with_narration(Some(self.render_tool_narration(
-                        context,
-                        Some(tool_def),
-                        &tool_call,
-                        ToolNarrationPhase::Failed,
-                        locale,
-                    )))
-                };
-
-                if let Err(e) = self
-                    .event_emitter
-                    .emit(EventRequest::new(
-                        context.session_id,
-                        event_context.clone(),
-                        completed_data,
-                    ))
-                    .await
-                {
-                    tracing::warn!(
-                        session_id = %context.session_id,
-                        tool_call_id = %tool_call.id,
-                        error = %e,
-                        "ActAtom: failed to emit tool.completed event"
-                    );
-                }
-
-                tracing::debug!(
-                    session_id = %context.session_id,
-                    tool_name = %tool_call.name,
-                    tool_call_id = %tool_call.id,
-                    success = %success,
-                    "ActAtom: tool execution completed"
-                );
-
-                // Settle the durable claim (EVE-530).
-                if let (Some(store), Some(token)) = (&self.durable_tool_result_store, claim_token) {
-                    let result_snapshot =
-                        serde_json::to_value(&tool_result).unwrap_or(serde_json::Value::Null);
-                    match store
-                        .settle_tool_call(
-                            &context.turn_id.to_string(),
-                            &tool_call.id,
-                            result_snapshot,
-                            "settled",
-                            token,
-                        )
-                        .await
-                    {
-                        Ok(false) => {
-                            tracing::warn!(
-                                session_id = %context.session_id,
-                                tool_call_id = %tool_call.id,
-                                "ActAtom: settle ownership check failed (task reclaimed)"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                session_id = %context.session_id,
-                                tool_call_id = %tool_call.id,
-                                error = %e,
-                                "ActAtom: settle_tool_call failed"
-                            );
-                        }
-                        Ok(true) => {}
-                    }
-                }
-
-                let conn_req = tool_result.connection_required.clone();
-                ToolCallResult {
-                    tool_call,
-                    result: tool_result,
-                    success,
-                    status: status.to_string(),
-                    connection_required: conn_req,
-                    determinism_fatal: None,
-                }
             }
-            Err(e) => {
-                let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
-                let error_msg = e.to_string();
-
-                // Emit tool.completed event for error
-                if let Err(emit_err) = self
-                    .event_emitter
-                    .emit(EventRequest::new(
-                        context.session_id,
-                        event_context,
-                        ToolCompletedData::failure(
-                            tool_call.id.clone(),
-                            tool_call.name.clone(),
-                            "error".to_string(),
-                            error_msg.clone(),
-                            Some(tool_duration_ms),
-                        )
-                        .with_fingerprints(
-                            tool_call_fingerprint.clone(),
-                            tool_error_fingerprint(&tool_call.name, "error", &error_msg),
-                        )
-                        .with_display_name(display_name.clone())
-                        .with_capability_attribution(capability_id.clone(), capability_name.clone())
-                        .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
-                        .with_narration(Some(self.render_tool_narration(
-                            context,
-                            Some(tool_def),
-                            &tool_call,
-                            ToolNarrationPhase::Failed,
-                            locale,
-                        ))),
-                    ))
-                    .await
-                {
-                    tracing::warn!(
-                        session_id = %context.session_id,
-                        tool_call_id = %tool_call.id,
-                        error = %emit_err,
-                        "ActAtom: failed to emit tool.completed event"
-                    );
-                }
-
-                tracing::warn!(
-                    session_id = %context.session_id,
-                    tool_name = %tool_call.name,
-                    tool_call_id = %tool_call.id,
-                    error = %e,
-                    "ActAtom: tool execution failed"
-                );
-
-                ToolCallResult {
-                    tool_call: tool_call.clone(),
-                    result: ToolResult {
-                        details: None,
-                        tool_call_id: tool_call.id.clone(),
-                        result: None,
-                        images: None,
-                        error: Some(error_msg),
-                        connection_required: None,
-                        raw_output: None,
-                    },
-                    success: false,
-                    status: "error".to_string(),
-                    connection_required: None,
-                    determinism_fatal: None,
-                }
+            None => {
+                // A tool that runs a child turn inline must not detach its
+                // calls into this turn's park.
+                let (result, cpu_ns) = Box::pin(tool_detach::without(self.invoke_observed(
+                    &tail.execution_tool_call,
+                    &tail.tool_def,
+                    &tail.tool_context,
+                )))
+                .await;
+                Box::pin(tail.finish(result, cpu_ns)).await
             }
         }
     }
@@ -1757,12 +1569,19 @@ mod client_policy;
 #[path = "act_narration.rs"]
 mod narration;
 
+#[path = "act_call_tail.rs"]
+mod call_tail;
+
+#[path = "act_detach.rs"]
+mod act_detach;
+
 #[path = "act_start_record.rs"]
 mod start_record;
 
 #[path = "act_abort_on_drop.rs"]
 mod abort_on_drop;
-use abort_on_drop::AbortOnDropJoinHandle;
+#[path = "act_cpu_execution.rs"]
+mod cpu_execution;
 
 #[cfg(test)]
 #[path = "act_tests.rs"]
@@ -1779,3 +1598,10 @@ mod client_policy_tests;
 #[cfg(test)]
 #[path = "act_executed_arguments_tests.rs"]
 mod executed_arguments_tests;
+
+#[cfg(test)]
+#[path = "act_cpu_tests.rs"]
+mod cpu_tests;
+
+#[path = "act_surface.rs"]
+mod surface;

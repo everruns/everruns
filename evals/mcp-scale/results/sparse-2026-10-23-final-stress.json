@@ -1,0 +1,1927 @@
+{
+  "byte_measurement": "serialized production-shaped Builtin ToolDefinition records, including MCP naming, server metadata, and capability attribution, plus serialized top-10 hits; this is not a captured host transport payload and index heap allocation is not exposed by this API",
+  "environment": {
+    "arch": "x86_64",
+    "build_profile": "dev",
+    "cargo_package_version": "0.1.0",
+    "logical_cpus": 4,
+    "os": "linux",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "matrix": [
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 36189,
+      "catalog_tools": 50,
+      "index_build_us": {
+        "max": 3508.95,
+        "min": 2287.817,
+        "p50": 2643.262,
+        "p95": 3508.95,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": 2,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 226.133,
+            "min": 35.120999999999995,
+            "p50": 35.602000000000004,
+            "p95": 131.243,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 17.354484246993504,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 16.529829251182868,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 209
+        },
+        {
+          "expected_operation_rank_at_10": 8,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 185.844,
+            "min": 40.379,
+            "p50": 41.421,
+            "p95": 111.375,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 13.09208645846957,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 7.792075553814405,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 4.798387206667513,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_001",
+              "score": 4.647374900275088,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__inspect_billing_record_001",
+              "score": 4.647374900275088,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__summarize_billing_record_001",
+              "score": 4.647374900275088,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__validate_billing_record_001",
+              "score": 4.647374900275088,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 3.6061801183579263,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 2.3256655360352196,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1015
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 156.992,
+            "min": 82.321,
+            "p50": 83.904,
+            "p95": 142.16899999999998,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__compare_analytics_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_checkout_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_edge_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_fraud_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_identity_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_inventory_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_messaging_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_notifications_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_reporting_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 1202
+        }
+      ],
+      "server_tool_counts": [
+        50
+      ],
+      "servers": 1
+    },
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 32529,
+      "catalog_tools": 50,
+      "index_build_us": {
+        "max": 2660.677,
+        "min": 2066.3,
+        "p50": 2407.383,
+        "p95": 2660.677,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 177.882,
+            "min": 54.22,
+            "p50": 55.332,
+            "p95": 112.286,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 8.477337751649271,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog2__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog3__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog4__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog5__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog6__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog7__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog8__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog9__get_ticket",
+              "score": 8.064364627686016,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1014
+        },
+        {
+          "expected_operation_rank_at_10": 4,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 260.195,
+            "min": 64.815,
+            "p50": 66.028,
+            "p95": 124.694,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 12.937626026855643,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 7.706824827975617,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 4.778403918283924,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 3.5622445967178287,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__inspect_billing_record_001",
+              "score": 3.1913460811905283,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog2__inspect_billing_record_001",
+              "score": 3.1913460811905283,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog3__inspect_billing_record_001",
+              "score": 3.1913460811905283,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog4__inspect_billing_record_001",
+              "score": 3.1913460811905283,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog5__inspect_billing_record_001",
+              "score": 3.1913460811905283,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog6__inspect_billing_record_001",
+              "score": 3.1913460811905283,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1145
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 293.243,
+            "min": 131.183,
+            "p50": 134.479,
+            "p95": 228.657,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_tickets",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 850
+        }
+      ],
+      "server_tool_counts": [
+        8,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        4
+      ],
+      "servers": 10
+    },
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 434602,
+      "catalog_tools": 600,
+      "index_build_us": {
+        "max": 31747.931,
+        "min": 28868.501,
+        "p50": 30499.258,
+        "p95": 31747.931,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": 2,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 1704.095,
+            "min": 304.369,
+            "p50": 374.192,
+            "p95": 593.316,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 31.736948551136834,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 30.249399378940865,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 209
+        },
+        {
+          "expected_operation_rank_at_10": 4,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 1481.096,
+            "min": 324.79900000000004,
+            "p50": 416.154,
+            "p95": 646.985,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 24.923165530911994,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 15.597667510251046,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 10.135378044808975,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 7.649833174952628,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 4.951748376423538,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_001",
+              "score": 4.760952722432568,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_002",
+              "score": 4.760952722432568,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_003",
+              "score": 4.760952722432568,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_004",
+              "score": 4.760952722432568,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_005",
+              "score": 4.760952722432568,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1131
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 1445.764,
+            "min": 716.638,
+            "p50": 873.269,
+            "p95": 1161.935,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__compare_analytics_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_002",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_003",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_004",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_005",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_006",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_007",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_008",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_002",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 1207
+        }
+      ],
+      "server_tool_counts": [
+        600
+      ],
+      "servers": 1
+    },
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 396974,
+      "catalog_tools": 600,
+      "index_build_us": {
+        "max": 33605.703,
+        "min": 27614.199999999997,
+        "p50": 30646.195,
+        "p95": 33605.703,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 546.286,
+            "min": 316.287,
+            "p50": 339.411,
+            "p95": 499.137,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 22.882939612614663,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog2__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog3__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog4__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog5__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog6__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog7__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog8__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog9__get_ticket",
+              "score": 21.808209433304228,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1024
+        },
+        {
+          "expected_operation_rank_at_10": 4,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 2177.384,
+            "min": 341.544,
+            "p50": 411.88800000000003,
+            "p95": 1277.335,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 24.90110441561281,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 15.584923863512627,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 10.132140713797599,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 7.642600567447539,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 4.944380996725622,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_001",
+              "score": 4.6115782563045435,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__inspect_billing_record_001",
+              "score": 4.6115782563045435,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__lookup_billing_record_001",
+              "score": 4.6115782563045435,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__preview_billing_record_001",
+              "score": 4.6115782563045435,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__summarize_billing_record_001",
+              "score": 4.6115782563045435,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1131
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 1398.7050000000002,
+            "min": 669.308,
+            "p50": 791.359,
+            "p95": 1060.535,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_tickets",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 850
+        }
+      ],
+      "server_tool_counts": [
+        8,
+        66,
+        66,
+        66,
+        66,
+        66,
+        66,
+        66,
+        65,
+        65
+      ],
+      "servers": 10
+    },
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 1448979,
+      "catalog_tools": 2000,
+      "index_build_us": {
+        "max": 100976.716,
+        "min": 90564.408,
+        "p50": 94447.169,
+        "p95": 100976.716,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": 2,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 1506.894,
+            "min": 1008.388,
+            "p50": 1099.8029999999999,
+            "p95": 1347.519,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 38.71416607960907,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 36.90115917998074,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 207
+        },
+        {
+          "expected_operation_rank_at_10": 4,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 1896.75,
+            "min": 1073.234,
+            "p50": 1245.238,
+            "p95": 1539.983,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 30.663166560722097,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 19.38814496697472,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 12.734320166094752,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 9.613990232600077,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 6.224591161473997,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_001",
+              "score": 4.7810161942417375,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_002",
+              "score": 4.7810161942417375,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_003",
+              "score": 4.7810161942417375,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_004",
+              "score": 4.7810161942417375,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_005",
+              "score": 4.7810161942417375,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1135
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 3544.522,
+            "min": 2299.6549999999997,
+            "p50": 2539.098,
+            "p95": 3083.632,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__compare_analytics_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_002",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_003",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_004",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_005",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_006",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_007",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_008",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_009",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_010",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 1211
+        }
+      ],
+      "server_tool_counts": [
+        2000
+      ],
+      "servers": 1
+    },
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 1324392,
+      "catalog_tools": 2000,
+      "index_build_us": {
+        "max": 99054.19,
+        "min": 90161.49399999999,
+        "p50": 92829.753,
+        "p95": 99054.19,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 2151.055,
+            "min": 1012.735,
+            "p50": 1173.482,
+            "p95": 1658.558,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 29.86894052284819,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog2__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog3__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog4__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog5__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog6__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog7__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog8__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog9__get_ticket",
+              "score": 28.46930983250256,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1014
+        },
+        {
+          "expected_operation_rank_at_10": 4,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 1976.378,
+            "min": 1064.502,
+            "p50": 1210.868,
+            "p95": 1526.394,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 30.655127593569826,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 19.38345492319328,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 12.73310619351635,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 9.611275423608664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 6.221823430469454,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_001",
+              "score": 4.723255135088774,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_002",
+              "score": 4.723255135088774,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_003",
+              "score": 4.723255135088774,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__inspect_billing_record_001",
+              "score": 4.723255135088774,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__inspect_billing_record_002",
+              "score": 4.723255135088774,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1124
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 3805.317,
+            "min": 2101.772,
+            "p50": 2429.436,
+            "p95": 3092.295,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_tickets",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 850
+        }
+      ],
+      "server_tool_counts": [
+        8,
+        222,
+        222,
+        222,
+        221,
+        221,
+        221,
+        221,
+        221,
+        221
+      ],
+      "servers": 10
+    },
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 7244948,
+      "catalog_tools": 10000,
+      "index_build_us": {
+        "max": 452679.95300000004,
+        "min": 432637.72000000003,
+        "p50": 448827.346,
+        "p95": 452679.95300000004,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": 2,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 7941.893,
+            "min": 5171.955,
+            "p50": 5385.219,
+            "p95": 6254.491,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 48.03829762715479,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 45.789304674554174,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 208
+        },
+        {
+          "expected_operation_rank_at_10": 4,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 7008.856,
+            "min": 5352.75,
+            "p50": 5495.992,
+            "p95": 6007.818,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 38.33405703192838,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 24.45439929806453,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 16.209927322343447,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 12.239076530773005,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 7.924835105467126,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_001",
+              "score": 4.778367314725514,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_002",
+              "score": 4.778367314725514,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_003",
+              "score": 4.778367314725514,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_004",
+              "score": 4.778367314725514,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__compare_billing_record_005",
+              "score": 4.778367314725514,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1130
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 16483.75,
+            "min": 12179.887999999999,
+            "p50": 12925.228000000001,
+            "p95": 15078.446,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__compare_analytics_record_001",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_002",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_003",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_004",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_005",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_006",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_007",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_008",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_009",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__compare_analytics_record_010",
+              "score": 0.8630462173553426,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 1211
+        }
+      ],
+      "server_tool_counts": [
+        10000
+      ],
+      "servers": 1
+    },
+    {
+      "build_iterations": 5,
+      "catalog_serialized_bytes": 6624424,
+      "catalog_tools": 10000,
+      "index_build_us": {
+        "max": 500228.81100000005,
+        "min": 461734.469,
+        "p50": 489766.891,
+        "p95": 500228.81100000005,
+        "unit": "microseconds"
+      },
+      "queries": [
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "ticket owner linked incident",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 7570.246,
+            "min": 5351.09,
+            "p50": 5913.339999999999,
+            "p95": 6535.899,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 39.19762857161269,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog2__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog3__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog4__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog5__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog6__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog7__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog8__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog9__get_ticket",
+              "score": 37.36230317810664,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1014
+        },
+        {
+          "expected_operation_rank_at_10": 4,
+          "expected_server_rank_at_10": null,
+          "expected_tool": "mcp_telemetry__list_deployments",
+          "matching_servers": [],
+          "operation_top1_hit": false,
+          "query": "failed billing-api staging deployment rollback",
+          "search_iterations": 50,
+          "search_strategy": "operations",
+          "search_us": {
+            "max": 7081.344,
+            "min": 5369.126,
+            "p50": 5790.3679999999995,
+            "p95": 7001.517,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": false,
+          "top10": [
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 38.33206518245302,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 24.453227035647895,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 16.209618805176678,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 12.238386363910204,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 7.924131281623754,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_001",
+              "score": 4.768985802659144,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_002",
+              "score": 4.768985802659144,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_003",
+              "score": 4.768985802659144,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_004",
+              "score": 4.768985802659144,
+              "server_match": false,
+              "tool_match": true
+            },
+            {
+              "name": "mcp_catalog1__compare_billing_record_005",
+              "score": 4.768985802659144,
+              "server_match": false,
+              "tool_match": true
+            }
+          ],
+          "top10_result_bytes": 1126
+        },
+        {
+          "expected_operation_rank_at_10": null,
+          "expected_server_rank_at_10": 1,
+          "expected_tool": "mcp_telemetry__get_ticket",
+          "matching_servers": [
+            "telemetry"
+          ],
+          "operation_top1_hit": false,
+          "query": "geothermal drilling telemetry OPS-8421",
+          "search_iterations": 50,
+          "search_strategy": "source_fallback",
+          "search_us": {
+            "max": 12766.448,
+            "min": 10338.454,
+            "p50": 11036.834,
+            "p95": 12031.894,
+            "unit": "microseconds"
+          },
+          "server_top1_hit": true,
+          "top10": [
+            {
+              "name": "mcp_telemetry__get_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_incident",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__get_ticket",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__list_deployments",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__rollback_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_logs",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__search_tickets",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            },
+            {
+              "name": "mcp_telemetry__verify_deployment",
+              "score": 5.977290494070618,
+              "server_match": true,
+              "tool_match": false
+            }
+          ],
+          "top10_result_bytes": 850
+        }
+      ],
+      "server_tool_counts": [
+        8,
+        1111,
+        1111,
+        1110,
+        1110,
+        1110,
+        1110,
+        1110,
+        1110,
+        1110
+      ],
+      "servers": 10
+    }
+  ],
+  "method": "ToolSearchIndex::new and production bounded-search strategy: search_operations first, then search fallback only when there are no operation matches; populated with MCP-shaped BuiltinTool definitions",
+  "parameters": {
+    "build_iterations": 5,
+    "catalog_sizes": [
+      50,
+      600,
+      2000,
+      10000
+    ],
+    "result_limit": 10,
+    "search_iterations_per_query": 50,
+    "server_counts": [
+      1,
+      10
+    ]
+  },
+  "schema_version": 1,
+  "synthetic_only": true,
+  "timestamp_unix_ms": 1792789686490,
+  "title": "Synthetic MCP catalog stress using the production ToolSearchIndex"
+}

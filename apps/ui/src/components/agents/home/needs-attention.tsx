@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import {
@@ -37,6 +38,7 @@ export function NeedsAttention({
   items: AttentionItem[];
   canManage: boolean;
 }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   if (items.length === 0) return null;
 
@@ -45,10 +47,10 @@ export function NeedsAttention({
 
   return (
     <section
-      aria-label="Needs attention"
+      aria-label={ui("Needs attention")}
       className={cn(
-        "border border-l-4 bg-card",
-        hasError ? "border-l-destructive" : "border-l-warning",
+        "border",
+        hasError ? "border-destructive/40 bg-destructive/5" : "border-warning/40 bg-warning/5",
       )}
     >
       <button
@@ -57,16 +59,21 @@ export function NeedsAttention({
         aria-expanded={open}
         className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left"
       >
-        <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+        <TriangleAlert
+          className={cn("size-4 shrink-0", hasError ? "text-destructive" : "text-warning")}
+          aria-hidden="true"
+        />
         <span className="shrink-0 text-sm font-semibold">
-          {items.length === 1 ? "1 agent setting needs" : `${items.length} agent settings need`}{" "}
-          attention
+          {items.length === 1
+            ? ui("1 agent setting needs")
+            : ui("{value0} agent settings need", { value0: items.length })}{" "}
+          {ui("attention")}
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
           {agentNames.join(", ")}
         </span>
         <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-muted-foreground">
-          {open ? "Hide" : "Show"}
+          {open ? ui("Hide") : ui("Show")}
           <ChevronDown
             className={cn("size-3.5 transition-transform", open && "rotate-180")}
             aria-hidden="true"
@@ -117,6 +124,7 @@ function AttentionRow({ item, canManage }: { item: AttentionItem; canManage: boo
 }
 
 function AttentionActions({ item }: { item: AttentionItem }) {
+  const ui = useUiTranslations();
   const check = useHealthIssueAction("check");
   const snooze = useHealthIssueAction("snooze");
   const publish = usePublishAgentChannel(item.agentId);
@@ -130,7 +138,7 @@ function AttentionActions({ item }: { item: AttentionItem }) {
       return (
         <div className="flex shrink-0 flex-wrap gap-2">
           <Link href={`/agents/${item.agentId}?mode=edit`} className={linkClass}>
-            Change model
+            {ui("Change model")}
           </Link>
         </div>
       );
@@ -146,7 +154,7 @@ function AttentionActions({ item }: { item: AttentionItem }) {
                 disabled={check.isPending}
                 onClick={() => check.mutate(item.healthIssueId!)}
               >
-                Check again
+                {ui("Check again")}
               </Button>
               <Button
                 variant="outline"
@@ -154,12 +162,12 @@ function AttentionActions({ item }: { item: AttentionItem }) {
                 disabled={snooze.isPending}
                 onClick={() => snooze.mutate(item.healthIssueId!)}
               >
-                Remind me tomorrow
+                {ui("Remind me tomorrow")}
               </Button>
             </>
           )}
           <Link href={channelHref} className={linkClass}>
-            Fix channel
+            {ui("Fix channel")}
           </Link>
         </div>
       );
@@ -170,7 +178,7 @@ function AttentionActions({ item }: { item: AttentionItem }) {
             href={templateSetupPath(item.agentId, item.exampleName ?? "")}
             className={linkClass}
           >
-            Finish setup
+            {ui("Finish setup")}
           </Link>
         </div>
       );
@@ -183,10 +191,10 @@ function AttentionActions({ item }: { item: AttentionItem }) {
             disabled={publish.isPending || !item.channelId}
             onClick={() => publish.mutate({ channelId: item.channelId!, publish: false })}
           >
-            Unpublish
+            {ui("Unpublish")}
           </Button>
           <Link href={channelHref} className={linkClass}>
-            Require sign-in
+            {ui("Require sign-in")}
           </Link>
         </div>
       );

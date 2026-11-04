@@ -7,8 +7,7 @@ RUN cargo build --release --locked -p serve-example-celld
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=build /src/target/release/celld-agent /celld-agent
-# The cell's `defaultPort`. State lives in /tmp/serve-celld, the same path in
-# every container of this image, which a restore relies on.
+# Replaceable execution host; canonical sessions live in per-session DOs.
 ENV PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["/celld-agent"]

@@ -27,6 +27,8 @@ pub struct McpServerInfo {
     pub protocol_mode: McpProtocolMode,
     /// Which elicitation modes the operator allows this server to use.
     pub elicitation_policy: McpElicitationPolicy,
+    /// Configured `tools/call` timeout in milliseconds; `None` is the default.
+    pub tool_timeout_ms: Option<u64>,
     pub oauth_provider_id: Option<String>,
     pub acts_as: McpServerActsAs,
     /// Whether a missing grant may pause the turn with an in-chat card.
@@ -56,6 +58,7 @@ impl McpServerInfo {
             elicitation_policy: McpElicitationPolicy::from(
                 proto_server.elicitation_policy.as_str(),
             ),
+            tool_timeout_ms: proto_server.tool_timeout_ms,
             oauth_provider_id: proto_server.oauth_provider_id,
             acts_as: McpServerActsAs::from(proto_server.acts_as.as_str()),
             // An older control plane sends nothing, which reads as `ask`.

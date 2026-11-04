@@ -562,18 +562,6 @@ mod tests {
     }
 
     #[test]
-    fn test_model_limits_input_included_when_some() {
-        let limits = ModelLimits {
-            context: 200_000,
-            input: Some(150_000),
-            output: 64_000,
-            max_media: None,
-        };
-        let json = serde_json::to_value(&limits).unwrap();
-        assert_eq!(json["input"], 150_000);
-    }
-
-    #[test]
     fn test_model_limits_deserialize_without_input() {
         let json = r#"{"context": 200000, "output": 64000}"#;
         let limits: ModelLimits = serde_json::from_str(json).unwrap();

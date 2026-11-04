@@ -159,7 +159,8 @@ async fn pre_effect_error_is_typed_and_agent_start_retries() {
         .build()
         .expect("valid agent");
 
-    let session = InMemoryEngine::new().create(agent.clone());
+    let engine = InMemoryEngine::new();
+    let session = engine.create(agent.clone());
     let error = session.run("first").await.expect_err("start hook fails");
     let RunError::Hook(failure) = error else {
         panic!("expected typed hook failure")
@@ -168,7 +169,21 @@ async fn pre_effect_error_is_typed_and_agent_start_retries() {
     assert_eq!(failure.handler_index, 0);
     assert_eq!(failure.message, "dependency unavailable");
 
-    let turn = session.run("retry").await.expect("start chain retries");
+    let turn =
+        match tokio::time::timeout(std::time::Duration::from_secs(3), session.run("retry")).await {
+            Ok(result) => result.expect("start chain retries"),
+            Err(_) => panic!(
+                "retry stranded: {:?}; events {:?}",
+                engine.session_status(session.session_id()).await.unwrap(),
+                session
+                    .events_after(0)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .map(|event| event.event_type())
+                    .collect::<Vec<_>>()
+            ),
+        };
     assert!(turn.success);
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
@@ -201,14 +216,30 @@ async fn turn_start_error_prevents_the_turn_without_restarting_the_agent() {
         .build()
         .expect("valid agent");
 
-    let session = InMemoryEngine::new().create(agent.clone());
+    let engine = InMemoryEngine::new();
+    let session = engine.create(agent.clone());
     let error = session.run("first").await.expect_err("turn hook fails");
     let RunError::Hook(failure) = error else {
         panic!("expected typed hook failure")
     };
     assert_eq!(failure.point, HookPoint::TurnStart);
 
-    session.run("retry").await.expect("turn hook retries");
+    match tokio::time::timeout(std::time::Duration::from_secs(3), session.run("retry")).await {
+        Ok(result) => {
+            result.expect("turn hook retries");
+        }
+        Err(_) => panic!(
+            "retry stranded: {:?}; events {:?}",
+            engine.session_status(session.session_id()).await.unwrap(),
+            session
+                .events_after(0)
+                .await
+                .unwrap()
+                .iter()
+                .map(|event| event.event_type())
+                .collect::<Vec<_>>()
+        ),
+    };
     assert_eq!(starts.load(Ordering::SeqCst), 1);
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }

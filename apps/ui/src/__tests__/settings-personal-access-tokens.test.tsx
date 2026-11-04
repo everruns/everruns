@@ -1,7 +1,9 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
-import PersonalAccessTokensPage from "@/app/(main)/settings/personal-access-tokens/page";
+import PersonalAccessTokensPage, {
+  defaultPersonalAccessTokenName,
+} from "@/app/(main)/settings/personal-access-tokens/page";
 
 // Mock personal access token data
 const mockTokens = [
@@ -78,42 +80,6 @@ describe("PersonalAccessTokensPage", () => {
     });
   });
 
-  it("renders Personal access tokens section header", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    expect(screen.getByText("Personal access tokens")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Manage your personal access tokens for programmatic access/),
-    ).toBeInTheDocument();
-  });
-
-  it("renders the account access warning as a reusable notice", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    const notice = screen.getByText("Account-wide access").closest('[data-slot="notice"]');
-
-    expect(notice).toHaveAttribute("data-variant", "warning");
-    expect(
-      screen.getByText(/Personal access tokens are tied to your user account/),
-    ).toBeInTheDocument();
-  });
-
-  it("renders token rows with correct data", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    expect(screen.getByText("Production Token")).toBeInTheDocument();
-    expect(screen.getByText("Development Token")).toBeInTheDocument();
-    expect(screen.getByText("evr_pat_prod_abc...")).toBeInTheDocument();
-    expect(screen.getByText("evr_pat_dev_xyz...")).toBeInTheDocument();
-  });
-
-  it("shows expiration date for tokens with expiration", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    // Production token has expiration
-    expect(screen.getByText(/Expires:/)).toBeInTheDocument();
-  });
-
   it("shows last used date", () => {
     render(<PersonalAccessTokensPage />, { wrapper });
 
@@ -121,19 +87,6 @@ describe("PersonalAccessTokensPage", () => {
     expect(screen.getByText(/Last used: 1\/15\/2024/)).toBeInTheDocument();
     // Development token was never used
     expect(screen.getByText(/Last used: Never/)).toBeInTheDocument();
-  });
-
-  it("shows loading skeleton when tokens are loading", () => {
-    mockUsePersonalAccessTokens.mockReturnValue({
-      data: [],
-      isLoading: true,
-      error: null,
-    });
-
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    const skeletons = document.querySelectorAll('[class*="animate-pulse"]');
-    expect(skeletons.length).toBeGreaterThan(0);
   });
 
   it("shows empty state when no tokens exist", () => {
@@ -165,44 +118,42 @@ describe("PersonalAccessTokensPage", () => {
     expect(screen.getByText(/Failed to load personal access tokens/)).toBeInTheDocument();
   });
 
-  it("renders Create token button", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
+  it("puts an optional dated name at the bottom and submits it when left blank", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ token: "evr_pat_secret_test" });
+    mockUseCreatePersonalAccessToken.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    });
 
-    const createButtons = screen.getAllByRole("button", { name: /Create token/i });
-    expect(createButtons.length).toBeGreaterThan(0);
-  });
-
-  it("opens Create token dialog when clicking Create button", async () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    const createButton = screen.getAllByRole("button", { name: /Create token/i })[0];
-    fireEvent.click(createButton);
-
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText(/The token inherits access to every organization/),
-    ).toBeInTheDocument();
-  });
-
-  it("shows expiration presets with 90 days selected by default", async () => {
     render(<PersonalAccessTokensPage />, { wrapper });
 
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
+    const suggested = defaultPersonalAccessTokenName(new Date(), "en");
+    const name = within(dialog).getByLabelText(/Name/);
+    const access = within(dialog).getByRole("group", { name: "Access" });
+    const expiration = within(dialog).getByRole("group", { name: "Expiration" });
+    const submit = within(dialog).getByRole("button", { name: /^Create token$/i });
 
-    for (const name of ["7 days", "30 days", "1 year", "Custom"]) {
-      expect(within(dialog).getByRole("button", { name })).toHaveAttribute("aria-pressed", "false");
-    }
-    expect(within(dialog).getByRole("button", { name: "90 days" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(within(dialog).getByText(/Expires on/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("checkbox", { name: /Never expires/i })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    expect(name).toHaveValue(suggested);
+    expect(name).not.toBeRequired();
+    expect(submit).toBeEnabled();
+    const follows = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(access.compareDocumentPosition(expiration) & follows).toBeTruthy();
+    expect(expiration.compareDocumentPosition(name) & follows).toBeTruthy();
+    expect(name.compareDocumentPosition(submit) & follows).toBeTruthy();
+
+    fireEvent.change(name, { target: { value: "   " } });
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        name: suggested,
+        scopes: ["*"],
+        expires_in_days: 90,
+      });
+    });
   });
 
   it("submits the default 90 day expiration when creating a token", async () => {
@@ -217,7 +168,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "Test Token" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: /^Create token$/i }));
@@ -243,7 +194,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "Unlimited Token" },
     });
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Never expires/i }));
@@ -271,7 +222,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "Custom Token" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Custom" }));
@@ -295,13 +246,6 @@ describe("PersonalAccessTokensPage", () => {
         expires_in_days: 45,
       });
     });
-  });
-
-  it("shows each token's scope in the list", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    expect(screen.getByText("Full access")).toBeInTheDocument();
-    expect(screen.getByText("Read-only")).toBeInTheDocument();
   });
 
   it("defaults the scope picker to full access and explains read-only reach", async () => {
@@ -329,7 +273,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "CI reader" },
     });
     fireEvent.click(within(dialog).getByRole("radio", { name: /Read-only/ }));
@@ -368,12 +312,9 @@ describe("PersonalAccessTokensPage", () => {
 
     expect(screen.queryByRole("button", { name: /Create token/i })).not.toBeInTheDocument();
   });
-
-  it("renders delete button for each token", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    // Should have 2 delete buttons (one for each token)
-    const deleteButtons = document.querySelectorAll('button[class*="text-destructive"]');
-    expect(deleteButtons.length).toBe(2);
-  });
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

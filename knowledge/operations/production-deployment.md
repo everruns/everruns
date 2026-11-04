@@ -70,6 +70,21 @@ See:
 - [`knowledge/operations/observability.md`](observability.md)
 - [`knowledge/security/threat-model.md`](../security/threat-model.md)
 
+### NATS replay-buffer recovery
+
+The JetStream event stream is a bounded, disposable replay buffer, not the durable
+session history. A NATS restart can remove that memory stream even when its data
+volume survives. API instances restore a missing stream on publish or subscription;
+clients reconnect their SSE stream and replay durable history from PostgreSQL.
+Already missed deltas cannot be reconstructed, but completed events retain full output.
+
+A publish timeout does not establish that a message was rejected. Recovery retries
+only a definitive missing-stream rejection, once, and never deletes a stream or
+rewrites an existing subject policy. Continuing errors require inspection of the
+broker and subject configuration; they must not be hidden by an API restart or by
+writing token deltas to PostgreSQL. Real-broker regressions live in
+[`event_delivery`](../../crates/server/src/live_updates/event_delivery/mod.rs).
+
 ### PostgreSQL Listener Connectivity
 
 Production deployments may use a pooled `DATABASE_URL` for ordinary query traffic, but any server path that relies on PostgreSQL `LISTEN/NOTIFY` must use a direct session-scoped connection.
@@ -179,6 +194,26 @@ For production operations, use the runbooks rather than this spec:
 - encryption key rotation: [`docs/sre/runbooks/encryption-key-rotation.md`](../../docs/sre/runbooks/encryption-key-rotation.md)
 - admin tasks and migrations: [`docs/sre/admin-container.md`](../../docs/sre/admin-container.md)
 
+### Rolling restarts
+
+A rolling deploy must not cut running work. On SIGTERM the server keeps
+serving for `SERVER_SHUTDOWN_DELAY_SECS` (default 5) while proxies drop it,
+then stops accepting, ends SSE streams with a `disconnecting` event (reason
+`shutdown`) so clients resume on another replica, and lets in-flight requests
+finish for up to `SERVER_SHUTDOWN_GRACE_SECS` (default 20). Its worker gRPC
+listener stops last, after at most 5 s more; it ends workers' task
+notification subscriptions first, which never end on their own and would
+otherwise hold it for the whole 5 s. Workers poll until they resubscribe and
+re-resolve the server replica list every 10 s. Workers hand running turns off between steps
+([worker drain](durable-execution-engine.md#worker-drain-and-shutdown)).
+Set the orchestrator's kill timeout above the sum: for the server above
+delay + grace + 5 s, for workers above `WORKER_SHUTDOWN_GRACE_SECS`; the
+Helm chart's defaults do. Design
+and the incident behind it: [`shutdown.rs`](../../crates/server/src/shutdown.rs).
+
+A database outage during authentication answers 503 with `Retry-After`, not
+401, so clients retry instead of discarding valid credentials.
+
 Release and rollout references:
 - [`knowledge/project/release-process.md`](../project/release-process.md)
 - [`knowledge/project/shipping.md`](../project/shipping.md)
@@ -188,7 +223,7 @@ Release and rollout references:
 
 This spec does not define:
 
-- exact Kubernetes manifests
+- exact Kubernetes manifests (the Helm chart and why there is no operator are in [Local Setup and Kubernetes](local-setup.md))
 - exact Docker Compose commands
 - cloud-vendor-specific load balancer configuration
 - step-by-step migration or incident procedures

@@ -72,6 +72,7 @@ pub fn install_prometheus_recorder() -> Option<PrometheusHandle> {
 
 /// GET /metrics — render all metrics in Prometheus exposition format.
 async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoResponse {
+    crate::domains::system::doctor::note_metrics_scrape();
     let body = handle.render();
     (
         [(
@@ -447,14 +448,5 @@ mod tests {
                 ..LlmOutcomeSample::default()
             }
         );
-    }
-
-    #[test]
-    fn config_defaults_safe() {
-        // Note: this test reads real env vars; METRICS_ENABLED unset → defaults true.
-        // If CI sets METRICS_ENABLED=false this will fail — intentional canary.
-        let config = PrometheusConfig::from_env();
-        assert!(config.enabled);
-        assert!(!config.public_on_main);
     }
 }

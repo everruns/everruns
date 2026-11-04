@@ -15,10 +15,9 @@ import {
   previewAgent,
   listAgentCredentials,
   createAgentCredentialBinding,
-  setAgentCredentialValue,
   deleteAgentCredentialBinding,
-  suspendAgentExposures,
-  resumeAgentExposures,
+  pauseAgent,
+  resumeAgent,
   getAgentMcpAttachments,
   revokeAgentMcpConnection,
   uploadAgentAvatar,
@@ -94,15 +93,6 @@ export function useCreateAgentCredentialBinding(agentId: string) {
   return useMutation({
     mutationFn: (request: CreateAgentCredentialBindingRequest) =>
       createAgentCredentialBinding(agentId, request),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent", agentId, "credentials"] }),
-  });
-}
-
-export function useSetAgentCredentialValue(agentId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ bindingId, value }: { bindingId: string; value: string }) =>
-      setAgentCredentialValue(agentId, bindingId, value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent", agentId, "credentials"] }),
   });
 }
@@ -227,12 +217,12 @@ function useExposureMutation(mutationFn: (agentId: string) => Promise<unknown>) 
   });
 }
 
-export function useSuspendAgentExposures() {
-  return useExposureMutation(suspendAgentExposures);
+export function usePauseAgent() {
+  return useExposureMutation(pauseAgent);
 }
 
-export function useResumeAgentExposures() {
-  return useExposureMutation(resumeAgentExposures);
+export function useResumeAgent() {
+  return useExposureMutation(resumeAgent);
 }
 
 /** Upload or remove an agent's avatar; refreshes the agent everywhere it shows. */

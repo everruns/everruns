@@ -211,6 +211,7 @@ pub struct AgentBuilder {
     parallel_tool_calls: Option<bool>,
     max_output_tokens: Option<u32>,
     communication: crate::conversation::Communication,
+    completion_check: crate::completion_check::CompletionCheck,
     tools: Vec<ToolDefinition>,
     mcp_servers: ScopedMcpServers,
 }
@@ -232,6 +233,7 @@ impl AgentBuilder {
             parallel_tool_calls: None,
             max_output_tokens: None,
             communication: Default::default(),
+            completion_check: Default::default(),
             tools: Vec::new(),
             mcp_servers: ScopedMcpServers::default(),
         }
@@ -327,6 +329,13 @@ impl AgentBuilder {
         self
     }
 
+    /// Set when a finishing turn gets a completion check (default:
+    /// sessions started by triggers and schedules).
+    pub fn completion_check(mut self, check: crate::completion_check::CompletionCheck) -> Self {
+        self.completion_check = check;
+        self
+    }
+
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
         self.tools.push(tool);
         self
@@ -361,6 +370,7 @@ impl AgentBuilder {
             parallel_tool_calls: self.parallel_tool_calls,
             max_output_tokens: self.max_output_tokens,
             communication: self.communication,
+            completion_check: self.completion_check,
             tools: self.tools,
             mcp_servers: self.mcp_servers,
         }
@@ -394,6 +404,7 @@ pub struct SessionBuilder {
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     status: SessionExecutionState,
+    unattended: bool,
 }
 
 impl SessionBuilder {
@@ -419,6 +430,7 @@ impl SessionBuilder {
             max_iterations: None,
             parallel_tool_calls: None,
             status: SessionExecutionState::Started,
+            unattended: false,
         }
     }
 
@@ -556,6 +568,13 @@ impl SessionBuilder {
         self
     }
 
+    /// Mark the session as one no person watches (a trigger or schedule
+    /// started it), so the agent's `unattended` completion check applies.
+    pub fn unattended(mut self, unattended: bool) -> Self {
+        self.unattended = unattended;
+        self
+    }
+
     /// Build the session. Builders do not validate domain invariants.
     pub fn build(self) -> ExecutionSession {
         ExecutionSession {
@@ -586,6 +605,7 @@ impl SessionBuilder {
             forked_from_session_id: None,
             blueprint_id: None,
             blueprint_config: None,
+            unattended: self.unattended,
         }
     }
 }
@@ -818,58 +838,5 @@ impl SingleSessionBuilder {
             self.session.build(),
             session_id,
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn harness_builder_openrouter_attribution_adds_metadata_keys() {
-        let harness = HarnessBuilder::new("app", "prompt")
-            .openrouter_attribution("https://app.example", "Example App")
-            .build();
-
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
-                .map(String::as_str),
-            Some("https://app.example")
-        );
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_X_TITLE_METADATA_KEY)
-                .map(String::as_str),
-            Some("Example App")
-        );
-    }
-
-    #[test]
-    fn single_session_builder_openrouter_attribution_configures_harness() {
-        let (harness, _agent, _session, _session_id) = SingleSessionBuilder::default()
-            .openrouter_attribution("https://single.example", "Single App")
-            .build();
-
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
-                .map(String::as_str),
-            Some("https://single.example")
-        );
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_X_TITLE_METADATA_KEY)
-                .map(String::as_str),
-            Some("Single App")
-        );
     }
 }

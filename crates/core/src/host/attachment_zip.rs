@@ -56,7 +56,10 @@ pub fn unpack_zip(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, String> {
         if entry.encrypted() {
             return Err("encrypted zips are not supported".to_string());
         }
-        let Some(path) = entry_path(entry.name())? else {
+        let name = entry
+            .name()
+            .map_err(|e| format!("cannot read an entry name: {e}"))?;
+        let Some(path) = entry_path(&name)? else {
             continue;
         };
         if entry.is_dir()

@@ -6,6 +6,7 @@ pub mod pact_delegation;
 pub mod poppy;
 pub mod slack_channel;
 pub mod slack_provisioning;
+pub mod work_chat;
 
 #[cfg(test)]
 mod wire_names_tests;
@@ -16,9 +17,9 @@ use uuid::Uuid;
 
 #[cfg(test)]
 use crate::domains::apps::record::{App, AppStatus};
-use everruns_contracts::typed_id::AgentChannelId;
+use everruns_contracts::typed_id::{AgentChannelId, AgentId};
 #[cfg(test)]
-use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId};
+use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
 pub use everruns_core::channel::SessionBinding;
 use exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 
@@ -104,6 +105,9 @@ pub enum ChannelType {
     /// Personal Agent Protocol front door: personal agents find the company,
     /// start sessions and talk to the agent (`poppy::PoppyChannelConfig`).
     Poppy,
+    /// Authenticated hosted work experience.
+    #[serde(rename = "work_chat")]
+    WorkChat,
 }
 
 impl ChannelType {
@@ -133,7 +137,8 @@ impl ChannelType {
             | ChannelType::Fcp
             | ChannelType::PublicChat
             | ChannelType::Voice
-            | ChannelType::Poppy => &[],
+            | ChannelType::Poppy
+            | ChannelType::WorkChat => &[],
         }
     }
 
@@ -156,6 +161,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Voice => write!(f, "voice"),
             ChannelType::Api => write!(f, "api"),
             ChannelType::Poppy => write!(f, "poppy"),
+            ChannelType::WorkChat => write!(f, "work_chat"),
         }
     }
 }
@@ -173,6 +179,7 @@ impl ChannelType {
             "voice" => Some(ChannelType::Voice),
             "api" => Some(ChannelType::Api),
             "poppy" => Some(ChannelType::Poppy),
+            "work_chat" => Some(ChannelType::WorkChat),
             _ => None,
         }
     }
@@ -189,6 +196,12 @@ pub struct AgentChannel {
     /// Internal UUID primary key. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
+    /// The agent that owns this channel. Also what lets responses carry a
+    /// `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+    /// so a caller can hand out a direct link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a000070008000000000000001")]
+    pub agent_id: Option<AgentId>,
     /// Channel type (e.g. slack).
     pub channel_type: ChannelType,
     /// Channel-specific configuration (validated per channel type).

@@ -77,18 +77,23 @@ pub(crate) fn log_database_failure(
     rendered: &str,
 ) -> DatabaseFailureKind {
     let kind = DatabaseFailureKind::classify(rendered);
-    match kind.shared_message() {
-        Some(shared) => tracing::error!(
+    let message = kind.shared_message().unwrap_or(fallback);
+    // EVE-1328: bounded per (subsystem, kind); repeats are still logged.
+    match crate::report_throttle::REPEATED_FAILURES.admit(subsystem, kind.as_str()) {
+        Some(suppressed) => tracing::error!(
             subsystem,
             db_failure = kind.as_str(),
             error = %rendered,
-            "{shared}"
+            suppressed_since_last_report = suppressed,
+            report_interval_seconds = crate::report_throttle::REPEATED_FAILURES.interval().as_secs(),
+            "{message}"
         ),
-        None => tracing::error!(
+        None => tracing::info!(
             subsystem,
             db_failure = kind.as_str(),
             error = %rendered,
-            "{fallback}"
+            report_suppressed = true,
+            "{message}"
         ),
     }
     kind
@@ -112,9 +117,10 @@ pub(crate) fn store_failure(
     StoreError::Database(rendered)
 }
 
+/// Captures what a `tracing` call emitted, so tests can assert a failure was
+/// logged through [`log_database_failure`] rather than an ad-hoc `error!`.
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod capture {
     use std::sync::{Arc, Mutex};
     use tracing_subscriber::Layer;
     use tracing_subscriber::layer::{Context, SubscriberExt};
@@ -122,10 +128,11 @@ mod tests {
 
     /// What a call actually emitted: the rendered message plus its fields.
     #[derive(Debug, Clone, PartialEq, Eq)]
-    struct Emitted {
-        message: String,
-        subsystem: String,
-        db_failure: String,
+    pub(crate) struct Emitted {
+        pub(crate) message: String,
+        pub(crate) subsystem: String,
+        pub(crate) db_failure: String,
+        pub(crate) level: tracing::Level,
     }
 
     #[derive(Default)]
@@ -156,11 +163,13 @@ mod tests {
                 message: get("message"),
                 subsystem: get("subsystem"),
                 db_failure: get("db_failure"),
+                level: *event.metadata().level(),
             });
         }
     }
 
-    fn capture(emit: impl FnOnce()) -> Vec<Emitted> {
+    /// Run `emit` with a capturing subscriber installed as the thread default.
+    pub(crate) fn capture(emit: impl FnOnce()) -> Vec<Emitted> {
         let events = Arc::new(Mutex::new(Vec::new()));
         let subscriber = Registry::default().with(CaptureLayer(Arc::clone(&events)));
         let guard = tracing::subscriber::set_default(subscriber);
@@ -168,6 +177,12 @@ mod tests {
         drop(guard);
         events.lock().unwrap().clone()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capture::capture;
+    use super::*;
 
     #[test]
     fn every_starved_subsystem_reports_one_incident_under_one_message() {
@@ -201,6 +216,36 @@ mod tests {
             emitted
                 .iter()
                 .all(|e| e.db_failure == "database.pool_exhausted"),
+            "{emitted:#?}"
+        );
+    }
+
+    #[test]
+    fn a_sustained_outage_reports_a_bounded_number_of_errors() {
+        // EVE-1328: a saturated pool fails every tick of every poller. The
+        // first failure is reported at once; the rest stay in the logs below
+        // the level the embedder turns into reported issues.
+        let emitted = capture(|| {
+            for _ in 0..100 {
+                store_failure(
+                    "durable.test.sustained_outage",
+                    "Failed to claim tasks",
+                    sqlx::Error::PoolTimedOut,
+                );
+            }
+        });
+
+        assert_eq!(emitted.len(), 100, "every occurrence is still logged");
+        let errors = emitted
+            .iter()
+            .filter(|e| e.level == tracing::Level::ERROR)
+            .count();
+        assert_eq!(errors, 1, "{emitted:#?}");
+        assert_eq!(emitted[0].level, tracing::Level::ERROR);
+        assert!(
+            emitted
+                .iter()
+                .all(|e| e.message == "database connection pool exhausted"),
             "{emitted:#?}"
         );
     }

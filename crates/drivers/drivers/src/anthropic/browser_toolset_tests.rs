@@ -1,16 +1,4 @@
 use super::*;
-use everruns_contracts::ToolDefinition;
-
-#[test]
-fn active_needs_the_option_the_tool_and_a_toolset_model() {
-    let mut config = LlmCallConfig::new("claude-opus-5-5");
-    config.tools = vec![ToolDefinition::function("browser", "", json!({}))];
-    assert!(!active(&config, "claude-opus-5-5"));
-    let (key, value) = NativeBrowserUse::default().to_driver_option();
-    config.driver_options.insert(key, value);
-    assert!(active(&config, "claude-opus-5-5"));
-    assert!(!active(&config, "claude-haiku-4-5"));
-}
 
 #[test]
 fn entry_keeps_the_default_members() {

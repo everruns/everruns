@@ -39,6 +39,8 @@ pub async fn build_organization_response(
         id: row.public_id,
         name: row.name,
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
+        small_model_id: settings.as_ref().and_then(|s| s.small_model_id),
+        chat_model_id: settings.as_ref().and_then(|s| s.chat_model_id),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings
@@ -51,6 +53,8 @@ pub async fn build_organization_response(
             .unwrap_or_default(),
         agentid_agents_per_owner: db.agentid_agents_per_owner_setting(org_id).await?,
         web_search_defaults: db.org_web_search_defaults(org_id).await?,
+        background_limits: db.org_background_limits(org_id).await?,
+        self_healing: crate::domains::health_issues::self_healing::policy(db, org_id).await,
         created_at: row.created_at,
         updated_at: row.updated_at,
         onboarding_completed_at: row.onboarding_completed_at,

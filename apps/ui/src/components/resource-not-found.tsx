@@ -25,16 +25,14 @@ export function ResourceNotFound({
     <div className={cn("flex min-h-[calc(100vh-2rem)] items-center justify-center p-6", className)}>
       <section
         aria-labelledby="resource-not-found-title"
-        className="w-full max-w-xl border border-l-2 border-border border-l-accent bg-background/95 p-6 shadow-sm"
+        className="w-full max-w-xl border border-border bg-card p-6"
       >
         <div className="flex items-start gap-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-muted text-muted-foreground">
             <SearchX className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              404 / Resource not found
-            </p>
+            <p className="text-xs font-semibold text-muted-foreground">404 / Resource not found</p>
             <h1
               id="resource-not-found-title"
               className="mt-2 text-2xl font-semibold tracking-tight"

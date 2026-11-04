@@ -2,9 +2,7 @@
 
 use std::time::Duration;
 
-use everruns::{
-    Agent, FunctionTool, LlmSimConfig, Model, SendDisposition, ToolCall, TurnStopReason,
-};
+use everruns::{Agent, FunctionTool, LlmSimConfig, Model, ToolCall, TurnStopReason};
 use serde_json::json;
 
 use crate::support::{Observed, agent_with, has_event, run_on};
@@ -93,31 +91,31 @@ async fn steering_joins_the_running_turn_and_a_later_send_starts_the_next() {
             // backend (PostgreSQL on CI) take the steer as initial input.
             wait_for_event(&session, "reason.started").await;
             let steered = session.send("and this").await.expect("steer");
-            let same_turn = steered.turn_id == first.turn_id;
             let first_turn = first.wait().await.expect("turn");
+            let first_assignment = first.assignment().await.unwrap().unwrap();
+            let steer_assignment = steered.assignment().await.unwrap().unwrap();
+            assert!(!first_assignment.steered);
+            assert!(steer_assignment.steered);
+            let same_turn = steer_assignment.turn_id == first_assignment.turn_id;
 
             let next = session.send("next").await.expect("send");
-            let new_turn = next.turn_id != first.turn_id;
             let next_turn = next.wait().await.expect("next turn");
+            let next_assignment = next.assignment().await.unwrap().unwrap();
+            assert!(!next_assignment.steered);
+            let new_turn = next_assignment.turn_id != first_assignment.turn_id;
             Observed::turns(vec![first_turn, next_turn])
-                .note(format!("first: {:?}", first.disposition))
-                .note(format!(
-                    "steered: {:?}, same turn: {same_turn}",
-                    steered.disposition
-                ))
-                .note(format!(
-                    "next: {:?}, new turn: {new_turn}",
-                    next.disposition
-                ))
+                .note("first: assigned")
+                .note(format!("steered: true, same turn: {same_turn}"))
+                .note(format!("next: assigned, new turn: {new_turn}"))
         },
     )
     .await;
     assert_eq!(
         outcome.notes,
         [
-            format!("first: {:?}", SendDisposition::Started),
-            format!("steered: {:?}, same turn: true", SendDisposition::Steered),
-            format!("next: {:?}, new turn: true", SendDisposition::Started),
+            "first: assigned",
+            "steered: true, same turn: true",
+            "next: assigned, new turn: true",
         ]
     );
     assert_eq!(

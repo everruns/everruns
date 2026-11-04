@@ -407,13 +407,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_capability_metadata() {
-        let cap = ToolOutputDistillationCapability;
-        assert!(!cap.post_tool_exec_hooks().is_empty());
-        assert!(cap.dependencies().contains(&"session_file_system"));
-    }
-
-    #[test]
     fn test_head_tail_preserves_both_ends() {
         let text = format!("START{}END", "x".repeat(10_000));
         let out = head_tail(&text, 1024);

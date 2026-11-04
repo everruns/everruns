@@ -6,6 +6,8 @@
 // changes the layout. One header row, no second row of tabs: "Source" is a
 // ghost sm toggle for the raw text, sized with Edit prompt.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,8 @@ export function AgentPromptPane({
   placeholder = "You are a helpful assistant...",
   compact = false,
 }: AgentPromptPaneProps) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const [showSource, setShowSource] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const focusOnEdit = useRef(false);
@@ -74,13 +78,14 @@ export function AgentPromptPane({
 
   return (
     <section
-      aria-label="Instructions"
+      aria-label={ui("Instructions")}
       className={cn("flex min-w-0 flex-col bg-background", className)}
     >
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5 sm:px-6">
-        <h2 className="text-sm font-medium">Instructions</h2>
+        <h2 className="text-sm font-medium">{ui("Instructions")}</h2>
         <span className="font-mono text-xs text-muted-foreground">
-          {words} {pluralize(words, "word")} · ~{formatTokens(tokens)} {pluralize(tokens, "token")}
+          {words} {pluralize(words, "word", undefined, displayLocale)} · ~{formatTokens(tokens)}{" "}
+          {pluralize(tokens, "token", undefined, displayLocale)}
         </span>
         {!editing && (
           <div className="ml-auto flex items-center gap-2">
@@ -91,12 +96,12 @@ export function AgentPromptPane({
               onClick={() => setShowSource((current) => !current)}
               aria-pressed={showSource}
             >
-              {showSource ? "Rendered" : "Source"}
+              {showSource ? ui("Rendered") : ui("Source")}
             </Button>
             {onEdit && (
               <Button variant="outline" size="sm" onClick={handleEdit}>
                 <Pencil className="size-4" />
-                Edit prompt
+                {ui("Edit prompt")}
               </Button>
             )}
           </div>
@@ -108,7 +113,7 @@ export function AgentPromptPane({
           <Textarea
             ref={textareaRef}
             id="system_prompt"
-            aria-label="Instructions"
+            aria-label={ui("Instructions")}
             aria-invalid={!!error}
             placeholder={placeholder}
             value={value}

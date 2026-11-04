@@ -55,7 +55,9 @@ pub struct AgentInfo {
     pub model: String,
     pub description: Option<String>,
     pub default: bool,
-    pub sub: bool,
+    /// Other agents of this app this one hands work to (`spawn_agent`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub members: Vec<String>,
     pub tools: Vec<String>,
     pub source: String,
     /// Portable file declaration, including channel intent.
@@ -143,14 +145,8 @@ impl Manifest {
                 if !inner.skills.is_empty() {
                     tools.extend(["list_skills".into(), "activate_skill".into()]);
                 }
-                if !agent.sub {
-                    tools.extend(
-                        inner
-                            .agents
-                            .iter()
-                            .filter(|a| a.sub)
-                            .map(|a| format!("ask_{}", a.name)),
-                    );
+                if !agent.spec.members.is_empty() {
+                    tools.push("spawn_agent".into());
                 }
                 AgentInfo {
                     name: agent.name.clone(),
@@ -161,7 +157,7 @@ impl Manifest {
                         .clone()
                         .or_else(|| (!agent.doc.is_empty()).then(|| agent.doc.to_string())),
                     default: app.default_agent().is_some_and(|d| d.name == agent.name),
-                    sub: agent.sub,
+                    members: agent.spec.members.clone(),
                     tools,
                     source: agent.source.clone(),
                     package: agent.spec.package.as_ref().map(|p| {
@@ -191,9 +187,10 @@ impl Manifest {
         }
         // Connections and channels name their secrets while being built.
         secrets.extend(
-            crate::connection::declared_secrets()
-                .into_iter()
-                .map(str::to_string),
+            inner
+                .declared_secrets
+                .iter()
+                .map(|name| (*name).to_string()),
         );
 
         let mut routes = vec![
@@ -206,6 +203,7 @@ impl Manifest {
             "POST /v1/sessions/{id}/question-answers".into(),
             "POST /v1/sessions/{id}/approvals/{tool_call_id}".into(),
             "GET /v1/agent".into(),
+            "GET /v1/doctor".into(),
             "GET /health".into(),
         ];
         routes.extend(
@@ -219,18 +217,17 @@ impl Manifest {
             inner
                 .agents
                 .iter()
-                .filter(|agent| !agent.sub)
                 .map(|agent| format!("POST {}", crate::ag_ui::route(&agent.name))),
         );
         #[cfg(feature = "a2a")]
-        for agent in inner.agents.iter().filter(|agent| !agent.sub) {
+        for agent in inner.agents.iter() {
             let route = crate::a2a::route(&agent.name);
             routes.push(format!("POST {route}"));
             routes.push(format!("GET {route}/.well-known/agent-card.json"));
         }
 
         #[cfg(feature = "voice")]
-        for agent in inner.agents.iter().filter(|agent| !agent.sub) {
+        for agent in inner.agents.iter() {
             let route = crate::voice::route(&agent.name);
             routes.push(format!("GET {route}"));
             routes.push(format!("POST {route}/calls"));
@@ -319,6 +316,45 @@ impl Manifest {
 /// a new build even when no code changed.
 pub(crate) fn build_id(app: &App) -> String {
     Manifest::of(app).build_id
+}
+
+// A manifest identifies declarations/assets, but cannot distinguish two tool
+// implementations with the same signature. Durable bindings also pin the
+// executable. Operators may supply an immutable artifact id via SERVE_BUILD_ID.
+pub(crate) fn execution_build_id(
+    app: &App,
+    assets: &std::collections::HashMap<String, String>,
+    instructions: &std::collections::HashMap<String, String>,
+) -> crate::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    static EXECUTABLE: std::sync::OnceLock<Result<[u8; 32], String>> = std::sync::OnceLock::new();
+    let executable = EXECUTABLE
+        .get_or_init(|| {
+            let mut file =
+                std::fs::File::open(std::env::current_exe().map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?;
+            let mut digest = Sha256::new();
+            let mut buffer = [0u8; 65536];
+            loop {
+                let count = file.read(&mut buffer).map_err(|error| error.to_string())?;
+                if count == 0 {
+                    break;
+                }
+                digest.update(&buffer[..count]);
+            }
+            Ok(digest.finalize().into())
+        })
+        .as_ref()
+        .map_err(|error| anyhow::anyhow!("cannot pin execution artifact: {error}"))?;
+    let mut digest = Sha256::new();
+    digest.update(executable);
+    digest.update(build_id(app).as_bytes());
+    let assets: std::collections::BTreeMap<_, _> = assets.iter().collect();
+    digest.update(serde_json::to_vec(&assets)?);
+    let instructions: std::collections::BTreeMap<_, _> = instructions.iter().collect();
+    digest.update(serde_json::to_vec(&instructions)?);
+    Ok(format!("e{}", hex::encode(digest.finalize())))
 }
 
 fn hash(manifest: &Manifest, app: &App) -> String {

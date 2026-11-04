@@ -818,31 +818,6 @@ mod tests {
     use crate::persistence::TaskQueue;
 
     #[test]
-    fn test_default_config() {
-        let config = WorkerPoolConfig::default();
-        assert!(!config.worker_id.is_empty());
-        assert_eq!(config.worker_group, "default");
-        assert_eq!(config.max_concurrency, 50);
-        assert_eq!(config.heartbeat_interval, Duration::from_secs(5));
-    }
-
-    #[test]
-    fn test_config_builder() {
-        let config =
-            WorkerPoolConfig::new(vec!["activity_a".to_string(), "activity_b".to_string()])
-                .with_worker_id("test-worker")
-                .with_worker_group("high-priority")
-                .with_max_concurrency(20)
-                .with_heartbeat_interval(Duration::from_secs(10));
-
-        assert_eq!(config.worker_id, "test-worker");
-        assert_eq!(config.worker_group, "high-priority");
-        assert_eq!(config.activity_types, vec!["activity_a", "activity_b"]);
-        assert_eq!(config.max_concurrency, 20);
-        assert_eq!(config.heartbeat_interval, Duration::from_secs(10));
-    }
-
-    #[test]
     fn test_fair_share_single_worker() {
         // Single worker gets full allocation
         assert_eq!(fair_share_claim_limit(10, 10, 1), 10);

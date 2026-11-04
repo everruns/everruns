@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Data-driven horizontal stepper for the onboarding shell.
  *
@@ -10,6 +12,7 @@
  * Pure/presentational — no data fetching, no routing.
  */
 import { Check } from "lucide-react";
+import { useUiTranslations } from "@/providers/locale-provider";
 
 export interface OnboardingStep {
   key: string;
@@ -23,6 +26,7 @@ export interface OnboardingStepperProps {
 }
 
 export function OnboardingStepper({ steps, currentIndex }: OnboardingStepperProps) {
+  const ui = useUiTranslations();
   return (
     <div className="flex items-center">
       {steps.map((step, index) => {
@@ -59,7 +63,7 @@ export function OnboardingStepper({ steps, currentIndex }: OnboardingStepperProp
                       : "font-medium text-muted-foreground/70",
                 ].join(" ")}
               >
-                {step.label}
+                {ui(step.label)}
               </span>
             </div>
             {!isLast && (

@@ -66,6 +66,17 @@ serving a real session, and comparing against the result after import. See the
 [Platform tests](../../crates/server/tests/domain/agent_packages_test.rs), and
 [serve tests](../../crates/serve/src/wire_tests.rs).
 
+## Display localization
+
+Locale-keyed display overlays belong to the authored package. They survive text,
+folder and ZIP round trips, semantic diffs, imports and clones. Stable addresses
+and execution instructions remain canonical. The shared
+[localization contract](../../crates/contracts/src/runtime/localization.rs)
+owns normalization and bounded validation; transports do not define independent
+translation formats. Complete imports replace overlays, while partial API edits
+preserve omitted fields. Revision restore includes overlays and clears newer
+translations when restoring a revision that predates them.
+
 ## File lifecycle
 
 The Agent owns the starting snapshot. Session creation seeds a newly
@@ -85,3 +96,9 @@ binding fails. It includes instructions and configuration; assets are represente
 by relative paths, byte sizes, permissions and digests, never file bodies or resolved
 credentials. The UI reviews that same validated candidate and human-readable
 changes before import. Invalid dependencies disable applying the candidate.
+
+## Continuous sources
+
+[GitHub Agent sources](agent-sources.md) reconcile this same portable contract into
+a bound Agent. Source ownership is enforced by domain commands; the package stays
+independent of its deployment connection, branch and applied revision.

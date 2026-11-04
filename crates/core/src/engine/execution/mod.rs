@@ -2,10 +2,13 @@
 
 mod act;
 mod act_hooks;
+mod cpu_time;
+pub use cpu_time::ThreadCpuClock;
 mod input;
 pub mod model_wait;
 mod provider_checkpoint;
 mod reason;
+pub mod tool_detach;
 mod tool_scheduler;
 pub use tool_scheduler::configured_max_tool_concurrency;
 

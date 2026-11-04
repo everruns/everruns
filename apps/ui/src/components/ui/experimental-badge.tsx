@@ -15,7 +15,7 @@ export function ExperimentalBadge() {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Experimental — expect changes and rough edges.</p>
+          <p>Experimental. Expect changes and rough edges.</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

@@ -252,6 +252,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{task_id}: {response}");
     }
     println!("agent: {}", result.response);
+    // A failed turn (bad key, exhausted quota) still returns `Ok`; report it
+    // so the live example run fails instead of printing an empty answer.
+    if !result.success {
+        return Err(format!("turn failed: {}", result.error.unwrap_or_default()).into());
+    }
 
     Ok(())
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -40,12 +41,13 @@ function Step({
   done?: boolean;
   children: React.ReactNode;
 }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <span className="text-muted-foreground">{number}.</span> {title}
-          {done && <Check className="size-4 text-primary" aria-label="done" />}
+          {done && <Check className="size-4 text-primary" aria-label={ui("done")} />}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">{children}</CardContent>
@@ -62,6 +64,7 @@ export function AgentTemplateSetup({
   agentId: string;
   templateName: string;
 }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: agent } = useAgent(agentId);
   const { data: examples, isLoading: examplesLoading } = useAgentExamples();
@@ -90,13 +93,14 @@ export function AgentTemplateSetup({
     [setup, connected, repository],
   );
 
-  if (examplesLoading) return <p className="text-sm text-muted-foreground">Loading template…</p>;
+  if (examplesLoading)
+    return <p className="text-sm text-muted-foreground">{ui("Loading template…")}</p>;
   if (!example || !setup) {
     return (
       <p className="text-sm text-muted-foreground">
-        This template has no guided setup.{" "}
+        {ui("This template has no guided setup.")}{" "}
         <Link className="text-primary underline" href={`/agents/${agentId}`}>
-          Open the agent
+          {ui("Open the agent")}
         </Link>
       </p>
     );
@@ -124,17 +128,18 @@ export function AgentTemplateSetup({
       <p className="text-sm text-muted-foreground">{example.description}</p>
 
       {setup.connect_github && (
-        <Step number={++step} title="Connect GitHub" done={connected}>
+        <Step number={++step} title={ui("Connect GitHub")} done={connected}>
           {connected ? (
             <p className="text-sm">
-              Installed as <span className="font-medium">{github?.account ?? "GitHub App"}</span>.
+              {ui("Installed as")}{" "}
+              <span className="font-medium">{github?.account ?? ui("GitHub App")}</span>.
             </p>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                The agent gets its own GitHub App, installed on the repositories you choose. It
-                reads code and posts as its own bot. The App can only be installed where it is
-                created.
+                {ui(
+                  "The agent gets its own GitHub App, installed on the repositories you choose. It reads code and posts as its own bot. The App can only be installed where it is created.",
+                )}
               </p>
               <ConnectGitHubButton
                 agentId={agentId}
@@ -149,29 +154,29 @@ export function AgentTemplateSetup({
 
       <Step
         number={++step}
-        title="Pick a repository"
+        title={ui("Pick a repository")}
         done={canFinishSetup(setup, true, repository)}
       >
         {repos.length > 0 ? (
           <Select value={repository} onValueChange={setRepository}>
-            <SelectTrigger aria-label="Repository" className="w-full">
-              <SelectValue placeholder="Choose a repository" />
+            <SelectTrigger aria-label={ui("Repository")} className="w-full">
+              <SelectValue placeholder={ui("Choose a repository")} />
             </SelectTrigger>
             <SelectContent>
               {repos.map((repo) => (
                 <SelectItem key={repo.full_name} value={repo.full_name}>
                   {repo.full_name}
-                  {repo.private ? "" : " (public)"}
+                  {repo.private ? "" : ui(" (public)")}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         ) : (
           <div className="space-y-1">
-            <Label htmlFor="template-repository">Repository</Label>
+            <Label htmlFor="template-repository">{ui("Repository")}</Label>
             <Input
               id="template-repository"
-              placeholder="owner/name"
+              placeholder={ui("owner/name")}
               value={repository}
               onChange={(event) => setRepository(event.target.value.trim())}
             />
@@ -180,7 +185,7 @@ export function AgentTemplateSetup({
       </Step>
 
       {(setup.settings.length > 0 || setup.connections.length > 0) && (
-        <Step number={++step} title="Settings">
+        <Step number={++step} title={ui("Settings")}>
           {setup.settings.map((setting) => (
             <div key={setting.key} className="flex items-start justify-between gap-4">
               <div className="space-y-1">
@@ -196,8 +201,8 @@ export function AgentTemplateSetup({
           ))}
           {setup.connections.map((provider) => (
             <p key={provider} className="text-sm text-muted-foreground">
-              Also needs a <span className="font-medium">{provider}</span> connection on the
-              agent&apos;s service account
+              {ui("Also needs a")} <span className="font-medium">{provider}</span>{" "}
+              {ui("connection on the agent's service account")}
               {github?.identity_id && (
                 <>
                   {" "}
@@ -206,7 +211,7 @@ export function AgentTemplateSetup({
                     className="text-primary underline"
                     href={`/virtual-users/${github.identity_id}`}
                   >
-                    open it <ExternalLink className="inline size-3" />
+                    {ui("open it")} <ExternalLink className="inline size-3" />
                   </Link>
                   )
                 </>
@@ -219,10 +224,10 @@ export function AgentTemplateSetup({
 
       <div className="flex items-center gap-2">
         <Button onClick={finish} disabled={!ready || busy || !agent}>
-          {busy ? "Creating trigger…" : "Create trigger"}
+          {busy ? ui("Creating trigger…") : ui("Create trigger")}
         </Button>
         <Button variant="outline" onClick={() => router.push(`/agents/${agentId}`)}>
-          Skip for now
+          {ui("Skip for now")}
         </Button>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}

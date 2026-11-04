@@ -52,6 +52,7 @@ use crate::typed_id::SessionId;
 /// message so the next LLM call reacts to it alongside pending tool results.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingWake {
+    pub causal_context: crate::causal::CausalContext,
     pub task_id: String,
     pub session_id: SessionId,
     pub transition: TaskTransition,
@@ -143,6 +144,7 @@ impl SessionWakeQueue {
             return false;
         };
         let wake = PendingWake {
+            causal_context: crate::causal::task_causal_context(task),
             task_id: task.id.clone(),
             session_id: task.session_id,
             transition,

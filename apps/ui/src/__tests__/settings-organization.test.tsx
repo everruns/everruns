@@ -1,6 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import OrganizationPage from "@/app/(main)/settings/organization/page";
 import { ApiError } from "@/lib/api/client";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+
+jest.mock("@/components/credentials/scoped-credentials-panel", () => ({
+  ScopedCredentialsPanel: ({ owner }: { owner: { scope: string; usage: string } }) => (
+    <div data-testid="scoped-credentials" data-scope={owner.scope} data-usage={owner.usage} />
+  ),
+}));
 
 const mockPush = jest.fn();
 const mockSetCurrentOrg = jest.fn();
@@ -98,7 +106,7 @@ jest.mock("@/components/models/model-picker", () => ({
     disabled?: boolean;
   }) => (
     <select
-      aria-label="Default Model"
+      aria-label="Default model"
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
@@ -161,10 +169,13 @@ describe("OrganizationPage", () => {
   it("renders accessible organizations separately from general settings", () => {
     render(<OrganizationPage />);
 
+    // Nothing was edited, so no section claims to have saved anything.
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+
     expect(screen.getByRole("heading", { name: "Organization" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Harnesses" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Default Model")).toBeInTheDocument();
+    expect(screen.getByLabelText("Default model")).toBeInTheDocument();
     expect(screen.getByLabelText("Select default harness")).toBeInTheDocument();
     expect(screen.getByLabelText("Select base harness")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Organizations" })).toBeInTheDocument();
@@ -193,8 +204,8 @@ describe("OrganizationPage", () => {
       expect(
         screen.getByText(/Only organization owners and admins can change these settings/),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Organization Name")).toHaveAttribute("readonly");
-      expect(screen.getByLabelText("Default Model")).toBeDisabled();
+      expect(screen.getByLabelText("Organization name")).toHaveAttribute("readonly");
+      expect(screen.getByLabelText("Default model")).toBeDisabled();
       expect(screen.getByLabelText("Select default harness")).toBeDisabled();
       expect(screen.getByLabelText("Select base harness")).toBeDisabled();
       // The idle "Saved" badge is misleading when the viewer cannot save at all.
@@ -211,7 +222,7 @@ describe("OrganizationPage", () => {
 
       render(<OrganizationPage />);
 
-      fireEvent.change(screen.getByLabelText("Organization Name"), {
+      fireEvent.change(screen.getByLabelText("Organization name"), {
         target: { value: "Renamed Org" },
       });
 
@@ -277,7 +288,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organization Name"), {
+    fireEvent.change(screen.getByLabelText("Organization name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -302,7 +313,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "model-2" },
     });
 
@@ -323,7 +334,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "" },
     });
 
@@ -333,32 +344,6 @@ describe("OrganizationPage", () => {
     });
 
     expect(mockUpdateOrganization).toHaveBeenLastCalledWith({ default_model_id: null });
-    jest.useRealTimers();
-  });
-
-  it("keeps model errors next to Models without changing Harnesses status", async () => {
-    jest.useFakeTimers();
-    mockUpdateOrganization.mockRejectedValueOnce(
-      new ApiError(400, "Bad Request", "Model not found"),
-    );
-
-    render(<OrganizationPage />);
-
-    fireEvent.change(screen.getByLabelText("Default Model"), {
-      target: { value: "model-2" },
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(700);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Model not found"));
-    expect(screen.getByRole("region", { name: "Models" })).toHaveTextContent("Model not found");
-    expect(screen.getByRole("region", { name: "Harnesses" })).not.toHaveTextContent(
-      "Model not found",
-    );
-
     jest.useRealTimers();
   });
 
@@ -373,7 +358,7 @@ describe("OrganizationPage", () => {
     mockUpdateOrganization.mockRejectedValueOnce(error);
 
     render(<OrganizationPage />);
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "model-2" },
     });
 
@@ -401,7 +386,7 @@ describe("OrganizationPage", () => {
     });
 
     render(<OrganizationPage />);
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "model-2" },
     });
     fireEvent.change(screen.getByLabelText("Select default harness"), {
@@ -446,7 +431,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organization Name"), {
+    fireEvent.change(screen.getByLabelText("Organization name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -475,7 +460,7 @@ describe("OrganizationPage", () => {
 
     const { rerender } = render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organization Name"), {
+    fireEvent.change(screen.getByLabelText("Organization name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -499,9 +484,35 @@ describe("OrganizationPage", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByLabelText("Organization Name")).toHaveValue("Second Org");
+    expect(screen.getByLabelText("Organization name")).toHaveValue("Second Org");
 
     jest.useRealTimers();
+  });
+
+  it("saves only changed Adoption settings without pinning implicit harness defaults", async () => {
+    mockOrganization.default_harness_id = "";
+    mockOrganization.base_harness_id = "";
+    const mode: ChatModeState = {
+      page: { route: "/settings/organization", label: "Organization" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: () => () => {},
+    };
+    render(
+      <PageChatProvider value={mode}>
+        <OrganizationPage />
+      </PageChatProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("Organization name"), {
+      target: { value: "Reviewed Org" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mockUpdateOrganization).toHaveBeenCalledWith({ name: "Reviewed Org" }),
+    );
   });
 
   describe("outbound allowlist", () => {
@@ -565,4 +576,14 @@ describe("OrganizationPage", () => {
       expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     });
   });
+});
+
+it("shows organization credential management only to organization managers", () => {
+  viewerRole = "owner";
+  const { rerender } = render(<OrganizationPage />);
+  expect(screen.getByTestId("scoped-credentials")).toHaveAttribute("data-scope", "organization");
+  expect(screen.getByTestId("scoped-credentials")).toHaveAttribute("data-usage", "service");
+  viewerRole = "member";
+  rerender(<OrganizationPage />);
+  expect(screen.queryByTestId("scoped-credentials")).not.toBeInTheDocument();
 });

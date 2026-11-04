@@ -2,6 +2,7 @@ pub mod api_endpoint_conversion;
 pub mod api_sessions;
 pub mod commands;
 mod exposure;
+pub(crate) mod history;
 pub mod ingress;
 pub mod invocation;
 pub mod queries;
@@ -16,3 +17,5 @@ mod validation_pact;
 pub use commands::*;
 pub use invocation::*;
 pub(crate) use redaction::redact_channel_for_response;
+
+pub mod work_chat;

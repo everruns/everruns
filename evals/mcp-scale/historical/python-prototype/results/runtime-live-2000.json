@@ -1,0 +1,145 @@
+{
+  "url": "stdio://ops",
+  "model": "openai/gpt-6-luna",
+  "provider": "openrouter",
+  "prompt": "Using only the synthetic MCP fixture, find the staging billing-api incident owner and its linked ticket. Report the owner and ticket status. Use read-only tools only.",
+  "mode": "run",
+  "mcp_transport": "stdio",
+  "search": "generic",
+  "success": true,
+  "response": "The staging billing-api incident owner is Ava Li, and its linked ticket OPS-8421 is **in progress**.",
+  "error": null,
+  "iterations": 7,
+  "duration_ms": 25392,
+  "usage": {
+    "actual_cost_usd": 0.0017980899999999998,
+    "cache_creation_tokens": 10338,
+    "cache_read_tokens": 13294,
+    "effective_cost_usd": 0.0017980899999999998,
+    "input_tokens": 1534,
+    "output_tokens": 439
+  },
+  "discovered_tool_count": 3,
+  "discovered_tools": [
+    "tool_search",
+    "mcp_ops__catalog_call",
+    "mcp_ops__catalog_search"
+  ],
+  "tool_calls": [
+    {
+      "capability_id": "tool_search",
+      "capability_name": "Tool Search",
+      "display_name": "Tool Search",
+      "duration_ms": 10,
+      "narration": "Searched tools: search incidents and linked tickets read-only fixture",
+      "result": [
+        {
+          "text": "{\"loaded\":[\"mcp_ops__catalog_search\"],\"message\":\"Full schemas loaded; these tools are callable with their full parameters on your next step.\",\"query\":\"search incidents and linked tickets read-only fixture\",\"tools\":[{\"description\":\"Find platform tools by intent. Search again with different words if needed. Returns qualified tool_id, schema_digest and authoritative inputSchema; use these with catalog_call. Use server to disambiguate namespaces; results list up to 16 authorized servers. Covers deployments, logs, incidents, tickets and platform administration.\",\"name\":\"mcp_ops__catalog_search\",\"parameters\":{\"additionalProperties\":false,\"properties\":{\"limit\":{\"default\":5,\"maximum\":8,\"minimum\":1,\"type\":\"integer\"},\"query\":{\"maxLength\":500,\"minLength\":1,\"type\":\"string\"},\"server\":{\"description\":\"Optional exact server name from available_servers.\",\"type\":\"string\"}},\"required\":[\"query\"],\"type\":\"object\"}}]}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:b30309c0a9bc2d560754a99e491162fcfc77a09a6b9147843898a55f0d06d79a",
+      "tool_call_id": "call_0TGTbDTqjlbPKUV7hljG8ADL",
+      "tool_name": "tool_search",
+      "tool_result_fingerprint": "sha256:f74e657cfe18432a6da7a4d17c4f0f444a389b84d51288bfbe95a135309bbaab"
+    },
+    {
+      "capability_id": "mcp:becb99af-b148-530c-8118-5c5956a3bcf9",
+      "capability_name": "ops",
+      "display_name": "ops: catalog search",
+      "duration_ms": 2779,
+      "narration": "Ran ops: catalog search",
+      "result": [
+        {
+          "text": "{\"result\":\"{\\\"tools\\\": [{\\\"name\\\": \\\"get_ticket\\\", \\\"description\\\": \\\"Read a ticket, including owner, status, and linked incident.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"ticket_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Ticket identifier, for example OPS-8421.\\\"}}, \\\"required\\\": [\\\"ticket_id\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Get Ticket\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::get_ticket\\\", \\\"schema_digest\\\": \\\"39838bb88d58ef35d0663419fa3dfc48ed92267f3c3c105dcc6c18de368d7f55\\\"}, {\\\"name\\\": \\\"get_incident\\\", \\\"description\\\": \\\"Read the incident timeline, owner, impact, and linked ticket.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"incident_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Incident identifier, for example INC-427.\\\"}}, \\\"required\\\": [\\\"incident_id\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Get Incident\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"incidents\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::get_incident\\\", \\\"schema_digest\\\": \\\"85b31783cd73c66b9cdca616fe8a9bcf66bf2a9745be48c19c236b1d6404b0f7\\\"}, {\\\"name\\\": \\\"update_incident\\\", \\\"description\\\": \\\"Change an incident status or append an operator note. Provide at least one update field.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"incident_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Incident identifier, for example INC-427.\\\"}, \\\"status\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"New incident state.\\\", \\\"enum\\\": [\\\"open\\\", \\\"investigating\\\", \\\"mitigated\\\", \\\"closed\\\"]}, \\\"note\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Optional note appended to the timeline.\\\"}}, \\\"required\\\": [\\\"incident_id\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Update Incident\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"incidents\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::update_incident\\\", \\\"schema_digest\\\": \\\"53dddd86dac6819826c32a5c7df0c41445e7bc41093f5d8aa521866f02b41c8d\\\"}, {\\\"name\\\": \\\"add_ticket_comment\\\", \\\"description\\\": \\\"Append a comment to an existing ticket. This mutates the ticket timeline.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"ticket_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Ticket identifier, for example OPS-8421.\\\"}, \\\"comment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Comment to append.\\\"}}, \\\"required\\\": [\\\"ticket_id\\\", \\\"comment\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Add Ticket Comment\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::add_ticket_comment\\\", \\\"schema_digest\\\": \\\"204506bdb93b7edaa84ab1b39df5e6eed66e3a1b90c8ee91fc37b2a3ff903777\\\"}, {\\\"name\\\": \\\"create_ticket\\\", \\\"description\\\": \\\"Create a new operational ticket with a structured service and environment scope.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"details\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"title\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Short actionable title.\\\"}, \\\"description\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Observed symptoms and requested follow-up.\\\"}, \\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"owner\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Optional ticket owner.\\\"}}, \\\"required\\\": [\\\"title\\\", \\\"description\\\", \\\"service\\\", \\\"environment\\\"], \\\"additionalProperties\\\": false}}, \\\"required\\\": [\\\"details\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Create Ticket\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::create_ticket\\\", \\\"schema_digest\\\": \\\"786e96861f743728705cf6731e82c97ea5e5ec181d861546868c1109d0b9e976\\\"}, {\\\"name\\\": \\\"get_change\\\", \\\"description\\\": \\\"Read a change record and its approval status.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"change_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Change identifier, for example CHG-1234.\\\"}}, \\\"required\\\": [\\\"change_id\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Get Change\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"change_management\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::get_change\\\", \\\"schema_digest\\\": \\\"b1446e2d7b0481781707bcbec8e4a421b79c38ad5ef300d37562a2c49d0422d8\\\"}, {\\\"name\\\": \\\"get_service\\\", \\\"description\\\": \\\"Read service ownership, on-call team, and operational metadata.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}}, \\\"required\\\": [\\\"service\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Get Service\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"service_catalog\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::get_service\\\", \\\"schema_digest\\\": \\\"6625fe8b33d24fba1352722c6faf4729fbceded040aca40812559b944c232755\\\"}, {\\\"name\\\": \\\"query_metric\\\", \\\"description\\\": \\\"Read a named service metric for an environment and time range.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"metric\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Metric name, such as error_rate or request_latency_ms.\\\"}, \\\"time_range\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Lookback interval.\\\", \\\"enum\\\": [\\\"15m\\\", \\\"1h\\\", \\\"6h\\\", \\\"24h\\\", \\\"7d\\\"]}}, \\\"required\\\": [\\\"service\\\", \\\"environment\\\", \\\"metric\\\", \\\"time_range\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Query Metric\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"observability\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::query_metric\\\", \\\"schema_digest\\\": \\\"978f84e4b546f802e972e824ec70d469a989f2f8cee8619e703030b5f47602e6\\\"}], \\\"omitted_for_byte_budget\\\": 0, \\\"available_servers\\\": [\\\"platform\\\"], \\\"server_count\\\": 1, \\\"message\\\": \\\"Refine the query if the desired tool is absent. No match is not proof the capability is unavailable.\\\"}\"}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:baac14ec65505d98e7a1254f2496794e8e7306a89f489083d210f9c084fbd01e",
+      "tool_call_id": "call_OKtM8kMVgutJrGhRRfvoDdB9",
+      "tool_name": "mcp_ops__catalog_search",
+      "tool_result_fingerprint": "sha256:15ca63ce37183ce72075ba38bed5a7ff5ac8b7892d2d64768a25213d2ddfe9b5"
+    },
+    {
+      "capability_id": "mcp:becb99af-b148-530c-8118-5c5956a3bcf9",
+      "capability_name": "ops",
+      "display_name": "ops: catalog search",
+      "duration_ms": 2418,
+      "narration": "Ran ops: catalog search",
+      "result": [
+        {
+          "text": "{\"result\":\"{\\\"tools\\\": [{\\\"name\\\": \\\"list_incidents\\\", \\\"description\\\": \\\"List incidents filtered by service and environment.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"status\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Optional incident state.\\\", \\\"enum\\\": [\\\"open\\\", \\\"investigating\\\", \\\"mitigated\\\", \\\"closed\\\"]}}, \\\"required\\\": [\\\"service\\\", \\\"environment\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"List Incidents\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"incidents\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::list_incidents\\\", \\\"schema_digest\\\": \\\"0ba280f029257cc829f78589cf6c9e8e5e5205abd804e8938670e69709714c0f\\\"}, {\\\"name\\\": \\\"search_tickets\\\", \\\"description\\\": \\\"Find tickets by service, environment, or matching text.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"query\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Terms to match against indexed records.\\\"}}, \\\"required\\\": [\\\"query\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Search Tickets\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::search_tickets\\\", \\\"schema_digest\\\": \\\"1392a770428ad1c914e33f333e53f25d60789008321f97535e2cbdc3ffb28394\\\"}, {\\\"name\\\": \\\"list_change_windows\\\", \\\"description\\\": \\\"List approved change windows for a service and environment.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}}, \\\"required\\\": [\\\"service\\\", \\\"environment\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"List Change Windows\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"change_management\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::list_change_windows\\\", \\\"schema_digest\\\": \\\"02ef7b2bb2c7a52ecfdba5554c9a1ab280e91eb8c2deb380a3d3de6828c4875f\\\"}, {\\\"name\\\": \\\"list_deployments\\\", \\\"description\\\": \\\"Find deployments by service, environment, and status. Use this first to identify the exact deployment before inspecting or changing it.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"status\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Optional deployment state.\\\", \\\"enum\\\": [\\\"healthy\\\", \\\"failed\\\", \\\"rolling_back\\\", \\\"rolled_back\\\"]}}, \\\"required\\\": [\\\"service\\\", \\\"environment\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"List Deployments\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"deployments\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::list_deployments\\\", \\\"schema_digest\\\": \\\"fb9fdb48e25aa41379d93c17449b979a06d076bab3e605b1ea3be647c3b44000\\\"}, {\\\"name\\\": \\\"search_logs\\\", \\\"description\\\": \\\"Search service logs by environment, query, and time range. Results include timestamps, severity, deployment id, and trace id.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"query\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Terms to match against indexed records.\\\"}, \\\"time_range\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Lookback interval.\\\", \\\"enum\\\": [\\\"15m\\\", \\\"1h\\\", \\\"6h\\\", \\\"24h\\\", \\\"7d\\\"]}}, \\\"required\\\": [\\\"service\\\", \\\"environment\\\", \\\"query\\\", \\\"time_range\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Search Logs\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"observability\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::search_logs\\\", \\\"schema_digest\\\": \\\"169dfd2d4e7f1669c0c96c60701b223ddb62035ecb3045881e04cb1d9c353659\\\"}, {\\\"name\\\": \\\"query_metric\\\", \\\"description\\\": \\\"Read a named service metric for an environment and time range.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"metric\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Metric name, such as error_rate or request_latency_ms.\\\"}, \\\"time_range\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Lookback interval.\\\", \\\"enum\\\": [\\\"15m\\\", \\\"1h\\\", \\\"6h\\\", \\\"24h\\\", \\\"7d\\\"]}}, \\\"required\\\": [\\\"service\\\", \\\"environment\\\", \\\"metric\\\", \\\"time_range\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Query Metric\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"observability\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::query_metric\\\", \\\"schema_digest\\\": \\\"978f84e4b546f802e972e824ec70d469a989f2f8cee8619e703030b5f47602e6\\\"}, {\\\"name\\\": \\\"create_ticket\\\", \\\"description\\\": \\\"Create a new operational ticket with a structured service and environment scope.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"details\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"title\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Short actionable title.\\\"}, \\\"description\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Observed symptoms and requested follow-up.\\\"}, \\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"owner\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Optional ticket owner.\\\"}}, \\\"required\\\": [\\\"title\\\", \\\"description\\\", \\\"service\\\", \\\"environment\\\"], \\\"additionalProperties\\\": false}}, \\\"required\\\": [\\\"details\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Create Ticket\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::create_ticket\\\", \\\"schema_digest\\\": \\\"786e96861f743728705cf6731e82c97ea5e5ec181d861546868c1109d0b9e976\\\"}, {\\\"name\\\": \\\"list_services\\\", \\\"description\\\": \\\"List services, optionally filtered by owning team.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"team\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Optional owning team name.\\\"}}, \\\"required\\\": [], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"List Services\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"service_catalog\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::list_services\\\", \\\"schema_digest\\\": \\\"1211f2add1f73752098c0f9951c8f8c54dc8fe108e496bf10baeb56b3daf3772\\\"}], \\\"omitted_for_byte_budget\\\": 0, \\\"available_servers\\\": [\\\"platform\\\"], \\\"server_count\\\": 1, \\\"message\\\": \\\"Refine the query if the desired tool is absent. No match is not proof the capability is unavailable.\\\"}\"}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:0db66df7336ed0d57b1466a1a15f72f2e713564966b3cf71039f829215e1fe0d",
+      "tool_call_id": "call_D5Gd9Rq57T5WMgJ9IQrtyTuo",
+      "tool_name": "mcp_ops__catalog_search",
+      "tool_result_fingerprint": "sha256:130ad15e4339ad4a3c11286996eb345483a0dc5e434ef69f3a1d64b845cfd5dd"
+    },
+    {
+      "capability_id": "tool_search",
+      "capability_name": "Tool Search",
+      "display_name": "Tool Search",
+      "duration_ms": 1,
+      "narration": "Searched tools: call discovered platform read-only tool using tool_id schema_dig...",
+      "result": [
+        {
+          "text": "{\"loaded\":[\"mcp_ops__catalog_call\",\"mcp_ops__catalog_search\"],\"message\":\"Full schemas loaded; these tools are callable with their full parameters on your next step.\",\"query\":\"call discovered platform read-only tool using tool_id schema_digest arguments\",\"tools\":[{\"description\":\"Call an exact tool discovered by catalog_search. Pass its tool_id and schema_digest unchanged, and arguments matching its inputSchema. Operations may change fake platform state.\",\"name\":\"mcp_ops__catalog_call\",\"parameters\":{\"additionalProperties\":false,\"properties\":{\"arguments\":{\"additionalProperties\":true,\"type\":\"object\"},\"schema_digest\":{\"type\":\"string\"},\"tool_id\":{\"type\":\"string\"}},\"required\":[\"tool_id\",\"schema_digest\",\"arguments\"],\"type\":\"object\"}},{\"description\":\"Find platform tools by intent. Search again with different words if needed. Returns qualified tool_id, schema_digest and authoritative inputSchema; use these with catalog_call. Use server to disambiguate namespaces; results list up to 16 authorized servers. Covers deployments, logs, incidents, tickets and platform administration.\",\"name\":\"mcp_ops__catalog_search\",\"parameters\":{\"additionalProperties\":false,\"properties\":{\"limit\":{\"default\":5,\"maximum\":8,\"minimum\":1,\"type\":\"integer\"},\"query\":{\"maxLength\":500,\"minLength\":1,\"type\":\"string\"},\"server\":{\"description\":\"Optional exact server name from available_servers.\",\"type\":\"string\"}},\"required\":[\"query\"],\"type\":\"object\"}}]}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:c9140368b80f30accac58cbc3c14cd99b4988e57eb029dec57a0271d6b6620e9",
+      "tool_call_id": "call_62fmEv6nn0QuYRv7M6no8v1r",
+      "tool_name": "tool_search",
+      "tool_result_fingerprint": "sha256:e1f7c0323f9f6d87a2da49addc3f4967f3ec237eca372087c2c1c4d70b7d15fe"
+    },
+    {
+      "capability_id": "mcp:becb99af-b148-530c-8118-5c5956a3bcf9",
+      "capability_name": "ops",
+      "display_name": "ops: catalog call",
+      "duration_ms": 2952,
+      "narration": "Ran ops: catalog call",
+      "result": [
+        {
+          "text": "{\"result\":\"{\\\"count\\\": 1, \\\"incidents\\\": [{\\\"environment\\\": \\\"staging\\\", \\\"incident_id\\\": \\\"INC-427\\\", \\\"linked_ticket\\\": \\\"OPS-8421\\\", \\\"owner\\\": \\\"Ava Li\\\", \\\"service\\\": \\\"billing-api\\\", \\\"severity\\\": \\\"SEV-2\\\", \\\"status\\\": \\\"investigating\\\", \\\"summary\\\": \\\"Elevated 5xx responses after staging release 3.8.1.\\\", \\\"timeline\\\": [\\\"09:14 UTC: alert triggered after dep-bill-stg-2042.\\\"]}]}\"}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:97e43612fdafa5986133d46e13df5496c23e8ad7edfde628a0436df088186ee9",
+      "tool_call_id": "call_K7JWxcShq5V7O5mPSXAMGhwO",
+      "tool_name": "mcp_ops__catalog_call",
+      "tool_result_fingerprint": "sha256:03a872578344b3f87cf261494f2202ce4669c5ade71c406417e28adb01898d3e"
+    },
+    {
+      "capability_id": "mcp:becb99af-b148-530c-8118-5c5956a3bcf9",
+      "capability_name": "ops",
+      "display_name": "ops: catalog call",
+      "duration_ms": 2370,
+      "narration": "Ran ops: catalog call",
+      "result": [
+        {
+          "text": "{\"result\":\"{\\\"comments\\\": [], \\\"linked_incident\\\": \\\"INC-427\\\", \\\"owner\\\": \\\"Ava Li\\\", \\\"status\\\": \\\"in_progress\\\", \\\"ticket_id\\\": \\\"OPS-8421\\\", \\\"title\\\": \\\"Investigate billing-api staging 5xx after 3.8.1\\\"}\"}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:907031e31c993960820dbb112e3ac6c3a3b7f5c2f23c2401077a7deb450442c7",
+      "tool_call_id": "call_47mgf0MuxoOb3ERpnCB2eFuc",
+      "tool_name": "mcp_ops__catalog_call",
+      "tool_result_fingerprint": "sha256:60f85114c2ac036058fbe50cd72713476825541255544dc89731e73ecbd825df"
+    }
+  ],
+  "event_errors": []
+}

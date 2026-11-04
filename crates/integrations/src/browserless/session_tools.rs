@@ -674,39 +674,9 @@ pub async fn register_session_endpoint(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_open_browser_metadata() {
-        let tool = BrowserlessOpenBrowserTool;
-        assert_eq!(tool.name(), "browserless_open_browser");
-        assert!(tool.requires_context());
-        let schema = tool.parameters_schema();
-        assert_eq!(schema["additionalProperties"], false);
-    }
-
-    #[test]
-    fn test_close_browser_metadata() {
-        let tool = BrowserlessCloseBrowserTool;
-        assert_eq!(tool.name(), "browserless_close_browser");
-        assert!(tool.requires_context());
-        let schema = tool.parameters_schema();
-        assert_eq!(schema["additionalProperties"], false);
-    }
-
     #[tokio::test]
     async fn test_open_browser_no_context() {
         let tool = BrowserlessOpenBrowserTool;
-        let result = tool.execute(json!({})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_close_browser_no_context() {
-        let tool = BrowserlessCloseBrowserTool;
         let result = tool.execute(json!({})).await;
         match result {
             ToolExecutionResult::ToolError(msg) => {

@@ -106,9 +106,14 @@ impl EgressService for RecordingMcp {
 
     async fn send_stream(
         &self,
-        _request: EgressRequest,
+        request: EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        panic!("MCP discovery should not stream")
+        let response = self.send(request).await?;
+        Ok(everruns_core::EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 }
 
@@ -174,6 +179,7 @@ async fn create_harness(db: &StorageBackend) -> HarnessId {
     db.create_harness(
         everruns_core::DEFAULT_ORG_ID,
         CreateHarnessRow {
+            localizations: Default::default(),
             name: format!("acts-as-test-{}", Uuid::now_v7()),
             display_name: None,
             icon: None,
@@ -219,6 +225,8 @@ async fn create_agent_and_session(
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: format!("acts-as-agent-{}", Uuid::now_v7()),
                 display_name: None,

@@ -100,6 +100,9 @@ async fn seed_schedule(server: &TestServer, session: &Session) -> ScheduleId {
             scheduled_at: Some(scheduled_at),
             timezone: "UTC".to_string(),
             next_trigger_at: Some(scheduled_at),
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .expect("seed schedule")
@@ -202,14 +205,23 @@ async fn an_authorized_caller_can_manage_schedules() {
         .delete(&one)
         .await
         .assert_status(StatusCode::NO_CONTENT);
-    assert!(
-        server
-            .db
-            .get_session_schedule(TEST_ORG_ID, schedule_id)
-            .await
-            .expect("read schedule")
-            .is_none()
-    );
+    // The row stays so the session recording can show that the schedule was
+    // registered and then removed. It is not live: it cannot be fired again.
+    let persisted = server
+        .db
+        .get_session_schedule(TEST_ORG_ID, schedule_id)
+        .await
+        .expect("read schedule")
+        .expect("deleted schedule stays on the session");
+    assert!(persisted.deleted_at.is_some());
+    assert!(!persisted.enabled);
+    let listed: Value = server.get(&list).await.assert_status(StatusCode::OK).json();
+    assert_eq!(listed[0]["description"], SECRET_DESCRIPTION);
+    assert!(listed[0]["deleted_at"].is_string());
+    server
+        .delete(&one)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 async fn create_platform_chat_session(server: &TestServer) -> Session {

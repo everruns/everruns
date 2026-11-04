@@ -1,12 +1,14 @@
 // LLM Model API endpoints
 // Routes: /v1/providers/:provider_id/models/... and /v1/models/...
 
+use crate::api::command_http::CommandRouterExt;
 use crate::api::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::models::selection::{ApplyModelSelection, UndoModelSelection};
 pub use crate::domains::models::types::{CreateModelRequest, ListModelsQuery, UpdateModelRequest};
 use crate::domains::models::{
     CreateModel, DeleteModel, GetDefaultModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW,
@@ -288,6 +290,8 @@ pub async fn get_default_model(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .command::<ApplyModelSelection>()
+        .command::<UndoModelSelection>()
         .route("/v1/model-profiles", get(list_model_profiles))
         .route("/v1/model-profiles/{*key}", get(get_model_profile))
         .route("/v1/models/config", get(model_config))
@@ -453,28 +457,6 @@ pub async fn get_model_profile(
             Err(ErrorResponse::new("Model profile not found").into_response(StatusCode::NOT_FOUND))
         }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_error_response_serialization() {
-        // RFC 9457 Problem Details shape: detail carries the message,
-        // title/status are populated when the response is finalized.
-        let (_status, body) = ErrorResponse::new("Internal server error")
-            .into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-        let parsed: serde_json::Value = serde_json::to_value(&body.0).expect("Failed to serialize");
-        assert_eq!(parsed["detail"], "Internal server error");
-        assert_eq!(parsed["title"], "Internal Server Error");
-        assert_eq!(parsed["status"], 500);
-        // Unset extensions stay out of the wire payload.
-        assert!(parsed.get("type").is_none());
-        assert!(parsed.get("allowed_actions").is_none());
-    }
-
-    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 }
 
 #[utoipa::path(get, path = "/v1/models/decision-default", description = "Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.", responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]

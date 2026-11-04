@@ -287,57 +287,6 @@ describe("ToolActivityGroup", () => {
     expect(screen.getByText("Agent: customer-support")).toBeInTheDocument();
   });
 
-  it("renders bash calls as standalone rows without grouped chrome", () => {
-    const toolCalls: ToolCallContent[] = [
-      {
-        id: "tool-shell",
-        name: "bash",
-        arguments: { command: "cargo test" },
-      },
-    ];
-
-    const toolResultsMap = new Map<string, ToolCompletedData>([
-      [
-        "tool-shell",
-        {
-          tool_call_id: "tool-shell",
-          tool_name: "bash",
-          success: false,
-          status: "error",
-          result: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                stdout: "",
-                stderr: "test suite failed",
-                exit_code: 101,
-                success: false,
-              }),
-            },
-          ],
-        },
-      ],
-    ]);
-
-    const { container } = render(
-      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />,
-    );
-
-    const root = container.firstElementChild as HTMLElement;
-    const shellCard = root.firstElementChild as HTMLElement;
-
-    expect(
-      screen.getByRole("button", { name: /\$ cargo test exit code 101/i }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^Shell$/)).not.toBeInTheDocument();
-    expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Tool activity info")).not.toBeInTheDocument();
-    expect(shellCard).not.toHaveClass("border");
-    expect(shellCard.className).not.toContain("bg-card/95");
-    expect(shellCard.className).not.toContain("border-red");
-    expect(shellCard.className).not.toContain("bg-red");
-  });
-
   it("renders daytona_exec as a standalone shell row with metadata", () => {
     const toolCalls: ToolCallContent[] = [
       {

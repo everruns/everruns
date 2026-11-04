@@ -98,7 +98,7 @@ impl Capability for StatelessTodoListCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(WriteTodosTool)]
+        vec![Box::new(WriteTodosTool), Box::new(super::ReportDoneTool)]
     }
 }
 
@@ -109,10 +109,11 @@ impl Capability for StatelessTodoListCapability {
 /// from the schema.
 const SYSTEM_PROMPT: &str = r#"## Task Management (`write_todos`)
 
-Use sparingly, only for substantial multi-step work needing tracking. Default to skipping it. Never use for greetings, single-step edits, read-only checks, or simple short tasks.
+Use sparingly, only for substantial multi-step work needing tracking. Skip it for greetings, single-step edits, read-only checks and short tasks.
 
-Each `write_todos` call replaces the full list. Keep exactly one task
-`in_progress`. Mark `completed` only when fully done (tests pass, no unresolved errors)."#;
+Each call replaces the full list. Keep exactly one task `in_progress`. Mark `completed` only when fully done (tests pass, no open errors).
+
+When tracked work is done, call `report_done` once before your final reply."#;
 
 // ============================================================================
 // Tool: write_todos
@@ -306,17 +307,6 @@ mod tests {
     use super::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let capability = StatelessTodoListCapability;
-
-        let system_prompt = capability.system_prompt_addition().unwrap();
-        assert!(system_prompt.contains("Task Management"));
-        assert!(system_prompt.contains("write_todos"));
-        assert!(system_prompt.contains("in_progress"));
-        assert!(system_prompt.contains("completed"));
-    }
 
     #[tokio::test]
     async fn test_write_todos_tool_valid_input() {

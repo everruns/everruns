@@ -39,8 +39,9 @@
 // Decision: the Framework runs threads through the engine that owns the
 // coordinator (`EngineSessionRunner`), so a thread is an ordinary engine
 // session the application can resume and read like any other.
-// Decision: only `self` workers. A local profile has no agent catalog to look
-// another worker up in, so the runner refuses any other agent id.
+// Decision: `self` workers and the agent's own members
+// (`AgentBuilder::member`). A local profile has no agent catalog to look any
+// other worker up in, so the runner refuses any other agent id.
 // Decision: the wake path covers `assignment` tasks only. Other task kinds
 // keep their existing between-turn delivery; widening the waker would change
 // how every local background task reaches its session.
@@ -56,17 +57,17 @@ use everruns_capabilities::capabilities::coordination::{
 };
 use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::conversation;
 use everruns_core::host::{
-    EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, MAX_EVENT_HISTORY_PAGE_SIZE,
-    RuntimeSessionStore, SessionBuilder,
+    EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit, EventReadRequest,
+    MAX_EVENT_HISTORY_PAGE_SIZE, RuntimeSessionStore, SessionBuilder,
 };
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
     SessionTask, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, TASK_KIND_ASSIGNMENT,
 };
-use everruns_core::turn::TurnStopReason;
 use everruns_core::{
     InputMessage, ObservingTaskRegistry, RuntimeMessageRole, TaskTransition,
     TaskTransitionObserver, wake_text_for,
@@ -237,9 +238,7 @@ fn thread_status(task: &SessionTask) -> ThreadStatus {
     }
 }
 
-// =============================================================================
-// Engine wiring
-// =============================================================================
+// Engine wiring.
 
 /// Engines sharing one local backend bundle. Threads and wakes reach a session
 /// through whichever engine holds it.
@@ -300,6 +299,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
             return Ok(());
         };
         let coordinator = task.session_id;
+        let causes = everruns_core::causal::task_causal_context(task);
         tokio::spawn(async move {
             let session = match engine.resume(coordinator).await {
                 Ok(session) => session,
@@ -310,6 +310,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
             };
             let mut input = InputMessage::user(text);
             input.metadata = Some(everruns_core::message::task_wake_message_metadata());
+            causes.write_metadata(&mut input.metadata);
             // Hold the session until the turn ends, so dropping the last
             // application handle does not cut the automatic turn short.
             match session.send(input).await {
@@ -328,6 +329,8 @@ pub(crate) struct EngineSessionRunner {
     hub: Arc<EngineHub>,
     sessions: Arc<dyn RuntimeSessionStore>,
     registry: Arc<dyn SessionTaskRegistry>,
+    /// Legacy deliveries (schedules, wakes) never reach a cut-over session.
+    cutover: Arc<dyn crate::engine::LegacyCutoverStore>,
 }
 
 impl EngineSessionRunner {
@@ -335,11 +338,13 @@ impl EngineSessionRunner {
         hub: Arc<EngineHub>,
         sessions: Arc<dyn RuntimeSessionStore>,
         registry: Arc<dyn SessionTaskRegistry>,
+        cutover: Arc<dyn crate::engine::LegacyCutoverStore>,
     ) -> Self {
         Self {
             hub,
             sessions,
             registry,
+            cutover,
         }
     }
 
@@ -379,13 +384,18 @@ impl LocalSessionRunner for EngineSessionRunner {
             .agent(parent)
             .ok_or_else(|| AgentLoopError::session_not_found(parent))?;
         let parent_record = self.sessions.get_session(parent).await?;
-        if let Some(agent_id) = agent_id
-            && parent_record.as_ref().and_then(|s| s.agent_id) != Some(agent_id)
-        {
-            return Err(AgentLoopError::tool(
-                "a Framework engine runs threads with the coordinator's own agent only",
-            ));
-        }
+        // A member of the parent's agent runs as itself; any other agent id
+        // is refused, since a local profile has no catalog to look it up in.
+        let agent = match agent_id {
+            Some(agent_id) if parent_record.as_ref().and_then(|s| s.agent_id) != Some(agent_id) => {
+                agent.member_on_host(agent_id).ok_or_else(|| {
+                    AgentLoopError::tool(
+                        "a Framework engine runs threads with the coordinator's own agent or one of its members only",
+                    )
+                })?
+            }
+            _ => agent,
+        };
         let mut session = SessionBuilder::new(harness_id)
             .id(SessionId::new())
             .title(title.unwrap_or("Thread"))
@@ -421,6 +431,23 @@ impl LocalSessionRunner for EngineSessionRunner {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
+        self.send_message_with_causal_context(session_id, content, &crate::CausalContext::default())
+            .await
+    }
+
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &crate::CausalContext,
+    ) -> Result<()> {
+        // A cut-over session belongs to its authority, which delivers its
+        // schedules and wakes itself (EVE-1298).
+        if self.cutover.load_cutover(session_id).await?.is_some() {
+            return Err(AgentLoopError::tool(
+                "the session moved to a coherent session authority; the legacy lane does not deliver to it",
+            ));
+        }
         let engine = self.owner(session_id)?;
         let session = engine
             .resume(session_id)
@@ -433,7 +460,9 @@ impl LocalSessionRunner for EngineSessionRunner {
             .and_then(|record| record.parent_session_id);
         self.settle(coordinator, session_id, ThreadTurn::Started)
             .await;
-        let result = session.run(content).await;
+        let result = session
+            .run(InputMessage::user(content).with_causal_context(causes))
+            .await;
         let turn = match &result {
             Ok(turn) if turn.success => ThreadTurn::Completed,
             Ok(turn) if turn.stop_reason == TurnStopReason::Cancelled => ThreadTurn::Cancelled,
@@ -475,48 +504,7 @@ impl LocalSessionRunner for EngineSessionRunner {
             .backends_for(&agent)
             .await
             .map_err(crate::agent::BackendInitError::into_agent_loop)?;
-        let history = EventHistory::new(backends.host.event_log.clone());
-        let page_size = EventHistoryReadLimit::new(MAX_EVENT_HISTORY_PAGE_SIZE)
-            .map_err(|error| AgentLoopError::store(error.to_string()))?;
-        let mut request = EventHistoryReadRequest::new(session_id, page_size);
-        let mut raw = Vec::new();
-        loop {
-            let page = history
-                .read_page(request)
-                .await
-                .map_err(|error| AgentLoopError::store(error.to_string()))?;
-            raw.extend(page.messages);
-            let Some(cursor) = page.next_cursor else {
-                break;
-            };
-            request = EventHistoryReadRequest::new(session_id, page_size).with_cursor(cursor);
-        }
-        // The conversation as the platform store contract reads it: what
-        // people said and what the agent said (its text or its sent messages),
-        // never its commentary.
-        let lines = conversation::transcript_lines(&raw);
-        let mut messages: Vec<PlatformMessage> = raw
-            .into_iter()
-            .zip(lines)
-            .filter_map(|(message, content)| {
-                let role = match &message.role {
-                    RuntimeMessageRole::Agent => "agent",
-                    RuntimeMessageRole::User => "user",
-                    _ => return None,
-                };
-                Some(PlatformMessage {
-                    role: role.to_string(),
-                    content: content?,
-                    created_at: message.created_at,
-                })
-            })
-            .collect();
-        // Most recent first, as the platform store contract reads them.
-        messages.reverse();
-        if let Some(limit) = limit {
-            messages.truncate(limit);
-        }
-        Ok(messages)
+        platform_messages(backends.host.event_log.clone(), session_id, limit).await
     }
 
     async fn get_session_status(&self, session_id: SessionId) -> Result<Option<String>> {
@@ -528,4 +516,101 @@ impl LocalSessionRunner for EngineSessionRunner {
             .await?
             .map(|_| "idle".to_string()))
     }
+
+    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
+        let engine = self.owner(session_id)?;
+        let agent = engine
+            .agent(session_id)
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
+        let backends = engine
+            .backends_for(&agent)
+            .await
+            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
+        latest_terminal_turn_status(backends.host.event_log.clone(), session_id).await
+    }
+}
+
+/// Outcome of the session's latest turn, read from its canonical journal:
+/// `completed`, `failed`, `cancelled` or `sealed`, matching what hosted
+/// platform stores report for a settled child. `None` when no turn has
+/// finished, or when a later turn started and has not finished yet, so an idle
+/// session never reads as a success it did not have.
+pub(crate) async fn latest_terminal_turn_status(
+    event_log: Arc<dyn everruns_core::host::EventLog>,
+    session_id: SessionId,
+) -> Result<Option<String>> {
+    let limit =
+        EventReadLimit::new(256).map_err(|error| AgentLoopError::store(error.to_string()))?;
+    let mut request = EventReadRequest::new(session_id, limit);
+    let mut status = None;
+    loop {
+        let page = event_log
+            .read_page(request)
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        for event in &page.events {
+            status = match event.event_type.as_str() {
+                everruns_core::TURN_STARTED => None,
+                everruns_core::TURN_COMPLETED => Some("completed"),
+                everruns_core::TURN_FAILED => Some("failed"),
+                everruns_core::TURN_CANCELLED => Some("cancelled"),
+                everruns_core::TURN_SEALED => Some("sealed"),
+                _ => continue,
+            };
+        }
+        let Some(cursor) = page.next_cursor else {
+            return Ok(status.map(str::to_string));
+        };
+        request = EventReadRequest::from_cursor(cursor, limit);
+    }
+}
+
+/// A session's conversation as the platform store contract reads it.
+pub(crate) async fn platform_messages(
+    event_log: Arc<dyn everruns_core::host::EventLog>,
+    session_id: SessionId,
+    limit: Option<usize>,
+) -> Result<Vec<PlatformMessage>> {
+    let history = EventHistory::new(event_log);
+    let page_size = EventHistoryReadLimit::new(MAX_EVENT_HISTORY_PAGE_SIZE)
+        .map_err(|error| AgentLoopError::store(error.to_string()))?;
+    let mut request = EventHistoryReadRequest::new(session_id, page_size);
+    let mut raw = Vec::new();
+    loop {
+        let page = history
+            .read_page(request)
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        raw.extend(page.messages);
+        let Some(cursor) = page.next_cursor else {
+            break;
+        };
+        request = EventHistoryReadRequest::new(session_id, page_size).with_cursor(cursor);
+    }
+    // The conversation as the platform store contract reads it: what
+    // people said and what the agent said (its text or its sent messages),
+    // never its commentary.
+    let lines = conversation::transcript_lines(&raw);
+    let mut messages: Vec<PlatformMessage> = raw
+        .into_iter()
+        .zip(lines)
+        .filter_map(|(message, content)| {
+            let role = match &message.role {
+                RuntimeMessageRole::Agent => "agent",
+                RuntimeMessageRole::User => "user",
+                _ => return None,
+            };
+            Some(PlatformMessage {
+                role: role.to_string(),
+                content: content?,
+                created_at: message.created_at,
+            })
+        })
+        .collect();
+    // Most recent first, as the platform store contract reads them.
+    messages.reverse();
+    if let Some(limit) = limit {
+        messages.truncate(limit);
+    }
+    Ok(messages)
 }

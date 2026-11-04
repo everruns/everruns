@@ -18,7 +18,7 @@ use std::sync::{Arc, OnceLock};
 use async_trait::async_trait;
 use axum::http::{Method, StatusCode};
 use base64::Engine as _;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::McpServerActsAs;
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::events::{
@@ -102,23 +102,9 @@ impl SkylineRunner {
         self.brand_url.set(url).ok();
     }
 
-    async fn run(&self, session_id: SessionId, turn_id: Value) {
+    async fn run(&self, session_id: SessionId, turn_id: Value, message_id: MessageId) {
         let wiring = self.wiring.get().expect("runner wired");
-        let inputs = wiring
-            .db
-            .list_events(
-                session_id,
-                None,
-                None,
-                &[INPUT_MESSAGE.to_string()],
-                &[],
-                None,
-                Some(1),
-            )
-            .await
-            .unwrap();
-        let input: InputMessageData =
-            serde_json::from_value(inputs.last().unwrap().data.clone()).unwrap();
+        let input = Self::stored_input(wiring, session_id, message_id).await;
         let text = input.message.text().unwrap_or_default().to_lowercase();
         // The token the MCP client would send, resolved exactly as it is.
         let resolver = DbConnectionResolver::new(
@@ -212,6 +198,50 @@ impl SkylineRunner {
             .unwrap();
     }
 
+    /// The turn's input message, once it is visible.
+    ///
+    /// The server starts a turn inside the transaction that stores its input
+    /// (`turns::store_input_and_start`), and this runner starts at once, so
+    /// it can look before that commit. A real worker runs only after the
+    /// commit, and reads the message the request names. Reading the session's
+    /// latest visible input instead picked up the previous turn's message
+    /// whenever the commit was slow (the nightly's fsync-on PostgreSQL), so a
+    /// rebook request replayed into the next turn's events.
+    async fn stored_input(
+        wiring: &Wiring,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> InputMessageData {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let inputs = wiring
+                .db
+                .list_events(
+                    session_id,
+                    None,
+                    None,
+                    &[INPUT_MESSAGE.to_string()],
+                    &[],
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            if let Some(input) = inputs
+                .into_iter()
+                .filter_map(|event| serde_json::from_value::<InputMessageData>(event.data).ok())
+                .find(|input| input.message.id == message_id)
+            {
+                return input;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "input {message_id} never committed"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
     /// One company API call with the user's token. `None` is a refusal.
     async fn call(
         &self,
@@ -292,7 +322,10 @@ impl everruns_core::host::TurnBackend for SharedRunner {
         let runner = self.0.clone();
         let session_id = request.session_id;
         let turn_id = serde_json::to_value(request.turn_id).unwrap();
-        tokio::spawn(async move { runner.run(session_id, turn_id).await });
+        let everruns_core::host::TurnInput::StoredMessage { message_id } = request.input else {
+            panic!("the server starts these turns from stored input");
+        };
+        tokio::spawn(async move { runner.run(session_id, turn_id, message_id).await });
         Ok(everruns_core::host::TurnTicket::new(
             request.session_id,
             request.turn_id,

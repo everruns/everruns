@@ -4,8 +4,6 @@ import {
   SessionIcon,
   HarnessDomainIcon,
   SkillsIcon,
-  CapabilitiesIcon,
-  PluginsIcon,
 } from "@/components/icons/facet-icons";
 import { useGlobalSearch } from "@/hooks/use-global-search";
 import { settingsNavigationSections } from "@/lib/settings-navigation";
@@ -170,11 +168,6 @@ describe("useGlobalSearch", () => {
     });
   });
 
-  it("defers the evals fetch when the feature flag is off", () => {
-    renderHook(() => useGlobalSearch(""));
-    expect(mockUseEvals).toHaveBeenCalledWith({ enabled: false });
-  });
-
   it("enables the evals fetch when the feature flag is on", () => {
     mockFeatureFlags.evals = true;
     renderHook(() => useGlobalSearch("eval"));
@@ -284,7 +277,7 @@ describe("useGlobalSearch", () => {
     ["new side chat", "/chats/new"],
     ["all chats", "/chats/history"],
     ["reports", "/reports"],
-    ["knowledge indexes", "/knowledge-indexes"],
+    ["knowledge", "/knowledge"],
     ["plugins", "/plugins"],
     ["observers", "/observers"],
     ["payments", "/settings/payments"],
@@ -354,24 +347,10 @@ describe("useGlobalSearch", () => {
     ).toBe(false);
   });
 
-  it("keeps all settings destinations discoverable for a broad query", () => {
-    const { result } = renderHook(() => useGlobalSearch("settings"));
-    expect(result.current).toContainEqual(expect.objectContaining({ href: "/settings/health" }));
-    expect(result.current).toContainEqual(
-      expect.objectContaining({ href: "/settings/personal-access-tokens" }),
-    );
-  });
-
   it("does not return the retired Apps route", () => {
     const { result } = renderHook(() => useGlobalSearch("apps"));
 
     expect(result.current.some((item) => item.href.startsWith("/apps"))).toBe(false);
-  });
-
-  it("does not offer the retired org-wide approvals destination", () => {
-    const { result } = renderHook(() => useGlobalSearch("approvals"));
-
-    expect(result.current.some((item) => item.href === "/approvals")).toBe(false);
   });
 
   it("hides Payments navigation when machine payments are disabled", () => {
@@ -389,18 +368,6 @@ describe("useGlobalSearch", () => {
 
     expect(mockUseSavedReports).toHaveBeenCalledWith(false);
     expect(result.current.some((item) => item.href === "/reports")).toBe(false);
-  });
-
-  it.each([
-    ["skills", "/skills", SkillsIcon],
-    ["capabilities", "/capabilities", CapabilitiesIcon],
-    ["plugins", "/plugins", PluginsIcon],
-  ])("uses the semantic %s icon in navigation search", (query, href, icon) => {
-    const { result } = renderHook(() => useGlobalSearch(query));
-
-    expect(result.current).toContainEqual(
-      expect.objectContaining({ category: "navigation", href, icon }),
-    );
   });
 
   it.each([

@@ -134,6 +134,7 @@ jest.mock("@/providers/notifications-provider", () => ({
 }));
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({
     locale: "en",
     t: (key: string) => (key === "fork_into_chat" ? "Fork into chat" : key),
@@ -177,9 +178,13 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
 }));
 
 // Import after mocks
-import SessionLayout from "@/app/(main)/sessions/[sessionId]/layout";
+import SessionLayout, * as sessionLayoutRoute from "@/app/(main)/sessions/[sessionId]/layout";
 
 describe("SessionLayout", () => {
+  it("keeps reusable components outside the route module exported through hosted shims", () => {
+    expect(Object.keys(sessionLayoutRoute)).toEqual(["default"]);
+  });
+
   beforeEach(() => {
     mockPush.mockReset();
     mockPathname.mockReturnValue("/sessions/ses-abc12345/trace");
@@ -245,25 +250,6 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("renders children content", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("child-content")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Chat Content")).toBeInTheDocument();
-  });
-
-  it("renders session title", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      // The title also appears as the breadcrumb's trailing segment (EVE-869),
-      // so assert the masthead heading specifically.
-      expect(screen.getByRole("heading", { name: "Test Session" })).toBeInTheDocument();
-    });
-  });
-
   it("renders the recording tabs in information-architecture order", async () => {
     await renderLayout();
 
@@ -282,25 +268,6 @@ describe("SessionLayout", () => {
     ).toEqual(["Trace", "Approvals", "Work", "Events", "Files", "Cost"]);
     expect(screen.queryByRole("link", { name: /^transcript$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^timeline$/i })).not.toBeInTheDocument();
-  });
-
-  it("points each tab at its route", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByRole("link", { name: /^trace$/i })).toHaveAttribute(
-        "href",
-        "/sessions/ses-abc12345/trace",
-      );
-    });
-    expect(screen.getByRole("link", { name: /files/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/files",
-    );
-    expect(screen.getByRole("link", { name: /cost/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/cost",
-    );
   });
 
   it("offers no chat, storage, schedules or trajectory tab", async () => {
@@ -380,41 +347,6 @@ describe("SessionLayout", () => {
     const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(within(breadcrumb).getByText("Operational")).toBeInTheDocument();
     expect(within(breadcrumb).queryByRole("link", { name: "Operational" })).toBeNull();
-  });
-
-  it("renders agent name with link", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      const agentLink = screen.getByRole("link", { name: /test agent/i });
-      expect(agentLink).toHaveAttribute("href", "/agents/agent-123");
-    });
-  });
-
-  it("renders Ready badge for idle session", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByText("Ready")).toBeInTheDocument();
-    });
-  });
-
-  it("renders LLM model badge", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByText("GPT-4")).toBeInTheDocument();
-    });
-  });
-
-  it("shows loading skeletons when session is loading", async () => {
-    mockSessionContext.sessionLoading = true;
-    await renderLayout();
-
-    await waitFor(() => {
-      const skeletons = screen.getAllByTestId("skeleton");
-      expect(skeletons.length).toBeGreaterThan(0);
-    });
   });
 
   it("shows error state when session is not found", async () => {

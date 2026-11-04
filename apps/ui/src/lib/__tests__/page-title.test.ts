@@ -5,10 +5,6 @@ describe("formatPageTitle", () => {
     expect(formatPageTitle()).toBe(APP_NAME);
   });
 
-  it("appends the app name to a single segment", () => {
-    expect(formatPageTitle("Agents")).toBe(`Agents${TITLE_SEPARATOR}${APP_NAME}`);
-  });
-
   it("joins multiple segments most-specific-first", () => {
     expect(formatPageTitle("New Agent", "Agents")).toBe(
       `New Agent${TITLE_SEPARATOR}Agents${TITLE_SEPARATOR}${APP_NAME}`,
@@ -27,10 +23,6 @@ describe("formatPageTitle", () => {
     expect(formatPageTitle("  My Bot  ", "Agent")).toBe(
       `My Bot${TITLE_SEPARATOR}Agent${TITLE_SEPARATOR}${APP_NAME}`,
     );
-  });
-
-  it("uses a middle dot separator with single spaces", () => {
-    expect(TITLE_SEPARATOR).toBe(" · ");
   });
 
   it("drops a segment that repeats the one before it", () => {

@@ -1,0 +1,10 @@
+{
+  "name": "long-tool",
+  "description": "Two 25 s shell commands (a build, then the tests), then an answer, timed like GPT-6.1 Sol: tool time that holds a turn open. Needs the bash tool.",
+  "defaults": {"timing": {"ttft_ms": [1500, 2500], "tokens_per_sec": 46}},
+  "steps": [
+    {"turn": {"type": "mixed", "text": "Building the project first.", "calls": [{"name": "bash", "arguments": {"commands": "sleep 25; echo build ok", "timeout_ms": 60000}}]}},
+    {"turn": {"type": "tool_calls", "calls": [{"name": "bash", "arguments": {"commands": "sleep 25; echo 42 passed", "timeout_ms": 60000}}]}},
+    {"turn": {"type": "assistant", "lorem_tokens": [100, 250]}}
+  ]
+}

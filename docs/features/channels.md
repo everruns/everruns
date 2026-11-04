@@ -20,6 +20,7 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 | AG-UI | `ag_ui` | Browser and app clients that speak the AG-UI protocol | `/v1/channels/{channel_id}/ag-ui` | [AG-UI](#ag-ui) |
 | A2A | `a2a` | Other agents, over the A2A protocol | `/v1/channels/{channel_id}/a2a` | [A2A](/features/a2a/) |
 | FCP | `fcp` | Any HTTP client, text in and text out | `/v1/channels/{channel_id}/fcp` | [FCP](#fcp) |
+| Work Chat | `work_chat` | Signed-in consumers using a dedicated work interface | `/v1/channels/{channel_id}` | [Work Chat](#work-chat) |
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
 | Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
 | Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](/features/agent-api/) |
@@ -39,9 +40,9 @@ authentication and membership in the file's organization.
 
 ## Create a channel
 
-1. Open the Agent and select the **Integrations** tab.
+1. Open the Agent and select the **Channels and triggers** tab.
 2. Select **Add channel** and choose the channel type.
-3. Configure the type-specific fields and select **Save channel**.
+3. Configure the type-specific fields and select **Create channel**.
 4. Select **Publish** to make the channel live.
 
 The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Every channel runs the Agent's current configuration.
@@ -58,12 +59,14 @@ Disabled → Draft
 ```
 
 - **Draft**: Configured but does not accept ingress traffic.
-- **Live**: Published and able to accept traffic while its Agent is active and exposures are not suspended.
+- **Live**: Published and able to accept traffic while its Agent is active and not paused.
 - **Disabled**: Kept for configuration but rejects ingress traffic and does not invoke the Agent.
 
 Publishing and unpublishing require the dangerous Agent permission (Owner by default). The same permission is required to change a live channel's configuration, including its authentication and secrets, or to disable it. Members who can manage Agents can still edit Draft and Disabled channels.
 
-A channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent's exposures are not suspended. Suspending exposures from the Agent's **Integrations** tab takes every channel of that Agent offline at once without changing each channel's state.
+A channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent is not paused. **Pause agent** in the Agent's **⋯** menu (or `everruns agents pause`) takes every channel of that Agent offline and stops its triggers and schedules at once, without changing each channel's or trigger's own state; **Resume** restores them.
+
+Every channel has its own page at `/agents/{agent_id}/channels/{channel_id}`. API, CLI and MCP responses for a channel include that page as `view_url`, so you can link to it directly.
 
 Errors from public channels are sanitized so they do not expose internal state, such as whether a channel exists or why it is offline.
 
@@ -117,6 +120,7 @@ AG-UI channels are public client surfaces, so they expose less than the Agent's 
 
 - `tool_visibility` controls tool activity: `none`, `generic` (a fixed text you configure in `generic_tool_text`), or `narrated`. Raw tool names, arguments, and results are never sent.
 - Reasoning summaries, token usage, subagent activity, the todo list as shared state, and client answers to tool-approval interrupts are off by default, each behind its own setting.
+- Message reactions stream as a `CUSTOM` event named `everruns.reaction`, with `value` `{messageId, emoji, action, actor}`. `action` is `added` or `removed`, and `actor` carries only `kind` and display `name`. A client adds its own reactions through the [Agent Execution API](/features/agent-api/) reaction routes.
 - Access is anonymous by default. Set a shared `token` or an `auth` block to require authentication, and `rate_limit_per_minute` to cap requests per IP.
 - A thread stays resumable for `session_expiration_seconds` (6 hours by default); after that, the same thread ID starts a new session.
 
@@ -154,15 +158,15 @@ To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initi
 
 ## Agent API
 
-An Agent API channel gives one Agent a base URL, `/v1/channels/{channel_id}`, that your own code calls with an **agent key** (`evr_ak_…`). A key reaches only this Agent's session routes, never the management API. Callers start sessions, send messages, follow events over SSE, answer questions, approve tool calls and cancel turns, and each caller sees only its own sessions. Channel settings add end users, your own identity provider, browser origins, safe retries and a daily spending limit per caller.
+An Agent API channel gives one Agent a base URL, `/v1/channels/{channel_id}`, that your own code calls with an **agent key** (`evr_ak_…`). A key reaches only this Agent's session routes, never the management API. Callers start sessions, send messages, follow events over SSE, answer questions, approve tool calls and cancel turns, and each caller sees only its own sessions. Channel settings add end users, your own identity provider, browser origins, safe retries and a daily spending limit per caller. In the console that daily limit sits with the channel budget under **Spending**: the budget is the shared pool, and the daily limit caps each person until midnight UTC.
 
-Add an **Agent API** channel on the Agent's **Integrations** tab, publish it, and create a key in its **Agent keys** card. See [Agent API](/features/agent-api/) for keys, every route, authentication, settings, streaming and errors, and [Call your agent from code](/how-to/call-your-agent-from-code/) for a walkthrough. A [serve](/framework/serve/) app serves the same routes at `/v1/channels/{agent}`.
+Add an **Agent API** channel on the Agent's **Channels and triggers** tab, publish it, and create a key in its **Agent keys** card. See [Agent API](/features/agent-api/) for keys, every route, authentication, settings, streaming and errors, and [Call your agent from code](/how-to/call-your-agent-from-code/) for a walkthrough. A [serve](/framework/serve/) app serves the same routes at `/v1/channels/{agent}`.
 
 ## Other transports
 
 The same channel model also carries transports that do not need a reply channel:
 
-- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is available under **Add channel**. A sender that retries can set an `Idempotency-Key` header: a repeat of a key the channel accepted in the last day answers `"delivery": "duplicate"` and starts nothing.
+- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is created as a [webhook trigger](/features/agent-triggers/) under **Add trigger**. Webhook channels created before keep working. A sender that retries can set an `Idempotency-Key` header: a repeat of a key the channel accepted in the last day answers `"delivery": "duplicate"` and starts nothing.
 - `schedule` runs the Agent on a cron schedule. Create schedules as [Agent triggers](/features/agent-triggers/), which also cover webhook, GitHub, and MCP event starts.
 
 ## Existing integrations
@@ -184,3 +188,94 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 - [Poppy](/features/poppy/): answer people's personal agents as a company.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
 - [Change History](/features/change-history/): see and restore earlier Agent configurations.
+
+## Work Chat
+
+Publish **Work Chat** to give an Agent a dedicated browser experience with its
+own consumer sign-in. Each channel has a stable hostname on the hosted content
+domain configured by your deployment. That hostname is assigned when the
+channel is created and is not the channel id. Several Work Chat channels can
+point to the same Agent.
+
+The channel page shows that address once, above the settings. Open it with
+**Open chat page** in the header. The address stays the same when you change
+settings. A link built from the channel id does not open the chat. Publishing
+alone does not create the hostname until the deployment has a hosted chat
+domain.
+
+Choose **Multiple conversations** for a conversation list, or **Single chat
+with threads** for one permanent main conversation per consumer and related
+work threads. Single mode requires coordinator thread tools on the effective
+Agent, including inherited harness capabilities. Publication and later
+configuration updates reject an incompatible combination. A worker-only
+coordination capability does not qualify.
+
+```json
+{
+  "channel_type": "work_chat",
+  "channel_config": {
+    "interface_mode": "multi_chat",
+    "membership": "open",
+    "execution": {
+      "visibility": "full",
+      "errors": "public"
+    }
+  }
+}
+```
+
+Choose who can sign in. **Open access** admits anyone who can register and sign
+in with the deployment's identity provider. On Everruns Cloud that is an
+[Everruns ID](https://id.everruns.com). **Single user + invites** admits one
+email address plus the people you list. **Organization users** admits current
+members of this organization. Someone who is not included is turned away at
+sign-in. A publisher-chosen provider, such as an external OpenID Connect
+issuer, is not a membership mode yet.
+
+Consumers are separate from console members. The browser host uses its
+deployment's identity provider and host-only sessions. It shows streamed replies,
+work activity, threads, questions and permitted approvals. Workspace tools enable
+file browsing and editing; read-only files remain protected. Provider reasoning,
+debug records and private runtime mounts are excluded.
+
+Existing budgets, approval policies and session ownership continue to apply. **Spending** on the channel page is the shared channel budget and the optional daily limit for each person. The shared budget stops the channel when the pool is spent. The daily limit stops one person until the next UTC day; leave it empty for no per-person cap. A rate limit stays under **Advanced**.
+Changing a channel's configuration changes the same URL. The channel introduces
+no separate history or retention policy.
+
+Self-hosters deploy the optional standalone browser app separately from the
+console. Follow its [deployment instructions](https://github.com/everruns/everruns/tree/main/apps/chat-ui)
+for the content domain, TLS, OIDC broker and least-privilege credential storage.
+Publishing a channel alone does not provision hosting or DNS.
+
+### Work Chat interface
+
+The sidebar shows who is signed in. Their name comes from the identity
+provider, with email and picture when those claims are present. A provider
+that sends no name leaves the Work Chat label in place. The sidebar and the
+empty conversation use the Agent's avatar. An Agent with no avatar keeps the
+round mark.
+
+A message the Agent sends is the reply. It is rendered as Markdown, and it is
+not listed again as work. Other tool steps stay in the work log.
+
+The hosted chat renders Markdown, OpenUI charts and all 69 standard A2UI 1.0
+components inline, using the same renderer as console chat. See
+[Generative UI](/features/generative-ui/) for forms, bindings and saved-message
+compatibility.
+Enable the corresponding capabilities on the Agent when it should produce those
+formats. Replies include expandable work logs, and background task cards open
+their delegated conversation.
+
+Consumers can search, pin, rename and archive independent conversations. Archived
+conversations retain their history and can be reopened. Messages use the model
+configured on the Agent. Reasoning effort and existing spending controls apply.
+
+Attach up to three files totaling 4 MB through the composer, paste or drag-and-drop.
+The Workspace panel previews Markdown, images, CSV tables and text, supports
+revision-checked editing, and downloads both text and binary files. HTML/SVG
+previews display in a sandbox without scripts or external network access.
+
+**Conversation actions → Share read-only link** publishes that conversation's
+messages and widgets, including future messages, to anyone holding the link.
+Files, approvals and execution controls remain private. **Revoke public links** removes access; creating another
+link replaces the earlier one. Channel unpublication also removes public access.

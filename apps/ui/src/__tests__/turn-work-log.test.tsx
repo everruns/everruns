@@ -74,19 +74,6 @@ describe("TurnWorkLog", () => {
     );
   });
 
-  it("can be reopened after completion", () => {
-    render(
-      <TurnWorkLog label="Worked for 18s" isActive={false}>
-        <div>Inspecting the repo</div>
-      </TurnWorkLog>,
-    );
-
-    const button = screen.getByRole("button", { name: /worked for 18s/i });
-    fireEvent.click(button);
-
-    expect(button).toHaveAttribute("aria-expanded", "true");
-  });
-
   it("surfaces recovered tool failures as warning-style issues, not errors", () => {
     render(
       <TurnWorkLog label="Worked for 33s" isActive={false} issueCount={2}>
@@ -179,6 +166,30 @@ describe("TurnWorkLog", () => {
     });
 
     expect(screen.getByRole("button", { name: /working for 15s/i })).toBeInTheDocument();
+  });
+
+  it("says the turn is waiting for a worker when it has not started for a while", () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-10-03T00:00:05Z"));
+
+    render(
+      <TurnWorkLog
+        phase="starting"
+        hasSteps={false}
+        startedAtMs={Date.parse("2026-10-03T00:00:00Z")}
+      >
+        <div>Nothing yet</div>
+      </TurnWorkLog>,
+    );
+
+    expect(screen.getByText("Starting")).toBeInTheDocument();
+
+    act(() => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(screen.getByText("Waiting for a worker to pick this up")).toBeInTheDocument();
+    expect(screen.queryByText("Starting")).not.toBeInTheDocument();
   });
 });
 

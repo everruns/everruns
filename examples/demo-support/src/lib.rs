@@ -19,15 +19,38 @@ pub mod style;
 use everruns::{Session, SessionEventKind, Turn};
 use serde_json::Value;
 
+// Outcome observation also handles rejection before a turn starts. Recreate
+// the losing wait before querying assignment, so it cannot reserve the same
+// authority mutex behind an unpolled future.
+async fn next_for_receipt(
+    pending: &everruns::SentMessage,
+    events: &mut everruns::EventStream,
+    assigned: &mut Option<String>,
+) -> Result<Option<everruns::SessionEvent>, Box<dyn std::error::Error>> {
+    loop {
+        let event = tokio::select! {
+            result = pending.wait() => { result?; return Ok(None); },
+            event = events.recv() => match event? { Some(event) => event, None => return Ok(None) },
+        };
+        if assigned.is_none() {
+            *assigned = pending
+                .assignment()
+                .await?
+                .map(|assignment| assignment.turn_id.to_string());
+        }
+        if assigned.is_some() && event.turn_id.as_deref() == assigned.as_deref() {
+            return Ok(Some(event));
+        }
+    }
+}
+
 /// Send `question` and print each tool call with a bounded preview of its result.
 pub async fn run(session: &Session, question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
     show("QUESTION", question);
     let mut events = session.events();
     let pending = session.send(question).await?;
-    while let Some(event) = events.recv().await? {
-        if event.turn_id.as_deref() != Some(pending.turn_id.as_str()) {
-            continue;
-        }
+    let mut assigned = pending.turn_id.clone();
+    while let Some(event) = crate::next_for_receipt(&pending, &mut events, &mut assigned).await? {
         let terminal = event.kind.is_terminal();
         match &event.kind {
             SessionEventKind::ToolStarted { tool_name, .. } => {
@@ -191,5 +214,23 @@ mod tests {
         assert!(result.contains("Primary source"));
         assert!(result.contains("https://example.org"));
         assert!(!result.contains("description"));
+    }
+
+    #[tokio::test]
+    async fn a_rejected_admission_does_not_leave_the_terminal_view_waiting() {
+        let agent = everruns::Agent::builder()
+            .instructions("Test admission handling")
+            .model(everruns::Model::simulated("must not run"))
+            .on_turn_start(|_| async { Err::<(), _>("rejected".to_string()) })
+            .build()
+            .unwrap();
+        let session = everruns::Engine::new().create(agent);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            super::run(&session, "work"),
+        )
+        .await
+        .unwrap();
+        assert!(result.is_err());
     }
 }

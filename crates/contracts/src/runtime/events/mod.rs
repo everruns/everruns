@@ -13,6 +13,7 @@ pub mod correlation;
 mod file_voice_data;
 mod llm_data;
 mod message_data;
+mod reaction_data;
 mod reason_data;
 mod sandbox_lifecycle_data;
 mod severity;
@@ -25,6 +26,7 @@ pub use compaction_data::*;
 pub use file_voice_data::*;
 pub use llm_data::*;
 pub use message_data::*;
+pub use reaction_data::*;
 pub use reason_data::*;
 pub use sandbox_lifecycle_data::*;
 pub use severity::*;
@@ -55,12 +57,21 @@ pub const CONVERSATION_MESSAGE: &str = "conversation.message";
 // Turn lifecycle events
 pub const TURN_STARTED: &str = "turn.started";
 pub const TURN_COMPLETED: &str = "turn.completed";
+pub const DREAMING_ACTIVITY: &str = "dreaming.activity";
+mod dreaming;
+pub use dreaming::DreamingActivityData;
 pub const TURN_FAILED: &str = "turn.failed";
 /// Turn was deliberately sealed (stopped to prevent waste): no forward progress
 /// across repeated crash-reclaims, or work budget exhausted. Distinct from
 /// `turn.completed` (success) and `turn.failed` (error). Carries a `reason`.
 pub const TURN_SEALED: &str = "turn.sealed";
 pub const TURN_CANCELLED: &str = "turn.cancelled";
+/// A turn about to finish was reviewed for whether it did what was asked,
+/// and may continue automatically (the agent's `completion_check` setting).
+pub const TURN_COMPLETION_CHECKED: &str = "turn.completion_checked";
+/// The provider refused a request for lack of credits, and the runtime
+/// retried smaller, waited for credits, resumed, or gave up.
+pub const TURN_CREDIT_SHORTFALL: &str = "turn.credit_shortfall";
 
 // Atom lifecycle events
 pub const REASON_STARTED: &str = "reason.started";
@@ -193,9 +204,12 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     CONVERSATION_MESSAGE,
     TURN_STARTED,
     TURN_COMPLETED,
+    DREAMING_ACTIVITY,
     TURN_FAILED,
     TURN_SEALED,
     TURN_CANCELLED,
+    TURN_COMPLETION_CHECKED,
+    TURN_CREDIT_SHORTFALL,
     REASON_STARTED,
     REASON_COMPLETED,
     REASON_RECOVERED,
@@ -245,6 +259,8 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     VOICE_OUTPUT_INTERRUPTED,
     FILE_WRITTEN,
     CAPABILITY_USAGE,
+    MESSAGE_REACTION_ADDED,
+    MESSAGE_REACTION_REMOVED,
 ];
 
 // ============================================================================
@@ -430,6 +446,7 @@ impl Event {
     /// [`EventData::into_public`]. Apply at every event read boundary.
     pub fn into_public(mut self) -> Self {
         self.data = self.data.into_public();
+        self.metadata = self.metadata.as_ref().map(crate::public_metadata::event);
         self
     }
 
@@ -610,6 +627,7 @@ pub const FILE_OP_CREATE: &str = "create";
 /// - `timer.cancelled` → TimerCancelledData
 /// - `file.written` → FileWrittenData
 /// - `conversation.message` → ConversationMessageData
+/// - `message.reaction.added` / `message.reaction.removed` → MessageReactionData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
 //   - `Serialize` emits the payload inline (the event `type` lives as a sibling
 //     field on `Event`/`EventRequest`, never inside `data`), and
@@ -637,9 +655,14 @@ pub enum EventData {
     ConversationMessage(ConversationMessageData),
     OutputMessageCompleted(OutputMessageCompletedData),
 
+    // Reactions on messages (both share MessageReactionData)
+    MessageReactionAdded(MessageReactionData),
+    MessageReactionRemoved(MessageReactionData),
+
     // Turn lifecycle events
     TurnStarted(TurnStartedData),
     TurnCompleted(TurnCompletedData),
+    DreamingActivity(DreamingActivityData),
     TurnFailed(TurnFailedData),
 
     // Atom lifecycle events
@@ -674,6 +697,8 @@ pub enum EventData {
 
     TurnSealed(TurnSealedData),
     TurnCancelled(TurnCancelledData),
+    TurnCompletionChecked(TurnCompletionCheckedData),
+    TurnCreditShortfall(TurnCreditShortfallData),
 
     // Session events
     SessionStarted(SessionStartedData),
@@ -782,6 +807,9 @@ impl EventData {
                     .map(RuntimeMessage::into_public)
                     .collect();
                 data.request_body = data.request_body.map(llm_data::public_request_body);
+                // Replay bookkeeping is not a diagnostic request field. The
+                // intentional prompts/tools above and trace name summary remain.
+                data.metadata.tool_changes = None;
                 EventData::LlmGeneration(data)
             }
             other => other,
@@ -879,12 +907,19 @@ event_data_kinds! {
     // Conversation events
     ConversationMessage(ConversationMessageData) = CONVERSATION_MESSAGE,
 
+    // Reactions on messages
+    MessageReactionAdded(MessageReactionData) = MESSAGE_REACTION_ADDED,
+    MessageReactionRemoved(MessageReactionData) = MESSAGE_REACTION_REMOVED,
+
     // Turn lifecycle events
     TurnStarted(TurnStartedData) = TURN_STARTED,
     TurnCompleted(TurnCompletedData) = TURN_COMPLETED,
+    DreamingActivity(DreamingActivityData) = DREAMING_ACTIVITY,
     TurnFailed(TurnFailedData) = TURN_FAILED,
     TurnSealed(TurnSealedData) = TURN_SEALED,
     TurnCancelled(TurnCancelledData) = TURN_CANCELLED,
+    TurnCompletionChecked(TurnCompletionCheckedData) = TURN_COMPLETION_CHECKED,
+    TurnCreditShortfall(TurnCreditShortfallData) = TURN_CREDIT_SHORTFALL,
 
     // Atom lifecycle events
     ReasonStarted(ReasonStartedData) = REASON_STARTED,
@@ -989,9 +1024,12 @@ impl_from_event_data! {
     ConversationMessageData => ConversationMessage,
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,
+    DreamingActivityData => DreamingActivity,
     TurnFailedData => TurnFailed,
     TurnSealedData => TurnSealed,
     TurnCancelledData => TurnCancelled,
+    TurnCompletionCheckedData => TurnCompletionChecked,
+    TurnCreditShortfallData => TurnCreditShortfall,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
     ReasonRecoveredData => ReasonRecovered,
@@ -1042,6 +1080,18 @@ impl EventData {
                 event_type.to_string(),
                 serde_json::to_value(&data).unwrap_or(serde_json::Value::Null),
             ),
+        }
+    }
+}
+
+// Both reaction events share MessageReactionData, so they get a named
+// constructor instead of a `From` impl.
+impl EventData {
+    pub fn message_reaction(data: MessageReactionData, added: bool) -> Self {
+        if added {
+            EventData::MessageReactionAdded(data)
+        } else {
+            EventData::MessageReactionRemoved(data)
         }
     }
 }

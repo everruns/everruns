@@ -10,6 +10,8 @@ const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "The AI provider is experiencing issues. Please try again shortly.",
     "Rate limited by the AI provider. Please wait a moment.",
     "The conversation has become too long for the model to process. Please start a new session or reduce the context size.",
+    "The AI provider is not set up correctly. Ask an administrator to check the provider in Models.",
+    // Older sessions carry the previous wording in their history.
     "There is a misconfiguration with the AI provider. Please contact support.",
     "No model is configured for this chat. Choose a model or configure a default model, then try again.",
     "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
@@ -149,7 +151,13 @@ pub(super) fn filtered_reasoning_summary(
 }
 
 fn is_dynamic_error_placeholder(text: &str) -> bool {
-    (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
+    // Usage policy wording first; the "Budget ..." forms are what older
+    // histories carry.
+    (text.starts_with("Usage limit reached.") && text.ends_with("raise its limit to continue."))
+        || (text.starts_with("Usage policy asks before continuing")
+            && text.ends_with("Continue this turn or raise the limit."))
+        || (text.starts_with("Budget exhausted.")
+            && text.ends_with("Increase the budget to continue."))
         || (text.starts_with("Budget paused.")
             && text.ends_with("Increase or resume the budget to continue."))
         || (text.starts_with("Budget paused with ")

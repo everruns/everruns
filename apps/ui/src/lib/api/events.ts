@@ -11,6 +11,7 @@ export const DEFAULT_EXCLUDED_EVENTS = ["output.message.delta", "reason.thinking
 
 // Options for listing events with pagination support
 export interface ListEventsOptions {
+  types?: string[];
   exclude?: string[];
   /** Max events to return (backward pagination). Returns last N events. */
   limit?: number;
@@ -48,6 +49,7 @@ export async function listEventsPaginated(
     : (excludeOrOptions ?? {});
 
   const params = new URLSearchParams();
+  for (const type of options.types ?? []) params.append("types", type);
   if (options.exclude) {
     for (const type of options.exclude) {
       params.append("exclude", type);

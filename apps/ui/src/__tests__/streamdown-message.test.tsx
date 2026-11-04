@@ -30,7 +30,7 @@ jest.mock("@streamdown/mermaid", () => ({
 jest.mock("remark-gfm", () => jest.fn());
 jest.mock("remark-github-blockquote-alert", () => jest.fn());
 
-import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import { getMarkdownLinkKind, MarkdownLink } from "@/components/markdown/markdown-link";
 
 describe("StreamdownMessage", () => {
@@ -100,32 +100,30 @@ describe("StreamdownMessage", () => {
     >;
     const AnchorComponent = components.a;
 
-    const { container } = render(<AnchorComponent href="/sessions/123">Session</AnchorComponent>);
+    const { container } = render(
+      <AnchorComponent href="/no-such-page/123">Somewhere</AnchorComponent>,
+    );
     const logo = container.querySelector(".markdown-link-everruns-icon");
 
     expect(logo).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("renders with default variant (bg-muted p-4)", () => {
-    const { container } = render(<StreamdownMessage>Content</StreamdownMessage>);
+  it("MarkdownLink uses the destination page icon for in-app links", () => {
+    render(<StreamdownMessage>test</StreamdownMessage>);
 
-    const wrapper = container.querySelector(".streamdown");
-    expect(wrapper?.className).toContain("bg-muted");
-    expect(wrapper?.className).toContain("p-4");
-  });
+    const components = capturedStreamdownProps.components as Record<
+      string,
+      React.ComponentType<React.AnchorHTMLAttributes<HTMLAnchorElement>>
+    >;
+    const AnchorComponent = components.a;
 
-  it("renders inline variant without background", () => {
-    const { container } = render(<StreamdownMessage variant="inline">Content</StreamdownMessage>);
+    const { container } = render(<AnchorComponent href="/harnesses/abc">Harness</AnchorComponent>);
 
-    const wrapper = container.querySelector(".streamdown");
-    expect(wrapper?.className).toContain("bg-transparent");
-    expect(wrapper?.className).not.toContain("bg-muted");
-  });
-
-  it("passes children to Streamdown", () => {
-    render(<StreamdownMessage>Hello markdown</StreamdownMessage>);
-
-    expect(screen.getByTestId("streamdown-mock")).toHaveTextContent("Hello markdown");
+    expect(container.querySelector(".markdown-link-everruns-icon")).toBeNull();
+    expect(container.querySelector("svg.markdown-link-icon")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("enables mermaid plugin after lazy load", async () => {
@@ -144,66 +142,11 @@ describe("StreamdownMessage", () => {
     });
   });
 
-  it("enables code highlighting by default", () => {
-    render(<StreamdownMessage>code block</StreamdownMessage>);
-
-    const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
-    expect(plugins.code).toMatchObject({ name: "mock-code-plugin" });
-  });
-
   it("disables code highlighting when prop is false", () => {
     render(<StreamdownMessage enableCodeHighlighting={false}>code block</StreamdownMessage>);
 
     const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
     expect(plugins.code).toBeUndefined();
-  });
-
-  it("enables GFM parsing so plain URLs render as links", () => {
-    render(<StreamdownMessage>UI link: http://localhost:3000</StreamdownMessage>);
-
-    const remarkPlugins = capturedStreamdownProps.remarkPlugins as unknown[];
-    expect(remarkPlugins).toHaveLength(2);
-  });
-});
-
-describe("InlineStreamdownMessage", () => {
-  beforeEach(() => {
-    capturedStreamdownProps = {};
-  });
-
-  it("renders with inline variant (no background)", () => {
-    const { container } = render(
-      <InlineStreamdownMessage>Instructions here</InlineStreamdownMessage>,
-    );
-
-    const wrapper = container.querySelector(".streamdown");
-    expect(wrapper?.className).toContain("bg-transparent");
-  });
-
-  it("disables code highlighting", () => {
-    render(<InlineStreamdownMessage>Instructions</InlineStreamdownMessage>);
-
-    const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
-    expect(plugins.code).toBeUndefined();
-  });
-
-  it("passes custom className", () => {
-    const { container } = render(
-      <InlineStreamdownMessage className="text-sm text-muted-foreground">
-        Content
-      </InlineStreamdownMessage>,
-    );
-
-    const wrapper = container.querySelector(".streamdown");
-    expect(wrapper?.className).toContain("text-sm");
-    expect(wrapper?.className).toContain("text-muted-foreground");
-  });
-
-  it("inherits MarkdownLink component for links", () => {
-    render(<InlineStreamdownMessage>Content</InlineStreamdownMessage>);
-
-    const components = capturedStreamdownProps.components as Record<string, unknown>;
-    expect(components.a).toBe(MarkdownLink);
   });
 });
 

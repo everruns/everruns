@@ -195,7 +195,7 @@ impl Drop for LocalTaskRecovery {
 /// A PID is only a negative proof. A live or reused PID cannot establish who
 /// owns an attempt. Only an executor-validated owner marker reaches this probe.
 #[cfg(unix)]
-fn process_ownership(pid: u32) -> TaskOwnership {
+pub(crate) fn process_ownership(pid: u32) -> TaskOwnership {
     let Ok(pid) = libc::pid_t::try_from(pid) else {
         return TaskOwnership::Unknown;
     };
@@ -213,7 +213,7 @@ fn process_ownership(pid: u32) -> TaskOwnership {
 }
 
 #[cfg(not(unix))]
-fn process_ownership(_pid: u32) -> TaskOwnership {
+pub(crate) fn process_ownership(_pid: u32) -> TaskOwnership {
     TaskOwnership::Unknown
 }
 

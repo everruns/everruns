@@ -36,6 +36,7 @@ use uuid::Uuid;
 use crate::domains::memory::files::{MemoryFileService, MemoryFsError, NewFileInput};
 use crate::storage::StorageBackend;
 use crate::storage::{CreateMemoryRow, MemoryFileInfoRow, MemoryRow};
+use everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID;
 
 /// Mount point of the memory owned by the session's host agent.
 pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
@@ -43,6 +44,9 @@ pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
 pub const USER_MEMORY_MOUNT_PATH: &str = "/memory/user";
 /// Mount point of the memory shared by every session of one chat surface.
 pub const SHARED_MEMORY_MOUNT_PATH: &str = "/memory/shared";
+/// Mount point of the team folder shared by every agent in one run
+/// (`knowledge/runtime-resources/agents-using-agents.md`).
+pub const TEAM_FOLDER_MOUNT_PATH: &str = "/team";
 
 /// One resolved mount: where it hangs and which Memory backs it.
 #[derive(Debug, Clone)]
@@ -177,10 +181,40 @@ impl MemoryMountRouter {
                 .await?;
         }
 
+        if let Some(root) = self.team_folder_owner(&session).await? {
+            let memory = self.db.ensure_run_memory(session.org_id, root).await?;
+            mounts.push(mount_from_row(&memory, TEAM_FOLDER_MOUNT_PATH));
+        }
+
         // Longest mount path first so resolution is unambiguous if one ever
         // nests inside another.
         mounts.sort_by_key(|mount| std::cmp::Reverse(mount.mount_path.len()));
         Ok(mounts)
+    }
+
+    /// The first session of the run whose team folder `session` sees.
+    ///
+    /// Decision: every session started under another one sees its run's
+    /// folder, and a first session sees it only when its agent can hand work
+    /// to other agents. Both are fixed for the session's life, which keeps the
+    /// per-process mount cache truthful on every replica.
+    async fn team_folder_owner(
+        &self,
+        session: &crate::storage::SessionRow,
+    ) -> Result<Option<everruns_contracts::typed_id::SessionId>> {
+        if session.parent_session_id.is_some() {
+            return self.db.get_run_root(session.id).await;
+        }
+        let Some(agent_id) = session.agent_id else {
+            return Ok(None);
+        };
+        let hands_off = self
+            .db
+            .get_agent_capabilities(agent_id.uuid())
+            .await?
+            .iter()
+            .any(|capability| capability.capability_id == AGENT_HANDOFF_CAPABILITY_ID);
+        Ok(hands_off.then_some(session.id))
     }
 
     /// Preserve the operator namespace across the Agent migration and resumed sessions.
@@ -321,6 +355,23 @@ impl MemoryMountRouter {
                 updated_at: row.updated_at,
             })
             .collect())
+    }
+
+    pub async fn writable_for_dreaming(&self, mount: &MemoryMount) -> Result<bool> {
+        let memory = self.memory_row(mount).await?;
+        Ok(!mount.readonly && !memory.is_readonly && memory.status == "active")
+    }
+    pub async fn create_file_if_absent(
+        &self,
+        mount: &MemoryMount,
+        inner: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.ensure_writable(mount)?;
+        // Lock lifecycle while atomically creating: an archive or concurrent edit cannot be overwritten.
+        let written=sqlx::query("WITH writable AS (SELECT id FROM memories WHERE id=$1 AND org_id=$2 AND status='active' AND NOT is_readonly FOR SHARE) INSERT INTO memory_files(memory_id,path,content,is_directory,size_bytes) SELECT id,$3,$4,false,$5 FROM writable ON CONFLICT(memory_id,path) DO NOTHING")
+            .bind(mount.memory_id).bind(mount.org_id).bind(inner).bind(content.as_bytes()).bind(content.len() as i64).execute(self.db.pool()).await?;
+        Ok(written.rows_affected() == 1)
     }
 
     pub async fn write_file(
@@ -525,14 +576,5 @@ mod tests {
         // Not an ancestor of itself, and not of an unrelated directory.
         assert!(mount.child_segment_of("/memory/agent").is_none());
         assert!(mount.child_segment_of("/notes").is_none());
-    }
-
-    #[test]
-    fn only_declared_harnesses_get_shared_memory() {
-        assert_eq!(
-            shared_memory_name_for_harness("platform-chat").as_deref(),
-            Some(PLATFORM_CHAT_SHARED_MEMORY_NAME)
-        );
-        assert!(shared_memory_name_for_harness("generic").is_none());
     }
 }

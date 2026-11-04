@@ -121,9 +121,4 @@ mod tests {
         assert!(matches!(&attachments[4],
             InboundAttachment::FileDescription { name, .. } if name == "file (not valid base64)"));
     }
-
-    #[test]
-    fn plain_text_has_no_attachments() {
-        assert!(media_attachments(&Content::Text("hi".into())).is_empty());
-    }
 }

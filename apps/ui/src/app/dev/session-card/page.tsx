@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -205,6 +206,7 @@ const sampleModels = {
 // ============================================
 
 export default function DevSessionCardPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "Session Card" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
@@ -212,7 +214,7 @@ export default function DevSessionCardPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -227,14 +229,14 @@ export default function DevSessionCardPage() {
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Developer Tools
+            {ui("Back to Developer Tools")}
           </Link>
-          <h1 className="text-3xl font-bold">SessionCard Component</h1>
+          <h1 className="text-3xl font-bold">{ui("SessionCard Component")}</h1>
           <p className="text-muted-foreground mt-2">
-            Session card displays session status, summary, and metadata with info button
+            {ui("Session card displays session status, summary, and metadata with info button")}
           </p>
           <Badge variant="outline" className="mt-2">
-            Development Mode
+            {ui("Development Mode")}
           </Badge>
         </div>
 
@@ -242,39 +244,41 @@ export default function DevSessionCardPage() {
           <div className="space-y-8 pr-4">
             {/* SessionCard Section */}
             <ShowcaseSection
-              title="SessionCard Variants"
-              description="Different states and configurations of the SessionCard component (components/session/session-card.tsx)"
+              title={ui("SessionCard Variants")}
+              description={ui(
+                "Different states and configurations of the SessionCard component (components/session/session-card.tsx)",
+              )}
             >
-              <ShowcaseItem label="Running Session">
+              <ShowcaseItem label={ui("Running Session")}>
                 <SessionCard session={sampleSessions.running} model={sampleModels.anthropic} />
               </ShowcaseItem>
 
-              <ShowcaseItem label="Idle Session">
+              <ShowcaseItem label={ui("Idle Session")}>
                 <SessionCard session={sampleSessions.idle} model={sampleModels.openai} />
               </ShowcaseItem>
 
-              <ShowcaseItem label="New Session (No Title or Preview)">
+              <ShowcaseItem label={ui("New Session (No Title or Preview)")}>
                 <SessionCard session={sampleSessions.new} />
               </ShowcaseItem>
 
-              <ShowcaseItem label="Session with Preview Only (No Title)">
+              <ShowcaseItem label={ui("Session with Preview Only (No Title)")}>
                 <SessionCard
                   session={sampleSessions.withPreviewOnly}
                   model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
 
-              <ShowcaseItem label="Session with Title and Preview">
+              <ShowcaseItem label={ui("Session with Title and Preview")}>
                 <SessionCard session={sampleSessions.longSummary} model={sampleModels.anthropic} />
               </ShowcaseItem>
             </ShowcaseSection>
 
             {/* Multiple Sessions View */}
             <ShowcaseSection
-              title="List View"
-              description="How SessionCards appear in a list layout"
+              title={ui("List View")}
+              description={ui("How SessionCards appear in a list layout")}
             >
-              <ShowcaseItem label="Multiple Sessions (Stacked)">
+              <ShowcaseItem label={ui("Multiple Sessions (Stacked)")}>
                 <div className="space-y-2">
                   <SessionCard session={sampleSessions.running} model={sampleModels.anthropic} />
                   <SessionCard session={sampleSessions.idle} model={sampleModels.openai} />
@@ -285,10 +289,10 @@ export default function DevSessionCardPage() {
 
             {/* Usage Examples */}
             <ShowcaseSection
-              title="Usage Patterns"
-              description="Common patterns for using SessionCard in the application"
+              title={ui("Usage Patterns")}
+              description={ui("Common patterns for using SessionCard in the application")}
             >
-              <ShowcaseItem label="With Delete Button (as used in sessions list)">
+              <ShowcaseItem label={ui("With Delete Button (as used in sessions list)")}>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <SessionCard session={sampleSessions.running} model={sampleModels.anthropic} />
@@ -296,7 +300,7 @@ export default function DevSessionCardPage() {
                   <button
                     className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground"
                     type="button"
-                    aria-label="Delete session"
+                    aria-label={ui("Delete session")}
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path

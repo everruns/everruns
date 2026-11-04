@@ -118,6 +118,39 @@ pub async fn get_by_public_id(
     }
 }
 
+/// Load an agent to run it: configuration and capabilities, served from the
+/// configuration cache while it is exact (`storage/backend/config_row_cache.rs`).
+///
+/// Every RPC of a turn loads the agent; this keeps them off the database.
+/// `exposed` is left `false` and the usage totals are as of the cached load,
+/// so anything shown to a person uses [`get_by_public_id`].
+pub async fn get_for_execution(
+    db: &StorageBackend,
+    org_id: i64,
+    public_id: &str,
+) -> anyhow::Result<Option<Agent>> {
+    // Public ids normally carry the internal id; a row whose public id does
+    // not falls back to the lookup by public id.
+    let cached = match public_id.parse::<AgentId>() {
+        Ok(id) => db
+            .get_agent_config(org_id, id)
+            .await?
+            .filter(|row| row.public_id == public_id),
+        Err(_) => None,
+    };
+    let row = match cached {
+        Some(row) => Some(row),
+        None => db.get_agent_by_public_id(org_id, public_id).await?,
+    };
+    match row {
+        Some(row) if row.status != "deleted" => {
+            let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
+            Ok(Some(row_to_agent(row, caps)))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Load agent by name, with capabilities.
 pub async fn get_by_name(
     db: &StorageBackend,

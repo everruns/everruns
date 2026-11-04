@@ -12,25 +12,38 @@
 * [Execution Phases Specification](execution-phases.md) - Execution phases (Commentary/FinalAnswer) for multi-step tool flows.
 * [Tool Execution Specification](tool-execution.md) - Tool types and execution flow.
 * [Tool narration](tool-narration.md) - Backend-authored, argument-aware narration for common tool families.
+* [Message origin](message-origin.md) - One platform-only marker on every user-role message no person wrote, read the same way by Chat, Work Chat, the session trace and the model.
+* [Message reactions](message-reactions.md) - Emoji reactions on user and agent messages, how a person's reaction reaches the agent as a short note, and how API, AG-UI, A2A and Slack callers use them.
+* [Work reports](work-reports.md) - One runtime-built record of what a piece of work is doing now and what it got done, read by every surface.
 * [Tool Output Distillation](tool-output-distillation.md) - Content-aware distillation of large non-exec tool results at capture time.
 * [Capabilities Specification](capabilities.md) - Agent capabilities system.
 * [Ask User](ask-user.md) - Structured choice questions that pause through the client-side tool-results lifecycle.
 * [Soft Approval](soft-approval.md) - Spoken-consent confirmation before critical actions, as prompt guidance rather than a permission gate.
 * [Tool Approval](tool-approval.md) - The hard per-call approval gate, and how hosted sessions park a turn on it durably until a person answers.
+* [Turn Completion Check](turn-completion-check.md) - Review of a finishing unattended turn and bounded, durable automatic continuation.
+* [Credit Shortfall](credit-shortfall.md) - Smaller retry or a durable, bounded wait for credits when a provider refuses a request it cannot bill.
 * [Browser Use](browser-use.md) - Provider-neutral `browser` tool: accessibility tree with element refs, form filling and tabs on a Browserless browser.
 * [Computer Use](computer-use.md) - Provider-neutral computer use: screenshots plus pointer and keyboard actions on a display.
 * [Guardrails Specification](guardrails.md) - Guardrails (capability-based output/tool-call checks).
 * [Background Execution Capability](background-execution.md) - `background_execution` capability and cross-cutting / auto-activation contract.
 * [Client-Side Tools](client-side-tools.md) - Client-side tools for API/SDK consumers.
 * [Tool Search Specification](tool-search.md) - OpenAI tool_search deferred tool loading capability.
-* [Cache-Stable Tool Changes](cache-stable-tool-changes.md) - Proposed: a fixed tool list per session, with later tool changes recorded in the conversation and sent in each provider's cache-safe form.
+* [Large MCP Catalogs](large-mcp-catalogs.md) - Complete bounded MCP discovery and opt-in schema search, with the Rust/Mira study and future Yolop adoption.
+* [Native and CLI Tool Surfaces](tool-surfaces.md) - Implemented surface planning over one operation registry, capability context, and provider-aware tool changes.
+* [Cache-Stable Tool Changes](cache-stable-tool-changes.md) - Stable tool and prompt baselines, recorded incremental changes, and provider-specific cache handling.
 * [fetchkit](fetchkit.md) - fetchkit library powering the `web_fetch` capability.
+* [Secure web_fetch Credentials Implementation Request](web-fetch-credentials-request.md) - Handoff for shared bound credentials, response capture, and durable consent in web_fetch.
 * [Toolkit Library Contract](toolkit-library-contract.md) - Convention for external toolkit libraries.
-* [Tools in Shell](tools-in-shell.md) - Proposed `tools_in_shell` capability: an agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
+* [Tools in Shell](tools-in-shell.md) - An agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
 * [Command Tree Specification](command-tree.md) - The `everruns <noun> <verb>` surface shared by scripted MCP, session shells, and Framework hosts.
 * [Change Reasons and Manager Context](change-reasons-and-manager-context.md) - Every entity change records who, through what and why in a generic history with revisions and restore, which replaced agent versions, and each managed entity carries manager-only notes its own runtime never sees.
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.
 * [Lua Execution Capability (experimental)](lua-execution.md) - Experimental Lua execution capability (sandboxed VFS scripting; aims to supersede bashkit_shell).
 * [OpenAI Steering Prototype](openai-steering-prototype.md) - Owned WebSocket experiment, durable updates, and recovery tradeoffs.
 * [OpenAI Agents API Runtime Backend](openai-agents-api-runtime.md) - Mapping, control boundaries, durability, and recommendation for a managed OpenAI loop.
+* [Detached tool calls](detached-tool-calls.md) - Long server-side tool calls leave their turn, so the turn parks and frees its worker slot, lease and memory while the tool works.
+* [Worker history cache](worker-history-cache.md) - A gRPC worker keeps each session's message history and reads only the messages after the last sequence it holds.
+* [Sticky sessions](sticky-sessions.md) - A session's next turn goes back to the worker that ran its last one, whose history cache is warm, unless that worker cannot take it.
 * [Native asynchronous tool calls](native-async-tools.md) - Custom-host pending-call coordination and recovery boundaries.
+* [Event log group commit](event-log-group-commit.md) - Fenced event appends from many workers share one PostgreSQL transaction and one WAL flush, answered only after it commits.
+* [Event listener delivery](event-listeners.md) - How stored session events reach the server's listeners (usage, budgets, traces, notifications, titles and others), in order per session and off the worker's critical path.

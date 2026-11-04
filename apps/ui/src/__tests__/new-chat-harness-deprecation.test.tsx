@@ -40,11 +40,15 @@ describe("Playground harness deprecation", () => {
     const legacyOption = screen.getByRole("option", { name: "Generic — deprecated" });
     fireEvent.pointerDown(legacyOption);
     fireEvent.click(legacyOption);
-    expect(screen.getByRole("combobox")).toHaveTextContent("Generic — deprecated");
-    fireEvent.click(screen.getByRole("combobox"));
+    expect(screen.getByRole("combobox", { name: "Chat counterpart" })).toHaveTextContent(
+      "Generic — deprecated",
+    );
+    fireEvent.click(screen.getByRole("combobox", { name: "Chat counterpart" }));
     fireEvent.click(screen.getByRole("button", { name: "Hide deprecated" }));
     expect(screen.getByRole("option", { name: "Generic — deprecated" })).toBeInTheDocument();
-    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Search agents and harnesses" }), {
+      key: "Escape",
+    });
     fireEvent.click(screen.getByRole("button", { name: /Start .*chat/ }));
     await waitFor(() =>
       expect(mockCreate).toHaveBeenCalledWith({

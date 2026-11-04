@@ -9,7 +9,7 @@ Capabilities are modular units that extend what an agent can do. Each capability
 
 - **Tools**: callable functions the agent can invoke during conversations
 - **System prompt additions**: context and instructions prepended to the agent's prompt
-- **Features**: UI elements unlocked when the capability is active (e.g., Workspace tab)
+- **Features**: UI elements unlocked when the capability is active (e.g., the Files tab)
 
 Agents compose capabilities; enable only what you need.
 
@@ -32,13 +32,15 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command) |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
+| [Automatic session titles](/capabilities/automatic-session-titles/) | `automatic_session_titles` | 0 |
+| Reactions | `reactions` | 1 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
 | [Web Search](/capabilities/web-search/) | `web_search` | 1 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
 | [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Ask User](/capabilities/ask-user/) | `ask_user` | 1 |
-| [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
+| [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 2 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 | [Auto-Continue After Usage Limit](/capabilities/usage-limit-auto-continue/) | `usage_limit_auto_continue` | 0 |
 | [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
@@ -55,7 +57,8 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (contributes the `agent` `spawn_agent` target) |
+| [Agents](/capabilities/agent-handoff/) | `agent_handoff` | 2 (and contributes the `agent` `spawn_agent` target) |
+| Run conversation | `run_conversation` | 2 (added to every agent a run hands work to) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target) |
 | AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target) |
 | [Coordination](/framework/coordination/) | `coordination` | 5 |
@@ -67,10 +70,10 @@ Cloud and container sandbox environments for isolated code execution.
 | Capability | ID | Tools |
 |---|---|---|
 | Managed Environment | `session_sandbox` | 8 |
+| [Sandbox Desktop](/capabilities/computer-use/#desktop-in-a-sandbox) | `sandbox_desktop` | 1 (added by a Sandbox Template with a desktop) |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | `sandbox_fleet` | 8 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
-| Deno Sandboxes | `deno` | 6 |
 | [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=prod`) |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 (off by default, needs `FEATURE_DOCKER_CAPABILITY` rollout grade) |
 
@@ -81,8 +84,8 @@ Browser automation and web interaction capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [Browserless](/capabilities/browserless/) | `browserless` | 7 |
-| [Browser Use](/capabilities/browser-use/) | `browser_use` | 1; `FEATURE_BROWSERLESS_BROWSER_USE` grade |
-| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; `FEATURE_BROWSERLESS_COMPUTER_USE` grade |
+| [Browser Use](/capabilities/browser-use/) | `browser_use` | 1; `FEATURE_BROWSERLESS` grade |
+| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; `FEATURE_BROWSERLESS` grade |
 
 ### Data and knowledge
 
@@ -95,8 +98,7 @@ Structured data, knowledge retrieval, and memory.
 | [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
 | [Web Citations](/capabilities/citation-web/) | `citation_web` | 0 |
 | [Data Knowledge](/capabilities/data-knowledge/) | `data_knowledge` | 0 |
-| [Knowledge Base](/capabilities/knowledge-base/) | `knowledge_base` | 1; `FEATURE_KNOWLEDGE` grade |
-| [Knowledge Index](/capabilities/knowledge-index/) | `knowledge_index` | 0 (adds `search_index` when `indexes` is set); `FEATURE_KNOWLEDGE` grade |
+| [Knowledge](/capabilities/knowledge/) | `knowledge` | 2; `FEATURE_KNOWLEDGE` grade |
 | [Memory](/capabilities/memory/) | `memory` | 0; `FEATURE_MEMORY` grade |
 
 ### Media
@@ -135,7 +137,7 @@ External-service capabilities and blueprint-backed workflows.
 | [DuckDuckGo](/integrations/duckduckgo/) | `duckduckgo` | 1 |
 | [Parallel Search and Fetch](/integrations/parallel/) | `parallel_search` | 0 (2 hosted MCP tools from Parallel) |
 | [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
-| [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
+| [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 7 (only with `manage` on) |
 | [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |
 
 ### Platform
@@ -163,6 +165,7 @@ Performance and cost optimization for LLM interactions.
 |---|---|---|
 | [Infinity Context](/capabilities/infinity-context/) | `infinity_context` | 1 |
 | [Context Compaction](/advanced/compaction/) | `compaction` | 0 |
+| [Dreaming](/features/dreaming/) | `dreaming` | 0; `FEATURE_DREAMING` grade; organization Adoption opt-in |
 | [Auto Tool Search](/capabilities/tool-search/#auto-tool-search) | `auto_tool_search` | 0 (adds `tool_search` on models without native tool search) |
 | [OpenAI Tool Search](/capabilities/tool-search/#hosted-openai) | `openai_tool_search` | 0 |
 | [Claude Tool Search](/capabilities/tool-search/#hosted-claude) | `claude_tool_search` | 0 |
@@ -172,6 +175,7 @@ Performance and cost optimization for LLM interactions.
 | [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | `parallel_tool_calls` | 0 |
 | Native Async Tools | `native_async_tools` | 0 |
 | [Prompt Caching](/capabilities/prompt-caching/) | `prompt_caching` | 0 |
+| [Claude Message Threads](/capabilities/claude-message-threads/) | `claude_message_threads` | 0 |
 
 ### Safety
 
@@ -290,20 +294,22 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
 | [Tools in Shell](/capabilities/tools-in-shell/) | [Bashkit Shell](/capabilities/bashkit-shell/) |
 | [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |
-| [Platform](/capabilities/platform/) | [File System](/capabilities/file-system/) (when embedded docs are enabled) |
+| [Platform](/capabilities/platform/) | [Agent Skills](/capabilities/agent-skills/), [File System](/capabilities/file-system/) (when embedded docs are enabled) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 | Managed Environment | [Storage](/capabilities/session-storage/) |
+| [Sandbox Desktop](/capabilities/computer-use/#desktop-in-a-sandbox) | [Storage](/capabilities/session-storage/) |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | [Storage](/capabilities/session-storage/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
 | [Daytona](/capabilities/daytona/) | [Storage](/capabilities/session-storage/) |
-| Deno Sandboxes | Storage |
 | [Browserless](/capabilities/browserless/) | [Storage](/capabilities/session-storage/) |
 | [Browser Use](/capabilities/browser-use/) | [Storage](/capabilities/session-storage/) |
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
+| [Knowledge](/capabilities/knowledge/) | [File System](/capabilities/file-system/) |
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
+| [Dreaming](/features/dreaming/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
 | AG-UI Agent Delegation | Session Tasks |
@@ -314,10 +320,10 @@ Capabilities declare UI features they contribute. The session aggregates feature
 
 | Feature | UI Element | Contributed By |
 |---|---|---|
-| `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/), [Host Shell](/capabilities/host-shell/) |
-| `secrets` | Storage tab | [Storage](/capabilities/session-storage/) |
-| `key_value` | Storage tab | [Storage](/capabilities/session-storage/) |
-| `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |
+| `file_system` | Files tab, filesystem | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/), [Host Shell](/capabilities/host-shell/) |
+| `secrets` | Files tab, key values | [Storage](/capabilities/session-storage/) |
+| `key_value` | Files tab, key values | [Storage](/capabilities/session-storage/) |
+| `schedules` | Files tab and Work tab | [Schedules](/capabilities/session-schedules/) |
 | `sql_database` | Database tab | [SQL Database](/capabilities/sql-database/) |
 | `subagents` | Subagents tab | [Sub Agents](/capabilities/sub-agents/) |
 | `citations` | Inline citation chips + Sources strip | [Retrieval Citations](/capabilities/citation-retrieval/), [Citation Verification](/capabilities/citation-verification/) |

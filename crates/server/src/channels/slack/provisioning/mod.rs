@@ -1,7 +1,10 @@
 mod branding;
 mod manager_app;
+mod manifest_health;
 
+pub(crate) use manager_app::MANAGER_CONNECT_STATE_TTL;
 pub use manager_app::SlackManagerApp;
+pub use manifest_health::{SlackManifestHealth, SlackManifestOutcome, last_manifest_health};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +24,11 @@ use crate::storage::{
 
 use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
-const ROTATE_BEFORE_EXPIRY: chrono::Duration = chrono::Duration::minutes(5);
+/// Refresh this long before a Slack access token expires (they live 12
+/// hours). With a sweep every [`ROTATION_SWEEP`], a Slack outage gets several
+/// retries before the token actually lapses.
+const ROTATE_BEFORE_EXPIRY: chrono::Duration = chrono::Duration::minutes(30);
+const ROTATION_SWEEP: Duration = Duration::from_secs(5 * 60);
 const ROTATION_WAIT_ATTEMPTS: usize = 40;
 const ROTATION_WAIT: Duration = Duration::from_millis(50);
 const AUTH_ERROR_CODES: &[&str] = &[
@@ -66,7 +73,18 @@ pub fn configure(
                 if let Err(error) = rotation_manager.rotate_due_connections().await {
                     tracing::warn!(%error, "Slack token rotation sweep failed");
                 }
-                tokio::time::sleep(Duration::from_secs(60)).await;
+                tokio::time::sleep(ROTATION_SWEEP).await;
+            }
+        }),
+    );
+    let manifest_checker = manager.clone();
+    supervisor.track(
+        "slack_manifest_check",
+        tokio::spawn(async move {
+            tokio::time::sleep(manifest_health::FIRST_CHECK_AFTER).await;
+            loop {
+                manifest_health::record(manifest_checker.check_manifests().await);
+                tokio::time::sleep(manifest_health::CHECK_EVERY).await;
             }
         }),
     );
@@ -328,11 +346,11 @@ impl SlackApiProvisioner {
                     .await?;
                 return Err(SlackProvisioningError::ReconnectRequired);
             }
-            Err(SlackProvisioningError::Unreachable(_)) => {
-                self.mark_reconnect(claimed.id, claimed.token_generation)
-                    .await?;
-                return Err(SlackProvisioningError::ReconnectRequired);
-            }
+            // Anything else, a timeout or dropped connection included, keeps
+            // the stored tokens: the refresh token most likely still works, so
+            // the next sweep retries. Only Slack saying the refresh token is
+            // dead asks an admin to reconnect. If Slack did rotate and only
+            // the response was lost, that retry gets `invalid_refresh_token`.
             Err(error) => {
                 self.release_claim(&claimed).await?;
                 return Err(error);
@@ -479,7 +497,21 @@ impl SlackApiProvisioner {
             return Ok(value);
         }
         if let Some(code) = value.get("error").and_then(serde_json::Value::as_str) {
-            return Err(SlackProvisioningError::Rejected(code.to_string()));
+            // Only a manifest refusal carries its problems along: every other
+            // caller matches on the bare code (auth retry, app_not_found,
+            // ratelimited), and those must keep seeing `Rejected`.
+            let problems = if code == "invalid_manifest" {
+                slack_problems(&value)
+            } else {
+                Vec::new()
+            };
+            if problems.is_empty() {
+                return Err(SlackProvisioningError::Rejected(code.to_string()));
+            }
+            return Err(SlackProvisioningError::RejectedWithProblems {
+                code: code.to_string(),
+                problems,
+            });
         }
         Err(SlackProvisioningError::Unreachable(format!(
             "Slack returned HTTP {} without an error code",
@@ -819,6 +851,40 @@ fn missing_credentials() -> SlackProvisioningError {
 fn storage_error(error: anyhow::Error) -> SlackProvisioningError {
     tracing::error!(%error, "Slack connection storage failed");
     SlackProvisioningError::Unreachable("Slack connection storage failed".to_string())
+}
+
+/// What Slack said was wrong, beyond the bare error code.
+///
+/// `apps.manifest.create` answers `invalid_manifest` with an `errors` list of
+/// `{message, pointer}`; other methods put warnings-as-errors in
+/// `response_metadata.messages`. Capped so a long list cannot flood the UI.
+fn slack_problems(value: &serde_json::Value) -> Vec<String> {
+    const MAX_PROBLEMS: usize = 5;
+    let from_errors = value
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|error| {
+            let message = error.get("message").and_then(serde_json::Value::as_str)?;
+            Some(
+                match error.get("pointer").and_then(serde_json::Value::as_str) {
+                    Some(pointer) if !pointer.is_empty() => format!("{pointer}: {message}"),
+                    _ => message.to_string(),
+                },
+            )
+        });
+    let from_metadata = value
+        .pointer("/response_metadata/messages")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|message| message.as_str().map(str::to_string));
+    from_errors
+        .chain(from_metadata)
+        .filter(|problem| !problem.trim().is_empty())
+        .take(MAX_PROBLEMS)
+        .collect()
 }
 
 fn is_auth_error(code: &str) -> bool {

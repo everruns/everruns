@@ -203,12 +203,13 @@ action path. It exists to satisfy three constraints:
    engine's `tools.<name>(args)` table; this capability is what makes that the
    agent's primary path rather than an opt-in.
 
-Key property that makes this safe: the *executable* `ToolRegistry`
-(`ToolContext::tool_registry`) is built from capability `tools()` independently
-of the model-facing `ToolDefinition` list. The hook only edits the latter, so
-hidden tools stay fully executable, the act atom passes the full registry into
-the Lua child context, and code mode calls them directly (not back through the
-model). Essential tools (the `lua`/`bash` execution tools, destructive,
+The routing hook explicitly preserves execution scope: hidden native schemas
+remain authorized operations in the runtime catalog. Lua filters registry
+discovery and nested dispatch through the turn's effective operation allowlist,
+so an ordinary restrictive definition hook can still revoke an operation.
+The act atom supplies the registry and this scope to the Lua context; code mode
+dispatches within that scope without another model round trip. Essential tools
+(the `lua`/`bash` execution tools, destructive,
 approval-gated, client-side, `cpu_bound`) are never eligible and stay direct
 tool calls.
 

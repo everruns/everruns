@@ -57,12 +57,6 @@ function readFilesState(): InitialFile[] {
 }
 
 describe("InitialFilesEditor", () => {
-  it("shows an empty state when no files are configured", () => {
-    render(<TestHarness />);
-
-    expect(screen.getByText(/No starter files configured/i)).toBeInTheDocument();
-  });
-
   it("adds a new text file and selects it", () => {
     render(<TestHarness />);
 

@@ -6,7 +6,7 @@ use super::egress_transport;
 use bashkit::{BashBuilder, NetworkAllowlist, OutputCallback, StreamData};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::{BoundSecret, SecretAuth};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 /// Configure shell HTTP and the bound secrets that ride on it. Returns the
 /// redactor every piece of shell output must pass through.
@@ -14,13 +14,60 @@ pub(super) async fn configure(
     builder: BashBuilder,
     enable_http: bool,
     context: &ToolContext,
-) -> (BashBuilder, OutputRedactor) {
+    usage: Option<&serde_json::Value>,
+) -> Result<(BashBuilder, OutputRedactor), String> {
+    if enable_http
+        && let Some(service) = context
+            .storage_store
+            .as_ref()
+            .and_then(|s| s.credential_service())
+    {
+        use everruns_contracts::runtime::credential_services::CredentialInvocation;
+        use everruns_contracts::runtime::resource_access::CredentialUsage;
+        let invocation = *context
+            .extension::<CredentialInvocation>()
+            .ok_or("Shell HTTP credentials require a verified invocation")?;
+        let usage: CredentialUsage =
+            serde_json::from_value(usage.cloned().unwrap_or(serde_json::json!("service")))
+                .map_err(|_| "credential_usage must be user or service")?;
+        let metadata = service
+            .list(invocation, usage)
+            .await
+            .map_err(|_| "Could not authorize shell HTTP credentials")?;
+        let mut builder = builder;
+        let mut references = Vec::new();
+        for info in metadata {
+            let placeholder = format!(
+                "er_credential_{}",
+                everruns_contracts::typed_id::SessionId::new()
+                    .uuid()
+                    .simple()
+            );
+            builder = builder.env(&info.name, &placeholder);
+            references.push((info, placeholder));
+        }
+        let mut scoped = context.clone();
+        scoped.egress_service = Some(Arc::new(super::credential_egress::CredentialEgress {
+            inner: context
+                .egress_service
+                .clone()
+                .ok_or("Shell credential requests require platform egress")?,
+            service,
+            invocation,
+            usage,
+            references,
+        }));
+        return Ok((
+            configure_http(builder, enable_http, &scoped),
+            OutputRedactor::default(),
+        ));
+    }
     let builder = configure_http(builder, enable_http, context);
     let bound = bound_secrets(enable_http, context).await;
-    (
+    Ok((
         install_bound_secrets(builder, &bound),
         OutputRedactor::new(&bound),
-    )
+    ))
 }
 
 /// Enable outbound HTTP for curl/wget when the per-capability config opted in
@@ -40,10 +87,8 @@ pub(super) async fn configure(
 /// direct-dial fallback: absent an egress service the shell stays offline
 /// rather than opening host-local connectivity.
 ///
-/// Bot-auth request signing mirrors web_fetch: server-wide
-/// `BOT_AUTH_SIGNING_KEY_SEED` (+ optional `BOT_AUTH_AGENT_FQDN`,
-/// `BOT_AUTH_VALIDITY_SECS`) transparently signs every outbound request
-/// before it reaches the transport.
+/// Web Bot Auth signing happens at the egress boundary, like web_fetch
+/// (`everruns_core::host::web_bot_auth`), not inside Bashkit.
 fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext) -> BashBuilder {
     if !enable_http {
         return builder;
@@ -57,7 +102,7 @@ fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext
         return builder;
     };
     let session_id = context.session_id;
-    let mut builder = builder
+    builder
         .network(NetworkAllowlist::allow_all())
         .http_transport(Arc::new(egress_transport::BashkitEgressTransport::new(
             egress,
@@ -87,37 +132,7 @@ fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext
                 "outbound http response"
             );
             bashkit::hooks::HookAction::Continue(ev)
-        }));
-    if let Some(bot_auth) = bot_auth_config_from_env() {
-        builder = builder.bot_auth(bot_auth);
-    }
-    builder
-}
-
-/// Read the server-wide bot-auth signing config once (same env contract as
-/// `web_fetch`). Returns a fresh clone per
-/// call site because `BashBuilder::bot_auth` takes ownership.
-fn bot_auth_config_from_env() -> Option<bashkit::BotAuthConfig> {
-    static CONFIG: LazyLock<Option<bashkit::BotAuthConfig>> = LazyLock::new(|| {
-        let seed = std::env::var("BOT_AUTH_SIGNING_KEY_SEED").ok()?;
-        let mut config = match bashkit::BotAuthConfig::from_base64_seed(&seed) {
-            Ok(config) => config,
-            Err(e) => {
-                tracing::warn!(error = %e, "invalid BOT_AUTH_SIGNING_KEY_SEED, bashkit bot-auth disabled");
-                return None;
-            }
-        };
-        if let Ok(fqdn) = std::env::var("BOT_AUTH_AGENT_FQDN") {
-            config = config.with_agent_fqdn(&fqdn);
-        }
-        if let Ok(secs) = std::env::var("BOT_AUTH_VALIDITY_SECS")
-            && let Ok(secs) = secs.parse::<u64>()
-        {
-            config = config.with_validity_secs(secs);
-        }
-        Some(config)
-    });
-    CONFIG.clone()
+        }))
 }
 
 /// Bound secrets for this shell call, resolved only when shell HTTP can run.
@@ -153,6 +168,7 @@ fn install_bound_secrets(mut builder: BashBuilder, secrets: &[BoundSecret]) -> B
     for secret in secrets {
         let credential = match &secret.info.binding.auth {
             SecretAuth::Bearer => bashkit::Credential::bearer(secret.value.clone()),
+            SecretAuth::FormField { .. } => continue,
             SecretAuth::Header { name } => {
                 bashkit::Credential::header(name.clone(), secret.value.clone())
             }

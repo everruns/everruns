@@ -82,7 +82,7 @@ export function ExecutedArgumentsNotice({
         <div id={panelId} className="mt-1.5 space-y-2">
           {hasOriginal && (
             <div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+              <div className="text-xs font-medium text-muted-foreground/70">
                 {t("original_arguments")}
               </div>
               <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
@@ -91,7 +91,7 @@ export function ExecutedArgumentsNotice({
             </div>
           )}
           <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+            <div className="text-xs font-medium text-muted-foreground/70">
               {t("executed_arguments")}
             </div>
             <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-foreground/90">

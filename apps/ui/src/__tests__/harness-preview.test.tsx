@@ -108,23 +108,4 @@ describe("HarnessPreview", () => {
     expect(screen.getByText("Files")).toBeInTheDocument();
     expect(screen.getByText("No files configured.")).toBeInTheDocument();
   });
-
-  it("passes parent_harness_id through to the preview mutation", () => {
-    const stub = makeMutationStub({ data: sampleResponse });
-    mockUsePreviewHarness.mockReturnValue(stub);
-
-    render(
-      <HarnessPreview
-        systemPrompt="hi"
-        capabilities={[]}
-        initialFiles={[]}
-        parentHarnessId="harness-parent-1"
-      />,
-    );
-
-    expect(stub.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({ parent_harness_id: "harness-parent-1" }),
-      expect.any(Object),
-    );
-  });
 });

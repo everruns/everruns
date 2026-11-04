@@ -1,0 +1,91 @@
+{{- $name := include "everruns.name" (list . "proxy") }}
+{{- $caddyfile := .Files.Get "files/Caddyfile"
+  | replace "server:9000" (printf "%s:9000" (include "everruns.name" (list . "server")))
+  | replace "ui:9305" (printf "%s:9305" (include "everruns.name" (list . "ui"))) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+data:
+  # files/Caddyfile is the Docker Compose example's Caddyfile; a CI check
+  # keeps the two identical.
+  Caddyfile: |
+    {{- $caddyfile | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "proxy") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "proxy") | nindent 8 }}
+      annotations:
+        checksum/caddyfile: {{ $caddyfile | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: caddy
+          image: {{ .Values.proxy.image }}
+          ports:
+            - { name: http, containerPort: 9300 }
+          volumeMounts:
+            - { name: caddyfile, mountPath: /etc/caddy }
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.proxy.resources | nindent 12 }}
+      volumes:
+        - name: caddyfile
+          configMap: { name: {{ $name }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "everruns.fullname" . }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+  {{- with .Values.proxy.service.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.proxy.service.type }}
+  selector: {{- include "everruns.selector" (list . "proxy") | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.proxy.service.port }}, targetPort: http }
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "everruns.fullname" . }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - {{- with .Values.ingress.host }}
+      host: {{ . | quote }}
+      {{- end }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "everruns.fullname" . }}
+                port: { name: http }
+{{- end }}

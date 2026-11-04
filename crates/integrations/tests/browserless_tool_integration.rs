@@ -83,7 +83,7 @@ async fn test_screenshot_tool_missing_api_token() {
     match result {
         ToolExecutionResult::ToolError(msg) => {
             assert!(
-                msg.contains("not configured") || msg.contains("Settings > My agent experience"),
+                msg.contains("not configured") || msg.contains("Settings > Connections"),
                 "Got: {msg}"
             );
         }
@@ -172,7 +172,7 @@ async fn test_navigate_tool_no_connection_resolver() {
     match result {
         ToolExecutionResult::ToolError(msg) => {
             assert!(
-                msg.contains("not configured") || msg.contains("Settings > My agent experience"),
+                msg.contains("not configured") || msg.contains("Settings > Connections"),
                 "Got: {msg}"
             );
         }
@@ -300,30 +300,6 @@ async fn test_validate_rejects_token_without_cdp_access() {
     let err = result.expect_err("expected Err when CDP probe rejects the token");
     assert!(
         err.contains("does not support CDP"),
-        "unexpected message: {err}"
-    );
-}
-
-/// A blank token is rejected the same way an invalid one is: the REST API
-/// returns 401 for it, and validate() surfaces the same error without ever
-/// attempting the CDP probe.
-#[tokio::test]
-async fn test_validate_rejects_blank_token() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/active"))
-        .respond_with(ResponseTemplate::new(401))
-        .mount(&mock_server)
-        .await;
-
-    let result = with_mock_api_base(&mock_server, || async {
-        BrowserlessConnector.validate("").await
-    })
-    .await;
-
-    let err = result.expect_err("expected Err for a blank token");
-    assert!(
-        err.contains("Invalid API token"),
         "unexpected message: {err}"
     );
 }

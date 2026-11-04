@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
+import type { OrganizationConnection } from "@/lib/api/organization-connections";
 import type { SandboxPolicy, SandboxTargetDescriptor, SandboxTemplateSpec } from "@/lib/api/types";
 
 const capabilities = {
@@ -58,11 +59,21 @@ const targets: SandboxTargetDescriptor[] = [
   },
 ];
 
+let organizationConnections: OrganizationConnection[] = [];
+
 jest.mock("@/hooks", () => ({
-  useSandboxTargets: () => ({ data: { items: targets }, isLoading: false, error: null }),
+  useSandboxTargets: () => ({
+    data: { items: targets },
+    isLoading: false,
+    error: null,
+  }),
   useSandboxTemplates: () => ({ data: [] }),
-  useOrganizationConnections: () => ({ data: [] }),
+  useOrganizationConnections: () => ({ data: organizationConnections }),
 }));
+
+afterEach(() => {
+  organizationConnections = [];
+});
 
 type Network = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>["network"]>;
 
@@ -74,20 +85,32 @@ const policy = (options: Record<string, unknown> = {}, network?: Network): Sandb
       target: { kind: "managed", provider: "modal", options },
       ...(network ? { containment: { level: "isolated", network } } : {}),
       durability: "provider_snapshot",
-      lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
+      lifecycle: {
+        idle_after_seconds: 180,
+        idle_action: "checkpoint_and_stop",
+      },
       bootstrap: { commands: [] },
     },
   },
 });
 
-const daytonaPolicy = (): SandboxPolicy => ({
+const daytonaPolicy = (
+  credential?: SandboxTemplateSpec["target"]["credential"],
+): SandboxPolicy => ({
   mode: "fixed",
   default: "daytona",
   templates: {
     daytona: {
-      target: { kind: "managed", provider: "daytona" },
+      target: {
+        kind: "managed",
+        provider: "daytona",
+        ...(credential ? { credential } : {}),
+      },
       durability: "checkpointed",
-      lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
+      lifecycle: {
+        idle_after_seconds: 180,
+        idle_action: "checkpoint_and_stop",
+      },
       bootstrap: { commands: [] },
     },
   },
@@ -104,7 +127,10 @@ const e2bPolicy = (): SandboxPolicy => ({
         options: { template: "base", timeout_seconds: 3600 },
       },
       durability: "provider_snapshot",
-      lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
+      lifecycle: {
+        idle_after_seconds: 180,
+        idle_action: "checkpoint_and_stop",
+      },
       bootstrap: { commands: [] },
     },
   },
@@ -148,13 +174,17 @@ describe("SandboxPolicyEditor with a Modal template", () => {
     const onChange = jest.fn();
     render(<SandboxPolicyEditor value={policy({ cpu: 2 })} onChange={onChange} />);
 
-    fireEvent.change(screen.getByLabelText("Memory (MiB)"), { target: { value: "2048" } });
+    fireEvent.change(screen.getByLabelText("Memory (MiB)"), {
+      target: { value: "2048" },
+    });
     expect(onChange.mock.lastCall[0].templates.modal.target.options).toEqual({
       cpu: 2,
       memory_mb: 2048,
     });
 
-    fireEvent.change(screen.getByLabelText("CPU cores"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("CPU cores"), {
+      target: { value: "" },
+    });
     expect(onChange.mock.lastCall[0].templates.modal.target.options).toEqual({});
   });
 
@@ -191,7 +221,222 @@ describe("SandboxPolicyEditor with a Modal template", () => {
     });
     expect(onChange.mock.lastCall[0].templates.modal.containment).toEqual({
       level: "isolated",
-      network: { mode: "allowlist", allowed_hosts: ["pypi.org", "*.pythonhosted.org"] },
+      network: {
+        mode: "allowlist",
+        allowed_hosts: ["pypi.org", "*.pythonhosted.org"],
+      },
     });
+  });
+
+  it("offers Daytona and E2B the network policy", () => {
+    const onChange = jest.fn();
+    const { unmount } = render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={onChange} />);
+    expect(screen.getByLabelText("Outbound network")).toHaveTextContent("Open");
+    expect(screen.queryByLabelText("Allowed domains")).not.toBeInTheDocument();
+    unmount();
+
+    render(<SandboxPolicyEditor value={e2bPolicy()} onChange={onChange} />);
+    expect(screen.getByLabelText("Outbound network")).toHaveTextContent("Open");
+  });
+
+  it("turns the E2B desktop on and off as a template option", () => {
+    const onChange = jest.fn();
+    render(<SandboxPolicyEditor value={e2bPolicy()} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Desktop" }));
+    expect(onChange.mock.lastCall[0].templates.e2b.target.options).toEqual({
+      template: "base",
+      timeout_seconds: 3600,
+      desktop: true,
+    });
+  });
+
+  it("uses the default Daytona desktop image and accepts a baked desktop snapshot", () => {
+    const onChange = jest.fn();
+    const base = daytonaPolicy();
+    const daytona = base.templates!.daytona;
+    const value: SandboxPolicy = {
+      ...base,
+      templates: {
+        daytona: {
+          ...daytona,
+          target: { ...daytona.target, options: { size: "large", snapshot: "custom" } },
+        },
+      },
+    };
+    const { rerender } = render(<SandboxPolicyEditor value={value} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Desktop" }));
+    expect(onChange.mock.lastCall[0].templates.daytona.target.options).toEqual({ desktop: true });
+
+    rerender(<SandboxPolicyEditor value={onChange.mock.lastCall[0]} onChange={onChange} />);
+    expect(screen.getByLabelText("Snapshot")).toBeEnabled();
+    expect(screen.getByLabelText("Compute size")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Snapshot"), {
+      target: { value: "baked-desktop-snapshot" },
+    });
+    expect(onChange.mock.lastCall[0].templates.daytona.target.options).toEqual({
+      desktop: true,
+      snapshot: "baked-desktop-snapshot",
+    });
+  });
+});
+
+describe("SandboxPolicyEditor retention", () => {
+  const withRetention = (seconds: number | null): SandboxPolicy => {
+    const base = daytonaPolicy();
+    const template = base.templates!.daytona;
+    return {
+      ...base,
+      templates: {
+        daytona: {
+          ...template,
+          lifecycle: { ...template.lifecycle, delete_after_seconds: seconds },
+        },
+      },
+    };
+  };
+
+  it("shows the server default when the template does not set one", () => {
+    render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />);
+    expect(screen.getByLabelText("Delete after paused")).toHaveTextContent("Default (1 day)");
+  });
+
+  it("names never and unlisted values", () => {
+    const { unmount } = render(
+      <SandboxPolicyEditor value={withRetention(null)} onChange={jest.fn()} />,
+    );
+    expect(screen.getByLabelText("Delete after paused")).toHaveTextContent("Never");
+    unmount();
+
+    render(<SandboxPolicyEditor value={withRetention(7_200)} onChange={jest.fn()} />);
+    expect(screen.getByLabelText("Delete after paused")).toHaveTextContent("2 hours");
+  });
+
+  it("keeps the retention when the idle timeout changes", () => {
+    const onChange = jest.fn();
+    render(<SandboxPolicyEditor value={withRetention(604_800)} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("Idle after (seconds)"), {
+      target: { value: "600" },
+    });
+    const next = onChange.mock.lastCall[0] as SandboxPolicy;
+    expect(next.templates!.daytona.lifecycle).toEqual({
+      idle_after_seconds: 600,
+      idle_action: "checkpoint_and_stop",
+      delete_after_seconds: 604_800,
+    });
+  });
+});
+
+describe("SandboxPolicyEditor for an Agent with triggers", () => {
+  const warning = "Triggered runs have no user account; they use the organization account.";
+
+  it("warns that triggered runs use the organization account", () => {
+    render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} hasTriggers />);
+
+    expect(screen.getByText(warning)).toBeInTheDocument();
+  });
+
+  it("stays quiet without triggers or with an explicit account", () => {
+    const { unmount } = render(
+      <SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />,
+    );
+    expect(screen.queryByText(warning)).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({ source: "agent" })}
+        onChange={jest.fn()}
+        hasTriggers
+      />,
+    );
+    expect(screen.queryByText(warning)).not.toBeInTheDocument();
+  });
+});
+
+describe("SandboxPolicyEditor provider account picker", () => {
+  const account = (id: string, name: string, provider: string): OrganizationConnection => ({
+    id,
+    name,
+    provider,
+    connected_at: "2026-10-01T00:00:00Z",
+    updated_at: "2026-10-01T00:00:00Z",
+  });
+
+  it("labels the selected account with the provider and says who pays", () => {
+    render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />);
+
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent("Daytona · Personal");
+    expect(
+      screen.getByText(
+        "Each person who starts a Session uses their own Daytona connection, and their account pays.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("describes Agent and organization accounts in plain words", () => {
+    const { unmount } = render(
+      <SandboxPolicyEditor value={daytonaPolicy({ source: "agent" })} onChange={jest.fn()} />,
+    );
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent("Daytona · This Agent");
+    expect(
+      screen.getByText(
+        "Uses the Daytona connection on this Agent's Virtual User; that account pays for every Session.",
+      ),
+    ).toBeInTheDocument();
+    unmount();
+
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({ source: "organization" })}
+        onChange={jest.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent(
+      "Daytona · Organization account",
+    );
+    expect(
+      screen.getByText("A shared organization Daytona account pays, whoever starts the Session."),
+    ).toBeInTheDocument();
+  });
+
+  it("names organization accounts after their provider", () => {
+    organizationConnections = [
+      account("acc-1", "Reviews", "daytona"),
+      account("acc-2", "Data team", "modal"),
+    ];
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({
+          source: "organization",
+          connection_id: "acc-1",
+        })}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Organization account")).toHaveTextContent("Daytona · Reviews");
+    expect(screen.queryByText(/has no Daytona account yet/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "Manage organization provider accounts",
+      }),
+    ).toHaveAttribute("href", "/sandboxes/accounts");
+  });
+
+  it("links to Provider accounts when the organization has none for the provider", () => {
+    organizationConnections = [account("acc-2", "Data team", "modal")];
+    render(
+      <SandboxPolicyEditor
+        value={daytonaPolicy({ source: "organization" })}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/This organization has no Daytona account yet/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add a Daytona account" })).toHaveAttribute(
+      "href",
+      "/sandboxes/accounts",
+    );
+    expect(screen.queryByRole("combobox", { name: "Organization account" })).toBeNull();
   });
 });

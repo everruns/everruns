@@ -6,12 +6,12 @@
 
 ```toml
 [dependencies]
-everruns-integrations-experimental = { version = "0.43", default-features = false, features = ["deno"] }
+everruns-integrations-experimental = { version = "0.43", default-features = false, features = ["sprites"] }
 ```
 
 ```rust
-#[cfg(feature = "deno")]
-use everruns_integrations_experimental::deno as _;
+#[cfg(feature = "sprites")]
+use everruns_integrations_experimental::sprites as _;
 ```
 
 ## Features
@@ -21,7 +21,6 @@ This crate contains opt-in integrations whose APIs or vendor coverage have a dif
 | Feature | Module | Integration |
 |---|---|---|
 | `agentid` | `agentid` | AgentID sign-in through the agent's AgentMail inbox |
-| `deno` | `deno` | Deno sandbox client |
 | `sprites` | `sprites` | Sprites cloud sandboxes |
 
 ## Documentation

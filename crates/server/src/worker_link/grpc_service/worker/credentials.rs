@@ -80,6 +80,7 @@ impl WorkerServiceImpl {
                             Some(credentials.api_key),
                             credentials.base_url,
                             Default::default(),
+                            None,
                         )
                     })
                 })
@@ -101,6 +102,7 @@ impl WorkerServiceImpl {
                             provider.api_key,
                             provider.base_url,
                             provider.request_options,
+                            provider.api,
                         )
                     })
                 })
@@ -115,7 +117,7 @@ impl WorkerServiceImpl {
         })?;
 
         Ok(Response::new(match resolved {
-            Some((provider_type, api_key, base_url, request_options)) => {
+            Some((provider_type, api_key, base_url, request_options, api)) => {
                 // Empty when the connection configures nothing, so the worker
                 // applies no options rather than an empty JSON object.
                 let request_options_json = if request_options.is_empty() {
@@ -130,6 +132,7 @@ impl WorkerServiceImpl {
                     base_url: base_url.unwrap_or_default(),
                     provider_type,
                     request_options_json,
+                    api: api.unwrap_or_default(),
                 }
             }
             None => GetDefaultProviderCredentialsResponse {
@@ -139,6 +142,7 @@ impl WorkerServiceImpl {
                 base_url: String::new(),
                 provider_type: String::new(),
                 request_options_json: String::new(),
+                api: String::new(),
             },
         }))
     }
@@ -187,13 +191,17 @@ impl WorkerServiceImpl {
         let server = match resolved {
             Some(found) => {
                 let secret_bindings =
-                    crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                    crate::domains::agents::credentials::resolve_runtime_server_secret_bindings(
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         req.org_id,
-                        found.runtime_agent_id,
-                        &found.server.name,
-                        &found.server.url,
+                        session_id.zip(input_message).map(|(s, i)| {
+                            everruns_contracts::runtime::credential_services::CredentialInvocation {
+                                session_id: s.into(),
+                                input_message_id: i,
+                            }
+                        }),
+                        &found.server,
                     )
                     .await
                     .map_err(|error| {

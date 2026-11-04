@@ -55,8 +55,17 @@ config.reasoning_effort = Some(ReasoningEffort::High);
 
 Everruns follows continuation tokens automatically, streams text and reasoning
 across the hops, and returns one completion. Usage sums the final counts from
-each hop, including billed thinking and repeated input. Context-window pressure
+each hop, including billed thinking and repeated input. Tool-use prompt tokens
+reported for provider-hosted tools count as additional uncached input; cached
+tokens remain a subset of the ordinary prompt. Repeated cumulative usage frames
+within a hop are counted once. Context-window pressure
 is estimated from the assembled messages, rather than those summed billing counts.
+
+With native Google Search enabled, citations retain the sources and supported
+answer spans from every hop, including when the final hop returns no grounding.
+Repeated search metadata within a hop is counted once; the same query in another
+hop counts as a separate search. Gemini 3 and later count queries for search
+usage, while Gemini 2.x counts grounded requests.
 
 Argon supports low, medium, and high thinking levels; minimal maps to low and
 higher efforts map to high. Sampling temperature is omitted. Argon supports

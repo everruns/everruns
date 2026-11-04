@@ -57,6 +57,7 @@ pub fn default_permissions() -> Value {
 
 /// Webhook events every agent App subscribes to.
 pub const DEFAULT_EVENTS: &[&str] = &[
+    "push",
     "pull_request",
     "issue_comment",
     "issues",
@@ -468,6 +469,90 @@ impl GitHubAppApi {
             .header("X-GitHub-Api-Version", "2022-11-28")
     }
 
+    /// Bounded, credential-safe reads for Agent source discovery and materialization.
+    /// Callers construct paths from validated repository coordinates and encoded segments.
+    pub(crate) async fn read_source_json(&self, path: &str, token: &str) -> Result<Value> {
+        // GitHub wraps blobs in base64 JSON. Keep enough bounded transport
+        // space for a package-limit-sized manifest before enforcing decoded limits.
+        const MAX_RESPONSE_BYTES: usize = everruns_core::agent_package::MAX_PACKAGE_BYTES * 3 / 2;
+        let mut response = self
+            .request(reqwest::Method::GET, path)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("Could not reach GitHub. Retry the sync"))?;
+        if !response.status().is_success() {
+            anyhow::bail!(match response.status().as_u16() {
+                401 | 403 =>
+                    "GitHub access failed or was rate limited. Check the connection and retry",
+                404 => "Repository, branch or source path was not found, or access was denied",
+                _ => "GitHub could not serve the source. Retry the sync",
+            });
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| anyhow::anyhow!("Could not read the GitHub source"))?
+        {
+            if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
+                anyhow::bail!("GitHub source response exceeds 15 MiB");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&bytes)
+            .map_err(|_| anyhow::anyhow!("GitHub returned an invalid source response"))
+    }
+
+    /// Source writes never surface upstream response bodies or authorization headers.
+    pub(crate) async fn write_source_json(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        token: &str,
+        body: &Value,
+    ) -> Result<Value> {
+        let mut response = self
+            .request(method, path)
+            .bearer_auth(token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("Could not reach GitHub. The queued write will retry"))?;
+        if !response.status().is_success() {
+            anyhow::bail!(match response.status().as_u16() {
+                401 | 403 =>
+                    "GitHub rejected the write. Check Contents write permission and branch protection, then retry",
+                404 => "Source repository or branch is unavailable. Check the GitHub connection",
+                409 | 422 =>
+                    "GitHub rejected the update. The branch may have changed or require pull requests. No branch was forced",
+                _ => "GitHub could not complete the write. The queued write will retry",
+            });
+        }
+        // Creating a tree can return the repository's complete root listing,
+        // even when only one small package folder changed. Match source reads'
+        // bound for that response; blob and commit acknowledgments stay small.
+        let max_response_bytes = if path.ends_with("/git/trees") {
+            everruns_core::agent_package::MAX_PACKAGE_BYTES * 3 / 2
+        } else {
+            64 * 1024
+        };
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| {
+            anyhow::anyhow!("GitHub write response was interrupted. The queued write will recover")
+        })? {
+            if bytes.len() + chunk.len() > max_response_bytes {
+                anyhow::bail!("GitHub returned an oversized write response");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&bytes).map_err(|_| {
+            anyhow::anyhow!(
+                "GitHub returned an invalid write response. The queued write will recover"
+            )
+        })
+    }
+
     /// Whether a public App already uses `slug`. Unauthenticated: 200 is
     /// taken, 404 is free (or a private App's), anything else is an error.
     pub async fn app_slug_taken(&self, slug: &str) -> Result<bool> {
@@ -746,6 +831,90 @@ mod tests {
     use super::*;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn source_reads_allow_base64_envelopes_but_reject_unbounded_responses() {
+        let remote = MockServer::start().await;
+        let content = base64::engine::general_purpose::STANDARD
+            .encode(vec![0; everruns_core::agent_package::MAX_PACKAGE_BYTES]);
+        Mock::given(method("GET"))
+            .and(path("/blob"))
+            .and(header("authorization", "Bearer fixture-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "encoding":"base64", "content":content
+            })))
+            .mount(&remote)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/oversized"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![b' '; 20 * 1024 * 1024]))
+            .mount(&remote)
+            .await;
+        let api = GitHubAppApi::new(GitHubEndpoints {
+            api_url: remote.uri(),
+            web_url: "https://github.com".into(),
+        });
+        let value = api
+            .read_source_json("/blob", "fixture-token")
+            .await
+            .unwrap();
+        assert_eq!(value["content"].as_str().unwrap().len(), content.len());
+        let error = api
+            .read_source_json("/oversized", "fixture-token")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("exceeds 15 MiB"));
+        assert!(!error.to_string().contains("fixture-token"));
+    }
+
+    #[tokio::test]
+    async fn source_writes_accept_large_repository_trees_but_bound_other_acknowledgments() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let remote = MockServer::start().await;
+        let entries: Vec<_> = (0..1000)
+            .map(|index| {
+                json!({
+                    "path": format!("repository-file-{index:04}.txt"), "mode":"100644",
+                    "type":"blob", "sha":"a".repeat(40), "size":128,
+                })
+            })
+            .collect();
+        let value = json!({"sha":"b".repeat(40), "tree":entries, "truncated":false});
+        assert!(serde_json::to_vec(&value).unwrap().len() > 64 * 1024);
+        for endpoint in ["trees", "blobs"] {
+            Mock::given(method("POST"))
+                .and(path(format!("/repos/acme/agents/git/{endpoint}")))
+                .respond_with(ResponseTemplate::new(201).set_body_json(value.clone()))
+                .mount(&remote)
+                .await;
+        }
+        let api = GitHubAppApi::new(GitHubEndpoints {
+            api_url: remote.uri(),
+            web_url: "https://github.com".into(),
+        });
+        let tree = api
+            .write_source_json(
+                reqwest::Method::POST,
+                "/repos/acme/agents/git/trees",
+                "fixture-token",
+                &json!({}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tree["tree"].as_array().unwrap().len(), 1000);
+        let error = api
+            .write_source_json(
+                reqwest::Method::POST,
+                "/repos/acme/agents/git/blobs",
+                "fixture-token",
+                &json!({}),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("oversized write response"));
+        assert!(!error.to_string().contains("fixture-token"));
+    }
 
     fn encryption() -> EncryptionService {
         EncryptionService::new(

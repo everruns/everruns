@@ -93,8 +93,7 @@ follow-up.
 
 ### 5. UI
 
-There is a new **Connected AI clients** panel on Settings > My agent
-experience, above the outbound MCP sign-ins. Each row shows:
+**Connected AI clients** is **Settings > AI clients**. Each row shows:
 
 - the client name and icon (from the registered `logo_uri` when given, else
   its initial)

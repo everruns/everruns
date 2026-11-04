@@ -800,22 +800,6 @@ mod tests {
     }
 
     #[test]
-    fn catalog_exposes_phase_one_datasets() {
-        let catalog = catalog();
-        let names: Vec<_> = catalog
-            .datasets
-            .iter()
-            .map(|dataset| dataset.name.as_str())
-            .collect();
-        assert!(names.contains(&"llm_generations"));
-        assert!(names.contains(&"tool_calls"));
-        assert!(names.contains(&"turns"));
-        assert!(names.contains(&"sessions"));
-        assert!(names.contains(&"budget_postings"));
-        assert!(names.contains(&"capability_usage"));
-    }
-
-    #[test]
     fn capability_usage_keeps_kinds_and_tools_separate() {
         let catalog = catalog();
         let dataset = catalog

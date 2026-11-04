@@ -1,9 +1,10 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import type { Message } from "@/lib/api/types";
 import { isToolCallContent, isToolResultContent } from "@/lib/api/types";
-import { useLocale } from "@/providers/locale-provider";
+
 import { failureTextClass } from "./failure-severity";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import {
@@ -22,6 +23,7 @@ interface ToolCallCardProps {
 }
 
 export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -78,11 +80,13 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
       {isComplete ? (
         hasError ? (
           <div className={failureTextClass("issue")}>
-            &gt; {t("error_prefix", { value: resultContent?.error ?? "" })}
+            {ui(">")} {t("error_prefix", { value: resultContent?.error ?? "" })}
           </div>
         ) : resultPreview ? (
           <div className="space-y-0.5">
-            <div className="whitespace-pre-wrap">&gt; {resultPreview.preview}</div>
+            <div className="whitespace-pre-wrap">
+              {ui(">")} {resultPreview.preview}
+            </div>
             {(resultPreview.hasMore || isExpanded) && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}

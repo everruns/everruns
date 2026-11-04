@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,7 @@ export function SkillsEditor({
   skills: SkillEntry[];
   onChange: (skills: SkillEntry[]) => void;
 }) {
+  const ui = useUiTranslations();
   const update = (id: string, patch: Partial<SkillEntry>) =>
     onChange(skills.map((s) => (s.id === id ? { ...s, ...patch } : s)));
 
@@ -32,8 +34,8 @@ export function SkillsEditor({
     <div className="space-y-4">
       {skills.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No skills. Skills are mounted under <code>/.agents/skills/</code> and can be invoked as
-          slash commands.
+          {ui("No skills. Skills are mounted under")} <code>/.agents/skills/</code>{" "}
+          {ui("and can be invoked as slash commands.")}
         </p>
       )}
       {skills.map((skill) => (
@@ -44,10 +46,10 @@ export function SkillsEditor({
                 <Sparkles className="h-4 w-4 text-primary" />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={`skill-name-${skill.id}`}>Skill name</Label>
+                <Label htmlFor={`skill-name-${skill.id}`}>{ui("Skill name")}</Label>
                 <Input
                   id={`skill-name-${skill.id}`}
-                  placeholder="research-helper"
+                  placeholder={ui("research-helper")}
                   value={skill.name}
                   onChange={(e) => update(skill.id, { name: e.target.value })}
                   className="w-64"
@@ -60,27 +62,29 @@ export function SkillsEditor({
               size="sm"
               className="h-9 w-9 p-0 shrink-0"
               onClick={() => onChange(skills.filter((s) => s.id !== skill.id))}
-              aria-label="Remove skill"
+              aria-label={ui("Remove skill")}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor={`skill-desc-${skill.id}`}>Description</Label>
+            <Label htmlFor={`skill-desc-${skill.id}`}>{ui("Description")}</Label>
             <Input
               id={`skill-desc-${skill.id}`}
-              placeholder="When to use this skill"
+              placeholder={ui("When to use this skill")}
               value={skill.description}
               onChange={(e) => update(skill.id, { description: e.target.value })}
             />
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor={`skill-instructions-${skill.id}`}>Instructions (SKILL.md body)</Label>
+            <Label htmlFor={`skill-instructions-${skill.id}`}>
+              {ui("Instructions (SKILL.md body)")}
+            </Label>
             <Textarea
               id={`skill-instructions-${skill.id}`}
-              placeholder="Markdown instructions the model follows when this skill is active."
+              placeholder={ui("Markdown instructions the model follows when this skill is active.")}
               value={skill.instructions}
               onChange={(e) => update(skill.id, { instructions: e.target.value })}
               rows={6}
@@ -89,7 +93,7 @@ export function SkillsEditor({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Bundled files</Label>
+              <Label>{ui("Bundled files")}</Label>
               <Button
                 type="button"
                 variant="ghost"
@@ -102,14 +106,14 @@ export function SkillsEditor({
                 }
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Add file
+                {ui("Add file")}
               </Button>
             </div>
             {skill.files.map((file) => (
               <div key={file.id} className="space-y-2 border p-2">
                 <div className="flex items-center gap-2">
                   <Input
-                    placeholder="reference.md"
+                    placeholder={ui("reference.md")}
                     value={file.path}
                     onChange={(e) =>
                       update(skill.id, {
@@ -128,13 +132,13 @@ export function SkillsEditor({
                     onClick={() =>
                       update(skill.id, { files: skill.files.filter((f) => f.id !== file.id) })
                     }
-                    aria-label="Remove file"
+                    aria-label={ui("Remove file")}
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
                 <Textarea
-                  placeholder="File content"
+                  placeholder={ui("File content")}
                   value={file.content}
                   onChange={(e) =>
                     update(skill.id, {
@@ -154,9 +158,9 @@ export function SkillsEditor({
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor={`skill-invocable-${skill.id}`}>User-invocable</Label>
+              <Label htmlFor={`skill-invocable-${skill.id}`}>{ui("User-invocable")}</Label>
               <p className="text-xs text-muted-foreground">
-                Appears as a <code>/{skill.name || "name"}</code> slash command.
+                {ui("Appears as a")} <code>/{skill.name || ui("name")}</code> {ui("slash command.")}
               </p>
             </div>
             <Switch
@@ -167,9 +171,9 @@ export function SkillsEditor({
           </div>
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor={`skill-no-model-${skill.id}`}>Disable model invocation</Label>
+              <Label htmlFor={`skill-no-model-${skill.id}`}>{ui("Disable model invocation")}</Label>
               <p className="text-xs text-muted-foreground">
-                Prevent the model from auto-activating this skill.
+                {ui("Prevent the model from auto-activating this skill.")}
               </p>
             </div>
             <Switch
@@ -189,7 +193,7 @@ export function SkillsEditor({
         onClick={() => onChange([...skills, newSkillEntry()])}
       >
         <Plus className="h-4 w-4 mr-1" />
-        Add skill
+        {ui("Add skill")}
       </Button>
     </div>
   );

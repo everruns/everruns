@@ -5,6 +5,7 @@ date: 2026-10-14
 kind: improvement
 significance: minor
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui]
 links:
   docs: [/integrations/slack/]

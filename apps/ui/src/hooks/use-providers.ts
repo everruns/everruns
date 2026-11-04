@@ -1,6 +1,7 @@
 "use client";
 
 import type { ModelWithProvider } from "@/lib/api/types";
+import { isPlatformProviderVisible } from "@/lib/api/provider-driver-types";
 import { api } from "@/lib/api/client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -36,7 +37,10 @@ export function useProviders() {
 
   const query = useQuery({
     queryKey: [...queryKeys.providers.list(), org],
-    queryFn: () => getProviders(),
+    queryFn: async () =>
+      (await getProviders()).filter((provider) =>
+        isPlatformProviderVisible(provider.provider_type),
+      ),
     enabled: !!org,
     staleTime: 30000,
   });
@@ -54,7 +58,10 @@ export function useProvider(providerId: string) {
 
   const query = useQuery({
     queryKey: [...queryKeys.providers.detail(providerId), org],
-    queryFn: () => getProvider(providerId),
+    queryFn: async () => {
+      const provider = await getProvider(providerId);
+      return isPlatformProviderVisible(provider.provider_type) ? provider : null;
+    },
     enabled: !!org && !!providerId,
   });
 
@@ -152,7 +159,8 @@ export function useModels(options: { enabled?: boolean } = {}) {
 
   const query = useQuery({
     queryKey: [...queryKeys.models.list(), org],
-    queryFn: () => getModels(),
+    queryFn: async () =>
+      (await getModels()).filter((model) => isPlatformProviderVisible(model.provider_type)),
     enabled: !!org && (options.enabled ?? true),
     staleTime: 30000,
   });

@@ -92,6 +92,8 @@ async fn configured_session_read_denial_applies_to_all_org_endpoints() {
         "/v1/monitoring",
         "/v1/monitoring/actors",
         "/v1/monitoring/actors/session_00000000000000000000000000000001",
+        "/v1/monitoring/timeline",
+        "/v1/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-11-01T01:00:00Z",
     ] {
         assert_eq!(get(app.clone(), uri).await.0, StatusCode::FORBIDDEN);
     }
@@ -125,6 +127,8 @@ async fn tenant_admin_cannot_access_any_fleet_route() {
         "/v1/durable/monitoring",
         "/v1/durable/monitoring/actors",
         "/v1/durable/monitoring/actors/session_00000000000000000000000000000001",
+        "/v1/durable/monitoring/timeline",
+        "/v1/durable/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-11-01T01:00:00Z",
     ] {
         assert_eq!(get(app.clone(), uri).await.0, StatusCode::FORBIDDEN);
     }
@@ -149,6 +153,7 @@ async fn adoption_is_enforced_on_every_read_even_after_a_snapshot_is_cached() {
         "/v1/monitoring",
         "/v1/monitoring/actors",
         "/v1/monitoring/actors/session_00000000000000000000000000000001",
+        "/v1/monitoring/timeline",
     ] {
         assert_eq!(get(app.clone(), uri).await.0, StatusCode::NOT_FOUND);
     }
@@ -193,4 +198,50 @@ async fn org_scope_hides_foreign_actors_and_global_worker_capacity() {
     );
     let (_, fleet) = get(routes(state(db, true).await), "/v1/durable/monitoring").await;
     assert_eq!(fleet["actors"], 2);
+}
+
+#[tokio::test]
+async fn timeline_returns_zero_filled_buckets_scoped_to_the_org() {
+    let db = Arc::new(StorageBackend::test_database());
+    db.replace_org_feature_flags(2, &HashMap::from([("monitoring".into(), true)]))
+        .await
+        .unwrap();
+    let a = db.create_session(test_session_row(2)).await.unwrap().id;
+    let b = db.create_session(test_session_row(3)).await.unwrap().id;
+    db.mark_session_actor_runnable(a, 2, 1).await.unwrap();
+    db.mark_session_actor_runnable(b, 3, 1).await.unwrap();
+    crate::background::monitoring_timeline::sample(&db, Utc::now())
+        .await
+        .unwrap();
+    let app = routes(state(db.clone(), false).await);
+    let (status, body) = get(app.clone(), "/v1/monitoring/timeline?range=1h").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["bucket_seconds"], 60);
+    let buckets = body["buckets"].as_array().unwrap();
+    assert_eq!(buckets.len(), 60);
+    // Only this org's session is counted, and fleet worker data is absent.
+    assert_eq!(body["summary"]["peak_active"], 1);
+    assert!(buckets.iter().all(|b| b["workers"].is_null()));
+    assert_eq!(buckets.iter().filter(|b| b["sampled"] == true).count(), 1);
+
+    let (_, fleet) = get(
+        routes(state(db, true).await),
+        "/v1/durable/monitoring/timeline?range=1h",
+    )
+    .await;
+    assert_eq!(fleet["summary"]["peak_active"], 2);
+
+    for bad in [
+        "/v1/monitoring/timeline?range=2y",
+        "/v1/monitoring/timeline?bucket=7",
+        "/v1/monitoring/timeline?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z",
+        "/v1/monitoring/timeline?range=30d&bucket=60",
+        "/v1/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-10-01T00:00:00Z",
+    ] {
+        assert_eq!(
+            get(app.clone(), bad).await.0,
+            StatusCode::BAD_REQUEST,
+            "{bad}"
+        );
+    }
 }

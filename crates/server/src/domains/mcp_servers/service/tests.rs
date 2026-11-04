@@ -437,6 +437,7 @@ async fn create_rejects_api_key_when_auth_mode_is_not_api_key() {
                 auth_mode: Some(McpServerAuthMode::None),
                 protocol_mode: None,
                 elicitation_policy: None,
+                tool_timeout_ms: None,
                 service_connection_provider: None,
                 api_key: Some("secret".into()),
                 headers: None,
@@ -853,6 +854,7 @@ async fn service_connection_provider_is_pinned_to_hosts_that_accept_its_tokens()
         auth_mode: Some(McpServerAuthMode::None),
         protocol_mode: None,
         elicitation_policy: None,
+        tool_timeout_ms: None,
         service_connection_provider: provider.map(str::to_string),
         api_key: None,
         headers: None,
@@ -920,6 +922,82 @@ async fn service_connection_provider_is_pinned_to_hosts_that_accept_its_tokens()
         .unwrap()
         .expect("server exists");
     assert_eq!(cleared.service_connection_provider, None);
+}
+
+#[tokio::test]
+async fn tool_timeout_is_validated_stored_resolved_and_cleared() {
+    let db = Arc::new(StorageBackend::test_database());
+    let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+    let create = |name: &str, tool_timeout_ms: Option<u64>| CreateMcpServerRequest {
+        name: name.into(),
+        description: None,
+        url: "https://ci.example.com/mcp".into(),
+        transport_type: McpServerTransportType::Http,
+        auth_mode: Some(McpServerAuthMode::None),
+        protocol_mode: None,
+        elicitation_policy: None,
+        tool_timeout_ms,
+        service_connection_provider: None,
+        api_key: None,
+        headers: None,
+    };
+
+    let error = svc
+        .create(
+            &test_caller(1),
+            create("too_long", Some(2 * 60 * 60 * 1000)),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("tool_timeout_ms"), "{error}");
+
+    let server = svc
+        .create(&test_caller(1), create("ci", Some(600_000)))
+        .await
+        .unwrap();
+    assert_eq!(server.tool_timeout_ms, Some(600_000));
+    let resolved = svc
+        .resolve_transport_by_name(&test_caller(1), "ci")
+        .await
+        .unwrap()
+        .expect("active server");
+    assert_eq!(resolved.tool_timeout_ms, Some(600_000));
+
+    let update = |body: serde_json::Value| -> UpdateMcpServerRequest {
+        serde_json::from_value(body).unwrap()
+    };
+    let id = server.id.uuid();
+    let error = svc
+        .update(
+            &test_caller(1),
+            id,
+            update(serde_json::json!({"tool_timeout_ms": 10})),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("tool_timeout_ms"), "{error}");
+    // Untouched by an unrelated edit.
+    let renamed = svc
+        .update(
+            &test_caller(1),
+            id,
+            update(serde_json::json!({"description": "CI"})),
+        )
+        .await
+        .unwrap()
+        .expect("server exists");
+    assert_eq!(renamed.tool_timeout_ms, Some(600_000));
+    // `0` clears it back to the default.
+    let cleared = svc
+        .update(
+            &test_caller(1),
+            id,
+            update(serde_json::json!({"tool_timeout_ms": 0})),
+        )
+        .await
+        .unwrap()
+        .expect("server exists");
+    assert_eq!(cleared.tool_timeout_ms, None);
 }
 
 /// Backdate when a server's tool list was cached.

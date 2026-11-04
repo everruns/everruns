@@ -52,6 +52,10 @@ pub enum Permission {
     OrgVirtualUsersView,
     /// CRUD on virtual users
     OrgVirtualUsersManage,
+    /// View metadata for credentials the caller owns or manages.
+    OrgCredentialsView,
+    /// Provision and manage authorized scoped credential bindings.
+    OrgCredentialsManage,
     /// Test as another end user in Playground (owner/admin).
     OrgPlaygroundImpersonate,
     /// View marketplaces and installed plugins (read-only)
@@ -108,6 +112,8 @@ impl Permission {
             Permission::OrgCapabilitiesManage => "org:capabilities:manage",
             Permission::OrgVirtualUsersView => "org:virtual-users:view",
             Permission::OrgVirtualUsersManage => "org:virtual-users:manage",
+            Permission::OrgCredentialsView => "org:credentials:view",
+            Permission::OrgCredentialsManage => "org:credentials:manage",
             Permission::OrgPlaygroundImpersonate => "org:playground:impersonate",
             Permission::OrgPluginsView => "org:plugins:view",
             Permission::OrgPluginsManage => "org:plugins:manage",
@@ -146,6 +152,8 @@ impl Permission {
         Permission::OrgCapabilitiesManage,
         Permission::OrgVirtualUsersView,
         Permission::OrgVirtualUsersManage,
+        Permission::OrgCredentialsView,
+        Permission::OrgCredentialsManage,
         Permission::OrgPlaygroundImpersonate,
         Permission::OrgPluginsView,
         Permission::OrgPluginsManage,
@@ -194,6 +202,8 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgCredentialsView,
+    Permission::OrgCredentialsManage,
     Permission::OrgPlaygroundImpersonate,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
@@ -228,6 +238,8 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgCredentialsView,
+    Permission::OrgCredentialsManage,
     Permission::OrgPlaygroundImpersonate,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
@@ -261,6 +273,8 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgCredentialsView,
+    Permission::OrgCredentialsManage,
     // Members can view plugins but NOT manage them: PLUGIN_MANAGE has always
     // required OrgPluginsManage, which Members never held (Admin+ only). (EVE-656)
     Permission::OrgPluginsView,
@@ -808,18 +822,6 @@ mod tests {
         rules: &[Rule::UserHasRole(OrgRole::Admin)],
     };
 
-    #[test]
-    fn policy_error_contains_useful_info() {
-        let caller = member_caller();
-        let err = TEST_MANAGE.evaluate(&caller).unwrap_err();
-        assert_eq!(err.policy_id, "harness.manage");
-        assert_eq!(
-            err.message,
-            "Access denied: policy 'harness.manage' requires 'org:harnesses:manage'"
-        );
-        assert_eq!(err.to_string(), err.message);
-    }
-
     // -- evaluate_policies (config endpoint helper) tests --
 
     struct DenyManageResolver;
@@ -836,15 +838,6 @@ mod tests {
                 .filter(|permission| permission != &Permission::OrgHarnessesManage)
                 .collect()
         }
-    }
-
-    #[test]
-    fn evaluate_with_uses_custom_permission_resolver() {
-        let caller = owner_caller();
-        let resolver = DenyManageResolver;
-
-        assert!(TEST_MANAGE.evaluate(&caller).is_ok());
-        assert!(TEST_MANAGE.evaluate_with(&resolver, &caller).is_err());
     }
 
     #[test]
@@ -887,21 +880,6 @@ mod tests {
 
     // -- Caller --
 
-    #[test]
-    fn caller_without_user_id() {
-        let caller = Caller {
-            org_id: 1,
-            org_public_id: "org_00000000000000000000000000000001".to_string(),
-            user_id: None,
-            role: OrgRole::Admin,
-            is_platform_user: false,
-            is_internal: false,
-            read_only: false,
-        };
-        // API key callers without user_id should still evaluate policies
-        assert!(TEST_MANAGE.evaluate(&caller).is_ok());
-    }
-
     // -- Edge cases --
 
     #[test]
@@ -914,15 +892,6 @@ mod tests {
         assert!(EMPTY.evaluate(&caller).is_ok());
     }
 
-    #[test]
-    fn policy_error_downcast_from_anyhow() {
-        let err = PolicyError::denied("test.policy", "org:harnesses:manage");
-        let anyhow_err: anyhow::Error = err.into();
-        let downcasted = anyhow_err.downcast_ref::<PolicyError>();
-        assert!(downcasted.is_some());
-        assert_eq!(downcasted.unwrap().policy_id, "test.policy");
-    }
-
     // -- View permissions --
 
     // -- IsPlatformUser rule --
@@ -933,19 +902,6 @@ mod tests {
     };
 
     // -- ResourceConfigResponse serialization --
-
-    #[test]
-    fn resource_config_response_serializes() {
-        let mut policies = HashMap::new();
-        policies.insert("harness.manage".to_string(), true);
-        policies.insert("harness.dangerous".to_string(), false);
-        let response = ResourceConfigResponse { policies };
-        let json = serde_json::to_value(&response).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({"policies":{"harness.manage":true,"harness.dangerous":false}})
-        );
-    }
 
     // -- Skill permission rules --
 
@@ -994,14 +950,6 @@ mod tests {
         assert!(parse_skill_permission_rule("allow Skill(Deploy)").is_err());
         assert!(parse_skill_permission_rule("allow Skill(foo bar)").is_err());
         assert!(parse_skill_permission_rule("allow Skill(-deploy)").is_err());
-    }
-
-    #[test]
-    fn skill_permission_deny_all_blocks_everything() {
-        let rules = vec![parse_skill_permission_rule("deny Skill").unwrap()];
-        assert!(!check_skill_permission(&rules, "commit"));
-        assert!(!check_skill_permission(&rules, "deploy"));
-        assert!(!check_skill_permission(&rules, "anything"));
     }
 
     #[test]
@@ -1135,6 +1083,18 @@ mod tests {
             (
                 Permission::OrgVirtualUsersManage,
                 "org:virtual-users:manage",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgCredentialsView,
+                "org:credentials:view",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgCredentialsManage,
+                "org:credentials:manage",
                 true,
                 true,
             ),

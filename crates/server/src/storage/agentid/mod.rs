@@ -110,7 +110,7 @@ impl StorageBackend {
         let db = self.database();
         // Serialize first sign-ins per owner so concurrent callbacks cannot
         // both pass the cap. The transaction only holds the lock.
-        let mut lock = db.pool().begin().await?;
+        let mut lock = everruns_durable::begin_transaction(db.pool()).await?;
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, $2))")
             .bind(format!("agentid-owner:{}", agent.owner_sub))
             .bind(org_id)
@@ -141,7 +141,7 @@ impl StorageBackend {
         sqlx::query("INSERT INTO agentid_agent_owners(org_id,virtual_user_id,owner_sub,owner_email) VALUES($1,$2,$3,$4) ON CONFLICT(org_id,virtual_user_id) DO UPDATE SET owner_sub=EXCLUDED.owner_sub, owner_email=EXCLUDED.owner_email, updated_at=NOW()")
             .bind(org_id).bind(user.id).bind(&agent.owner_sub).bind(&agent.owner_email)
             .execute(db.pool()).await?;
-        lock.commit().await?;
+        everruns_durable::commit_transaction(lock).await?;
         Ok(AgentIdSignIn::SignedIn(Box::new(user)))
     }
 }

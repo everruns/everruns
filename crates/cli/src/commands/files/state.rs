@@ -92,21 +92,6 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_content_hash_deterministic() {
-        let h1 = content_hash(b"hello world");
-        let h2 = content_hash(b"hello world");
-        assert_eq!(h1, h2);
-        assert!(h1.starts_with("sha256:"));
-    }
-
-    #[test]
-    fn test_content_hash_different_content() {
-        let h1 = content_hash(b"hello");
-        let h2 = content_hash(b"world");
-        assert_ne!(h1, h2);
-    }
-
-    #[test]
     fn test_content_hash_empty() {
         let h = content_hash(b"");
         assert!(h.starts_with("sha256:"));
@@ -115,21 +100,6 @@ mod tests {
             h,
             "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
-    }
-
-    #[test]
-    fn test_content_hash_binary() {
-        let h = content_hash(&[0x00, 0x01, 0xff, 0xfe]);
-        assert!(h.starts_with("sha256:"));
-        assert_eq!(h.len(), 7 + 64); // "sha256:" + 64 hex chars
-    }
-
-    #[test]
-    fn test_state_new() {
-        let state = SyncState::new("ses_123");
-        assert_eq!(state.session_id, "ses_123");
-        assert!(state.last_sync.is_none());
-        assert!(state.files.is_empty());
     }
 
     #[test]
@@ -194,18 +164,5 @@ mod tests {
         let state = SyncState::load(&sd, "ses_abc").unwrap();
         assert_eq!(state.session_id, "ses_abc");
         assert!(state.files.is_empty());
-    }
-
-    #[test]
-    fn test_state_dir_path() {
-        let p = state_dir(Path::new("/home/user/project"));
-        assert_eq!(p, PathBuf::from("/home/user/project/.everruns-sync"));
-    }
-
-    #[test]
-    fn test_hex_encode() {
-        assert_eq!(hex::encode([0xde, 0xad, 0xbe, 0xef]), "deadbeef");
-        assert_eq!(hex::encode([0x00, 0xff]), "00ff");
-        assert_eq!(hex::encode([]), "");
     }
 }

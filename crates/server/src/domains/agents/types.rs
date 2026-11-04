@@ -9,6 +9,7 @@ use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
 use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId};
+use everruns_core::completion_check::CompletionCheck;
 use everruns_core::conversation::Communication;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -18,6 +19,12 @@ pub use crate::storage::{AgentRow, CreateAgentRow, UpdateAgent};
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentRequest {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(
+        default,
+        skip_serializing_if = "everruns_contracts::runtime::localization::EntityLocalizations::is_empty"
+    )]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     #[serde(default)]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
@@ -26,6 +33,12 @@ pub struct CreateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub id: Option<AgentId>,
+    /// Agent this one is created as part of ("Created here" on that agent's
+    /// Agents tab). It groups under that agent on Agents home and is bundled
+    /// into its export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub owner_agent_id: Option<AgentId>,
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     /// Format: lowercase alphanumeric and hyphens (e.g. "customer-support").
     #[schema(example = "customer-support")]
@@ -129,6 +142,12 @@ pub struct CreateAgentRequest {
     /// and people see only the messages it sends with `send_message`.
     #[serde(default, skip_serializing_if = "Communication::is_direct")]
     pub communication: Communication,
+    /// When a turn about to finish is checked for whether it did what was
+    /// asked, and continued automatically when it did not. `unattended`
+    /// (default): sessions started by triggers and schedules, where no person
+    /// is watching. `always`: chat too. `off`: never.
+    #[serde(default, skip_serializing_if = "CompletionCheck::is_default")]
+    pub completion_check: CompletionCheck,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -137,6 +156,9 @@ pub struct CreateAgentRequest {
 // publishes those into docs/api/openapi.json, and this is an internal note.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentRequest {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub localizations: Option<everruns_contracts::runtime::localization::EntityLocalizations>,
     #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id:
@@ -253,10 +275,14 @@ pub struct UpdateAgentRequest {
     /// unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub communication: Option<Communication>,
+    /// When a finishing turn is checked and continued: `off`, `unattended`
+    /// or `always`. Omit to leave unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_check: Option<CompletionCheck>,
 }
 
 /// Request to preview the final agent shape with capabilities applied
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct PreviewAgentRequest {
     /// Harness to layer beneath this draft. Omit to preview the agent layer alone.
     #[serde(default)]

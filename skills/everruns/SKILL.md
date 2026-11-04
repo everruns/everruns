@@ -1,98 +1,91 @@
 ---
 name: everruns
-description: Build Rust applications with the Everruns Framework or compose advanced execution hosts with everruns_core::host. Use for in-process agents, providers, tools, scoped MCP clients, and capability authoring. For managing hosted agents through the Everruns MCP endpoint, use everruns-mcp or everruns-agent-authoring.
+description: Understand Everruns products, core concepts, and where to find documentation. Use for product questions, getting started, or choosing between Cloud, the self-hosted Platform, and the Rust Framework.
 license: MIT
-compatibility: Rust 1.94+ (edition 2024)
 metadata:
-  category: agent-framework
-  version: "3.1"
+  category: platform
+  version: "4.3"
   homepage: https://everruns.com
-  docs: https://everruns.com/docs/framework/
-  api-reference: https://docs.rs/everruns
+  docs: https://everruns.com/docs/
   repository: https://github.com/everruns/everruns
 ---
 
-# Everruns Framework and advanced hosts
+# Everruns
 
-Start new Rust applications with the application-facing `everruns` Framework.
-The engine runs in process without a database, server, or worker. Enable the
-provider you intend to call and supply its credentials:
+Everruns is an open-source agent framework, runtime, and control plane. Use
+[Everruns Cloud](https://app.everruns.com) for the managed service, the
+[self-hosted Platform](https://everruns.com/docs/getting-started/docker-compose/) to operate
+your own deployment, or the [Rust Framework](https://everruns.com/docs/framework/)
+to run agents inside an application.
 
-```bash
-cargo add everruns --features openai
-```
+## Core concepts
 
-```rust
-use everruns::{Agent, Engine, OpenAI};
+- **Agent**: a reusable definition of behavior, instructions, model selection,
+  capabilities, and an execution harness.
+- **Harness**: a reusable execution setup. Conversation supports dialogue;
+  Worker adds tools and files; Bashkit Worker adds a virtual shell; Sandbox
+  Worker supplies a full sandbox. Reuse an appropriate built-in harness.
+- **Capability**: tools, context, files, or behavior added to an agent or
+  harness. Availability does not prove that an agent has it attached or that
+  the person has connected the required account.
+- **Session**: a conversation or run with its own messages, events, state, and
+  workspace. Creating a session is distinct from completing its task.
+- **Workspace**: durable files used by an agent. A virtual workspace does not
+  imply native processes, packages, or network services are available.
+- **Trigger**: a schedule or webhook that starts work on an agent. Use Agent
+  Triggers for recurring autonomous work.
+- **Organization**: the boundary for shared platform resources and permissions.
+  Personal connections and private memory retain their own access rules.
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
-let agent = Agent::builder()
-    .instructions("Answer in one short sentence.")
-    .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
-    .build()?;
-let turn = Engine::new().create(agent).run("Say hello.").await?;
-println!("{}", turn.response);
-# Ok(())
-# }
-```
+## Find authoritative guidance
 
-## Choose the dependency path
+Start with the [documentation](https://everruns.com/docs/) for product behavior
+and configuration. For an agent-readable index, use
+[llms.txt](https://everruns.com/docs/llms.txt), then read the relevant topic or
+page. Consult documentation for the version in use; current organization state
+comes from the connected deployment's list/get operations.
 
-- Ordinary applications use `everruns` for agents, models/providers, tools,
-  sessions, events, cancellation, workspaces, MCP, plugins, inspection, and
-  opt-in local scheduling.
-- Advanced system integrators combine `everruns`, `everruns-core` with the
-  `host` feature, and `everruns-contracts`. Select concrete providers and
-  integrations through facade features or `everruns::batteries`.
+Useful starting points:
 
-`everruns_core::host` owns the low-level host boundary. The execution kernel
-lives in `everruns_core::engine`; do not add retired host, engine, or MCP crates.
+- [Getting started](https://everruns.com/docs/getting-started/introduction/)
+  and [core concepts](https://everruns.com/docs/getting-started/concepts/)
+- [Harnesses](https://everruns.com/docs/features/harnesses/)
+- [Capabilities](https://everruns.com/docs/capabilities/)
+- [CLI usage](https://everruns.com/docs/features/cli/) and
+  [command reference](https://everruns.com/docs/reference/cli/)
+- [MCP](https://everruns.com/docs/features/mcp/) and
+  [Cloud authentication guidance](https://everruns.com/auth.md)
+- [Agent packages](https://everruns.com/docs/how-to/define-agents-as-files/)
+- [Agent Triggers](https://everruns.com/docs/features/agent-triggers/)
+- [Rust Framework](https://everruns.com/docs/framework/)
 
-## Common Framework tasks
+## Choose a workflow skill
 
-- Use `Model::simulated` or `Model::simulated_with_config` for deterministic,
-  credential-free tests. Examples and real workflows use a live provider.
-- Pair a plain Framework `Model` with `Provider`, or use a provider
-  convenience, for real models.
-- Add ordinary tools with `#[everruns::tool]` or `FunctionTool`; use the
-  curated `everruns::capability` API for reusable capability packages.
-- Observe `Session::events`, cancel through `RunOptions`, and inspect the next
-  model context with `Session::inspect`.
-- Seed files with `AgentBuilder::file` and `readonly_file`; attach one trusted
-  workspace and configure `WorkspacePolicy` where needed.
-- Configure scoped MCP through `McpServer` and plugins through
-  `AgentBuilder::plugin`. Local-process MCP stays opt-in.
-- Enable `everruns/local` for a real workspace plus local task/schedule state.
-  The same profile also provides crash-durable canonical event history.
+Use the host's skill loader to activate the guide that matches the task:
 
-## Advanced host boundary
+| Skill | When to load it |
+|---|---|
+| `everruns-cli` | Use the installed CLI or an agent's command shell; discover commands, script operations, inspect resources, and verify changes. Explains how CLI, session-shell, and MCP invocation differ. |
+| `everruns-mcp` | Connect through an external Everruns MCP server; select an organization, run and follow sessions, handle questions and connections, and use MCP resources. Refers to `everruns-cli` for command usage. |
+| `everruns-agent-authoring` | Create or revise an agent's behavior, choose its harness, capabilities, model, and identity, work with portable packages, and verify the result. |
+| `everruns-framework` | Develop Rust applications that run agents in process with the `everruns` crate, or compose advanced execution hosts with `everruns_core::host`. Includes crate-selection and domain-language references. |
 
-Use low-level crates only when the application is itself an execution host and
-must replace stores, filesystem factories, platform definitions, phase
-adapters, durable scheduling lifecycle, or worker topology:
+Activate only skills offered by the current host and relevant to the task.
+This guide provides orientation; companion skills supply the procedures for
+working through a CLI, MCP connection, application SDK, or Rust runtime.
 
-```bash
-cargo add everruns everruns-contracts
-cargo add everruns-core --features host
-```
+### Additional coding-agent plugin workflows
 
-```rust
-use everruns::Provider;
-use everruns_core::host::{HostBackends, InProcessRuntimeBuilder};
-use everruns_contracts::model_spec::ModelSpec;
-# let _ = (HostBackends::in_memory, InProcessRuntimeBuilder::new);
-```
+The [Everruns plugin](https://github.com/everruns/plugins) also provides focused
+task guides. Activate them when installed and relevant:
 
-Canonical events are the only maintained conversation write path. Advanced
-hosts use `EventLog`, `EventHistory`, `EventSink`, and `EventReader`; legacy
-mutable-history paths are not execution inputs.
-
-## References
-
-- [Everruns Framework](https://everruns.com/docs/framework/)
-- [Custom backends](https://everruns.com/docs/framework/custom-backends/)
-- [Framework API](https://docs.rs/everruns)
-- [Host API](https://docs.rs/everruns-core/latest/everruns_core/host/)
-- [Focused crate catalog](references/crates.md)
-- [Domain-language glossary](references/glossary.md)
+| Skill | When to load it |
+|---|---|
+| `everruns-run-agent` | Hand a self-contained task to an existing agent, follow progress, exchange files, and bring back the result. |
+| `everruns-build-agent` | Build or improve an agent from a plain-language brief, select tools and knowledge, and smoke-test it. Complements the shared authoring guide. |
+| `everruns-debug-session` | Diagnose a failed, stalled, or poor-quality session and verify the fix. |
+| `everruns-evaluate-agent` | Build regression evals from real sessions, compare models, and score live traffic. |
+| `everruns-ship-agent` | Expose an agent through channels and triggers, with budgets and controls for stopping it. |
+| `everruns-operate` | Investigate organization spending, health, and change history. |
+| `everruns-agents-as-files` | Keep agent packages in a repository and validate, compare, import, or export them. |
+| `everruns-sdk` | Call hosted Everruns agents from Python, TypeScript, or Rust application code. Use `everruns-framework` when the Rust application runs the agent itself. |

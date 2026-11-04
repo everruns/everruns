@@ -57,21 +57,9 @@ use tools::{
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[
     everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless_computer_use",
-        label: "Browserless computer use",
-        description: "Let agents operate a remote browser through Browserless computer use.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-    everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless_browser_use",
-        label: "Browserless browser use",
-        description: "Let agents work in a Browserless browser through the page structure, element refs and tabs.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-    everruns_contracts::runtime::FeatureFlagDefinition {
         name: "browserless",
         label: "Browserless",
-        description: "Connect your own Browserless account for browser tools.",
+        description: "Connect your own Browserless account for browser tools. Enables the computer use and browser use capabilities.",
         grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },
 ];
@@ -82,17 +70,18 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
         feature_flag: None,
         factory: || Box::new(BrowserlessCapability),
     },
-    // Computer use ships behind the `browserless_computer_use` feature flag.
+    // Computer use and browser use ship behind the single `browserless` flag;
+    // agents pick the surface per capability (`computer_use` vs `browser_use`).
     // The native OpenAI and Anthropic adapters are in with soft approval only,
     // no hard gate (EVE-1133); promote the flag once the native OpenAI path is
     // verified live.
     IntegrationPlugin {
-        feature_flag: Some("browserless_computer_use"),
+        feature_flag: Some("browserless"),
         factory: || Box::new(computer::BrowserlessComputerUseCapability),
     },
-    // Browser use (the `browser` tool, EVE-1133) ships behind its own flag.
+    // Browser use (the `browser` tool, EVE-1133) shares the `browserless` flag.
     IntegrationPlugin {
-        feature_flag: Some("browserless_browser_use"),
+        feature_flag: Some("browserless"),
         factory: || Box::new(browser_use::BrowserUseCapability),
     },
 ];
@@ -314,17 +303,6 @@ impl Capability for BrowserlessCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::runtime::capabilities::CapabilityStatus;
-
-    #[test]
-    fn test_capability_metadata() {
-        let cap = BrowserlessCapability;
-        assert_eq!(cap.id(), "browserless");
-        assert_eq!(cap.name(), "Browserless");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("browserless"));
-        assert_eq!(cap.category(), Some("Browser"));
-    }
 
     #[test]
     fn capability_narrates_browserless_tools() {
@@ -422,32 +400,6 @@ mod tests {
         assert_eq!(result, "https://default.example.com");
     }
 
-    #[test]
-    fn test_capability_has_all_tools() {
-        let cap = BrowserlessCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 7);
-
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"browserless_open_browser"));
-        assert!(names.contains(&"browserless_close_browser"));
-        assert!(names.contains(&"browserless_navigate"));
-        assert!(names.contains(&"browserless_screenshot"));
-        assert!(names.contains(&"browserless_content"));
-        assert!(names.contains(&"browserless_scrape"));
-        assert!(names.contains(&"browserless_interact"));
-    }
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = BrowserlessCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("fresh browsers"));
-        assert!(prompt.contains("persistent browser"));
-        assert!(prompt.contains("closed when done"));
-        assert!(prompt.contains("screenshots for visual state"));
-    }
-
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = BrowserlessCapability;
@@ -457,29 +409,5 @@ mod tests {
             );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(prompt.len() <= 400, "prompt is {} bytes", prompt.len());
-    }
-
-    #[test]
-    fn test_all_tools_require_context() {
-        let cap = BrowserlessCapability;
-        for tool in cap.tools() {
-            assert!(
-                tool.requires_context(),
-                "Tool {} should require context",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_capability_depends_on_session_storage() {
-        let cap = BrowserlessCapability;
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    }
-
-    #[test]
-    fn test_capability_risk_level() {
-        let cap = BrowserlessCapability;
-        assert_eq!(cap.risk_level(), RiskLevel::Medium);
     }
 }

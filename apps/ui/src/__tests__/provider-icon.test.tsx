@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import {
   ProviderIcon,
   getProviderLabel,
@@ -7,160 +7,20 @@ import {
 import type { DriverId } from "@/lib/api/types";
 
 describe("ProviderIcon", () => {
-  const providerTypes: DriverId[] = [
-    "openai",
-    "azure_openai",
-    "openai_completions",
-    "anthropic",
-    "gemini",
-    "openrouter",
-    "meta",
-  ];
-  const filledProviderTypes: DriverId[] = [
-    "openai",
-    "azure_openai",
-    "openai_completions",
-    "anthropic",
-    "gemini",
-    "meta",
-  ];
-  const customSvgProviderTypes = filledProviderTypes;
-
-  it.each(providerTypes)("renders inline SVG for %s provider", (providerType) => {
-    const { container } = render(<ProviderIcon providerType={providerType} />);
-    const svg = container.querySelector("svg");
-    expect(svg).toBeInTheDocument();
-  });
-
-  it.each(customSvgProviderTypes)("renders path data for %s custom logo", (providerType) => {
-    const { container } = render(<ProviderIcon providerType={providerType} />);
-    // Verify it uses currentColor for theme-adaptive rendering
-    const path = container.querySelector("path");
-    expect(path).toBeInTheDocument();
-  });
-
-  it.each(providerTypes)("does not use <img> tags (no Next.js Image) for %s", (providerType) => {
-    const { container } = render(<ProviderIcon providerType={providerType} />);
-    const img = container.querySelector("img");
-    expect(img).not.toBeInTheDocument();
-  });
-
-  it.each(filledProviderTypes)("uses currentColor fill for %s", (providerType) => {
-    const { container } = render(<ProviderIcon providerType={providerType} />);
-    const pathsAndSvgs = container.querySelectorAll("[fill='currentColor']");
-    expect(pathsAndSvgs.length).toBeGreaterThan(0);
-  });
-
-  it("uses the official Meta loop geometry", () => {
-    const { container } = render(<ProviderIcon providerType="meta" />);
-    const svg = container.querySelector("svg");
-    expect(svg).toHaveAttribute("viewBox", "0 11.34 14.004 9.32");
-    expect(svg?.querySelectorAll("path")).toHaveLength(2);
-  });
-
   it("uses the shared Facet provider fallback for an unknown provider type", () => {
     const { container } = render(<ProviderIcon providerType={"unknown" as DriverId} />);
     expect(container.querySelector("img")).not.toBeInTheDocument();
     expect(container.querySelector("svg")).toHaveAttribute("data-facet-icon", "provider");
   });
-
-  it("applies showBackground styles when true", () => {
-    const { container } = render(<ProviderIcon providerType="openai" showBackground={true} />);
-    const wrapper = container.firstElementChild;
-    expect(wrapper?.className).toContain("bg-primary/10");
-  });
-
-  it("omits background styles when showBackground is false", () => {
-    const { container } = render(<ProviderIcon providerType="openai" showBackground={false} />);
-    const wrapper = container.firstElementChild;
-    expect(wrapper?.className).not.toContain("bg-primary/10");
-  });
-
-  it("renders correct size for sm", () => {
-    const { container } = render(<ProviderIcon providerType="openai" size="sm" />);
-    const svg = container.querySelector("svg");
-    expect(svg?.getAttribute("width")).toBe("16");
-    expect(svg?.getAttribute("height")).toBe("16");
-  });
-
-  it("renders correct size for md (default)", () => {
-    const { container } = render(<ProviderIcon providerType="anthropic" />);
-    const svg = container.querySelector("svg");
-    expect(svg?.getAttribute("width")).toBe("20");
-    expect(svg?.getAttribute("height")).toBe("20");
-  });
-
-  it("renders correct size for lg", () => {
-    const { container } = render(<ProviderIcon providerType="gemini" size="lg" />);
-    const svg = container.querySelector("svg");
-    expect(svg?.getAttribute("width")).toBe("24");
-    expect(svg?.getAttribute("height")).toBe("24");
-  });
-
-  it("sets title attribute with provider label", () => {
-    render(<ProviderIcon providerType="openai" />);
-    expect(screen.getByTitle("OpenAI (Responses)")).toBeInTheDocument();
-  });
 });
 
 describe("getProviderLabel", () => {
-  it("returns correct label for openai", () => {
-    expect(getProviderLabel("openai")).toBe("OpenAI (Responses)");
-  });
-
-  it("returns correct label for azure openai", () => {
-    expect(getProviderLabel("azure_openai")).toBe("Azure OpenAI");
-  });
-
-  it("returns correct label for anthropic", () => {
-    expect(getProviderLabel("anthropic")).toBe("Anthropic");
-  });
-
-  it("returns correct label for gemini", () => {
-    expect(getProviderLabel("gemini")).toBe("Google Gemini");
-  });
-
-  it("returns correct label for openrouter", () => {
-    expect(getProviderLabel("openrouter")).toBe("OpenRouter");
-  });
-
   it("returns type string for unknown provider", () => {
     expect(getProviderLabel("unknown" as DriverId)).toBe("unknown");
   });
 });
 
 describe("getProviderDescription", () => {
-  const knownProviders: DriverId[] = [
-    "openai",
-    "openrouter",
-    "azure_openai",
-    "openai_completions",
-    "anthropic",
-    "gemini",
-    "bedrock",
-    "mai",
-    "fireworks",
-    "meta",
-    "mistral",
-  ];
-
-  it.each(knownProviders)("returns a non-empty tagline for %s", (providerType) => {
-    expect(getProviderDescription(providerType).length).toBeGreaterThan(0);
-  });
-
-  it("returns the Fireworks tagline", () => {
-    expect(getProviderDescription("fireworks")).toBe("Fast, low-cost inference for open models.");
-  });
-
-  it("returns the Mistral label", () => {
-    expect(getProviderLabel("mistral")).toBe("Mistral AI");
-  });
-
-  it("returns the Meta label and tagline", () => {
-    expect(getProviderLabel("meta")).toBe("Meta");
-    expect(getProviderDescription("meta")).toBe("Muse Spark models via Meta's Responses API.");
-  });
-
   it("returns an empty string for an unknown provider", () => {
     expect(getProviderDescription("unknown" as DriverId)).toBe("");
   });

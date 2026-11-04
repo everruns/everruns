@@ -270,6 +270,7 @@ async fn run_public_chat(
                     issuer: binding.realm.clone(),
                     subject: binding.subject.clone(),
                     identity_realm: binding.realm.clone(),
+                    email: None,
                 }),
                 None,
                 Some((
@@ -683,30 +684,27 @@ mod tests {
     }
 
     #[test]
-    fn auth_mode_str_roundtrips_known_modes() {
-        assert_eq!(auth_mode_str(&ChannelAuthMode::GoogleOidc), "google_oidc");
-        assert_eq!(auth_mode_str(&ChannelAuthMode::Anonymous), "anonymous");
-    }
-
-    #[test]
     fn signed_in_visitor_tags_are_stable_and_subject_scoped() {
         let alice = ChannelAuthPrincipal {
             provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
             identity_realm: "google".to_string(),
+            email: None,
         };
         let alice_again = ChannelAuthPrincipal {
             provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
             identity_realm: "google".to_string(),
+            email: None,
         };
         let bob = ChannelAuthPrincipal {
             provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "bob".to_string(),
             identity_realm: "google".to_string(),
+            email: None,
         };
 
         assert_eq!(

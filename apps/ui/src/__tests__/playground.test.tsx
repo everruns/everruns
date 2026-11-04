@@ -7,6 +7,14 @@ import { ChatThreadHeader } from "@/components/chat/chat-thread-header";
 import { getSessionFacets, listSessions } from "@/lib/api/sessions";
 import type { Event, Session } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
+
 const mockSession: Session = {
   id: "session_test",
   source: "playground",
@@ -155,7 +163,7 @@ test("agent filter and grouping controls the current page without a virtual-user
   renderLibrary();
   await screen.findByRole("link", { name: "Support test" });
   expect(screen.queryByText("Virtual user filter")).not.toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "Day" })).toHaveAttribute("aria-checked", "true");
+  expect(screen.getByRole("button", { name: "Day" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: /Support agent/ }));
   await waitFor(() =>
@@ -164,9 +172,9 @@ test("agent filter and grouping controls the current page without a virtual-user
     ),
   );
   expect(screen.getByText("Agent is")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+  fireEvent.click(screen.getByRole("button", { name: "Agent" }));
   expect(screen.getByRole("group", { name: "Support agent" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("radio", { name: "None" }));
+  fireEvent.click(screen.getByRole("button", { name: "None" }));
   expect(
     screen.queryByRole("group", { name: /Today|Yesterday|Earlier|Support agent/ }),
   ).not.toBeInTheDocument();

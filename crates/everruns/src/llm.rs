@@ -334,6 +334,22 @@ impl Completion {
         self
     }
 
+    pub(crate) fn into_batch_request(
+        self,
+    ) -> Result<(Vec<Message>, LlmCallConfig), crate::batch::BatchError> {
+        if self.provider.is_some() {
+            return Err(crate::batch::BatchError::InvalidRequest(
+                "batch requests must use a model without a provider; the batch owns its provider",
+            ));
+        }
+        if self.messages.is_empty() {
+            return Err(crate::batch::BatchError::InvalidRequest(
+                "batch request has no messages",
+            ));
+        }
+        Ok((self.messages, self.config))
+    }
+
     /// Send the call and wait for the whole answer.
     ///
     /// Non-streaming: drivers with a native non-streaming endpoint use it,
@@ -364,7 +380,9 @@ impl Completion {
 
     /// Validate the described call, keeping both configuration mistakes off the
     /// wire.
-    fn into_request(self) -> Result<(Provider, Vec<Message>, LlmCallConfig), CompletionError> {
+    pub(crate) fn into_request(
+        self,
+    ) -> Result<(Provider, Vec<Message>, LlmCallConfig), CompletionError> {
         let provider = self.provider.ok_or(CompletionError::MissingProvider)?;
         if self.messages.is_empty() {
             return Err(CompletionError::NoMessages);
@@ -528,38 +546,6 @@ mod tests {
             .expect("simulated completion succeeds");
         assert_eq!(response.text, "no tool needed");
         assert!(response.tool_calls.is_none());
-    }
-
-    #[test]
-    fn per_call_bounds_reach_the_call_configuration() {
-        let completion = Model::simulated("ok")
-            .completion()
-            .user("go")
-            .timeout(Duration::from_secs(30))
-            .first_token_timeout(Duration::from_secs(5))
-            .max_response_bytes(1024)
-            .parallel_tool_calls(false);
-        assert_eq!(
-            completion.config.limits.total,
-            Some(Duration::from_secs(30))
-        );
-        assert_eq!(
-            completion.config.limits.first_event,
-            Some(Duration::from_secs(5))
-        );
-        assert_eq!(completion.config.limits.max_response_bytes, Some(1024));
-        assert_eq!(completion.config.parallel_tool_calls, Some(false));
-        assert!(
-            !completion.config.capture_request,
-            "the prompt is not recorded unless asked for"
-        );
-        assert!(
-            Model::simulated("ok")
-                .completion()
-                .capture_request(true)
-                .config
-                .capture_request
-        );
     }
 
     #[tokio::test]

@@ -19,11 +19,14 @@
 //! ```
 
 pub mod cli;
+mod knowledge;
 
+mod credential_egress;
 mod egress_transport;
 pub mod hook_dispatch;
 mod http;
 pub mod tools_in_shell;
+mod workspace;
 
 use crate::bashkit::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
@@ -70,27 +73,6 @@ fn execution_limits() -> ExecutionLimits {
         .max_input_bytes(1_000_000) // 1MB max script size
         .max_ast_depth(100)
         .parser_timeout(std::time::Duration::from_secs(5))
-}
-
-/// Resolve the shell working directory and `WORKSPACE` env value from the file
-/// store's namespace (EVE-660).
-///
-/// The file store ([`MountFs`](crate::bashkit::mount_fs::MountFs)) is the single path
-/// authority: `working_dir` is resolved through it to an absolute path in the
-/// same namespace the file tools use, so a model that learns a path from
-/// `read_file` can pass it straight to `cd`. With no `working_dir`, the shell
-/// starts at the store's display root (`/workspace` for the mounted stores used
-/// by agent execution). The tuple is `(cwd, workspace_env)`.
-fn resolve_shell_workspace(
-    store: &dyn SessionFileSystem,
-    working_dir_arg: Option<&str>,
-) -> (String, String) {
-    let workspace_env = store.display_root();
-    let cwd = match working_dir_arg {
-        Some(arg) => store.resolve_path(arg),
-        None => workspace_env.clone(),
-    };
-    (cwd, workspace_env)
 }
 
 /// Configured bashkit tool instance with everruns settings.
@@ -310,14 +292,14 @@ impl Tool for BashTool {
         tool_call: &crate::bashkit::tool_types::ToolCall,
         phase: crate::bashkit::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::bashkit::tool_narration::ToolNarrationContext<'_>,
+        ctx: crate::bashkit::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let fallback = self.display_name().unwrap_or("Bash");
         Some(crate::bashkit::tool_narration::narrate_shell_exec(
             &tool_call.arguments,
-            fallback,
+            self.display_name().unwrap_or("Bash"),
             phase,
             locale,
+            ctx,
         ))
     }
 
@@ -334,7 +316,9 @@ impl Tool for BashTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        TOOL_INPUT_SCHEMA.clone()
+        let mut schema = TOOL_INPUT_SCHEMA.clone();
+        schema["properties"]["credential_usage"] = json!({"type":"string","enum":["user","service"],"default":"service","description":"Use authorized service credentials, or the verified invoking user’s private credentials. No identity fallback."});
+        schema
     }
 
     fn hints(&self) -> ToolHints {
@@ -382,7 +366,7 @@ impl Tool for BashTool {
             }
         };
 
-        let (working_dir, workspace_env) = resolve_shell_workspace(
+        let (working_dir, workspace_env) = workspace::resolve_shell_workspace(
             file_store.as_ref(),
             arguments.get("working_dir").and_then(|v| v.as_str()),
         );
@@ -426,9 +410,19 @@ impl Tool for BashTool {
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, context).await;
+        let (builder, redactor) = match http::configure(
+            builder,
+            self.enable_http,
+            context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        {
+            Ok(configured) => configured,
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
         let builder = install_cli_tree(builder, context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
         if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
             return ToolExecutionResult::success(held);
         }
@@ -615,7 +609,7 @@ impl BackgroundExecutableTool for BashTool {
             }
         };
 
-        let (working_dir, workspace_env) = resolve_shell_workspace(
+        let (working_dir, workspace_env) = workspace::resolve_shell_workspace(
             file_store.as_ref(),
             arguments.get("working_dir").and_then(|v| v.as_str()),
         );
@@ -652,9 +646,16 @@ impl BackgroundExecutableTool for BashTool {
             .max_memory(10 * 1024 * 1024)
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, &context).await;
+        let (builder, redactor) = http::configure(
+            builder,
+            self.enable_http,
+            &context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
         let builder = install_cli_tree(builder, &context);
-        let mut bash = builder.build();
+        let mut bash = builder.cpython().build();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
@@ -784,41 +785,10 @@ impl BackgroundExecutableTool for BashTool {
     }
 }
 
-/// Register the `everruns` command tree, by whichever route this host can serve.
-///
-/// Two routes, because two hosts differ in what they can see:
-///
-///   * A host that links its commands in inserts a `CliCommandSourceHandle` and
-///     gets the local tree: parsing, help, and dispatch without leaving the
-///     process. This is the Framework application's route.
-///   * A hosted worker cannot rebuild that tree (`CliRoute` is `&'static`, and
-///     the commands live behind the control plane), so it forwards instead: a
-///     registered tool that declares a `CliSpelling` receives the rendered
-///     command line. This is the server's route.
-///
-/// Both are gated on something the session already has, never on a config flag:
-/// no source and no spelled tool means no builtin, so the shell can never
-/// promise a surface it cannot serve, nor one the harness withheld.
-fn install_cli_tree(builder: BashBuilder, context: &ToolContext) -> BashBuilder {
-    let builder = tools_in_shell::install(builder, context);
-    if let Some(handle) = context
-        .extensions
-        .get::<crate::bashkit::cli::CliCommandSourceHandle>()
-    {
-        // Registered under the source's own root token, not a fixed name: the
-        // commands belong to the host, so the word that introduces them does too.
-        let builtin = crate::bashkit::cli::EverrunsBuiltin::new(handle.0.clone());
-        let root = builtin.root().to_string();
-        return builder.builtin(root, Box::new(builtin));
-    }
-
-    if let Some(builtin) = crate::bashkit::cli::forwarding_builtin_for(context) {
-        let root = builtin.root().to_string();
-        return builder.builtin(root, Box::new(builtin));
-    }
-
-    builder
-}
+use installation::install_cli_tree;
+mod installation;
+mod listing_cache;
+use listing_cache::ListingCache;
 
 // Observational-only. Emits `tracing` events for each bashkit builtin
 // invocation and interpreter error, tagged with the active `session_id` for
@@ -928,11 +898,17 @@ fn collect_partial_output(mut rx: tokio::sync::mpsc::Receiver<(String, String)>)
 pub struct SessionFileSystemAdapter {
     session_id: SessionId,
     store: Arc<dyn SessionFileSystem>,
+    /// What this adapter already listed; see [`listing_cache`].
+    listings: std::sync::Mutex<ListingCache>,
 }
 
 impl SessionFileSystemAdapter {
     pub fn new(session_id: SessionId, store: Arc<dyn SessionFileSystem>) -> Self {
-        Self { session_id, store }
+        Self {
+            session_id,
+            store,
+            listings: Default::default(),
+        }
     }
 
     /// The bash VFS path as a string for the store to resolve.
@@ -946,18 +922,6 @@ impl SessionFileSystemAdapter {
     /// address files anywhere from `/`, with `/workspace` as just its cwd.
     fn store_path(path: &Path) -> String {
         path.to_string_lossy().into_owned()
-    }
-
-    /// Whether `session_path` is an implicit directory — one with children but no row
-    /// of its own (virtual mounts, unmaterialized parents).
-    ///
-    /// Stores answer `list_directory` for an unknown path with `Ok(vec![])`, so only a
-    /// non-empty listing distinguishes a real directory from an absent path.
-    async fn directory_has_entries(&self, session_path: &str) -> bool {
-        self.store
-            .list_directory(self.session_id, session_path)
-            .await
-            .is_ok_and(|entries| !entries.is_empty())
     }
 }
 
@@ -984,6 +948,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn write_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         let (encoded, encoding) = SessionFile::encode_content(content);
@@ -996,6 +961,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn append_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         // Read existing content
@@ -1022,6 +988,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn mkdir(&self, path: &Path, _recursive: bool) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         self.store
@@ -1032,6 +999,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn remove(&self, path: &Path, recursive: bool) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         self.store
@@ -1054,10 +1022,15 @@ impl FileSystem for SessionFileSystemAdapter {
             });
         }
 
+        if let Some(metadata) = self.listed_metadata(path) {
+            return Ok(metadata);
+        }
+
         let session_path = Self::store_path(path);
 
-        // Check if it's a file
-        match self.store.read_file(self.session_id, &session_path).await {
+        // Metadata is authoritative: command-backed stores return no content
+        // for directory reads, including directories just created by mkdir.
+        match self.store.stat_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
                 let now = SystemTime::now();
 
@@ -1105,37 +1078,9 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn read_dir(&self, path: &Path) -> bashkit::Result<Vec<DirEntry>> {
-        let session_path = Self::store_path(path);
-
-        let entries = self
-            .store
-            .list_directory(self.session_id, &session_path)
+        self.list_dir(&Self::store_path(path))
             .await
-            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
-
-        let now = SystemTime::now();
-
-        Ok(entries
-            .into_iter()
-            .map(|e| {
-                let file_type = if e.is_directory {
-                    FileType::Directory
-                } else {
-                    FileType::File
-                };
-
-                DirEntry {
-                    name: e.name,
-                    metadata: Metadata {
-                        file_type,
-                        size: e.size_bytes as u64,
-                        mode: 0o755,
-                        modified: now,
-                        created: now,
-                    },
-                }
-            })
-            .collect())
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
     }
 
     async fn exists(&self, path: &Path) -> bashkit::Result<bool> {
@@ -1144,10 +1089,14 @@ impl FileSystem for SessionFileSystemAdapter {
             return Ok(true);
         }
 
+        if self.listed_metadata(path).is_some() {
+            return Ok(true);
+        }
+
         let session_path = Self::store_path(path);
 
-        // A row exists for both files and materialized directories.
-        if let Ok(Some(_)) = self.store.read_file(self.session_id, &session_path).await {
+        // Metadata covers files and empty materialized directories alike.
+        if let Ok(Some(_)) = self.store.stat_file(self.session_id, &session_path).await {
             return Ok(true);
         }
 
@@ -1157,7 +1106,15 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let from_session = Self::store_path(from);
+        if self.stat(from).await?.file_type == FileType::Directory {
+            return self
+                .store
+                .rename_directory(self.session_id, &from_session, &Self::store_path(to))
+                .await
+                .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())));
+        }
 
         // Read source file
         let content = self.read_file(from).await?;
@@ -1317,6 +1274,8 @@ impl SearchProvider for SessionSearchProvider {
 
 #[cfg(test)]
 mod tests {
+    mod listing;
+    mod rename;
     use super::*;
     use crate::bashkit::session_file::FileInfo;
     use crate::bashkit::typed_id::SessionId;
@@ -1333,6 +1292,9 @@ mod tests {
     struct MockFileStore {
         files: Mutex<HashMap<(SessionId, String), (String, String)>>, // (content, encoding)
         directories: Mutex<HashMap<(SessionId, String), bool>>,
+        stat_calls: AtomicUsize,
+        list_calls: AtomicUsize,
+        tree_calls: AtomicUsize,
     }
 
     impl MockFileStore {
@@ -1340,6 +1302,9 @@ mod tests {
             Self {
                 files: Mutex::new(HashMap::new()),
                 directories: Mutex::new(HashMap::new()),
+                stat_calls: AtomicUsize::new(0),
+                list_calls: AtomicUsize::new(0),
+                tree_calls: AtomicUsize::new(0),
             }
         }
 
@@ -1357,6 +1322,14 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        async fn rename_directory(
+            &self,
+            session: SessionId,
+            from: &str,
+            to: &str,
+        ) -> everruns_contracts::error::Result<()> {
+            rename::move_directory(self, session, from, to)
+        }
         fn is_mount_resolver(&self) -> bool {
             false
         }
@@ -1379,28 +1352,6 @@ mod tests {
                     content: Some(content.clone()),
                     encoding: encoding.clone(),
                     size_bytes: content.len() as i64,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                }))
-            } else if self
-                .directories
-                .lock()
-                .unwrap()
-                .contains_key(&(session_id, path.clone()))
-            {
-                // Production stores materialize directories as rows that `read_file`
-                // returns (see `InMemorySessionFileStore::create_directory`), so the
-                // double must too — otherwise `exists`/`stat` cannot see an empty dir.
-                Ok(Some(SessionFile {
-                    id: uuid::Uuid::new_v4(),
-                    session_id: session_id.into(),
-                    path: path.clone(),
-                    name: path.split('/').next_back().unwrap_or("").to_string(),
-                    is_directory: true,
-                    is_readonly: false,
-                    content: None,
-                    encoding: "text".to_string(),
-                    size_bytes: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }))
@@ -1453,6 +1404,7 @@ mod tests {
             session_id: SessionId,
             path: &str,
         ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
+            self.list_calls.fetch_add(1, Ordering::Relaxed);
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             let dirs = self.directories.lock().unwrap();
@@ -1530,19 +1482,17 @@ mod tests {
                 });
             }
 
-            // Return error if directory doesn't exist (not root, not explicitly created,
-            // and no files have it as parent)
-            if !is_root && entries.is_empty() && !dirs.contains_key(&(session_id, path.clone())) {
-                // Also check if any file has this as an ancestor (implicit directory)
-                let has_children = files
-                    .keys()
-                    .any(|(sid, fp)| *sid == session_id && fp.starts_with(&format!("{}/", path)));
-                if !has_children {
-                    return Err(anyhow::anyhow!("Directory not found: {}", path).into());
-                }
-            }
-
+            // Match the command transport: missing and empty directories both
+            // have empty listings, so callers must use metadata for existence.
             Ok(entries)
+        }
+
+        async fn list_tree(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> everruns_contracts::error::Result<Option<Vec<FileInfo>>> {
+            Ok(Some(listing::mock_tree(self, session_id, path)))
         }
 
         async fn stat_file(
@@ -1550,6 +1500,7 @@ mod tests {
             session_id: SessionId,
             path: &str,
         ) -> everruns_contracts::error::Result<Option<FileStat>> {
+            self.stat_calls.fetch_add(1, Ordering::Relaxed);
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, _)) = files.get(&(session_id, path.clone())) {
@@ -1559,6 +1510,21 @@ mod tests {
                     is_directory: false,
                     is_readonly: false,
                     size_bytes: content.len() as i64,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
+            } else if self
+                .directories
+                .lock()
+                .unwrap()
+                .contains_key(&(session_id, path.clone()))
+            {
+                Ok(Some(FileStat {
+                    path: path.clone(),
+                    name: path.split('/').next_back().unwrap_or("").to_string(),
+                    is_directory: true,
+                    is_readonly: false,
+                    size_bytes: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }))
@@ -1628,37 +1594,6 @@ mod tests {
     // ========================================================================
     // Capability metadata tests
     // ========================================================================
-
-    // Metadata (id/name/status/risk/icon/category), tool-list, and dependency
-    // constants are covered registry-wide by
-    // `builtin_capabilities_satisfy_registry_invariants` in `capabilities::tests`.
-    // Only the behavioral assertion — the description advertises built-in help —
-    // is kept here.
-    #[test]
-    fn description_advertises_builtin_help_and_version() {
-        let description = BashkitShellCapability.description();
-        assert!(
-            description.contains("`<command> --help`"),
-            "description should advertise built-in help, got: {description}"
-        );
-        assert!(
-            description.contains("`<command> --version`"),
-            "description should advertise built-in version support, got: {description}"
-        );
-    }
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = BashkitShellCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        // System prompt is now provided by bashkit library
-        assert!(!prompt.is_empty(), "System prompt should not be empty");
-        // Should contain the configured username/hostname
-        assert!(
-            prompt.contains("everruns"),
-            "System prompt should contain configured identity"
-        );
-    }
 
     // ========================================================================
     // Path resolution (delegated to the store / MountFs)
@@ -2108,31 +2043,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_bash_write_and_read_file() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Write a file
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "echo 'test content' > /workspace/test.txt"}),
-                &context,
-            )
-            .await;
-        assert!(matches!(result, ToolExecutionResult::Success(_)));
-
-        // Read it back
-        let result = tool
-            .execute_with_context(json!({"commands": "cat /workspace/test.txt"}), &context)
-            .await;
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "test content\n");
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
-    #[tokio::test]
     async fn test_bash_recursive_walk_descends_into_subdirectories() {
         let (context, _guard) = create_context_with_mock_store();
         let tool = BashTool::default();
@@ -2223,55 +2133,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_pipe_command() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "echo hello | cat"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "hello\n");
-            assert_eq!(output["exit_code"], 0);
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_arithmetic() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "echo $((2 + 3 * 4))"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "14\n");
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_command_substitution() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "echo $(echo nested)"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "nested\n");
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
     // ========================================================================
     // Paths outside /workspace resolve into the backend (EVE-660)
     // ========================================================================
@@ -2309,10 +2170,9 @@ mod tests {
         let tool = BashTool::default();
 
         // A nonexistent path resolves but has no file — `cat` fails with a
-        // non-zero exit, not a containment error.
-        let result = tool
-            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
-            .await;
+        // non-zero exit, not a containment error (0.19 seeds /etc/passwd).
+        let params = json!({"commands": "cat /etc/everruns-probe-missing"});
+        let result = tool.execute_with_context(params, &context).await;
 
         match result {
             ToolExecutionResult::Success(output) => {
@@ -2330,24 +2190,6 @@ mod tests {
                 );
             }
             _ => panic!("Unexpected result type"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_mkdir_from_root_succeeds() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "mkdir /tmp/sub && echo done"}), &context)
-            .await;
-
-        match result {
-            ToolExecutionResult::Success(output) => {
-                assert_eq!(output["exit_code"], 0, "got: {:?}", output);
-                assert_eq!(output["stdout"], "done\n");
-            }
-            other => panic!("expected success, got: {:?}", other),
         }
     }
 
@@ -2405,46 +2247,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_true_command_exit_code() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "true"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["success"], true);
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
     // ========================================================================
     // FileSystem adapter direct tests
     // ========================================================================
-
-    #[tokio::test]
-    async fn test_adapter_read_write_workspace_file() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // Write a file
-        adapter
-            .write_file(Path::new("/workspace/test.txt"), b"hello")
-            .await
-            .unwrap();
-
-        // Read it back
-        let content = adapter
-            .read_file(Path::new("/workspace/test.txt"))
-            .await
-            .unwrap();
-        assert_eq!(content, b"hello");
-    }
 
     #[tokio::test]
     async fn test_adapter_read_missing_file_is_not_found() {
@@ -2457,21 +2262,6 @@ mod tests {
         assert!(
             matches!(&err, bashkit::Error::Io(io) if io.kind() == std::io::ErrorKind::NotFound),
             "expected NotFound, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_adapter_write_from_root_succeeds() {
-        let adapter = mount_adapter();
-
-        // Writing outside /workspace now resolves into the backend and reads back.
-        adapter
-            .write_file(Path::new("/tmp/file.txt"), b"data")
-            .await
-            .unwrap();
-        assert_eq!(
-            adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(),
-            b"data"
         );
     }
 
@@ -2570,39 +2360,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_adapter_rename_file() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // Write original file
-        adapter
-            .write_file(Path::new("/workspace/old.txt"), b"data")
-            .await
-            .unwrap();
-
-        // Rename it
-        adapter
-            .rename(
-                Path::new("/workspace/old.txt"),
-                Path::new("/workspace/new.txt"),
-            )
-            .await
-            .unwrap();
-
-        // Old file should not exist
-        let old_result = adapter.read_file(Path::new("/workspace/old.txt")).await;
-        assert!(old_result.is_err());
-
-        // New file should have the content
-        let new_content = adapter
-            .read_file(Path::new("/workspace/new.txt"))
-            .await
-            .unwrap();
-        assert_eq!(new_content, b"data");
-    }
-
-    #[tokio::test]
     async fn test_adapter_copy_file() {
         let session_id = SessionId::new();
         let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
@@ -2675,17 +2432,6 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("not supported"));
     }
 
-    #[tokio::test]
-    async fn test_adapter_chmod_is_noop() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // chmod should succeed as a no-op
-        let result = adapter.chmod(Path::new("/workspace/file.txt"), 0o755).await;
-        assert!(result.is_ok());
-    }
-
     // ========================================================================
     // Security limit tests (bashkit 0.1.0)
     // ========================================================================
@@ -2721,134 +2467,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_loop_within_limit() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Execute a loop within the 10000 iteration limit
-        let command = "i=0; while [ $i -lt 100 ]; do i=$((i + 1)); done; echo $i";
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed within limits
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["stdout"].as_str().unwrap_or("").trim(), "100");
-        } else {
-            panic!("Expected success for loop within limit: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_function_calls() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Test basic function definition and calls (non-recursive to avoid stack issues)
-        let command = r#"
-            greet() {
-                echo "Hello, $1!"
-            }
-            greet world
-        "#;
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert!(
-                output["stdout"]
-                    .as_str()
-                    .unwrap_or("")
-                    .contains("Hello, world!")
-            );
-        } else {
-            panic!("Expected success for function call: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_arithmetic_expressions() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Test various arithmetic expressions (shallow nesting to avoid stack issues)
-        let command = "echo $((1 + 2 * 3))";
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["stdout"].as_str().unwrap_or("").trim(), "7");
-        } else {
-            panic!("Expected success for arithmetic expression: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_commands_within_limit() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Execute multiple commands within the 1000 command limit
-        let command = "for i in $(seq 1 100); do true; done; echo done";
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed within limits
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert!(output["stdout"].as_str().unwrap_or("").contains("done"));
-        } else {
-            panic!("Expected success for commands within limit: {:?}", result);
-        }
-    }
-
     // ========================================================================
     // Script file execution tests
     // ========================================================================
-
-    #[tokio::test]
-    async fn test_bash_execute_script_by_absolute_path() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Create a script file
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "cat > /workspace/test.sh << 'EOF'\n#!/bin/bash\necho hello\nEOF"}),
-                &context,
-            )
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::Success(_)),
-            "Failed to create script: {:?}",
-            result
-        );
-
-        // Execute by absolute path
-        let result = tool
-            .execute_with_context(json!({"commands": "/workspace/test.sh"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["stdout"], "hello\n");
-        } else {
-            panic!("Expected success, got: {:?}", result);
-        }
-    }
 
     #[tokio::test]
     async fn test_bash_execute_script_with_args() {
@@ -2991,41 +2612,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_execute_script_with_exit_code() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Create a script that exits with a specific code
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "cat > /workspace/fail.sh << 'EOF'\n#!/bin/bash\necho failing\nexit 42\nEOF"}),
-                &context,
-            )
-            .await;
-        assert!(matches!(result, ToolExecutionResult::Success(_)));
-
-        // Execute and check exit code propagation
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "/workspace/fail.sh; echo \"code: $?\""}),
-                &context,
-            )
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            let stdout = output["stdout"].as_str().unwrap_or("");
-            assert!(stdout.contains("failing"), "Script should have run");
-            assert!(
-                stdout.contains("code: 42"),
-                "Exit code should propagate, got: {}",
-                stdout
-            );
-        } else {
-            panic!("Expected success, got: {:?}", result);
-        }
-    }
-
     // ========================================================================
     // Overwrite / existing-file tests
     // ========================================================================
@@ -3136,32 +2722,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_adapter_append_to_existing_file() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // Write initial
-        adapter
-            .write_file(Path::new("/workspace/ap.txt"), b"AAA")
-            .await
-            .unwrap();
-
-        // Append
-        adapter
-            .append_file(Path::new("/workspace/ap.txt"), b"BBB")
-            .await
-            .unwrap();
-
-        // Verify combined
-        let content = adapter
-            .read_file(Path::new("/workspace/ap.txt"))
-            .await
-            .unwrap();
-        assert_eq!(content, b"AAABBB");
-    }
-
-    #[tokio::test]
     async fn test_bash_redirect_creates_parent_dirs() {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool::default();
@@ -3197,108 +2757,9 @@ mod tests {
     // bashkit API smoke tests
     // ========================================================================
 
-    #[test]
-    fn test_bashkit_tool_description_is_nonempty() {
-        let desc = BASHKIT_TOOL.description();
-        assert!(
-            !desc.is_empty(),
-            "bashkit tool description should not be empty"
-        );
-        // Should mention bash or command execution
-        assert!(
-            desc.to_lowercase().contains("bash") || desc.to_lowercase().contains("command"),
-            "description should mention bash or command, got: {}",
-            desc
-        );
-    }
-
-    #[test]
-    fn test_bashkit_tool_system_prompt_is_nonempty() {
-        let prompt = BASHKIT_TOOL.system_prompt();
-        assert!(
-            !prompt.is_empty(),
-            "bashkit system prompt should not be empty"
-        );
-        assert!(
-            prompt.contains("everruns"),
-            "system prompt should contain configured identity 'everruns', got: {}",
-            prompt
-        );
-    }
-
-    #[test]
-    fn test_bashkit_static_description_matches_tool() {
-        // Verify the LazyLock statics produce the same values as direct calls
-        let direct_desc = BASHKIT_TOOL.description();
-        let static_desc: &str = &TOOL_DESCRIPTION;
-        assert_eq!(static_desc, direct_desc);
-
-        let direct_prompt = BASHKIT_TOOL.system_prompt();
-        let static_prompt: &str = &TOOL_SYSTEM_PROMPT;
-        // TOOL_SYSTEM_PROMPT = bashkit prompt + EXEC_OUTPUT_HINT (EVE-223)
-        assert!(
-            static_prompt.starts_with(&direct_prompt),
-            "system prompt should start with bashkit prompt"
-        );
-        assert!(
-            static_prompt.contains("Output economy"),
-            "system prompt should include output economy hint"
-        );
-    }
-
-    #[test]
-    fn test_bash_tool_display_name() {
-        let tool = BashTool::default();
-        assert_eq!(tool.display_name(), Some("Bash"));
-    }
-
-    #[test]
-    fn test_bash_tool_is_never_deferred() {
-        let tool = BashTool::default();
-        assert_eq!(tool.deferrable_policy(), DeferrablePolicy::Never);
-    }
-
-    #[test]
-    fn test_bash_tool_parameters_schema_structure() {
-        let tool = BashTool::default();
-        let schema = tool.parameters_schema();
-
-        // Verify required fields
-        assert_eq!(schema["type"], "object");
-        assert!(schema["properties"]["commands"].is_object());
-
-        // Verify optional fields
-        assert!(schema["properties"]["working_dir"].is_object());
-        assert!(schema["properties"]["timeout_ms"].is_object());
-
-        // Verify "commands" is required
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("commands")));
-    }
-
     // ========================================================================
     // SearchCapable / indexed search tests
     // ========================================================================
-
-    #[test]
-    fn test_adapter_is_search_capable() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        let sc = adapter.as_search_capable();
-        assert!(
-            sc.is_some(),
-            "SessionFileSystemAdapter should be SearchCapable"
-        );
-
-        let provider = sc.unwrap().search_provider(Path::new("/workspace"));
-        assert!(provider.is_some(), "Should return a SearchProvider");
-
-        let caps = provider.unwrap().capabilities();
-        assert!(caps.content_search, "Should support content search");
-        assert!(caps.regex, "Should support regex patterns");
-    }
 
     #[tokio::test]
     async fn test_search_provider_returns_grep_results() {
@@ -3517,4 +2978,5 @@ mod tests {
     // ========================================================================
 
     mod http_tests;
+    mod runtime;
 }

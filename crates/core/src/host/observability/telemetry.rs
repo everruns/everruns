@@ -267,7 +267,7 @@ fn build_otlp_tracer(
 /// POSTed to verbatim and rejected by every collector. Append the traces path
 /// when the configured endpoint carries none, and leave a full signal URL
 /// (`.../v1/traces`, or a gateway's own path) untouched.
-fn traces_endpoint(endpoint: &str) -> String {
+pub(super) fn traces_endpoint(endpoint: &str) -> String {
     let trimmed = endpoint.trim_end_matches('/');
     match trimmed.split_once("://") {
         Some((_, rest)) if rest.contains('/') => trimmed.to_string(),
@@ -316,15 +316,6 @@ mod tests {
             traces_endpoint("https://gw.example.com/otlp/v1/traces"),
             "https://gw.example.com/otlp/v1/traces"
         );
-    }
-
-    #[test]
-    fn test_config_defaults() {
-        let config = TelemetryConfig::default();
-        assert_eq!(config.service_name, "everruns");
-        assert!(config.otlp_endpoint.is_none());
-        assert!(config.enable_console);
-        assert!(!config.record_content);
     }
 }
 

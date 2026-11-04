@@ -16,6 +16,7 @@
 // Only the contents of each zone change per page; position and mechanics stay identical.
 // These primitives are presentational and prop-driven so any page can adopt the language.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -80,14 +81,15 @@ export function PageBreadcrumb({
   className?: string;
   group?: boolean;
 }) {
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const groupLabel = group ? navigationGroupForPath(pathname ?? "") : undefined;
   if (groupLabel) {
-    items = [{ label: groupLabel }, ...items];
+    items = [{ label: ui(groupLabel) }, ...items];
   }
   return (
     <nav
-      aria-label="Breadcrumb"
+      aria-label={ui("Breadcrumb")}
       className={cn(
         "flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground",
         className,
@@ -311,6 +313,7 @@ export function SectionTabs({
   className?: string;
   "aria-label"?: string;
 }) {
+  const ui = useUiTranslations();
   const Container = items.every((item) => item.href) ? "nav" : "div";
   return (
     <Container
@@ -330,13 +333,13 @@ export function SectionTabs({
             : "border-transparent text-muted-foreground hover:text-foreground",
         );
         const accessibility = {
-          "aria-label": typeof item.label === "string" ? item.label : undefined,
+          "aria-label": typeof item.label === "string" ? ui(item.label) : undefined,
           "aria-description": item.count !== undefined ? `${item.count} items` : undefined,
         };
         const content = (
           <>
             {item.icon}
-            {item.label}
+            {typeof item.label === "string" ? ui(item.label) : item.label}
             {item.count !== undefined && (
               <span className="text-xs font-normal tabular-nums text-muted-foreground">
                 {item.count}
@@ -386,9 +389,10 @@ export function PageJumpNav({
   items: PageJumpNavItem[];
   className?: string;
 }) {
+  const ui = useUiTranslations();
   return (
     <nav
-      aria-label="Jump to section"
+      aria-label={ui("Jump to section")}
       className={cn(
         "flex max-w-full items-center gap-3 overflow-x-auto py-2 text-[13px] text-muted-foreground",
         className,
@@ -396,7 +400,7 @@ export function PageJumpNav({
     >
       <span className="inline-flex shrink-0 items-center gap-1.5">
         <ArrowRight className="size-3.5" />
-        Jump to
+        {ui("Jump to")}
       </span>
       {items.map((item) => (
         <a
@@ -404,7 +408,7 @@ export function PageJumpNav({
           href={item.href}
           className="shrink-0 transition-colors hover:text-foreground"
         >
-          {item.label}
+          {typeof item.label === "string" ? ui(item.label) : item.label}
         </a>
       ))}
     </nav>
@@ -430,9 +434,7 @@ export function StatCard({
 }) {
   return (
     <div className={cn("flex flex-col gap-1.5 border bg-card p-4", className)}>
-      <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {value !== undefined && (
         <span className="text-2xl font-semibold tracking-tight text-foreground">{value}</span>
       )}
@@ -444,7 +446,11 @@ export function StatCard({
 
 /** Responsive grid for {@link StatCard}s. Defaults to four columns on wide screens. */
 export function StatGrid({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("grid grid-cols-2 gap-3 lg:grid-cols-4", className)}>{children}</div>;
+  return (
+    <div className={cn("page-stat-grid grid grid-cols-2 gap-3 lg:grid-cols-4", className)}>
+      {children}
+    </div>
+  );
 }
 
 /* ──────────────────────────────── Empty state ──────────────────────────── */
@@ -494,7 +500,12 @@ export function EmptyState({ icon, title, description, action, className }: Empt
  */
 export function PageColumns({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_280px]", className)}>
+    <div
+      className={cn(
+        "page-columns grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_280px]",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -529,9 +540,7 @@ export function RailSection({
 }) {
   return (
     <div className={cn("border bg-card p-4", className)}>
-      <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </div>
+      <div className="mb-2.5 text-xs font-medium text-muted-foreground">{label}</div>
       {children}
     </div>
   );

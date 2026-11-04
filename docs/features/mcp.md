@@ -13,10 +13,10 @@ Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.i
 Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so external clients, Claude Desktop, Cursor, VS Code, or another agent, can discover and call your agents and tools over JSON-RPC. It is a standard product surface, with no deployment variable or organization feature toggle.
 
 - **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2026-07-28`, `2025-06-18` and `2025-03-26` are supported.
-- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`; and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
+- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`, plus `tasks/get`, `tasks/update` and `tasks/cancel` for clients that use [Tasks](#long-agent-turns-as-tasks); and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Files**: `agent_run` and `session_send_message` take an optional `files` list, each file as base64 `data` or a public `https` `url`. The files are copied into the session's `/attachments` folder, as for [channels](/features/channels/#files-people-send).
-- **Entity cards**: under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
+- **Entity cards**: under protocol `2025-06-18` and newer, `agent_get_card`, `harness_get_card`, `capability_get_card`, and `knowledge_get_card` open the corresponding Everruns cards. Supported hosts render the cards; other clients receive structured details and a text fallback.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
 
@@ -31,7 +31,9 @@ directly, then read instructions and supporting files with `resources/read`.
 
 | Skill | Use it for |
 |---|---|
-| `skill://everruns-mcp/SKILL.md` | Finding agents, running sessions, inspecting results, and managing resources through MCP |
+| `skill://everruns/SKILL.md` | Product concepts, getting started, and documentation links |
+| `skill://everruns-cli/SKILL.md` | Command usage and examples across CLI, session shell, and MCP |
+| `skill://everruns-mcp/SKILL.md` | Connection setup, finding agents, running sessions, inspecting results, and managing resources through MCP |
 | `skill://everruns-agent-authoring/SKILL.md` | Creating or revising agent definitions, selecting capabilities and harnesses, and verifying behavior |
 
 Each entry preserves all authored frontmatter and includes every file's URI,
@@ -51,13 +53,64 @@ extension loads it through its skill loader, checks the manifest and frontmatter
 and applies its approval policy. Older clients can read a known skill URI as an
 ordinary resource but receive no Skills extension capability.
 
+### Polling for replies
+
+`session_get_status` returns `latest_output`, the latest non-empty text the agent
+said in the session, including replies delivered through `send_message`. Private
+commentary, tool arguments, and failed deliveries do not count as replies.
+
+`since_event_id` and `event_types` filter the returned event page only. The latest
+reply remains available even when that page is empty or contains only status
+events. It is a session snapshot, so it can still be the previous turn's reply
+while a new turn runs or after a turn that sends no reply; check `status` and
+the returned events for progress. `latest_output` is `null` when the session has
+no visible text reply.
+
+### Long agent turns as tasks
+
+An agent turn can take minutes. Clients on protocol `2026-07-28` that declare the
+[MCP Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview)
+(`io.modelcontextprotocol/tasks`) get a task back from `agent_run` and
+`session_send_message` instead of holding the request open, then poll
+`tasks/get` until the turn ends.
+
+- **One task per message.** Each message starts its own task, and a finished
+  task keeps its own reply, so an old task id never shows a later turn.
+- **Results.** A completed task carries the agent's reply as the tool result,
+  with the session id, the message id and any structured result in
+  `structuredContent`. A turn that failed or was stopped is `completed` with
+  `isError: true` and a status message saying why; a cancelled turn is
+  `cancelled`.
+- **Questions.** When the agent asks with Ask User and the client also declares
+  form elicitation, the task is `input_required` and carries the form. Answer it
+  with `tasks/update`; send a follow-up message with `session_send_message`.
+- **Cancel.** `tasks/cancel` stops the running turn.
+
+Task ids are checked against the caller's access on every request: an id for a
+session the caller cannot read is an unknown task. Clients that do not declare
+the extension keep getting plain tool results.
+
 ### In ChatGPT and Codex
 
-`/mcp` is an [MCP App](https://github.com/modelcontextprotocol/ext-apps): hosts that
-render MCP Apps, including ChatGPT, Codex and Claude, show a live session view
-after `agent_run`, answer an agent's questions in a form, approve or decline a
-pending action, and open an Everruns panel from the sidebar. Hosts that do not
-render apps get the same tools as plain text.
+`/mcp` is an [MCP App](https://github.com/modelcontextprotocol/ext-apps). Hosts
+that support app rendering and embedded frames can show Agent, Harness, Capability
+and Knowledge cards, the full organization Home, and the full Session workspace.
+Session includes Trace, Approvals, Work, Events, Files and Cost, using the same
+components as Everruns in your browser.
+
+Ask your client to show an entity, open Everruns Home, or open a session. The
+entrypoints are the card tools, `everruns_home`, and `session_open`; conversation
+tools also link their results to the Session view. Entity titles open Everruns,
+while Session tabs navigate within the embedded workspace. Hosts that advertise
+fullscreen can expand the view.
+
+The views use your connected MCP account and selected organization, without a
+second browser sign-in. Read-only tokens retain read-only access. Self-hosted
+deployments must serve the configured frontend URL so the shared UI can load.
+Files use the MCP connection, and downloads require host download support.
+HTML has a static preview;
+PDF and interactive HTML previews, along with credential entry, open in Everruns
+through the host. Hosts without app rendering still receive structured data and text.
 
 ### Session events (experimental)
 
@@ -76,7 +129,7 @@ A server the agent adds for one conversation only ([`"scope": "chat"`](/capabili
 
 Register a remote MCP server and its tools appear as a **virtual capability**: auto-discovered, namespaced, and executed alongside built-in capabilities. No code changes are needed to give an agent new tools.
 
-- **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts. People who manage MCP servers keep these presets in **Settings > Organization > MCP catalog**; a preset does nothing until an agent or a person adds it. MCP sign-ins you authorized for agent servers that act as you are listed in **Settings > My agent experience**.
+- **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts. People who manage MCP servers keep these presets in **Settings > Organization > MCP catalog**; a preset does nothing until an agent or a person adds it. MCP sign-ins you authorized for agent servers that act as you are listed in **Settings > MCP servers**.
 - **Scoped `mcpServers`**: harnesses, agents, and sessions can embed remote MCP config directly (the remote-server subset of `.mcp.json`) for session-local or agent-local wiring without creating an org-global record.
 - **Restricted egress**: on deployments that limit where requests that send data may go (such as Everruns Cloud), MCP traffic only reaches approved services. Once a platform administrator allows it, org admins can add their own MCP hosts under **Settings > Organization > Outbound allowlist**.
 - **Tool naming**: discovered tools are namespaced per server so they never collide with built-in capabilities.
@@ -166,6 +219,10 @@ default, so existing agents are unchanged. A person's own servers
 default; a person can turn that off for one of their servers with its **Load
 tools on demand** switch in **Settings > My MCP servers**.
 
+For catalogs with hundreds or thousands of operations, Everruns paginates
+discovery and supports bounded search and schema disclosure. See [Large MCP
+catalogs and tool surfaces](/features/large-mcp-catalogs/).
+
 ```json
 {
   "mcpServers": {
@@ -187,6 +244,35 @@ the App, not a person. It reaches only the repositories the App is installed on,
 with the App's permissions, and tools about a person (`get_me`, notifications,
 starred repositories, "my" issues and pull requests) fail. For those, attach the
 server acting as `user` so the person signs in.
+
+### Long-running tools
+
+A call to an MCP tool fails if the server has not answered within 60 seconds.
+For a server whose tools take longer, such as one that runs a build or a
+deployment, set `tool_timeout_ms` on the attachment or catalog entry (**Tool call
+timeout** in the catalog form, in seconds). It accepts 1 second to 30 minutes.
+`timeout`, the key common `mcpServers` config files use, works as well. An
+attachment that uses a catalog entry may set its own timeout. If it does not,
+it uses the catalog's timeout.
+
+```json
+{
+  "mcpServers": {
+    "ci": { "type": "http", "url": "https://ci.example.com/mcp", "tool_timeout_ms": 600000 }
+  }
+}
+```
+
+A server that supports the
+[MCP Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview)
+does not need a longer timeout. Everruns declares the extension on every tool
+call, so such a server can answer with a task instead of holding the request
+open. The agent then checks on the task until it finishes, for up to 30 minutes.
+While it runs, the server's status message (for example "Running tests") shows
+on the tool call in chat and in the session's events.
+Questions the task asks reach the agent's user the same way as a server's
+[form questions](#when-a-tool-needs-a-person). If the turn is cancelled or the
+wait runs out, Everruns cancels the task on the server.
 
 ### Waking an agent on a server's events (experimental)
 

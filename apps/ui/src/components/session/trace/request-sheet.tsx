@@ -11,6 +11,7 @@
 // `tool_result`); Native JSON shows the provider's own. Calls made before the
 // body was recorded, or by drivers that do not capture it, have no Native view.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,7 @@ export function RequestSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [view, setView] = useState<View>("messages");
   const selection = open ? { turn, step } : null;
   // The Messages query always runs: it says whether a native body exists.
@@ -85,16 +87,17 @@ export function RequestSheet({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Model request</DialogTitle>
+          <DialogTitle>{ui("Model request")}</DialogTitle>
           <DialogDescription>
-            Step #{step} · Turn {formatCount(turn)}
+            {ui("Step #")}
+            {step} {ui("· Turn")} {formatCount(turn)}
             {first &&
               ` · ${formatCount(first.message_count)} messages${first.model ? ` · ${first.model}` : ""}${first.provider ? ` · ${first.provider}` : ""}`}
           </DialogDescription>
         </DialogHeader>
         {first?.usage && <CacheBar usage={first.usage} />}
         <div className="flex items-center gap-2">
-          <div className="inline-flex border text-xs" role="group" aria-label="Request view">
+          <div className="inline-flex border text-xs" role="group" aria-label={ui("Request view")}>
             {(["messages", "stored", "native"] as const).map((v) => {
               const unavailable = v === "native" && !hasNative;
               return (
@@ -105,7 +108,9 @@ export function RequestSheet({
                   disabled={unavailable}
                   title={
                     unavailable
-                      ? "Not recorded for this call: an older call, or a driver that does not capture its request"
+                      ? ui(
+                          "Not recorded for this call: an older call, or a driver that does not capture its request",
+                        )
                       : undefined
                   }
                   onClick={() => setView(v)}
@@ -120,7 +125,7 @@ export function RequestSheet({
             })}
           </div>
           {jsonValue != null && (
-            <CopyButton value={JSON.stringify(jsonValue, null, 2)} label="Copy JSON" />
+            <CopyButton value={JSON.stringify(jsonValue, null, 2)} label={ui("Copy JSON")} />
           )}
           <span className="ml-auto text-right text-[11px] text-muted-foreground">
             {VIEW_NOTE[view]}
@@ -134,7 +139,7 @@ export function RequestSheet({
               <Skeleton className="h-6 w-2/3" />
             </div>
           ) : query.error ? (
-            <div className="p-3 text-sm text-destructive">Could not load the request.</div>
+            <div className="p-3 text-sm text-destructive">{ui("Could not load the request.")}</div>
           ) : view !== "messages" ? (
             <JsonView value={jsonValue} className="max-h-none border-0 bg-transparent" />
           ) : (
@@ -162,8 +167,8 @@ export function RequestSheet({
             onClick={() => void query.fetchNextPage()}
             disabled={query.isFetchingNextPage}
           >
-            Load more messages ({formatCount(messages.length)} of{" "}
-            {formatCount(first?.message_count ?? 0)})
+            {ui("Load more messages (")}
+            {formatCount(messages.length)} {ui("of")} {formatCount(first?.message_count ?? 0)})
           </Button>
         )}
       </DialogContent>
@@ -205,20 +210,24 @@ function MessageRowWithBoundary({
 }
 
 function CacheBoundary({ tokens }: { tokens: number }) {
+  const ui = useUiTranslations();
   return (
     <li
       className="flex items-center gap-2 border-t border-dashed border-success/60 bg-success/6 px-2.5 py-1 text-[11px] text-success"
-      title="Providers report how many tokens came from cache, not where the cache ended. The line is that share laid over the request by size."
+      title={ui(
+        "Providers report how many tokens came from cache, not where the cache ended. The line is that share laid over the request by size.",
+      )}
     >
-      <span className="font-medium">≈ cached prefix ends here</span>
+      <span className="font-medium">{ui("≈ cached prefix ends here")}</span>
       <span className="text-muted-foreground">
-        {formatCount(tokens)} tokens read from cache (estimated position)
+        {formatCount(tokens)} {ui("tokens read from cache (estimated position)")}
       </span>
     </li>
   );
 }
 
 function ToolsRow({ tools }: { tools: TraceRequestPage["tools"] }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   return (
     <li className="border-b border-border/60">
@@ -233,9 +242,11 @@ function ToolsRow({ tools }: { tools: TraceRequestPage["tools"] }) {
         ) : (
           <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
         )}
-        <span className="w-[62px] shrink-0 font-mono text-[11px] text-muted-foreground">tools</span>
+        <span className="w-[62px] shrink-0 font-mono text-[11px] text-muted-foreground">
+          {ui("tools")}
+        </span>
         <span className="min-w-0 flex-1 truncate">
-          {formatCount(tools.length)} tools: {tools.map((t) => t.name).join(", ")}
+          {formatCount(tools.length)} {ui("tools:")} {tools.map((t) => t.name).join(", ")}
         </span>
       </button>
       {open && (
@@ -261,6 +272,7 @@ function MessageRow({
   isNew: boolean;
   cached: boolean;
 }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   const parts = useMemo(() => contentParts(message.content), [message.content]);
   return (
@@ -296,7 +308,9 @@ function MessageRow({
           {formatBytes(message.size_bytes)}
         </span>
         {isNew && (
-          <span className="shrink-0 border border-accent bg-accent/15 px-1 text-[10px]">new</span>
+          <span className="shrink-0 border border-accent bg-accent/15 px-1 text-[10px]">
+            {ui("new")}
+          </span>
         )}
       </button>
       {open && (
@@ -307,7 +321,7 @@ function MessageRow({
             <JsonView value={message.content} />
           ) : (
             <p className="text-muted-foreground">
-              Over 50 KB, so not inlined here. The JSON view loads it whole.
+              {ui("Over 50 KB, so not inlined here. The JSON view loads it whole.")}
             </p>
           )}
         </div>

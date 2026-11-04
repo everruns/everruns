@@ -1,5 +1,8 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState, useCallback, useMemo } from "react";
 import { useAgentExamples, useImportAgentExample, useCapabilities, usePageTitle } from "@/hooks";
 import { useRouter } from "next/navigation";
@@ -11,9 +14,11 @@ import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ExampleCard } from "@/components/agents";
 
 export default function AllExamplesPage() {
-  usePageTitle("Examples", "Agents");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Examples"), ui("Agents"));
   const router = useRouter();
   const [exampleSearch, setExampleSearch] = useState("");
+  useChatPageFilters({ search: exampleSearch });
   const { data: allCapabilities } = useCapabilities();
   const { data: examples, isLoading, error } = useAgentExamples();
   const importExample = useImportAgentExample();
@@ -54,16 +59,16 @@ export default function AllExamplesPage() {
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            aria-label="Back to agents"
+            aria-label={ui("Back to agents")}
             href="/agents"
           >
             <ArrowLeft className="w-4 h-4" />
           </LinkButton>
-          <h1 className="text-2xl font-bold">Example Agents</h1>
+          <h1 className="text-2xl font-bold">{ui("Example Agents")}</h1>
         </div>
         <SearchInput
           containerClassName="w-64"
-          placeholder="Search examples..."
+          placeholder={ui("Search examples...")}
           value={exampleSearch}
           onChange={(e) => setExampleSearch(e.target.value)}
         />
@@ -77,7 +82,9 @@ export default function AllExamplesPage() {
         emptyState={
           <div className="text-center py-12">
             <p className="text-muted-foreground">
-              {exampleSearch.trim() ? "No examples match your search" : "No examples available"}
+              {exampleSearch.trim()
+                ? ui("No examples match your search")
+                : ui("No examples available")}
             </p>
           </div>
         }

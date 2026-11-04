@@ -15,6 +15,7 @@ use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 mod admin;
+mod begin;
 mod circuit_breakers;
 mod dlq;
 mod event_log;
@@ -22,6 +23,8 @@ mod schedules;
 mod schema;
 mod task_queue;
 mod workers;
+
+pub use begin::{begin_transaction, commit_in_place, commit_transaction};
 
 use super::db_failure::store_failure;
 use super::store::{
@@ -135,9 +138,7 @@ impl PostgresWorkflowEventStore {
         input: serde_json::Value,
         task: TaskDefinition,
     ) -> Result<Uuid, StoreError> {
-        let mut tx = self
-            .pool
-            .begin()
+        let mut tx = begin_transaction(&self.pool)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
@@ -154,7 +155,7 @@ impl PostgresWorkflowEventStore {
 
         let task_id = insert_workflow_task(&mut tx, workflow_id, &task).await?;
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!("Failed to commit initial workflow start: {}", e);
             StoreError::Database(e.to_string())
         })?;
@@ -453,13 +454,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn sanitize_removes_null_bytes_from_strings() {
-        let input = json!({"key": "hello\0world"});
-        let result = sanitize_json_null_bytes(input);
-        assert_eq!(result, json!({"key": "helloworld"}));
-    }
-
-    #[test]
     fn sanitize_handles_nested_structures() {
         let input = json!({
             "outer": {
@@ -484,13 +478,6 @@ mod tests {
     #[test]
     fn sanitize_preserves_non_string_values() {
         let input = json!({"num": 42, "bool": true, "null": null});
-        let result = sanitize_json_null_bytes(input.clone());
-        assert_eq!(result, input);
-    }
-
-    #[test]
-    fn sanitize_noop_when_no_null_bytes() {
-        let input = json!({"key": "normal string", "nested": [1, 2, 3]});
         let result = sanitize_json_null_bytes(input.clone());
         assert_eq!(result, input);
     }

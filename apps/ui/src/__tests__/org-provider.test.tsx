@@ -316,3 +316,19 @@ describe("OrgProvider", () => {
     expect(mockSwitchOrg).not.toHaveBeenCalled();
   });
 });
+
+it("refreshes the active organization's name and role without switching or resetting its queries", async () => {
+  mockUser = { organizations: [DEFAULT_ORG] };
+  mockAuthLoading = false;
+  const { result, rerender } = renderHook(() => useOrg(), { wrapper });
+  await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id));
+  mockSwitchOrg.mockClear();
+  const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+  mockUser = { organizations: [{ ...DEFAULT_ORG, name: "Northstar Studio", role: "member" }] };
+  rerender();
+  await waitFor(() => expect(result.current.currentOrg?.name).toBe("Northstar Studio"));
+  expect(result.current.hasRole("admin")).toBe(false);
+  expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id);
+  expect(mockSwitchOrg).not.toHaveBeenCalled();
+  expect(invalidate).not.toHaveBeenCalled();
+});

@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Execution Backends"
-description: "Why turns run through one experimental TurnBackend entry point, why framework and platform sessions run as leased actors resumed from the session log, and why the retired per-step durable backend was removed."
+description: "Engine session hosting, shared actor execution, and the remaining internal turn backend contracts."
 tags:
   - everruns
   - framework
@@ -11,21 +11,39 @@ tags:
 
 # Execution Backends
 
-**Status: experimental.** The entry point exists, and the facade and the
-platform server both run on it. Framework sessions run on the actor runner
-(the in-process backend plus a session lease). Platform sessions run as
-actors too since 2026-10-11 (actor-based design, step 6c): the server's
-`ActorTurnBackend` marks a session runnable and a worker leases it and runs
-the whole turn; see [The platform: sessions as actors on
-workers](#the-platform-sessions-as-actors-on-workers). The per-step durable
-backend (`DurableRunner` in `everruns-durable-engine`), which ran platform
-turns as queued steps, was deleted with its crate in step 7; see [Retired: the
-per-step durable backend](#retired-the-per-step-durable-backend). The facade's
-`durable` feature, which ran facade sessions on that queue, was retired on
-2026-10-10 (step 4); see [Retired: the facade's durable
-option](#retired-the-facades-durable-option). The public [Framework
-Architecture](../../docs/framework/architecture.md) page diagrams these
-components for users.
+**Status: experimental.** Framework Engine owns session creation, admission,
+commands, lifecycle outcomes and queries through a coherent
+[session hosting profile](engine-durable-sessions.md). Its default memory profile,
+native SQLite profile and Durable Object profile use core's shared
+`SessionActorDriver`. Memory has process-lifetime durability; choosing it does not
+make accepted input survive process loss.
+
+The platform server retains its internal `ActorTurnBackend`: it transactionally
+marks sessions runnable and workers execute them through the same actor driver.
+The per-step queue runner and facade queue feature remain retired.
+
+## External session hosting profiles
+
+Applications register ordinary Agents with Engine and select `SessionHosting`.
+The profile owns the authority and activation domain; it supplies epoch-scoped
+runtime ports rather than asking application code to assemble stores. Framework
+start/completion hooks and outcome reconstruction stay inside Engine. serve
+accepts that Engine, and the DO plugin supplies both Wasm object-local and native
+executor placements. See [Shared Execution with Durable Object
+Authority](durable-object-native.md) for the platform-specific guarantees.
+
+`EngineBuilder::execution_backend` was removed. A turn factory cannot establish
+durable creation, admission, callbacks or observation. Core's `TurnBackend` is
+still an internal host integration contract, rather than the Framework plugin API.
+
+Explicit legacy `LocalConfig` and custom host backends retain the older facade
+actor lane and its documented weaker guarantees. They do not become coherent
+hosting profiles merely because individual stores persist. That lane is separate
+from default Engine and the registered hosting paths described above.
+
+Both actor runners stop renewal attempts when the last confirmed lease expires,
+including when a store call hangs. Canonical stale writes must still be rejected
+by the storage authority.
 
 ## Problem
 
@@ -44,13 +62,17 @@ The server's entry (a server-only runner trait) and the facade's session actor
 different surfaces, so durability was a property of which product you run, not
 a choice an embedder makes.
 
+The [Engine-owned session hosting boundary](engine-durable-sessions.md) extends
+above the turn seam. The following sections describe the lower-level contracts
+still used by platform hosts and the explicit legacy facade lane.
+
 ## Decision
 
-### One entry point: `TurnBackend`
+### Internal turn delegation: `TurnBackend`
 
 [`TurnBackend`](../../crates/core/src/host/turn_backend.rs) in core's host is
-the one place a host hands a turn to whatever runs it, for the facade session
-actor and the platform server alike: start a turn, cancel it, and ask whether a
+the one place a host hands a turn to whatever runs it, for the explicit legacy facade session
+actor and the platform server: start a turn, cancel it, and ask whether a
 session runs one and how many run. `Execution` stays the inner turn interface;
 a backend never plans, it decides where planned steps run and how durably.
 
@@ -94,7 +116,7 @@ port, `TurnInbox`, whose atomic take-or-close at a finishing reason is what
 splits steering from the next turn. `InProcessRuntime` implements the inbox
 over its steering queue, wake queue and in-memory parks; a worker running whole
 turns on a session lease implements its own over the session log
-([`actor_runtime/inbox.rs`](../../crates/worker/src/actor_runtime/inbox.rs)).
+([`actor_runtime/inbox.rs`](../../crates/core/src/host/session_actor/inbox.rs)).
 A fresh turn opens through the same host-generic entry step,
 [`turn_entry_plan`](../../crates/core/src/host/turn_loop.rs), on both.
 
@@ -107,14 +129,14 @@ store. Rerun decisions look tools up in the surface a reason on that host
 would hand its act (host-augmented and MCP tools included), not the plain
 assembled context.
 
-### The default: sessions as actors
+### Legacy facade lane: sessions as actors
 
 `InProcessBackend` wraps `InProcessRuntime`: the turn runs on the task that
 polls its ticket, as awaiting the runtime directly always did, and dropping
 the ticket drops the turn mid-step. Routing the session actor through
 `TurnBackend` changed no concurrency and no observable behavior.
 
-Every facade session runs on [`ActorRunner`](../../crates/core/src/host/actor.rs)
+Explicit legacy facade sessions run on [`ActorRunner`](../../crates/core/src/host/actor.rs)
 (actor-based design, step 4): the same in-process backend, plus the
 session's lease. A session is an actor whose state is its event log, so what
 keeps two processes from running one session at once is a lease, not where
@@ -275,9 +297,11 @@ because nothing ran it. The option is recorded in
 
 ## Success Bars
 
-- Every facade turn, including steering, cancellation, parked client-side
-  tool calls and interrupted-turn resumption, runs through `TurnBackend`, with
-  existing session tests unchanged.
+- Default and registered Framework sessions run through the shared session actor
+  with authority-owned commands and outcomes; their Engine conformance suite covers
+  steering, cancellation, client-tool waits, lifecycle recovery and observation.
+- Explicit legacy facade turns retain the internal `TurnBackend` delegation
+  contract and its separate conformance suite.
 - The conformance suite,
   [`tests/backend_conformance/`](../../crates/everruns/tests/backend_conformance/main.rs)
   in the facade, runs its scenarios (single turn, tool loop, steering versus

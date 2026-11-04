@@ -14,6 +14,7 @@ pub mod agents;
 pub mod api;
 pub mod chat;
 pub mod connections;
+pub mod docker;
 pub mod files;
 pub mod login;
 pub mod logout;

@@ -23,12 +23,74 @@
     });
   }
 
-  // Without JavaScript the form posts natively; with it, the request goes out
-  // as JSON and the answer shows inline. The source is the page the visitor
-  // is on, which for the docs is not the page the footer was rendered on.
+  // Newsletter forms (the footer's, and SubscribeForm.astro on /cloud). The
+  // request goes out as JSON and the answer shows inline. The source is the
+  // page the visitor is on, which for the docs is not the page the footer was
+  // rendered on.
+  //
+  // A new address gets a welcome email, so the server wants a Cloudflare
+  // Turnstile token (invisible widget). The script loads on first interaction
+  // with a form, not on every page view.
+  let turnstileScript;
+  function loadTurnstile() {
+    turnstileScript ??= new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src =
+        'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.onload = () => resolve(window.turnstile);
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    return turnstileScript;
+  }
+
+  function turnstileFor(form) {
+    const sitekey = form.dataset.turnstileSitekey;
+    const container = form.querySelector('[data-er-turnstile]');
+    let widget;
+    let token = '';
+    let waiting = [];
+    const settle = (value) => {
+      token = value;
+      waiting.forEach((resolve) => resolve(value));
+      waiting = [];
+    };
+    const render = async () => {
+      if (!sitekey || !container) return;
+      const turnstile = await loadTurnstile();
+      widget ??= turnstile.render(container, {
+        sitekey,
+        callback: settle,
+        'expired-callback': () => (token = ''),
+        'error-callback': () => settle(''),
+      });
+    };
+    return {
+      render,
+      async token() {
+        if (!sitekey) return '';
+        await render().catch(() => {});
+        if (token) return token;
+        return new Promise((resolve) => {
+          waiting.push(resolve);
+          setTimeout(() => resolve(''), 10000);
+        });
+      },
+      reset() {
+        token = '';
+        if (widget !== undefined) window.turnstile?.reset(widget);
+      },
+    };
+  }
+
   document.querySelectorAll('form[data-er-subscribe]').forEach((form) => {
     const status = form.querySelector('[data-status]');
     const button = form.querySelector('button[type="submit"]');
+    const challenge = turnstileFor(form);
+    const warm = () => challenge.render().catch(() => {});
+    form.addEventListener('focusin', warm, { once: true });
+    form.addEventListener('pointerdown', warm, { once: true });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!status || !button) return;
@@ -48,6 +110,7 @@
             website: data.get('website'),
             list: data.get('list'),
             source: window.location.pathname,
+            turnstile: await challenge.token(),
           }),
         });
         const result = await response.json();
@@ -66,6 +129,8 @@
         status.textContent = 'Subscription failed. Please try again later.';
         status.classList.add('is-error');
       } finally {
+        // A Turnstile token is single-use.
+        challenge.reset();
         button.disabled = false;
       }
     });

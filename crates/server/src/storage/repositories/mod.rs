@@ -4,6 +4,7 @@
 // re-exported here, so callers name them as `crate::storage::*`.
 
 mod agent_activity;
+pub use sessions::failures::{AgentFailureTotals, FailedSessionRow};
 mod agent_channels;
 pub use agent_channels::conversion::{
     ApiEndpointChannelRow, ConvertedApiChannelRow, LockedApiEndpointChannel,
@@ -15,12 +16,14 @@ mod agent_health_checks;
 pub use agent_health_checks::rows::*;
 mod agent_keys;
 pub use agent_keys::rows::*;
-mod agent_mcp_secret_bindings;
-pub use agent_mcp_secret_bindings::rows::*;
+mod credential_bindings;
+pub use credential_bindings::rows::*;
 mod agent_scripts;
 pub use agent_scripts::rows::*;
 mod agent_triggers;
 pub use agent_triggers::rows::*;
+mod agent_sources;
+pub use agent_sources::AgentSourceRow;
 mod agents;
 pub use agents::rows::*;
 mod apps;
@@ -48,7 +51,7 @@ pub use virtual_users::rows::*;
 mod a2a_push_configs;
 mod advisory_locks;
 mod channel_host;
-pub use channel_host::ChannelPendingDeliveryRow;
+pub use channel_host::{ChannelPendingDeliveryRow, WorkChatShareEventRow};
 mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;
@@ -59,6 +62,7 @@ mod evals;
 pub use evals::rows::*;
 mod events;
 pub use events::ActorLeaseFenceRejected;
+pub(crate) use events::feed;
 pub use events::rows::*;
 mod files;
 pub use files::rows::*;
@@ -79,7 +83,9 @@ pub use mcp_servers::rows::*;
 mod mcp_tool_labels;
 pub use mcp_tool_labels::rows::*;
 mod message_feedback;
+mod message_reactions;
 pub use message_feedback::rows::*;
+pub use message_reactions::{ReactedMessageRow, ReactionEventRow};
 mod memory;
 pub use memory::rows::*;
 mod monitoring;
@@ -109,8 +115,8 @@ pub use schedules::rows::*;
 mod session_actors;
 pub use session_actors::rows::*;
 pub use session_actors::{
-    DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, mark_session_actor_resumable,
-    mark_session_actor_runnable,
+    DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, MAX_ACTOR_RENEWAL_BATCH,
+    mark_session_actor_resumable, mark_session_actor_runnable, sticky_grace,
 };
 mod session_databases;
 pub use session_databases::{CreateSessionDatabase, SessionDatabaseRow};
@@ -183,6 +189,14 @@ pub struct DatabasePoolConfig {
     /// Acquire timeout for the background pool. Deliberately far longer than
     /// the request timeout: a sweep can afford to wait.
     pub background_acquire_timeout: std::time::Duration,
+    /// Connections whose commits do not wait for the WAL flush
+    /// (`synchronous_commit = off`), for writes that are rebuilt when lost:
+    /// the reporting projector's claims, facts and completions. A database
+    /// crash can lose their last fraction of a second, never break order or
+    /// consistency: WAL is replayed in order, so a lost fact always comes with
+    /// its lost completion and the row is projected again. `0` sends that work
+    /// to the background pool with ordinary durable commits.
+    pub relaxed_max_connections: u32,
 }
 
 impl Default for DatabasePoolConfig {
@@ -194,6 +208,7 @@ impl Default for DatabasePoolConfig {
             idle_timeout: std::time::Duration::from_secs(300),
             background_max_connections: 8,
             background_acquire_timeout: std::time::Duration::from_secs(30),
+            relaxed_max_connections: 4,
         }
     }
 }
@@ -218,17 +233,18 @@ impl DatabasePoolConfig {
                 "DATABASE_BACKGROUND_ACQUIRE_TIMEOUT_SECS",
                 defaults.background_acquire_timeout,
             ),
+            relaxed_max_connections: env_or(
+                "DATABASE_RELAXED_POOL_MAX",
+                defaults.relaxed_max_connections,
+            ),
         }
     }
 
-    /// Connections this process opens to PostgreSQL across both pools.
+    /// Connections this process opens to PostgreSQL across all pools.
     pub fn total_max_connections(&self) -> u32 {
-        if self.background_max_connections == 0 {
-            self.max_connections
-        } else {
-            self.max_connections
-                .saturating_add(self.background_max_connections)
-        }
+        self.max_connections
+            .saturating_add(self.background_max_connections)
+            .saturating_add(self.relaxed_max_connections)
     }
 }
 
@@ -306,6 +322,10 @@ pub struct Database {
     /// `pool` so a request burst cannot starve them; equal to `pool` when the
     /// database was built without a background pool (tests, embedded uses).
     background_pool: PgPool,
+    /// Connections that commit without waiting for the WAL flush
+    /// (`DatabasePoolConfig::relaxed_max_connections`); equal to
+    /// `background_pool` when not configured.
+    relaxed_pool: PgPool,
     /// Optional S3-compatible blob backend. When set, file/image content bytes
     /// are offloaded to the object store and these tables hold only metadata +
     /// a pointer. `None` keeps bytes inline in
@@ -313,6 +333,10 @@ pub struct Database {
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
     /// Keeps a test's private database alive while any clone uses it.
     test_database: Option<std::sync::Arc<crate::storage::test_database::TestDatabase>>,
+    /// Group commit lanes for fenced event appends, shared by every clone
+    /// (`events::group_commit`). `None` on the clone a lane runs on, so the
+    /// lanes hold no reference to themselves and stop with the last caller.
+    event_writer: Option<std::sync::Arc<events::group_commit::EventLogWriter>>,
 }
 
 /// Idle time after which a pooled connection is pinged before reuse.
@@ -343,9 +367,11 @@ impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self {
             background_pool: pool.clone(),
+            relaxed_pool: pool.clone(),
             pool: crate::storage::transaction::TxPool::new(pool),
             blob_store: None,
             test_database: None,
+            event_writer: Some(events::group_commit::EventLogWriter::from_env()),
         }
     }
 
@@ -424,6 +450,25 @@ impl Database {
                 .connect_lazy(database_url)?
         };
 
+        let relaxed_pool = if config.relaxed_max_connections == 0 {
+            background_pool.clone()
+        } else {
+            pool_options()
+                .max_connections(config.relaxed_max_connections)
+                .min_connections(0)
+                .acquire_timeout(config.background_acquire_timeout)
+                .idle_timeout(config.idle_timeout)
+                .after_connect(|conn, _| {
+                    Box::pin(async move {
+                        sqlx::query("SET synchronous_commit = off")
+                            .execute(conn)
+                            .await?;
+                        Ok(())
+                    })
+                })
+                .connect_lazy(database_url)?
+        };
+
         tracing::info!(
             max_connections = config.max_connections,
             min_connections = config.min_connections,
@@ -431,6 +476,7 @@ impl Database {
             idle_timeout_secs = config.idle_timeout.as_secs(),
             background_max_connections = config.background_max_connections,
             background_acquire_timeout_secs = config.background_acquire_timeout.as_secs(),
+            relaxed_max_connections = config.relaxed_max_connections,
             "Database connection pool initialized"
         );
 
@@ -476,8 +522,10 @@ impl Database {
         Ok(Self {
             pool: crate::storage::transaction::TxPool::new(pool),
             background_pool,
+            relaxed_pool,
             blob_store: None,
             test_database: None,
+            event_writer: Some(events::group_commit::EventLogWriter::from_env()),
         })
     }
 
@@ -501,6 +549,13 @@ impl Database {
         &self.background_pool
     }
 
+    /// The pool whose commits do not wait for the WAL flush. Only for writes
+    /// that are rebuilt when a crash loses them (see
+    /// `DatabasePoolConfig::relaxed_max_connections`).
+    pub fn relaxed_pool(&self) -> &PgPool {
+        &self.relaxed_pool
+    }
+
     /// A view of this database whose queries run on the background pool.
     ///
     /// Every repository method takes `&self.pool`, so handing a background loop
@@ -510,8 +565,22 @@ impl Database {
         Self {
             pool: crate::storage::transaction::TxPool::new(self.background_pool.clone()),
             background_pool: self.background_pool.clone(),
+            relaxed_pool: self.relaxed_pool.clone(),
             blob_store: self.blob_store.clone(),
             test_database: self.test_database.clone(),
+            event_writer: self.event_writer.clone(),
+        }
+    }
+
+    /// This database without group commit lanes: what a lane itself runs on.
+    pub(crate) fn without_writer(&self) -> Self {
+        Self {
+            event_writer: None,
+            ..self.clone()
         }
     }
 }
+
+mod session_command;
+
+mod worker_ingress;

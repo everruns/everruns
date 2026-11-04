@@ -1,5 +1,8 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,7 +18,8 @@ import { useCreateSandboxTemplate, usePageTitle } from "@/hooks";
 import type { SandboxPolicy } from "@/lib/api/types";
 
 export default function NewSandboxTemplatePage() {
-  usePageTitle("New Sandbox Template", "Sandbox Templates");
+  const ui = useUiTranslations();
+  usePageTitle(ui("New Sandbox Template"), ui("Sandbox Templates"));
   const router = useRouter();
   const mutation = useCreateSandboxTemplate();
   const [name, setName] = useState("");
@@ -23,7 +27,22 @@ export default function NewSandboxTemplatePage() {
   const [description, setDescription] = useState("");
   const [sandboxPolicy, setSandboxPolicy] = useState<SandboxPolicy | null>(null);
   const spec = sandboxPolicy?.templates?.[sandboxPolicy.default];
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name", "display_name", "description"],
+    values: { name, display_name: displayName, description },
+    entityType: "sandbox_template",
+    label: ui("New Sandbox Template"),
+    baseline: "new",
+    dirty: !!(name || displayName || description),
+    writable: !mutation.isPending,
+    apply: (values) => {
+      setName(values.name);
+      setDisplayName(values.display_name);
+      setDescription(values.description);
+    },
+  });
   const submit = async () => {
+    if (chatDraft.blocked) return;
     if (!name || !displayName || !spec) return;
     const created = await mutation.mutateAsync({
       name,
@@ -37,42 +56,45 @@ export default function NewSandboxTemplatePage() {
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Sandboxes", href: "/sandboxes" },
-          { label: "Templates", href: "/sandboxes/templates" },
-          { label: "New" },
+          { label: ui("Sandboxes"), href: "/sandboxes" },
+          { label: ui("Templates"), href: "/sandboxes/templates" },
+          { label: ui("New") },
         ]}
       />
       <PageMasthead
         icon={<SandboxTemplateIcon />}
-        title="New Sandbox Template"
-        description="Create reusable Sandbox configuration. Saving later creates immutable revisions."
+        title={ui("New Sandbox Template")}
+        description={ui(
+          "Create reusable Sandbox configuration. Saving later creates immutable revisions.",
+        )}
       />
       <PageMain className="max-w-3xl space-y-5">
+        {chatDraft.notice}
         <Card>
           <CardHeader>
-            <CardTitle>Identity</CardTitle>
+            <CardTitle>{ui("Identity")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{ui("Name")}</Label>
               <Input
                 id="name"
                 value={name}
                 onChange={(event) => setName(event.target.value.toLowerCase())}
-                placeholder="coding-daytona"
+                placeholder={ui("coding-daytona")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="display-name">Display name</Label>
+              <Label htmlFor="display-name">{ui("Display name")}</Label>
               <Input
                 id="display-name"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="Coding Daytona"
+                placeholder={ui("Coding Daytona")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{ui("Description")}</Label>
               <Textarea
                 id="description"
                 value={description}
@@ -83,7 +105,7 @@ export default function NewSandboxTemplatePage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Sandbox configuration</CardTitle>
+            <CardTitle>{ui("Sandbox configuration")}</CardTitle>
           </CardHeader>
           <CardContent>
             <SandboxPolicyEditor value={sandboxPolicy} onChange={setSandboxPolicy} definitionMode />
@@ -94,8 +116,8 @@ export default function NewSandboxTemplatePage() {
           onClick={submit}
           disabled={!name || !displayName || !spec || mutation.isPending}
         >
-          {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}Create Sandbox
-          Template
+          {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+          {ui("Create Sandbox Template")}
         </Button>
         {mutation.error ? (
           <p className="text-sm text-destructive">{mutation.error.message}</p>

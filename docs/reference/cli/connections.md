@@ -26,7 +26,7 @@ everruns connections set [OPTIONS] <PROVIDER>
 
 | Flag | Description |
 |---|---|
-| `<PROVIDER>` | Required. Provider name (e.g. daytona, brave_search, browserless, deno, sprites) |
+| `<PROVIDER>` | Required. Provider name (e.g. daytona, brave_search, browserless, sprites) |
 | `--api-key-stdin` | Read provider API key from stdin. |
 
 

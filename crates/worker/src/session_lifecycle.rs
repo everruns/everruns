@@ -97,6 +97,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
                     .as_ref()
                     .map(|a| a.display_name.clone().unwrap_or_else(|| a.name.clone())),
                 agent_description: agent.and_then(|a| a.description),
+                origin: None,
             },
         );
         if let Err(e) = self.adapters.emit_event(turn_started_event).await {
@@ -120,6 +121,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
         self.emit_turn_completed(
             input_message_id,
             TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations,
                 duration_ms: None,

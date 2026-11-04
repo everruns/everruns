@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,7 @@ export function FilesEditor({
   files: FileEntry[];
   onChange: (files: FileEntry[]) => void;
 }) {
+  const ui = useUiTranslations();
   const update = (id: string, patch: Partial<FileEntry>) =>
     onChange(files.map((f) => (f.id === id ? { ...f, ...patch } : f)));
 
@@ -31,7 +33,9 @@ export function FilesEditor({
     <div className="space-y-4">
       {files.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No files. Text files are mounted into the session filesystem at the given absolute path.
+          {ui(
+            "No files. Text files are mounted into the session filesystem at the given absolute path.",
+          )}
         </p>
       )}
       {files.map((file) => (
@@ -42,7 +46,7 @@ export function FilesEditor({
                 <FileText className="h-4 w-4 text-primary" />
               </div>
               <div className="grid flex-1 gap-1.5">
-                <Label htmlFor={`file-path-${file.id}`}>Mount path</Label>
+                <Label htmlFor={`file-path-${file.id}`}>{ui("Mount path")}</Label>
                 <Input
                   id={`file-path-${file.id}`}
                   placeholder="/docs/README.md"
@@ -53,7 +57,7 @@ export function FilesEditor({
               </div>
             </div>
             <div className="grid gap-1.5">
-              <Label>Access</Label>
+              <Label>{ui("Access")}</Label>
               <Select
                 value={file.access}
                 onValueChange={(value) => update(file.id, { access: value as FileEntry["access"] })}
@@ -62,8 +66,8 @@ export function FilesEditor({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="readonly">Read-only</SelectItem>
-                  <SelectItem value="readwrite">Read-write</SelectItem>
+                  <SelectItem value="readonly">{ui("Read-only")}</SelectItem>
+                  <SelectItem value="readwrite">{ui("Read-write")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -73,13 +77,13 @@ export function FilesEditor({
               size="sm"
               className="h-9 w-9 p-0 shrink-0 self-end"
               onClick={() => onChange(files.filter((f) => f.id !== file.id))}
-              aria-label="Remove file"
+              aria-label={ui("Remove file")}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
           <Textarea
-            placeholder="File content"
+            placeholder={ui("File content")}
             value={file.content}
             onChange={(e) => update(file.id, { content: e.target.value })}
             rows={5}
@@ -96,7 +100,7 @@ export function FilesEditor({
         onClick={() => onChange([...files, newFileEntry()])}
       >
         <Plus className="h-4 w-4 mr-1" />
-        Add file
+        {ui("Add file")}
       </Button>
     </div>
   );

@@ -12,12 +12,17 @@
 // Creating a provider with a credential discovers its models server-side
 // before the request returns, which is what makes step 3 possible.
 //
-// Drivers that sign in instead of taking a key (ChatGPT, OpenRouter's OAuth)
-// leave the page for the provider's consent screen; their models are reviewed
+// Drivers that sign in instead of taking a key leave the page for the
+// provider's consent screen; their models are reviewed
 // from the "new models" prompt when the browser comes back.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import {
+  isPublicDraftLocation,
+  providerConnectDraftSchema,
+} from "@/components/chat-mode/page-form-schemas";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +53,6 @@ import {
   useReviewProviderModels,
   useSetModelsEnabled,
 } from "@/hooks/use-providers";
-import { startChatGptLogin } from "@/lib/api/chatgpt";
 import { ApiError } from "@/lib/api/client";
 import { providerOAuthAuthorizeUrl } from "@/lib/api/providers";
 import { isDriverOffered } from "@/lib/api/provider-driver-types";
@@ -73,7 +77,6 @@ import { useCredentialCheck } from "./use-credential-check";
 const CONNECT_ORDER: DriverId[] = [
   "anthropic",
   "openai",
-  "chatgpt",
   "gemini",
   "openrouter",
   "mistral",
@@ -121,7 +124,6 @@ export function isProviderNameTaken(name: string, providers: Provider[]): boolea
 }
 
 function connectMethod(driver: DriverId, supportsOAuth: boolean): string {
-  if (driver === "chatgpt") return "Sign in";
   if (supportsOAuth) return "Key or sign-in";
   if (driver === "bedrock") return "Access keys";
   if (BASE_URL_REQUIRED.includes(driver)) return "Endpoint + key";
@@ -145,6 +147,7 @@ export function ConnectProviderSheet({
   /** Called once the sheet finishes, with a one-line summary for the page. */
   onConnected: (summary: string) => void;
 }) {
+  const ui = useUiTranslations();
   const [step, setStep] = useState<Step>({ kind: "list" });
 
   // Each open starts at the driver list.
@@ -167,7 +170,7 @@ export function ConnectProviderSheet({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Back"
+              aria-label={ui("Back")}
               onClick={() => setStep({ kind: "list" })}
             >
               <ArrowLeft className="icon-sharp size-4" />
@@ -211,6 +214,7 @@ function DriverList({
   providers: Provider[];
   onPick: (driver: DriverId) => void;
 }) {
+  const ui = useUiTranslations();
   const { data: config } = useProvidersConfig();
   const drivers = useMemo(
     () => [...new Set(CONNECT_ORDER)].filter((driver) => isDriverOffered(driver, config?.drivers)),
@@ -219,7 +223,7 @@ function DriverList({
   return (
     <>
       <DrawerDescription>
-        Several providers of one kind can be connected, for example two Azure resources.
+        {ui("Several providers of one kind can be connected, for example two Azure resources.")}
       </DrawerDescription>
       <ul className="-mx-6 min-h-0 flex-1 divide-y overflow-y-auto border-y">
         {drivers.map((driver) => {
@@ -241,9 +245,13 @@ function DriverList({
                     {getProviderDescription(driver)}
                   </span>
                 </span>
-                {connected > 0 && <Badge variant="success">{connected} connected</Badge>}
+                {connected > 0 && (
+                  <Badge variant="success">
+                    {connected} {ui("connected")}
+                  </Badge>
+                )}
                 <span className="whitespace-nowrap text-xs text-muted-foreground">
-                  {connected > 0 ? "Add another" : connectMethod(driver, supportsOAuth)}
+                  {connected > 0 ? ui("Add another") : connectMethod(driver, supportsOAuth)}
                 </span>
               </button>
             </li>
@@ -270,7 +278,7 @@ function ConnectForm({
   onCancel: () => void;
   onCreated: (provider: Provider) => void;
 }) {
-  const router = useRouter();
+  const ui = useUiTranslations();
   const createProvider = useCreateProvider();
   const { schema, supportsOAuth } = useDriverCredentialSchema(driver);
   const existing = providers.filter((provider) => provider.provider_type === driver);
@@ -288,7 +296,23 @@ function ConnectForm({
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
-  const signInOnly = driver === "chatgpt";
+  const chat = usePageFormDraft({
+    schema: providerConnectDraftSchema,
+    entityType: "provider",
+    entityId: `new:${driver}`,
+    label: ui("Connect provider"),
+    priority: 30,
+    values: { name, custom_endpoint: customEndpoint, base_url: baseUrl },
+    enabled: isPublicDraftLocation(baseUrl),
+    baseline: driver,
+    dirty: !!name || !!baseUrl,
+    writable: !createProvider.isPending && !redirecting,
+    apply: (values) => {
+      setName(values.name);
+      setCustomEndpoint(values.custom_endpoint);
+      setBaseUrl(values.base_url);
+    },
+  });
 
   useEffect(() => {
     setCredentials(defaultCredentialValues(schema));
@@ -298,7 +322,6 @@ function ConnectForm({
     providerType: driver,
     credentials,
     baseUrl: customEndpoint ? baseUrl : undefined,
-    enabled: !signInOnly,
   });
 
   const trimmedName = name.trim();
@@ -320,7 +343,7 @@ function ConnectForm({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!formReady || !hasCredential) return;
+    if (chat.blocked || !formReady || !hasCredential) return;
     setError(null);
     try {
       onCreated(await create());
@@ -329,26 +352,15 @@ function ConnectForm({
     }
   };
 
-  // Sign-in drivers need the provider row first: the consent flow binds its
-  // state to the provider id.
+  // OAuth drivers need the provider row first: consent binds its state to the provider id.
   const handleSignIn = async () => {
-    if (!formReady) return;
+    if (chat.blocked || !formReady) return;
     setError(null);
     setRedirecting(true);
-    const popup = driver === "chatgpt" ? window.open("about:blank", "_blank") : null;
-    if (popup) popup.opener = null;
     try {
       const provider = await create();
-      if (driver === "chatgpt") {
-        const { authorize_url } = await startChatGptLogin(provider.id);
-        router.push(`/models/providers/${provider.id}`);
-        if (popup) popup.location.assign(authorize_url);
-        else window.location.assign(authorize_url);
-      } else {
-        window.location.assign(providerOAuthAuthorizeUrl(provider.id));
-      }
+      window.location.assign(providerOAuthAuthorizeUrl(provider.id));
     } catch (err) {
-      popup?.close();
       setRedirecting(false);
       setError(errorText(err, `Could not start the ${label} sign-in. Please try again.`));
     }
@@ -356,27 +368,30 @@ function ConnectForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
+      {chat.notice}
       <div className="-mx-6 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6">
         {existing.length > 0 && (
           <div className="flex flex-col gap-1.5 border bg-muted/40 p-3 text-xs">
-            <span className="font-medium">Already connected</span>
+            <span className="font-medium">{ui("Already connected")}</span>
             {existing.map((provider) => (
               <span key={provider.id} className="flex justify-between gap-3">
                 <span className="font-medium">{provider.name}</span>
                 <span className="truncate font-mono text-muted-foreground">
-                  {provider.base_url ?? "Driver default"}
+                  {provider.base_url ?? ui("Driver default")}
                 </span>
               </span>
             ))}
             <span className="text-muted-foreground">
-              This adds another {label} provider with its own credentials and models. Give it a name
-              that tells them apart in model pickers.
+              {ui("This adds another")} {label}{" "}
+              {ui(
+                "provider with its own credentials and models. Give it a name that tells them apart in model pickers.",
+              )}
             </span>
           </div>
         )}
 
         <div className="space-y-1.5">
-          <Label htmlFor="connect-provider-name">Name</Label>
+          <Label htmlFor="connect-provider-name">{ui("Name")}</Label>
           <Input
             id="connect-provider-name"
             ref={nameRef}
@@ -390,75 +405,68 @@ function ConnectForm({
             className={duplicate ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
           >
             {duplicate
-              ? "A provider with this name already exists. Names must be unique."
-              : "Shown in model pickers as “Model (Name)”."}
+              ? ui("A provider with this name already exists. Names must be unique.")
+              : ui("Shown in model pickers as “Model (Name)”.")}
           </p>
         </div>
 
-        {signInOnly ? (
-          <p className="text-sm text-muted-foreground">
-            Uses your ChatGPT plan through sign-in, with no API key. It is personal to you: other
-            members do not see it, and shared defaults and Playground skip it.
-          </p>
+        {baseUrlRequired || customEndpoint ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="connect-provider-endpoint">
+              {ui("Endpoint")}
+              {baseUrlRequired ? "" : ui(" (optional)")}
+            </Label>
+            <Input
+              id="connect-provider-endpoint"
+              className="font-mono"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              placeholder={getBaseUrlPlaceholder(driver)}
+            />
+            {driver === "azure_openai" && (
+              <p className="text-xs text-muted-foreground">
+                {ui(
+                  "Your Azure OpenAI `.../openai/v1` endpoint on `openai.azure.com` or `services.ai.azure.com`.",
+                )}
+              </p>
+            )}
+          </div>
         ) : (
-          <>
-            {baseUrlRequired || customEndpoint ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="connect-provider-endpoint">
-                  Endpoint{baseUrlRequired ? "" : " (optional)"}
-                </Label>
-                <Input
-                  id="connect-provider-endpoint"
-                  className="font-mono"
-                  value={baseUrl}
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                  placeholder={getBaseUrlPlaceholder(driver)}
-                />
-                {driver === "azure_openai" && (
-                  <p className="text-xs text-muted-foreground">
-                    Your Azure OpenAI `.../openai/v1` endpoint on `openai.azure.com` or
-                    `services.ai.azure.com`.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                onClick={() => setCustomEndpoint(true)}
-              >
-                Use a custom endpoint
-              </button>
-            )}
+          <button
+            type="button"
+            className="self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            onClick={() => setCustomEndpoint(true)}
+          >
+            {ui("Use a custom endpoint")}
+          </button>
+        )}
 
-            {schema && (
-              <div className="space-y-2">
-                <CredentialFields
-                  schema={schema}
-                  values={credentials}
-                  onChange={(key, value) => setCredentials((prev) => ({ ...prev, [key]: value }))}
-                  idPrefix="connect-provider"
-                  allowEmptySubmit={supportsOAuth}
-                />
-                <CredentialCheckStatus state={check} />
-                {keyConsole && (
-                  <p className="text-xs text-muted-foreground">
-                    Generate one at{" "}
-                    <a
-                      href={keyConsole.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-foreground hover:underline"
-                    >
-                      {keyConsole.label}
-                      <ExternalLink className="icon-sharp size-3" />
-                    </a>
-                    . Keys are encrypted at rest.
-                  </p>
-                )}
-              </div>
+        {schema && (
+          <div className="space-y-2">
+            <CredentialFields
+              schema={schema}
+              values={credentials}
+              onChange={(key, value) => setCredentials((prev) => ({ ...prev, [key]: value }))}
+              idPrefix="connect-provider"
+              allowEmptySubmit={supportsOAuth}
+            />
+            <CredentialCheckStatus state={check} />
+            {keyConsole && (
+              <p className="text-xs text-muted-foreground">
+                {ui("Generate one at")}{" "}
+                <a
+                  href={keyConsole.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-foreground hover:underline"
+                >
+                  {keyConsole.label}
+                  <ExternalLink className="icon-sharp size-3" />
+                </a>
+                {ui(". Keys are encrypted at rest.")}
+              </p>
             )}
-          </>
+          </div>
         )}
 
         {error && (
@@ -470,23 +478,24 @@ function ConnectForm({
 
       <DrawerFooter className="flex-row flex-wrap justify-end gap-2 p-0">
         <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
+          {ui("Cancel")}
         </Button>
-        {(signInOnly || supportsOAuth) && (
+        {supportsOAuth && (
           <Button
             type="button"
-            variant={signInOnly ? "default" : "outline"}
+            variant="outline"
             onClick={() => void handleSignIn()}
-            disabled={!formReady || createProvider.isPending}
+            disabled={chat.blocked || !formReady || createProvider.isPending}
           >
-            {redirecting ? "Redirecting…" : `Sign in with ${label}`}
+            {redirecting ? ui("Redirecting…") : ui("Sign in with {value0}", { value0: label })}
           </Button>
         )}
-        {!signInOnly && (
-          <Button type="submit" disabled={!formReady || !hasCredential || createProvider.isPending}>
-            {createProvider.isPending && !redirecting ? "Connecting…" : "Connect"}
-          </Button>
-        )}
+        <Button
+          type="submit"
+          disabled={chat.blocked || !formReady || !hasCredential || createProvider.isPending}
+        >
+          {createProvider.isPending && !redirecting ? ui("Connecting…") : ui("Connect")}
+        </Button>
       </DrawerFooter>
     </form>
   );
@@ -499,6 +508,7 @@ function ChooseModelsStep({
   provider: Provider;
   onDone: (summary: string) => void;
 }) {
+  const ui = useUiTranslations();
   const { data: models = [], isFetching } = useModels();
   const setModelsEnabled = useSetModelsEnabled();
   const review = useReviewProviderModels();
@@ -534,18 +544,20 @@ function ChooseModelsStep({
   };
 
   if (isFetching && selected === null) {
-    return <p className="text-sm text-muted-foreground">Discovering models…</p>;
+    return <p className="text-sm text-muted-foreground">{ui("Discovering models…")}</p>;
   }
 
   if (discovered.length === 0) {
     return (
       <>
         <DrawerDescription>
-          {provider.name} is connected, but it listed no models yet. Sync it from its card once the
-          account has access, or add a model by hand.
+          {provider.name}{" "}
+          {ui(
+            "is connected, but it listed no models yet. Sync it from its card once the account has access, or add a model by hand.",
+          )}
         </DrawerDescription>
         <DrawerFooter className="flex-row justify-end p-0">
-          <Button onClick={() => onDone(`${provider.name} connected.`)}>Done</Button>
+          <Button onClick={() => onDone(`${provider.name} connected.`)}>{ui("Done")}</Button>
         </DrawerFooter>
       </>
     );
@@ -555,8 +567,11 @@ function ChooseModelsStep({
   return (
     <>
       <DrawerDescription>
-        {provider.name} lists {discovered.length} {discovered.length === 1 ? "model" : "models"}.
-        Recommended ones are ticked: the newest of each family and calibrated decision models.
+        {provider.name} {ui("lists")} {discovered.length}{" "}
+        {discovered.length === 1 ? ui("model") : ui("models")}
+        {ui(
+          ". Recommended ones are ticked: the newest of each family and calibrated decision models.",
+        )}
       </DrawerDescription>
       <ModelSelectionList
         models={discovered}
@@ -570,7 +585,7 @@ function ChooseModelsStep({
       )}
       <DrawerFooter className="flex-row justify-end gap-2 p-0">
         <Button onClick={() => void finish()} disabled={busy}>
-          {busy ? "Saving…" : selectionActionLabel(discovered, selected ?? new Set(), "enable")}
+          {busy ? ui("Saving…") : selectionActionLabel(discovered, selected ?? new Set(), "enable")}
         </Button>
       </DrawerFooter>
     </>

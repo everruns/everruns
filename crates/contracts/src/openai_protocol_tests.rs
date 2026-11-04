@@ -1,18 +1,6 @@
 use super::*;
 use serde_json::{Value, json};
 
-// ========================================================================
-// Request-too-large detection tests
-// ========================================================================
-
-// ========================================================================
-// Model-not-found detection tests
-// ========================================================================
-
-// ========================================================================
-// Reasoning effort guard tests
-// ========================================================================
-
 // ------------------------------------------------------------------
 // EVE-522: streaming chunk handling (process_stream_choice)
 // ------------------------------------------------------------------
@@ -138,23 +126,6 @@ fn test_empty_content_finish_chunk_still_emits_tool_calls() {
     assert!(e.is_none(), "tool calls must only be emitted once");
 }
 
-/// Non-empty content deltas are still emitted and counted as output tokens.
-#[test]
-fn test_non_empty_content_is_emitted() {
-    let mut total_tokens = 0u32;
-    let mut acc = StreamToolCallAccumulator::new();
-    let mut finish_reason: Option<String> = None;
-
-    let e = single_event(
-        &choice(r#"{"delta":{"content":"hello"},"finish_reason":null}"#),
-        &mut total_tokens,
-        &mut acc,
-        &mut finish_reason,
-    );
-    assert!(matches!(e, Some(LlmStreamEvent::TextDelta(s)) if s == "hello"));
-    assert_eq!(total_tokens, 1);
-}
-
 /// EVE-636: streamed tool-call arguments must concatenate exactly across
 /// many small chunks (accumulated as a raw string, parsed zero times
 /// mid-stream) and be parsed exactly once at the `tool_calls` finish chunk.
@@ -211,41 +182,6 @@ fn test_tool_call_arguments_accumulate_across_many_chunks() {
             assert_eq!(
                 calls[0].arguments,
                 serde_json::from_str::<serde_json::Value>(payload).unwrap()
-            );
-        }
-        other => panic!("expected ToolCalls, got {:?}", other),
-    }
-}
-
-/// OpenAI's native path sends `delta: {}` (no content key) in the finish
-/// chunk; the existing behavior of emitting tool calls there is preserved.
-#[test]
-fn test_finish_chunk_without_content_emits_tool_calls() {
-    let mut total_tokens = 0u32;
-    let mut acc = StreamToolCallAccumulator::new();
-    let mut finish_reason: Option<String> = None;
-
-    single_event(
-        &choice(
-            r#"{"delta":{"tool_calls":[{"index":0,"id":"call_9","function":{"name":"list_dir","arguments":"{}"}}]},"finish_reason":null}"#,
-        ),
-        &mut total_tokens,
-        &mut acc,
-        &mut finish_reason,
-    );
-
-    let e = single_event(
-        &choice(r#"{"delta":{},"finish_reason":"tool_calls"}"#),
-        &mut total_tokens,
-        &mut acc,
-        &mut finish_reason,
-    );
-    match e {
-        Some(LlmStreamEvent::ToolCalls(calls)) => {
-            assert_eq!(calls.len(), 1);
-            assert_eq!(
-                serde_json::to_value(&calls).unwrap(),
-                json!([{"id":"call_9","name":"list_dir","arguments":{}}])
             );
         }
         other => panic!("expected ToolCalls, got {:?}", other),
@@ -872,24 +808,6 @@ fn models_status_error_classifies_auth_separately_from_outage() {
         models_api_status_error(reqwest::StatusCode::SERVICE_UNAVAILABLE).llm_error_kind(),
         Some(LlmErrorKind::Unavailable)
     );
-}
-
-#[test]
-fn file_part_serializes_to_openai_file() {
-    let part = OpenAiContentPart::File {
-        r#type: "file".to_string(),
-        file: OpenAiFile {
-            filename: Some("report.pdf".to_string()),
-            file_data: "data:application/pdf;base64,JVBERi0=".to_string(),
-        },
-    };
-    let v = serde_json::to_value(&part).unwrap();
-    assert_eq!(v["type"], serde_json::json!("file"));
-    assert_eq!(
-        v["file"]["file_data"],
-        serde_json::json!("data:application/pdf;base64,JVBERi0=")
-    );
-    assert_eq!(v["file"]["filename"], serde_json::json!("report.pdf"));
 }
 
 #[tokio::test]

@@ -1,290 +1,97 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useUiTranslations } from "@/providers/locale-provider";
+import { usePolicies } from "@/hooks/use-policies";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { Clock3, Plus } from "lucide-react";
 import {
-  Clock3,
-  ExternalLink,
-  GitPullRequest,
-  Pencil,
-  Play,
-  Plus,
-  Radio,
-  Trash2,
-  Webhook,
-} from "lucide-react";
-import {
-  useAgentTriggerRuns,
   useAgentTriggers,
   useDeleteAgentTrigger,
   useRunAgentTrigger,
   useUpdateAgentTrigger,
 } from "@/hooks/use-agent-triggers";
-import type { AgentTrigger } from "@/lib/api/types";
-import { CronLabel } from "@/components/apps/cron-label";
-import {
-  EMPTY_TRIGGER_FORM,
-  isTriggerFormValid,
-  TriggerFormFields,
-  type TriggerFormState,
-} from "@/components/agents/trigger-form";
-import {
-  getScheduleTriggerConfig,
-  getWebhookTriggerConfig,
-  TriggerSetupGuidance,
-} from "@/components/agents/integrations/trigger-setup-guidance";
-import { Badge } from "@/components/ui/badge";
-import { Button, LinkButton } from "@/components/ui/button";
+import type { AgentChannel } from "@/lib/api/types";
+import { TriggerList } from "@/components/agents/trigger-list";
+import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
-import { formatDistanceToNow } from "@/lib/formatting";
+import Link from "next/link";
 
-function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: string }) {
-  const { data: runs = [], isLoading } = useAgentTriggerRuns(agentId, triggerId);
-  if (isLoading) return <p className="text-xs text-muted-foreground">Loading recent outcomes…</p>;
-  if (runs.length === 0) return <p className="text-xs text-muted-foreground">No runs yet.</p>;
-  return (
-    <div className="flex flex-wrap gap-2">
-      {runs.slice(0, 5).map((run) => (
-        <span key={run.id} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-          <Badge variant={run.status === "completed" ? "default" : "outline"}>{run.status}</Badge>
-          {formatDistanceToNow(new Date(run.scheduled_at), { addSuffix: true })}
-        </span>
-      ))}
-    </div>
-  );
-}
-
+/// The Triggers section of the agent's Channels and triggers tab. Rows match
+/// the Channels table above it; settings, setup and run history live on each
+/// trigger's own page, so this section has no inline editor.
 export function AgentTriggersPanel({
   agentId,
-  children,
+  scheduleChannels = [],
+  readOnly = false,
 }: {
   agentId: string;
-  children?: ReactNode;
+  /** Schedules created as channels before schedules became triggers. */
+  scheduleChannels?: AgentChannel[];
+  readOnly?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { data: triggers = [], isLoading } = useAgentTriggers(agentId);
   const updateTrigger = useUpdateAgentTrigger(agentId);
   const deleteTrigger = useDeleteAgentTrigger(agentId);
   const runTrigger = useRunAgentTrigger(agentId);
-  // Quick edit only. Creating a trigger goes to the full-page route
-  // (EVE-1009), so there is one create path rather than two that could drift.
-  const [editing, setEditing] = useState<AgentTrigger | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
-  const [error, setError] = useState<string | null>(null);
-
-  const openEdit = (trigger: AgentTrigger) => {
-    const config = getScheduleTriggerConfig(trigger);
-    setEditing(trigger);
-    setForm({
-      cron_expression: config.cron_expression,
-      timezone: config.timezone ?? "UTC",
-      session_mode: config.session_mode ?? "shared_session",
-      message: config.message,
-      enabled: trigger.enabled,
-    });
-    setError(null);
-    setDialogOpen(true);
-  };
-
-  const save = async () => {
-    if (!editing) return;
-    if (!isTriggerFormValid(form)) {
-      setError("Enter a valid schedule and a non-empty message.");
-      return;
-    }
-    setError(null);
-    try {
-      await updateTrigger.mutateAsync({ triggerId: editing.id, request: form });
-      setDialogOpen(false);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save trigger.");
-    }
-  };
+  const confirm = useConfirmation();
+  const policy = usePolicies("agents");
+  const canManage = !readOnly && !policy.isLoading && !policy.error && policy.can("agent.manage");
+  const empty = triggers.length === 0 && scheduleChannels.length === 0;
 
   return (
     <section id="triggers" className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold tracking-tight">Triggers</h3>
-          <p className="text-sm text-muted-foreground">When this agent wakes up on its own</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 flex-[1_1_20rem]">
+          <h3 className="text-lg font-semibold tracking-tight">{ui("Triggers")}</h3>
+          <p className="text-sm text-muted-foreground">
+            {ui(
+              "When this agent starts on its own: schedules, webhooks, GitHub events and MCP server events.",
+            )}
+          </p>
         </div>
-        <LinkButton href={`/agents/${agentId}/triggers/new`} size="sm">
-          <Plus className="size-4" /> Add trigger
-        </LinkButton>
-      </div>
-      {children}
-      <div className="space-y-3">
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading triggers…</p>
-        ) : triggers.length === 0 ? (
-          <EmptyState
-            icon={<Clock3 />}
-            title="No triggers yet"
-            description="Add a schedule or event to run this agent proactively."
-            className="border-solid bg-card py-8"
-          />
-        ) : (
-          triggers.map((trigger) => {
-            const isGithub = trigger.trigger_type === "github";
-            const isSchedule = trigger.trigger_type === "schedule";
-            // Created through the API for now; shown read-only here.
-            const isMcpEvent = trigger.trigger_type === "mcp_event";
-            const mcpEventConfig = trigger.config as unknown as { server?: string; event?: string };
-            const githubConfig = trigger.config as unknown as {
-              events?: string[];
-              repositories?: string[];
-              session_mode?: string;
-              message: string;
-            };
-            const config = isGithub
-              ? githubConfig
-              : isSchedule
-                ? getScheduleTriggerConfig(trigger)
-                : getWebhookTriggerConfig(trigger);
-            return (
-              <div key={trigger.id} className="space-y-3 border bg-card p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      {isGithub ? (
-                        <GitPullRequest className="size-4 text-muted-foreground" />
-                      ) : isMcpEvent ? (
-                        <Radio className="size-4 text-muted-foreground" />
-                      ) : isSchedule ? (
-                        <Clock3 className="size-4 text-muted-foreground" />
-                      ) : (
-                        <Webhook className="size-4 text-muted-foreground" />
-                      )}
-                      {isGithub ? (
-                        <span className="font-medium">GitHub pull requests</span>
-                      ) : isMcpEvent ? (
-                        <span className="font-medium">
-                          MCP event {mcpEventConfig.event} on {mcpEventConfig.server}
-                        </span>
-                      ) : isSchedule ? (
-                        <CronLabel
-                          expr={getScheduleTriggerConfig(trigger).cron_expression}
-                          tz={getScheduleTriggerConfig(trigger).timezone}
-                        />
-                      ) : (
-                        <span className="font-medium">Webhook</span>
-                      )}
-                      <Badge variant={trigger.enabled ? "default" : "outline"}>
-                        {trigger.enabled ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{config.message}</p>
-                    {isGithub && (
-                      <p className="text-xs text-muted-foreground">
-                        {(githubConfig.events ?? []).join(", ")} ·{" "}
-                        {githubConfig.repositories?.length
-                          ? githubConfig.repositories.join(", ")
-                          : "all repositories"}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      {config.session_mode === "session_per_invocation"
-                        ? "New session per run"
-                        : config.session_mode === "per_thread"
-                          ? "One session per pull request"
-                          : "One session for everything"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={trigger.enabled}
-                      aria-label={trigger.enabled ? "Disable trigger" : "Enable trigger"}
-                      onCheckedChange={(enabled) =>
-                        updateTrigger.mutate({ triggerId: trigger.id, request: { enabled } })
-                      }
-                    />
-                    {isGithub && (
-                      <LinkButton
-                        href={`/agents/${agentId}/triggers/${trigger.id}`}
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="Open trigger editor"
-                      >
-                        <ExternalLink className="size-4" />
-                      </LinkButton>
-                    )}
-                    {isSchedule && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => runTrigger.mutate(trigger.id)}
-                          disabled={!trigger.enabled || runTrigger.isPending}
-                        >
-                          <Play className="size-4" /> Run now
-                        </Button>
-                        <Button size="icon-sm" variant="ghost" onClick={() => openEdit(trigger)}>
-                          <Pencil className="size-4" />
-                          <span className="sr-only">Quick edit trigger</span>
-                        </Button>
-                        <LinkButton
-                          href={`/agents/${agentId}/triggers/${trigger.id}`}
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Open trigger editor"
-                        >
-                          <ExternalLink className="size-4" />
-                        </LinkButton>
-                      </>
-                    )}
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={() => deleteTrigger.mutate(trigger.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      <span className="sr-only">Delete trigger</span>
-                    </Button>
-                  </div>
-                </div>
-                {isSchedule && <TriggerRuns agentId={agentId} triggerId={trigger.id} />}
-                {!isGithub && !isMcpEvent && (
-                  <div className="border-t pt-4">
-                    <p className="mb-3 text-xs font-medium uppercase text-muted-foreground">
-                      Set up
-                    </p>
-                    <TriggerSetupGuidance trigger={trigger} />
-                  </div>
-                )}
-              </div>
-            );
-          })
+        {canManage && (
+          <Link
+            href={`/agents/${agentId}/triggers/new`}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            <Plus className="size-4" />
+            {ui("Add trigger")}
+          </Link>
         )}
       </div>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit trigger</DialogTitle>
-            <DialogDescription>
-              Configure when the agent wakes and what message starts the run.
-            </DialogDescription>
-          </DialogHeader>
-          <TriggerFormFields value={form} onChange={setForm} />
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={save} disabled={updateTrigger.isPending}>
-              Save changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">{ui("Loading triggers…")}</p>
+      ) : empty ? (
+        <EmptyState
+          icon={<Clock3 />}
+          title={ui("No triggers yet")}
+          description={ui("Add a schedule, a webhook or an event to start this agent on its own.")}
+          className="border-solid bg-card py-8"
+        />
+      ) : (
+        <TriggerList
+          agentId={agentId}
+          triggers={triggers}
+          scheduleChannels={scheduleChannels}
+          onEnabledChange={
+            canManage
+              ? (trigger, enabled) =>
+                  updateTrigger.mutate({ triggerId: trigger.id, request: { enabled } })
+              : undefined
+          }
+          onRunNow={canManage ? (trigger) => runTrigger.mutate(trigger.id) : undefined}
+          onDelete={
+            canManage
+              ? async (trigger) => {
+                  if (await confirm(ui("Delete this trigger? It stops starting the agent.")))
+                    deleteTrigger.mutate(trigger.id);
+                }
+              : undefined
+          }
+          pending={updateTrigger.isPending || deleteTrigger.isPending || runTrigger.isPending}
+        />
+      )}
     </section>
   );
 }

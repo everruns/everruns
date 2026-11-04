@@ -1,5 +1,15 @@
 "use client";
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import {
+  providerTraceDraftSchema,
+  providerAdvancedDraftSchema,
+  isPublicDraftLocation,
+} from "@/components/chat-mode/page-form-schemas";
+
 import { ModelsIcon } from "@/components/icons/facet-icons";
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -11,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageBody, PageHeader, PageShell } from "@/components/layout";
+import { PageMain, PageMasthead, PageContainer } from "@/components/layout";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -23,7 +33,7 @@ import { formatCountLabel } from "@/lib/formatting";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { managedProviderCopy } from "@/lib/managed-provider-copy";
 import type { Provider } from "@/lib/api/types";
-import { ChatGptConnectionCard } from "@/components/providers/chatgpt-connection";
+import { isPlatformProviderVisible } from "@/lib/api/provider-driver-types";
 import { ApiError } from "@/lib/api/client";
 
 export default function ProviderDetailPage({
@@ -31,6 +41,8 @@ export default function ProviderDetailPage({
 }: {
   params: Promise<{ providerId: string }>;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { providerId } = use(params);
   // Providers and models share one permission (`org:models:manage`).
   const { can } = usePolicies("providers");
@@ -42,7 +54,7 @@ export default function ProviderDetailPage({
   const [nameProviderId, setNameProviderId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  usePageTitle(provider ? provider.name : null, "Provider");
+  usePageTitle(provider ? provider.name : null, ui("Provider"));
 
   useEffect(() => {
     if (provider && nameProviderId !== provider.id) {
@@ -63,12 +75,30 @@ export default function ProviderDetailPage({
     );
   }, [models, providerId]);
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name"],
+    values: { name },
+    entityId: providerId,
+    entityType: "provider",
+    formId: "details",
+    label: ui("Provider details"),
+    enabled: !!provider && isPlatformProviderVisible(provider.provider_type),
+    baseline: provider?.name ?? "",
+    dirty: !!provider && name !== provider.name,
+    writable:
+      !!provider &&
+      nameProviderId === provider.id &&
+      canManage &&
+      !provider.managed &&
+      !updateProvider.isPending,
+    apply: (next) => setName(next.name),
+  });
   const trimmedName = name.trim();
   const nameChanged = !!provider && trimmedName !== provider.name;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!provider || !trimmedName || !nameChanged) return;
+    if (chatDraft.blocked || !provider || !trimmedName || !nameChanged) return;
     setErrorMessage(null);
     try {
       await updateProvider.mutateAsync({ name: trimmedName });
@@ -82,19 +112,21 @@ export default function ProviderDetailPage({
 
   if (isLoading) {
     return (
-      <PageShell>
+      <PageContainer>
         <Skeleton className="h-5 w-40 mb-6" />
         <Skeleton className="h-8 w-1/3 mb-4" />
         <Skeleton className="h-52 w-full" />
-      </PageShell>
+      </PageContainer>
     );
   }
 
-  if (!provider) {
+  if (!provider || !isPlatformProviderVisible(provider.provider_type)) {
     return (
       <ResourceNotFound
-        title="Provider not found"
-        description="This provider may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Provider not found")}
+        description={ui(
+          "This provider may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/models/providers"
         backLabel="Back to providers"
         resourceId={providerId}
@@ -103,16 +135,16 @@ export default function ProviderDetailPage({
   }
 
   return (
-    <PageShell>
+    <PageContainer>
       <Link
         href="/models/providers"
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Providers
+        {ui("Back to Providers")}
       </Link>
 
-      <PageHeader
+      <PageMasthead
         title={
           <>
             <ProviderIcon providerType={provider.provider_type} size="md" />
@@ -133,7 +165,7 @@ export default function ProviderDetailPage({
               href={`/models?provider=${encodeURIComponent(provider.id)}`}
             >
               <ModelsIcon className="h-4 w-4 mr-2" />
-              View Models
+              {ui("View Models")}
             </LinkButton>
             <EntityActionsMenu
               entityRef={provider.id}
@@ -145,10 +177,10 @@ export default function ProviderDetailPage({
         }
       />
 
-      <PageBody>
+      <PageMain>
         <Card>
           <CardHeader>
-            <CardTitle>Provider Settings</CardTitle>
+            <CardTitle>{ui("Provider Settings")}</CardTitle>
           </CardHeader>
           <CardContent>
             {provider.managed && (
@@ -157,8 +189,9 @@ export default function ProviderDetailPage({
               </p>
             )}
             <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
+              {chatDraft.notice}
               <div className="space-y-2">
-                <Label htmlFor="provider-name">Name</Label>
+                <Label htmlFor="provider-name">{ui("Name")}</Label>
                 <Input
                   id="provider-name"
                   value={name}
@@ -169,43 +202,44 @@ export default function ProviderDetailPage({
               </div>
               {provider.base_url && (
                 <div className="space-y-2">
-                  <Label>Base URL</Label>
+                  <Label>{ui("Base URL")}</Label>
                   <p className="break-all text-sm text-muted-foreground">{provider.base_url}</p>
                 </div>
               )}
-              {provider.provider_type !== "chatgpt" && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Key className="h-4 w-4" />
-                  API Key: {provider.api_key_set ? "Configured" : "Not set"}
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Key className="h-4 w-4" />
+                {ui("API Key:")} {provider.api_key_set ? ui("Configured") : ui("Not set")}
+              </div>
               {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
               {!provider.managed && canManage && (
                 <Button
                   type="submit"
-                  disabled={updateProvider.isPending || !trimmedName || !nameChanged}
+                  disabled={
+                    chatDraft.blocked || updateProvider.isPending || !trimmedName || !nameChanged
+                  }
                 >
                   <Save className="h-4 w-4 mr-2" />
-                  {updateProvider.isPending ? "Saving..." : "Save Changes"}
+                  {updateProvider.isPending ? ui("Saving...") : ui("Save Changes")}
+                </Button>
+              )}
+              {chatDraft.blocked && (
+                <Button type="button" variant="outline" onClick={() => setName(provider.name)}>
+                  {ui("Discard")}
                 </Button>
               )}
             </form>
           </CardContent>
         </Card>
 
-        {provider.provider_type === "chatgpt" && <ChatGptConnectionCard providerId={providerId} />}
-
         {/* Trace links are part of the host-managed config for managed providers. */}
         {!provider.managed && <ProviderTraceCard provider={provider} providerId={providerId} />}
 
         {/* Same rule as trace: a managed connection's request options belong to the host. */}
-        {!provider.managed && provider.provider_type !== "chatgpt" && (
-          <ProviderAdvancedCard provider={provider} providerId={providerId} />
-        )}
+        {!provider.managed && <ProviderAdvancedCard provider={provider} providerId={providerId} />}
 
         <Card>
           <CardHeader>
-            <CardTitle>Models</CardTitle>
+            <CardTitle>{ui("Models")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-3 text-sm">
             {modelsLoading ? (
@@ -216,22 +250,25 @@ export default function ProviderDetailPage({
             ) : (
               <>
                 <span className="text-muted-foreground">
-                  {formatCountLabel(modelCounts.total, "model")} available
+                  {formatCountLabel(modelCounts.total, "model", undefined, displayLocale)}{" "}
+                  {ui("available")}
                 </span>
-                <Badge variant="outline">{modelCounts.enabled} enabled</Badge>
+                <Badge variant="outline">
+                  {modelCounts.enabled} {ui("enabled")}
+                </Badge>
                 <LinkButton
                   variant="outline"
                   size="sm"
                   href={`/models?provider=${encodeURIComponent(provider.id)}`}
                 >
-                  View provider models
+                  {ui("View provider models")}
                 </LinkButton>
               </>
             )}
           </CardContent>
         </Card>
-      </PageBody>
-    </PageShell>
+      </PageMain>
+    </PageContainer>
   );
 }
 
@@ -242,6 +279,7 @@ export default function ProviderDetailPage({
  * providers retain trace content only when logging is turned on for the account.
  */
 function ProviderTraceCard({ provider, providerId }: { provider: Provider; providerId: string }) {
+  const ui = useUiTranslations();
   const updateProvider = useUpdateProvider(providerId);
   const [enabled, setEnabled] = useState(provider.trace?.enabled ?? false);
   const [generationTemplate, setGenerationTemplate] = useState(
@@ -264,8 +302,39 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
     }
   }, [provider, seededId]);
 
+  const { can } = usePolicies("providers");
+  const traceValues = {
+    enabled,
+    generation_url_template: generationTemplate,
+    session_url_template: sessionTemplate,
+  };
+  const savedTrace = {
+    enabled: provider.trace?.enabled ?? false,
+    generation_url_template: provider.trace?.generation_url_template ?? "",
+    session_url_template: provider.trace?.session_url_template ?? "",
+  };
+  const chatDraft = usePageFormDraft({
+    schema: providerTraceDraftSchema,
+    values: traceValues,
+    entityId: providerId,
+    entityType: "provider",
+    formId: "tracing",
+    label: ui("Trace links"),
+    baseline: JSON.stringify(savedTrace),
+    dirty: JSON.stringify(traceValues) !== JSON.stringify(savedTrace),
+    writable: can("provider.manage") && !provider.managed && !updateProvider.isPending,
+    enabled: isPublicDraftLocation(generationTemplate) && isPublicDraftLocation(sessionTemplate),
+    apply: (next) => {
+      setEnabled(next.enabled);
+      setGenerationTemplate(next.generation_url_template);
+      setSessionTemplate(next.session_url_template);
+      setSaved(false);
+    },
+  });
+
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setErrorMessage(null);
     setSaved(false);
     try {
@@ -285,23 +354,24 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Trace Links</CardTitle>
+        <CardTitle>{ui("Trace Links")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-4 max-w-xl">
+          {chatDraft.notice}
           <p className="text-sm text-muted-foreground">
-            Show links from session chats to this provider&apos;s trace/logs dashboard. Enable this
-            only after turning on request logging for the account — most providers retain
-            prompt/completion content only when logging is enabled. Templates support the{" "}
+            {ui(
+              "Show links from session chats to this provider's trace/logs dashboard. Enable this only after turning on request logging for the account; most providers retain prompt/completion content only when logging is enabled. Templates support the",
+            )}{" "}
             <code>{"{response_id}"}</code>, <code>{"{session_id}"}</code>,{" "}
-            <code>{"{turn_id}"}</code> and <code>{"{model}"}</code> placeholders.
+            <code>{"{turn_id}"}</code> {ui("and")} <code>{"{model}"}</code> {ui("placeholders.")}
           </p>
           <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="trace-enabled">Enable trace links</Label>
+            <Label htmlFor="trace-enabled">{ui("Enable trace links")}</Label>
             <Switch id="trace-enabled" checked={enabled} onCheckedChange={setEnabled} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="trace-generation">Generation URL template</Label>
+            <Label htmlFor="trace-generation">{ui("Generation URL template")}</Label>
             <Input
               id="trace-generation"
               value={generationTemplate}
@@ -310,7 +380,7 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="trace-session">Session URL template</Label>
+            <Label htmlFor="trace-session">{ui("Session URL template")}</Label>
             <Input
               id="trace-session"
               value={sessionTemplate}
@@ -320,12 +390,25 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
           </div>
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
           {saved && !errorMessage && (
-            <p className="text-sm text-muted-foreground">Trace settings saved.</p>
+            <p className="text-sm text-muted-foreground">{ui("Trace settings saved.")}</p>
           )}
-          <Button type="submit" disabled={updateProvider.isPending}>
+          <Button type="submit" disabled={updateProvider.isPending || chatDraft.blocked}>
             <Save className="h-4 w-4 mr-2" />
-            {updateProvider.isPending ? "Saving..." : "Save Trace Settings"}
+            {updateProvider.isPending ? ui("Saving...") : ui("Save Trace Settings")}
           </Button>
+          {chatDraft.blocked && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEnabled(savedTrace.enabled);
+                setGenerationTemplate(savedTrace.generation_url_template);
+                setSessionTemplate(savedTrace.session_url_template);
+              }}
+            >
+              {ui("Discard")}
+            </Button>
+          )}
         </form>
       </CardContent>
     </Card>
@@ -345,6 +428,7 @@ function ProviderAdvancedCard({
   provider: Provider;
   providerId: string;
 }) {
+  const ui = useUiTranslations();
   const updateProvider = useUpdateProvider(providerId);
   const [cacheDiagnostics, setCacheDiagnostics] = useState(
     provider.request_options?.cache_diagnostics ?? false,
@@ -377,8 +461,27 @@ function ProviderAdvancedCard({
       current.map((header, i) => (i === index ? { ...header, ...patch } : header)),
     );
 
+  const { can } = usePolicies("providers");
+  const chatDraft = usePageFormDraft({
+    schema: providerAdvancedDraftSchema,
+    values: { cache_diagnostics: cacheDiagnostics },
+    entityId: providerId,
+    entityType: "provider",
+    formId: "advanced",
+    label: ui("Advanced request settings"),
+    baseline: JSON.stringify(provider.request_options?.cache_diagnostics ?? false),
+    dirty: cacheDiagnostics !== (provider.request_options?.cache_diagnostics ?? false),
+    writable: can("provider.manage") && !provider.managed && !updateProvider.isPending,
+    // Header names and values are deliberately absent from the allowlist.
+    apply: (next) => {
+      setCacheDiagnostics(next.cache_diagnostics);
+      setSaved(false);
+    },
+  });
+
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setErrorMessage(null);
     setSaved(false);
     // Blank rows are how a user clears one; drop them instead of sending an
@@ -410,13 +513,14 @@ function ProviderAdvancedCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Advanced</CardTitle>
+        <CardTitle>{ui("Advanced")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-6 max-w-xl">
+          {chatDraft.notice}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="cache-diagnostics">Prompt cache diagnostics</Label>
+              <Label htmlFor="cache-diagnostics">{ui("Prompt cache diagnostics")}</Label>
               <Switch
                 id="cache-diagnostics"
                 checked={cacheDiagnostics}
@@ -424,34 +528,35 @@ function ProviderAdvancedCard({
               />
             </div>
             <p className="text-sm text-muted-foreground">
-              Ask the provider to report where the prompt prefix diverged when a cache read is
-              unexpectedly missing, instead of leaving a silent miss. Supported by Anthropic
-              connections today; other providers ignore it.
+              {ui(
+                "Ask the provider to report where the prompt prefix diverged when a cache read is unexpectedly missing, instead of leaving a silent miss. Supported by Anthropic connections today; other providers ignore it.",
+              )}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label>Custom headers</Label>
+            <Label>{ui("Custom headers")}</Label>
             <p className="text-sm text-muted-foreground">
-              Sent with every request to this provider — useful for gateways and proxies that
-              require their own headers. A header set here replaces the one the driver would send
-              under the same name. Saved values are never read back; leave one blank to keep it, or
-              type a new value to replace it.
+              {ui(
+                "Sent with every request to this provider, useful for gateways and proxies that require their own headers. A header set here replaces the one the driver would send under the same name. Saved values are never read back; leave one blank to keep it, or type a new value to replace it.",
+              )}
             </p>
             {headers.length === 0 && (
-              <p className="text-sm text-muted-foreground">No custom headers.</p>
+              <p className="text-sm text-muted-foreground">{ui("No custom headers.")}</p>
             )}
             {headers.map((header, index) => (
               <div key={index} className="flex items-center gap-2">
                 <Input
-                  aria-label={`Header ${index + 1} name`}
-                  placeholder="x-gateway-tenant"
+                  aria-label={ui("Header {value0} name", { value0: index + 1 })}
+                  placeholder={ui("x-gateway-tenant")}
                   value={header.name}
                   onChange={(event) => updateHeader(index, { name: event.target.value })}
                 />
                 <Input
-                  aria-label={`Header ${index + 1} value`}
-                  placeholder={savedHeaderNames.has(header.name) ? "Unchanged (hidden)" : "value"}
+                  aria-label={ui("Header {value0} value", { value0: index + 1 })}
+                  placeholder={
+                    savedHeaderNames.has(header.name) ? ui("Unchanged (hidden)") : ui("value")
+                  }
                   value={header.value}
                   onChange={(event) => updateHeader(index, { value: event.target.value })}
                 />
@@ -459,7 +564,7 @@ function ProviderAdvancedCard({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label={`Remove header ${index + 1}`}
+                  aria-label={ui("Remove header {value0}", { value0: index + 1 })}
                   onClick={() => setHeaders((current) => current.filter((_, i) => i !== index))}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -473,18 +578,29 @@ function ProviderAdvancedCard({
               onClick={() => setHeaders((current) => [...current, { name: "", value: "" }])}
             >
               <Plus className="h-4 w-4 mr-2" />
-              Add header
+              {ui("Add header")}
             </Button>
           </div>
 
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
           {saved && !errorMessage && (
-            <p className="text-sm text-muted-foreground">Advanced settings saved.</p>
+            <p className="text-sm text-muted-foreground">{ui("Advanced settings saved.")}</p>
           )}
-          <Button type="submit" disabled={updateProvider.isPending}>
+          <Button type="submit" disabled={updateProvider.isPending || chatDraft.blocked}>
             <Save className="h-4 w-4 mr-2" />
-            {updateProvider.isPending ? "Saving..." : "Save Advanced Settings"}
+            {updateProvider.isPending ? ui("Saving...") : ui("Save Advanced Settings")}
           </Button>
+          {chatDraft.blocked && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setCacheDiagnostics(provider.request_options?.cache_diagnostics ?? false)
+              }
+            >
+              {ui("Discard")}
+            </Button>
+          )}
         </form>
       </CardContent>
     </Card>

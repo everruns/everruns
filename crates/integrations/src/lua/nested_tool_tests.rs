@@ -81,6 +81,19 @@ fn code_mode_ctx(policy: Option<Arc<ScriptedPolicy>>) -> ToolContext {
 }
 
 #[tokio::test]
+async fn code_mode_respects_current_execution_scope() {
+    let policy = ScriptedPolicy::blocking("nothing");
+    let ctx = code_mode_ctx(Some(policy.clone()))
+        .with_visible_tool_names(Arc::new(["strict".to_string()].into_iter().collect()));
+    assert_eq!(crate::lua::gated_code_mode_tools(&ctx), vec!["strict"]);
+    let error = super::call(&ctx, "echo", json!({"n": 1}))
+        .await
+        .expect_err("a removed operation must remain unavailable through Lua");
+    assert!(error.contains("not available in this turn"), "{error}");
+    assert!(policy.after_exec_seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn code_mode_nested_call_denied_by_policy_does_not_run() {
     // THREAT[TM-LUA-009]: a call the pre-tool chain blocks when made
     // directly is blocked from code mode too (EVE-1210).

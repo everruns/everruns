@@ -1,8 +1,9 @@
 // Session trace index repository: keeps `session_trace_*` caught up with events.
 //
-// Decision: projection runs right after events are written (spawned after the
-// writing transaction commits, never on the write's own latency) and again
-// before every trace read, both through `catch_up_session_trace`. A per-session
+// Decision: projection runs right after a turn's last event is written
+// (spawned after the writing transaction commits, never on the write's own
+// latency) and again before every trace read, both through
+// `catch_up_session_trace`. A per-session
 // watermark makes the passes idempotent: each event is applied exactly once,
 // whichever pass gets there first, and a pass that fails or is skipped is made
 // up by the next one. The background backfill uses the same entry point for
@@ -39,7 +40,7 @@ macro_rules! turn_columns {
     () => {
         "turn_no, turn_id, start_sequence, end_sequence, started_at, ended_at, \
      status, prompt_preview, error, step_count, model_calls, tool_calls, subagent_calls, \
-     error_count, input_tokens, output_tokens"
+     error_count, input_tokens, output_tokens, error_code, origin"
     };
 }
 
@@ -47,11 +48,12 @@ macro_rules! step_columns {
     () => {
         "turn_no, step_no, kind, status, start_sequence, end_sequence, \
      started_at, duration_ms, name, target, result, narration, tool_call_id, model, \
-     input_tokens, output_tokens, message_count, requested_tool_call_ids"
+     input_tokens, output_tokens, message_count, requested_tool_call_ids, \
+     retry_attempts, retry_wait_ms"
     };
 }
 
-/// Rows per upsert statement; 18 bind parameters per row stays far under the
+/// Rows per upsert statement; 20 bind parameters per row stays far under the
 /// 65535 PostgreSQL allows.
 const UPSERT_CHUNK: usize = 1_000;
 
@@ -65,9 +67,18 @@ struct EventSlice {
 }
 
 impl Database {
-    /// Is any of these event types one the trace index reads?
-    pub fn is_trace_event_type(event_type: &str) -> bool {
-        TRACE_EVENT_TYPES.contains(&event_type)
+    /// Does this event end a turn, so the write path projects the turn now?
+    ///
+    /// Decision: the write path projects once per turn, at its end, rather
+    /// than after every stored batch. A pass is a transaction of about nine
+    /// statements, and a turn stores about seven batches; every reader of the
+    /// index catches up first anyway (`catch_up_session_trace_fully`), so an
+    /// open turn is still shown whole.
+    pub fn ends_trace_turn(event_type: &str) -> bool {
+        matches!(
+            event_type,
+            "turn.completed" | "turn.failed" | "turn.cancelled" | "turn.sealed"
+        )
     }
 
     /// Project a session's trace in the background once the current
@@ -126,7 +137,7 @@ impl Database {
         .await?
         .unwrap_or(0);
         if head <= projected {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(TraceCatchUp::UpToDate {
                 projected_sequence: projected,
             });
@@ -202,7 +213,7 @@ impl Database {
         .bind(turn_count)
         .execute(&mut *tx)
         .await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
 
         Ok(if partial {
             TraceCatchUp::Partial {
@@ -335,7 +346,8 @@ async fn load_event_slices(
                         'success', data->'metadata'->'success',
                         'error', data->'metadata'->'error',
                         'duration_ms', data->'metadata'->'duration_ms',
-                        'usage', data->'metadata'->'usage'),
+                        'usage', data->'metadata'->'usage',
+                        'retry', data->'metadata'->'retry'),
                     'message_count', CASE jsonb_typeof(data->'messages')
                         WHEN 'array' THEN jsonb_array_length(data->'messages') END)
                 WHEN 'tool.started' THEN jsonb_build_object(
@@ -360,6 +372,7 @@ async fn load_event_slices(
                 ELSE jsonb_build_object(
                     'turn_id', data->'turn_id',
                     'error', LEFT(data->>'error', 301),
+                    'error_code', data->'error_code',
                     'usage', data->'usage')
             END AS data
         FROM events
@@ -407,12 +420,15 @@ async fn upsert_turns(
                 .push_bind(t.subagent_calls)
                 .push_bind(t.error_count)
                 .push_bind(t.input_tokens)
-                .push_bind(t.output_tokens);
+                .push_bind(t.output_tokens)
+                .push_bind(&t.error_code)
+                .push_bind(&t.origin);
         });
         qb.push(
             " ON CONFLICT (session_id, turn_no) DO UPDATE SET \
              end_sequence = EXCLUDED.end_sequence, ended_at = EXCLUDED.ended_at, \
              status = EXCLUDED.status, error = EXCLUDED.error, \
+             error_code = EXCLUDED.error_code, \
              step_count = EXCLUDED.step_count, model_calls = EXCLUDED.model_calls, \
              tool_calls = EXCLUDED.tool_calls, subagent_calls = EXCLUDED.subagent_calls, \
              error_count = EXCLUDED.error_count, input_tokens = EXCLUDED.input_tokens, \
@@ -453,7 +469,9 @@ async fn upsert_steps(
                 .push_bind(s.input_tokens)
                 .push_bind(s.output_tokens)
                 .push_bind(s.message_count)
-                .push_bind(&s.requested_tool_call_ids);
+                .push_bind(&s.requested_tool_call_ids)
+                .push_bind(s.retry_attempts)
+                .push_bind(s.retry_wait_ms);
         });
         qb.push(
             " ON CONFLICT (session_id, turn_no, step_no) DO UPDATE SET \

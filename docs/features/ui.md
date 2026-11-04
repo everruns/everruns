@@ -24,7 +24,7 @@ The sidebar provides access to main sections:
 
 | Section | Description |
 |---------|-------------|
-| Dashboard | Overview statistics and quick actions |
+| Home | What needs attention in the organization, and how its agents ran today |
 | Agents | List, create, and manage agents |
 | Virtual users | Manage end-user and service runtime accounts |
 | Capabilities | Browse available capabilities |
@@ -44,16 +44,32 @@ on mobile.
 
 Idle conversations remain **Open**. **Resolve thread** puts one away without losing its
 history; **Reopen thread** lets you continue. Background work shows its actual progress,
-input requests, and failures. Disabling the feature restores the existing Chat interface
-and preserves conversations and their URLs.
+input requests, and failures. When a thread reports back, the conversation shows one
+folded line, such as "Releases is done". Open the line to read the report. The
+coordinator still receives the full text and answers in the conversation. Disabling the
+feature restores the existing Chat interface and preserves conversations and their URLs.
 
-## Dashboard
+## Home
 
-The dashboard provides an at-a-glance view of your system:
+**Home** sits above Chat in the sidebar. Chat stays the page you land on.
 
-- **Stats Cards**: Total agents, active sessions, and other metrics
-- **Recent Agents**: Quick access to recently created or updated agents
-- **Quick Actions**: Shortcuts to create agents or browse the agent list
+**Needs attention** comes first: one list, most urgent first, built from every place
+that already tracks a problem. It includes agent setup problems (a disabled model, a
+missing Slack permission, a channel open to anyone), open health issues such as the
+organization's active-turn limit, agents whose recent turns mostly failed, sessions
+paused at their budget limit, sandboxes that need attention and, for viewers who can see
+System, failing system checks. Each row links to the page where you fix it. When nothing
+is wrong, the list shrinks to one line.
+
+Below it, Home shows the last 24 hours: sessions running now against the turn limit,
+turns and the failure rate, channel sessions, people reached and live sandboxes. With
+Monitoring enabled, Activity shows the same parallel-session and turn charts as
+**Monitoring → Timeline**. Then come the busiest agents, the sessions running now, and
+Health and Sandboxes summaries. A new organization sees a short Get started list
+instead.
+
+With the Chat workspace enabled, signing in opens Chat beside Home, so you can ask
+Chat what to look at first.
 
 ## Agents
 
@@ -82,12 +98,56 @@ a narrow column on the right holds the settings:
 
 - **Harness**, **Capabilities** (compact chips, in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
-- **More**: one row each for Branding, MCP servers, Credentials, Service account, Files, Network
-  access, Primary sandbox, Token usage, and Health check. Each row shows its current value and
-  opens a side sheet. Service account saves immediately.
+- **More**: one row each for Branding, MCP servers, Credentials, GitHub (opens the Agent's GitHub page), Service account, Network
+  access, Sandbox, Token usage, and Health check. **Files** is included when the agent
+  has a filesystem (from its capabilities, a dependency, or the harness) or already has starter
+  files. Each row shows its current value and opens a side sheet. Service account saves
+  immediately.
 
-Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
-**Sessions**.
+Tabs: **Agent**, **Preview**, **Channels and triggers**, **Stats**, and
+**Sessions**. Preview's Files card follows the same filesystem rule.
+
+#### Estimate agent cost
+
+Open **Agents**, select an agent, then click **Estimate cost** in the page header.
+The button is available from every tab, including while editing.
+
+**Smart estimate** suggests three typical tasks from the agent’s instructions and tools.
+Optionally describe a workload, then choose **Update estimate** to regenerate the suggestions.
+Adjust each task’s relative frequency, or set it to zero to exclude it.
+
+Plan **By tasks** with tasks per day, or **By users** with active users and tasks per user per day.
+Sliders and exact number inputs update average task, daily and monthly costs immediately, without
+another AI call. The chart shows monthly spend as usage grows, with lighter and heavier task
+scenarios. A month means 30 days of use.
+
+Suggestions are editable assumptions, not measured behavior. **Advanced assumptions** lets you
+adjust each task’s model calls and token counts. Current catalog prices determine the money;
+the utility model does not invent prices. Missing prices and oversized tasks are shown explicitly.
+
+Smart estimates require the deployment’s utility LLM service. The **Manual calculator** remains
+available if smart estimates are unavailable. Neither mode executes tasks or saves the agent.
+The **Manual calculator** covers AI tokens only. Smart estimates can include additional costs below.
+These are planning estimates, not quotes or spending limits. Compare representative Playground
+runs before budgeting.
+
+In **Smart estimate**, use **Other operating costs** to include sandbox runtime, paid tools,
+media generation, subagent work, and monthly hosting or platform fees. Enter resource usage
+per average task and the provider's unit price. For a sandbox, use the complete instance price,
+including memory, and include idle time. For subagents, enter the estimated cost of one child
+task. These resource inputs are your assumptions; the AI task suggestions do not infer them.
+An unknown price is shown as **price needed**, not as free usage. Monthly fees are added once,
+including at zero task volume; the daily projection allocates one thirtieth of those fees.
+
+Where a host supplies prepaid service rates, the dashboard separates credit spend from external
+provider bills. Model prices come from the selected model catalog, and managed service rates
+come from the host. Adding a resource to a plan does not change its billing arrangement.
+
+**Advanced assumptions** also accepts an extra model-spend allowance for retries, cached-input
+reads, and cache writes. Cache shares cannot exceed 100% combined. The retry allowance covers
+model spend only: add repeated tool work and sandbox time to resource quantities. Cache prices
+follow the model catalog, including context tiers. The chart varies model workload while keeping
+resource assumptions fixed. Only resources you include contribute to the estimate.
 
 #### Avatar
 
@@ -117,10 +177,17 @@ Header actions:
 - **Edit**: switch the page into edit mode. The prompt becomes an editor and the settings take
   input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply
   to new sessions only.
-- **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
-- **Test in Playground**: open Playground setup with this Agent selected
+- **More actions**: Sync from GitHub, Copy, Export, History, Manager notes, and Archive (or Delete, for an archived agent)
+- **Test in Playground**: open Playground setup with this Agent selected and normal execution
+  selected. It does not start a session until you confirm setup. Use the existing **Dry run**
+  checkbox there to simulate actions; tools that only read still run for real.
 
-Use **More > Primary sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
+In Playground setup, search **Talk as** for an end user by name, including users beyond the first
+page of results. Owners and admins can choose another active end user; other members use their
+own identity. Search the Agent/harness picker by name or identifier. These choices remain fixed
+for the chat after it starts.
+
+Use **More > Sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
 Agent and Sandbox when starting a **New Playground chat**. Personal Chats always use the
 managed Platform Chat and do not expose a sandbox selector. See [Sandbox Templates]
 (/features/sandbox-templates/) for recovery and lifecycle behavior.
@@ -153,6 +220,24 @@ View raw session events for debugging:
 - Event type (input.message, output.message.completed, tool.completed, etc.)
 - Timestamp
 - JSON data payload
+
+#### Cost Tab
+
+See what a session spent and why:
+
+- **Where the money went**: total spend split into uncached prompt, prompt read from cache,
+  prompt written to cache, and output, with tokens, average rate and share for each. The
+  cost of each model call is the provider-reported cost where there is one, otherwise the
+  model's price-table estimate.
+- **Spend per day** in your timezone, or **per turn**, which shows each turn's cost and
+  marks failed turns.
+- **Tool calls**: calls, failures and running time per tool.
+- **Sandbox**: running and paused time, with a timeline.
+- **Who started the turns**: people, schedules, agent triggers or channels, with their spend.
+- **Context now**: what the next model call will send, by section, with the sources folded.
+
+A notice appears when most spend is prompt that was not read from cache. The same data is
+available from `GET /v1/sessions/{session_id}/cost` and `everruns sessions cost get`.
 
 ### Session Status
 
@@ -190,7 +275,7 @@ Each capability card shows:
   rotate its key, sync its models and open its settings. Several providers of
   one kind can be connected under different names; model pickers show
   "Model (Provider name)".
-- **Defaults**: the organization's default model, default decision model,
+- **Defaults**: the organization's default model, Small model for lightweight work, default decision model,
   system decisions source, and default provider for realtime, embeddings,
   images and rerank.
 
@@ -206,7 +291,7 @@ Manage personal access tokens for programmatic access. Tokens are tied to your
 user account (not an organization) and inherit access to every organization
 available to your account:
 
-- Create new personal access tokens, choosing their access
+- Create new personal access tokens, choosing their access and expiration. The name is optional and last in the dialog. It starts as "Personal token" plus today's date, for example `Personal token (Oct 30, 2026)`. Leave it blank to keep that name.
 - View existing tokens (values hidden) and each token's access
 - Revoke tokens
 
@@ -264,10 +349,10 @@ View and manage team members (when authentication is enabled).
 
 Open **Virtual users** to create or manage organization-scoped accounts. Choose **End user** for a person using agents or **Service** for an agent account. The detail page has **Overview**, **Connections**, **Linked identities**, and **Sessions** tabs. Usage is fixed at creation. On an agent page, **More → Service account** selects the account.
 
-**Settings → Account** edits your Everruns management profile. **My agent experience** edits your current organization's default virtual-user profile, runtime defaults, and connections. Switching organizations selects that organization's runtime account. **Team members** remains management membership administration. `/settings/connections` opens My agent experience.
+**Settings → Account** edits your Everruns management profile. **Profile** edits the name, locale, and timezone of your current organization's default virtual user. **Connections** holds that user's provider sign-ins and credentials. **MCP servers** holds the servers you add for yourself. **AI clients** lists the apps you approved to use Everruns as you. Switching organizations selects that organization's runtime account. **Team members** remains management membership administration. `/settings/connections` opens Connections.
 
 End-user connections are private to their owner. Organization management permissions do not grant access to another end user's credentials. Service account connections require management permissions. Saved credentials are encrypted and never returned by the API.
 
-When upgrading an account that belonged to several organizations, old connections require an explicit destination. Select the destination from **My agent experience** and move each pending connection once. A destination that already has that provider is rejected rather than overwritten. Accounts with one organization migrate automatically.
+When upgrading an account that belonged to several organizations, old connections require an explicit destination. Select the destination from **Connections** and move each pending connection once. A destination that already has that provider is rejected rather than overwritten. Accounts with one organization migrate automatically.
 
 Operators upgrading an existing installation should follow the [virtual-user cutover runbook](/sre/runbooks/virtual-user-cutover/).

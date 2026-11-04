@@ -1,0 +1,11 @@
+{
+  "name": "everruns-wasm-provider-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "devDependencies": {
+    "workerd": "1.20261016.1"
+  }
+}

@@ -28,10 +28,6 @@ jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({ can: () => mockCanManage }),
 }));
 
-jest.mock("@/hooks/use-chatgpt-connection", () => ({
-  useChatGptConnection: () => ({ data: null }),
-}));
-
 const mockProviders = [
   {
     id: "provider-1",
@@ -142,15 +138,6 @@ describe("ModelsPage", () => {
     mockPathname = "/models";
     mockSetModelsEnabled.mockResolvedValue({ failed: [] });
     mockReview.mockResolvedValue(undefined);
-  });
-
-  it("renders the Models, Providers and Defaults tabs", () => {
-    render(<ModelsPage />, { wrapper });
-    expect(screen.getByRole("heading", { level: 1, name: "Models" })).toBeInTheDocument();
-    for (const name of [/^Models/, /^Providers/, /^Defaults/]) {
-      expect(screen.getByRole("link", { name })).toBeInTheDocument();
-    }
-    expect(screen.getByRole("button", { name: "Connect provider" })).toBeInTheDocument();
   });
 
   it("links each tab to its own path", () => {
@@ -368,3 +355,8 @@ describe("ModelsPage", () => {
     );
   });
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

@@ -190,6 +190,9 @@ pub fn routes(state: AppState) -> Router {
         )
         .command::<crate::domains::messages::feedback::SetMessageFeedback>()
         .command::<crate::domains::messages::feedback::ListMessageFeedback>()
+        .command::<crate::domains::messages::reactions::AddMessageReaction>()
+        .command::<crate::domains::messages::reactions::RemoveMessageReaction>()
+        .command::<crate::domains::messages::reactions::ListMessageReactions>()
         .with_state(state)
 }
 
@@ -453,7 +456,7 @@ pub async fn export_session_jsonl(
     // Opt-in segmented ATIF export: a recoverable, byte-bounded chain of
     // standalone ATIF documents for sessions that would 413 as one document.
     // Each segment is bounded to `atif_export_max_bytes` by the builder, so this
-    // path never 413s (a single giant step is returned alone; see atif.rs).
+    // path never 413s (a single giant step is returned alone; see atif/mod.rs).
     if query.format == SessionExportFormat::Atif && query.segmented {
         return segmented_atif_response(&state, &org, session_id, query.cursor).await;
     }
@@ -573,22 +576,6 @@ mod tests {
     use super::*;
 
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
-
-    #[test]
-    fn test_create_message_request_user() {
-        let req = CreateMessageRequest::user("Hello, how are you?");
-        assert_eq!(req.message.content.len(), 1);
-        assert_eq!(
-            req.message.content[0].as_text(),
-            Some("Hello, how are you?")
-        );
-    }
-
-    #[test]
-    fn test_message_role_display() {
-        assert_eq!(MessageRole::User.to_string(), "user");
-        assert_eq!(MessageRole::Agent.to_string(), "agent");
-    }
 
     #[test]
     fn test_message_role_from_str() {

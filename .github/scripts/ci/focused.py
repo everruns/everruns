@@ -15,12 +15,12 @@ FEATURES = {
     'everruns-drivers': ['all'], 'everruns-llmsim': ['all'],
     'everruns': ['all'], 'everruns-docs-snippets': ['all'],
     'everruns-test-support': ['all'],
-    'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities'],
+    'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities', 'portable-builtins'],
     'everruns-integrations': ['bashkit', 'brave-search', 'brave-search-hosted', 'browserless',
         'cursor', 'daytona', 'daytona-test-util', 'docker', 'duckduckgo', 'e2b', 'filesystem',
         'github', 'lua', 'openai-decisions', 'openai-image', 'openrouter', 'parallel',
         'typesafe', 'typesafe-hosted', 'web-fetch', 'modal', 'modal-test-util'],
-    'everruns-integrations-experimental': ['deno', 'sprites'],
+    'everruns-integrations-experimental': ['sprites'],
 }
 
 
@@ -48,6 +48,55 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith(('crates/server/src/api/mcp_endpoint/',
+                         'crates/server/src/services/command_catalog/',
+                         'crates/server/tests/domain/mcp_endpoint_test'))
+           or p in ('crates/server/src/worker_link/platform_command_surface.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        # Exercise the real transport, discovery and tenant boundaries, not
+        # only the shared command catalog or generated API descriptions.
+        filters.add('mcp_endpoint_test::')
+    if any(p.startswith(('crates/server/src/domains/change_history/',
+                         'crates/server/src/storage/entity_changes',
+                         'crates/server/src/storage/manager_context',
+                         'crates/server/src/storage/repositories/entity_changes',
+                         'crates/server/src/storage/repositories/manager_context'))
+           or p in ('crates/server/src/api/history.rs',
+                    'crates/server/src/api/manager_context.rs',
+                    'crates/server/src/domains/common/mod.rs',
+                    'crates/server/src/storage/transaction.rs',
+                    'crates/server/tests/domain/change_history_test.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        # History/context writes must retain their baseline and revision guards
+        # across the real REST and command adapters, not just unit fixtures.
+        filters.add('change_history_test::')
+    if any(p in (
+            'crates/server/src/api/agent_api_idempotency.rs',
+            'crates/server/src/api/command_dispatch.rs',
+            'crates/server/src/storage/transaction.rs',
+            'crates/server/src/storage/repositories/command_idempotency.rs',
+            'crates/server/tests/domain/agent_api_retry_cors_test.rs',
+            'crates/server/tests/domain/command_dispatch_test.rs',
+            '.github/scripts/ci/focused.py') for p in paths):
+        # Admission, effect and replay must survive cancellation together on
+        # the actual Agent API and Console command adapters.
+        filters.update(['agent_api_retry_cors_test::', 'command_dispatch_test::'])
+    if any(p.startswith('crates/server/src/domains/knowledge/')
+           or p in ('crates/server/src/api/knowledge.rs',
+                    'crates/server/src/api/agent_api/work_chat.rs',
+                    'crates/server/tests/domain/work_chat_test.rs') for p in paths):
+        # Agent Knowledge mounts remain private to runtime views; a consumer's
+        # workspace must not expose them through normalized workspace aliases.
+        filters.add('work_chat_test::')
+    if any(p.startswith(('crates/server/src/domains/agents/credentials.rs',
+                         'crates/server/src/domains/credentials/',
+                         'crates/server/src/domains/resource_access/',
+                         'crates/server/src/domains/mcp_servers/',
+                         'crates/server/src/worker_link/'))
+           or p == 'crates/server/tests/domain/mcp_acts_as_grpc_test.rs' for p in paths):
+        # Credential parameter lookup must not preempt native OAuth's identity
+        # and connection-required behavior over the actual worker transport.
+        filters.add('mcp_acts_as_grpc_test::')
     if any(p.startswith(('crates/server/src/api/', 'crates/server/src/openapi/')) for p in paths):
         # Reuse the domain invocation: API shape and prose are public contracts.
         filters.update(['openapi_coverage_test::', 'openapi_descriptions_test::', 'pat_scope_coverage_test::'])
@@ -60,6 +109,8 @@ def risk_filters(paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::',
                         'db_pool_isolation_test::', 'service_mcp_oauth_lifecycle_test::',
                         'migration_baseline_test::', 'migration_history_test::'])
+    if 'crates/server/tests/domain/db_pool_isolation_test.rs' in paths:
+        filters.add('db_pool_isolation_test::')
     return sorted(filters)
 
 
@@ -72,7 +123,16 @@ def real_server_targets(paths):
            or p in ('crates/server/src/storage/test_database.rs',
                     'crates/server/src/setup/storage_init.rs') for p in paths):
         return targets
-    return [target for target in targets if f'crates/server/tests/{target}.rs' in paths]
+    selected = {target for target in targets if f'crates/server/tests/{target}.rs' in paths}
+    if any(p.startswith(('crates/server/src/api/',
+                         'crates/server/src/domains/',
+                         'crates/server/src/app_builder/',
+                         'crates/server-macros/'))
+           or p == '.github/scripts/ci/focused.py' for p in paths):
+        # OpenAPI command declarations do not mount handlers. Exercise the
+        # production router and its token scopes before merging route changes.
+        selected.add('pat_scope_sweep_test')
+    return [target for target in targets if target in selected]
 
 
 def select(metadata, paths, root):

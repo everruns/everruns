@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import {
   FileTree,
@@ -36,6 +37,7 @@ function getFileIcon(filename: string) {
 }
 
 export default function FileTreeDevPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "File Tree" : "Page not found", isDev ? "Dev" : null);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace", "/workspace/src"]));
@@ -46,7 +48,7 @@ export default function FileTreeDevPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -55,14 +57,16 @@ export default function FileTreeDevPage() {
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold mb-2">FileTree Component</h1>
-        <p className="text-muted-foreground">AI Elements FileTree styled for Slate Design System</p>
+        <h1 className="text-2xl font-bold mb-2">{ui("FileTree Component")}</h1>
+        <p className="text-muted-foreground">
+          {ui("AI Elements FileTree styled for Slate Design System")}
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-8">
         {/* Basic FileTree */}
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Basic FileTree</h2>
+          <h2 className="text-lg font-semibold">{ui("Basic FileTree")}</h2>
           <div className="border bg-card">
             <FileTree
               selectedPath={selectedPath}
@@ -109,13 +113,13 @@ export default function FileTreeDevPage() {
             </FileTree>
           </div>
           <div className="text-sm text-muted-foreground font-mono">
-            Selected: {selectedPath || "none"}
+            {ui("Selected:")} {selectedPath || ui("none")}
           </div>
         </div>
 
         {/* FileTree with Actions */}
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">With Actions</h2>
+          <h2 className="text-lg font-semibold">{ui("With Actions")}</h2>
           <div className="border bg-card">
             <FileTree defaultExpanded={new Set(["/project", "/project/lib"])}>
               <FileTreeFolder path="/project" name="project">
@@ -127,9 +131,11 @@ export default function FileTreeDevPage() {
                   >
                     <span className="size-3.5" />
                     {getFileIcon("utils.ts")}
-                    <FileTreeName className="flex-1">utils.ts</FileTreeName>
+                    <FileTreeName className="flex-1">{ui("utils.ts")}</FileTreeName>
                     <FileTreeActions>
-                      <span className="text-xs text-muted-foreground tabular-nums">2.1 KB</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {ui("2.1 KB")}
+                      </span>
                       <Button variant="ghost" size="icon" className="size-5">
                         <Trash2 className="size-3 text-destructive" />
                       </Button>
@@ -142,9 +148,11 @@ export default function FileTreeDevPage() {
                   >
                     <span className="size-3.5" />
                     {getFileIcon("api.ts")}
-                    <FileTreeName className="flex-1">api.ts</FileTreeName>
+                    <FileTreeName className="flex-1">{ui("api.ts")}</FileTreeName>
                     <FileTreeActions>
-                      <span className="text-xs text-muted-foreground tabular-nums">4.5 KB</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {ui("4.5 KB")}
+                      </span>
                       <Button variant="ghost" size="icon" className="size-5">
                         <Trash2 className="size-3 text-destructive" />
                       </Button>
@@ -179,28 +187,29 @@ export default function FileTreeDevPage() {
 
       {/* Design Notes */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Slate Design System</h2>
+        <h2 className="text-lg font-semibold">{ui("Slate Design System")}</h2>
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div className="border p-4 bg-card">
-            <h3 className="font-medium mb-2">Sharp Corners</h3>
-            <p className="text-muted-foreground">0px radius on all elements</p>
+            <h3 className="font-medium mb-2">{ui("Sharp Corners")}</h3>
+            <p className="text-muted-foreground">{ui("0px radius on all elements")}</p>
           </div>
           <div className="border p-4 bg-card">
-            <h3 className="font-medium mb-2">Grayscale + Accent</h3>
+            <h3 className="font-medium mb-2">{ui("Grayscale + Accent")}</h3>
             <p className="text-muted-foreground">
-              Folders: <span className="text-amber-500">amber</span>, Files by type
+              {ui("Folders:")} <span className="text-amber-500">{ui("amber")}</span>
+              {ui(", Files by type")}
             </p>
           </div>
           <div className="border p-4 bg-card">
-            <h3 className="font-medium mb-2">Compact Spacing</h3>
-            <p className="text-muted-foreground">py-1, gap-1.5 for dense trees</p>
+            <h3 className="font-medium mb-2">{ui("Compact Spacing")}</h3>
+            <p className="text-muted-foreground">{ui("py-1, gap-1.5 for dense trees")}</p>
           </div>
         </div>
       </div>
 
       {/* Usage Code */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Usage</h2>
+        <h2 className="text-lg font-semibold">{ui("Usage")}</h2>
         <pre className="p-4 bg-muted text-sm overflow-x-auto font-mono">
           {`import {
   FileTree,

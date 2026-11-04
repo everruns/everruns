@@ -13,12 +13,23 @@ use everruns_core::{FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult
 use uuid::Uuid;
 
 impl DirectWorkerAdapters {
+    fn knowledge_path(path: &str) -> Option<String> {
+        let path = everruns_core::session_path::to_session_path(path);
+        crate::domains::knowledge::runtime::is_mount(&path).then_some(path)
+    }
+
     pub(crate) async fn read_file(
         &self,
         _org_id: i64,
         session_id: Uuid,
         path: &str,
     ) -> Result<Option<SessionFile>> {
+        if let Some(path) = Self::knowledge_path(path) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_read(session_id, &path)
+                .await
+                .map_err(|e| store_error(e.to_string()));
+        }
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, path)
@@ -92,6 +103,9 @@ impl DirectWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
+        if Self::knowledge_path(path).is_some() {
+            return Err(store_error("Knowledge mounts are read-only"));
+        }
         // Virtual files are readonly
         if let Some(registry) = &self.virtual_registry
             && registry.is_virtual_path(&session_id, path)
@@ -213,6 +227,9 @@ impl DirectWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
+        if Self::knowledge_path(path).is_some() {
+            return Err(store_error("Knowledge mounts are read-only"));
+        }
         if let Some(registry) = &self.virtual_registry
             && registry.is_virtual_path(&session_id, path)
         {
@@ -305,6 +322,9 @@ impl DirectWorkerAdapters {
         path: &str,
         recursive: bool,
     ) -> Result<bool> {
+        if Self::knowledge_path(path).is_some() {
+            return Err(store_error("Knowledge mounts are read-only"));
+        }
         if let Some(registry) = &self.virtual_registry
             && registry.is_virtual_path(&session_id, path)
         {
@@ -340,6 +360,12 @@ impl DirectWorkerAdapters {
         session_id: Uuid,
         path: &str,
     ) -> Result<Vec<FileInfo>> {
+        if let Some(path) = Self::knowledge_path(path) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_list(session_id, &path)
+                .await
+                .map_err(|e| store_error(e.to_string()));
+        }
         let rows = self
             .db
             .list_session_files(session_id, path)
@@ -395,6 +421,35 @@ impl DirectWorkerAdapters {
             });
         }
 
+        if everruns_core::session_path::to_session_path(path) == "/"
+            && !crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mounted(session_id)
+                .await
+                .map_err(|e| store_error(e.to_string()))?
+                .1
+                .is_empty()
+        {
+            for path in ["/knowledge", "/knowledge-text"] {
+                let now = chrono::Utc::now();
+                entries.retain(|f| f.path != path);
+                entries.push(FileInfo {
+                    id: Uuid::nil(),
+                    session_id,
+                    path: path.into(),
+                    name: name_from_path(path),
+                    is_directory: true,
+                    is_readonly: true,
+                    size_bytes: 0,
+                    created_at: now,
+                    updated_at: now,
+                });
+            }
+            entries.sort_by(|a, b| {
+                b.is_directory
+                    .cmp(&a.is_directory)
+                    .then_with(|| a.path.cmp(&b.path))
+            });
+        }
         Ok(entries)
     }
 
@@ -404,6 +459,12 @@ impl DirectWorkerAdapters {
         session_id: Uuid,
         path: &str,
     ) -> Result<Option<FileStat>> {
+        if let Some(path) = Self::knowledge_path(path) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_stat(session_id, &path)
+                .await
+                .map_err(|e| store_error(e.to_string()));
+        }
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, path)
@@ -446,6 +507,12 @@ impl DirectWorkerAdapters {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
+        if path_pattern.is_some_and(|p| Self::knowledge_path(p).is_some()) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_grep(session_id, pattern, path_pattern)
+                .await
+                .map_err(|e| store_error(e.to_string()));
+        }
         let results = crate::domains::session_files::grep_session_files(
             &self.db,
             session_id,
@@ -495,6 +562,16 @@ impl DirectWorkerAdapters {
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
+        if options
+            .path_pattern
+            .as_deref()
+            .is_some_and(|p| Self::knowledge_path(p).is_some())
+        {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_grep_with_options(session_id, pattern, options, None)
+                .await
+                .map_err(|e| store_error(e.to_string()));
+        }
         crate::domains::session_files::grep::grep_session_files_with_options(
             &self.db,
             self.virtual_registry.as_deref(),
@@ -513,6 +590,9 @@ impl DirectWorkerAdapters {
         session_id: Uuid,
         path: &str,
     ) -> Result<FileInfo> {
+        if Self::knowledge_path(path).is_some() {
+            return Err(store_error("Knowledge mounts are read-only"));
+        }
         use crate::storage::CreateSessionFileRow;
 
         let create = CreateSessionFileRow {

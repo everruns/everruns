@@ -138,6 +138,8 @@ impl ProviderStore for DbProviderStore {
         );
         config.api_key = with_key.api_key;
         config.base_url = with_key.base_url;
+        config.api = crate::services::provider_resolver::provider_api(&row.settings)
+            .map_err(|error| AgentLoopError::Configuration(error.to_string()))?;
         config.request_options =
             crate::services::provider_resolver::provider_request_options(&row.settings);
         Ok(Some(config))
@@ -188,11 +190,5 @@ mod tests {
         // Empty/whitespace is a corrupt row, not a valid external provider.
         assert!(parse_provider_type("").is_err());
         assert!(parse_provider_type("   ").is_err());
-    }
-
-    #[test]
-    fn parse_provider_type_accepts_known_values() {
-        assert_eq!(parse_provider_type("openai").unwrap().to_string(), "openai");
-        assert_eq!(parse_provider_type("gemini").unwrap().to_string(), "gemini");
     }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
@@ -18,12 +19,15 @@ import { Plus, ChevronRight, Plug, Link, Lock, Shield } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { capabilitySelectable, rolloutFlagMap } from "@/lib/capability-availability";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 
 // Web search is the provider-neutral way to search; Brave Search, DuckDuckGo
 // and the hosted-tools capabilities stay for agents built around one
@@ -47,14 +51,18 @@ export function CapabilityDialog({
   getDependents,
   onToggle,
 }: CapabilityDialogProps) {
+  const ui = useUiTranslations();
   const { locale } = useLocale();
+  const featureFlags = useOptionalFeatureFlags();
+  const rolloutFlags =
+    featureFlags && !featureFlags.isLoading ? rolloutFlagMap(featureFlags.flags) : null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
   // Filter and group capabilities
   const { availableCapabilities, groupedCapabilities } = useMemo(() => {
-    const available = capabilities.filter((c) => c.status === "available");
+    const available = capabilities.filter((c) => capabilitySelectable(c, rolloutFlags));
     const query = searchQuery.toLowerCase().trim();
 
     // Filter by search query
@@ -64,7 +72,9 @@ export function CapabilityDialog({
             c.name.toLowerCase().includes(query) ||
             c.description.toLowerCase().includes(query) ||
             c.id.toLowerCase().includes(query) ||
-            (c.category && c.category.toLowerCase().includes(query)),
+            (c.category &&
+              (c.category.toLowerCase().includes(query) ||
+                localizedCapabilityCategory(c.category, locale).toLowerCase().includes(query))),
         )
       : available;
 
@@ -94,7 +104,7 @@ export function CapabilityDialog({
         capabilities: grouped.get(category)!,
       })),
     };
-  }, [capabilities, searchQuery]);
+  }, [capabilities, rolloutFlags, searchQuery, locale]);
 
   const toggleCategory = useCallback((category: string) => {
     setCollapsedCategories((prev) => {
@@ -117,15 +127,15 @@ export function CapabilityDialog({
         render={
           <Button type="button" variant="outline" size="sm" disabled={disabled}>
             <Plus className="w-4 h-4 mr-1" />
-            Add
+            {ui("Add")}
           </Button>
         }
       />
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Select Capabilities</DialogTitle>
+          <DialogTitle>{ui("Select Capabilities")}</DialogTitle>
           <DialogDescription>
-            {selectedCount} of {availableCount} capabilities selected
+            {selectedCount} {ui("of")} {availableCount} {ui("capabilities selected")}
           </DialogDescription>
         </DialogHeader>
 
@@ -133,17 +143,19 @@ export function CapabilityDialog({
         <SearchInput
           // eslint-disable-next-line jsx-a11y/no-autofocus -- search-input inside an opened dialog is a deliberate focus target
           autoFocus
-          placeholder="Search capabilities..."
+          placeholder={ui("Search capabilities...")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search capabilities"
+          aria-label={ui("Search capabilities")}
         />
 
         {/* Capability list */}
         <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
           {groupedCapabilities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchQuery ? "No capabilities match your search" : "No capabilities available"}
+              {searchQuery
+                ? ui("No capabilities match your search")
+                : ui("No capabilities available")}
             </div>
           ) : (
             <div className="space-y-4 py-2">
@@ -152,7 +164,7 @@ export function CapabilityDialog({
                 const selectedInCategory = caps.filter((c) => selectedIds.has(c.id)).length;
 
                 return (
-                  <div key={category}>
+                  <div key={localizedCapabilityCategory(category, locale)}>
                     {/* Category header */}
                     <button
                       type="button"
@@ -162,7 +174,7 @@ export function CapabilityDialog({
                       <ChevronRight
                         className={cn("w-4 h-4 transition-transform", !isCollapsed && "rotate-90")}
                       />
-                      {category}
+                      {localizedCapabilityCategory(category, locale)}
                       <Badge variant="secondary" className="ml-auto">
                         {selectedInCategory}/{caps.length}
                       </Badge>
@@ -199,7 +211,7 @@ export function CapabilityDialog({
                                   {localizedCapabilityName(cap, locale)}
                                   {RECOMMENDED_CAPABILITIES.has(cap.id) && (
                                     <Badge variant="accent" className="text-xs px-1.5 py-0 h-5">
-                                      Recommended
+                                      {ui("Recommended")}
                                     </Badge>
                                   )}
                                   {cap.is_mcp && (
@@ -208,7 +220,7 @@ export function CapabilityDialog({
                                       className="text-xs px-1.5 py-0 h-5 gap-1"
                                     >
                                       <Plug className="w-3 h-3" />
-                                      MCP
+                                      {ui("MCP")}
                                     </Badge>
                                   )}
                                   {cap.is_guardrail && (
@@ -217,7 +229,7 @@ export function CapabilityDialog({
                                       className="text-xs px-1.5 py-0 h-5 gap-1"
                                     >
                                       <Shield className="w-3 h-3" />
-                                      Guardrail
+                                      {ui("Guardrail")}
                                     </Badge>
                                   )}
                                   {hasDependencies && (
@@ -228,12 +240,12 @@ export function CapabilityDialog({
                                           className="text-xs px-1.5 py-0 h-5 gap-1"
                                         >
                                           <Link className="w-3 h-3" />
-                                          Requires
+                                          {ui("Requires")}
                                         </Badge>
                                       </TooltipTrigger>
                                       <TooltipContent>
                                         <p>
-                                          Depends on:{" "}
+                                          {ui("Depends on:")}{" "}
                                           {cap.dependencies
                                             ?.map((d) => {
                                               const dep = getCapability(d);
@@ -252,12 +264,12 @@ export function CapabilityDialog({
                                           className="text-xs px-1.5 py-0 h-5 gap-1"
                                         >
                                           <Lock className="w-3 h-3" />
-                                          Required
+                                          {ui("Required")}
                                         </Badge>
                                       </TooltipTrigger>
                                       <TooltipContent>
                                         <p>
-                                          Required by:{" "}
+                                          {ui("Required by:")}{" "}
                                           {dependents
                                             .map((d) => {
                                               const dep = getCapability(d);
@@ -290,7 +302,7 @@ export function CapabilityDialog({
         {/* Footer with done button */}
         <div className="flex justify-end pt-4 border-t">
           <Button type="button" onClick={() => setDialogOpen(false)}>
-            Done
+            {ui("Done")}
           </Button>
         </div>
       </DialogContent>

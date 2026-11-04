@@ -40,7 +40,6 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   daytona_exec: { category: "shell", segmentMode: "standalone" },
   sandbox_exec: { category: "shell", segmentMode: "standalone" },
   e2b_exec: { category: "shell", segmentMode: "standalone" },
-  deno_exec: { category: "shell", segmentMode: "standalone" },
   docker_exec: { category: "shell", segmentMode: "standalone" },
   sprites_exec: { category: "shell", segmentMode: "standalone" },
   modal_exec: { category: "shell", segmentMode: "standalone" },

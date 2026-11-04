@@ -58,7 +58,8 @@ task links to its own recording from the detail card rather than nesting under a
 11. In **Resources**, confirm each leased resource renders as a card with its display name, kind,
     status badge, registered time, and any status/progress/summary/log/result metadata.
 12. In **Schedules**, confirm each schedule renders as an inert row — cadence, next trigger, fire
-    count and an Active/Disabled badge — with **no** enable/disable/trigger/delete controls.
+    count, when it was registered, and an Active, Disabled, or Deleted badge — with **no**
+    enable/disable/trigger/delete controls. A deleted schedule stays in the list.
 13. On a session with no background work, confirm the "No work yet" empty state and the "No
     resources leased" empty state render, and that a session that scheduled nothing reads "This
     session scheduled no work."
@@ -76,7 +77,7 @@ task links to its own recording from the detail card rather than nesting under a
 | Subagent link | A subagent task's detail card links to that subagent's own recording |
 | Unknown kind | A task with an unrecognized kind still renders from its snapshot |
 | Resources | Leased resources render with status badge and metadata; empty state is "No resources leased" |
-| Schedules | Schedules are read-only rows, and the section is absent without the `schedules` feature |
+| Schedules | Schedules are read-only rows, including deleted ones. The empty sentence is absent without the `schedules` feature and with no rows |
 | Empty state | "No work yet" shows when the session started no background work |
 | Retired route | The footer note points at `/sessions` for browsing work across sessions |
 | Design system | View uses Slate tokens only; no visual regressions |

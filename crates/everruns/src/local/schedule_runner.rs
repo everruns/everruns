@@ -202,9 +202,11 @@ impl LocalScheduleRunner {
         runner_id: &str,
     ) -> everruns_contracts::error::Result<()> {
         let schedule = &claim.schedule;
-        let delivery = self
-            .session_runner
-            .send_message(schedule.session_id, &schedule.description);
+        let delivery = self.session_runner.deliver_occurrence(
+            schedule.session_id,
+            &schedule.description,
+            occurrence_message_id(schedule),
+        );
         tokio::pin!(delivery);
         let heartbeat_interval = (self.config.claim_timeout / 3).max(Duration::from_millis(1));
         let mut heartbeat = tokio::time::interval(heartbeat_interval);
@@ -224,6 +226,34 @@ impl LocalScheduleRunner {
             }
         }
     }
+}
+
+/// Namespace of schedule occurrence admission identities.
+const SCHEDULE_OCCURRENCE_NAMESPACE: uuid::Uuid =
+    uuid::Uuid::from_u128(0x6f1d_2c4e_8a3b_5d17_9e0f_4b2a_7c61_d385);
+
+/// Admission identity of the occurrence a claim delivers (EVE-1309).
+///
+/// A retained claim keeps its snapshot until delivery completes, so every retry
+/// of one occurrence, including after process loss, derives the same id and
+/// reopens its original admission. Completing a delivery advances
+/// `trigger_count` and `next_trigger_at`, so the next occurrence gets a new id
+/// even when its description is identical.
+pub(crate) fn occurrence_message_id(
+    schedule: &everruns_core::session_schedule::SessionSchedule,
+) -> everruns_contracts::typed_id::MessageId {
+    let occurrence = format!(
+        "{}:{}:{}",
+        schedule.id,
+        schedule.trigger_count,
+        schedule
+            .next_trigger_at
+            .map_or(0, |time| time.timestamp_millis())
+    );
+    everruns_contracts::typed_id::MessageId::from_uuid(uuid::Uuid::new_v5(
+        &SCHEDULE_OCCURRENCE_NAMESPACE,
+        occurrence.as_bytes(),
+    ))
 }
 
 fn bounded_error(error: &str) -> String {

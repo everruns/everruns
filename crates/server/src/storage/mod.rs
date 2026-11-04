@@ -19,6 +19,7 @@ pub mod command_idempotency;
 pub mod connection_resolver;
 pub(crate) mod embedded_postgres;
 pub mod encryption;
+pub mod encryption_rotation;
 pub mod entity_changes;
 mod health_issues;
 mod ingress;
@@ -35,6 +36,14 @@ mod system_decisions;
 // depends on `everruns-durable` and passes these fields to its schedule store.
 pub use everruns_durable::UpdateField;
 pub mod agentid;
+pub mod background_limits;
+pub mod background_work;
+pub mod behavior_detectors;
+pub mod costs;
+pub mod eval_proposals;
+pub mod finding_actions;
+pub mod finding_fixes;
+pub mod finding_investigations;
 pub mod org_egress_allowlist;
 pub mod org_slack_connections;
 pub mod org_web_search;
@@ -47,6 +56,7 @@ pub mod repositories;
 pub mod repository;
 pub mod runtime;
 pub mod runtime_identity;
+pub mod session_classifications;
 mod session_turn_claim;
 pub use session_turn_claim::*;
 pub mod test_database;
@@ -62,6 +72,10 @@ mod sql_columns_tests;
 pub use a2a_push_configs::*;
 pub use agent_avatars::*;
 pub use backend::StorageBackend;
+pub use backend::{
+    CONFIG_ROWS_CHANNEL, ConfigRowCache, ConfigRowChange, ORG_FEATURE_FLAGS_CHANNEL,
+    OrgFeatureFlagCache,
+};
 pub use connection_resolver::{DbConnectionResolver, GitHubAppTokenMinter, NoopConnectionResolver};
 pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,
@@ -101,3 +115,5 @@ pub use runtime::session_storage::{
 pub use runtime::session_task::DbSessionTaskRegistry;
 pub use runtime::subagent_spawn_handles::PgSubagentSpawnStore;
 pub use system_decisions::SystemDecisions;
+
+pub mod trace_exports;

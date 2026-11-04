@@ -1,118 +1,18 @@
 "use client";
+import { WidgetContent } from "./widget-content";
 
-/**
- * OpenUI Renderer - Renders OpenUI Lang code blocks into interactive UI components.
- *
- * Uses @openuidev/react-lang Renderer with the @openuidev/react-ui full library
- * to parse and render OpenUI Lang DSL code into React components (charts, tables,
- * forms, cards, etc.).
- *
- * Decision: dynamic-import @openuidev/react-lang and @openuidev/react-ui with
- * { ssr: false }. Starting at @openuidev/react-ui 0.11 the genui-lib bundle
- * references `document` at module load time, which crashes Next.js's
- * server-side render path for client components. Loading them lazily on the
- * client only avoids the SSR error without affecting end-user behavior — chat
- * messages never render until the client mounts anyway.
- *
- * Wraps the Renderer in an error boundary to catch "Objects are not valid as a
- * React child" errors that occur when the LLM generates malformed OpenUI code
- * (e.g. passing an element where a string prop is expected). The parser doesn't
- * validate prop types, so these objects leak through as raw {type, typeName,
- * props, partial} ElementNode objects.
- *
- * @see knowledge/ui/openui.md
- * @see https://github.com/thesysdev/openui
- */
-
-import dynamic from "next/dynamic";
-import { Component, type ErrorInfo, type ReactNode } from "react";
-// CSS is a static side-effect import; safe under SSR (Next emits the link tag
-// rather than executing module code). Only the JS bundle touches `document`.
-import "@openuidev/react-ui/components.css";
-
-const OpenUIRendererInner = dynamic(
-  () =>
-    Promise.all([import("@openuidev/react-lang"), import("@openuidev/react-ui/genui-lib")]).then(
-      ([lang, lib]) => {
-        const { Renderer } = lang;
-        const { openuiLibrary } = lib;
-        function ClientRenderer({ code, isStreaming }: { code: string; isStreaming: boolean }) {
-          return <Renderer response={code} library={openuiLibrary} isStreaming={isStreaming} />;
-        }
-        ClientRenderer.displayName = "OpenUIClientRenderer";
-        return ClientRenderer;
-      },
-    ),
-  { ssr: false },
-);
-
-interface OpenUIBlockProps {
-  /** Raw OpenUI Lang code (without the ```openui fences) */
+export function OpenUIBlock({
+  code,
+  isStreaming = false,
+}: {
   code: string;
-  /** Whether the LLM is still streaming this content */
   isStreaming?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Error boundary – catches render errors from the Renderer (e.g. untyped
-// ElementNode objects rendered as React children).
-// ---------------------------------------------------------------------------
-
-interface EBProps {
-  children: ReactNode;
-  fallback: ReactNode;
-}
-interface EBState {
-  hasError: boolean;
-}
-
-class OpenUIErrorBoundary extends Component<EBProps, EBState> {
-  constructor(props: EBProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): EBState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.warn("[openui] Render error caught by boundary:", error.message, info.componentStack);
-  }
-
-  componentDidUpdate(prevProps: EBProps) {
-    // Reset when children change (new code / streaming update)
-    if (this.state.hasError && prevProps.children !== this.props.children) {
-      // eslint-disable-next-line react/no-did-update-set-state -- ErrorBoundary reset on new children is the standard React pattern
-      this.setState({ hasError: false });
-    }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
-
-/**
- * Renders a single OpenUI Lang code block into interactive UI components.
- */
-export function OpenUIBlock({ code, isStreaming = false }: OpenUIBlockProps) {
+}) {
   if (!code.trim()) return null;
-
-  const fallback = (
-    <pre className="overflow-x-auto p-4 text-xs text-muted-foreground">
-      <code>{code}</code>
-    </pre>
-  );
-
   return (
-    <div className="openui-block my-2 overflow-hidden border border-border bg-card">
-      <OpenUIErrorBoundary fallback={fallback}>
-        <OpenUIRendererInner code={code} isStreaming={isStreaming} />
-      </OpenUIErrorBoundary>
-    </div>
+    <WidgetContent
+      text={"```openui\n" + code + (isStreaming ? "" : "\n``` ")}
+      isStreaming={isStreaming}
+    />
   );
 }

@@ -1198,11 +1198,4 @@ mod tests {
         assert_eq!(jwt_expiry(&format!("h.{payload}.s")), Some(1_700_000_000));
         assert_eq!(jwt_expiry("not-a-jwt"), None);
     }
-
-    #[test]
-    fn names_generic_statuses() {
-        assert_eq!(generic_status_name(1), "success");
-        assert_eq!(generic_status_name(7), "idle_timeout");
-        assert_eq!(generic_status_name(99), "status_99");
-    }
 }

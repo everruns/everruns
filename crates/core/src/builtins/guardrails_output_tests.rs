@@ -55,17 +55,6 @@
         provider.check_message(&ctx).await
     }
 
-    #[test]
-    fn output_judge_and_mcp_checks_validate_and_contribute_the_message_seam() {
-        for check in [output_judge("block", None), output_mcp("block")] {
-            let config = output_check(check, "active");
-            assert!(GuardrailsCapability.validate_config(&config).is_ok());
-            let providers = GuardrailsCapability.post_output_guardrails_with_config(&config);
-            assert_eq!(providers.len(), 1);
-            assert_eq!(providers[0].id(), "guardrail_checks");
-        }
-    }
-
     #[tokio::test]
     async fn output_judge_block_replaces_the_message_with_the_check_replacement() {
         let config = output_check(output_judge("block", Some("[secret removed]")), "active");

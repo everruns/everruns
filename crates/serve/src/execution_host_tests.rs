@@ -1,0 +1,560 @@
+fn profile_app() -> crate::App {
+    let mut app = crate::wire_tests::app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.channels.clear();
+    inner.schedules.clear();
+    inner.agents.retain(|agent| agent.spec.members.is_empty());
+    app
+}
+
+use crate::{app::Mode, host::NewSession, hosting::Server};
+use everruns::hosting::{MemoryHosting, SqliteHosting};
+
+/// The Bashkit example's persistence contract, without a provider credential.
+/// Only the model is scripted; Serve, Bashkit and directory storage are real.
+#[tokio::test]
+async fn bashkit_files_survive_turns_and_host_restart_but_shell_state_and_sessions_are_isolated() {
+    use serde_json::{Value, json};
+
+    fn app() -> crate::App {
+        let mut app = profile_app();
+        let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+        inner.config.sandbox.kind = crate::config::SandboxKind::Bashkit;
+        inner.agents.retain(|agent| agent.name == "tester");
+        inner.agents[0].spec = crate::Agent::builder()
+            .model("sim")
+            .customize(|builder| {
+                builder.workspace_policy(
+                    everruns::WorkspacePolicy::builder()
+                        .allow_read("/")
+                        .allow_write("/workspace/demo")
+                        .build()
+                        .unwrap(),
+                )
+            })
+            .offline(crate::sim::script([
+                crate::sim::call(
+                    "bash",
+                    json!({
+                        "commands": "printf 'variable=%s\\n' \"${DEMO_EPHEMERAL-unset}\"; \
+                            export DEMO_EPHEMERAL=only_this_call; \
+                            if test -e /workspace/demo/report.txt; then \
+                            cat /workspace/demo/report.txt; else \
+                            mkdir -p /workspace/demo && \
+                            printf 'apples\\npears\\napples\\n' > /workspace/demo/items.txt && \
+                            sort /workspace/demo/items.txt | uniq > /workspace/demo/report.txt && \
+                            echo created; fi",
+                        "output": "full"
+                    }),
+                ),
+                crate::sim::reply("done"),
+            ]))
+            .build();
+        app
+    }
+
+    async fn run(server: &Server, id: &str, expected: &str) {
+        let session = server.host.session(id).await.unwrap();
+        let before = session.events_after(0).await.unwrap().len();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            session.send_and_wait("Inspect the workspace"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(outcome.success);
+        let events = session.events_after(0).await.unwrap();
+        let results: Vec<Value> = events[before..]
+            .iter()
+            .map(|event| event.canonical_json())
+            .filter(|event| event["type"] == "tool.completed")
+            .cloned()
+            .collect();
+        assert_eq!(results.len(), 1, "{results:?}");
+        let data = &results[0]["data"];
+        assert_eq!(data["tool_name"], "bash");
+        assert_eq!(data["success"], true, "{data}");
+        let result: Value =
+            serde_json::from_str(data["result"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(result["exit_code"], 0, "{result}");
+        assert_eq!(result["stdout"], expected);
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let first = Server::builder(app(), Mode::Start)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    let id = first
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    run(&first, &id, "variable=unset\ncreated\n").await;
+    run(&first, &id, "variable=unset\napples\npears\n").await;
+    first
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+    drop(first);
+
+    let reopened = Server::builder(app(), Mode::Start)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    run(&reopened, &id, "variable=unset\napples\npears\n").await;
+    let other = reopened
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    assert_ne!(id, other);
+    run(&reopened, &other, "variable=unset\ncreated\n").await;
+    reopened
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+}
+
+#[tokio::test]
+async fn serve_registers_ordinary_agents_on_the_same_engine_used_for_admission() {
+    let server = Server::builder(profile_app(), Mode::Eval)
+        .hosting(MemoryHosting::default())
+        .build()
+        .unwrap();
+    let id = server
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    let session = server.host.session(&id).await.unwrap();
+    let binding = server
+        .engine()
+        .session_binding(session.session_id())
+        .await
+        .unwrap();
+    assert_eq!(binding.behavior.agent, "tester");
+    assert_eq!(binding.behavior.build_id, server.build_id());
+    assert!(server.engine().has_agent_build(&binding.behavior));
+    assert!(session.send_and_wait("hello").await.unwrap().success);
+}
+
+#[tokio::test]
+async fn lost_serve_catalog_is_rebuilt_from_the_session_authority_without_running_a_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("authority.db");
+    let first = Server::builder(profile_app(), Mode::Eval)
+        .hosting(SqliteHosting::open(&path).unwrap())
+        .build()
+        .unwrap();
+    let id = first
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    let original = crate::server::session_json(&first.host, &id).await.unwrap();
+    drop(first);
+    let replacement = Server::builder(profile_app(), Mode::Eval)
+        .hosting(SqliteHosting::open(&path).unwrap())
+        .build()
+        .unwrap();
+    assert!(replacement.host.session_row(&id).is_err());
+    let reopened = crate::server::session_json(&replacement.host, &id)
+        .await
+        .unwrap();
+    assert_eq!(reopened["id"], original["id"]);
+    assert_eq!(reopened["created_at"], original["created_at"]);
+    assert_eq!(reopened["status"], "idle");
+    assert!(
+        replacement
+            .host
+            .events_after(&id, 0)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn durable_hosting_refuses_unconfigured_channel_delivery_before_listening() {
+    let error = Server::builder(crate::wire_tests::app(), Mode::Eval)
+        .hosting(MemoryHosting::default())
+        .build()
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("channel inbox/outbox"));
+}
+
+/// EVE-1298: a session a pre-authority release kept under `data_dir/everruns`
+/// moves to the native authority on first access, history included, and keeps
+/// running there.
+#[tokio::test]
+async fn pre_authority_sessions_move_to_the_native_authority_on_first_access() {
+    let dir = tempfile::tempdir().unwrap();
+    // What a release before the native authority left behind: the session in
+    // the legacy local store and its row in the serve catalog.
+    let (id, before) = {
+        let first = Server::builder(profile_app(), Mode::Eval)
+            .data_dir(dir.path())
+            .build()
+            .unwrap();
+        let entry = first.app().agent("tester").unwrap().clone();
+        let agent = first
+            .host
+            .build_agent_with(
+                &entry,
+                None,
+                Some(everruns::LocalConfig::new(dir.path().join("everruns"))),
+                None,
+            )
+            .unwrap();
+        let session = everruns::Engine::new().create(agent);
+        assert!(session.send_and_wait("hello").await.unwrap().success);
+        let before = session.events_after(0).await.unwrap().len();
+        first
+            .host
+            .store
+            .insert_session(&crate::store::SessionRow {
+                id: session.id(),
+                agent: "tester".into(),
+                build_id: "pre-authority".into(),
+                title: None,
+                tags: Vec::new(),
+                hints: None,
+                metadata: None,
+                created_at: "2026-10-01T00:00:00.000Z".into(),
+                updated_at: "2026-10-01T00:00:00.000Z".into(),
+            })
+            .unwrap();
+        (session.id(), before)
+    };
+    assert!(before > 0);
+
+    let native = Server::builder(profile_app(), Mode::Eval)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    let json = crate::server::session_json(&native.host, &id)
+        .await
+        .unwrap();
+    assert_eq!(json["id"], id);
+    let session = native.host.session(&id).await.unwrap();
+    let binding = native
+        .engine()
+        .session_binding(session.session_id())
+        .await
+        .unwrap();
+    assert_eq!(
+        binding.behavior.build_id,
+        format!("{}:pre-authority", native.build_id())
+    );
+    assert_eq!(
+        native.host.events_after(&id, 0).await.unwrap().len(),
+        before
+    );
+    let turn = native.host.send(&id, "again".into()).await.unwrap();
+    turn.wait().await.unwrap();
+    let after = native.host.events_after(&id, 0).await.unwrap().len();
+    assert!(after > before);
+    drop(native);
+
+    // A restarted host reopens the moved session from the authority alone.
+    let restarted = Server::builder(profile_app(), Mode::Eval)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    restarted.host.session(&id).await.unwrap();
+    assert_eq!(
+        restarted.host.events_after(&id, 0).await.unwrap().len(),
+        after
+    );
+}
+
+/// `profile_app` plus a `helper` agent (an older release's subagent), as an app that delegated before
+/// serve's native authority.
+fn app_with_helper() -> crate::App {
+    let mut app = profile_app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents.push(crate::app::AgentEntry {
+        name: "helper".into(),
+        doc: "Helps.".into(),
+        default: false,
+        source: "test".into(),
+        spec: crate::prelude::Agent::builder()
+            .model("sim")
+            .instructions("Help.")
+            .offline(crate::sim::script([crate::sim::reply("helped")]))
+            .build(),
+    });
+    app
+}
+
+/// A session a pre-authority release ran with `ask_helper` delegating `task`
+/// to a legacy child session, as that release's subagent tool did: the
+/// child had no catalog row and nothing linked it to its parent.
+#[allow(deprecated)] // writes legacy-lane data, as an older release did
+async fn legacy_delegation(
+    native: &Server,
+    store: &everruns::LocalConfig,
+    task: &str,
+) -> (String, everruns::SessionId) {
+    let child_store = store.clone();
+    let children = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let created = children.clone();
+    let ask = everruns::FunctionTool::new(
+        "ask_helper",
+        "Delegate a task to the helper subagent.",
+        serde_json::json!({
+            "type": "object",
+            "properties": { "task": { "type": "string" } },
+            "required": ["task"],
+        }),
+        move |args: serde_json::Value| {
+            let store = child_store.clone();
+            let created = created.clone();
+            async move {
+                let agent = everruns::Agent::builder()
+                    .instructions("Help.")
+                    .model(everruns::Model::simulated("helped"))
+                    .local(store)
+                    .build()
+                    .map_err(|error| error.to_string())?;
+                let child = everruns::Engine::new().create(agent);
+                created.lock().unwrap().push(child.session_id());
+                let turn = child
+                    .send_and_wait(args["task"].as_str().unwrap_or_default())
+                    .await
+                    .map_err(|error| error.to_string())?;
+                Ok::<_, String>(turn.response)
+            }
+        },
+    );
+    let parent = everruns::Agent::builder()
+        .instructions("Delegate.")
+        .model(everruns::Model::simulated_with_config(crate::sim::script(
+            [
+                crate::sim::call("ask_helper", serde_json::json!({ "task": task })),
+                crate::sim::reply("delegated"),
+            ],
+        )))
+        .tool(ask)
+        .local(store.clone())
+        .build()
+        .unwrap();
+    let session = everruns::Engine::new().create(parent);
+    assert!(session.send_and_wait("go").await.unwrap().success);
+    native
+        .host
+        .store
+        .insert_session(&crate::store::SessionRow {
+            id: session.id(),
+            agent: "tester".into(),
+            build_id: "pre-authority".into(),
+            title: None,
+            tags: Vec::new(),
+            hints: None,
+            metadata: None,
+            created_at: "2026-10-01T00:00:00.000Z".into(),
+            updated_at: "2026-10-01T00:00:00.000Z".into(),
+        })
+        .unwrap();
+    let child = children.lock().unwrap()[0];
+    (session.id(), child)
+}
+
+/// EVE-1298: a legacy child session moves with its parent, found through the
+/// parent's delegation call, and keeps its history under the parent link.
+#[tokio::test]
+async fn pre_authority_child_sessions_move_with_their_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = everruns::LocalConfig::new(dir.path().join("everruns"));
+    let (parent, child) = {
+        let first = Server::builder(app_with_helper(), Mode::Eval)
+            .data_dir(dir.path())
+            .build()
+            .unwrap();
+        legacy_delegation(&first, &store, "check the numbers").await
+    };
+    let native = Server::builder(app_with_helper(), Mode::Eval)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    native.host.session(&parent).await.unwrap();
+    let binding = native.engine().session_binding(child).await.unwrap();
+    assert_eq!(binding.behavior.agent, "helper");
+    assert_eq!(binding.metadata["parent_session_id"], parent);
+    let row = native.host.session_row(&child.to_string()).unwrap();
+    assert_eq!(row.agent, "helper");
+    let events = native
+        .host
+        .events_after(&child.to_string(), 0)
+        .await
+        .unwrap();
+    assert!(!events.is_empty());
+}
+
+/// EVE-1298: with a microVM adapter the legacy lane still bound sessions to
+/// its shared directory workspace, so the pre-authority build is registered
+/// on that path too and the session moves.
+#[tokio::test]
+async fn pre_authority_sessions_move_under_a_microvm_adapter() {
+    let microvm_app = || {
+        let mut app = profile_app();
+        std::sync::Arc::get_mut(&mut app.inner)
+            .unwrap()
+            .config
+            .sandbox
+            .kind = crate::config::SandboxKind::Microvm;
+        app
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let store = everruns::LocalConfig::new(dir.path().join("everruns"));
+    let id = {
+        let first = Server::builder(microvm_app(), Mode::Eval)
+            .data_dir(dir.path())
+            .microvm(|builder| builder)
+            .build()
+            .unwrap();
+        let entry = first.app().agent("tester").unwrap().clone();
+        let agent = first
+            .host
+            .build_agent_with(&entry, None, Some(store), None)
+            .unwrap();
+        let session = everruns::Engine::new().create(agent);
+        assert!(session.send_and_wait("hello").await.unwrap().success);
+        first
+            .host
+            .store
+            .insert_session(&crate::store::SessionRow {
+                id: session.id(),
+                agent: "tester".into(),
+                build_id: "pre-authority".into(),
+                title: None,
+                tags: Vec::new(),
+                hints: None,
+                metadata: None,
+                created_at: "2026-10-01T00:00:00.000Z".into(),
+                updated_at: "2026-10-01T00:00:00.000Z".into(),
+            })
+            .unwrap();
+        session.id()
+    };
+    let native = Server::builder(microvm_app(), Mode::Eval)
+        .data_dir(dir.path())
+        .microvm(|builder| builder)
+        .build()
+        .unwrap();
+    let session = native.host.session(&id).await.unwrap();
+    let binding = native
+        .engine()
+        .session_binding(session.session_id())
+        .await
+        .unwrap();
+    assert_eq!(
+        binding.behavior.build_id,
+        format!("{}:pre-authority", native.build_id())
+    );
+    let turn = native.host.send(&id, "again".into()).await.unwrap();
+    turn.wait().await.unwrap();
+}
+
+/// `profile_app` where `tester` hands work to a `helper` member through
+/// `spawn_agent`, both scripted.
+fn app_with_member() -> crate::App {
+    let mut app = profile_app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents.retain(|agent| agent.name == "tester");
+    inner.agents[0].spec = crate::Agent::builder()
+        .model("sim")
+        .instructions("Hand the work to helper.")
+        .member("helper")
+        .offline(crate::sim::script([
+            crate::sim::call(
+                "spawn_agent",
+                serde_json::json!({
+                    "name": "Check",
+                    "instructions": "Check the numbers.",
+                    "target": {"type": "agent", "id": "helper"},
+                    "mode": "foreground",
+                }),
+            ),
+            crate::sim::reply("delegated"),
+        ]))
+        .build();
+    inner.agents.push(crate::app::AgentEntry {
+        name: "helper".into(),
+        doc: "Checks numbers.".into(),
+        default: false,
+        source: "test".into(),
+        spec: crate::prelude::Agent::builder()
+            .model("sim")
+            .instructions("Help.")
+            .offline(crate::sim::script([crate::sim::reply("HELPED by helper")]))
+            .build(),
+    });
+    assert!(crate::app::check_members(&inner.agents).is_empty());
+    app
+}
+
+/// A member runs as its own session in the lead's run, on serve's native
+/// authority, and its answer comes back to the lead.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_member_runs_as_its_own_session_and_answers_the_lead() {
+    let dir = tempfile::tempdir().unwrap();
+    let server = Server::builder(app_with_member(), Mode::Eval)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    let manifest = server.app().manifest();
+    let tester = manifest.agents.iter().find(|a| a.name == "tester").unwrap();
+    assert_eq!(tester.members, ["helper"]);
+    assert!(tester.tools.iter().any(|tool| tool == "spawn_agent"));
+    let id = server
+        .host
+        .create_session(NewSession {
+            agent: Some("tester".into()),
+            ..NewSession::default()
+        })
+        .await
+        .unwrap();
+    let turn = server.host.send(&id, "go".into()).await.unwrap();
+    turn.wait().await.unwrap();
+    let events = server.host.events_after(&id, 0).await.unwrap();
+    let rendered = serde_json::to_string(
+        &events
+            .iter()
+            .map(|event| event.canonical_json())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    assert!(rendered.contains("HELPED by helper"), "{rendered}");
+}
+
+/// Discovery refuses a member that is not an agent of the app, the lead
+/// itself, and a member that leads others.
+#[test]
+fn members_must_be_other_agents_of_the_app_one_level_deep() {
+    let entry = |name: &str, members: &[&str]| {
+        let mut builder = crate::Agent::builder().model("sim");
+        for member in members {
+            builder = builder.member(*member);
+        }
+        crate::app::AgentEntry {
+            name: name.into(),
+            doc: String::new(),
+            default: false,
+            source: "test".into(),
+            spec: builder.build(),
+        }
+    };
+    let errors = crate::app::check_members(&[
+        entry("lead", &["lead", "ghost", "middle"]),
+        entry("middle", &["leaf"]),
+        entry("leaf", &[]),
+    ]);
+    assert_eq!(errors.len(), 3, "{errors:?}");
+    assert!(errors[0].contains("lists itself"));
+    assert!(errors[1].contains("`ghost`, which is not an agent"));
+    assert!(errors[2].contains("`middle`, which has members of its own"));
+}

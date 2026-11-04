@@ -812,56 +812,110 @@ impl McpEventTriggers {
             }
         }
 
-        let context = json!({
-            "agent": { "id": agent.public_id, "name": agent.name },
-            "trigger": { "id": trigger.id.to_string(), "type": "mcp_event" },
-            "invocation": {
-                "source": "mcp_event",
-                "triggered_at": Utc::now().to_rfc3339(),
-            },
-            "mcp": {
-                "server": config.server,
-                "event": name,
-                "event_id": body.get("eventId"),
-                "timestamp": body.get("timestamp"),
-                "subscription_id": subscription.remote_subscription_id,
-                "delivery_id": webhook_id,
-            },
-            "payload": body.get("data").cloned().unwrap_or(Value::Null),
-        });
-        let subject = config
-            .subject_template
-            .as_deref()
-            .map(|template| render_message_template(template, &context));
-        let outcome = events::dispatch_trigger_event(
+        let outcome = dispatch_event(
             &self.db,
             session_service,
             message_service,
-            TriggerEventRoute {
+            McpEventTarget {
                 trigger: &trigger,
                 agent: &agent,
-                message_template: &config.message,
-                session_mode: config.session_mode,
-                filter: config.filter.as_ref(),
-                session_source: crate::domains::sessions::record::SessionSource::Webhook,
-                webhook_compat: None,
-                script: None,
+                config: &config,
             },
-            TriggerEvent {
-                source: "mcp_event",
-                // THREAT[TM-TRIGGER-001]: `webhook-id` is the replay key; the
-                // pipeline records a repeat as a duplicate.
-                event_id: Some(webhook_id.to_string()),
-                event_type: Some(name.to_string()),
-                subject,
-                context,
+            McpEventBody {
+                body: &body,
+                delivery_id: webhook_id,
+                subscription_id: subscription.remote_subscription_id.as_deref(),
             },
+            None,
             request_id,
         )
         .await
         .map_err(InboundRejection::Failed)?;
         Ok(InboundOutcome::Event(outcome))
     }
+}
+
+/// One `mcp_event` trigger, with its agent and parsed configuration.
+pub(super) struct McpEventTarget<'a> {
+    pub trigger: &'a AgentTriggerRow,
+    pub agent: &'a AgentRow,
+    pub config: &'a McpEventTriggerConfig,
+}
+
+/// An event as the MCP server delivers it (`name`, `data`, `eventId`, ...).
+pub(super) struct McpEventBody<'a> {
+    pub body: &'a Value,
+    /// Replay key: the delivery's `webhook-id`.
+    pub delivery_id: &'a str,
+    pub subscription_id: Option<&'a str>,
+}
+
+/// Hand one MCP event to its trigger through the shared pipeline. A manual
+/// fire (`manual`) takes the same path with its own event id.
+pub(super) async fn dispatch_event(
+    db: &Arc<StorageBackend>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    target: McpEventTarget<'_>,
+    event: McpEventBody<'_>,
+    manual: Option<&super::manual::ManualFire>,
+    request_id: Option<String>,
+) -> Result<events::TriggerEventOutcome, CommandError> {
+    let McpEventTarget {
+        trigger,
+        agent,
+        config,
+    } = target;
+    let body = event.body;
+    let source = super::manual::source_name(manual, "mcp_event");
+    let context = json!({
+        "agent": { "id": agent.public_id, "name": agent.name },
+        "trigger": { "id": trigger.id.to_string(), "type": "mcp_event" },
+        "invocation": {
+            "source": source,
+            "triggered_at": Utc::now().to_rfc3339(),
+        },
+        "mcp": {
+            "server": config.server,
+            "event": config.event,
+            "event_id": body.get("eventId"),
+            "timestamp": body.get("timestamp"),
+            "subscription_id": event.subscription_id,
+            "delivery_id": event.delivery_id,
+        },
+        "payload": body.get("data").cloned().unwrap_or(Value::Null),
+    });
+    let subject = config
+        .subject_template
+        .as_deref()
+        .map(|template| render_message_template(template, &context));
+    events::dispatch_trigger_event(
+        db,
+        session_service,
+        message_service,
+        TriggerEventRoute {
+            trigger,
+            agent,
+            message_template: &config.message,
+            session_mode: config.session_mode,
+            filter: config.filter.as_ref(),
+            session_source: crate::domains::sessions::record::SessionSource::Webhook,
+            webhook_compat: None,
+            script: None,
+            channel: None,
+        },
+        TriggerEvent {
+            source,
+            // THREAT[TM-TRIGGER-001]: `webhook-id` is the replay key; the
+            // pipeline records a repeat as a duplicate.
+            event_id: super::manual::event_id(manual, Some(event.delivery_id.to_string())),
+            event_type: Some(config.event.clone()),
+            subject,
+            context,
+        },
+        request_id,
+    )
+    .await
 }
 
 /// A resolved MCP endpoint with its credential baked into the headers.

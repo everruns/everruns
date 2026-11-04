@@ -53,6 +53,23 @@ before/after under the constraints in [Build Artifact Size](build-artifact-size.
   normal` returns nothing; the remaining lock entries are reachable only through the
   bench's dev-dependency on the published SDK.
 
+## Bashkit runtime dependency
+
+The workspace and standalone shell evals use published Bashkit 0.20.2 or
+newer in the same compatible release series. This keeps Wasmtime's security
+fixes through 48.0.8 and the Windows CPython COFF embedding fix together. The corrected
+component preserves 64 KiB runtime alignment without requiring an
+unsupported Windows over-aligned static. Python stays enabled in the hosted
+integration catalog.
+
+No Bashkit Git patch or source-policy exception is required. Downstream
+applications resolve the corrected registry packages without inheriting
+workspace patches, which Cargo does not propagate through dependencies.
+
+The advisory gate covers every active committed lockfile. Archived probe
+manifests retain their original resolution as snapshot files; the canonical
+Mira study remains the executable and security-maintained example.
+
 ## What Was Replaced, and Why
 
 Each of these traded a dependency for in-tree code that the workspace owns and tests.
@@ -102,10 +119,11 @@ binary carrying web-fetch, and was the only reason the workspace resolved a
 
 ## Remaining Candidates
 
-- **`serde_yaml`** — zero exclusive cost, but upstream is archived. It parses skill and
-  agent frontmatter in `crates/contracts/src/runtime/skill.rs`, `api/agents/mod.rs`,
-  `domains/knowledge_bases/okf.rs`, and the CLI. Options are a maintained fork or a
-  purpose-built frontmatter parser; the parsed surface is small and typed. Supply-chain
+- **`serde_yaml`** — upstream and its `unsafe-libyaml` dependency are unmaintained.
+  Contracts skill frontmatter and core agent packages use `serde-saphyr` with YAML 1.2
+  booleans, literal merge keys, resource budgets, and source snippets disabled in errors.
+  Include and interpolation features are disabled. This removes libyaml from framework-only
+  consumers; server and CLI YAML usage still needs a separate migration. Supply-chain
   hygiene, not size.
 - **`wiremock`** (dev-only, 6 crates) — used by 24 crates' tests. A minimal mock server
   in `everruns-test-support` would remove it, at the cost of reimplementing matchers.

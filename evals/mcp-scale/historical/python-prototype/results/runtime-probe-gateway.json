@@ -1,0 +1,21 @@
+{
+  "url": "stdio://ops",
+  "model": "gpt-6-luna",
+  "provider": "openai",
+  "prompt": null,
+  "mode": "list",
+  "mcp_transport": "stdio",
+  "search": "generic",
+  "success": null,
+  "response": null,
+  "error": null,
+  "iterations": null,
+  "duration_ms": null,
+  "usage": null,
+  "discovered_tool_count": 2,
+  "discovered_tools": [
+    "mcp_ops__catalog_call",
+    "mcp_ops__catalog_search"
+  ],
+  "tool_calls": []
+}

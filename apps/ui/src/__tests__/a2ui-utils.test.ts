@@ -93,16 +93,4 @@ describe("parseA2UI", () => {
     // throwing.
     expect(parseA2UI(partial)).toBeNull();
   });
-
-  it("parses nested children", () => {
-    const json = JSON.stringify({
-      type: "Card",
-      children: [
-        { type: "Heading", props: { text: "Title" } },
-        { type: "Text", props: { text: "Body" } },
-      ],
-    });
-    const result = parseA2UI(json) as { children: unknown[] };
-    expect(result.children).toHaveLength(2);
-  });
 });

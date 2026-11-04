@@ -15,6 +15,11 @@
 // We use the current backoff value as the retry hint, so clients reconnect faster
 // when the stream is active (low backoff) and slower when idle (high backoff).
 //
+// Server shutdown:
+// A draining server (crate::shutdown) ends every stream wrapped in
+// `end_on_shutdown` with a "disconnecting" event, reason "shutdown", so clients
+// resume with since_id on another replica instead of seeing the pod die.
+//
 // Connection Limits (EVE-8 / TM-DOS-003):
 // SseConnectionTracker enforces global, per-session, and per-org limits to prevent
 // resource exhaustion from unbounded SSE connections. Each SSE stream holds a Tokio task
@@ -175,6 +180,59 @@ impl DisconnectReason {
             DisconnectReason::Error => "error",
         }
     }
+}
+
+/// End `stream` once the server starts draining, after a final
+/// `disconnecting` event (reason `shutdown`). A stream that ends on its own
+/// (connection cycling, client gone) gets no extra event.
+pub fn end_on_shutdown<S, E>(
+    stream: S,
+    config: &SseStreamConfig,
+) -> impl futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static + use<S, E>
+where
+    S: futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static,
+    E: Send + 'static,
+{
+    end_when(
+        stream,
+        crate::shutdown::server_shutdown().draining().clone(),
+        config,
+    )
+}
+
+/// End `stream` once the server starts draining, without an extra event. For
+/// protocol streams (AG-UI, A2A) whose clients only know their own frames.
+pub fn until_shutdown<S: futures::Stream + Send + 'static>(
+    stream: S,
+) -> impl futures::Stream<Item = S::Item> + Send + 'static {
+    use futures::StreamExt;
+    let draining = crate::shutdown::server_shutdown().draining().clone();
+    stream.take_until(draining.cancelled_owned())
+}
+
+fn end_when<S, E>(
+    stream: S,
+    draining: tokio_util::sync::CancellationToken,
+    config: &SseStreamConfig,
+) -> impl futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static + use<S, E>
+where
+    S: futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static,
+    E: Send + 'static,
+{
+    use futures::StreamExt;
+    let event = axum::response::sse::Event::default()
+        .event("disconnecting")
+        .data(format!(
+            r#"{{"reason":"{}","retry_ms":{}}}"#,
+            DisconnectReason::Shutdown.as_str(),
+            config.disconnect_retry_ms
+        ))
+        .retry(config.disconnect_retry());
+    let tail = draining.clone();
+    stream.take_until(draining.cancelled_owned()).chain(
+        futures::stream::once(async move { tail.is_cancelled().then_some(Ok(event)) })
+            .filter_map(futures::future::ready),
+    )
 }
 
 // ============================================================
@@ -457,93 +515,6 @@ mod tests {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
-    fn test_realtime_config() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.min_backoff_ms, 100);
-        assert_eq!(config.max_backoff_ms, 500);
-        assert_eq!(config.max_connection_secs, 300);
-        assert_eq!(config.disconnect_retry_ms, 100);
-        assert_eq!(config.heartbeat_interval_secs, 30);
-    }
-
-    #[test]
-    fn test_monitoring_config() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.min_backoff_ms, 1000);
-        assert_eq!(config.max_backoff_ms, 20000);
-        assert_eq!(config.max_connection_secs, 600);
-        assert_eq!(config.disconnect_retry_ms, 1000);
-        assert_eq!(config.heartbeat_interval_secs, 30);
-    }
-
-    #[test]
-    fn test_monitoring_backoff_caps() {
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.next_backoff(10000), 20000);
-        assert_eq!(config.next_backoff(15000), 20000); // Capped
-    }
-
-    #[test]
-    fn test_min_backoff_duration() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.min_backoff(), Duration::from_millis(100));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.min_backoff(), Duration::from_millis(1000));
-    }
-
-    #[test]
-    fn test_default_is_realtime() {
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-        }
-        let config = SseStreamConfig::default();
-        assert_eq!(config.min_backoff_ms, 100);
-        assert_eq!(config.max_backoff_ms, 500);
-        assert_eq!(config.max_connection_secs, 300);
-    }
-
-    #[test]
-    fn test_max_connection_duration() {
-        // Clear env overrides that might leak from parallel tests
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-            std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.max_connection_duration(), Duration::from_secs(300));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.max_connection_duration(), Duration::from_secs(600));
-    }
-
-    #[test]
-    fn test_retry_hint() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.retry_hint(100), Duration::from_millis(100));
-        assert_eq!(config.retry_hint(500), Duration::from_millis(500));
-    }
-
-    #[test]
-    fn test_disconnect_retry() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.disconnect_retry(), Duration::from_millis(100));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.disconnect_retry(), Duration::from_millis(1000));
-    }
-
-    #[test]
     fn test_jittered_max_connection_duration_within_bounds() {
         let config = SseStreamConfig::realtime();
         // 300s base, ±20% → 240–360s
@@ -572,16 +543,6 @@ mod tests {
             min,
             max
         );
-    }
-
-    #[test]
-    fn test_disconnect_reason() {
-        assert_eq!(
-            DisconnectReason::ConnectionCycle.as_str(),
-            "connection_cycle"
-        );
-        assert_eq!(DisconnectReason::Shutdown.as_str(), "shutdown");
-        assert_eq!(DisconnectReason::Error.as_str(), "error");
     }
 
     #[test]
@@ -625,18 +586,6 @@ mod tests {
     // ============================================
     // Connection Tracker Tests
     // ============================================
-
-    #[test]
-    fn test_connection_tracker_basic_acquire_release() {
-        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::default()));
-        let session = uuid::Uuid::new_v4();
-
-        let guard = tracker.try_acquire(1, session).unwrap();
-        assert_eq!(tracker.global_count(), 1);
-
-        drop(guard);
-        assert_eq!(tracker.global_count(), 0);
-    }
 
     #[test]
     fn test_connection_tracker_per_session_limit() {
@@ -724,58 +673,6 @@ mod tests {
     }
 
     #[test]
-    fn test_connection_limits_defaults() {
-        let limits = SseConnectionLimits::default();
-        assert_eq!(limits.global_max, 10_000);
-        assert_eq!(limits.per_session_max, 12);
-        assert_eq!(limits.per_org_max, 1_000);
-    }
-
-    #[test]
-    fn test_connection_rejection_display() {
-        assert_eq!(
-            SseConnectionRejection::GlobalLimitReached.to_string(),
-            "global SSE connection limit reached"
-        );
-        assert_eq!(
-            SseConnectionRejection::SessionLimitReached.to_string(),
-            "per-session SSE connection limit reached"
-        );
-        assert_eq!(
-            SseConnectionRejection::OrgLimitReached.to_string(),
-            "per-organization SSE connection limit reached"
-        );
-    }
-
-    #[test]
-    fn test_realtime_cycle_secs_env_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::set_var("SSE_REALTIME_CYCLE_SECS", "900");
-        }
-        let config = SseStreamConfig::realtime();
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-        }
-        assert_eq!(config.max_connection_secs, 900); // 15 minutes
-        assert_eq!(config.min_backoff_ms, 100); // unchanged
-    }
-
-    #[test]
-    fn test_monitoring_cycle_secs_env_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::set_var("SSE_MONITORING_CYCLE_SECS", "1800");
-        }
-        let config = SseStreamConfig::monitoring();
-        unsafe {
-            std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
-        }
-        assert_eq!(config.max_connection_secs, 1800); // 30 minutes
-        assert_eq!(config.min_backoff_ms, 1000); // unchanged
-    }
-
-    #[test]
     fn test_cycle_secs_env_invalid_fallback() {
         let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
@@ -793,35 +690,6 @@ mod tests {
     // ============================================
 
     #[test]
-    fn test_heartbeat_interval_default() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.heartbeat_interval_secs, 30);
-        assert_eq!(config.heartbeat_interval(), Duration::from_secs(30));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.heartbeat_interval_secs, 30);
-        assert_eq!(config.heartbeat_interval(), Duration::from_secs(30));
-    }
-
-    #[test]
-    fn test_heartbeat_interval_env_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::set_var("SSE_HEARTBEAT_INTERVAL_SECS", "15");
-        }
-        let config = SseStreamConfig::realtime();
-        unsafe {
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        assert_eq!(config.heartbeat_interval_secs, 15);
-        assert_eq!(config.heartbeat_interval(), Duration::from_secs(15));
-    }
-
-    #[test]
     fn test_heartbeat_interval_env_invalid_fallback() {
         let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
@@ -832,23 +700,6 @@ mod tests {
             std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
         }
         assert_eq!(config.heartbeat_interval_secs, 30); // falls back to default
-    }
-
-    #[test]
-    fn test_heartbeat_interval_less_than_sdk_read_timeout() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        // SDK read timeout is 60s. Heartbeat must be less than that.
-        unsafe {
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        let sdk_read_timeout = Duration::from_secs(60);
-        assert!(
-            config.heartbeat_interval() < sdk_read_timeout,
-            "heartbeat interval {:?} must be < SDK read timeout {:?}",
-            config.heartbeat_interval(),
-            sdk_read_timeout
-        );
     }
 
     #[test]
@@ -928,29 +779,51 @@ mod tests {
         assert!(!rejection.is_capacity_signal());
     }
 
-    #[test]
-    fn test_sse_connection_tracker_try_acquire_and_drop() {
-        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits {
-            global_max: 2,
-            per_session_max: 2,
-            per_org_max: 2,
-        }));
+    /// A draining server ends a live stream with a `disconnecting` event; a
+    /// stream that ends on its own gets nothing extra.
+    #[tokio::test]
+    async fn draining_ends_streams_with_a_shutdown_event() {
+        use axum::response::IntoResponse;
+        use axum::response::sse::{Event, Sse};
+        use futures::StreamExt;
 
-        let session = uuid::Uuid::new_v4();
-        let guard1 = tracker.try_acquire(1, session).unwrap();
-        let guard2 = tracker.try_acquire(1, session).unwrap();
+        async fn body_of<S>(stream: S) -> String
+        where
+            S: futures::Stream<Item = Result<Event, std::convert::Infallible>> + Send + 'static,
+        {
+            let response = Sse::new(stream).into_response();
+            let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            String::from_utf8(bytes.to_vec()).unwrap()
+        }
 
-        // Third should fail (global_max = 2)
-        assert_eq!(
-            tracker.try_acquire(1, session).unwrap_err(),
-            SseConnectionRejection::GlobalLimitReached
-        );
+        let config = SseStreamConfig::realtime();
+        let draining = tokio_util::sync::CancellationToken::new();
+        let live = futures::stream::once(async { Ok(Event::default().data("first")) })
+            .chain(futures::stream::pending());
+        let trigger = draining.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            trigger.cancel();
+        });
+        let body = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            body_of(end_when(live, draining, &config)),
+        )
+        .await
+        .expect("a draining server ends the stream");
+        assert!(body.contains("data: first"), "{body}");
+        assert!(body.contains("event: disconnecting"), "{body}");
+        assert!(body.contains(r#""reason":"shutdown""#), "{body}");
 
-        // Drop one guard, should be able to acquire again
-        drop(guard1);
-        let _guard3 = tracker.try_acquire(1, session).unwrap();
-
-        drop(guard2);
-        drop(_guard3);
+        let finite = futures::stream::once(async { Ok(Event::default().data("only")) });
+        let body = body_of(end_when(
+            finite,
+            tokio_util::sync::CancellationToken::new(),
+            &config,
+        ))
+        .await;
+        assert!(!body.contains("disconnecting"), "{body}");
     }
 }

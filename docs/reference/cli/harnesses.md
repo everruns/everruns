@@ -58,6 +58,7 @@ everruns harnesses create [OPTIONS] --name <name>
 | `--embedder-metadata <EMBEDDER_METADATA>` | Arbitrary key-value metadata injected into LLM requests for observability. |
 | `--initial-files <INITIAL_FILES>` | Starter files copied into each new session for this harness. |
 | `--intro-markdown <INTRO_MARKDOWN>` | Deprecated: configure conversation presentation on the Agent instead. |
+| `--localizations <LOCALIZATIONS>` | Locale-keyed display overlays. |
 | `--mcpServers <MCPSERVERS>` |  |
 | `--name <NAME>` | Required. Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |
@@ -191,6 +192,7 @@ everruns harnesses update [OPTIONS] [ID]
 | `--embedder-metadata <EMBEDDER_METADATA>` | Replace the embedder metadata map entirely; omit to leave unchanged. |
 | `--initial-files <INITIAL_FILES>` | Replace the initial-files list entirely; omit to leave unchanged. |
 | `--intro-markdown <INTRO_MARKDOWN>` | Deprecated: configure conversation presentation on the Agent instead. |
+| `--localizations <LOCALIZATIONS>` |  |
 | `--mcpServers <MCPSERVERS>` |  |
 | `--name <NAME>` | Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |

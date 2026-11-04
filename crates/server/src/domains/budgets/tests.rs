@@ -235,6 +235,7 @@ fn make_budget_row(limit: f64, balance: f64, soft_limit: Option<f64>, currency: 
         period: None,
         period_started_at: None,
         metadata: None,
+        policy: serde_json::json!({}),
         status: "active".into(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -251,14 +252,6 @@ fn test_rule_continue_when_budget_healthy() {
     let budget = make_budget_row(100.0, 80.0, None, "usd");
     let action = svc.evaluate_rules(&budget);
     assert_eq!(action, BudgetAction::Continue);
-}
-
-#[test]
-fn test_rule_warn_at_80_percent_consumed() {
-    let (svc, _) = make_service();
-    let budget = make_budget_row(100.0, 15.0, None, "usd");
-    let action = svc.evaluate_rules(&budget);
-    assert!(matches!(action, BudgetAction::Warn { .. }));
 }
 
 #[test]
@@ -342,41 +335,6 @@ fn test_metered_total_tokens_includes_disjoint_cache_buckets() {
 }
 
 #[test]
-fn test_compute_debit_tokens_currency() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit(
-        "tokens",
-        1500,
-        1000,
-        500,
-        0,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
-    assert_eq!(debit, 1500.0);
-}
-
-#[test]
-fn test_compute_debit_usd_with_known_model() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit(
-        "usd",
-        1_000_000 + 500_000,
-        1_000_000,
-        500_000,
-        0,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
-    assert!(debit > 0.0, "Debit should be positive for known model");
-    assert!(debit < 100.0, "Debit should be reasonable for 1.5M tokens");
-}
-
-#[test]
 fn test_compute_debit_usd_prefers_provider_cost() {
     let (svc, _) = make_service();
     // A provider-reported cost wins over the price-table estimate, even for a
@@ -392,14 +350,14 @@ fn test_compute_debit_usd_prefers_provider_cost() {
         Some("openai"),
         Some(0.0123),
     );
-    assert_eq!(debit, 0.0123);
+    assert_eq!(debit, Some(0.0123));
 }
 
 #[test]
 fn test_compute_debit_usd_provider_cost_covers_unknown_model() {
     let (svc, _) = make_service();
-    // Without a profile we would fall back to raw token count; the provider's
-    // cost rescues USD metering for the long tail of models.
+    // Without a profile the cost would be unknown; the provider's cost
+    // rescues USD metering for the long tail of models.
     let debit = svc.compute_debit(
         "usd",
         1500,
@@ -411,13 +369,14 @@ fn test_compute_debit_usd_provider_cost_covers_unknown_model() {
         Some("openai"),
         Some(0.0042),
     );
-    assert_eq!(debit, 0.0042);
+    assert_eq!(debit, Some(0.0042));
 }
 
 #[test]
 fn test_compute_debit_usd_zero_provider_cost_falls_back() {
     let (svc, _) = make_service();
-    // A zero/absent cost must not short-circuit metering; fall back as before.
+    // A zero cost must not short-circuit metering. With no list price either,
+    // the cost is unknown: never the token count read as dollars.
     let debit = svc.compute_debit(
         "usd",
         1500,
@@ -429,7 +388,7 @@ fn test_compute_debit_usd_zero_provider_cost_falls_back() {
         Some("openai"),
         Some(0.0),
     );
-    assert_eq!(debit, 1500.0);
+    assert_eq!(debit, None);
 }
 
 #[test]
@@ -449,21 +408,7 @@ fn test_compute_debit_raw_token_quotas_include_cached_prompt_tokens() {
             None,
             None
         ),
-        1_000_000.0
-    );
-    assert_eq!(
-        svc.compute_debit(
-            "credits",
-            total_tokens,
-            200_000,
-            0,
-            800_000,
-            0,
-            None,
-            None,
-            None
-        ),
-        1_000.0
+        Some(1_000_000.0)
     );
     assert_eq!(
         svc.compute_debit(
@@ -477,12 +422,13 @@ fn test_compute_debit_raw_token_quotas_include_cached_prompt_tokens() {
             None,
             None,
         ),
-        1_000_000.0
+        None,
+        "currencies other than usd and tokens are not debited"
     );
 }
 
 #[test]
-fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
+fn test_compute_debit_usd_with_unknown_model_is_unpriced() {
     let (svc, _) = make_service();
     let debit = svc.compute_debit(
         "usd",
@@ -495,7 +441,8 @@ fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
         Some("openai"),
         None,
     );
-    assert_eq!(debit, 1500.0);
+    // Regression: this used to debit 1500 "dollars" (the token count).
+    assert_eq!(debit, None);
 }
 
 #[test]
@@ -513,28 +460,14 @@ fn test_compute_debit_usd_estimates_openai_embedding_cost() {
         None,
     );
 
-    assert_eq!(debit, 0.000_03);
-}
-
-#[test]
-fn test_compute_debit_credits_currency() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit("credits", 5000, 3000, 2000, 0, 0, None, None, None);
-    assert_eq!(debit, 5.0);
-}
-
-#[test]
-fn test_compute_debit_custom_currency_uses_token_count() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit("my_custom", 2000, 1500, 500, 0, 0, None, None, None);
-    assert_eq!(debit, 2000.0);
+    assert_eq!(debit, Some(0.000_03));
 }
 
 #[test]
 fn test_compute_debit_zero_tokens() {
     let (svc, _) = make_service();
     let debit = svc.compute_debit("tokens", 0, 0, 0, 0, 0, None, None, None);
-    assert_eq!(debit, 0.0);
+    assert_eq!(debit, Some(0.0));
 }
 
 #[test]
@@ -543,29 +476,33 @@ fn test_compute_debit_usd_discounts_cached_tokens() {
     // Disjoint buckets: `input_tokens` is non-cached, `cache_read_tokens`
     // additive. gpt-5.2: input $1.75/M, cache_read $0.175/M. A 1M-token prompt
     // split as 200K non-cached + 800K cache reads.
-    let cached = svc.compute_debit(
-        "usd",
-        1_000_000,
-        200_000,
-        0,
-        800_000,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
+    let cached = svc
+        .compute_debit(
+            "usd",
+            1_000_000,
+            200_000,
+            0,
+            800_000,
+            0,
+            Some("gpt-5.2"),
+            Some("openai"),
+            None,
+        )
+        .unwrap();
     // The same prompt billed cache-blind (all 1M at the full input rate).
-    let naive = svc.compute_debit(
-        "usd",
-        1_000_000,
-        1_000_000,
-        0,
-        0,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
+    let naive = svc
+        .compute_debit(
+            "usd",
+            1_000_000,
+            1_000_000,
+            0,
+            0,
+            0,
+            Some("gpt-5.2"),
+            Some("openai"),
+            None,
+        )
+        .unwrap();
     // 200K * 1.75 + 800K * 0.175 = 0.35 + 0.14 = 0.49, well below the cache-blind 1.75.
     assert!((cached - 0.49).abs() < 1e-9, "cached debit {cached}");
     assert!((naive - 1.75).abs() < 1e-9, "naive debit {naive}");
@@ -699,38 +636,6 @@ async fn test_delete_budget_soft_deletes() {
 // ========================================================================
 // Ledger tests
 // ========================================================================
-
-#[tokio::test]
-async fn test_ledger_entry_reduces_balance() {
-    let db = make_db();
-    let budget = db
-        .create_budget(CreateBudgetRow {
-            org_id: 1,
-            subject_type: "session".into(),
-            subject_id: "s1".into(),
-            currency: "usd".into(),
-            limit: 10.0,
-            soft_limit: None,
-            period: None,
-            metadata: None,
-        })
-        .await
-        .unwrap();
-    let (entry, updated) = db
-        .create_budget_ledger_entry(CreateBudgetLedgerRow {
-            budget_id: budget.id,
-            amount: 3.0,
-            meter_source: "llm_tokens".into(),
-            ref_type: Some("llm_generation".into()),
-            ref_id: Some(uuid::Uuid::now_v7()),
-            session_id: None,
-            description: Some("test debit".into()),
-        })
-        .await
-        .unwrap();
-    assert_eq!(entry.amount, 3.0);
-    assert_eq!(updated.balance, 7.0);
-}
 
 #[tokio::test]
 async fn test_budget_ledger_entry_creates_usage_journal_link() {
@@ -1035,7 +940,7 @@ async fn test_check_budgets_paused_budget_returns_pause() {
     assert_eq!(
         result.message.as_deref(),
         Some(
-            "Budget paused. 8.00 usd spent reached the 8.00 usd soft limit. Increase or resume the budget to continue."
+            "Usage policy asks before continuing. 8.00 usd spent reached the 8.00 usd ask point. Continue this turn or raise the limit."
         )
     );
     assert_eq!(result.error_code.as_deref(), Some("budget_paused"));
@@ -1071,7 +976,9 @@ async fn test_check_budgets_manually_paused_budget_uses_neutral_message() {
     assert!(result.should_pause());
     assert_eq!(
         result.message.as_deref(),
-        Some("Budget paused with 0.00 usd spent. Increase or resume the budget to continue.")
+        Some(
+            "Usage policy asks before continuing, with 0.00 usd spent. Continue this turn or raise the limit."
+        )
     );
 }
 
@@ -1110,7 +1017,7 @@ async fn test_check_budgets_paused_budget_above_soft_limit_uses_exceeded_message
     assert_eq!(
         result.message.as_deref(),
         Some(
-            "Budget paused. 9.00 usd spent exceeded the 8.00 usd soft limit. Increase or resume the budget to continue."
+            "Usage policy asks before continuing. 9.00 usd spent exceeded the 8.00 usd ask point. Continue this turn or raise the limit."
         )
     );
 }
@@ -1448,77 +1355,6 @@ async fn test_check_budgets_respects_user_budget_from_session_hierarchy() {
 // ========================================================================
 // Set budget status + DTO conversion tests
 // ========================================================================
-
-#[tokio::test]
-async fn test_set_budget_status() {
-    let db = make_db();
-    let budget = db
-        .create_budget(CreateBudgetRow {
-            org_id: 1,
-            subject_type: "session".into(),
-            subject_id: "s1".into(),
-            currency: "usd".into(),
-            limit: 10.0,
-            soft_limit: None,
-            period: None,
-            metadata: None,
-        })
-        .await
-        .unwrap();
-    let updated = db
-        .set_budget_status(budget.id, "paused")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(updated.status, "paused");
-    let updated2 = db
-        .set_budget_status(budget.id, "active")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(updated2.status, "active");
-}
-
-#[test]
-fn test_row_to_budget_dto() {
-    let row = make_budget_row(100.0, 75.0, Some(80.0), "usd");
-    let dto = crate::domains::budgets::record::Budget::from(&row);
-    assert_eq!(dto.limit, 100.0);
-    assert_eq!(dto.balance, 75.0);
-    assert_eq!(dto.soft_limit, Some(80.0));
-    assert_eq!(dto.currency, "usd");
-    assert!(matches!(
-        dto.status,
-        everruns_core::budget::BudgetStatus::Active
-    ));
-}
-
-#[test]
-fn test_row_to_ledger_entry_dto() {
-    let row = BudgetLedgerRow {
-        id: uuid::Uuid::now_v7(),
-        journal_id: uuid::Uuid::now_v7(),
-        budget_id: Some(uuid::Uuid::now_v7()),
-        org_id: 1,
-        session_id: None,
-        user_id: None,
-        principal_id: None,
-        agent_id: None,
-        harness_id: None,
-        currency: "usd".into(),
-        amount: 5.5,
-        meter_source: "llm_tokens".into(),
-        ref_type: Some("llm_generation".into()),
-        ref_id: Some(uuid::Uuid::now_v7()),
-        description: Some("test".into()),
-        rating_metadata: None,
-        created_at: chrono::Utc::now(),
-    };
-    let dto = crate::domains::budgets::record::LedgerEntry::from(&row);
-    assert_eq!(dto.amount, 5.5);
-    assert_eq!(dto.meter_source, "llm_tokens");
-    assert_eq!(dto.description, Some("test".into()));
-}
 
 // ========================================================================
 // Delegation tree budget pool

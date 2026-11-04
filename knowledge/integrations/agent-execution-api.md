@@ -114,6 +114,21 @@ All paths are relative to the agent base URL. JSON shapes are the server's exist
 | POST | `/sessions/{id}/files` | Upload inputs (images and files), bounded by the channel. |
 | DELETE | `/sessions/{id}` | Caller-side delete (archive). |
 
+### Admission retries
+
+Keyed message admissions commit their claim, database changes
+and replay response together. A live contender is refused without waiting for the
+owner; a cancelled or crashed transaction leaves no accepted operation or stranded
+claim. A committed retry returns the same response. A different request under a
+completed key remains invalid. Caller and tenant confinement are unchanged.
+
+Already-committed in-flight claims from older servers retain their lease during a
+rolling upgrade: they might still own an accepted operation. Session creation can run external startup work and retains its lease contract,
+as do nontransactional commands. The implementation is
+[Agent API idempotency](../../crates/server/src/api/agent_api_idempotency.rs), using
+the same request transaction and scoped lock as
+[transactional commands](../execution/command-tree.md).
+
 ### Task style (deferred)
 
 Decided 2026-10-09: no task or run API in this design. A thin "one turn" wrapper (an earlier draft's `/runs`) would only shorten the session loop and still need the session routes for questions, approvals and steering. The next step is a separate design for a **durable task API**: a long-lived unit of work that can be steered, talked with, paused on input, and followed to a result. It will likely build on [Session Tasks](../runtime-resources/session-tasks.md) and the A2A task mapping. Until then, scripts use the session routes; the SDK can offer a convenience helper over them (send a message, wait for the turn to finish, return the reply) without a new wire route.
@@ -121,6 +136,8 @@ Decided 2026-10-09: no task or run API in this design. A thin "one turn" wrapper
 ### What the execution API deliberately does not have
 
 Choosing the agent or harness, changing instructions, tools, models or capabilities, reading other callers' sessions, org listings, budgets, keys. Those are management. A caller who needs them is a member and uses the management API.
+
+[Work Chat](work-chat.md) adds consumer presentation controls: conversation organization and revocable read-only links. It uses the Agent's model. A caller cannot select a different one. Other execution channel types retain the fixed-model contract.
 
 ## Auth
 
@@ -237,7 +254,7 @@ Framework protocols remain available for people who already speak them: CopilotK
 Each is a separate PR and useful on its own.
 
 1. **Contract.** Write the execution API spec into `knowledge/` and add shared types in `everruns-contracts`; serve implements per-agent routes and the card over them. Conformance suite running against serve. Done: `everruns_contracts::execution_api` and serve's `/v1/channels/{agent}` routes; the conformance suite is shared once the server serves the same routes in phase 2.
-2. **API channel + agent keys.** New channel type, `agent_api_keys` table, management routes, Integrations UI. Session routes with SSE, questions, approvals, `visibility`, `errors`. Conformance suite also against the server. Done: the `api` channel type (no feature flag; creating the channel is the opt-in), the `agent_keys` table and key routes (`…/channels/{channel_id}/keys`, create, rotate, revoke), the card, session, message, cancel and event routes with `visibility` and `errors`, SSE, question answers and tool approvals ([`api/agent_api.rs`](../../crates/server/src/api/agent_api.rs)). Held-back tool calls are answered by an operator unless the channel's `tool_approvals` is `caller`, the AG-UI rule for the same risk; a credential question can only be declined over the API. The console offers the `api` type in New channel, edits its config, and manages keys on the channel page; a secret is shown once, in the dialog that created or rotated it ([`agent-keys-card.tsx`](../../apps/ui/src/components/agents/channels/agent-keys-card.tsx)).
+2. **API channel + agent keys.** New channel type, `agent_api_keys` table, management routes, Integrations UI. Session routes with SSE, questions, approvals, `visibility`, `errors`. Conformance suite also against the server. Done: the `api` channel type (no feature flag; creating the channel is the opt-in), the `agent_keys` table and key routes (`…/channels/{channel_id}/keys`, create, rotate, revoke), the card, session, message, cancel and event routes with `visibility` and `errors`, SSE, question answers and tool approvals ([`api/agent_api.rs`](../../crates/server/src/api/agent_api/mod.rs)). Held-back tool calls are answered by the person using the agent: the Agent's approval settings decide which calls wait, and no channel setting changes who answers (the user's rule, 2026-10-31; older configs' `tool_approvals` is accepted and dropped on save); a credential question can only be declined over the API. The console offers the `api` type in New channel, edits its config, and manages keys on the channel page; a secret is shown once, in the dialog that created or rotated it ([`agent-keys-card.tsx`](../../apps/ui/src/components/agents/channels/agent-keys-card.tsx)).
 3. **Identity.** Method list in channel auth, OIDC/introspection on API channels, `End-User` assertion, `/runtime-auth` accepted on API channels, CORS. Per-caller budget cap. Done in part: the `end_user` key permission and `End-User` header, the channel's `auth_methods` list (`oidc`, `google_oidc`, `oauth2_introspection`; agent keys always work besides), runtime tokens from `/runtime-auth` accepted on the channel, and the agent card listing every accepted credential ([`api/agent_api_auth.rs`](../../crates/server/src/api/agent_api_auth.rs)). An end user's sessions are owned by the end user, as on AG-UI, and shared by every credential that names the same end user; a key acting as itself keeps its own. Then the channel's `cors_origins` joined into the one server CORS layer for that channel's paths only ([`api/agent_api_cors.rs`](../../crates/server/src/api/agent_api_cors.rs)), and `Idempotency-Key` on creating a session and sending a message, on the command API's key store, scoped to the caller ([`api/agent_api_idempotency.rs`](../../crates/server/src/api/agent_api_idempotency.rs)). Then the per-caller daily spending limit (`daily_spend_limit_usd`, summed from the generations of the caller's sessions on the channel, checked before new work so a running turn finishes) and the `org_members` opt-in (a member's full-access personal access token runs as their default runtime account, so their own connections apply; a read-only one is refused with `insufficient_scope`, since running an agent is a write; console session JWTs are refused as ambiguous with OIDC tokens). Phase 3 is done.
 4. **Agent client** in the SDK repo (Python, TypeScript, Rust), docs page "Call your agent from code", cookbook against a local server and a serve app. Mark the management clients deprecated in the same release; remove them in the next.
 5. **serve auth hook** with the verifier moved into core. Done: the token half of the channel verifier (OIDC/JWKS, introspection, claim requirements, shared secret, mTLS, SSRF-safe fetching) is `everruns_core::channel_auth` behind the `channel-auth` feature, re-exported as `everruns::channel_auth`; the server keeps HTTP Basic's password store as a check it installs on the verifier ([`api/channel_auth.rs`](../../crates/server/src/api/channel_auth.rs)). serve takes a method list from `ServerBuilder::auth`, `[auth]` in `serve.toml` and `SERVE_API_KEYS`, requires a bearer credential on every agent route once one is set, and lists the methods on the card ([`auth.rs`](../../crates/serve/src/auth.rs)). Still open: per-caller session isolation in serve.

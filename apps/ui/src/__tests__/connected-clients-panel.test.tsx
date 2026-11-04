@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ConnectedClientsPanel } from "@/components/connections/connected-clients-panel";
 
-// Connected AI clients on Settings > My agent experience
+// Connected AI clients on Settings > AI clients
 // (knowledge/integrations/mcp-connected-clients.md, phase 1).
 const mockUseConnectedClients = jest.fn();
 const mockUseRevokeConnectedClient = jest.fn();
@@ -37,6 +37,14 @@ describe("ConnectedClientsPanel", () => {
     render(<ConnectedClientsPanel />);
 
     expect(screen.getByText("No connected AI clients")).toBeInTheDocument();
+  });
+
+  it("refreshes OAuth approvals on demand without claiming plugin installation", () => {
+    const refetch = jest.fn();
+    mockUseConnectedClients.mockReturnValue({ data: [], isLoading: false, error: null, refetch });
+    render(<ConnectedClientsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /Refresh connections/ }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it("shows each client with its host, access and organizations", () => {

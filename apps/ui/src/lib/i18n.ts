@@ -1,14 +1,31 @@
 /**
  * Decisions:
  * - Keep catalogs in code for now so adding new locales is a small, typed change.
- * - Separate UI locale (`en`/`uk`) from backend locale (`en-US`, `uk-UA`, etc.).
+ * - Keep interface language separate from execution locale and preserve formatting regions.
  * - Fall back to English for unsupported browser languages until more locales land.
  */
 
-export type SupportedLocale = "en" | "uk";
+import { type SupportedLocale } from "./locale-registry";
+import { semanticMessages } from "./semantic-messages";
+import { uiMessagesByLocale } from "./ui-messages";
+export { getSupportedLocale, type SupportedLocale } from "./locale-registry";
 
 const messages = {
   en: {
+    localization_title: "Localization",
+    localization_help:
+      "Translate the display name and description for each locale. Missing fields use the default text.",
+    localization_display_name: "Display name",
+    localization_description: "Description",
+    localization_remove: "Remove translation",
+    localization_locale: "Locale",
+    localization_add: "Add locale",
+    localization_invalid_locale: "Enter a valid, unique locale. Up to 64 locales are supported.",
+    interface_language: "Interface language",
+    interface_language_system: "System (browser language)",
+    interface_language_help:
+      "Changes the interface on this device. Agent response language is configured separately in session and virtual user settings.",
+
     thinking: "thinking",
     iteration: "Iteration {value}",
     new_messages: "New messages",
@@ -22,6 +39,11 @@ const messages = {
     waiting_on_tools: "Waiting on tools",
     scheduled: "Scheduled",
     automatic_update: "Automatic update",
+    origin_trigger: "Trigger",
+    origin_webhook: "Webhook",
+    origin_system: "System",
+    origin_run: "run {number} of {limit}",
+    origin_run_number: "run {number}",
     from_chat: "From Chat",
     new_assignment: "New assignment: {title}",
     task_update_done: "{title} is done",
@@ -30,12 +52,27 @@ const messages = {
     task_update_needs_input: "{title} needs input",
     task_update_message: "{title} sent an update",
     worked_for: "Worked for {duration}",
+    work_done: "Done",
+    work_failed: "Could not finish",
+    work_checked: "Checked: {checks}",
+    work_plan: "Plan",
+    work_plan_step: "Step {current} of {total}",
+    work_needs_approval: "Needs your approval",
+    work_waiting_answer: "Waiting for your answer",
+    work_waiting_you: "Waiting for you",
+    work_files_changed_one: "{count} file changed",
+    work_files_changed_few: "{count} files changed",
+    work_files_changed_many: "{count} files changed",
+    work_tasks_started_one: "{count} task started",
+    work_tasks_started_few: "{count} tasks started",
+    work_tasks_started_many: "{count} tasks started",
     working_for: "Working for {duration}",
     turn_sending: "Sending…",
     turn_still_connecting: "Still connecting…",
     turn_queued: "Queued",
     turn_queued_status: "Joins the current turn",
     turn_starting: "Starting",
+    turn_waiting_for_worker: "Waiting for a worker to pick this up",
     turn_thinking: "Thinking",
     turn_stopped_after: "Stopped after {duration}",
     turn_not_delivered: "Not delivered",
@@ -47,6 +84,11 @@ const messages = {
     bad_response: "Bad response",
     branch_into_new_chat: "Branch into new chat",
     branch_chat_error: "Could not branch this chat",
+    add_reaction: "Add reaction",
+    reacted_with: "{names} reacted {emoji}",
+    reaction_you: "You",
+    reaction_remove: "Remove your {emoji}",
+    origin_reaction: "Reaction",
     show_earlier_steps: "Show {count} earlier steps",
     work_log_errors_one: "{count} error",
     work_log_errors_few: "{count} errors",
@@ -59,7 +101,7 @@ const messages = {
     reply_to: "Reply to {name}... (Enter to send)",
     reply_in_thread: "Reply in this thread... (Enter to send)",
     choose_model: "Choose a model",
-    type_message_pick_model: "Type a message — pick a model to send",
+    type_message_pick_model: "Type a message, then pick a model to send",
     attach_images: "Attach images (PNG, JPEG, GIF, WebP)",
     model: "Model",
     model_changed: "Model changed from {from} to {to}",
@@ -117,9 +159,10 @@ const messages = {
     expand_tool_activity: "Expand tool activity",
     collapse_activity_group: "Collapse activity group",
     expand_activity_group: "Expand activity group",
-    chat_error_title: "Something went wrong",
+    chat_error_title: "The agent could not reply",
     chat_error_description:
       "Try sending your message again. If it keeps happening, share feedback so we can investigate.",
+    chat_error_action_description: "Sending again will not help until this is fixed.",
     chat_error_fallback: "Message failed.",
     chat_model_loading: "Checking model availability…",
     chat_model_required: "Choose a model, or configure a default model, before sending.",
@@ -133,18 +176,19 @@ const messages = {
     voice_service_unavailable_error: "Voice service is unavailable.",
     error_prefix: "Error: {value}",
     runtime_error_budget_exhausted_reached:
-      "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.",
+      "Usage limit reached. {spent} {currency} spent reached the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.",
     runtime_error_budget_exhausted_exceeded:
-      "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.",
-    runtime_error_budget_exhausted_generic: "Budget exhausted. Increase the budget to continue.",
+      "Usage limit reached. {spent} {currency} spent exceeded the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.",
+    runtime_error_budget_exhausted_generic:
+      "Usage limit reached. A usage policy stopped this work; raise its limit to continue.",
     runtime_error_budget_paused_reached:
-      "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. {spent} {currency} spent reached the {soft_limit} {currency} ask point. Continue this turn or raise the limit.",
     runtime_error_budget_paused_exceeded:
-      "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. {spent} {currency} spent exceeded the {soft_limit} {currency} ask point. Continue this turn or raise the limit.",
     runtime_error_budget_paused_with_spent:
-      "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing, with {spent} {currency} spent. Continue this turn or raise the limit.",
     runtime_error_budget_paused_generic:
-      "Budget paused. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. Continue this turn or raise the limit.",
     runtime_error_model_unavailable:
       "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
     runtime_error_model_unavailable_generic:
@@ -165,15 +209,18 @@ const messages = {
     runtime_error_provider_in_flight_limit_auto_retry:
       "The AI provider's in-flight spending limit is reached. Retrying automatically in about {retry_after}s.",
     runtime_error_provider_misconfigured:
-      "There is a misconfiguration with the AI provider. Please contact support.",
+      "The AI provider is not set up correctly. Ask an administrator to check the provider in Models.",
     runtime_error_provider_quota_exhausted:
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
     runtime_error_provider_quota_exhausted_affordable:
       "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.",
+    runtime_error_provider_quota_credit_wait:
+      "The work continues automatically once credits are back (checked every minute for up to an hour).",
     runtime_error_provider_attestation_required:
       "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.",
     runtime_error_provider_attestation_required_types:
       "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.",
+    runtime_error_model_refusal: "The model declined this request.",
     runtime_error_details_label: "Details",
     runtime_error_provider_unavailable:
       "The AI provider is experiencing issues. Please try again shortly.",
@@ -205,6 +252,12 @@ const messages = {
     edit_count_one: "{count} edit",
     edit_count_few: "{count} edits",
     edit_count_many: "{count} edits",
+    saved_change_count_one: "Saved {count} change",
+    saved_change_count_few: "Saved {count} changes",
+    saved_change_count_many: "Saved {count} changes",
+    undone_change_count_one: "Undid {count} change",
+    undone_change_count_few: "Undid {count} changes",
+    undone_change_count_many: "Undid {count} changes",
     line_number: "line {value}",
     no_tasks: "No tasks",
     todos_completed_summary: "{completed} of {total} todos completed",
@@ -286,6 +339,20 @@ const messages = {
     atif_images_omitted_many: "{count} images were omitted from the ATIF export",
   },
   uk: {
+    localization_title: "Локалізація",
+    localization_help:
+      "Перекладіть назву та опис для кожної мови. Для відсутніх перекладів використовується основний текст.",
+    localization_display_name: "Назва для відображення",
+    localization_description: "Опис",
+    localization_remove: "Видалити переклад",
+    localization_locale: "Мова",
+    localization_add: "Додати мову",
+    localization_invalid_locale: "Введіть коректний унікальний код мови. Підтримується до 64 мов.",
+    interface_language: "Мова інтерфейсу",
+    interface_language_system: "Системна (мова браузера)",
+    interface_language_help:
+      "Змінює інтерфейс на цьому пристрої. Мова відповідей агента налаштовується окремо в параметрах сесії та віртуального користувача.",
+
     thinking: "думаю",
     iteration: "Ітерація {value}",
     new_messages: "Нові повідомлення",
@@ -299,6 +366,11 @@ const messages = {
     waiting_on_tools: "Очікування інструментів",
     scheduled: "За розкладом",
     automatic_update: "Автоматичне оновлення",
+    origin_trigger: "Тригер",
+    origin_webhook: "Вебхук",
+    origin_system: "Система",
+    origin_run: "запуск {number} з {limit}",
+    origin_run_number: "запуск {number}",
     from_chat: "Від Чату",
     new_assignment: "Нове завдання: {title}",
     task_update_done: "{title}: готово",
@@ -307,12 +379,27 @@ const messages = {
     task_update_needs_input: "{title}: потрібна відповідь",
     task_update_message: "{title}: нове оновлення",
     worked_for: "Працював {duration}",
+    work_done: "Готово",
+    work_failed: "Не вдалося завершити",
+    work_checked: "Перевірено: {checks}",
+    work_plan: "План",
+    work_plan_step: "Крок {current} з {total}",
+    work_needs_approval: "Потрібне ваше схвалення",
+    work_waiting_answer: "Чекаю на вашу відповідь",
+    work_waiting_you: "Чекаю на вас",
+    work_files_changed_one: "Змінено {count} файл",
+    work_files_changed_few: "Змінено {count} файли",
+    work_files_changed_many: "Змінено {count} файлів",
+    work_tasks_started_one: "Запущено {count} завдання",
+    work_tasks_started_few: "Запущено {count} завдання",
+    work_tasks_started_many: "Запущено {count} завдань",
     working_for: "Працюю {duration}",
     turn_sending: "Надсилаю…",
     turn_still_connecting: "Досі з'єднуюсь…",
     turn_queued: "У черзі",
     turn_queued_status: "Приєднається до поточного ходу",
     turn_starting: "Починаю",
+    turn_waiting_for_worker: "Чекаю, поки воркер візьме це в роботу",
     turn_thinking: "Думаю",
     turn_stopped_after: "Зупинено через {duration}",
     turn_not_delivered: "Не доставлено",
@@ -324,6 +411,11 @@ const messages = {
     bad_response: "Погана відповідь",
     branch_into_new_chat: "Відгалузити в новий чат",
     branch_chat_error: "Не вдалося відгалузити цей чат",
+    add_reaction: "Додати реакцію",
+    reacted_with: "{names}: {emoji}",
+    reaction_you: "Ви",
+    reaction_remove: "Прибрати вашу реакцію {emoji}",
+    origin_reaction: "Реакція",
     show_earlier_steps: "Показати попередні кроки ({count})",
     work_log_errors_one: "{count} помилка",
     work_log_errors_few: "{count} помилки",
@@ -336,7 +428,7 @@ const messages = {
     reply_to: "Відповісти {name}... (Enter, щоб надіслати)",
     reply_in_thread: "Відповісти в цій гілці... (Enter, щоб надіслати)",
     choose_model: "Оберіть модель",
-    type_message_pick_model: "Введіть повідомлення — оберіть модель, щоб надіслати",
+    type_message_pick_model: "Введіть повідомлення, потім оберіть модель, щоб надіслати",
     attach_images: "Додати зображення (PNG, JPEG, GIF, WebP)",
     model: "Модель",
     model_changed: "Модель змінено з {from} на {to}",
@@ -394,9 +486,10 @@ const messages = {
     expand_tool_activity: "Розгорнути активність інструментів",
     collapse_activity_group: "Згорнути групу активності",
     expand_activity_group: "Розгорнути групу активності",
-    chat_error_title: "Щось пішло не так",
+    chat_error_title: "Агент не зміг відповісти",
     chat_error_description:
       "Спробуйте надіслати повідомлення ще раз. Якщо це повторюється, надішліть відгук, щоб ми могли дослідити проблему.",
+    chat_error_action_description: "Повторне надсилання не допоможе, доки це не виправлено.",
     chat_error_fallback: "Повідомлення не вдалося надіслати.",
     chat_model_loading: "Перевіряємо доступність моделі…",
     chat_model_required:
@@ -412,18 +505,19 @@ const messages = {
     voice_service_unavailable_error: "Голосовий сервіс недоступний.",
     error_prefix: "Помилка: {value}",
     runtime_error_budget_exhausted_reached:
-      "Бюджет вичерпано. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Збільште бюджет, щоб продовжити.",
+      "Досягнуто ліміту використання. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
     runtime_error_budget_exhausted_exceeded:
-      "Бюджет вичерпано. Витрачено {spent} {currency}, що перевищило ліміт {limit} {currency}. Збільште бюджет, щоб продовжити.",
-    runtime_error_budget_exhausted_generic: "Бюджет вичерпано. Збільште бюджет, щоб продовжити.",
+      "Досягнуто ліміту використання. Витрачено {spent} {currency}, що перевищило ліміт {limit} {currency}. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
+    runtime_error_budget_exhausted_generic:
+      "Досягнуто ліміту використання. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
     runtime_error_budget_paused_reached:
-      "Бюджет призупинено. Витрачено {spent} {currency}, що досягло м'якого ліміту {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Витрачено {spent} {currency}, що досягло порогу запиту {soft_limit} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_exceeded:
-      "Бюджет призупинено. Витрачено {spent} {currency}, що перевищило м'який ліміт {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Витрачено {spent} {currency}, що перевищило поріг запиту {soft_limit} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_with_spent:
-      "Бюджет призупинено після витрати {spent} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження: витрачено {spent} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_generic:
-      "Бюджет призупинено. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Продовжте цей хід або підвищте ліміт.",
     runtime_error_model_unavailable:
       "Модель `{value}` недоступна. Її могли видалити, перейменувати або ваш API-ключ не має до неї доступу. Виберіть іншу модель.",
     runtime_error_model_unavailable_generic: "Вибрана модель недоступна. Виберіть іншу модель.",
@@ -444,15 +538,18 @@ const messages = {
     runtime_error_provider_in_flight_limit_auto_retry:
       "Досягнуто ліміту одночасних витрат AI-провайдера. Автоматична повторна спроба приблизно через {retry_after} с.",
     runtime_error_provider_misconfigured:
-      "AI-провайдер налаштований некоректно. Зверніться до підтримки.",
+      "AI-провайдер налаштований некоректно. Попросіть адміністратора перевірити провайдера в розділі Models.",
     runtime_error_provider_quota_exhausted:
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
     runtime_error_provider_quota_exhausted_affordable:
       "На обліковому записі AI-провайдера бракує кредитів для цього запиту: запитано до {requested_max_tokens} вихідних токенів, а баланс покриває {affordable_tokens}. Поповніть рахунок або зменште максимальну кількість вихідних токенів, щоб продовжити.",
+    runtime_error_provider_quota_credit_wait:
+      "Робота продовжиться автоматично, щойно кредити з'являться (перевірка щохвилини протягом години).",
     runtime_error_provider_attestation_required:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель. Завершіть його на {confirm_url} і спробуйте ще раз.",
     runtime_error_provider_attestation_required_types:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель ({missing_types}). Завершіть його на {confirm_url} і спробуйте ще раз.",
+    runtime_error_model_refusal: "Модель відмовилася виконати цей запит.",
     runtime_error_details_label: "Деталі",
     runtime_error_provider_unavailable:
       "AI-провайдер зараз недоступний. Спробуйте ще раз трохи пізніше.",
@@ -483,6 +580,12 @@ const messages = {
     edit_count_one: "{count} зміна",
     edit_count_few: "{count} зміни",
     edit_count_many: "{count} змін",
+    saved_change_count_one: "Збережено {count} зміну",
+    saved_change_count_few: "Збережено {count} зміни",
+    saved_change_count_many: "Збережено {count} змін",
+    undone_change_count_one: "Скасовано {count} зміну",
+    undone_change_count_few: "Скасовано {count} зміни",
+    undone_change_count_many: "Скасовано {count} змін",
     line_number: "рядок {value}",
     no_tasks: "Завдань немає",
     todos_completed_summary: "Завершено {completed} із {total} завдань",
@@ -567,7 +670,8 @@ const messages = {
   },
 } as const;
 
-export type MessageKey = keyof typeof messages.en;
+export const englishMessages = messages.en;
+export type MessageKey = keyof typeof englishMessages;
 
 export function normalizeBackendLocale(input?: string | null): string {
   const normalized = input?.trim().replace(/_/g, "-");
@@ -583,147 +687,79 @@ export function detectBrowserLocale(
   return normalizeBackendLocale(candidate);
 }
 
-export function getSupportedLocale(locale: string): SupportedLocale {
-  return locale.toLowerCase().startsWith("uk") ? "uk" : "en";
-}
-
 export function formatMessage(
   locale: SupportedLocale,
   key: MessageKey,
   values?: Record<string, string | number>,
 ): string {
-  const template = messages[locale][key] ?? messages.en[key];
+  const source = messages.en[key];
+  const overrides = semanticMessages[locale];
+  const contextual = overrides && Object.hasOwn(overrides, key) ? overrides[key] : undefined;
+  const template =
+    locale === "uk"
+      ? messages.uk[key]
+      : (contextual ?? uiMessagesByLocale[locale]?.[source] ?? source);
   if (!values) return template;
   return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`));
 }
 
-function getUkrainianPluralForm(count: number): "one" | "few" | "many" {
-  const absCount = Math.abs(count);
-  const lastTwoDigits = absCount % 100;
-  const lastDigit = absCount % 10;
+export function getPluralForm(locale: SupportedLocale, count: number): "one" | "few" | "many" {
+  const category = new Intl.PluralRules(locale).select(count);
+  return category === "one" ? "one" : category === "few" ? "few" : "many";
+}
 
-  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
-    return "many";
-  }
+type CountMessagePrefix =
+  | "image_count"
+  | "work_log_errors"
+  | "work_log_issues"
+  | "work_files_changed"
+  | "work_tasks_started"
+  | "atif_images_omitted"
+  | "atif_parts_exported"
+  | "atif_export_stopped"
+  | "edit_count"
+  | "saved_change_count"
+  | "undone_change_count";
 
-  if (lastDigit === 1) {
-    return "one";
-  }
-
-  if (lastDigit >= 2 && lastDigit <= 4) {
-    return "few";
-  }
-
-  return "many";
+function formatPluralMessage(
+  locale: SupportedLocale,
+  prefix: CountMessagePrefix,
+  count: number,
+): string {
+  return formatMessage(locale, `${prefix}_${getPluralForm(locale, count)}`, { count });
 }
 
 export function formatImageCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "image_count_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "image_count_few", { count });
-    }
-    return formatMessage(locale, "image_count_many", { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "image_count_one" : "image_count_many", { count });
+  return formatPluralMessage(locale, "image_count", count);
 }
-
 export function formatWorkLogErrorCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    return formatMessage(locale, `work_log_errors_${form}`, { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "work_log_errors_one" : "work_log_errors_many", {
-    count,
-  });
+  return formatPluralMessage(locale, "work_log_errors", count);
 }
-
 export function formatWorkLogIssueCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    return formatMessage(locale, `work_log_issues_${form}`, { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "work_log_issues_one" : "work_log_issues_many", {
-    count,
-  });
+  return formatPluralMessage(locale, "work_log_issues", count);
 }
-
+export function formatWorkFact(
+  locale: SupportedLocale,
+  kind: "files_changed" | "tasks_started",
+  count: number,
+): string {
+  return formatPluralMessage(locale, `work_${kind}`, count);
+}
 export function formatAtifImagesOmitted(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "atif_images_omitted_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "atif_images_omitted_few", { count });
-    }
-    return formatMessage(locale, "atif_images_omitted_many", { count });
-  }
-
-  return formatMessage(
-    locale,
-    count === 1 ? "atif_images_omitted_one" : "atif_images_omitted_many",
-    {
-      count,
-    },
-  );
+  return formatPluralMessage(locale, "atif_images_omitted", count);
 }
-
 export function formatAtifPartsExported(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "atif_parts_exported_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "atif_parts_exported_few", { count });
-    }
-    return formatMessage(locale, "atif_parts_exported_many", { count });
-  }
-
-  return formatMessage(
-    locale,
-    count === 1 ? "atif_parts_exported_one" : "atif_parts_exported_many",
-    { count },
-  );
+  return formatPluralMessage(locale, "atif_parts_exported", count);
 }
-
 export function formatAtifExportStopped(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "atif_export_stopped_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "atif_export_stopped_few", { count });
-    }
-    return formatMessage(locale, "atif_export_stopped_many", { count });
-  }
-
-  return formatMessage(
-    locale,
-    count === 1 ? "atif_export_stopped_one" : "atif_export_stopped_many",
-    { count },
-  );
+  return formatPluralMessage(locale, "atif_export_stopped", count);
 }
-
 export function formatEditCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "edit_count_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "edit_count_few", { count });
-    }
-    return formatMessage(locale, "edit_count_many", { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "edit_count_one" : "edit_count_many", { count });
+  return formatPluralMessage(locale, "edit_count", count);
+}
+export function formatSavedChangeCount(locale: SupportedLocale, count: number): string {
+  return formatPluralMessage(locale, "saved_change_count", count);
+}
+export function formatUndoneChangeCount(locale: SupportedLocale, count: number): string {
+  return formatPluralMessage(locale, "undone_change_count", count);
 }

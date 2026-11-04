@@ -6,16 +6,21 @@ import { Settings, Zap } from "lucide-react";
 
 jest.mock("next/link", () => ({
   __esModule: true,
+  useLinkStatus: () => ({ pending: mockNavigationPending }),
   default: ({
     children,
     prefetch,
     ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => (
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    prefetch?: boolean;
+  }) => (
     <a {...props} data-prefetch={prefetch === undefined ? undefined : String(prefetch)}>
       {children}
     </a>
   ),
 }));
+
+let mockNavigationPending = false;
 
 // Mock next/navigation
 const mockPathname = jest.fn();
@@ -69,7 +74,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 }));
 
 jest.mock("@/components/layout/mcp-connect-button", () => ({
-  McpConnectButton: () => <button type="button" aria-label="Connect via MCP" />,
+  McpConnectButton: () => <button type="button" aria-label="Connect your coding agent" />,
   McpConnectDialog: ({ open }: { open: boolean }) =>
     open ? (
       <div role="dialog" aria-label="MCP connection details">
@@ -78,7 +83,7 @@ jest.mock("@/components/layout/mcp-connect-button", () => ({
     ) : null,
   McpConnectMenuItem: ({ onSelect }: { onSelect: () => void }) => (
     <button role="menuitem" onClick={onSelect}>
-      Connect via MCP
+      Connect your coding agent
     </button>
   ),
 }));
@@ -144,6 +149,7 @@ jest.mock("@/hooks/use-policies", () => ({
 
 describe("Sidebar", () => {
   beforeEach(() => {
+    mockNavigationPending = false;
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
       chat_threads: false,
@@ -176,20 +182,13 @@ describe("Sidebar", () => {
     });
   });
 
-  it("renders the Everruns logo and title", () => {
-    render(<Sidebar />);
-
-    expect(screen.getByText("Everruns")).toBeInTheDocument();
-    expect(screen.getByAltText("Everruns")).toBeInTheDocument();
-  });
-
-  it("keeps only Chat in navigation when the organization adopts threads", () => {
+  it("keeps subchats in navigation when the organization adopts background work", () => {
     mockFeatureFlags.chat_threads = true;
     mockThreads.mockReturnValue([{ id: "side_1", title: "Side conversation" }]);
     render(<Sidebar />);
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
-    expect(screen.queryByTestId("sidebar-chat-threads")).not.toBeInTheDocument();
-    expect(screen.queryByText("Side conversation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-chat-threads")).toBeInTheDocument();
+    expect(screen.getByText("Side conversation")).toBeInTheDocument();
   });
 
   it("keeps search row focused on search only", () => {
@@ -200,9 +199,9 @@ describe("Sidebar", () => {
 
     expect(brandRow).not.toBeNull();
     expect(within(searchRow).getByRole("button", { name: /search/i })).toBeInTheDocument();
-    expect(within(brandRow!).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(brandRow!).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
     expect(within(brandRow!).queryByLabelText("Notifications")).not.toBeInTheDocument();
-    expect(within(searchRow).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(searchRow).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
     expect(within(searchRow).queryByLabelText("Notifications")).not.toBeInTheDocument();
   });
 
@@ -226,7 +225,7 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
     expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("Connect via MCP")).toBeInTheDocument();
+    expect(screen.getByText("Connect your coding agent")).toBeInTheDocument();
   });
 
   it("renders a local identity menu with applicable actions in no-auth mode", async () => {
@@ -248,35 +247,21 @@ describe("Sidebar", () => {
     expect(trigger).toHaveTextContent("Local user");
 
     fireEvent.click(trigger);
-    expect(screen.getByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Account" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Changelog" })).toHaveAttribute(
+      "href",
+      "https://everruns.com/docs/changelog/",
+    );
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /personal access tokens/i }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /sign out/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Connect via MCP" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Connect your coding agent" }));
     expect(
       await screen.findByRole("dialog", { name: /mcp connection details/i }),
     ).toBeInTheDocument();
-  });
-
-  it("keeps MCP Connect visible without endpoint feature flag data", () => {
-    mockUseAuth.mockReturnValue({
-      user: { name: "Anonymous", email: "anonymous@local", avatar_url: null },
-      requiresAuth: false,
-      isAuthenticated: true,
-      config: { mode: "none" },
-      isLoading: false,
-      logout: jest.fn(),
-      logoutPending: false,
-      createOrganization: undefined,
-    });
-
-    render(<Sidebar />);
-    fireEvent.click(screen.getByRole("button", { name: /anonymous/i }));
-
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
   });
 
   it("preserves authentication-only actions in authenticated mode", () => {
@@ -296,7 +281,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("menuitem", { name: /personal access tokens/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
   });
 
   it("renders only the version when no current user is available", () => {
@@ -307,7 +292,7 @@ describe("Sidebar", () => {
     expect(within(footer).queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("routes the Profile menu item to /settings/profile", () => {
+  it("routes the Account menu item to /settings/profile", () => {
     mockUseAuth.mockReturnValue({
       user: { name: "Test User", email: "test@example.com", avatar_url: null },
       requiresAuth: true,
@@ -322,7 +307,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /profile/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Account" }));
 
     expect(mockPush).toHaveBeenCalledWith("/settings/profile");
   });
@@ -349,26 +334,26 @@ describe("Sidebar", () => {
     open.mockRestore();
   });
 
-  it("renders all navigation items", () => {
+  it("links the Changelog menu item to the public changelog", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
     render(<Sidebar />);
 
-    expect(screen.getByText("Chat")).toBeInTheDocument();
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
-    expect(screen.getByText("Reports")).toBeInTheDocument();
-    expect(screen.getByText("Harnesses")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Virtual Users")).toBeInTheDocument();
-    expect(screen.getByText("Knowledge indexes")).toBeInTheDocument();
-    expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
-    expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.queryByText("MCP")).not.toBeInTheDocument();
-    expect(screen.getByText("Skills")).toBeInTheDocument();
-    expect(screen.getByText("Capabilities")).toBeInTheDocument();
-    expect(screen.getByText("Plugins")).toBeInTheDocument();
-    expect(screen.getByText("Evals")).toBeInTheDocument();
-    expect(screen.getByText("Observers")).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    const changelog = screen.getByRole("menuitem", { name: "Changelog" });
+
+    expect(changelog).toHaveAttribute("href", "https://everruns.com/docs/changelog/");
+    expect(changelog).toHaveAttribute("target", "_blank");
+    expect(changelog).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("hides opt-in feature navigation when its flags are disabled", () => {
@@ -388,37 +373,11 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
-    expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Knowledge")).not.toBeInTheDocument();
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
-  });
-
-  it("renders correct navigation links", () => {
-    render(<Sidebar />);
-
-    const chatsLink = screen.getByRole("link", { name: /^chat$/i });
-    const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
-    const agentsLink = screen.getByRole("link", { name: "Agents" });
-    const memoryLink = screen.getByRole("link", { name: "Memory" });
-    const modelsLink = screen.getByRole("link", { name: "Models" });
-    const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
-    const identitiesLink = screen.getByRole("link", { name: "Virtual Users" });
-    const knowledgeLink = screen.getByRole("link", { name: "Knowledge indexes" });
-    const settingsLink = screen.getByRole("link", { name: "Settings" });
-
-    expect(chatsLink).toHaveAttribute("href", "/chats");
-    expect(identitiesLink).toHaveAttribute("href", "/virtual-users");
-    expect(knowledgeLink).toHaveAttribute("href", "/knowledge-indexes");
-    // The org MCP catalog lives in Settings > Organization (user-mcp-servers.md, step 8).
-    expect(screen.queryByRole("link", { name: "MCP" })).not.toBeInTheDocument();
-    expect(harnessesLink).toHaveAttribute("href", "/harnesses");
-    expect(agentsLink).toHaveAttribute("href", "/agents");
-    expect(memoryLink).toHaveAttribute("href", "/memory");
-    expect(modelsLink).toHaveAttribute("href", "/models");
-    expect(capabilitiesLink).toHaveAttribute("href", "/capabilities");
-    expect(settingsLink).toHaveAttribute("href", "/settings/organization");
   });
 
   it.each(["/chats", "/chats/new", "/chats/history", "/sessions"])(
@@ -447,16 +406,6 @@ describe("Sidebar", () => {
     },
   );
 
-  it("renders distinct semantic icons for registry navigation", () => {
-    render(<Sidebar />);
-
-    const icon = (name: string) => screen.getByRole("link", { name }).querySelector("svg");
-
-    expect(icon("Skills")).toHaveAttribute("data-facet-icon", "skills");
-    expect(icon("Capabilities")).toHaveAttribute("data-facet-icon", "capabilities");
-    expect(icon("Plugins")).toHaveAttribute("data-facet-icon", "plugins");
-  });
-
   it("snaps the active item instead of transitioning it after the page commits", () => {
     mockPathname.mockReturnValue("/harnesses");
     render(<Sidebar />);
@@ -467,6 +416,22 @@ describe("Sidebar", () => {
     expect(sessions.className).not.toMatch(/transition/);
     expect(harnesses.className).toContain("border-l-primary");
     expect(sessions.className).not.toContain("border-l-primary");
+  });
+
+  it("shows navigation feedback while keeping the current route selected", () => {
+    mockNavigationPending = true;
+    mockPathname.mockReturnValue("/agents");
+    render(<Sidebar />);
+
+    expect(screen.getAllByRole("status")[0]).toHaveTextContent("Loading page");
+    expect(screen.getByRole("link", { name: /^Agents/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /^Harnesses/ })).not.toHaveAttribute("aria-current");
+  });
+
+  it("does not show navigation feedback when links are idle", () => {
+    render(<Sidebar />);
+
+    expect(screen.queryByText("Loading page")).not.toBeInTheDocument();
   });
 
   it("disables automatic viewport prefetch for every sidebar navigation link", () => {
@@ -502,15 +467,6 @@ describe("Sidebar", () => {
     expect(mockPrefetch).not.toHaveBeenCalled();
   });
 
-  it("does not render legacy navigation items", () => {
-    render(<Sidebar />);
-
-    expect(screen.queryByText("Runs")).not.toBeInTheDocument();
-    expect(screen.queryByText("Building Blocks")).not.toBeInTheDocument();
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
-    expect(screen.queryByText("Work")).not.toBeInTheDocument();
-  });
-
   it("highlights the active navigation item", () => {
     mockPathname.mockReturnValue("/agents");
     render(<Sidebar />);
@@ -535,8 +491,10 @@ describe("Sidebar", () => {
     "/settings/features",
     "/settings/payments",
     "/settings/profile",
-    "/settings/agent-experience",
+    "/settings/user-profile",
     "/settings/connections",
+    "/settings/mcp-servers",
+    "/settings/ai-clients",
     "/settings/personal-access-tokens",
   ])("keeps Settings active on %s", (pathname) => {
     mockPathname.mockReturnValue(pathname);
@@ -553,29 +511,11 @@ describe("Sidebar", () => {
   // cosmetic refactors while asserting no behavior. Active-state/routing tests
   // that verify *which* item is highlighted are kept below.
 
-  it("renders the grouped section labels and Durable Execution", () => {
-    render(<Sidebar />);
-
-    expect(screen.getByText("Operational")).toBeInTheDocument();
-    expect(screen.getByText("Building")).toBeInTheDocument();
-    expect(screen.getByText("Registers")).toBeInTheDocument();
-    expect(screen.getByText("Quality")).toBeInTheDocument();
-    expect(screen.getByText("Durable Execution")).toBeInTheDocument();
-  });
-
   it("links Sandboxes as one Building entry", () => {
     mockPathname.mockReturnValue("/sandboxes/templates/template-1");
     render(<Sidebar />);
     expect(screen.getByRole("link", { name: "Sandboxes" })).toHaveAttribute("href", "/sandboxes");
     expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
-  });
-
-  it("leads with Chats above the first labelled group", () => {
-    render(<Sidebar />);
-
-    const navigation = screen.getByRole("navigation");
-    const links = within(navigation).getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/chats");
   });
 
   it("hangs the thread list directly under the Chats entry", () => {
@@ -585,35 +525,39 @@ describe("Sidebar", () => {
 
     const navigation = screen.getByRole("navigation");
     const links = within(navigation).getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/chats");
-    expect(links[1]).toHaveAttribute("href", "/chats/sess_1");
+    // Home sits above Chat; the thread list hangs under Chat.
+    expect(links[0]).toHaveAttribute("href", "/home");
+    expect(links[1]).toHaveAttribute("href", "/chats");
+    expect(links[2]).toHaveAttribute("href", "/chats/sess_1");
   });
 
-  it("hides Durable Execution navigation items by default (collapsed)", () => {
+  it("hides System navigation items by default (collapsed)", () => {
     render(<Sidebar />);
 
     expect(screen.queryByRole("link", { name: "Monitoring" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Health" })).not.toBeInTheDocument();
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
   });
 
-  it("shows Durable Execution navigation items when expanded", () => {
+  it("shows System navigation items when expanded, Health first", () => {
     render(<Sidebar />);
 
-    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    const toggle = screen.getByRole("button", { name: /^system$/i });
     fireEvent.click(toggle);
 
+    expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/system/health");
     expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/durable");
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();
   });
 
-  it("collapses Durable Execution section again on second click", () => {
+  it("collapses the System section again on second click", () => {
     render(<Sidebar />);
 
-    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    const toggle = screen.getByRole("button", { name: /^system$/i });
     fireEvent.click(toggle);
     expect(screen.getByText("Workers")).toBeInTheDocument();
 
@@ -631,7 +575,7 @@ describe("Sidebar", () => {
     expect(workersLink).toHaveClass("bg-primary/5");
   });
 
-  it("hides Durable Execution when durable policy is denied", () => {
+  it("hides System when durable policy is denied", () => {
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": false } },
       can: () => false,
@@ -639,7 +583,7 @@ describe("Sidebar", () => {
 
     render(<Sidebar />);
 
-    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^system$/i })).not.toBeInTheDocument();
   });
 });
 
@@ -663,7 +607,7 @@ describe("Sidebar with config", () => {
     expect(screen.getByText("Custom Page")).toBeInTheDocument();
     // Default items should not appear
     expect(screen.queryByText("Building")).not.toBeInTheDocument();
-    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^system$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Custom Page" })).toHaveAttribute(
       "data-prefetch",
       "false",
@@ -751,18 +695,6 @@ describe("Sidebar with config", () => {
 
     fireEvent.click(billingItem);
     expect(mockPush).toHaveBeenCalledWith("/billing");
-  });
-
-  it("renders sections without labels (unlabeled sections)", () => {
-    const customNav: NavigationSection[] = [
-      {
-        items: [{ name: "Unlabeled Item", href: "/unlabeled", icon: Settings }],
-      },
-    ];
-
-    render(<Sidebar config={{ navigation: customNav }} />);
-
-    expect(screen.getByText("Unlabeled Item")).toBeInTheDocument();
   });
 
   it("highlights active item with exact match when exact is true", () => {
@@ -891,15 +823,6 @@ describe("Create Organization dialog", () => {
       isLoading: false,
       isError: false,
     });
-  });
-
-  it("hides chat warning badge when LLM providers are configured", () => {
-    render(<Sidebar />);
-
-    const warningBtn = screen.queryByRole("button", {
-      name: /no llm provider configured/i,
-    });
-    expect(warningBtn).not.toBeInTheDocument();
   });
 
   // Sentry EVERRUNS-1Z: a rejected logout escaped the async click handler, so

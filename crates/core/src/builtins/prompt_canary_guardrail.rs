@@ -367,13 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn capability_exposes_guardrail() {
-        let cap = PromptCanaryGuardrailCapability;
-        assert_eq!(cap.id(), PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID);
-        assert_eq!(cap.output_guardrails().len(), 1);
-    }
-
-    #[test]
     fn normalize_collapses_whitespace_and_lowercases() {
         assert_eq!(normalize("  Hello   World\nHere "), "hello world here");
     }

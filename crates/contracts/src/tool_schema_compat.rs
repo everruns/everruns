@@ -21,15 +21,64 @@ pub fn sanitize_openai_tool_schema(schema: &Value) -> Value {
 /// Normalize a tool schema for OpenAI strict structured outputs.
 ///
 /// Returns `None` when the schema uses constructs whose object shape cannot be
-/// closed without risking a semantic change. Callers must then use the
+/// closed without risking a semantic change, or exceeds OpenAI's object-depth
+/// or total-property limits. Callers must then use the
 /// sanitized non-strict schema instead.
 pub fn strict_openai_tool_schema(schema: &Value) -> Option<Value> {
+    if !within_openai_strict_complexity(schema, 0, &mut 5000) {
+        return None;
+    }
     let mut normalized = sanitize_openai_tool_schema(schema);
     if normalized.get("type").and_then(Value::as_str) != Some("object") {
         return None;
     }
     normalize_strict_node(&mut normalized)?;
     Some(normalized)
+}
+
+// Count schema nodes only: enum values and descriptions are data. References
+// and definitions already decline strict conversion, so they are not expanded.
+// https://developers.openai.com/api/docs/guides/structured-outputs
+fn within_openai_strict_complexity(
+    schema: &Value,
+    parent_object_depth: usize,
+    remaining_properties: &mut usize,
+) -> bool {
+    let is_object = schema.get("type").is_some_and(|kind| {
+        kind == "object"
+            || kind
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "object"))
+    });
+    let object_depth = parent_object_depth + usize::from(is_object);
+    if object_depth > 10 {
+        return false;
+    }
+    if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
+        let Some(remaining) = remaining_properties.checked_sub(properties.len()) else {
+            return false;
+        };
+        *remaining_properties = remaining;
+        if !properties
+            .values()
+            .all(|child| within_openai_strict_complexity(child, object_depth, remaining_properties))
+        {
+            return false;
+        }
+    }
+    if let Some(items) = schema.get("items")
+        && !within_openai_strict_complexity(items, object_depth, remaining_properties)
+    {
+        return false;
+    }
+    schema
+        .get("anyOf")
+        .and_then(Value::as_array)
+        .is_none_or(|variants| {
+            variants.iter().all(|variant| {
+                within_openai_strict_complexity(variant, parent_object_depth, remaining_properties)
+            })
+        })
 }
 
 /// Reverse only the null placeholders introduced by strict schema conversion.
@@ -470,6 +519,67 @@ mod tests {
 mod strict_tests {
     use super::*;
     use serde_json::json;
+
+    fn nested_objects(levels: usize) -> Value {
+        let mut schema = json!({"type": "string"});
+        for _ in 0..levels {
+            schema = json!({"type": "object", "properties": {"child": schema}});
+        }
+        schema
+    }
+
+    #[test]
+    fn strict_schema_complexity_counts_object_levels_through_arrays_and_unions() {
+        assert!(strict_openai_tool_schema(&nested_objects(10)).is_some());
+        assert!(strict_openai_tool_schema(&nested_objects(11)).is_none());
+        for levels in [9, 10] {
+            let schema = json!({"type": "object", "properties": {
+                "children": {"type": "array", "items": {"anyOf": [
+                    nested_objects(levels), {"type": "null"}
+                ]}}
+            }});
+            assert_eq!(strict_openai_tool_schema(&schema).is_some(), levels == 9);
+        }
+        // Array and union wrappers do not consume object nesting levels.
+        let mut schema = json!({"type": "string"});
+        for _ in 0..11 {
+            schema = json!({"type": "array", "items": {"anyOf": [schema]}});
+        }
+        assert!(
+            strict_openai_tool_schema(&json!({
+                "type": "object", "properties": {"items": schema}
+            }))
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn strict_schema_complexity_counts_properties_across_branches() {
+        let properties: serde_json::Map<String, Value> = (0..2499)
+            .map(|n| (format!("field_{n}"), json!({"type": "string"})))
+            .collect();
+        let mut schema = json!({"type": "object", "properties": {
+            "choice": {"anyOf": [
+                {"type": "object", "properties": properties},
+                {"type": "object", "properties": properties}
+            ]},
+            "optional": {"type": "string"}
+        }});
+        assert!(
+            strict_openai_tool_schema(&schema).is_some(),
+            "5000 properties"
+        );
+        schema["properties"]["extra"] = json!({"type": "string"});
+        assert!(
+            strict_openai_tool_schema(&schema).is_none(),
+            "5001 properties"
+        );
+        let original = schema.clone();
+        let mut args = json!({"optional": null, "unknown": 1});
+        restore_strict_openai_tool_arguments(&schema, &mut args);
+        assert_eq!(args, json!({"optional": null, "unknown": 1}));
+        assert_eq!(schema, original);
+    }
 
     #[test]
     fn strict_schema_closes_nested_objects_and_makes_optional_fields_nullable() {

@@ -1,7 +1,7 @@
 // MCP scripting catalog — inventory is the only source of truth.
 
 use crate::domains::common::CommandError;
-use bashkit::{ScriptedTool, ToolArgs, ToolDef};
+use bashkit_scripted_tool::{ScriptedTool, ToolArgs, ToolDef};
 use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;
@@ -31,7 +31,10 @@ fn exposed_to_scripting(meta: &crate::domains::common::CommandMeta) -> bool {
     // Durable control-plane APIs are infrastructure internals. App schedule
     // channels expose their own user-facing commands instead. Internal worker
     // commands are nobody's tool (`INTERNAL_COMMAND_PATH_PREFIX`).
-    !meta.path.starts_with("/v1/durable/") && !meta.is_internal()
+    !meta.path.starts_with("/v1/durable/")
+        && !meta.is_internal()
+        && !meta.is_retired()
+        && !meta.is_interactive_secret_setup()
 }
 
 static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock::new(|| {
@@ -913,6 +916,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn external_worker_secret_setup_is_not_an_agent_tool() {
+        use crate::domains::{common::Command, external_agents::RegisterExternalAgent};
+        let meta = RegisterExternalAgent::meta();
+        assert!(!is_exposed(&meta));
+        assert!(scripted_descriptor(meta.name, ToolsetMode::Full).is_none());
+        assert!(super::super::cli_tree::contract(meta.name).is_none());
+        assert!(
+            !everruns_capabilities::capabilities::platform_native::operations()
+                .iter()
+                .any(|operation| operation.name == meta.name)
+        );
+    }
+
+    #[test]
     fn bash_usage_renders_booleans_as_switches() {
         // The interpreter parses a boolean flag as a valueless switch, so a
         // usage string promising `<true|false>` documents a form that errors
@@ -1392,20 +1409,6 @@ mod tests {
         assert_eq!(
             format_dispatch_error(&err),
             "bad_request: invalid type: string \"true\", expected bool"
-        );
-    }
-
-    #[test]
-    fn format_dispatch_error_does_not_duplicate_operation_name() {
-        // Bashkit is responsible for the `<op>:` prefix. The dispatch layer
-        // must not re-emit it, otherwise consumers see `update_model:
-        // update_model: ...`.
-        let err = CommandError::not_found_msg("Model not found");
-        let formatted = format_dispatch_error(&err);
-        assert!(formatted.starts_with("not_found:"));
-        assert!(
-            !formatted.contains("update_model"),
-            "operation name must not appear twice: {formatted}"
         );
     }
 

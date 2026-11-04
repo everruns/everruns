@@ -25,6 +25,19 @@ Create or update the complete task list. Each call replaces the entire list.
 
 Task statuses: `pending`, `in_progress`, `completed`.
 
+### `report_done`
+
+Report finished work once, before the final reply: what was done, how it was checked, and links
+to what it produced. The session's work report shows this summary instead of the first sentence
+of the reply, and a coordinated worker's `complete_assignment` is read the same way.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `summary` | string | yes | One or two sentences, leading with the result |
+| `validation` | string | no | How the work was checked |
+| `outcome` | string | no | `done` (default) or `failed` |
+| `artifacts` | array | no | Up to 10 `{ name, type, url?, path? }` links |
+
 ## Notes
 
 - **Stateless**: no database table; state lives in conversation history

@@ -139,7 +139,7 @@ impl NotificationService {
         }
 
         let agent = match session.agent_id {
-            Some(agent_id) => self.db.get_agent(candidate.org_id, agent_id).await?,
+            Some(agent_id) => self.db.get_agent_config(candidate.org_id, agent_id).await?,
             None => None,
         };
         let agent_name = agent.as_ref().map(|agent| {
@@ -378,6 +378,7 @@ mod tests {
             session_id,
             context: EventContext::turn(turn_id, input_message_id),
             data: EventData::TurnCompleted(TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations: 1,
                 duration_ms: Some(duration_ms),

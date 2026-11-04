@@ -1,0 +1,133 @@
+//! Live smoke tests for gateway model discovery.
+//!
+//! These exercise the real `list_models` path — HTTP fetch, deserialization,
+//! filtering, and capability profiling — against each gateway's own API. The
+//! wire tests in `chat_wire.rs` pin the request shape against wiremock; only a
+//! live run can catch a vendor changing the response.
+
+mod vercel_discovery {
+    use everruns_drivers::vercel;
+
+    /// Vercel serves a full catalog, so discovery must return a non-empty list
+    /// of namespaced ids.
+    #[tokio::test]
+    async fn vercel_discovers_namespaced_models() {
+        let api_key = std::env::var("AI_GATEWAY_API_KEY")
+            .expect("AI_GATEWAY_API_KEY must be set for the live smoke test");
+
+        let models = vercel::provider("vercel", api_key)
+            .list_models()
+            .await
+            .expect("list_models should succeed")
+            .expect("Vercel should support model listing");
+
+        assert!(!models.is_empty(), "expected a non-empty model catalog");
+
+        // Ids are `vendor/model`; the gateway routes on that prefix, so an id
+        // without one would not reach any upstream.
+        let namespaced = models.iter().filter(|m| m.model_id.contains('/')).count();
+        assert_eq!(
+            namespaced,
+            models.len(),
+            "every Vercel model id should be namespaced vendor/model"
+        );
+
+        eprintln!("Vercel: {} models", models.len());
+        for m in models.iter().take(5) {
+            eprintln!("  {} (owned_by={:?})", m.model_id, m.owned_by);
+        }
+    }
+}
+
+mod cloudflare_discovery {
+    use everruns_drivers::cloudflare;
+
+    fn credentials() -> (String, String) {
+        (
+            std::env::var("CLOUDFLARE_ACCOUNT_ID")
+                .expect("CLOUDFLARE_ACCOUNT_ID must be set for the live smoke test"),
+            std::env::var("CLOUDFLARE_API_TOKEN")
+                .expect("CLOUDFLARE_API_TOKEN must be set for the live smoke test"),
+        )
+    }
+
+    /// Cloudflare lists the Workers AI half of the catalog. Every id must be a
+    /// `@cf/` one, and the text-generation filter must have excluded the
+    /// embedding/speech/image models the same endpoint returns.
+    #[tokio::test]
+    async fn cloudflare_discovers_workers_ai_chat_models() {
+        let (account_id, api_token) = credentials();
+
+        let models = cloudflare::provider("cloudflare", &account_id, api_token, None)
+            .list_models()
+            .await
+            .expect("list_models should succeed")
+            .expect("Cloudflare should support model listing");
+
+        assert!(!models.is_empty(), "expected a non-empty model catalog");
+        for m in &models {
+            assert!(
+                m.model_id.starts_with("@cf/"),
+                "only Workers AI ids are listed, got {}",
+                m.model_id
+            );
+        }
+
+        // A profile carries what the catalog advertises; at least one model
+        // must report a context window, or the mapping has silently stopped
+        // reading the properties list.
+        let with_context = models
+            .iter()
+            .filter_map(|m| m.discovered_profile.as_ref())
+            .filter(|p| p.limits.is_some())
+            .count();
+        assert!(
+            with_context > 0,
+            "expected at least one model to advertise a context window"
+        );
+
+        eprintln!("Cloudflare: {} chat models", models.len());
+        for m in models.iter().take(5) {
+            let ctx = m
+                .discovered_profile
+                .as_ref()
+                .and_then(|p| p.limits.as_ref())
+                .map(|l| l.context);
+            let tools = m.discovered_profile.as_ref().is_some_and(|p| p.tool_call);
+            eprintln!("  {} ctx={ctx:?} tools={tools}", m.model_id);
+        }
+    }
+}
+
+#[tokio::test]
+async fn gemini_argon_accepts_long_decode_configuration() {
+    use everruns_contracts::{LlmCallConfig, Message, MessageRole, ReasoningEffort};
+    let key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY required");
+    let provider = everruns_drivers::gemini::provider("live-gemini", key);
+    let mut config = LlmCallConfig::new("gemini-4-argon");
+    config.max_tokens = Some(100_000);
+    config.reasoning_effort = Some(ReasoningEffort::High);
+    config.limits = everruns_contracts::turn_collector::TurnLimits::default()
+        .with_total(std::time::Duration::from_secs(180))
+        .with_max_response_bytes(64 * 1024);
+    let response = provider
+        .chat_completion(
+            vec![Message::text(
+                MessageRole::User,
+                "Reply with exactly ARGON_SMOKE_OK and no other text.",
+            )],
+            &config,
+        )
+        .await
+        .expect("Argon completion succeeds");
+    assert_eq!(response.text.trim(), "ARGON_SMOKE_OK");
+    assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
+    assert!(response.metadata.total_tokens.unwrap_or(0) > 0);
+    println!(
+        "Argon live smoke: finish={:?}, prompt={:?}, output={:?}, reasoning={:?}",
+        response.metadata.finish_reason,
+        response.metadata.prompt_tokens,
+        response.metadata.completion_tokens,
+        response.metadata.reasoning_tokens
+    );
+}

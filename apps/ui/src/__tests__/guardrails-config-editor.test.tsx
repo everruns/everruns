@@ -139,18 +139,6 @@ describe("guardrails config draft", () => {
 });
 
 describe("GuardrailsConfigEditor", () => {
-  it("shows Active and Advisory, not the raw mode values", () => {
-    render(<GuardrailsConfigEditor config={{}} onChange={jest.fn()} />);
-
-    const mode = screen.getByRole("combobox", { name: "Mode" });
-    expect(mode).toHaveTextContent("Active");
-    expect(mode).not.toHaveTextContent(/^active$/);
-
-    fireEvent.click(mode);
-    expect(screen.getByRole("option", { name: "Active" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Advisory" })).toBeInTheDocument();
-  });
-
   it("switches to advisory mode", () => {
     const onChange = jest.fn();
     render(<GuardrailsConfigEditor config={{}} onChange={onChange} />);

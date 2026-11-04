@@ -449,35 +449,3 @@ fn parse_session_id(session_id: &str) -> Result<SessionId, (StatusCode, Json<Err
         ErrorResponse::new("Invalid session ID").into_response(StatusCode::BAD_REQUEST)
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn call_request_accepts_channel_and_provider_binding() {
-        let req: VoiceCallRequest = serde_json::from_value(json!({
-            "sdp": "v=0",
-            "channel_id": "appchan_1",
-            "provider_id": "prov_realtime_1"
-        }))
-        .expect("valid request");
-        assert_eq!(req.channel_id.as_deref(), Some("appchan_1"));
-        assert_eq!(req.provider_id.as_deref(), Some("prov_realtime_1"));
-        let bare: VoiceCallRequest =
-            serde_json::from_value(json!({ "sdp": "v=0" })).expect("sdp only");
-        assert_eq!(bare.channel_id, None);
-    }
-
-    #[test]
-    fn microphone_policy_follows_the_flag() {
-        assert_eq!(
-            microphone_permissions_policy_directive(true),
-            "microphone=(self)"
-        );
-        assert_eq!(
-            microphone_permissions_policy_directive(false),
-            "microphone=()"
-        );
-    }
-}

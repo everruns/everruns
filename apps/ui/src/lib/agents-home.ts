@@ -58,7 +58,10 @@ export function channelStateLabel(state: ChannelState): string {
 
 /** Opens this channel on its agent, with that row expanded. */
 export function agentChannelHref(agentId: string, channelId: string): string {
-  const params = new URLSearchParams({ tab: "integrations", channel: channelId });
+  const params = new URLSearchParams({
+    tab: "integrations",
+    channel: channelId,
+  });
   return `/agents/${agentId}?${params.toString()}`;
 }
 
@@ -75,6 +78,8 @@ export function channelShortName(kind: ChannelType): string {
       return "Agent API";
     case "public_chat":
       return "Public Chat";
+    case "work_chat":
+      return "Work Chat";
     case "slack":
       return "Slack";
     case "webhook":
@@ -373,4 +378,24 @@ export function initials(name: string): string {
     .filter(Boolean);
   const letters = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "?").slice(0, 2);
   return letters.toUpperCase();
+}
+
+/**
+ * Agents created as part of another agent are listed right under it, indented.
+ * An owned agent whose owner is filtered out stays in place at the top level.
+ */
+export function nestUnderOwners(agents: Agent[]): { agent: Agent; nested: boolean }[] {
+  const present = new Set(agents.map((agent) => agent.id));
+  const owned = new Map<string, Agent[]>();
+  for (const agent of agents) {
+    const owner = agent.owner_agent_id;
+    if (owner && present.has(owner)) owned.set(owner, [...(owned.get(owner) ?? []), agent]);
+  }
+  const rows: { agent: Agent; nested: boolean }[] = [];
+  for (const agent of agents) {
+    if (agent.owner_agent_id && present.has(agent.owner_agent_id)) continue;
+    rows.push({ agent, nested: false });
+    for (const child of owned.get(agent.id) ?? []) rows.push({ agent: child, nested: true });
+  }
+  return rows;
 }

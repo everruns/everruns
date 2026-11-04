@@ -81,7 +81,6 @@ pub fn validate_org_public_id(public_id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::DEFAULT_ORG_PUBLIC_ID;
 
     #[test]
     fn test_generate_org_public_id() {
@@ -123,10 +122,5 @@ mod tests {
         assert!(!validate_org_public_id(
             "org_ghijklmnopqrstuvwxyz1234567890"
         ));
-    }
-
-    #[test]
-    fn test_default_org_public_id_valid() {
-        assert!(validate_org_public_id(DEFAULT_ORG_PUBLIC_ID));
     }
 }

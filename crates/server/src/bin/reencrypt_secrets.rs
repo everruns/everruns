@@ -2,7 +2,8 @@
 // Run with: cargo run --bin reencrypt-secrets -- --help
 
 use anyhow::{Context, Result};
-use everruns_server::storage::{ENCRYPTED_COLUMNS, EncryptionService};
+use everruns_server::storage::encryption_rotation::process_table;
+use everruns_server::storage::{ENCRYPTED_COLUMNS, EncryptedColumn, EncryptionService};
 use sqlx::PgPool;
 use std::env;
 
@@ -95,7 +96,8 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("reencrypt_secrets=info".parse().unwrap()),
+                .add_directive("reencrypt_secrets=info".parse()?)
+                .add_directive("everruns_server::storage::encryption_rotation=info".parse()?),
         )
         .init();
 
@@ -137,11 +139,11 @@ async fn main() -> Result<()> {
     let mut total_reencrypted = 0u64;
 
     for table_info in tables {
-        if args.table.is_some() && args.table.as_deref() != Some(table_info.name) {
+        if args.table.is_some() && args.table.as_deref() != Some(table_info.table) {
             continue;
         }
 
-        tracing::info!("Processing table: {}", table_info.name);
+        tracing::info!("Processing table: {}", table_info.table);
 
         let (processed, reencrypted) = process_table(
             &pool,
@@ -173,151 +175,11 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Table metadata for encrypted fields (derived from ENCRYPTED_COLUMNS registry)
-struct EncryptedTable {
-    name: &'static str,
-    id_column: &'static str,
-    column: &'static str,
-}
-
-/// Returns list of tables with encrypted fields from the central registry.
-/// The registry is defined in crate::storage::ENCRYPTED_COLUMNS.
-/// A test ensures all encrypted columns in migrations are registered.
-fn get_encrypted_tables(filter: &Option<String>) -> Vec<EncryptedTable> {
-    let all_tables: Vec<EncryptedTable> = ENCRYPTED_COLUMNS
+/// Select registered encrypted columns; table names never come from SQL input.
+fn get_encrypted_tables(filter: &Option<String>) -> Vec<EncryptedColumn> {
+    ENCRYPTED_COLUMNS
         .iter()
-        .map(|ec| EncryptedTable {
-            name: ec.table,
-            id_column: ec.id_column,
-            column: ec.column,
-        })
-        .collect();
-
-    if let Some(table_name) = filter {
-        all_tables
-            .into_iter()
-            .filter(|t| t.name == table_name)
-            .collect()
-    } else {
-        all_tables
-    }
-}
-
-/// Process a single table, re-encrypting any records with old keys
-async fn process_table(
-    pool: &PgPool,
-    encryption: &EncryptionService,
-    table: &EncryptedTable,
-    batch_size: i64,
-    dry_run: bool,
-) -> Result<(u64, u64)> {
-    let mut processed = 0u64;
-    let mut reencrypted = 0u64;
-    let mut offset = 0i64;
-
-    loop {
-        // Fetch batch
-        let query = format!(
-            "SELECT {}, {} FROM {} ORDER BY {} LIMIT {} OFFSET {}",
-            table.id_column, table.column, table.name, table.id_column, batch_size, offset
-        );
-
-        let rows: Vec<(uuid::Uuid, Option<Vec<u8>>)> =
-            sqlx::query_as(sqlx::AssertSqlSafe(query.as_str()))
-                .fetch_all(pool)
-                .await
-                .context("Failed to fetch records")?;
-
-        if rows.is_empty() {
-            break;
-        }
-
-        for (id, encrypted_data) in &rows {
-            processed += 1;
-
-            if let Some(data) = encrypted_data {
-                // Check if needs re-encryption
-                match encryption.is_current_key(data) {
-                    Ok(true) => {
-                        // Already using current key
-                    }
-                    Ok(false) => {
-                        // Needs re-encryption
-                        let key_id = EncryptionService::get_key_id(data).unwrap_or_default();
-                        if dry_run {
-                            tracing::info!(
-                                "Would re-encrypt {}.{} (id={}, current_key={})",
-                                table.name,
-                                table.column,
-                                id,
-                                key_id
-                            );
-                        } else {
-                            // Decrypt and re-encrypt
-                            match encryption.reencrypt(data) {
-                                Ok(Some(new_data)) => {
-                                    // Update record
-                                    let update_query = format!(
-                                        "UPDATE {} SET {} = $1 WHERE {} = $2",
-                                        table.name, table.column, table.id_column
-                                    );
-                                    sqlx::query(sqlx::AssertSqlSafe(update_query.as_str()))
-                                        .bind(&new_data)
-                                        .bind(id)
-                                        .execute(pool)
-                                        .await
-                                        .context("Failed to update record")?;
-
-                                    tracing::info!(
-                                        "Re-encrypted {}.{} (id={}, {} -> {})",
-                                        table.name,
-                                        table.column,
-                                        id,
-                                        key_id,
-                                        encryption.primary_key_id()
-                                    );
-                                }
-                                Ok(None) => {
-                                    // Already current (shouldn't happen due to is_current_key check)
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        "Failed to re-encrypt {}.{} (id={}): {}",
-                                        table.name,
-                                        table.column,
-                                        id,
-                                        e
-                                    );
-                                    continue;
-                                }
-                            }
-                        }
-                        reencrypted += 1;
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to check key for {}.{} (id={}): {}",
-                            table.name,
-                            table.column,
-                            id,
-                            e
-                        );
-                    }
-                }
-            }
-        }
-
-        offset += batch_size;
-
-        // Progress log every 1000 records
-        if processed.is_multiple_of(1000) {
-            tracing::info!(
-                "Progress: {} processed, {} need re-encryption",
-                processed,
-                reencrypted
-            );
-        }
-    }
-
-    Ok((processed, reencrypted))
+        .filter(|column| filter.as_deref().is_none_or(|name| column.table == name))
+        .cloned()
+        .collect()
 }

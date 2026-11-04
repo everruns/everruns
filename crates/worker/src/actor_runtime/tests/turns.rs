@@ -106,10 +106,12 @@ async fn a_crash_before_the_turn_starts_still_answers_after_a_renew() {
 // Chaos harness: the queued store holding `session.activated` and
 // `turn.started` failed and was dropped, and the turn went on to complete
 // without them. A store that gives up now stops the turn before it commits
-// its input or writes anything more; the next holder resumes from the log.
+// its input or writes anything more; once the lease's retries are spent, the
+// next holder resumes from the log.
 #[tokio::test]
 async fn a_queued_store_that_gives_up_ends_the_lease_without_committing_the_input() {
-    let fixture = Fixture::new(model("Done.", vec![])).await;
+    let mut fixture = Fixture::new(model("Done.", vec![])).await;
+    fixture.control_plane_retries = 0;
     let (failing, probe) = fixture.worker("w1");
     // The first flush is the first reason's `take`.
     probe.fail_at_flush.store(1, Ordering::SeqCst);
@@ -532,6 +534,113 @@ async fn a_turn_that_keeps_killing_its_worker_is_sealed() {
     fixture.assert_idle();
 }
 
+// Production, 2026-10-27: one turn's log grew to ~200 MB encoded, over the
+// gRPC cap, so every lease failed reading it, ahead of the poison guard, and
+// the session re-read the whole turn every few seconds for hours. The guard
+// runs before the read and seals the turn from its first event.
+#[tokio::test]
+async fn a_turn_whose_log_cannot_be_read_is_still_sealed() {
+    let mut fixture = Fixture::new(model("Never.", vec![])).await;
+    fixture.poison_attempts = 1;
+    let (crashing, probe) = fixture.worker("w1");
+    probe.hang_at_flush.store(1, Ordering::SeqCst);
+    fixture.send("Crash.").await;
+    crash_at(&fixture, &crashing, &probe.hung).await;
+    fixture.store.oversize_reads();
+
+    let (next, _) = fixture.worker("w2");
+    let mut leases = 0;
+    while run_once(&next).await {
+        leases += 1;
+        assert!(leases < 5, "the turn keeps being leased");
+        fixture.store.expire(fixture.session_id);
+    }
+
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.sealed").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 0, "{types:?}");
+    fixture.assert_idle();
+}
+
+// EVE-1301, chaos harness: a PostgreSQL pool exhaustion ended three leases in
+// a row on control-plane errors (harness load, journal read, transport), and
+// the fourth lease sealed the turn as one that keeps killing its worker: the
+// person got "stopped because it repeatedly failed" for a database blip. The
+// poison guard counts holder deaths, not failures to reach the control plane.
+#[tokio::test]
+async fn control_plane_failures_do_not_seal_the_turn() {
+    let fixture = Fixture::new(model("Done.", vec![])).await;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Hello.").await;
+    // One failure per lease would reach the default threshold (3).
+    fixture.store.fail_reads(3);
+
+    let mut leases = 0;
+    while run_once(&worker).await {
+        leases += 1;
+        assert!(leases < 10, "the actor keeps being runnable");
+        // A lease left to expire is taken again (as the poll would).
+        fixture.store.expire(fixture.session_id);
+    }
+
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.sealed").await, 0, "{types:?}");
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 1, "{types:?}");
+    assert_eq!(fixture.answers().await, vec!["Done."]);
+    fixture.assert_idle();
+    assert_eq!(fixture.store.row(fixture.session_id).attempts, 0);
+}
+
+// The same gap with retries left: the lease runs the turn again from the log
+// itself, and the input is committed only once the turn is stored.
+#[tokio::test]
+async fn a_queued_store_that_gives_up_is_retried_on_the_same_lease() {
+    let fixture = Fixture::new(model("Done.", vec![])).await;
+    let (failing, probe) = fixture.worker("w1");
+    probe.fail_at_flush.store(1, Ordering::SeqCst);
+    fixture.send("Hello.").await;
+
+    assert_eq!(run_until_idle(&failing).await, 1, "one lease");
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 1, "{types:?}");
+    assert_eq!(fixture.answers().await, vec!["Done."]);
+    assert!(
+        !probe.overlapped.load(Ordering::SeqCst),
+        "the failed run's turn ended before the retry"
+    );
+    fixture.assert_idle();
+}
+
+// The retries are a separate bound, not a way around the poison guard: a turn
+// whose control-plane failures outlast a lease's retries lets the lease expire,
+// and that counts an attempt like a holder death.
+#[tokio::test]
+async fn failures_that_outlast_the_retries_still_reach_the_poison_guard() {
+    let mut fixture = Fixture::new(model("Never.", vec![])).await;
+    fixture.poison_attempts = 1;
+    fixture.control_plane_retries = 1;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Hello.").await;
+    // Two leases spend two failures each (a run and its one retry).
+    fixture.store.fail_reads(4);
+
+    let mut leases = 0;
+    while run_once(&worker).await {
+        leases += 1;
+        assert!(leases < 10, "the actor keeps being runnable");
+        fixture.store.expire(fixture.session_id);
+    }
+
+    assert_eq!(leases, 3, "two expired leases, then the seal");
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.sealed").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 0, "{types:?}");
+    fixture.assert_idle();
+}
+
 #[tokio::test]
 async fn two_workers_never_run_one_session_at_once() {
     let fixture = Fixture::new(model("Ok.", vec![vec![call("c1", "read_inbox")]])).await;
@@ -702,6 +811,91 @@ async fn steering_sent_before_a_crash_is_answered_after_the_resume() {
     fixture.assert_idle();
 }
 
+/// Chaos harness (EVE-1279, `steered_message_unread`): steering landed while
+/// the turn's reason ran, the reason answered without calls, and the turn took
+/// the steering for one more reason. The holder committed the cursor over it
+/// at that reason's renew and died in its model call. The survivor folded the
+/// log as answered (its latest agent message made no calls), completed the
+/// turn, and the message was never answered: no turn of its own, and no
+/// reason after it in the turn it steered.
+#[tokio::test]
+async fn steering_taken_after_the_answer_is_answered_after_a_crash() {
+    let fixture = Fixture::new(model("Answered.", vec![])).await;
+    let (crashing, probe) = fixture.worker("w1");
+    // Flush 2 follows the first reason's answer: the steering lands there,
+    // before the turn's last inbox check, as a send mid-reason does.
+    let steering = {
+        let runtime = fixture.runtime.clone();
+        let store = fixture.store.clone();
+        let session_id = fixture.session_id;
+        let (sent, steering) = tokio::sync::oneshot::channel();
+        *probe.at_flush.lock().unwrap() = Some((
+            2,
+            Box::pin(async move {
+                let message_id = runtime
+                    .persist_accepted_input(
+                        session_id,
+                        AcceptedTurnInput::new(crate::core::InputMessage::user(
+                            "Also check the calendar.",
+                        )),
+                    )
+                    .await
+                    .expect("steering stored");
+                let sequence = runtime
+                    .events()
+                    .await
+                    .expect("events")
+                    .iter()
+                    .rev()
+                    .find_map(|event| event.sequence)
+                    .map(i64::from)
+                    .expect("the steering is in the log");
+                store.mark_runnable(session_id, ORG_ID, sequence);
+                let _ = sent.send((message_id, sequence));
+            }),
+        ));
+        steering
+    };
+    // Call 0 answers; call 1, the reason the steering joins, hangs.
+    fixture.model.block(1);
+    fixture.send("Answer me.").await;
+
+    crash_at(&fixture, &crashing, &fixture.model.entered).await;
+    let (_, steered_at) = steering.await.expect("the steering was sent");
+    assert_eq!(fixture.answers().await, vec!["Answered."]);
+    assert_eq!(fixture.count("turn.completed").await, 0);
+    assert!(
+        fixture.store.row(fixture.session_id).consumed_seq >= steered_at,
+        "the dead holder committed the steering as consumed"
+    );
+    let asked_before = fixture.model.seen().len();
+
+    let (survivor, _) = fixture.worker("w2");
+    run_until_idle(&survivor).await;
+    let seen = fixture.model.seen();
+    assert!(
+        seen[asked_before..]
+            .iter()
+            .any(|call| call.contains("Also check the calendar.")),
+        "the survivor hands the steering to the model"
+    );
+    let events = fixture.events().await;
+    let types = fixture.types().await;
+    assert!(
+        events.iter().any(|event| {
+            matches!(
+                event.event_type.as_str(),
+                "reason.started" | "reason.recovered"
+            ) && event.sequence.map_or(0, i64::from) > steered_at
+        }),
+        "the steered turn reasons again after the steering: {types:?}"
+    );
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 1, "{types:?}");
+    assert_eq!(fixture.answers().await.len(), 2, "{types:?}");
+    fixture.assert_idle();
+}
+
 /// A worker dies after a tool call completed and before the next reason:
 /// the survivor resumes at the reason and never runs the tool again.
 #[tokio::test]
@@ -759,34 +953,6 @@ async fn a_turn_whose_session_is_deleted_stops_at_the_next_renew() {
     assert!(!run_once(&worker).await, "nothing left to lease");
 }
 
-/// EVE-1235: a turn whose session was deleted fails on whatever it reads next
-/// (its input message, the conversation), with errors that do not name the
-/// session. The holder asks the renew, which answers for the actor row, before
-/// treating such a failure as the turn's own.
-#[tokio::test]
-async fn a_failure_after_the_session_was_deleted_reads_as_the_delete() {
-    let fixture = Fixture::new(model("Done.", vec![])).await;
-    let (worker, _) = fixture.worker("w1");
-    fixture.send("Hello.").await;
-    let actor = worker.lease(1).await.unwrap().pop().expect("leased");
-    let lease = super::super::lease::Lease::new(
-        fixture.store.clone(),
-        "w1".to_string(),
-        &actor,
-        Duration::from_secs(3),
-        3,
-    );
-    let unrelated =
-        everruns_contracts::error::AgentLoopError::store("User message not found: message_x");
-
-    assert!(
-        !super::super::turn::session_deleted(&lease, &unrelated).await,
-        "the session is still there: the failure is the turn's"
-    );
-    fixture.store.delete(fixture.session_id);
-    assert!(super::super::turn::session_deleted(&lease, &unrelated).await);
-}
-
 /// EVE-1235, ported from the retired turn driver: the session is deleted
 /// after its actor was leased and before the turn's first step. The turn ends
 /// without error and without retry: no `turn.failed`, no answer, no seal, and
@@ -832,6 +998,7 @@ async fn died_before_idling(fixture: &Fixture, terminal: &str, committed: bool) 
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         ))
         .await
@@ -841,6 +1008,7 @@ async fn died_before_idling(fixture: &Fixture, terminal: &str, committed: bool) 
             fixture.session_id,
             context,
             crate::core::events::TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations: 1,
                 status: Some("completed".to_string()),
@@ -915,4 +1083,86 @@ async fn a_holder_that_dies_before_idling_leaves_the_next_holder_to_idle_the_ses
             fixture.assert_idle();
         }
     }
+}
+
+// Production, 2026-10-29 (yolop#889 review session): rolling deploys killed
+// the turn's holder twice mid-turn, then a third time between `turn.completed`
+// and `session.idled`. The fourth lease counted past the poison threshold, and
+// the guard ran before the closed-turn check: with no open turn and no fresh
+// input it sealed nothing, idled nothing and released, leaving the session
+// `active` with no actor runnable, for days. The idle a closed turn is owed
+// comes first, poisoned or not.
+#[tokio::test]
+async fn a_poisoned_lease_still_idles_a_turn_whose_holder_died_before_idling() {
+    for terminal in ["turn.completed", "turn.failed"] {
+        let mut fixture = Fixture::new(model("Never.", vec![])).await;
+        // The dead holder's lease and the survivor's: two attempts, past one.
+        fixture.poison_attempts = 1;
+        died_before_idling(&fixture, terminal, true).await;
+
+        let (survivor, _) = fixture.worker("w2");
+        assert_eq!(run_until_idle(&survivor).await, 1, "{terminal}");
+        let types = fixture.types().await;
+        assert_eq!(
+            fixture.count("session.idled").await,
+            1,
+            "{terminal}: the session is idled: {types:?}"
+        );
+        assert_eq!(fixture.count("turn.sealed").await, 0, "{types:?}");
+        assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+        fixture.assert_idle();
+        assert_eq!(fixture.store.row(fixture.session_id).attempts, 0);
+
+        // The guard still seals a fresh input whose holders keep dying: the
+        // closed turn's idle does not use up the poisoned lease.
+        let mut fixture = Fixture::new(model("Never.", vec![])).await;
+        fixture.poison_attempts = 1;
+        died_before_idling(&fixture, terminal, true).await;
+        fixture.send("Next.").await;
+        let (survivor, _) = fixture.worker("w2");
+        assert_eq!(run_until_idle(&survivor).await, 1, "{terminal}");
+        let types = fixture.types().await;
+        assert_eq!(fixture.count("turn.sealed").await, 1, "{types:?}");
+        assert_eq!(fixture.count("session.idled").await, 2, "{types:?}");
+        assert!(fixture.answers().await.iter().all(|text| text != "Never."));
+        fixture.assert_idle();
+    }
+}
+
+/// A draining worker hands the lease back between steps instead of holding
+/// the turn until its lease runs out: the next worker leases the actor at once
+/// and finishes the same turn, without running the finished act again.
+#[tokio::test]
+async fn a_draining_worker_hands_the_turn_off_between_steps() {
+    let fixture = Fixture::new(model("Read.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (draining, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+
+    let run = {
+        let draining = draining.clone();
+        tokio::spawn(async move { run_once(&draining).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .expect("the act starts");
+    // Shutdown begins mid-act: the act finishes, the next reason does not.
+    draining.hand_off.store(true, Ordering::SeqCst);
+    fixture.gate.release.notify_one();
+    assert!(run.await.unwrap());
+
+    assert_eq!(fixture.store.hand_offs(), 1);
+    let row = fixture.store.row(fixture.session_id);
+    assert!(row.holder.is_none(), "the lease was handed back");
+    assert!(row.runnable.is_some(), "and the actor is runnable at once");
+    assert_eq!(fixture.count("act.completed").await, 1);
+    assert!(fixture.answers().await.is_empty());
+
+    let (survivor, _) = fixture.worker("w2");
+    assert_eq!(run_until_idle(&survivor).await, 1);
+    assert_eq!(fixture.tool_calls(), vec!["read_inbox"], "never run twice");
+    assert_eq!(fixture.count("turn.started").await, 1, "the same turn");
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Read."]);
+    fixture.assert_idle();
 }

@@ -72,8 +72,9 @@ fn test_model_view_masks_with_compaction_config() {
     let config = RuntimeCompactionConfig::default();
     let result = build_model_view_messages(&messages, &config, None);
 
-    assert_eq!(result.masked_count, 7);
-    assert!(result.tool_result_bytes_after < result.tool_result_bytes_before / 4);
+    // Three 22 KiB results waiting pass the 64 KiB batch: masked six, one waits.
+    assert_eq!(result.masked_count, 6);
+    assert!(result.tool_result_bytes_after < result.tool_result_bytes_before / 2);
     let first_tool = result.messages[2].tool_result_content().unwrap();
     let masked = first_tool.result.as_ref().unwrap();
     assert_eq!(masked["masked"], true);

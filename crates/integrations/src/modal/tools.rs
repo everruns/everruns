@@ -501,10 +501,16 @@ impl Tool for ModalExecTool {
         call: &ToolCall,
         phase: ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: ToolNarrationContext<'_>,
+        ctx: ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Modal");
-        Some(narrate_shell_exec(&call.arguments, fallback, phase, locale))
+        Some(narrate_shell_exec(
+            &call.arguments,
+            fallback,
+            phase,
+            locale,
+            ctx,
+        ))
     }
 
     fn name(&self) -> &str {

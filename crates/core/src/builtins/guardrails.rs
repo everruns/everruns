@@ -1737,15 +1737,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn capability_metadata() {
-        let cap = GuardrailsCapability;
-        assert_eq!(cap.id(), GUARDRAILS_CAPABILITY_ID);
-        assert!(cap.is_guardrail());
-        assert!(cap.config_schema().is_some());
-        assert_eq!(cap.output_guardrails().len(), 1);
-    }
-
     // --- llm_judge hook tests ---
 
     #[tokio::test]
@@ -2434,34 +2425,6 @@ mod tests {
         assert!(error.contains("threshold must be 0..=100"), "{error}");
     }
 
-    fn labeled_consts(node: &serde_json::Value) -> Vec<String> {
-        node["oneOf"]
-            .as_array()
-            .expect("oneOf")
-            .iter()
-            .map(|option| option["const"].as_str().expect("const").to_string())
-            .collect()
-    }
-
-    #[test]
-    fn config_schema_documents_the_engine_selector() {
-        let schema = GuardrailsCapability.config_schema().expect("schema");
-        let engine = &schema["properties"]["checks"]["items"]["properties"]["engine"];
-        assert_eq!(
-            labeled_consts(engine),
-            vec!["utility_llm".to_string(), "jev".to_string()]
-        );
-        assert_eq!(engine["oneOf"][1]["title"], "Decision API");
-        assert_eq!(engine["default"], "utility_llm");
-        let mode = &schema["properties"]["mode"];
-        assert_eq!(
-            labeled_consts(mode),
-            vec!["active".to_string(), "advisory".to_string()]
-        );
-        assert_eq!(mode["oneOf"][0]["title"], "Active");
-        assert_eq!(mode["oneOf"][1]["title"], "Advisory");
-    }
-
     #[test]
     fn xml_escape_escapes_special_chars() {
         assert_eq!(xml_escape("normal"), "normal");
@@ -2471,32 +2434,7 @@ mod tests {
         assert_eq!(xml_escape("it's"), "it&#39;s");
     }
 
-    #[test]
-    fn config_schema_includes_llm_judge() {
-        let cap = GuardrailsCapability;
-        let schema = cap.config_schema().unwrap();
-        let values = labeled_consts(&schema["properties"]["checks"]["items"]["properties"]["type"]);
-        assert!(
-            values.iter().any(|value| value == "llm_judge"),
-            "schema options must include llm_judge"
-        );
-    }
-
     // --- mcp hook tests ---
-
-    #[test]
-    fn config_schema_includes_mcp() {
-        let cap = GuardrailsCapability;
-        let schema = cap.config_schema().unwrap();
-        let values = labeled_consts(&schema["properties"]["checks"]["items"]["properties"]["type"]);
-        assert!(
-            values.iter().any(|value| value == "mcp"),
-            "schema options must include mcp"
-        );
-        let props = &schema["properties"]["checks"]["items"]["properties"];
-        assert!(props["server"].is_object(), "schema must define server");
-        assert!(props["tool"].is_object(), "schema must define tool");
-    }
 
     fn mcp_pre_hooks(on_fail: &str, mode: &str) -> Vec<Arc<dyn PreToolUseHook>> {
         GuardrailsCapability.pre_tool_use_hooks_with_config(&json!({

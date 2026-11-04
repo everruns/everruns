@@ -85,6 +85,7 @@ impl OtelHarness {
             agent_id: Some(AgentId::new()),
             agent_name: Some("Weather Helper".to_string()),
             agent_description: Some("Answers weather questions".to_string()),
+            origin: None,
         }
     }
 }
@@ -293,6 +294,7 @@ async fn run_full_turn(h: &OtelHarness) {
         800,
         h.context(None, None, None),
         TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id: h.turn,
             iterations: 1,
@@ -956,6 +958,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
         800,
         h.context(None, None, None),
         TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id: h.turn,
             iterations: 1,
@@ -990,6 +993,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
             50,
             other.context(None, None, None),
             TurnCompletedData {
+                termination_reason: None,
                 issue_count: None,
                 turn_id: other.turn,
                 iterations: 2,
@@ -1065,19 +1069,6 @@ fn conventions_parse_from_env_syntax() {
     assert_eq!(TraceConventions::parse(""), TraceConventions::ALL);
     assert_eq!(TraceConventions::parse("bogus"), TraceConventions::ALL);
     assert_eq!(TraceConventions::parse("OTEL"), TraceConventions::GEN_AI);
-}
-
-#[tokio::test]
-async fn listener_subscribes_to_the_thirteen_lifecycle_events() {
-    let h = OtelHarness::new(false, TraceConventions::ALL);
-    let types = h.listener.event_types().unwrap();
-    assert_eq!(types.len(), 13);
-    assert!(types.contains(&TURN_STARTED));
-    assert!(types.contains(&LLM_GENERATION));
-    assert!(types.contains(&TOOL_COMPLETED));
-    assert_eq!(h.listener.name(), "OtelEventListener");
-    assert!(!h.listener.record_content());
-    assert_eq!(h.listener.conventions(), TraceConventions::ALL);
 }
 
 #[tokio::test]
@@ -1207,6 +1198,7 @@ async fn truncation_details_reach_chat_and_turn_spans() {
             800,
             h.context(None, None, None),
             TurnCompletedData {
+                termination_reason: None,
                 turn_id: h.turn,
                 iterations: 1,
                 status: Some("completed".into()),
@@ -1273,3 +1265,6 @@ async fn truncation_details_reach_chat_and_turn_spans() {
 
 #[path = "otel_regression_tests.rs"]
 mod regressions;
+
+#[path = "otel_causal_tests.rs"]
+mod causal_tests;

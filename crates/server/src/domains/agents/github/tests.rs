@@ -48,6 +48,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("gh-harness-{suffix}"),
                 display_name: None,
                 icon: None,
@@ -72,6 +73,8 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            completion_check: Default::default(),
+            localizations: Default::default(),
             public_id: public_id.clone(),
             name: format!("pr-summarizer-{suffix}"),
             display_name: Some("PR Summarizer".to_string()),
@@ -194,7 +197,13 @@ async fn get_reports_nothing_until_connect_gives_the_agent_an_identity() {
     let ctx = ctx_for(&db, &github, OrgRole::Owner);
     let agent_id = seed_agent(&db).await;
 
-    assert_eq!(status(&ctx, &agent_id).await, AgentGitHubStatus::default());
+    assert_eq!(
+        status(&ctx, &agent_id).await,
+        AgentGitHubStatus {
+            view_url: Some(format!("agents/{agent_id}/github")),
+            ..AgentGitHubStatus::default()
+        }
+    );
 
     let BeginConnectResponse::CreateApp {
         action,
@@ -292,45 +301,6 @@ async fn get_points_at_the_app_settings_for_the_owner_kind() {
         status(&ctx, &agent_id).await.app_settings_url.as_deref(),
         Some("https://github.example/settings/apps/pr-summarizer-1a2b3c")
     );
-}
-
-#[tokio::test]
-async fn get_reports_the_shared_app_for_another_installation() {
-    let github = MockServer::start().await;
-    let db = Arc::new(StorageBackend::test_database());
-    let ctx = ctx_for(&db, &github, OrgRole::Owner);
-    let agent_id = seed_agent(&db).await;
-    connect(&ctx, &agent_id).await;
-    let identity_id: VirtualUserId = status(&ctx, &agent_id)
-        .await
-        .identity_id
-        .unwrap()
-        .parse()
-        .unwrap();
-    db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
-        virtual_user_id: identity_id,
-        provider: GITHUB_PROVIDER.to_string(),
-        connection_type: "oauth".to_string(),
-        provider_user_id: Some("8".to_string()),
-        provider_username: Some("acme".to_string()),
-        access_token_encrypted: None,
-        refresh_token_encrypted: None,
-        scopes: None,
-        expires_at: None,
-        installation_id: Some(4400),
-        provider_metadata: None,
-    })
-    .await
-    .unwrap();
-
-    let status = status(&ctx, &agent_id).await;
-    assert_eq!(status.kind.as_deref(), Some(EVERRUNS_APP_KIND));
-    assert!(
-        !status.connected,
-        "only the agent's own App counts as connected"
-    );
-    assert_eq!(status.bot_login, None);
-    assert_eq!(status.app_settings_url, None);
 }
 
 #[tokio::test]
@@ -466,7 +436,7 @@ async fn connected_account(
     db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
         virtual_user_id: identity_id,
         provider: GITHUB_PROVIDER.to_string(),
-        connection_type: "oauth".to_string(),
+        connection_type: crate::github_apps::EVERRUNS_APP_CONNECTION_TYPE.to_string(),
         provider_user_id: Some(installation_id.to_string()),
         provider_username: Some(login.to_string()),
         access_token_encrypted: None,

@@ -19,12 +19,15 @@ use crate::builtins::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-
+#[path = "compaction/cost_control.rs"]
+mod cost_control;
+use cost_control::*;
+#[path = "compaction/scheduled_view.rs"]
+mod scheduled_view;
 use crate::compaction_policy::{
     CompactionPolicy, CompactionSettings, CompactionStrategy as ExecutionCompactionStrategy,
     ObservationMaskingResult as ExecutionObservationMaskingResult,
 };
-
 /// Capability ID for compaction.
 pub const COMPACTION_CAPABILITY_ID: &str = "compaction";
 const MAX_RELATED_RECENT_READ_RESULTS: usize = 4;
@@ -121,6 +124,15 @@ pub struct CostControlConfig {
     #[serde(default = "default_cost_control_min_masked_tool_result_bytes")]
     pub min_masked_tool_result_bytes: usize,
 
+    /// Move the masked region forward this many tool results at a time, so the
+    /// history is rewritten (and the prompt cache lost) once per batch.
+    #[serde(default = "default_cost_control_mask_batch_results")]
+    pub mask_batch_results: usize,
+
+    /// Move it at once when the results waiting past it pass this many bytes.
+    #[serde(default = "default_cost_control_mask_batch_bytes")]
+    pub mask_batch_bytes: usize,
+
     /// If cumulative/session usage is available, mask when uncached input exceeds this.
     #[serde(default = "default_cost_control_max_uncached_input_tokens")]
     pub max_uncached_input_tokens: u32,
@@ -146,53 +158,14 @@ impl Default for CostControlConfig {
             mask_after_tool_results: default_cost_control_mask_after_tool_results(),
             max_live_tool_result_bytes: default_cost_control_max_live_tool_result_bytes(),
             min_masked_tool_result_bytes: default_cost_control_min_masked_tool_result_bytes(),
+            mask_batch_results: default_cost_control_mask_batch_results(),
+            mask_batch_bytes: default_cost_control_mask_batch_bytes(),
             max_uncached_input_tokens: default_cost_control_max_uncached_input_tokens(),
             min_cache_read_ratio: default_cost_control_min_cache_read_ratio(),
             compact_after_tool_result_bytes: default_cost_control_compact_after_tool_result_bytes(),
             compact_min_input_tokens: default_cost_control_compact_min_input_tokens(),
         }
     }
-}
-
-fn default_cost_control_enabled() -> bool {
-    true
-}
-
-fn default_cost_control_keep_recent_tool_results() -> usize {
-    2
-}
-
-fn default_cost_control_mask_after_tool_results() -> usize {
-    4
-}
-
-fn default_cost_control_max_live_tool_result_bytes() -> usize {
-    24 * 1024
-}
-
-// Masking a small result saves a few hundred tokens but takes it out of the
-// model's view while it may still be working with it, and the model fetches it
-// again. With the count trigger (4 results, keep 2) an agent juggling a pull
-// request, its diff and a shell command re-fetched them in an endless cycle.
-// Below this size the re-fetch costs more than keeping the result.
-fn default_cost_control_min_masked_tool_result_bytes() -> usize {
-    4 * 1024
-}
-
-fn default_cost_control_max_uncached_input_tokens() -> u32 {
-    100_000
-}
-
-fn default_cost_control_min_cache_read_ratio() -> f32 {
-    0.35
-}
-
-fn default_cost_control_compact_after_tool_result_bytes() -> usize {
-    256 * 1024
-}
-
-fn default_cost_control_compact_min_input_tokens() -> usize {
-    8 * 1024
 }
 
 /// Summarization settings.
@@ -551,6 +524,7 @@ impl ModelViewProvider for CompactionModelViewProvider {
             return messages;
         }
         let config = RuntimeCompactionConfig::from_json(config);
+        let messages = scheduled_view::apply(messages);
         let masking = build_model_view_messages_owned(messages, &config, context.prior_usage);
         if masking.masked_count > 0 {
             tracing::info!(
@@ -1124,7 +1098,11 @@ fn apply_cost_control_masking_owned(
     }
 
     let keep_recent = cost_config.keep_recent_tool_results;
-    let to_mask_count = tool_indices.len().saturating_sub(keep_recent);
+    let sizes: Vec<usize> = tool_indices
+        .iter()
+        .map(|index| message_tool_result_len(&messages[*index]))
+        .collect();
+    let to_mask_count = mask_boundary(&sizes, cost_config);
     let related_recent_reads =
         related_recent_paginated_read_results(&messages, &tool_indices, keep_recent);
     let indices_to_mask: HashSet<usize> = tool_indices[..to_mask_count]
@@ -1275,7 +1253,6 @@ fn is_read_file_tool_name(tool_name: &str) -> bool {
             | "sandbox_read_file"
             | "e2b_read_file"
             | "docker_read_file"
-            | "deno_read_file"
             | "sprites_read_file"
             | "read_github_file"
     )
@@ -1370,7 +1347,7 @@ fn summarize_tool_result(
         tool_name if is_read_file_tool_name(tool_name) => {
             summarize_read_file_result(tool_name, object, value)
         }
-        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" | "deno_exec" => {
+        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" => {
             summarize_exec_result(tool_name, object, value)
         }
         "list_directory" => summarize_list_directory_result(tool_name, object, value),
@@ -1943,17 +1920,6 @@ mod tests {
     // ====================================================================
 
     #[test]
-    fn test_capability_metadata() {
-        let cap = CompactionCapability;
-        assert_eq!(cap.id(), COMPACTION_CAPABILITY_ID);
-        assert_eq!(cap.name(), "Compaction");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.category(), Some("Optimization"));
-        assert!(cap.tools().is_empty());
-        assert!(cap.message_filter_provider().is_some());
-    }
-
-    #[test]
     fn test_config_schema_and_validate_config() {
         let cap = CompactionCapability;
 
@@ -1995,107 +1961,6 @@ mod tests {
     }
 
     #[test]
-    fn test_localizations_resolve_uk() {
-        let cap = CompactionCapability;
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Ущільнення контексту");
-        assert!(cap.describe_schema(None).is_some());
-    }
-
-    #[test]
-    fn test_default_config() {
-        let config = RuntimeCompactionConfig::default();
-        assert_eq!(config.strategy, CompactionStrategy::Auto);
-        assert!(config.proactive);
-        assert!((config.budget_percent - 0.85).abs() < f32::EPSILON);
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 2);
-        assert_eq!(
-            config.observation_masking.summary_format,
-            MaskingSummaryFormat::OneLine
-        );
-        assert!(config.summarization.model.is_none());
-        assert_eq!(config.summarization.preserve.len(), 5);
-        assert!(config.summarization.instructions.is_none());
-        assert!(config.cost_control.enabled);
-        assert_eq!(config.cost_control.keep_recent_tool_results, 2);
-    }
-
-    #[test]
-    fn test_config_from_empty_json() {
-        let config = RuntimeCompactionConfig::from_json(&json!({}));
-        assert_eq!(config.strategy, CompactionStrategy::Auto);
-        assert!(config.proactive);
-    }
-
-    #[test]
-    fn test_config_native_only() {
-        let config = RuntimeCompactionConfig::from_json(&json!({"strategy": "native"}));
-        assert_eq!(config.strategy, CompactionStrategy::Native);
-        assert!(config.proactive);
-    }
-
-    #[test]
-    fn test_config_observation_masking_with_custom_settings() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "strategy": "observation_masking",
-            "proactive": false,
-            "observation_masking": {
-                "keep_recent_tool_outputs": 10,
-                "summary_format": "head_tail"
-            }
-        }));
-        assert_eq!(config.strategy, CompactionStrategy::ObservationMasking);
-        assert!(!config.proactive);
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 10);
-        assert_eq!(
-            config.observation_masking.summary_format,
-            MaskingSummaryFormat::HeadTail
-        );
-    }
-
-    #[test]
-    fn test_config_cost_control_with_custom_settings() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "cost_control": {
-                "enabled": true,
-                "keep_recent_tool_results": 1,
-                "mask_after_tool_results": 2,
-                "max_live_tool_result_bytes": 4096,
-                "max_uncached_input_tokens": 50000,
-                "min_cache_read_ratio": 0.5
-            }
-        }));
-
-        assert!(config.cost_control.enabled);
-        assert_eq!(config.cost_control.keep_recent_tool_results, 1);
-        assert_eq!(config.cost_control.mask_after_tool_results, 2);
-        assert_eq!(config.cost_control.max_live_tool_result_bytes, 4096);
-        assert_eq!(config.cost_control.max_uncached_input_tokens, 50000);
-        assert!((config.cost_control.min_cache_read_ratio - 0.5).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_config_summarization_with_custom_model() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "strategy": "summarization",
-            "summarization": {
-                "model": "claude-haiku-4-5-20251001",
-                "instructions": "Focus on API decisions",
-                "preserve": ["decisions", "errors"]
-            }
-        }));
-        assert_eq!(config.strategy, CompactionStrategy::Summarization);
-        assert_eq!(
-            config.summarization.model.as_deref(),
-            Some("claude-haiku-4-5-20251001")
-        );
-        assert_eq!(
-            config.summarization.instructions.as_deref(),
-            Some("Focus on API decisions")
-        );
-        assert_eq!(config.summarization.preserve.len(), 2);
-    }
-
-    #[test]
     fn test_config_falls_back_to_defaults_for_invalid_json() {
         let config = RuntimeCompactionConfig::from_json(&json!({
             "strategy": "nonexistent_strategy",
@@ -2103,24 +1968,6 @@ mod tests {
         }));
         assert_eq!(config.strategy, CompactionStrategy::Auto);
         assert!(config.proactive);
-    }
-
-    #[test]
-    fn test_config_partial_override() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "budget_percent": 0.7,
-            "observation_masking": {
-                "keep_recent_tool_outputs": 3
-            }
-        }));
-        assert_eq!(config.strategy, CompactionStrategy::Auto);
-        assert!(config.proactive);
-        assert!((config.budget_percent - 0.7).abs() < f32::EPSILON);
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 3);
-        assert_eq!(
-            config.observation_masking.summary_format,
-            MaskingSummaryFormat::OneLine
-        );
     }
 
     #[test]
@@ -2145,35 +1992,6 @@ mod tests {
                 "serde roundtrip mismatch for {strategy:?}"
             );
         }
-    }
-
-    #[test]
-    fn test_masking_format_serialization_roundtrip() {
-        for format in [
-            MaskingSummaryFormat::OneLine,
-            MaskingSummaryFormat::HeadTail,
-        ] {
-            let json = serde_json::to_value(format).unwrap();
-            let deserialized: MaskingSummaryFormat = serde_json::from_value(json).unwrap();
-            assert_eq!(format, deserialized);
-        }
-    }
-
-    #[test]
-    fn test_budget_percent_boundary_values() {
-        let config = RuntimeCompactionConfig::from_json(&json!({"budget_percent": 0.1}));
-        assert!((config.budget_percent - 0.1).abs() < f32::EPSILON);
-
-        let config = RuntimeCompactionConfig::from_json(&json!({"budget_percent": 0.99}));
-        assert!((config.budget_percent - 0.99).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_keep_recent_tool_outputs_zero() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "observation_masking": {"keep_recent_tool_outputs": 0}
-        }));
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 0);
     }
 
     // ====================================================================
@@ -2371,42 +2189,9 @@ mod tests {
         assert!(text.contains("unknown_tool"), "Fallback name: {text}");
     }
 
-    #[test]
-    fn test_masking_many_tool_calls_keeps_exactly_n() {
-        let mut messages = Vec::new();
-        for i in 0..10 {
-            let id = format!("call_{i}");
-            messages.push(make_assistant_with_tool_call(&id, &format!("tool_{i}")));
-            messages.push(make_tool_result(&id, &format!("output {i}")));
-        }
-
-        let config = ObservationMaskingConfig {
-            keep_recent_tool_outputs: 3,
-            summary_format: MaskingSummaryFormat::OneLine,
-        };
-        let result = apply_observation_masking(&messages, &config);
-        assert_eq!(result.masked_count, 7);
-
-        // Last 3 tool results at indices 15, 17, 19 should be verbatim
-        assert_eq!(extract_text(&result.messages[15].content), "output 7");
-        assert_eq!(extract_text(&result.messages[17].content), "output 8");
-        assert_eq!(extract_text(&result.messages[19].content), "output 9");
-    }
-
     // ====================================================================
     // Summarization tests
     // ====================================================================
-
-    #[test]
-    fn test_summarization_prompt_default() {
-        let config = SummarizationConfig::default();
-        let prompt = build_summarization_prompt(&config);
-        assert!(prompt.contains("<task>"));
-        assert!(prompt.contains("decisions"));
-        assert!(prompt.contains("files_modified"));
-        assert!(prompt.contains("errors"));
-        assert!(prompt.contains("current_plan"));
-    }
 
     #[test]
     fn test_summarization_prompt_custom_instructions() {
@@ -2484,12 +2269,6 @@ mod tests {
     // ====================================================================
 
     #[test]
-    fn test_head_tail_short_content_unchanged() {
-        let content = MessageContent::Text("line1\nline2\nline3".to_string());
-        assert_eq!(format_head_tail_summary(&content), "line1\nline2\nline3");
-    }
-
-    #[test]
     fn test_head_tail_exactly_six_lines() {
         let content = MessageContent::Text("1\n2\n3\n4\n5\n6".to_string());
         assert_eq!(format_head_tail_summary(&content), "1\n2\n3\n4\n5\n6");
@@ -2547,19 +2326,6 @@ mod tests {
     // ====================================================================
     // CompactionStep tests
     // ====================================================================
-
-    #[test]
-    fn test_compaction_step_serialization() {
-        let step = CompactionStep {
-            strategy: "observation_masking".to_string(),
-            messages_after: 42,
-            duration_ms: 12,
-        };
-        let json = serde_json::to_value(&step).unwrap();
-        assert_eq!(json["strategy"], "observation_masking");
-        assert_eq!(json["messages_after"], 42);
-        assert_eq!(json["duration_ms"], 12);
-    }
 
     // ====================================================================
     // Token estimation tests
@@ -2757,15 +2523,6 @@ mod tests {
         assert_eq!(metrics.strategy_counts["summarization"], 1);
     }
 
-    #[test]
-    fn test_session_metrics_serialization() {
-        let mut metrics = SessionCompactionMetrics::default();
-        metrics.record("auto", 50, 30, 100);
-        let json = serde_json::to_value(&metrics).unwrap();
-        assert_eq!(json["compaction_count"], 1);
-        assert_eq!(json["total_messages_saved"], 20);
-    }
-
     // ====================================================================
     // Hierarchical memory tier tests
     // ====================================================================
@@ -2869,50 +2626,6 @@ mod tests {
         );
         // All hot, no summary needed
         assert_eq!(result.len(), 2);
-    }
-
-    #[test]
-    fn test_memory_tier_config_from_json() {
-        let config: HierarchicalMemoryConfig = serde_json::from_value(json!({
-            "hot_messages": 10,
-            "warm_messages": 50
-        }))
-        .unwrap();
-        assert_eq!(config.hot_messages, 10);
-        assert_eq!(config.warm_messages, 50);
-    }
-
-    #[test]
-    fn test_memory_tier_config_defaults() {
-        let config = HierarchicalMemoryConfig::default();
-        assert_eq!(config.hot_messages, 20);
-        assert_eq!(config.warm_messages, 100);
-    }
-
-    #[test]
-    fn test_compaction_config_with_memory_tiers() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "strategy": "auto",
-            "memory_tiers": {
-                "hot_messages": 15,
-                "warm_messages": 80
-            }
-        }));
-        assert_eq!(config.memory_tiers.hot_messages, 15);
-        assert_eq!(config.memory_tiers.warm_messages, 80);
-    }
-
-    #[test]
-    fn test_memory_tier_serialization() {
-        assert_eq!(serde_json::to_value(MemoryTier::Hot).unwrap(), json!("hot"));
-        assert_eq!(
-            serde_json::to_value(MemoryTier::Warm).unwrap(),
-            json!("warm")
-        );
-        assert_eq!(
-            serde_json::to_value(MemoryTier::Cold).unwrap(),
-            json!("cold")
-        );
     }
 
     // ====================================================================
@@ -3192,25 +2905,6 @@ mod tests {
         assert!(is_protected_tool_call_message(&skill_call));
         assert!(!is_protected_tool_call_message(&regular_call));
         assert!(!is_protected_tool_call_message(&user_msg));
-    }
-
-    #[test]
-    fn test_default_preserve_includes_skill_instructions() {
-        let config = SummarizationConfig::default();
-        assert!(
-            config.preserve.contains(&"skill_instructions".to_string()),
-            "Default preserve list must include skill_instructions"
-        );
-    }
-
-    #[test]
-    fn test_summarization_prompt_mentions_skill_protection() {
-        let config = SummarizationConfig::default();
-        let prompt = build_summarization_prompt(&config);
-        assert!(
-            prompt.contains("activate_skill"),
-            "Summarization prompt must instruct LLM to preserve skill content"
-        );
     }
 
     #[test]

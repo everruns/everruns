@@ -40,6 +40,14 @@ use crate::storage::{AgentRow, EncryptionService, StorageBackend};
 /// GitHub as seen from an agent's page.
 #[derive(Debug, Default, Serialize, PartialEq, ToSchema)]
 pub struct AgentGitHubStatus {
+    /// The agent's GitHub page in the console, so a caller can link to it.
+    /// Absolute in responses; built as a relative path here because the
+    /// console's address is known only where links are decorated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(
+        example = "https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github"
+    )]
+    pub view_url: Option<String>,
     /// The agent's identity, once it has one; disconnect goes through it.
     pub identity_id: Option<String>,
     /// An installation is bound, so tools and triggers work: the agent's own
@@ -52,10 +60,12 @@ pub struct AgentGitHubStatus {
     pub app_url: Option<String>,
     /// Which GitHub identity the agent acts as: `agent_app` (its own App) or
     /// `everruns_app` (the shared Everruns App). `None` before either exists.
+    #[schema(example = "agent_app")]
     pub kind: Option<String>,
     /// The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
     /// shared App's (`everruns[bot]`) when the agent chose it and the
     /// deployment names its slug; `None` otherwise.
+    #[schema(example = "pr-summarizer[bot]")]
     pub bot_login: Option<String>,
     /// The App's settings page on GitHub, where its logo is uploaded
     /// (GitHub has no API for that). `None` when the owner's account kind is
@@ -64,6 +74,7 @@ pub struct AgentGitHubStatus {
     /// GitHub account the App is installed on.
     pub account: Option<String>,
     /// `all` or `selected`.
+    #[schema(example = "selected")]
     pub repository_selection: Option<String>,
     /// Permissions new Apps request that this installation lacks (`name:level`),
     /// e.g. `actions:read` for CI triggers on an App created before them.
@@ -179,8 +190,10 @@ pub(crate) async fn status_for_agent(
     let web_url = &github.api.endpoints().web_url;
     let suggested_owners = suggested_owners(db, org_id).await?;
     let everruns_app_installations = choosable_installations(db, github, org_id).await?;
+    let view_url = Some(format!("agents/{}/github", agent.public_id));
     let Some(identity_id) = agent.virtual_user_id else {
         return Ok(AgentGitHubStatus {
+            view_url,
             suggested_owners,
             everruns_app_installations,
             ..AgentGitHubStatus::default()
@@ -198,8 +211,7 @@ pub(crate) async fn status_for_agent(
         Some(GitHubIdentityKind::Person) | None => app.as_ref().map(|_| AGENT_APP_KIND),
     };
     // Connected means an installation the agent acts through: its own App's,
-    // or a shared App link it chose. A pre-D3 shared App row (`oauth`) on an
-    // agent is reported by kind but not as connected; 3b migrates those.
+    // or a shared App link it chose.
     let connection = any_connection.filter(|c| {
         c.connection_type == GITHUB_APP_CONNECTION_TYPE
             || c.connection_type == EVERRUNS_APP_CONNECTION_TYPE
@@ -237,6 +249,7 @@ pub(crate) async fn status_for_agent(
         .and_then(|v| v.as_str())
         .map(str::to_string);
     Ok(AgentGitHubStatus {
+        view_url,
         identity_id: Some(identity_id.to_string()),
         connected: connection.is_some(),
         app_created: app.is_some(),

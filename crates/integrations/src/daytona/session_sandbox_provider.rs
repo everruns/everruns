@@ -1,8 +1,9 @@
 //! Daytona implementation of the provider-neutral session_sandbox contract.
 
+use everruns_contracts::runtime::computer_use::{ComputerSession, ComputerUseConfig, DisplaySize};
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
-    OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
+    DesktopRecording, OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
     SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
     SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
     SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
@@ -14,16 +15,17 @@ use serde_json::json;
 use std::time::Duration;
 use tracing::{debug, warn};
 
+use crate::daytona::api::management::types::SandboxVolume;
 use crate::daytona::client::DaytonaClient;
-use crate::daytona::naming::create_sandbox_with_unique_name;
+use crate::daytona::naming::{create_body, create_sandbox_with_unique_name};
+use crate::daytona::network;
 use crate::daytona::owned;
 use crate::daytona::state::{
     SandboxInfo, SandboxState, VolumeInfo, get_managed_api_key, release_sandbox_lease,
     touch_sandbox_lease_with_credential,
 };
 use crate::daytona::{
-    AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
-    DAYTONA_WORKSPACE_PATH, EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
+    AUTO_STOP_INTERVAL_MINUTES, DAYTONA_WORKSPACE_PATH, EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
 };
 
 pub struct DaytonaSessionSandboxProvider;
@@ -250,6 +252,25 @@ async fn resolve_recovery_binding(
         retained_revisions: settings.retained_revisions,
         head_revision: None,
     })
+}
+
+/// Daytona answers 404 for a deleted sandbox only once it has finished going
+/// away; until then GET returns it as `destroying` or `destroyed`, at times for
+/// over a minute (EVE-1280). Either way its compute and disk are gone, so it is
+/// lost, never paused or startable.
+fn is_gone_state(state: &str) -> bool {
+    state.eq_ignore_ascii_case("destroying") || state.eq_ignore_ascii_case("destroyed")
+}
+
+async fn sandbox_is_lost(
+    client: &DaytonaClient,
+    sandbox_id: &str,
+) -> Result<bool, ToolExecutionResult> {
+    match client.get_sandbox(sandbox_id).await {
+        Ok(info) => Ok(is_gone_state(&info.state)),
+        Err(err) if is_not_found(&err) => Ok(true),
+        Err(err) => Err(ToolExecutionResult::tool_error(err)),
+    }
 }
 
 fn is_transition_state(state: &str) -> bool {
@@ -533,20 +554,39 @@ async fn create_daytona_instance(
     restore: bool,
 ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
     let workspace_path = workspace_path(config);
-    let mut create_body = json!({
-        "name": requested_name,
-        "snapshot": snapshot_name(config)?,
-        "autoStopInterval": auto_stop_minutes(config)?,
-        "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
-        "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
-        "labels": sandbox_labels(context).await,
-    });
+    let mut create_body = create_body(&sandbox_labels(context).await, auto_stop_minutes(config)?);
+    match desktop_display(config) {
+        // Daytona's default image is the one that ships the desktop; its size
+        // is fixed at create time.
+        Some(display) => {
+            // A builder can bake the desktop base. Keep its pinned snapshot
+            // instead of silently replacing it with Daytona's default image.
+            create_body.snapshot = config
+                .provider_config
+                .get("snapshot")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            create_body.env = [
+                (
+                    crate::daytona::computer::RESOLUTION_ENV.to_string(),
+                    display.to_string(),
+                ),
+                (
+                    "DISPLAY".to_string(),
+                    crate::daytona::computer::DESKTOP_DISPLAY.to_string(),
+                ),
+            ]
+            .into();
+        }
+        None => create_body.snapshot = Some(snapshot_name(config)?),
+    }
+    network::apply_to_create(&mut create_body, &network::egress_rules(context, config)?);
     if let Some(recovery) = &recovery {
-        create_body["volumes"] = json!([{
-            "volumeId": recovery.volume_id,
-            "mountPath": recovery.mount_path,
-            "subpath": recovery.subpath,
-        }]);
+        create_body.volumes = vec![SandboxVolume {
+            volume_id: Some(recovery.volume_id.clone()),
+            mount_path: Some(recovery.mount_path.clone()),
+            subpath: Some(recovery.subpath.clone()),
+        }];
     }
 
     let (sandbox_info, sandbox_name) =
@@ -574,6 +614,7 @@ async fn create_daytona_instance(
         if restore && let Some(recovery) = &recovery {
             restore_workspace(client, &sandbox_info.id, &workspace_path, recovery).await?;
         }
+        start_configured_desktop(client, config, &sandbox_info.id).await?;
         Ok::<(), ToolExecutionResult>(())
     }
     .await;
@@ -671,6 +712,13 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let client = build_client(api_key, config);
         let Some(recovery) = recovery_binding(&context.session_id(), instance)? else {
             let info = ensure_sandbox_started(&client, &instance.external_id).await?;
+            start_configured_desktop(&client, config, &instance.external_id).await?;
+            network::apply_to_running(
+                &client,
+                &instance.external_id,
+                &network::egress_rules(context, config)?,
+            )
+            .await?;
             let workspace_path = instance
                 .workspace_path
                 .clone()
@@ -697,35 +745,37 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             });
         };
 
-        let info = match client.get_sandbox(&instance.external_id).await {
-            Ok(_) => ensure_sandbox_started(&client, &instance.external_id).await?,
-            Err(err) if is_not_found(&err) => {
-                let replacement_name = instance
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| requested_sandbox_name(context, config));
-                let replacement = create_daytona_instance(
-                    &client,
-                    context,
-                    config,
-                    &replacement_name,
-                    Some(recovery),
-                    true,
-                )
-                .await?;
-                if let Err(release_err) =
-                    release_sandbox_lease(context, &instance.external_id).await
-                {
-                    warn!(
-                        sandbox_id = %instance.external_id,
-                        error = ?release_err,
-                        "Failed to release lease for lost Daytona sandbox"
-                    );
-                }
-                return Ok(replacement);
+        if sandbox_is_lost(&client, &instance.external_id).await? {
+            let replacement_name = instance
+                .display_name
+                .clone()
+                .unwrap_or_else(|| requested_sandbox_name(context, config));
+            let replacement = create_daytona_instance(
+                &client,
+                context,
+                config,
+                &replacement_name,
+                Some(recovery),
+                true,
+            )
+            .await?;
+            if let Err(release_err) = release_sandbox_lease(context, &instance.external_id).await {
+                warn!(
+                    sandbox_id = %instance.external_id,
+                    error = ?release_err,
+                    "Failed to release lease for lost Daytona sandbox"
+                );
             }
-            Err(err) => return Err(ToolExecutionResult::tool_error(err)),
-        };
+            return Ok(replacement);
+        }
+        let info = ensure_sandbox_started(&client, &instance.external_id).await?;
+        start_configured_desktop(&client, config, &instance.external_id).await?;
+        network::apply_to_running(
+            &client,
+            &instance.external_id,
+            &network::egress_rules(context, config)?,
+        )
+        .await?;
 
         let workspace_path = instance
             .workspace_path
@@ -751,6 +801,57 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             provider_state: instance.provider_state.clone(),
             metadata: json!({ "remote_state": "started" }),
         })
+    }
+
+    async fn open_desktop(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+        display: DisplaySize,
+    ) -> Result<Box<dyn ComputerSession>, ToolExecutionResult> {
+        if desktop_display(config).is_none() {
+            return Err(ToolExecutionResult::tool_error(
+                "this Daytona sandbox was created without a desktop",
+            ));
+        }
+        let api_key = get_managed_api_key(context, &config.credential).await?;
+        let session = crate::daytona::computer::DaytonaDesktopSession::start(
+            build_client(api_key.clone(), config),
+            instance.external_id.clone(),
+            display,
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
+        // A recording that fails to start must not cost the agent its desktop.
+        if config.desktop_recording()
+            && let Err(error) = crate::daytona::recording::ensure_started(
+                &build_client(api_key, config),
+                &instance.external_id,
+            )
+            .await
+        {
+            warn!(sandbox_id = %instance.external_id, %error, "Daytona desktop recording did not start");
+        }
+        Ok(Box::new(session))
+    }
+
+    async fn collect_desktop_recordings(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+    ) -> Result<Vec<DesktopRecording>, ToolExecutionResult> {
+        if desktop_display(config).is_none() {
+            return Ok(Vec::new());
+        }
+        let api_key = get_managed_api_key(context, &config.credential).await?;
+        crate::daytona::recording::collect(
+            std::sync::Arc::new(build_client(api_key, config)),
+            &instance.external_id,
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)
     }
 
     async fn pause(
@@ -812,27 +913,23 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let client = build_client(api_key, config);
         let recovery = recovery_binding(&context.session_id(), instance)?;
         let delete_instance = if let Some(recovery) = &recovery {
-            match client.get_sandbox(&instance.external_id).await {
-                Ok(_) => {
-                    ensure_sandbox_started(&client, &instance.external_id).await?;
-                    instance.clone()
-                }
-                Err(err) if is_not_found(&err) => {
-                    let replacement_name = instance
-                        .display_name
-                        .clone()
-                        .unwrap_or_else(|| requested_sandbox_name(context, config));
-                    create_daytona_instance(
-                        &client,
-                        context,
-                        config,
-                        &replacement_name,
-                        Some(recovery.clone()),
-                        false,
-                    )
-                    .await?
-                }
-                Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+            if sandbox_is_lost(&client, &instance.external_id).await? {
+                let replacement_name = instance
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| requested_sandbox_name(context, config));
+                create_daytona_instance(
+                    &client,
+                    context,
+                    config,
+                    &replacement_name,
+                    Some(recovery.clone()),
+                    false,
+                )
+                .await?
+            } else {
+                ensure_sandbox_started(&client, &instance.external_id).await?;
+                instance.clone()
             }
         } else {
             instance.clone()
@@ -1102,20 +1199,9 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let info = match client.get_sandbox(&state.instance.external_id).await {
-            Ok(info) => info,
-            Err(err) if is_not_found(&err) => {
-                return Ok(SessionSandboxStatusResponse {
-                    provider: state.provider.clone(),
-                    session_status: SessionSandboxStatus::Lost,
-                    external_id: state.instance.external_id.clone(),
-                    display_name: state.instance.display_name.clone(),
-                    workspace_path: state.instance.workspace_path.clone(),
-                    metadata: json!({
-                        "remote_state": "lost",
-                        "recoverable": recovery_binding(&context.session_id(), &state.instance)?.is_some(),
-                    }),
-                });
-            }
+            Ok(info) if !is_gone_state(&info.state) => info,
+            Ok(_) => return lost_status(context, state),
+            Err(err) if is_not_found(&err) => return lost_status(context, state),
             Err(err) => return Err(ToolExecutionResult::tool_error(err)),
         };
 
@@ -1133,6 +1219,23 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             }),
         })
     }
+}
+
+fn lost_status(
+    context: &dyn SessionSandboxContext,
+    state: &SessionSandboxState,
+) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
+    Ok(SessionSandboxStatusResponse {
+        provider: state.provider.clone(),
+        session_status: SessionSandboxStatus::Lost,
+        external_id: state.instance.external_id.clone(),
+        display_name: state.instance.display_name.clone(),
+        workspace_path: state.instance.workspace_path.clone(),
+        metadata: json!({
+            "remote_state": "lost",
+            "recoverable": recovery_binding(&context.session_id(), &state.instance)?.is_some(),
+        }),
+    })
 }
 
 fn build_client(api_key: String, config: &SessionSandboxConfig) -> DaytonaClient {
@@ -1180,6 +1283,31 @@ fn auto_stop_minutes(config: &SessionSandboxConfig) -> Result<u64, ToolExecution
             "session_sandbox Daytona auto_stop_minutes must be between 1 and 60",
         ))
     }
+}
+
+/// The display size of a sandbox created with a desktop, from
+/// `provider_config.desktop`.
+/// Bring up the desktop of a sandbox created with one as soon as the sandbox
+/// runs, not on the first `computer` action: a browser the agent starts from
+/// the shell needs the X server already there, or it exits with no display.
+async fn start_configured_desktop(
+    client: &DaytonaClient,
+    config: &SessionSandboxConfig,
+    sandbox_id: &str,
+) -> Result<(), ToolExecutionResult> {
+    if desktop_display(config).is_none() {
+        return Ok(());
+    }
+    crate::daytona::computer::start_desktop(client, sandbox_id)
+        .await
+        .map(|_| ())
+        .map_err(ToolExecutionResult::tool_error)
+}
+
+fn desktop_display(config: &SessionSandboxConfig) -> Option<DisplaySize> {
+    config
+        .desktop()
+        .map(|settings| ComputerUseConfig::from_value_or_default(&settings).display())
 }
 
 fn snapshot_name(config: &SessionSandboxConfig) -> Result<String, ToolExecutionResult> {

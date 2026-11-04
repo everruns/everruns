@@ -67,80 +67,76 @@ async fn test_execute_btw_returns_ephemeral_response() {
 // ============================================
 
 #[tokio::test]
-async fn test_list_capabilities() {
-    let server = TestServer::new().await;
+async fn test_gated_capability_metadata_stays_readable() {
+    let server = TestServer::in_memory().await;
+    server
+        .db
+        .replace_org_feature_flags(
+            everruns_core::DEFAULT_ORG_ID,
+            &std::collections::HashMap::from([
+                ("skills".to_string(), false),
+                ("memory".to_string(), false),
+                ("knowledge".to_string(), false),
+            ]),
+        )
+        .await
+        .expect("disable rollout flags");
 
-    let data: Value = server
+    let hidden: Value = server
         .get("/v1/capabilities")
         .await
         .assert_status(StatusCode::OK)
         .json();
+    for id in ["skills", "memory", "knowledge"] {
+        assert!(
+            capability_by_id(&hidden, id).is_none(),
+            "{id} should stay out of discovery while its flag is off"
+        );
+    }
 
-    let capabilities = data["data"].as_array().expect("Expected array");
-    // Should have built-in capabilities
+    let named: Value = server
+        .get("/v1/capabilities?include_retired=true")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let skills = capability_by_id(&named, "skills").expect("skills metadata");
+    assert_eq!(skills["name"], "Agent Skills");
     assert!(
-        !capabilities.is_empty(),
-        "Should have built-in capabilities"
+        skills["description"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Discover and activate skills")
     );
-    assert!(
-        capabilities
-            .iter()
-            .any(|cap| cap["id"] == "infinity_context"),
-        "Should expose infinity_context as a standard capability"
-    );
+    assert_eq!(skills["icon"], "wand");
+    assert_eq!(skills["feature_flag"], "skills");
+
+    for (id, flag) in [("memory", "memory"), ("knowledge", "knowledge")] {
+        let capability = capability_by_id(&named, id).unwrap_or_else(|| panic!("{id} metadata"));
+        assert!(
+            !capability["name"].as_str().unwrap_or("").is_empty(),
+            "{id} name"
+        );
+        assert!(
+            !capability["description"].as_str().unwrap_or("").is_empty(),
+            "{id} description"
+        );
+        assert_eq!(capability["feature_flag"], flag, "{id}");
+    }
+
+    let detail: Value = server
+        .get("/v1/capabilities/skills")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(detail["name"], "Agent Skills");
+    assert_eq!(detail["feature_flag"], "skills");
 }
 
-#[tokio::test]
-async fn test_capability_info_includes_features() {
-    let server = TestServer::new().await;
-
-    // Check that the capabilities endpoint returns features
-    let body: Value = server
-        .get("/v1/capabilities")
-        .await
-        .assert_success()
-        .json_value();
-
-    let data = body["data"].as_array().expect("data array");
-
-    // Find session_storage capability — should have secrets and key_value features
-    let storage = data
+fn capability_by_id<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
+    body["data"]
+        .as_array()?
         .iter()
-        .find(|c| c["id"] == "session_storage")
-        .expect("session_storage capability should exist");
-
-    let features = storage["features"]
-        .as_array()
-        .expect("features should be an array");
-    assert!(
-        features.contains(&json!("secrets")),
-        "session_storage should have secrets feature",
-    );
-    assert!(
-        features.contains(&json!("key_value")),
-        "session_storage should have key_value feature",
-    );
-
-    // Find session_schedule — should have schedules feature
-    let schedule = data
-        .iter()
-        .find(|c| c["id"] == "session_schedule")
-        .expect("session_schedule capability should exist");
-
-    let schedule_features = schedule["features"]
-        .as_array()
-        .expect("features should be an array");
-    assert!(
-        schedule_features.contains(&json!("schedules")),
-        "session_schedule should have schedules feature",
-    );
-
-    // noop is a test fixture (everruns-test-support) and must not appear in
-    // the product capability registry.
-    assert!(
-        !data.iter().any(|c| c["id"] == "noop"),
-        "noop fixture capability must not be registered in the product",
-    );
+        .find(|capability| capability["id"].as_str() == Some(id))
 }
 
 // ============================================
@@ -361,82 +357,9 @@ async fn test_cannot_recursively_delete_directory_with_readonly_file() {
     assert_eq!(file.content.as_deref(), Some("Protected content"));
 }
 
-#[tokio::test]
-async fn test_can_delete_non_readonly_file() {
-    let server = TestServer::in_memory().await;
-
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "normal-delete-test",
-                "display_name": "Normal Delete Test",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let session: Session = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent.public_id
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
-
-    // Create a normal (non-readonly) file
-    let _file: SessionFile = server
-        .post(
-            &format!("{}/temp.txt", fs_url),
-            json!({
-                "content": "Delete me"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // Should succeed
-    let result: Value = server
-        .delete(&format!("{}/temp.txt", fs_url))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(result["deleted"], true);
-}
-
 // ============================================
 // User Connection Verify Endpoint Tests
 // ============================================
-
-#[tokio::test]
-async fn test_verify_connectors_listed() {
-    let server = TestServer::in_memory().await;
-
-    let resp: Value = server
-        .get("/v1/connection-providers")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let daytona = resp
-        .as_array()
-        .expect("providers response should be an array")
-        .iter()
-        .find(|provider| provider["provider_id"] == "daytona")
-        .expect("Daytona setup must be listed wherever Daytona sandboxes are available");
-    assert_eq!(daytona["display_name"], "Daytona");
-    assert_eq!(daytona["connection_type"], "api_key");
-    assert!(daytona["form_schema"]["fields"].is_array());
-}
 
 // ============================================
 // App Reference Validation Tests

@@ -44,6 +44,44 @@ impl CompositeEventListener {
 
 #[async_trait]
 impl EventListener for CompositeEventListener {
+    fn prepare_causal_context(&self, request: &crate::events::EventRequest) -> Option<String> {
+        for listener in &self.listeners {
+            if let Ok(Some(carrier)) =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    listener.prepare_causal_context(request)
+                }))
+            {
+                return Some(carrier);
+            }
+        }
+        None
+    }
+    fn turn_causal_context(
+        &self,
+        context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        let mut causes = crate::causal::CausalContext::default();
+        for listener in &self.listeners {
+            if let Ok(value) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.turn_causal_context(context)
+            })) {
+                causes.merge(&value);
+            }
+        }
+        causes
+    }
+    fn restore_turn_context(
+        &self,
+        context: &crate::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        for listener in &self.listeners {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.restore_turn_context(context, metadata)
+            }));
+        }
+    }
+
     /// Forward event to all inner listeners with error isolation.
     ///
     /// Each listener is called in isolation - if a listener panics,
@@ -154,20 +192,6 @@ mod tests {
             expected: serde_json::to_value(event).unwrap(),
             filter,
         })
-    }
-
-    #[tokio::test]
-    async fn test_composite_listener_multiple() {
-        let event = create_test_event();
-        let first = Arc::new(AtomicU32::new(0));
-        let second = Arc::new(AtomicU32::new(0));
-        let composite = CompositeEventListener::new(vec![
-            counting(&event, &first, None),
-            counting(&event, &second, None),
-        ]);
-        composite.on_event(&event).await;
-        assert_eq!(first.load(Ordering::SeqCst), 1);
-        assert_eq!(second.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

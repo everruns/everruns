@@ -41,12 +41,12 @@ Per-sandbox state is stored in session **secrets** (encrypted at rest via AES-25
 
 ### API Key Resolution
 
-The Daytona API key is resolved via **user connection** for the `daytona` provider (Settings > My agent experience).
+The Daytona API key is resolved via **user connection** for the `daytona` provider (Settings > Connections).
 If not configured, a `ToolError` guides the user to set up in Settings.
 
 ### User Connection
 
-Daytona registers as a `ConnectionProviderPlugin` (API-key type). Users configure their key in **Settings > My agent experience**:
+Daytona registers as a `ConnectionProviderPlugin` (API-key type). Users configure their key in **Settings > Connections**:
 
 1. User enters API key (from [Daytona Dashboard](https://app.daytona.io) > API Keys)
 2. Key validated via `GET /sandbox` endpoint
@@ -73,28 +73,33 @@ This avoids entering the key in chat (see TM-AGENT-016).
 
 ## API Integration
 
-### Management API Endpoints
+The client is generated at build time from Daytona's own OpenAPI specs,
+vendored in [`openapi/daytona/`](../../openapi/daytona/): `api.json`
+(Management API, served at `app.daytona.io/api-json`) and `toolbox.json`
+(Toolbox API, served by the daemon in every sandbox at `/swagger/doc.json`,
+converted from Swagger 2.0). [`operations.json`](../../openapi/daytona/operations.json)
+lists the operations Everruns uses:
 
-| Method | Path | Purpose | Request Body |
-|--------|------|---------|-------------|
-| POST | `/sandbox` | Create sandbox | `{ name?, snapshot?, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
-| GET | `/sandbox/{id}` | Get sandbox info |, |
-| GET | `/snapshots` | List available snapshots |, |
-| POST | `/sandbox/{id}/start` | Start sandbox |, |
-| POST | `/sandbox/{id}/stop` | Stop sandbox |, |
-| DELETE | `/sandbox/{id}` | Delete sandbox |, |
-| POST | `/sandbox/{id}/autostop/{minutes}` | Set auto-stop |, |
+- `client`: generated into typed calls (`daytona::api`), used by `DaytonaClient`.
+- `raw`: called without generated types: multipart upload, byte downloads
+  (files, command logs) and the Computer Use endpoints.
+- `agent`: described in the spec mounted at `/daytona/openapi.yaml` for
+  `daytona_api_call`.
 
-### Toolbox API Endpoints (at `proxy.app.daytona.io/toolbox/{sandboxId}`)
+Generation is strict for request bodies (a renamed field fails the build) and
+lenient for responses (no required fields, enums read as strings, every
+property may be null), so a new sandbox state or an extra `null` does not
+fail a call. Error responses are left out of the generated types; a non-2xx
+reaches the tools as `"Daytona API error ({status}): {body}"` or
+`"Sandbox API error ({status}): {body}"`.
 
-| Method | Path | Purpose | Request Body |
-|--------|------|---------|-------------|
-| POST | `/process/execute` | Execute command (sync) | `{ command, cwd?, timeout? }` |
-| GET | `/files?path=` | List directory |, |
-| GET | `/files/download?path=` | Download file |, |
-| POST | `/files/upload?path=` | Upload file (multipart) | multipart/form-data |
-| DELETE | `/files?path=` | Delete file/directory |, |
-| POST | `/files/folder?path=&mode=` | Create directory |, |
+Keeping current: `test_live_openapi_matches_vendored` (live suite, also in the
+weekly sweep) compares every listed operation with the specs Daytona serves
+now. When it fails, run `doppler run -- scripts/update-daytona-openapi.sh` and
+review the diff.
+
+Paginated listings (`GET /sandbox`, `GET /snapshots`) are followed to the last
+page.
 
 ## Tools
 
@@ -242,13 +247,14 @@ The trust-boundary decision and rationale are documented at the top of `crates/i
 
 ## Security
 
-- **API Key**: Stored in user connections (Settings > My agent experience), encrypted at rest (TM-DAYTONA-004)
+- **API Key**: Stored in user connections (Settings > Connections), encrypted at rest (TM-DAYTONA-004)
 - **Single auth token**: Both Management and Toolbox APIs use the same Bearer token
 - **Sandbox Isolation**: Each sandbox is an isolated environment (TM-DAYTONA-005)
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes
 - **Git credentials**: Short-lived GitHub token written to `/tmp/.git-credentials`; lost on sandbox stop; same trust boundary as exec access (TM-DAYTONA-001)
 - **Token expiry**: GitHub App installation tokens expire in ~1 hour; agent must call `daytona_git_credentials` again to refresh (TM-DAYTONA-002)
 - **Clone-auth host allowlist**: GitHub token injected only into URLs whose host is on the operator-configured allowlist; default `["github.com"]`, extended via `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (TM-DAYTONA-008)
+- **Outbound network**: Daytona enforces the sandbox template's `containment.network` (server-written as `provider_config.network`) narrowed by the session network access list, through `networkBlockAll` / `domainAllowList` / `networkAllowList` on create and `updateNetworkSettings` on resume; tool-created and desktop sandboxes get the session list. Open rules send nothing, restricted rules fail closed. See `network.rs` (TM-DAYTONA-015)
 
 See [threat-model.md](../../knowledge/security/threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
 
@@ -293,7 +299,7 @@ During exec, a background heartbeat task calls `touch_sandbox_lease` every 3 min
 
 ### Shell profile sourcing in exec
 
-Daytona sessions use a bare (non-login) shell. Unlike E2B and Deno, which spawn `bash -l -c` per command and get automatic profile sourcing, Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
+Daytona sessions use a bare (non-login) shell. Unlike E2B, which spawns `bash -l -c` per command and gets automatic profile sourcing, Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
 
 Three fixes were considered:
 
@@ -372,15 +378,18 @@ Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workfl
 - **Category**: `Execution`
 - **Dependencies**: `["session_storage"]`
 
-## Desktop computer use (experimental)
+## Sandbox desktop
 
-The module also contributes `computer_use_daytona` (flag `daytona_computer_use`),
-which backs the provider-neutral `computer` tool with the desktop of a
-session-owned sandbox from Daytona's default image. See `computer.rs` and
+A Session Sandbox created with `target.options.desktop` uses Daytona's default
+image (size and snapshot are rejected), and
+`DaytonaSessionSandboxProvider::open_desktop` drives it for the
+`sandbox_desktop` capability. See `computer.rs` and
 `knowledge/execution/computer-use.md`.
 
 - **Display**: sized at create time by `VNC_RESOLUTION`; started through
-  `/computeruse/start`; a sandbox of another size is replaced.
+  `/computeruse/start` once the sandbox runs (create and resume), with
+  `DISPLAY=:0` in the sandbox environment, so a GUI program the agent starts
+  from the shell opens on it.
 - **Actions**: one JSON request per input to `/computeruse/mouse/*` and
   `/computeruse/keyboard/*`; no `exec`, no shell.
 - **Frames**: `/computeruse/screenshot`, PNG checked against the display size.

@@ -40,7 +40,7 @@ describe("AgUiSetupGuidance", () => {
       />,
     );
 
-    expect(screen.getByText(/Never.*threads can be resumed indefinitely/)).toBeInTheDocument();
+    expect(screen.getByText(/Never.*Threads can be resumed indefinitely/)).toBeInTheDocument();
   });
 });
 
@@ -125,6 +125,6 @@ describe("formatSessionExpiration", () => {
     );
 
     expect(screen.getByText("Tool activity")).toBeInTheDocument();
-    expect(screen.getByText("Generic — Working on it")).toBeInTheDocument();
+    expect(screen.getByText("Generic: Working on it")).toBeInTheDocument();
   });
 });

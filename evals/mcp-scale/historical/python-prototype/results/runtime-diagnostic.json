@@ -1,0 +1,350 @@
+{
+  "url": "stdio://ops",
+  "model": "openai/gpt-6-luna",
+  "provider": "openrouter",
+  "prompt": "This is a synthetic fixture connectivity check. Reply with exactly OK and do not call any tools.",
+  "mode": "run",
+  "mcp_transport": "stdio",
+  "search": "none",
+  "success": false,
+  "response": "",
+  "error": "I encountered an error while processing your request. Please try again later.",
+  "iterations": 1,
+  "duration_ms": 4473,
+  "usage": null,
+  "discovered_tool_count": 2,
+  "discovered_tools": [
+    "mcp_ops__catalog_call",
+    "mcp_ops__catalog_search"
+  ],
+  "tool_calls": [],
+  "event_trace": [
+    {
+      "context": {},
+      "data": {
+        "message": {
+          "content": [
+            {
+              "text": "This is a synthetic fixture connectivity check. Reply with exactly OK and do not call any tools.",
+              "type": "text"
+            }
+          ],
+          "created_at": "2026-10-18T21:50:42.517720772Z",
+          "id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+          "role": "user"
+        }
+      },
+      "id": "event_01a150fedd55728e9d6a8613c2bf9786",
+      "sequence": 1,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:42.517824762Z",
+      "type": "input.message"
+    },
+    {
+      "context": {},
+      "data": {
+        "agent_id": "agent_01a150fedd5774d5974c0c5e8fe22d08",
+        "harness_id": "harness_01a150fedd5774d5974c0c5d42058ab0"
+      },
+      "id": "event_01a150fedd757202828783b7a59ff1e7",
+      "sequence": 2,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:42.549912Z",
+      "type": "session.started"
+    },
+    {
+      "context": {
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "id": "event_01a150fee1cd77ff973a2c5e38b9625c",
+      "sequence": 3,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:43.661710891Z",
+      "type": "session.activated"
+    },
+    {
+      "context": {
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "agent_id": "agent_01a150fedd5774d5974c0c5e8fe22d08",
+        "agent_name": "mcp-scale-runtime-example",
+        "input_content": "This is a synthetic fixture connectivity check. Reply with exactly OK and do not call any tools.",
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "id": "event_01a150fee1cd77ff973a2c5fa0c067ea",
+      "sequence": 4,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:43.661960356Z",
+      "type": "turn.started"
+    },
+    {
+      "context": {
+        "exec_id": "exec_01a150fee1ce71588aea11eeb1524db6",
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "parent_span_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3",
+        "span_id": "01a150fe-e1d0-7077-9a01-26d869c4f60b",
+        "trace_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "agent_id": "agent_01a150fedd5774d5974c0c5e8fe22d08",
+        "harness_id": "harness_01a150fedd5774d5974c0c5d42058ab0"
+      },
+      "id": "event_01a150fee1d070779a0126d95337a88d",
+      "sequence": 5,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:43.664445828Z",
+      "type": "reason.started"
+    },
+    {
+      "context": {
+        "exec_id": "exec_01a150fee1ce71588aea11eeb1524db6",
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "records": [
+          {
+            "capability_id": "mcp:5d3ceb83-46c0-5580-8075-f3f7bf58faf2",
+            "capability_name": "ops",
+            "tool_name": "mcp_ops__catalog_call",
+            "usage_count": 1,
+            "usage_kind": "exposed"
+          },
+          {
+            "capability_id": "mcp:5d3ceb83-46c0-5580-8075-f3f7bf58faf2",
+            "capability_name": "ops",
+            "tool_name": "mcp_ops__catalog_search",
+            "usage_count": 1,
+            "usage_kind": "exposed"
+          }
+        ]
+      },
+      "id": "event_01a150fee1d17321a52ed946ab529869",
+      "sequence": 6,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:43.665173562Z",
+      "type": "capability.usage"
+    },
+    {
+      "context": {
+        "exec_id": "exec_01a150fee1ce71588aea11eeb1524db6",
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "iteration": 1,
+        "message_id": "message_f91dc29f574742ab8ed9d26939934fe7",
+        "model": "openai/gpt-6-luna",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "id": "event_01a150fee1d17321a52ed9477f92919c",
+      "sequence": 7,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:43.665707271Z",
+      "type": "output.message.started"
+    },
+    {
+      "context": {
+        "exec_id": "exec_01a150fee1ce71588aea11eeb1524db6",
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "parent_span_id": "01a150fe-e1d0-7077-9a01-26d869c4f60b",
+        "span_id": "01a150fe-ee9a-732a-9f5f-36d2afa22ea6",
+        "trace_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "messages": [
+          {
+            "content": [
+              {
+                "text": "You are an operations assistant. Use the connected MCP tools to carry out the request. Act without asking for confirmation and reply with one concise sentence.",
+                "type": "text"
+              }
+            ],
+            "created_at": "2026-10-18T21:50:43.665610314Z",
+            "id": "message_ef3c02e6fae049488d972a3bcd900e10",
+            "role": "system"
+          },
+          {
+            "content": [
+              {
+                "text": "This is a synthetic fixture connectivity check. Reply with exactly OK and do not call any tools.",
+                "type": "text"
+              }
+            ],
+            "created_at": "2026-10-18T21:50:42.517720772Z",
+            "id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+            "role": "user"
+          }
+        ],
+        "metadata": {
+          "duration_ms": 3272,
+          "error": "LLM error: provider 'openrouter': Failed to send request: error sending request (after 2 retries)",
+          "finish_reasons": [
+            "error"
+          ],
+          "model": "openai/gpt-6-luna",
+          "provider": "openrouter",
+          "provider_id": "openrouter",
+          "request_options": {
+            "metadata": {
+              "agent_id": "agent_01a150fedd5774d5974c0c5e8fe22d08",
+              "exec_id": "exec_01a150fee1ce71588aea11eeb1524db6",
+              "harness_id": "harness_01a150fedd5774d5974c0c5d42058ab0",
+              "org_id": "org_00000000000000000000000000000001",
+              "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+              "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+            },
+            "stream": true
+          },
+          "success": false
+        },
+        "output": {},
+        "tools": [
+          {
+            "capability_id": "mcp:5d3ceb83-46c0-5580-8075-f3f7bf58faf2",
+            "capability_name": "ops",
+            "category": "MCP Servers",
+            "description": "Call an exact tool discovered by catalog_search. Pass its tool_id and schema_digest unchanged, and arguments matching its inputSchema. Operations may change fake platform state.",
+            "display_name": "ops: catalog call",
+            "name": "mcp_ops__catalog_call"
+          },
+          {
+            "capability_id": "mcp:5d3ceb83-46c0-5580-8075-f3f7bf58faf2",
+            "capability_name": "ops",
+            "category": "MCP Servers",
+            "description": "Find platform tools by intent. Search again with different words if needed. Returns qualified tool_id, schema_digest and authoritative inputSchema; use these with catalog_call. Use server to disambiguate namespaces; results list up to 16 authorized servers. Covers deployments, logs, incidents, tickets and platform administration.",
+            "display_name": "ops: catalog search",
+            "name": "mcp_ops__catalog_search"
+          },
+          {
+            "category": "MCP Servers",
+            "description": "List the resources an attached MCP server publishes (files, documents, records), and its resource templates: URIs with `{placeholders}` you fill in yourself. Read one with `read_mcp_resource`.",
+            "display_name": "List MCP resources",
+            "name": "list_mcp_resources"
+          },
+          {
+            "category": "MCP Servers",
+            "description": "Read one resource from an attached MCP server by URI: one listed by `list_mcp_resources`, a resource template filled in, or a resource link a tool returned. Text comes back inline, images as images, other binary files are saved to the session and their path returned.",
+            "display_name": "Read MCP resource",
+            "name": "read_mcp_resource"
+          }
+        ]
+      },
+      "id": "event_01a150feee9a732a9f5f36d361e5961d",
+      "sequence": 8,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:46.938521984Z",
+      "type": "llm.generation"
+    },
+    {
+      "context": {
+        "exec_id": "exec_01a150fee1ce71588aea11eeb1524db6",
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "parent_span_id": "01a150fe-e1d0-7077-9a01-26d869c4f60b",
+        "span_id": "01a150fe-eeb2-7196-9fd2-d7d8a3e8cbff",
+        "trace_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "error_code": "processing_error",
+        "error_disclosure": "standard",
+        "error_fields": {
+          "model_id": "openai/gpt-6-luna",
+          "provider": "openrouter"
+        },
+        "message": {
+          "content": [
+            {
+              "text": "I encountered an error while processing your request. Please try again later.",
+              "type": "text"
+            }
+          ],
+          "created_at": "2026-10-18T21:50:46.962550455Z",
+          "id": "message_eaea30ce3b594feda0d1029eba8e8d29",
+          "metadata": {
+            "error_code": "processing_error",
+            "error_disclosure": "standard",
+            "error_fields": {
+              "model_id": "openai/gpt-6-luna",
+              "provider": "openrouter"
+            },
+            "source_error_code": "processing_error"
+          },
+          "role": "agent"
+        }
+      },
+      "id": "event_01a150feeeb271969fd2d7d9d5f3c959",
+      "sequence": 9,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:46.962589484Z",
+      "type": "output.message.completed"
+    },
+    {
+      "context": {
+        "exec_id": "exec_01a150fee1ce71588aea11eeb1524db6",
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "parent_span_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3",
+        "span_id": "01a150fe-e1d0-7077-9a01-26d869c4f60b",
+        "trace_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "duration_ms": 3275,
+        "error": "LLM error: provider 'openrouter': Failed to send request: error sending request (after 2 retries)",
+        "has_tool_calls": false,
+        "success": false,
+        "tool_call_count": 0
+      },
+      "id": "event_01a150feeeb37394866596d6060cb7f4",
+      "sequence": 10,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:46.963088872Z",
+      "type": "reason.completed"
+    },
+    {
+      "context": {
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "error": "I encountered an error while processing your request. Please try again later.",
+        "error_code": "processing_error",
+        "error_disclosure": "standard",
+        "error_fields": {
+          "model_id": "openai/gpt-6-luna",
+          "provider": "openrouter"
+        },
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "id": "event_01a150feeeb37394866596d7c543c553",
+      "sequence": 11,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:46.963666061Z",
+      "type": "turn.failed"
+    },
+    {
+      "context": {
+        "input_message_id": "message_17d6da80c60a49dda3ff8345c7ca6fbe",
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "data": {
+        "turn_id": "turn_01a150fee1cc7145bd36cc45a5a55ca3"
+      },
+      "id": "event_01a150feeeb37394866596d8552c079d",
+      "sequence": 12,
+      "session_id": "session_01a150fed70771efa5ce601bedebb14d",
+      "ts": "2026-10-18T21:50:46.963832764Z",
+      "type": "session.idled"
+    }
+  ]
+}

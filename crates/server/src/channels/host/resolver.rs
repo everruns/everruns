@@ -113,7 +113,11 @@ impl ServerChannelResolver {
                 slack = Some((state, config));
                 Kind::Slack
             }
-            ChannelType::Api | ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {
+            ChannelType::WorkChat
+            | ChannelType::Api
+            | ChannelType::Schedule
+            | ChannelType::Voice
+            | ChannelType::Poppy => {
                 return None;
             }
         };

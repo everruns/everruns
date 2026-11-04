@@ -7,6 +7,7 @@ const mockPush = jest.fn();
 const mockSetCurrentOrg = jest.fn();
 const mockCreateProvider = jest.fn();
 const mockCheckCredentials = jest.fn();
+const mockProviders = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useParams: () => ({ orgId: "org_test123" }),
@@ -35,11 +36,7 @@ jest.mock("@/lib/api/harnesses", () => ({
 }));
 
 jest.mock("@/hooks/use-providers", () => ({
-  useProviders: () => ({
-    data: [],
-    isLoading: false,
-    isError: false,
-  }),
+  useProviders: () => mockProviders(),
   useCreateProvider: () => ({
     mutateAsync: mockCreateProvider,
     isPending: false,
@@ -84,6 +81,7 @@ describe("OrgSetupPage", () => {
     mockCreateProvider.mockClear();
     mockCheckCredentials.mockReset();
     mockCheckCredentials.mockResolvedValue({ status: "valid", models: 12 });
+    mockProviders.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
   // Enter a key and submit the Configure step. Waits for the provisioning
@@ -114,15 +112,33 @@ describe("OrgSetupPage", () => {
     expect(screen.queryByRole("button", { name: /Azure OpenAI/ })).not.toBeInTheDocument();
   });
 
-  it("ends onboarding in the precreated Platform Chat thread", async () => {
+  it("keeps provider setup actionable when it is skipped, while offering coding-agent connection", async () => {
     render(<OrgSetupPage />, { wrapper });
 
     // Skipping the provider form is the shortest route to the Done step.
     const skip = await screen.findByRole("button", { name: "Skip for now" });
     fireEvent.click(skip);
 
-    const open = await screen.findByRole("link", { name: /Open Platform Chat/ });
-    expect(open).toHaveAttribute("href", "/chats/ses_platform_chat");
+    const add = await screen.findByRole("link", { name: /Add a model provider/ });
+    expect(add).toHaveAttribute("href", "/models/providers");
+    expect(screen.queryByRole("link", { name: /Open Platform Chat/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Connect your coding agent/ })).toBeInTheDocument();
+  });
+
+  it("uses an existing provider without asking for another API key", async () => {
+    mockProviders.mockReturnValue({
+      data: [{ id: "managed_provider" }],
+      isLoading: false,
+      isError: false,
+    });
+    render(<OrgSetupPage />, { wrapper });
+    fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
+    expect(await screen.findByRole("link", { name: /Open Platform Chat/ })).toHaveAttribute(
+      "href",
+      "/chats/ses_platform_chat",
+    );
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
+    expect(mockCreateProvider).not.toHaveBeenCalled();
   });
 
   it("does not store a key the provider rejects", async () => {
@@ -148,6 +164,10 @@ describe("OrgSetupPage", () => {
       provider_type: "openai",
       api_key: "sk-good",
     });
+    expect(await screen.findByRole("link", { name: /Open Platform Chat/ })).toHaveAttribute(
+      "href",
+      "/chats/ses_platform_chat",
+    );
   });
 
   it("still stores the key when the provider cannot be reached", async () => {

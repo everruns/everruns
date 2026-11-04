@@ -1076,13 +1076,6 @@ mod tests {
     }
 
     #[test]
-    fn handshake_marks_anonymous_channel() {
-        let app = test_app("Open", None);
-        let rendered = render_handshake(&app, &default_config());
-        assert!(!rendered.contains("Authorization: Bearer"));
-    }
-
-    #[test]
     fn humanize_seconds_formats_common_durations() {
         assert_eq!(humanize_seconds(3600), "after 1 hour");
         assert_eq!(humanize_seconds(2 * 3600), "after 2 hours");

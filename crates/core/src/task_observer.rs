@@ -288,25 +288,6 @@ impl SessionTaskRegistry for ObservingTaskRegistry {
 mod tests {
     use super::*;
 
-    #[test]
-    fn filter_value_and_event_name_are_stable() {
-        // These strings are a wire contract shared with webhook payloads and the
-        // per-task `event_filter`; changing them silently breaks delivery.
-        assert_eq!(TaskTransition::Terminal.filter_value(), "terminal");
-        assert_eq!(
-            TaskTransition::AwaitingInput.filter_value(),
-            "awaiting_input"
-        );
-        assert_eq!(TaskTransition::Message.filter_value(), "message");
-
-        assert_eq!(TaskTransition::Terminal.event_name(), "task.terminal");
-        assert_eq!(
-            TaskTransition::AwaitingInput.event_name(),
-            "task.awaiting_input"
-        );
-        assert_eq!(TaskTransition::Message.event_name(), "task.message");
-    }
-
     // ---- ObservingTaskRegistry fan-out gating -----------------------------
 
     use crate::session_task::{

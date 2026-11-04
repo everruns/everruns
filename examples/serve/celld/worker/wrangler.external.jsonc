@@ -1,13 +1,10 @@
-// The same cells over a serve process at SERVE_URL instead of a container:
-// for machines without a container engine, and for test/e2e.mjs.
 {
-  "name": "serve-celld-external",
-  "main": "src/index.js",
-  "compatibility_date": "2026-09-01",
-  "compatibility_flags": ["nodejs_compat"],
-  "vars": { "SERVE_URL": "http://127.0.0.1:8080" },
-  "durable_objects": {
-    "bindings": [{ "name": "CELL", "class_name": "ExternalServeCell" }]
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ExternalServeCell"] }]
+  "name":"serve-celld-engine-external",
+  "main":"src/index.js",
+  "build":{"command":"bash ../../../../crates/durable-object/worker/build-authority.sh"},
+  "compatibility_date":"2026-09-01",
+  "compatibility_flags":["nodejs_compat"],
+  "vars":{"TENANT_ID":"example","SERVE_URL":"http://127.0.0.1:8080"},
+  "durable_objects":{"bindings":[{"name":"SESSIONS","class_name":"SessionAuthority"}]},
+  "migrations":[{"tag":"v1","new_sqlite_classes":["SessionAuthority"]}]
 }

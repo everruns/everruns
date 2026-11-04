@@ -74,7 +74,17 @@ impl LocalSessionTaskRegistry {
     // Persist the terminal wake with its transition. Delivery is at least once; consumers
     // must make terminal wakes idempotent by task id and attempt.
     fn store_recovery_wake(conn: &::rusqlite::Connection, task: &SessionTask) -> Result<()> {
-        let snapshot = serde_json::to_string(task).map_err(LocalError::from)?;
+        // Preserve only the internal origin needed for delayed wakes. Keep the
+        // public serializer's secret redaction for the rest of the outbox spec.
+        let mut snapshot = serde_json::to_value(task).map_err(LocalError::from)?;
+        if let Some(context) = everruns_core::session_task::task_origin_event_context(task) {
+            everruns_core::session_task::set_task_origin_event_context(
+                &mut snapshot["spec"],
+                &context,
+            );
+        }
+        everruns_core::causal::task_causal_context(task).write_task_context(&mut snapshot["spec"]);
+        let snapshot = serde_json::to_string(&snapshot).map_err(LocalError::from)?;
         conn.execute(
             "INSERT OR IGNORE INTO local_task_recovery_wakes
                 (session_id, task_id, attempt, snapshot) VALUES (?1, ?2, ?3, ?4)",
@@ -147,7 +157,7 @@ impl LocalSessionTaskRegistry {
             .transpose()
     }
 
-    fn store_task(conn: &rusqlite::QueryConnection, task: &SessionTask) -> Result<()> {
+    pub(crate) fn store_task(conn: &rusqlite::QueryConnection, task: &SessionTask) -> Result<()> {
         // SessionTask's public serializer redacts webhook secrets. Local snapshots
         // are persistence, not presentation, so restore the raw spec before storage.
         let mut snapshot =
@@ -170,6 +180,21 @@ impl LocalSessionTaskRegistry {
                 task.state.to_string(),
                 snapshot,
             ],
+        )
+        .map_err(LocalError::from)?;
+        Ok(())
+    }
+
+    /// Insert one message row in channel order (used by session cutover).
+    pub(crate) fn store_message(
+        conn: &rusqlite::QueryConnection,
+        message: &TaskMessage,
+    ) -> Result<()> {
+        let snapshot = serde_json::to_string(message)
+            .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO local_task_messages (id, task_id, snapshot) VALUES (?1, ?2, ?3)",
+            rusqlite::params![message.id, message.task_id, snapshot],
         )
         .map_err(LocalError::from)?;
         Ok(())

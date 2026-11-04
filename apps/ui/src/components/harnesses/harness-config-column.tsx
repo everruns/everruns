@@ -1,4 +1,5 @@
 "use client";
+import { Label } from "@/components/ui/label";
 
 // The harness page's narrow config column. Primary settings (parent harness,
 // model, tags) are always visible; everything set once and rarely changed,
@@ -9,6 +10,8 @@
 //
 // The controls are live in view mode too: changing one puts the page into
 // edit mode with that change pending, so nothing is saved until Save.
+
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -37,14 +40,6 @@ interface HarnessConfigColumnProps {
   className?: string;
 }
 
-function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
-  return (
-    <label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
-      {children}
-    </label>
-  );
-}
-
 export function HarnessConfigColumn({
   harness,
   parentHarness,
@@ -57,6 +52,8 @@ export function HarnessConfigColumn({
   onOpenRow,
   className,
 }: HarnessConfigColumnProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   // Any control change starts (or continues) the page-level edit.
   const edit = <T,>(apply: (value: T) => void) => {
     return (value: T) => {
@@ -67,23 +64,25 @@ export function HarnessConfigColumn({
 
   return (
     <aside
-      aria-label="Harness configuration"
+      aria-label={ui("Harness configuration")}
       className={cn("flex min-w-0 flex-col bg-muted/30", className)}
     >
       <div className="flex flex-col gap-4 border-b p-4">
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="parent-harness">Parent harness</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="parent-harness">
+            {ui("Parent harness")}
+          </Label>
           {readOnly ? (
             parentHarness ? (
               <Link
                 href={`/harnesses/${parentHarness.id}`}
                 className="text-[13px] text-primary hover:underline"
               >
-                {getDisplayName(parentHarness)}
+                {getDisplayName(parentHarness, displayLocale)}
               </Link>
             ) : (
               <span className="text-[13px] text-muted-foreground">
-                {harness.parent_harness_id || "None"}
+                {harness.parent_harness_id || ui("None")}
               </span>
             )
           ) : (
@@ -91,7 +90,7 @@ export function HarnessConfigColumn({
               id="parent-harness"
               value={draft.fields.parent_harness_id}
               onValueChange={edit((value: string) => draft.setField("parent_harness_id", value))}
-              placeholder="No parent harness"
+              placeholder={ui("No parent harness")}
               includeNoneOption
               noneLabel="No parent harness"
               excludeIds={[harness.id]}
@@ -101,28 +100,32 @@ export function HarnessConfigColumn({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="default-model">Default model</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="default-model">
+            {ui("Default model")}
+          </Label>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
-              {defaultModel?.display_name ?? "Organization default"}
+              {defaultModel?.display_name ?? ui("Organization default")}
             </span>
           ) : (
             <ModelPicker
               id="default-model"
               value={draft.fields.default_model_id}
               onChange={edit((value: string) => draft.setField("default_model_id", value))}
-              placeholder="Use default model"
+              placeholder={ui("Use default model")}
               className="w-full bg-background"
             />
           )}
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="tags">Tags</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="tags">
+            {ui("Tags")}
+          </Label>
           {readOnly ? (
             <div className="flex flex-wrap gap-1">
               {normalizeTags(harness.tags).length === 0 ? (
-                <span className="text-[13px] text-muted-foreground">No tags</span>
+                <span className="text-[13px] text-muted-foreground">{ui("No tags")}</span>
               ) : (
                 normalizeTags(harness.tags).map((tag) => (
                   <Badge key={tag} variant="outline">
@@ -134,7 +137,7 @@ export function HarnessConfigColumn({
           ) : (
             <TagInput
               id="tags"
-              placeholder="Add a tag…"
+              placeholder={ui("Add a tag…")}
               value={draft.fields.tags}
               onChange={edit((value: string) => draft.setField("tags", value))}
               className="bg-background"
@@ -143,9 +146,9 @@ export function HarnessConfigColumn({
         </div>
 
         <div className="flex flex-col gap-0.5">
-          <span className="text-[13px] font-medium">Updated</span>
+          <span className="text-[13px] font-medium">{ui("Updated")}</span>
           <span className="text-[13px] text-muted-foreground">
-            {new Date(harness.updated_at).toLocaleString()}
+            {new Date(harness.updated_at).toLocaleString(displayLocale)}
           </span>
         </div>
       </div>

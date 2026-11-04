@@ -1,8 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { createElement } from "react";
-import { render, screen } from "@testing-library/react";
-import { MiniTimeline } from "@/components/apps/mini-timeline";
 
 const sourceRoot = join(process.cwd(), "src");
 const rawPaletteUtility =
@@ -31,20 +28,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-green-600": 1,
     "text-red-600": 1,
     "text-yellow-600": 1,
-  },
-  "app/(main)/evals/page.tsx": {
-    "text-green-600": 1,
-    "text-red-600": 1,
-    "text-yellow-600": 1,
-  },
-  "app/(main)/sessions/[sessionId]/cost/page.tsx": {
-    "bg-amber-500": 1,
-    "bg-cyan-600": 1,
-    "bg-emerald-600": 1,
-    "bg-orange-500": 1,
-    "bg-pink-500": 1,
-    "bg-sky-500": 1,
-    "bg-violet-500": 1,
   },
   "app/dev/file-tree/page.tsx": {
     "dark:text-amber-400": 1,
@@ -82,19 +65,23 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-violet-600": 1,
   },
   "components/models/model-picker.tsx": {
-    "fill-yellow-400": 4,
+    "fill-yellow-400": 1,
     "hover:text-yellow-400": 1,
-    "text-yellow-400": 4,
-  },
-  "components/models/model-row.tsx": {
-    "bg-blue-50": 1,
-    "border-blue-200": 1,
-    "text-blue-700": 1,
+    "text-yellow-400": 1,
   },
   "components/observers/quality-summary.tsx": {
     "text-green-600": 1,
     "text-red-600": 1,
     "text-yellow-600": 1,
+  },
+  "components/session/cost/context-card.tsx": {
+    "bg-amber-500": 1,
+    "bg-cyan-600": 1,
+    "bg-emerald-600": 1,
+    "bg-orange-500": 1,
+    "bg-pink-500": 1,
+    "bg-sky-500": 1,
+    "bg-violet-500": 1,
   },
 };
 
@@ -109,34 +96,6 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("semantic status colors", () => {
-  it("renders running timeline bins with the info treatment", () => {
-    render(
-      createElement(MiniTimeline, {
-        runs: [{ hour: "Now", running: 1 }],
-        length: 1,
-      }),
-    );
-
-    expect(screen.getByTitle("Now: 0 ok, 0 errors, 1 running")).toHaveClass(
-      "border-info/30",
-      "bg-info",
-    );
-  });
-  it("defines each status color and foreground pair for both themes", () => {
-    const designSystem = readFileSync(join(sourceRoot, "app/design-system.css"), "utf8");
-
-    for (const token of [
-      "success",
-      "success-foreground",
-      "warning",
-      "warning-foreground",
-      "info",
-      "info-foreground",
-    ]) {
-      expect(designSystem.match(new RegExp(`--${token}:`, "g"))).toHaveLength(2);
-      expect(designSystem).toContain(`--color-${token}: hsl(var(--${token}));`);
-    }
-  });
   it("keeps raw palette utilities limited to audited non-status encodings", () => {
     const actual: Record<string, Record<string, number>> = {};
 

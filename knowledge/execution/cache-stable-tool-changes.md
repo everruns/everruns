@@ -188,7 +188,7 @@ Context is rebuilt on every reasoning step (`crates/core/src/runtime_context.rs`
 | MCP `tools/list`: scoped servers without a preset are fetched live on every turn load; a failed fetch silently drops the server's tools; order is whatever the server returns | `crates/server/src/domains/mcp_servers/scoped_mcp/`, `crates/core/src/host/mcp_cache.rs` | live, or caches with TTL |
 | Host tools that come and go (`report_result` with child tasks, coordinator and worker tools, MCP resource tools) | `crates/capabilities/src/host_extension.rs`, `crates/core/src/host/host/reason_surface.rs` | recomputed each step |
 | AG-UI frontend tools replaced per run (order-sensitive compare) | `crates/server/src/channels/ag_ui/mod.rs` | session record |
-| Capability switched on or off in a session (yolop `/ext`, in-process overlay), agent or harness edits, a model override that changes `auto_tool_search` resolution | `crates/core/src/host/runtime.rs` | session and agent records |
+| Capability switched on or off in a session (yolop `/ext`, in-process overlay), agent or harness edits, a model override that changes `auto_tool_search` resolution | `crates/core/src/host/runtime/mod.rs` | session and agent records |
 | `tools_in_shell` and Lua code mode rewrite the `bash` / `lua` description with the hidden-tool catalogue | `crates/integrations/src/bashkit/tools_in_shell/`, `lua/code_mode.rs` | recomputed each step |
 | Hosted Claude search switches on when the count crosses the threshold, which reshapes `tools` | `crates/drivers/drivers/src/anthropic/driver.rs` | recomputed each step |
 
@@ -409,7 +409,8 @@ Each step is one PR and leaves `main` working.
 3. **Anthropic driver** renders changes inline and Session Trace shows them;
    profile flag for verified families; live tests once the key has credit.
    Done: the request side; Session Trace listing each call's change
-   (`llm.generation` carries it as `metadata.tool_changes`; a cache reset is
+   (stored `llm.generation` carries it as `metadata.tool_changes`, withheld
+   from public event responses while Trace retains its name summary; a cache reset is
    blamed on tools only when the provider body's tools changed); and the live
    cache test, which widened the flag to Opus 5 and 4.8, Haiku 5.5 and Fable
    5.1 (see the 2026-10-12 driver results above).
@@ -480,6 +481,15 @@ Each step is one PR and leaves `main` working.
    from 24/24 to 0/24: against a property-less stub it sends every number,
    boolean and object as a JSON string and never recovers. A per-model default
    would need a profile flag; until someone asks, agents opt in.
+
+## Mutable skill inventories
+
+Skill discovery uses a separate append-only reference-data path, independent
+of provider-specific inline tool support. Static discovery instructions stay
+in the system prompt; changed catalogs become user-role updates recorded on
+completed answers and replayed at their original positions. See
+[Skills Registry](../project/skills-registry.md#cache-stable-inventory-disclosure)
+for freshness, removal, restart and history-reduction semantics.
 
 ## Open questions
 

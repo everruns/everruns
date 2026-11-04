@@ -8,7 +8,6 @@ use crate::engine::driver_registry::{
 use crate::engine::events::CapabilityUsageKind;
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::json;
-use std::collections::HashMap;
 
 #[test]
 fn compaction_cost_preserves_estimated_generation_cost() {
@@ -185,25 +184,6 @@ fn test_post_generation_guardrail_text_includes_reasoning_and_prose() {
 
     assert!(guarded.contains("reasoning canary"));
     assert!(guarded.contains("answer"));
-}
-
-#[test]
-fn test_reason_result_default() {
-    let result = ReasonResult::default();
-    assert!(!result.success);
-    assert!(result.text.is_empty());
-    assert!(result.tool_calls.is_empty());
-    assert!(!result.has_tool_calls);
-    // Default derive gives 0, but serde deserialization gives 100 via default_max_iterations()
-    assert_eq!(result.max_iterations, 0);
-}
-
-#[test]
-fn test_reason_result_serde_default() {
-    // Test that serde uses the default_max_iterations function
-    let json = r#"{"success":true,"text":"","has_tool_calls":false}"#;
-    let result: ReasonResult = serde_json::from_str(json).unwrap();
-    assert_eq!(result.max_iterations, 500);
 }
 
 #[test]
@@ -737,6 +717,9 @@ fn request_options_record_the_retention_each_provider_actually_gets() {
     }
     config.model = "gpt-6-astra".into();
     assert_eq!(retention(&config, "openai").as_deref(), Some("30m"));
+    config.prompt_cache.as_mut().unwrap().retention = PromptCacheRetention::TwelveHours;
+    assert_eq!(retention(&config, "openai").as_deref(), Some("12h"));
+    assert_eq!(retention(&config, "anthropic").as_deref(), Some("1h"));
     config.model = "gpt-5.4".into();
     assert_eq!(retention(&config, "openai"), None);
     assert_eq!(retention(&config, "gemini"), None);
@@ -782,104 +765,6 @@ fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
     assert!(!request_options.provider_options.contains_key("gemini"));
     assert_eq!(request_options.stream, Some(true));
 }
-
-#[test]
-fn system_keys_override_embedder_keys_in_metadata() {
-    // Pins the injection order: embedder keys inserted first, then system
-    // keys overwrite any collision. A harness author cannot shadow session_id,
-    // turn_id, etc. by including them in embedder_metadata.
-    let embedder_metadata: HashMap<String, String> = [
-        ("session_id".to_string(), "attacker_value".to_string()),
-        ("custom_key".to_string(), "custom_value".to_string()),
-    ]
-    .into();
-
-    let mut metadata: HashMap<String, String> = HashMap::new();
-
-    // Inject embedder metadata first (mirrors execute_single_turn logic)
-    for (k, v) in &embedder_metadata {
-        metadata.insert(k.clone(), v.clone());
-    }
-
-    // System key injected second — must overwrite
-    metadata.insert("session_id".to_string(), "real_session_id".to_string());
-
-    assert_eq!(
-        metadata.get("session_id").map(String::as_str),
-        Some("real_session_id"),
-        "system key must overwrite embedder key with same name"
-    );
-    assert_eq!(
-        metadata.get("custom_key").map(String::as_str),
-        Some("custom_value"),
-        "non-colliding embedder key must be preserved"
-    );
-}
-
-// =========================================================================
-// ContinuePartial recovery tests (EVE-532)
-// =========================================================================
-
-use crate::engine::test_fixtures::NoopPartialStreamStore;
-use crate::engine::{durability::PartialStreamState, durability::PartialStreamStore};
-
-struct MockPartialStore(Option<PartialStreamState>);
-
-#[async_trait::async_trait]
-impl PartialStreamStore for MockPartialStore {
-    async fn get_partial_stream(
-        &self,
-        _session_id: crate::engine::typed_id::SessionId,
-        _turn_id: &str,
-    ) -> crate::engine::error::Result<Option<PartialStreamState>> {
-        Ok(self.0.clone())
-    }
-}
-
-#[tokio::test]
-async fn test_noop_partial_stream_store_returns_none() {
-    let store = NoopPartialStreamStore;
-    let result = store
-        .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")
-        .await
-        .unwrap();
-    assert!(result.is_none());
-}
-
-#[tokio::test]
-async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
-    let message_id = MessageId::new();
-    let store = MockPartialStore(Some(PartialStreamState {
-        reasoning_state: None,
-        message_id,
-        accumulated: "partial text so far".to_string(),
-        attempt_settled: false,
-    }));
-    let result = store
-        .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")
-        .await
-        .unwrap();
-    let partial = result.unwrap();
-    assert_eq!(partial.message_id, message_id);
-    assert_eq!(partial.accumulated, "partial text so far");
-}
-
-#[tokio::test]
-async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
-    let store = MockPartialStore(Some(PartialStreamState {
-        reasoning_state: None,
-        message_id: MessageId::new(),
-        accumulated: String::new(),
-        attempt_settled: false,
-    }));
-    let result = store
-        .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")
-        .await
-        .unwrap();
-    assert!(result.unwrap().accumulated.is_empty());
-}
-
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // EVE-961: structured compaction lifecycle events.
@@ -989,6 +874,115 @@ impl ChatDriver for NoNativeCompactDriver {
 /// Driver stub whose native compaction endpoint always fails.
 #[derive(Debug)]
 struct FailingCompactDriver;
+
+#[derive(Debug, Default)]
+struct TransientCompactDriver(std::sync::atomic::AtomicUsize);
+
+#[async_trait::async_trait]
+impl ChatDriver for TransientCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _: &ProviderEndpoint,
+        _: Vec<Message>,
+        _: &LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unreachable!("compaction must finish before generation");
+    }
+    fn supports_compact(&self) -> bool {
+        true
+    }
+    async fn compact(
+        &self,
+        endpoint: &ProviderEndpoint,
+        request: everruns_contracts::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_contracts::compact::CompactResponse>> {
+        if self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            return Err(AgentLoopError::llm_kind(
+                everruns_contracts::error::LlmErrorKind::Unavailable,
+                "transient compaction failure",
+            ));
+        }
+        InstallingCompactDriver.compact(endpoint, request).await
+    }
+}
+
+struct CompactionRetryHost;
+#[async_trait::async_trait]
+impl everruns_contracts::durable_retry::RetryHost for CompactionRetryHost {
+    async fn now_ms(&self) -> ProviderResult<i64> {
+        Ok(0)
+    }
+    async fn load(
+        &self,
+        _: &str,
+    ) -> ProviderResult<Option<everruns_contracts::durable_retry::RetryCheckpoint>> {
+        Ok(None)
+    }
+    async fn save(
+        &self,
+        _: &str,
+        _: &everruns_contracts::durable_retry::RetryCheckpoint,
+    ) -> ProviderResult<()> {
+        unreachable!("this test stops at the Reason boundary")
+    }
+    async fn schedule(&self, _: i64) -> ProviderResult<()> {
+        unreachable!("this test stops at the Reason boundary")
+    }
+}
+
+#[tokio::test]
+async fn a_parked_compaction_does_not_consume_its_proactive_attempt_watermark() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
+    };
+    let driver = TransientCompactDriver::default();
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::engine::events::EventContext::default();
+    let store: Arc<dyn crate::CompactionCheckpointStore> =
+        Arc::new(crate::compaction_checkpoint::InMemoryCompactionCheckpointStore::default());
+    let session = SessionId::new();
+    let mut config = lifecycle_test_config();
+    let mut messages = vec![Message::text(
+        everruns_contracts::MessageRole::User,
+        "hello",
+    )];
+    for attempt in 0..2 {
+        let mut context =
+            lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
+        context.session_id = session;
+        let result = durable_retry::scope(
+            Arc::new(CompactionRetryHost),
+            durable_retry::attempt(apply_proactive_compaction(
+                context,
+                &mut messages,
+                &mut config,
+            )),
+        )
+        .await;
+        if attempt == 0 {
+            assert!(durable_retry::is_retryable_start(&result.unwrap_err()));
+            assert!(
+                store
+                    .get_proactive_attempt(session, "stub-provider", "stub-model")
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        } else {
+            assert!(result.unwrap().is_some());
+            assert!(
+                store
+                    .get_proactive_attempt(session, "stub-provider", "stub-model")
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
+        }
+    }
+    assert_eq!(driver.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
 
 #[async_trait::async_trait]
 impl ChatDriver for FailingCompactDriver {

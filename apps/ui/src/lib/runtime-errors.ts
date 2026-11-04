@@ -40,6 +40,21 @@ export function getRuntimeErrorFromTurnFailed(
   };
 }
 
+// Errors a plain resend can clear. Everything else (quota, keys, budgets, model
+// choice, oversized context) needs someone to change something first, so the chat
+// must not tell the reader to "try again" for those.
+const RETRYABLE_RUNTIME_ERROR_CODES = new Set([
+  "provider_rate_limited",
+  "provider_unavailable",
+  "processing_error",
+  "provider_session_unavailable",
+  "dependency_unavailable",
+]);
+
+export function isRetryableRuntimeError(error: RuntimeErrorInfo | undefined): boolean {
+  return !error?.code || RETRYABLE_RUNTIME_ERROR_CODES.has(error.code);
+}
+
 export function getLocalizedOutputMessageText(
   locale: SupportedLocale,
   data: OutputMessageCompletedData,
@@ -117,12 +132,17 @@ function localizeRuntimeErrorBase(
     case "provider_quota_exhausted": {
       const requested = integerField(error.fields, "requested_max_tokens");
       const affordable = integerField(error.fields, "affordable_tokens");
-      return requested != null && affordable != null
-        ? formatMessage(locale, "runtime_error_provider_quota_exhausted_affordable", {
-            requested_max_tokens: requested,
-            affordable_tokens: affordable,
-          })
-        : formatMessage(locale, "runtime_error_provider_quota_exhausted");
+      const text =
+        requested != null && affordable != null
+          ? formatMessage(locale, "runtime_error_provider_quota_exhausted_affordable", {
+              requested_max_tokens: requested,
+              affordable_tokens: affordable,
+            })
+          : formatMessage(locale, "runtime_error_provider_quota_exhausted");
+      // The engine checks for credits and continues on its own (credit_shortfall).
+      return error.fields?.credit_wait === true
+        ? `${text} ${formatMessage(locale, "runtime_error_provider_quota_credit_wait")}`
+        : text;
     }
     case "provider_attestation_required": {
       // The confirmation page is the whole point of this code — without it the
@@ -140,6 +160,8 @@ function localizeRuntimeErrorBase(
             confirm_url: confirmUrl,
           });
     }
+    case "model_refusal":
+      return formatMessage(locale, "runtime_error_model_refusal");
     case "provider_unavailable":
       return formatMessage(locale, "runtime_error_provider_unavailable");
     case "processing_error":

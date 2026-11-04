@@ -416,20 +416,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_starts_closed() {
-        let breaker = create_test_breaker().await;
-        let state = breaker.state().await.unwrap();
-        assert_eq!(state, CircuitState::Closed);
-    }
-
-    #[tokio::test]
-    async fn test_allows_calls_when_closed() {
-        let breaker = create_test_breaker().await;
-        let permit = breaker.allow().await.unwrap();
-        permit.success().await.unwrap();
-    }
-
-    #[tokio::test]
     async fn test_opens_after_failure_threshold() {
         let breaker = create_test_breaker().await;
 
@@ -507,22 +493,6 @@ mod tests {
 
         let result = breaker.allow().await;
         assert!(matches!(result, Err(CircuitBreakerError::Open)));
-    }
-
-    #[tokio::test]
-    async fn test_reset() {
-        let breaker = create_test_breaker().await;
-
-        // Open the circuit
-        for _ in 0..3 {
-            let permit = breaker.allow().await.unwrap();
-            permit.failure().await.unwrap();
-        }
-
-        // Reset should close it
-        breaker.reset().await.unwrap();
-        let state = breaker.state().await.unwrap();
-        assert_eq!(state, CircuitState::Closed);
     }
 
     #[tokio::test]

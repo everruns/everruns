@@ -18,12 +18,6 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
-test("managed-provider copy is non-empty", () => {
-  for (const value of Object.values(managedProviderCopy)) {
-    expect(value.trim().length).toBeGreaterThan(0);
-  }
-});
-
 // A distribution overrides managed-provider-copy.ts to reword how it describes
 // a provider it supplies. That only works while every surface reads the module,
 // so no other file may spell the copy out inline.

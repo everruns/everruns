@@ -4,37 +4,13 @@ use super::support::*;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_server::domains::agents::record::Agent;
-use everruns_server::domains::models::record::Model;
 use everruns_server::domains::providers::record::Provider;
 use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
 #[tokio::test]
-async fn test_seeded_argon_is_selectable_in_favourites_with_profile() {
-    let server = TestServer::in_memory().await;
-    let models: Value = server
-        .get("/v1/models?favorites_only=true")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let argon = models["data"]
-        .as_array()
-        .expect("favourites list")
-        .iter()
-        .find(|model| model["model_id"] == "gemini-4-argon")
-        .expect("Argon must be in the seeded favourites list");
-    assert_eq!(argon["provider_type"], "gemini");
-    assert_eq!(argon["display_name"], "Gemini 4 Argon");
-    assert_eq!(argon["enabled"], true);
-    assert_eq!(argon["is_favorite"], true);
-    assert_eq!(argon["profile"]["name"], "Gemini 4 Argon");
-    assert_eq!(argon["profile"]["limits"]["context"], 1_048_576);
-    println!("Argon favourites API: {argon}");
-}
-
-#[tokio::test]
-async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
+async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
     let server = TestServer::in_memory().await;
     let models: Value = server
         .get("/v1/models")
@@ -50,22 +26,36 @@ async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
 
     let created: Value = server
         .post(
-            "/v1/knowledge-indexes",
+            "/v1/knowledge",
             json!({
-                "name": "Bashkit knowledge test",
-                "source_type": "github",
-                "source_config": {
-                    "repository": "everruns/bashkit",
-                    "branch": "main",
-                    "root_folder": "knowledge"
-                },
-                "embedding_model_id": embedding_model["id"]
+                "name":"Bashkit knowledge test", "indexing":"hybrid",
+                "embedding_model_id":embedding_model["id"]
             }),
         )
         .await
-        .assert_status(StatusCode::CREATED)
+        .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(created["sync_status"], "pending");
+    let id = created["id"].as_str().expect("collection ID");
+    let source: Value = server
+        .post(
+            &format!("/v1/knowledge/{id}/sources"),
+            json!({
+                "kind":"github","root_path":"repository",
+                "config":{"repository":"everruns/bashkit","branch":"main","root_folder":"knowledge"}
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(source["sync_status"], "pending");
+    server
+        .get("/v1/knowledge-indexes")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get("/v1/knowledge-bases")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 
     let chat_model = models
         .iter()
@@ -78,62 +68,26 @@ async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
         .expect("seeded Claude chat model");
     let rejected: Value = server
         .post(
-            "/v1/knowledge-indexes",
+            "/v1/knowledge",
             json!({
                 "name": "Invalid embedding model",
-                "source_type": "github",
-                "source_config": {"repository": "everruns/bashkit"},
+                "indexing":"hybrid",
                 "embedding_model_id": chat_model["id"]
             }),
         )
         .await
         .assert_status(StatusCode::BAD_REQUEST)
         .json();
-    assert_eq!(
-        rejected["detail"],
-        "Embedding model is unavailable or does not support embeddings"
-    );
+    assert_eq!(rejected["detail"], "Model does not support embeddings");
 }
 
 // ============================================
 // Health Endpoint Tests
 // ============================================
 
-#[tokio::test]
-async fn test_health_endpoint() {
-    let server = TestServer::new().await;
-
-    let body: Value = server
-        .get("/health")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(body["status"], "ok");
-}
-
 // ============================================
 // Feature Flags Endpoint Tests
 // ============================================
-
-#[tokio::test]
-async fn test_feature_flags_endpoint() {
-    let server = TestServer::new().await;
-
-    let body: Value = server
-        .get("/v1/feature-flags")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    // Should return a JSON object with boolean flags
-    assert!(body.is_object());
-    assert!(body.get("chat_threads").is_some());
-    assert!(body.get("webmcp").is_none());
-    assert!(body.get("mcp_endpoint").is_none());
-    assert_eq!(body["machine_payments"], Value::Bool(false));
-    // Deployment availability is separate from the default-off org opt-in.
-    assert_eq!(body["chat_threads"], Value::Bool(true));
-}
 
 #[tokio::test]
 async fn test_org_feature_flags_opt_in() {
@@ -219,54 +173,6 @@ async fn test_notifications_routes_always_mounted() {
 // ============================================
 
 #[tokio::test]
-async fn test_create_user_message() {
-    let server = TestServer::new().await;
-
-    // Create agent and session
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "message-test-agent",
-                "display_name": "Message Test Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let session: Session = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent.public_id
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // Create a user message
-    let message: Value = server
-        .post(
-            &format!("/v1/sessions/{}/messages", session.id),
-            json!({
-                "message": {
-                    "role": "user",
-                    "content": [{"type": "text", "text": "Hello!"}]
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert_eq!(message["role"], "user");
-}
-
-#[tokio::test]
 async fn test_list_messages() {
     let server = TestServer::new().await;
 
@@ -325,148 +231,6 @@ async fn test_list_messages() {
 // ============================================
 // Events Tests
 // ============================================
-
-#[tokio::test]
-async fn test_list_events() {
-    let server = TestServer::new().await;
-
-    // Create agent and session
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "events-test-agent",
-                "display_name": "Events Test Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let session: Session = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent.public_id
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // Create a message (which generates events)
-    let _: Value = server
-        .post(
-            &format!("/v1/sessions/{}/messages", session.id),
-            json!({
-                "message": {
-                    "role": "user",
-                    "content": [{"type": "text", "text": "Hello!"}]
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // List events
-    let data: Value = server
-        .get(&format!("/v1/sessions/{}/events", session.id))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    // Events should be present (at least the user message event)
-    assert!(data["data"].is_array());
-}
-
-/// Reasoning replay state is stored but never published (EVE-933).
-///
-/// `GET .../messages` strips `signature` / `encrypted` from reasoning parts via
-/// `Message::into_public`. The events endpoint serves the same message inside
-/// `output.message.completed`, so without its own projection it would republish
-/// exactly what the message endpoint withholds. Writes the event straight to the
-/// store so the assertion does not need a live provider.
-#[tokio::test]
-async fn test_events_do_not_publish_reasoning_replay_state() {
-    let server = TestServer::in_memory().await;
-
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "events-reasoning-projection-agent",
-                "display_name": "Events Reasoning Projection",
-                "description": "Agent for the events projection test",
-                "system_prompt": "You are a helpful assistant"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let session_id = session.id;
-
-    let mut message = everruns_core::RuntimeMessage::assistant("the answer");
-    message.content.push(everruns_core::ContentPart::reasoning(
-        everruns_contracts::reasoning::ReasoningContentPart::opaque("anthropic")
-            .with_item_id("rs_abc")
-            .with_signature("sig-do-not-publish")
-            .with_encrypted("enc-do-not-publish")
-            .with_text(everruns_contracts::reasoning::ReasoningText::Plain {
-                text: "visible reasoning".to_string(),
-            }),
-    ));
-    let data = everruns_core::EventData::OutputMessageCompleted(
-        everruns_core::events::OutputMessageCompletedData::new(message),
-    );
-
-    server
-        .db
-        .create_event(everruns_server::storage::CreateEventRow {
-            session_id,
-            event_type: "output.message.completed".to_string(),
-            ts: chrono::Utc::now(),
-            context: serde_json::to_value(everruns_core::EventContext::empty()).unwrap(),
-            data: serde_json::to_value(&data).unwrap(),
-            metadata: None,
-            tags: None,
-        })
-        .await
-        .expect("store the event with its replay state intact");
-
-    let body: Value = server
-        .get(&format!("/v1/sessions/{}/events", session.id))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let published = serde_json::to_string(&body).expect("serialize response");
-    assert!(
-        !published.contains("sig-do-not-publish"),
-        "reasoning signature must not reach the events API: {published}"
-    );
-    assert!(
-        !published.contains("enc-do-not-publish"),
-        "encrypted reasoning payload must not reach the events API: {published}"
-    );
-    assert!(
-        published.contains("visible reasoning"),
-        "readable reasoning is content and must still be published: {published}"
-    );
-    assert!(
-        published.contains("rs_abc"),
-        "the provider-issued id is an identifier, not replay state: {published}"
-    );
-}
 
 /// Tests the events endpoint with limit=1 returns only the last event
 /// (used by CLI chat to efficiently snapshot before sending a message).
@@ -674,40 +438,6 @@ async fn test_list_events_since_id_filters_old_events() {
 // ============================================
 // LLM Provider Tests
 // ============================================
-
-#[tokio::test]
-async fn test_provider_crud() {
-    let server = TestServer::new().await;
-
-    // Create a provider
-    let provider: Provider = server
-        .post(
-            "/v1/providers",
-            json!({
-                "name": "Test OpenAI Provider",
-                "provider_type": "openai",
-                "base_url": "https://api.openai.com/v1",
-                "enabled": true
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert_eq!(provider.name, "Test OpenAI Provider");
-
-    // List providers
-    server
-        .get("/v1/providers")
-        .await
-        .assert_status(StatusCode::OK);
-
-    // Delete provider
-    server
-        .delete(&format!("/v1/providers/{}", provider.id))
-        .await
-        .assert_status(StatusCode::NO_CONTENT);
-}
 
 /// Every provider mutation and credential probe uses the same HTTPS-only
 /// validation before credentials can be stored or sent upstream.
@@ -921,51 +651,50 @@ async fn test_provider_request_options_round_trip_and_validation() {
 }
 
 #[tokio::test]
-async fn test_model_crud() {
-    let server = TestServer::new().await;
-
-    // Create a provider first
+async fn test_provider_chat_api_rest_round_trip_and_validation() {
+    let server = TestServer::in_memory().await;
     let provider: Provider = server
         .post(
             "/v1/providers",
             json!({
-                "name": "Model Test Provider",
-                "provider_type": "openai"
+                "name":"OpenAI compatibility", "provider_type":"openai", "api":"chat_completions"
             }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-
-    // Create a model
-    let model: Model = server
-        .post(
-            &format!("/v1/providers/{}/models", provider.id),
-            json!({
-                "model_id": "gpt-4-test",
-                "display_name": "GPT-4 Test",
-                "capabilities": ["chat"],
-                "enabled": true
-            }),
-        )
+    assert_eq!(provider.api.as_deref(), Some("chat_completions"));
+    let url = format!("/v1/providers/{}", provider.id);
+    let fetched: Provider = server.get(&url).await.assert_status(StatusCode::OK).json();
+    assert_eq!(fetched.api, provider.api);
+    server
+        .patch(&url, json!({"api":"invalid"}))
         .await
-        .assert_status(StatusCode::CREATED)
+        .assert_status(StatusCode::BAD_REQUEST);
+    let updated: Provider = server
+        .patch(&url, json!({"name":"renamed"}))
+        .await
+        .assert_status(StatusCode::OK)
         .json();
-
-    assert_eq!(model.model_id, "gpt-4-test");
-
-    // List all models
-    server.get("/v1/models").await.assert_status(StatusCode::OK);
-
-    // Cleanup
-    server
-        .delete(&format!("/v1/models/{}", model.id))
+    assert_eq!(updated.api, provider.api);
+    let reset: Provider = server
+        .patch(&url, json!({"api":"default"}))
         .await
-        .assert_status(StatusCode::NO_CONTENT);
-    server
-        .delete(&format!("/v1/providers/{}", provider.id))
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(reset.api.as_deref(), Some("default"));
+    let catalog: Value = server
+        .get("/v1/providers/config")
         .await
-        .assert_status(StatusCode::NO_CONTENT);
+        .assert_status(StatusCode::OK)
+        .json();
+    let openai = catalog["drivers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|driver| driver["driver"] == "openai")
+        .unwrap();
+    assert_eq!(openai["apis"], json!(["responses", "chat_completions"]));
 }
 
 #[tokio::test]

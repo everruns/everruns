@@ -365,7 +365,7 @@ Two deliberately separate front doors over shared plumbing:
 |---|---|---|
 | Scope | Organization | User |
 | Purpose | Infrastructure that runs agents; spends org money | User's identity on an external service, used by tools |
-| Configured by | Org admins (Models → Providers) | Each user (Settings → My agent experience) |
+| Configured by | Org admins (Models → Providers) | Each user (Settings → Connections) |
 | Resolution | Per LLM/service call, cached, **fail-closed** | Lazy at tool execution time |
 | Visibility | Org-visible | Private to the owning user |
 | Code unit | Driver (`DriverRegistry`) | Connector (plugin registry) |
@@ -481,15 +481,29 @@ attempt generation, so cancellation/deletion cannot be undone by a late callback
 Rotation persists the full token pair before using it. Disconnect revokes before
 clearing; failure retains the grant. Registration survives reconnect.
 
-The UI extends the existing Providers Connect grid and account-detail cards;
-private ownership replaces API-key management for this provider. Remote hosts
-use the shared loopback helper and protected credential transfer, with validated
-installation, signature, nonce, issuing client, and subject. See the
-[public workflow](../../docs/features/chatgpt.md).
+The framework driver and server connection APIs remain available, but the
+Platform UI hides ChatGPT Plan from provider setup, provider pages, and model
+selection. Everruns has no registered web OAuth client and callback for this
+flow. OpenAI's [open-source plan flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+requires a `127.0.0.1` callback; remote browser users cannot reach a server's
+loopback listener. The framework's local helper and protected credential transfer
+remain available to hosts, with validated installation, signature, nonce, issuing
+client, and subject. See the [framework guide](../../docs/features/chatgpt.md).
 
 Yolop consumes the same driver package and credential types. Its settings
 adapter supplies a cross-process lease and an atomic compare-and-save so an
 external login/logout cannot be overwritten by an in-flight refresh.
+
+OAuth hosts assemble Codex and plan providers through one
+[typed builder](../../crates/drivers/drivers/src/codex/driver.rs), so chat and
+model discovery share the same authenticated provider and cannot drift. The
+grant's route is a typed value, never a string parsed from provider metadata.
+The upstream API is generic over a host token store, never a file path; file
+persistence and locking stay in the host. There is no cross-driver auth enum:
+each driver exposes only the auth it supports, and an impossible combination
+fails at construction with a named error rather than at the first request.
+Every chat driver implements `list_models` under its own auth policy, Codex
+included, so discovery needs no provider allowlist.
 
 ## Decision model services
 

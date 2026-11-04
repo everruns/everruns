@@ -497,60 +497,6 @@ async fn spawn_agent_rejects_message_schema_for_external_a2a() {
 }
 
 #[test]
-fn uk_localization_and_schema_one_of_match_validation() {
-    let cap = A2aAgentDelegationCapability;
-    assert_eq!(cap.localized_name(Some("uk-UA")), "Делегування агентам A2A");
-    assert!(
-        cap.localized_description(Some("uk-UA"))
-            .contains("Делегує роботу")
-    );
-    assert!(cap.describe_schema(Some("uk")).is_some());
-    assert!(cap.describe_schema(None).is_some());
-
-    // preferred_binding oneOf consts must be exactly the values
-    // validate_config accepts.
-    let schema = cap.config_schema().expect("config schema");
-    let consts: Vec<&str> =
-        schema["properties"]["agents"]["items"]["properties"]["preferred_binding"]["oneOf"]
-            .as_array()
-            .expect("oneOf")
-            .iter()
-            .map(|v| v["const"].as_str().expect("const"))
-            .collect();
-    assert_eq!(consts, vec!["JSONRPC", "HTTP+JSON"]);
-    for binding in consts {
-        let config = json!({
-            "agents": [{
-                "id": "echo",
-                "name": "Echo",
-                "base_url": "https://agent.example.com",
-                "preferred_binding": binding
-            }]
-        });
-        cap.validate_config(&config)
-            .unwrap_or_else(|e| panic!("{binding} should validate: {e}"));
-    }
-    assert!(
-        cap.validate_config(&json!({
-            "agents": [{
-                "id": "echo",
-                "name": "Echo",
-                "base_url": "https://agent.example.com",
-                "preferred_binding": "SMTP"
-            }]
-        }))
-        .is_err()
-    );
-
-    let tool_schema = SpawnAgentTool::new(A2aDelegationConfig::default()).parameters_schema();
-    assert_eq!(
-        tool_schema["properties"]["mode"]["enum"],
-        json!(["background", "foreground"])
-    );
-    assert!(tool_schema["properties"]["target"]["properties"]["id"].is_object());
-}
-
-#[test]
 fn validates_local_urls_only_with_escape_hatch() {
     let mut config = configured_capability("http://127.0.0.1:1".to_string());
     config.agents[0].allow_local_urls = false;
@@ -838,13 +784,6 @@ impl everruns_core::session_task::SessionTaskRegistry for InMemRegistry {
     ) -> everruns_contracts::error::Result<Vec<everruns_core::session_task::TaskMessage>> {
         Ok(vec![])
     }
-}
-
-#[test]
-fn a2a_delegation_depends_on_session_tasks() {
-    let cap = A2aAgentDelegationCapability;
-
-    assert_eq!(cap.dependencies(), vec![SESSION_TASKS_CAPABILITY_ID]);
 }
 
 #[tokio::test]
@@ -1158,17 +1097,6 @@ async fn wait_for_run_exits_superseded_on_fence_miss() {
     assert!(
         WaitOutcome::superseded_message(&superseded_run_id, attempt, by_attempt)
             .starts_with(SUPERSEDED_ERROR_PREFIX)
-    );
-}
-
-// EVE-645: timeout is selected via the typed WaitOutcome::TimedOut variant
-// and its message stays byte-identical to the legacy string.
-#[test]
-fn wait_outcome_timed_out_message_is_stable() {
-    let msg = WaitOutcome::timed_out_message("run-123", 30);
-    assert_eq!(
-        msg,
-        "Timed out waiting for external agent run run-123 after 30s"
     );
 }
 

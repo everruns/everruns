@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Maximize2, MessageSquare, Minimize2, Plus, X } from "lucide-react";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { useChatThreads } from "@/hooks/use-chat-threads";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { useSession } from "@/hooks/use-sessions";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
 import { ChatThreadView } from "@/components/chat/chat-thread-view";
+import { WorkHeadline } from "@/components/chat/work-headline";
 import { ChatDraft } from "@/app/(main)/chats/new/new-chat-page-client";
 import { ChatThreadWorkDetail } from "@/components/chat/chat-thread-work-detail";
 import { ChatWorkspaceContext } from "@/components/chat/chat-workspace-context";
@@ -27,7 +32,7 @@ import {
   threadRowTitle,
   workGroup,
 } from "@/lib/chat-thread-work";
-import { threadTitle } from "@/lib/chat-threads";
+import { isChatThread, threadTitle } from "@/lib/chat-threads";
 import { formatRelativeTime } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 import type { Session, SessionTask } from "@/lib/api/types";
@@ -39,8 +44,10 @@ type WorkRow = {
   group: string;
   href: string;
   updated: string;
+  /** Session whose live work report replaces the preview while it runs. */
+  liveSessionId?: string;
 };
-function rows(conversations: Session[], tasks: SessionTask[]): WorkRow[] {
+function rows(conversations: Session[], tasks: SessionTask[], ownerId?: string): WorkRow[] {
   return [
     ...conversations.map((session) => ({
       id: session.id,
@@ -49,6 +56,10 @@ function rows(conversations: Session[], tasks: SessionTask[]): WorkRow[] {
       group: conversationGroup(session),
       href: `/chats/${session.id}`,
       updated: session.updated_at,
+      liveSessionId:
+        session.status === "active" || session.status === "waiting_for_tool_results"
+          ? session.id
+          : undefined,
     })),
     // Coordinator threads: one row per thread, opened as a conversation.
     ...coordinatorThreads(tasks).map((thread) => {
@@ -81,40 +92,94 @@ function rows(conversations: Session[], tasks: SessionTask[]): WorkRow[] {
           task.summary ??
           task.state_detail ??
           task.state,
-        href: `/chats?task=${encodeURIComponent(task.id)}`,
+        href: `${ownerId ? `/chats/${ownerId}` : "/chats"}?task=${encodeURIComponent(task.id)}`,
         updated: task.updated_at,
       })),
   ].sort((a, b) => b.updated.localeCompare(a.updated));
 }
 
-export function ChatWorkspace() {
+export function ChatWorkspace({
+  activeChatId,
+  pageAware = false,
+  visible = true,
+  onPageMessage,
+  onActiveChatChange,
+  extraActions,
+  notice,
+}: {
+  activeChatId?: string;
+  pageAware?: boolean;
+  visible?: boolean;
+  onPageMessage?: () => void;
+  onActiveChatChange?: (id: string) => void;
+  extraActions?: ReactNode;
+  notice?: ReactNode;
+} = {}) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { thread, error } = usePlatformChatThread({ ensure: true });
   const [open, setOpen] = useState(false);
+  const backgroundWork = useFeatureFlag("chat_threads");
+  const [tab, setTab] = useState<"subchats" | "work">("subchats");
   const [expanded, setExpanded] = useState(false);
   const [compact, setCompact] = useState(false);
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const threadsButton = useRef<HTMLButtonElement>(null);
-  const segment = pathname.replace(/^\/chats\/?/, "").split("/")[0];
-  const conversationId =
-    segment && !["new", "history"].includes(segment) && segment !== thread?.id ? segment : null;
-  const taskId = searchParams.get("task");
-  const selected = segment === "new" || !!conversationId || !!taskId;
-  const panelOpen = open || selected || segment === "history";
+  const panelId = useId();
+  const chatRoute = pathname === "/chats" || pathname.startsWith("/chats/");
+  const segment = chatRoute ? pathname.slice("/chats".length).split("/")[1] : undefined;
+  const conversationId = segment && !["new", "history"].includes(segment) ? segment : undefined;
+  const currentId = chatRoute ? (conversationId ?? thread?.id) : (activeChatId ?? thread?.id);
+  const active = useSession(currentId);
+  const parentId = active.data?.parent_session_id ?? undefined;
+  const parent = useSession(parentId && parentId !== thread?.id ? parentId : undefined);
+  const personalChat =
+    active.data &&
+    isChatThread(active.data) &&
+    active.data.agent_id === thread?.agent_id &&
+    !parentId;
+  const coordinatorId =
+    parentId === thread?.id
+      ? parentId
+      : parent.data &&
+          isChatThread(parent.data) &&
+          parent.data.agent_id === thread?.agent_id &&
+          !parent.data.parent_session_id
+        ? parent.data.id
+        : undefined;
+  const workOwnerId = personalChat ? currentId : coordinatorId;
+  const taskId = chatRoute ? searchParams.get("task") : null;
+  const workTab = (backgroundWork && tab === "work") || !!taskId;
+  const selected = !!taskId;
+  const panelOpen = visible && (open || selected || segment === "history");
+  const useDrawer = compact || pageAware;
+  useEffect(() => {
+    if (personalChat && !active.data?.archived_at && currentId) onActiveChatChange?.(currentId);
+  }, [personalChat, active.data?.archived_at, currentId, onActiveChatChange]);
+  useEffect(() => {
+    // Selecting a conversation replaces the main surface; it never opens a second composer.
+    setOpen(false);
+    setExpanded(false);
+  }, [currentId, segment]);
   const conversations = useChatThreads({
-    enabled: panelOpen,
+    enabled: panelOpen && !workTab,
     includeArchived: true,
     limit: 20,
     offset,
     search,
   });
-  // One existing task subscription for the permanent conversation, never one per list row.
-  const work = useSessionTasks(panelOpen ? thread?.id : undefined);
+  // Background work belongs to this Chat instance, not to a global conversation.
+  const work = useSessionTasks(panelOpen && workTab ? workOwnerId : undefined);
   const task = work.data?.find((candidate) => candidate.id === taskId);
-  const workRows = rows(conversations.threads, work.data ?? []);
+  const workRows = rows(
+    workTab ? [] : conversations.threads,
+    workTab ? (work.data ?? []) : [],
+    workOwnerId,
+  );
   const matchingRows = workRows.filter(
     (row) =>
       row.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -133,49 +198,102 @@ export function ChatWorkspace() {
   const close = () => {
     setOpen(false);
     setExpanded(false);
-    if (pathname !== "/chats" || taskId) router.push("/chats");
+    if (taskId) router.push(pathname);
+    requestAnimationFrame(() => threadsButton.current?.focus());
   };
   const back = () => {
     setOpen(true);
     setExpanded(false);
-    router.push("/chats");
+    if (taskId) router.push(pathname);
   };
 
   if (error) return <ChatErrorAlert message={error.message} />;
-  if (!thread) return <Skeleton className="m-6 h-64" />;
+  if (!thread || (parentId && parentId !== thread.id && parent.isLoading))
+    return <Skeleton className="m-6 h-64" />;
 
   const panel = (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
         {selected && (
-          <Button variant="ghost" size="icon" aria-label="Back to threads" onClick={back}>
+          <Button variant="ghost" size="icon" aria-label={ui("Back to threads")} onClick={back}>
             <ArrowLeft />
           </Button>
         )}
-        <h2 className="mr-auto text-sm font-semibold">Threads</h2>
-        <LinkButton href="/chats/new" variant="ghost" size="icon" aria-label="New thread">
+        <div
+          role="tablist"
+          aria-label={ui("Chat panels")}
+          className="mr-auto flex gap-1"
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const tabs = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+            );
+            const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
+            const index =
+              event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? tabs.length - 1
+                  : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+            tabs[index]?.focus();
+            tabs[index]?.click();
+          }}
+        >
+          <Button
+            role="tab"
+            id={`${panelId}-subchats`}
+            aria-controls={panelId}
+            tabIndex={workTab ? -1 : 0}
+            aria-selected={!workTab}
+            variant={!workTab ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => {
+              setTab("subchats");
+              if (taskId) router.push(pathname);
+            }}
+          >
+            {ui("Subchats")}
+          </Button>
+          {(backgroundWork || taskId) && (
+            <Button
+              role="tab"
+              id={`${panelId}-work`}
+              aria-controls={panelId}
+              tabIndex={workTab ? 0 : -1}
+              aria-selected={workTab}
+              variant={workTab ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setTab("work")}
+            >
+              {ui("Work")}
+            </Button>
+          )}
+        </div>
+        <LinkButton href="/chats/new" variant="ghost" size="icon" aria-label={ui("New subchat")}>
           <Plus />
         </LinkButton>
-        {!compact && (
+        {!useDrawer && (
           <Button
             variant="ghost"
             size="icon"
-            aria-label={expanded ? "Restore split view" : "Expand thread panel"}
+            aria-label={expanded ? ui("Restore split view") : ui("Expand thread panel")}
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? <Minimize2 /> : <Maximize2 />}
           </Button>
         )}
-        <Button variant="ghost" size="icon" aria-label="Close threads" onClick={close}>
+        <Button variant="ghost" size="icon" aria-label={ui("Close subchats")} onClick={close}>
           <X />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {segment === "new" ? (
-          <ChatDraft threadMode />
-        ) : conversationId ? (
-          <ChatThreadView threadId={conversationId} threadMode coordinatorId={thread.id} />
-        ) : taskId ? (
+      <div
+        role="tabpanel"
+        id={panelId}
+        aria-labelledby={`${panelId}-${workTab ? "work" : "subchats"}`}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
+        {taskId ? (
           work.isLoading ? (
             <Skeleton className="m-4 h-40" />
           ) : work.error ? (
@@ -184,29 +302,31 @@ export function ChatWorkspace() {
             <ChatThreadWorkDetail key={task.id} task={task} />
           ) : (
             <p className="p-4 text-sm text-muted-foreground">
-              This work is no longer available in your Chat.
+              {ui("This work is no longer available in your Chat.")}
             </p>
           )
         ) : (
           <div className="space-y-4 p-3">
             <Input
-              aria-label="Search threads"
-              placeholder="Search threads…"
+              aria-label={ui("Search threads")}
+              placeholder={ui("Search threads…")}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
                 setOffset(0);
               }}
             />
-            {(conversations.error || work.error) && (
+            {((!workTab && conversations.error) || (workTab && work.error)) && (
               <ChatErrorAlert message={(conversations.error ?? work.error)!.message} />
             )}
-            {(conversations.isLoading || work.isLoading) && <Skeleton className="h-20" />}
-            {!conversations.isLoading && !work.isLoading && matchingRows.length === 0 && (
+            {((!workTab && conversations.isLoading) || (workTab && work.isLoading)) && (
+              <Skeleton className="h-20" />
+            )}
+            {!(workTab ? work.isLoading : conversations.isLoading) && matchingRows.length === 0 && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {search
-                  ? "No matching threads."
-                  : "No threads yet. Start one here, or ask Chat to do some work."}
+                  ? ui("No matching threads.")
+                  : ui("No threads yet. Start one here, or ask Chat to do some work.")}
               </p>
             )}
             {THREAD_GROUPS.map((group) => {
@@ -228,11 +348,15 @@ export function ChatWorkspace() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium">{row.title}</div>
                           <div className="truncate text-xs text-muted-foreground">
-                            {row.preview || "Ready to continue"}
+                            <WorkHeadline
+                              sessionId={row.liveSessionId}
+                              live={!!row.liveSessionId}
+                              fallback={row.preview || "Ready to continue"}
+                            />
                           </div>
                         </div>
                         <span className="shrink-0 text-[11px] text-muted-foreground">
-                          {formatRelativeTime(row.updated)}
+                          {formatRelativeTime(row.updated, displayLocale)}
                         </span>
                       </Link>
                     ))}
@@ -240,7 +364,7 @@ export function ChatWorkspace() {
                 </details>
               );
             })}
-            {(conversations.total ?? 0) > 20 && (
+            {!workTab && (conversations.total ?? 0) > 20 && (
               <div className="flex items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
                 <Button
                   variant="ghost"
@@ -248,11 +372,11 @@ export function ChatWorkspace() {
                   disabled={offset === 0}
                   onClick={() => setOffset(Math.max(0, offset - 20))}
                 >
-                  Previous
+                  {ui("Previous")}
                 </Button>
                 <span>
-                  {offset + 1}–{Math.min(offset + 20, conversations.total!)} of{" "}
-                  {conversations.total} conversations
+                  {offset + 1}–{Math.min(offset + 20, conversations.total!)} {ui("of")}{" "}
+                  {conversations.total} {ui("conversations")}
                 </span>
                 <Button
                   variant="ghost"
@@ -260,7 +384,7 @@ export function ChatWorkspace() {
                   disabled={offset + 20 >= conversations.total!}
                   onClick={() => setOffset(offset + 20)}
                 >
-                  Next
+                  {ui("Next")}
                 </Button>
               </div>
             )}
@@ -272,51 +396,72 @@ export function ChatWorkspace() {
   return (
     <ChatWorkspaceContext.Provider
       value={{
-        sessionId: thread.id,
-        openTask: (id) => router.push(`/chats?task=${encodeURIComponent(id)}`),
+        sessionId: workOwnerId ?? currentId ?? thread.id,
+        openTask: (id) =>
+          router.push(
+            `/chats/${workOwnerId ?? currentId ?? thread.id}?task=${encodeURIComponent(id)}`,
+          ),
       }}
     >
       <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-        {/* Isolate and clip the conversation. Transcript rows are positioned
-            and can remember a full-width inline size; without this they paint
-            over the threads pane when it opens. */}
+        {/* Isolate and clip the transcript so positioned rows cannot paint over the panel. */}
         <div
           className={cn(
             "isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-            !compact && panelOpen && expanded && "hidden",
+            !useDrawer && panelOpen && expanded && "hidden",
           )}
         >
-          <ChatThreadView
-            threadId={thread.id}
-            extraActions={
-              <Button
-                ref={threadsButton}
-                variant="outline"
-                size="sm"
-                aria-expanded={panelOpen}
-                onClick={() => (panelOpen ? close() : setOpen(true))}
-              >
-                <MessageSquare />
-                Threads
-              </Button>
-            }
-          />
+          {segment === "new" ? (
+            <ChatDraft />
+          ) : (
+            <ChatThreadView
+              threadId={currentId ?? thread.id}
+              coordinatorId={coordinatorId}
+              threadMode={!!coordinatorId}
+              pageAware={pageAware && !!personalChat && !active.data?.archived_at}
+              onPageMessage={onPageMessage}
+              notice={notice}
+              extraActions={
+                <>
+                  {extraActions}
+                  <LinkButton
+                    href="/chats/new"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={ui("New subchat")}
+                  >
+                    <Plus />
+                  </LinkButton>
+                  <Button
+                    ref={threadsButton}
+                    variant="outline"
+                    size="sm"
+                    aria-expanded={panelOpen}
+                    onClick={() => (panelOpen ? close() : setOpen(true))}
+                  >
+                    <MessageSquare />
+                    {ui("Subchats")}
+                  </Button>
+                </>
+              }
+            />
+          )}
         </div>
-        {compact ? (
+        {useDrawer ? (
           <Drawer open={panelOpen} onOpenChange={(value) => !value && close()}>
             <DrawerContent
               className="w-full max-w-none gap-0 p-0 sm:max-w-none"
               showCloseButton={false}
               finalFocus={threadsButton}
             >
-              <DrawerTitle className="sr-only">Threads</DrawerTitle>
+              <DrawerTitle className="sr-only">{ui("Subchats")}</DrawerTitle>
               {panel}
             </DrawerContent>
           </Drawer>
         ) : (
           panelOpen && (
             <section
-              aria-label="Threads"
+              aria-label={ui("Subchats")}
               className={cn(
                 "relative z-10 hidden min-h-0 min-w-0 overflow-hidden border-l border-border bg-background xl:flex xl:flex-col",
                 expanded ? "flex-1" : "w-1/2 min-w-[360px]",

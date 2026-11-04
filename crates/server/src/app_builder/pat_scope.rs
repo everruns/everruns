@@ -8,6 +8,21 @@
 
 use super::ServerAppBuilder;
 use crate::auth::pat_scope::RouteAccess;
+use axum::Router;
+
+pub(super) type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
+
+/// Apply the optional personal-access-token-routes wrap closure to the router.
+/// Identity when no wrap is configured.
+pub(super) fn apply_personal_access_token_routes_wrap(
+    wrap: Option<PersonalAccessTokenRoutesWrapFn>,
+    router: Router,
+) -> Router {
+    match wrap {
+        Some(wrap) => wrap(router),
+        None => router,
+    }
+}
 
 impl ServerAppBuilder {
     /// Classify embedder routes for personal access token scopes.

@@ -1,5 +1,6 @@
+import { LocaleProvider } from "@/providers/locale-provider";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { HARNESS_GUIDE_URL, HarnessSelect } from "@/components/harness/harness-select";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import { useHarnesses } from "@/hooks";
 import type { Harness } from "@/lib/api/types";
 
@@ -46,6 +47,21 @@ const untitled = harness({
 });
 
 describe("HarnessSelect", () => {
+  afterEach(() => localStorage.clear());
+  it("localizes the empty parent option", () => {
+    localStorage.setItem("everruns.ui-language", "uk");
+    render(
+      <LocaleProvider>
+        <HarnessSelect
+          value=""
+          onValueChange={() => {}}
+          includeNoneOption
+          noneLabel="No parent harness"
+        />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("combobox")).toHaveTextContent("Без батьківської обв’язки");
+  });
   beforeEach(() => {
     mockUseHarnesses.mockReturnValue({
       data: [generic, base, untitled],
@@ -62,14 +78,6 @@ describe("HarnessSelect", () => {
 
     const purpose = document.getElementById(trigger.getAttribute("aria-describedby") ?? "");
     expect(purpose).toHaveTextContent(generic.description ?? "");
-  });
-
-  it("links to the guide for choosing a harness", () => {
-    render(<HarnessSelect value={generic.id} onValueChange={() => {}} />);
-
-    const link = screen.getByRole("link", { name: "Which harness should I use?" });
-    expect(link).toHaveAttribute("href", HARNESS_GUIDE_URL);
-    expect(link).toHaveAttribute("target", "_blank");
   });
 
   it("lists a purpose under each harness that has one", () => {

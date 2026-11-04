@@ -69,7 +69,7 @@ The shared demo helper subscribes before sending, shows bounded tool previews, w
 
 ```rust ignore
 // ANTHROPIC_API_KEY, declared by the Anthropic driver itself.
-let agent = agent::build(everruns_drivers::anthropic::from_env("anthropic")?)?;
+let agent = agent::build(everruns::Anthropic::from_env()?)?;
 let engine = Engine::new();
 let session = engine.create(agent);
 

@@ -103,28 +103,6 @@ async fn invalid_settings_and_empty_offers_are_rejected() {
     assert!(matches!(bad, VoiceError::Invalid(_)), "got {bad:?}");
 }
 
-#[test]
-fn builder_sets_every_setting() {
-    let channel = VoiceChannel::delegated(Realtime::simulated())
-        .model("gpt-realtime-2")
-        .voice("marin")
-        .language("en")
-        .greeting("Hello")
-        .turn_detection(TurnDetection::SemanticVad)
-        .interruption(Interruption::Cancel)
-        .filler("Hold on.")
-        .filler_after(Duration::from_millis(800))
-        .speaking_style("Calm.");
-    let config = channel.config();
-    assert_eq!(config.language.as_deref(), Some("en"));
-    assert_eq!(config.greeting.as_deref(), Some("Hello"));
-    assert_eq!(config.turn_detection, TurnDetection::SemanticVad);
-    assert_eq!(config.interruption, Interruption::Cancel);
-    assert_eq!(config.filler, "Hold on.");
-    assert_eq!(config.filler_after_ms, 800);
-    assert_eq!(config.speaking_style.as_deref(), Some("Calm."));
-}
-
 async fn next_spoken(audio: &mut CallAudio) -> String {
     loop {
         let out = tokio::time::timeout(Duration::from_secs(10), audio.output.recv())

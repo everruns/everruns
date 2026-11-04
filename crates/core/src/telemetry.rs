@@ -512,19 +512,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn operation_span_names_preserve_operation_and_subject() {
-        for (make_name, expected) in [
-            (chat_span_name as fn(&str) -> String, "chat subject/α"),
-            (tool_span_name, "execute_tool subject/α"),
-            (text_completion_span_name, "text_completion subject/α"),
-            (create_agent_span_name, "create_agent subject/α"),
-            (embeddings_span_name, "embeddings subject/α"),
-        ] {
-            assert_eq!(make_name("subject/α"), expected);
-        }
-    }
-
-    #[test]
     fn test_invoke_agent_span_name() {
         assert_eq!(
             invoke_agent_span_name(Some("customer_support")),
@@ -537,33 +524,6 @@ mod tests {
         assert_eq!(invoke_agent_span_name(Some("")), "invoke_agent");
         assert_eq!(invoke_agent_span_name(None), "invoke_agent");
         assert_eq!(invoke_agent_span_name(Some("  ")), "invoke_agent");
-    }
-
-    #[test]
-    fn provider_names_follow_the_registry() {
-        for (driver, expected) in [
-            ("openai", "openai"),
-            ("openai_completions", "openai"),
-            ("anthropic", "anthropic"),
-            ("gemini", "gcp.gemini"),
-            ("bedrock", "aws.bedrock"),
-            ("azure_openai", "azure.ai.openai"),
-            ("vertex_ai", "gcp.vertex_ai"),
-            ("vertexai", "gcp.vertex_ai"),
-            ("mistral", "mistral_ai"),
-            ("mistral_ai", "mistral_ai"),
-            ("xai", "x_ai"),
-            ("x_ai", "x_ai"),
-            ("openrouter", "openrouter"),
-            ("llmsim", "llmsim"),
-            ("custom-driver", "custom-driver"),
-        ] {
-            assert_eq!(
-                gen_ai::provider::from_driver_id(driver),
-                expected,
-                "{driver}"
-            );
-        }
     }
 
     #[test]

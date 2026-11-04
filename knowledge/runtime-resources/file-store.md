@@ -69,10 +69,26 @@ The public surface is split across the execution and host concerns:
 
 See `crates/contracts/src/runtime/session_files.rs` and
 `crates/core/src/host/session_file_system_factory.rs` for the full method signatures
-and doc comments. The filesystem trait shape is intentionally small: an implementation
-supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
-`delete_file`, `list_directory`, `stat_file`, `grep_files`,
-`create_directory`, and `seed_initial_file`.
+and doc comments. The trait owns ordinary file operations, canonical path
+presentation, and explicit host opt-in to writable Memory scopes and atomic
+create-only artifacts. Unsupported Memory operations fail closed.
+
+Directory rename is an optional, atomic store operation for materialized trees.
+The server-backed store preserves file identities and blob references while
+moving path metadata. Destinations must be absent, including implicit trees.
+Roots, moves into the source, readonly descendants, protected parents and mount
+crossings are rejected. The mount resolver permits the two primary workspace
+aliases but prevents relocating a nested mount. Decorators and other backends
+that do not explicitly support this guarantee reject it by default; recursive
+copy-and-delete is not a safe fallback. The remote worker uses the ordinary
+workspace move command and its session authorization.
+
+In-process worker hosts may supply the complete port through
+`WorkerAdapters::session_file_system`. `WorkerRuntimeHost` prefers it to the
+org-scoped remote command adapter. The direct server supplies `WorkspaceFileService`
+with its quota and virtual mounts, keeping live Memory reads, edits and deletion
+on one service. Per-operation overrides must not mix live reads with snapshot
+writes. See [Dreaming](dreaming.md) for the maintenance consumer.
 
 ### Batch-native reads
 
@@ -102,7 +118,9 @@ or `SystemPromptContext`. `MountFs` owns:
   resolve against it, `.`/`..` collapse POSIX-style.
 
 `/workspace` is therefore a **mount point and the default cwd**, not a magic
-prefix re-implemented in every store. Today there is a single workspace backend,
+prefix re-implemented in every store. Model-facing guidance preserves explicit
+named-mount paths: Memory paths such as `/memory/user` must not be rewritten
+under `/workspace`. Today there is a single workspace backend,
 so the table holds the root mount (`/` → backend, for legacy backend-native
 paths such as `/AGENTS.md`, `/outputs/…`, `/.agents/skills/…`) and the
 `/workspace` view of the same backend; `/workspace` wins by longest-prefix, so
@@ -317,6 +335,19 @@ backend-specific:
 shape uniform; implementations are free to log or assert on it, but they
 MUST NOT use it as a path component without an explicit decision (see
 "Multi-tenant `RealDiskFileStore`" below).
+
+### Exact-edit recovery diagnostics
+
+Missing exact targets can return bounded, quoted similar-line hints from the
+already-authorized read snapshot. Hints never select replacement locations or
+relax exact matching. A possible already-applied hint is scoped to the failed
+hunk, requires substantial unique whole-line replacement evidence, and remains
+uncertain: matching replacement text elsewhere does not prove intent. Diagnostics
+must never describe a partially edited intermediate buffer or claim that a failed
+batch succeeded. Failed planning leaves every hunk unapplied; successful planning
+still uses the existing CAS boundary. Implementation and regression cases live in
+[`filesystem`](../../crates/integrations/src/filesystem/mod.rs) and
+[`edit_diagnostics`](../../crates/integrations/src/filesystem/edit_diagnostics.rs).
 
 ### Compare-and-Set
 

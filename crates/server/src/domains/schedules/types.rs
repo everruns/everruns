@@ -352,7 +352,12 @@ pub struct TriggerResponse {
 pub struct UpdateScheduleRequest {
     /// New description
     #[schema(example = "Fires the support-triage agent every weekday at 08:00 UTC")]
-    pub description: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<Option<String>>,
     /// New cron expression. Standard `min hour day-of-month month day-of-week` form.
     #[schema(example = "0 8 * * 1-5")]
     pub cron_expression: Option<String>,
@@ -366,16 +371,31 @@ pub struct UpdateScheduleRequest {
     pub enabled: Option<bool>,
     /// Max concurrent executions
     #[schema(example = 1)]
-    pub max_concurrent: Option<u32>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub max_concurrent: Option<Option<u32>>,
     /// Catch up missed triggers
     #[schema(example = true)]
     pub catch_up_missed: Option<bool>,
     /// Max catch-up executions
     #[schema(example = 3)]
-    pub max_catch_up: Option<u32>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub max_catch_up: Option<Option<u32>>,
     /// Retry policy (provider-specific JSON; see the durable engine's `RetryPolicy`).
     /// Example: `{"max_attempts": 3, "initial_backoff_secs": 30, "backoff_multiplier": 2.0}`.
-    pub retry_policy: Option<serde_json::Value>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub retry_policy: Option<Option<serde_json::Value>>,
 }
 
 fn default_timezone() -> String {
@@ -384,4 +404,10 @@ fn default_timezone() -> String {
 
 fn default_enabled() -> bool {
     true
+}
+
+fn double_option<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<Option<Option<T>>, D::Error> {
+    Option::<T>::deserialize(de).map(Some)
 }

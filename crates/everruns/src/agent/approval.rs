@@ -4,6 +4,11 @@ use std::sync::Arc;
 use super::AgentBuilder;
 
 impl AgentBuilder {
+    /// Use recorded approval decisions and durable waits instead of holding a
+    /// frontend callback open. Supported by Engine session hosting profiles.
+    pub fn durable_approvals(self) -> Self {
+        self.approver(everruns_core::builtins::DurableToolApprover)
+    }
     /// Answer approval requests for tools marked with
     /// [`FunctionTool::needs_approval`](crate::FunctionTool::needs_approval).
     ///

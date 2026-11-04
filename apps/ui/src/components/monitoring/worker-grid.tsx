@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import type { MonitoringSnapshot, MonitoringWorker } from "@/lib/api/types";
 import { phases, number } from "./model";
@@ -62,18 +63,19 @@ export function WorkerGrid({
   selected: string | null;
   onSelect: (group: WorkerGroup) => void;
 }) {
+  const ui = useUiTranslations();
   const groups = useMemo(() => groupWorkers(data.workers, size), [data.workers, size]);
   return (
     <section className="border bg-card p-4" data-testid="monitoring-workers">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Work distributed over workers</h2>
+        <h2 className="text-sm font-semibold">{ui("Work distributed over workers")}</h2>
         <span className="text-xs text-muted-foreground">
-          {number(data.workers.length)} workers · {groups.length} groups
+          {number(data.workers.length)} {ui("workers ·")} {groups.length} {ui("groups")}
         </span>
       </div>
       {groups.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted-foreground">
-          No worker ownership has been observed in this scope.
+          {ui("No worker ownership has been observed in this scope.")}
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
@@ -93,7 +95,11 @@ export function WorkerGrid({
                 type="button"
                 onClick={() => onSelect(group)}
                 aria-pressed={selected === group.id}
-                aria-label={`${group.name}, ${group.leases} actor leases, ${group.workers.length} workers`}
+                aria-label={ui("{value0}, {value1} actor leases, {value2} workers", {
+                  value0: group.name,
+                  value1: group.leases,
+                  value2: group.workers.length,
+                })}
                 className={cn(
                   "min-w-0 border bg-background p-2 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
                   selected === group.id && "border-accent ring-1 ring-accent",
@@ -114,7 +120,7 @@ export function WorkerGrid({
                       <div className="h-full bg-accent" style={{ width: `${load}%` }} />
                     </div>
                     <div className="mt-1 flex justify-between text-[9px] text-muted-foreground">
-                      <span>Reported load</span>
+                      <span>{ui("Reported load")}</span>
                       <span>
                         {group.load}/{group.capacity}
                       </span>
@@ -122,9 +128,11 @@ export function WorkerGrid({
                   </>
                 )}
                 <div className="mt-1 text-[10px] text-muted-foreground">
-                  {group.workers.length} workers
+                  {group.workers.length} {ui("workers")}
                   {group.stale > 0 && (
-                    <span className="ml-2 text-warning">{group.stale} stale</span>
+                    <span className="ml-2 text-warning">
+                      {group.stale} {ui("stale")}
+                    </span>
                   )}
                 </div>
               </button>
@@ -141,8 +149,9 @@ export function WorkerGrid({
         ))}
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
-        Cells aggregate leased actors. Reported worker load includes background activities and is
-        separate from held leases. Parked, unleased sessions appear in Execution.
+        {ui(
+          "Cells aggregate leased actors. Reported worker load includes background activities and is separate from held leases. Parked, unleased sessions appear in Execution.",
+        )}
       </p>
     </section>
   );

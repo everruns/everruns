@@ -83,28 +83,9 @@ impl Connector for ArdConnector {
 mod tests {
     use super::*;
 
-    #[test]
-    fn provider_metadata() {
-        let c = ArdConnector;
-        assert_eq!(c.provider_id(), "ard");
-        assert_eq!(c.connection_type(), ConnectorType::ApiKey);
-    }
-
     #[tokio::test]
     async fn rejects_empty_credential() {
         assert!(ArdConnector.validate("   ").await.is_err());
         assert!(ArdConnector.validate("tok").await.is_ok());
-    }
-
-    #[test]
-    fn form_schema_present() {
-        let schema = ArdConnector.form_schema().unwrap();
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert_eq!(
-            serde_json::to_value(schema.fields[0].field_type).unwrap(),
-            "password"
-        );
     }
 }

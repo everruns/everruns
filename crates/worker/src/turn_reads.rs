@@ -32,6 +32,7 @@ use crate::core::{AgentDefinition, DependencyBlocker, ExecutionSession, HarnessD
 use crate::worker_adapters::TurnContext;
 use everruns_contracts::driver_registry::ProviderConfig;
 use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::runtime::session::SessionExecutionState;
 use uuid::Uuid;
 
 /// A turn with no phase for this long is dropped.
@@ -75,6 +76,28 @@ impl TurnSlot {
     pub(crate) fn put<K: Hash + Eq, T>(&self, select: Select<K, T>, key: K, value: T) {
         self.with(|values| {
             select(values).insert(key, value);
+        });
+    }
+
+    /// Record a status the worker itself wrote. The turn context carries the
+    /// session too, and both stay: the write changed nothing else, and
+    /// dropping the context made the next phase fetch it whole again (about
+    /// 40 control-plane queries per turn).
+    pub(crate) fn set_session_status(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        status: SessionExecutionState,
+    ) {
+        self.with(|values| {
+            if let Some(Some(session)) = values.sessions.get_mut(&(org_id, session_id)) {
+                session.status = status;
+            }
+            for (&(org, session, _), context) in values.turn_contexts.iter_mut() {
+                if (org, session) == (org_id, session_id) {
+                    context.session.status = status;
+                }
+            }
         });
     }
 

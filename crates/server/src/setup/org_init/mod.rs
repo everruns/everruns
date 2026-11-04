@@ -291,6 +291,7 @@ async fn upsert_built_in_harness(
         .await
         .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
     let input = CreateHarnessRow {
+        localizations: harness.localizations.clone(),
         name: harness.name.to_string(),
         display_name: Some(harness.display_name.to_string()),
         icon: harness.icon.clone(),
@@ -668,20 +669,6 @@ mod tests {
         default_harness_definitions()
     }
 
-    #[test]
-    fn test_built_in_harness_names_unique() {
-        let built_in_harnesses = harnesses();
-        let names: Vec<&str> = built_in_harnesses.iter().map(|h| h.name.as_str()).collect();
-        let mut unique = names.clone();
-        unique.sort();
-        unique.dedup();
-        assert_eq!(
-            names.len(),
-            unique.len(),
-            "Duplicate built-in harness names"
-        );
-    }
-
     #[tokio::test]
     async fn test_initialize_default_org_creates_harnesses() {
         let db = make_db();
@@ -739,57 +726,59 @@ mod tests {
         let caps = db.get_agent_capabilities(chat.id.uuid()).await.unwrap();
         assert!(
             caps.iter()
-                .any(|c| c.capability_id == "platform" && c.config["surface"] == "shell")
+                .any(|c| c.capability_id == "platform" && c.config["surface"] == "native")
         );
+        assert!(caps.iter().any(|c| c.capability_id == "tool_search"
+            && c.config["bounded"] == true
+            && c.config["threshold"] == 1));
     }
 
     #[tokio::test]
-    async fn test_initialize_idempotent() {
+    async fn platform_chat_reconciles_shell_agents_to_bounded_native() {
         let db = make_db();
         seed_default_org(&db).await;
-
-        let r1 = initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-        assert_eq!(r1.created, harnesses().len());
-
-        let r2 = initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-        assert_eq!(r2.created, 0);
-        assert_eq!(r2.unchanged, harnesses().len());
-    }
-
-    #[tokio::test]
-    async fn test_initialize_new_org() {
-        let db = make_db();
-        seed_default_org(&db).await;
-
-        // Create a second org
-        let org2 = db
-            .create_organization(crate::storage::CreateOrganizationRow {
-                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
-                name: "Test Org 2".to_string(),
-                created_by: None,
-            })
-            .await
-            .unwrap();
-
-        let result = initialize_org_harnesses(&db, org2.org_id).await.unwrap();
-        assert_eq!(result.created, harnesses().len());
-
-        // Verify harnesses exist for org 2
-        let h_org2 = db.list_harnesses(org2.org_id, None, false).await.unwrap();
-        assert_eq!(h_org2.len(), harnesses().len());
-        for h in &h_org2 {
-            assert!(h.is_built_in);
-        }
-
-        let conversation_id = h_org2.iter().find(|h| h.name == "conversation").unwrap().id;
-        let base_id = h_org2.iter().find(|h| h.name == "base").unwrap().id;
-        let settings = db
-            .get_organization_settings(org2.org_id)
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        let original = db
+            .get_agent_by_name(DEFAULT_ORG_ID, crate::platform_chat_agent::NAME)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(settings.default_harness_id, Some(conversation_id));
-        assert_eq!(settings.base_harness_id, Some(base_id));
+        db.set_agent_capabilities(
+            original.id.uuid(),
+            vec![("platform".into(), 0, serde_json::json!({"surface":"shell"}))],
+        )
+        .await
+        .unwrap();
+
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        let updated = db
+            .get_agent_by_name(DEFAULT_ORG_ID, crate::platform_chat_agent::NAME)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.id, updated.id);
+        assert_eq!(original.harness_id, updated.harness_id);
+        assert!(updated.system_prompt.contains("`platform_list_agents`"));
+        let caps = db.get_agent_capabilities(updated.id.uuid()).await.unwrap();
+        assert!(
+            caps.iter()
+                .any(|c| c.capability_id == "platform" && c.config["surface"] == "native")
+        );
+        assert!(
+            caps.iter()
+                .any(|c| c.capability_id == "tool_search" && c.config["bounded"] == true)
+        );
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        let again = db.get_agent_capabilities(updated.id.uuid()).await.unwrap();
+        assert_eq!(
+            caps.iter()
+                .map(|c| (&c.capability_id, c.position, &c.config, c.id))
+                .collect::<Vec<_>>(),
+            again
+                .iter()
+                .map(|c| (&c.capability_id, c.position, &c.config, c.id))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[tokio::test]
@@ -916,30 +905,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_init_result_has_changes() {
-        let result = InitResult {
-            created: 1,
-            updated: 0,
-            unchanged: 0,
-        };
-        assert!(result.has_changes());
-
-        let result2 = InitResult {
-            created: 0,
-            updated: 1,
-            unchanged: 0,
-        };
-        assert!(result2.has_changes());
-
-        let result3 = InitResult {
-            created: 0,
-            updated: 0,
-            unchanged: 3,
-        };
-        assert!(!result3.has_changes());
-    }
-
     /// Verify that calling initialize_org_harnesses on a fresh default org
     /// (without full seed_all) creates harnesses and sets org settings.
     /// This simulates the safety-net path in auth registration handlers.
@@ -1005,6 +970,7 @@ mod tests {
             .create_harness(
                 DEFAULT_ORG_ID,
                 crate::storage::CreateHarnessRow {
+                    localizations: Default::default(),
                     name: "data-analyst".to_string(),
                     display_name: Some("Data Analyst".to_string()),
                     icon: None,

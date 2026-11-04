@@ -43,9 +43,17 @@ pub(crate) struct WebSocketPolicy {
 impl WebSocketPolicy {
     /// Whether this call goes over the WebSocket transport.
     // Without the transport feature only the tests ask.
-    #[cfg_attr(not(feature = "responses-websocket"), allow(dead_code))]
+    #[cfg_attr(
+        any(not(feature = "responses-websocket"), target_arch = "wasm32"),
+        allow(dead_code)
+    )]
     pub(crate) fn wants(&self, config: &LlmCallConfig, background: bool) -> bool {
-        if !cfg!(feature = "responses-websocket") || !self.supported || background {
+        if !cfg!(all(
+            feature = "responses-websocket",
+            not(target_arch = "wasm32")
+        )) || !self.supported
+            || background
+        {
             return false;
         }
         config

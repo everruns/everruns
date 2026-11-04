@@ -1,0 +1,332 @@
+diff --git a/dist/api-client/api-client.cjs b/dist/api-client/api-client.cjs
+index 81ec6a827d23309f11819b0b2ae2f111ece09c81..a2ab64ba0e8027403024f1a98b9f732f6dad0657 100644
+--- a/dist/api-client/api-client.cjs
++++ b/dist/api-client/api-client.cjs
+@@ -9,7 +9,7 @@ const require_normalizePath = require('../utils/normalizePath.cjs');
+ const require_network_policy = require('../utils/network-policy.cjs');
+ const require_types = require('../utils/types.cjs');
+ let node_timers_promises = require("node:timers/promises");
+-let zod = require("zod");
++let zod = require("zod/v3");
+ let stream = require("stream");
+ let jsonlines = require("jsonlines");
+ jsonlines = require_rolldown_runtime.__toESM(jsonlines);
+diff --git a/dist/api-client/api-client.d.cts b/dist/api-client/api-client.d.cts
+index 28b5522e8d318d64787317a233d044603cff911c..5d5eb898c62e6bf99a199f8406a8320ce541b3d5 100644
+--- a/dist/api-client/api-client.d.cts
++++ b/dist/api-client/api-client.d.cts
+@@ -4,7 +4,7 @@ import { FileWriter } from "./file-writer.cjs";
+ import { NetworkPolicy } from "../network-policy.cjs";
+ import { WithPrivate } from "../utils/types.cjs";
+ import { RUNTIMES } from "../constants.cjs";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ import { Readable } from "stream";
+ 
+ //#region src/api-client/api-client.d.ts
+diff --git a/dist/api-client/api-client.d.ts b/dist/api-client/api-client.d.ts
+index c7cbc1587cbc7eefc9a877b7441785bd03af9b5e..2fdd80d1c909236c80130e4ae38fcb523e5a89fe 100644
+--- a/dist/api-client/api-client.d.ts
++++ b/dist/api-client/api-client.d.ts
+@@ -4,7 +4,7 @@ import { FileWriter } from "./file-writer.js";
+ import { NetworkPolicy } from "../network-policy.js";
+ import { WithPrivate } from "../utils/types.js";
+ import { RUNTIMES } from "../constants.js";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ import { Readable } from "stream";
+ 
+ //#region src/api-client/api-client.d.ts
+diff --git a/dist/api-client/api-client.js b/dist/api-client/api-client.js
+index 76265728b0135c7b3555cea33d6ad7e88a36bbf8..225f3835f537f463c8717516eafec94fd497cd78 100644
+--- a/dist/api-client/api-client.js
++++ b/dist/api-client/api-client.js
+@@ -8,7 +8,7 @@ import { normalizePath } from "../utils/normalizePath.js";
+ import { toAPINetworkPolicy } from "../utils/network-policy.js";
+ import { getPrivateParams } from "../utils/types.js";
+ import { setTimeout } from "node:timers/promises";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ import { Readable } from "stream";
+ import jsonlines from "jsonlines";
+ import os from "os";
+diff --git a/dist/api-client/base-client.d.ts b/dist/api-client/base-client.d.ts
+index c7790fa511fb5a0b0aea057daa6cb6c9f5b964fe..ce9fec8b315e02118cfd7ee7c95f995275ecf771 100644
+--- a/dist/api-client/base-client.d.ts
++++ b/dist/api-client/base-client.d.ts
+@@ -1,6 +1,6 @@
+ import { RequestOptions } from "./with-retry.js";
+ import { Options } from "async-retry";
+-import "zod";
++import "zod/v3";
+ 
+ //#region src/api-client/base-client.d.ts
+ interface RequestParams extends RequestInit {
+diff --git a/dist/api-client/validators.cjs b/dist/api-client/validators.cjs
+index 1bcf83ab1d2cb63bbc9264263a22fb80751a937d..c49fd1a75527ee69c24fff22dd1b9188c15f7394 100644
+--- a/dist/api-client/validators.cjs
++++ b/dist/api-client/validators.cjs
+@@ -1,5 +1,5 @@
+ const require_rolldown_runtime = require('../_virtual/rolldown_runtime.cjs');
+-let zod = require("zod");
++let zod = require("zod/v3");
+ 
+ //#region src/api-client/validators.ts
+ const InjectionRuleValidator = zod.z.object({
+diff --git a/dist/api-client/validators.d.cts b/dist/api-client/validators.d.cts
+index 2092b282f1e01a798f9c57691d6fcfba53f636cb..2060448697ea081a9235c425ac6ab4cd04640d0c 100644
+--- a/dist/api-client/validators.d.cts
++++ b/dist/api-client/validators.d.cts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/api-client/validators.d.ts
+ type SandboxMetaData = z.infer<typeof Sandbox>;
+diff --git a/dist/api-client/validators.d.ts b/dist/api-client/validators.d.ts
+index 4e5e76af931d0b3b63e54a9256503815df71a28b..14cdfd4d4d001d61df8a36a0c2081a457e2d9900 100644
+--- a/dist/api-client/validators.d.ts
++++ b/dist/api-client/validators.d.ts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/api-client/validators.d.ts
+ type SandboxMetaData = z.infer<typeof Sandbox>;
+diff --git a/dist/api-client/validators.js b/dist/api-client/validators.js
+index a98b8031dbea5d6027b1f5fac6be0d0845752d21..cc94958d9aa4ba41993978518b33eff91790be1f 100644
+--- a/dist/api-client/validators.js
++++ b/dist/api-client/validators.js
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/api-client/validators.ts
+ const InjectionRuleValidator = z.object({
+diff --git a/dist/auth/file.cjs b/dist/auth/file.cjs
+index ae48f3c9e2cee1fdc804df9c05b023fbb0c871f6..e10f264fbc3f566992f8bc1537865747b15a0edb 100644
+--- a/dist/auth/file.cjs
++++ b/dist/auth/file.cjs
+@@ -1,6 +1,6 @@
+ const require_rolldown_runtime = require('../_virtual/rolldown_runtime.cjs');
+ const require_zod = require('./zod.cjs');
+-let zod = require("zod");
++let zod = require("zod/v3");
+ let node_path = require("node:path");
+ node_path = require_rolldown_runtime.__toESM(node_path);
+ let node_fs = require("node:fs");
+diff --git a/dist/auth/file.d.cts b/dist/auth/file.d.cts
+index 2db56f08f42f30ec18f91f0ee00507adee750e00..b5995a4aeb42def005896c01fcdc78de8f0684ae 100644
+--- a/dist/auth/file.d.cts
++++ b/dist/auth/file.d.cts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/auth/file.d.ts
+ declare const AuthFile: z.ZodObject<{
+diff --git a/dist/auth/file.d.ts b/dist/auth/file.d.ts
+index 9029b35047cdab6e8e8dc73294bcdf9e468a8b5d..acab27900ea4dbe1279766d3feeaca3bfcd7d8cf 100644
+--- a/dist/auth/file.d.ts
++++ b/dist/auth/file.d.ts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/auth/file.d.ts
+ declare const AuthFile: z.ZodObject<{
+diff --git a/dist/auth/file.js b/dist/auth/file.js
+index 8b19a1f8c3b90bc710983793606dfd1eeeedbdc4..d4aa82af72560517e4143fc09ba7e79dc103744c 100644
+--- a/dist/auth/file.js
++++ b/dist/auth/file.js
+@@ -1,5 +1,5 @@
+ import { json } from "./zod.js";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ import path from "node:path";
+ import fs from "node:fs";
+ import { homedir } from "node:os";
+diff --git a/dist/auth/linked-project.cjs b/dist/auth/linked-project.cjs
+index b5d9576889bf71b78265410ff54adbb58728b163..5ff02bcda629491786fcdf6a6dd878face721555 100644
+--- a/dist/auth/linked-project.cjs
++++ b/dist/auth/linked-project.cjs
+@@ -1,6 +1,6 @@
+ const require_rolldown_runtime = require('../_virtual/rolldown_runtime.cjs');
+ const require_zod = require('./zod.cjs');
+-let zod = require("zod");
++let zod = require("zod/v3");
+ let node_path = require("node:path");
+ node_path = require_rolldown_runtime.__toESM(node_path);
+ let node_fs_promises = require("node:fs/promises");
+diff --git a/dist/auth/linked-project.js b/dist/auth/linked-project.js
+index 86b7b01d0f99862f87c619a3f882a08337b35993..e20fbdd73dffe53b28bcd8bb186c0cbf1dae9e7f 100644
+--- a/dist/auth/linked-project.js
++++ b/dist/auth/linked-project.js
+@@ -1,5 +1,5 @@
+ import { json } from "./zod.js";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ import * as path$1 from "node:path";
+ import * as fs from "node:fs/promises";
+ 
+diff --git a/dist/auth/oauth.cjs b/dist/auth/oauth.cjs
+index 9bfe32bbc071d7b2d29192617f3357837fd42649..2d7fc6c762b303491054c3c53036979a175ccd80 100644
+--- a/dist/auth/oauth.cjs
++++ b/dist/auth/oauth.cjs
+@@ -1,6 +1,6 @@
+ const require_rolldown_runtime = require('../_virtual/rolldown_runtime.cjs');
+ const require_version = require('../version.cjs');
+-let zod = require("zod");
++let zod = require("zod/v3");
+ let os = require("os");
+ os = require_rolldown_runtime.__toESM(os);
+ 
+diff --git a/dist/auth/oauth.d.cts b/dist/auth/oauth.d.cts
+index 8183256d37dc78839ce66faedb110852f54f80b2..34dca1a04a601e66dc2424c6ebde8bb0acc79f4d 100644
+--- a/dist/auth/oauth.d.cts
++++ b/dist/auth/oauth.d.cts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/auth/oauth.d.ts
+ declare const IntrospectionResponse: z.ZodUnion<[z.ZodObject<{
+diff --git a/dist/auth/oauth.d.ts b/dist/auth/oauth.d.ts
+index 7797f80387a71ef9e207b45ada2de48f549426a3..ce6b39720a803ace66791d8fa8f72242f4505ee6 100644
+--- a/dist/auth/oauth.d.ts
++++ b/dist/auth/oauth.d.ts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/auth/oauth.d.ts
+ declare const IntrospectionResponse: z.ZodUnion<[z.ZodObject<{
+diff --git a/dist/auth/oauth.js b/dist/auth/oauth.js
+index 501d84f938e51dbf44987bd8b9764adf0ed31966..dca2f95d55e0cdb19eab7fd9ce0becda0f9d4f4e 100644
+--- a/dist/auth/oauth.js
++++ b/dist/auth/oauth.js
+@@ -1,5 +1,5 @@
+ import { VERSION } from "../version.js";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ import os from "os";
+ 
+ //#region src/auth/oauth.ts
+diff --git a/dist/auth/project.cjs b/dist/auth/project.cjs
+index 569b7b85e382f1cbed5b9ab1fe2d73e56b492078..fd7b2c66951b2a8adf412938b7ffaa3ddc0c8c96 100644
+--- a/dist/auth/project.cjs
++++ b/dist/auth/project.cjs
+@@ -2,7 +2,7 @@ const require_rolldown_runtime = require('../_virtual/rolldown_runtime.cjs');
+ const require_error = require('./error.cjs');
+ const require_api = require('./api.cjs');
+ const require_linked_project = require('./linked-project.cjs');
+-let zod = require("zod");
++let zod = require("zod/v3");
+ 
+ //#region src/auth/project.ts
+ const UserSchema = zod.z.object({ user: zod.z.object({
+diff --git a/dist/auth/project.js b/dist/auth/project.js
+index 1e521e1d78cda4e2d0b176bd951be7e4509b237d..383fe94136f4746cf892abfcc2d4f4860ae42b51 100644
+--- a/dist/auth/project.js
++++ b/dist/auth/project.js
+@@ -1,7 +1,7 @@
+ import { NotOk } from "./error.js";
+ import { fetchApi } from "./api.js";
+ import { readLinkedProject } from "./linked-project.js";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/auth/project.ts
+ const UserSchema = z.object({ user: z.object({
+diff --git a/dist/auth/zod.cjs b/dist/auth/zod.cjs
+index 7e34856ef5b02a2dcd4300d7745340a9304a0eb4..1c9de90ebac008af29780d4f2ddf6c6dae5352fe 100644
+--- a/dist/auth/zod.cjs
++++ b/dist/auth/zod.cjs
+@@ -1,5 +1,5 @@
+ const require_rolldown_runtime = require('../_virtual/rolldown_runtime.cjs');
+-let zod = require("zod");
++let zod = require("zod/v3");
+ 
+ //#region src/auth/zod.ts
+ /**
+diff --git a/dist/auth/zod.js b/dist/auth/zod.js
+index 153cc434f1a1fd1985191efd8cf80e5205df43cd..0afbe00729de3124bc39c90de579001715ee2a75 100644
+--- a/dist/auth/zod.js
++++ b/dist/auth/zod.js
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/auth/zod.ts
+ /**
+diff --git a/dist/sandbox.d.cts b/dist/sandbox.d.cts
+index bc40fbdce1c29dd8dcb5c1e29ae91933c5def499..ea4ee3e534a1548c1b579ff8d5af5e3bb511113d 100644
+--- a/dist/sandbox.d.cts
++++ b/dist/sandbox.d.cts
+@@ -9,7 +9,7 @@ import { Credentials } from "./utils/get-credentials.cjs";
+ import { Snapshot } from "./snapshot.cjs";
+ import { SandboxSnapshot } from "./utils/sandbox-snapshot.cjs";
+ import { FileSystem } from "./filesystem.cjs";
+-import * as zod0 from "zod";
++import * as zod0 from "zod/v3";
+ import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde";
+ import { Writable } from "stream";
+ 
+diff --git a/dist/sandbox.d.ts b/dist/sandbox.d.ts
+index db97f1eec28df94106d8af50a06cbad2aa252b3b..9b98772bb76ed3e25e250eb93a7123d3eed606f6 100644
+--- a/dist/sandbox.d.ts
++++ b/dist/sandbox.d.ts
+@@ -11,7 +11,7 @@ import { Snapshot } from "./snapshot.js";
+ import { SandboxSnapshot } from "./utils/sandbox-snapshot.js";
+ import { FileSystem } from "./filesystem.js";
+ import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde";
+-import * as zod0 from "zod";
++import * as zod0 from "zod/v3";
+ import { Writable } from "stream";
+ 
+ //#region src/sandbox.d.ts
+diff --git a/dist/utils/get-credentials.cjs b/dist/utils/get-credentials.cjs
+index f091aae6f73c74f797dc8710d97dfacf2ab4e00c..4dab8e1f86e151b025de8c4c3179d44d902b0355 100644
+--- a/dist/utils/get-credentials.cjs
++++ b/dist/utils/get-credentials.cjs
+@@ -1,7 +1,7 @@
+ const require_rolldown_runtime = require('../_virtual/rolldown_runtime.cjs');
+ const require_decode_base64_url = require('./decode-base64-url.cjs');
+ const require_dev_credentials = require('./dev-credentials.cjs');
+-let zod = require("zod");
++let zod = require("zod/v3");
+ let __vercel_oidc = require("@vercel/oidc");
+ 
+ //#region src/utils/get-credentials.ts
+diff --git a/dist/utils/get-credentials.d.cts b/dist/utils/get-credentials.d.cts
+index 013c5ff73f11bbc1c0e27c9722eaaaecaec7a270..5a44ae52784baa0b030b60ef4349c727206df403 100644
+--- a/dist/utils/get-credentials.d.cts
++++ b/dist/utils/get-credentials.d.cts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/utils/get-credentials.d.ts
+ interface Credentials {
+diff --git a/dist/utils/get-credentials.d.ts b/dist/utils/get-credentials.d.ts
+index 20a4620585deab961d9cbe1e0f1f43411b337181..81db29662b71ca4956ce9a48b75f55f2e1ac2bcc 100644
+--- a/dist/utils/get-credentials.d.ts
++++ b/dist/utils/get-credentials.d.ts
+@@ -1,4 +1,4 @@
+-import { z } from "zod";
++import { z } from "zod/v3";
+ 
+ //#region src/utils/get-credentials.d.ts
+ interface Credentials {
+diff --git a/dist/utils/get-credentials.js b/dist/utils/get-credentials.js
+index 90af8aaff433010fa0dd9358470d996c7e146596..ed961da6b933db6bb0d903c938171b06b9dfa3df 100644
+--- a/dist/utils/get-credentials.js
++++ b/dist/utils/get-credentials.js
+@@ -1,6 +1,6 @@
+ import { decodeBase64Url } from "./decode-base64-url.js";
+ import { cachedGenerateCredentials, shouldPromptForCredentials } from "./dev-credentials.js";
+-import { z } from "zod";
++import { z } from "zod/v3";
+ import { getVercelOidcToken } from "@vercel/oidc";
+ 
+ //#region src/utils/get-credentials.ts

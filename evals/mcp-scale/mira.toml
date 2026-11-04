@@ -1,0 +1,10 @@
+default_launcher = "mcp_scale"
+
+[results]
+dir = "./results/mira"
+
+[environment]
+enabled = true
+
+[launchers.mcp_scale]
+bin = "mcp_scale"

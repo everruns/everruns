@@ -5,6 +5,10 @@ import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMemo } from "react";
 export default function ChatPage() {
+  return <StandaloneChat />;
+}
+
+function StandaloneChat() {
   const { thread, error } = usePlatformChatThread({ ensure: true });
   const params = useMemo(() => Promise.resolve({ threadId: thread?.id ?? "" }), [thread?.id]);
   if (error) return <ChatErrorAlert message={error.message} />;

@@ -71,6 +71,7 @@
  * load; see `crates/server/src/app_builder.rs`.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
 import { code } from "@streamdown/code";
@@ -121,6 +122,12 @@ const CODE_EXTENSIONS = new Set([
 ]);
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"]);
+const VIDEO_MIME_TYPES: Record<string, string> = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  mkv: "video/x-matroska",
+};
 const markdownComponents = { a: MarkdownLink };
 
 // Map file extensions to Shiki language identifiers
@@ -166,6 +173,7 @@ export type PreviewType =
   | "svg"
   | "html"
   | "pdf"
+  | "video"
   | "text"
   | "binary";
 
@@ -181,6 +189,7 @@ export function getPreviewType(extension: string, encoding: "text" | "base64"): 
     // BOUNDARY at the top of this module.
     if (ext === "pdf") return "pdf";
     if (IMAGE_EXTENSIONS.has(ext)) return "image";
+    if (Object.hasOwn(VIDEO_MIME_TYPES, ext)) return "video";
     return "binary";
   }
 
@@ -201,6 +210,8 @@ export function canPreview(extension: string, encoding: "text" | "base64"): bool
 }
 
 interface PreviewProps {
+  /** Disable HTML scripts when the embedding environment cannot isolate a network preview. */
+  staticHtml?: boolean;
   content: string;
   extension: string;
   encoding: "text" | "base64";
@@ -211,6 +222,12 @@ interface PreviewProps {
    * server (e.g. initial-files preview), which fall back to a static render.
    */
   htmlPreviewSrc?: string;
+  /**
+   * URL of the file's raw bytes. Videos stream from it, so the player can
+   * seek without holding the whole file in a data: URL. Without it a video
+   * plays from its base64 content.
+   */
+  videoSrc?: string;
 }
 
 export function CodePreview({ content, extension }: { content: string; extension: string }) {
@@ -276,13 +293,14 @@ function parseCSV(content: string): { headers: string[]; rows: string[][] } {
 }
 
 export function CSVPreview({ content }: { content: string }) {
+  const ui = useUiTranslations();
   const { headers, rows } = useMemo(() => parseCSV(content), [content]);
 
   if (headers.length === 0) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/60" />
-        <p>Empty or invalid CSV</p>
+        <p>{ui("Empty or invalid CSV")}</p>
       </div>
     );
   }
@@ -311,7 +329,7 @@ export function CSVPreview({ content }: { content: string }) {
           </TableBody>
         </Table>
         <div className="mt-2 text-xs text-muted-foreground">
-          {rows.length} rows, {headers.length} columns
+          {rows.length} {ui("rows,")} {headers.length} {ui("columns")}
         </div>
       </div>
     </ScrollArea>
@@ -319,6 +337,7 @@ export function CSVPreview({ content }: { content: string }) {
 }
 
 export function JSONPreview({ content }: { content: string }) {
+  const ui = useUiTranslations();
   const { formatted, markdown } = useMemo(() => {
     try {
       const parsed = JSON.parse(content);
@@ -336,7 +355,7 @@ export function JSONPreview({ content }: { content: string }) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
-        <p>Invalid JSON</p>
+        <p>{ui("Invalid JSON")}</p>
       </div>
     );
   }
@@ -482,6 +501,37 @@ export function ImagePreview({
 }
 
 /**
+ * Video files (desktop recordings, screen captures). `<video>` only decodes
+ * media, it runs nothing from the file, so no sandbox is needed.
+ */
+export function VideoPreview({
+  content,
+  extension,
+  src,
+  fileName,
+}: {
+  content: string;
+  extension: string;
+  src?: string;
+  fileName: string;
+}) {
+  const mimeType = VIDEO_MIME_TYPES[extension.toLowerCase()] ?? "video/mp4";
+  return (
+    <div className="h-full p-4 flex items-center justify-center bg-black/90">
+      {/* Screen recordings have no speech to caption. */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video
+        aria-label={fileName}
+        controls
+        preload="metadata"
+        src={src ?? `data:${mimeType};base64,${content}`}
+        className="max-w-full max-h-full"
+      />
+    </div>
+  );
+}
+
+/**
  * Decode user-supplied SVG bytes to a string.
  *
  * `text` encoding is already an SVG source string. `base64` encoding decodes
@@ -518,6 +568,7 @@ export function SVGPreview({
   content: string;
   encoding: "text" | "base64";
 }) {
+  const ui = useUiTranslations();
   const svgSource = useMemo(() => decodeSvgSource(content, encoding), [content, encoding]);
 
   // Strict CSP for the iframe document. `default-src 'none'` blocks all
@@ -546,7 +597,7 @@ export function SVGPreview({
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
-        <p>Empty or invalid SVG</p>
+        <p>{ui("Empty or invalid SVG")}</p>
       </div>
     );
   }
@@ -555,7 +606,7 @@ export function SVGPreview({
     <ScrollArea className="h-full">
       <div className="p-4 flex items-center justify-center min-h-full">
         <iframe
-          title="SVG preview"
+          title={ui("SVG preview")}
           // Empty `sandbox` means deny every flag — no scripts, no forms, no
           // top-nav, no same-origin, no popups. Combined with the CSP meta
           // tag inside `srcDoc`, this is the strongest browser-side gate
@@ -598,7 +649,16 @@ function injectHtmlPreviewCsp(html: string): string {
   return `${meta}${html}`;
 }
 
-export function HtmlPreview({ content, src }: { content: string; src?: string }) {
+export function HtmlPreview({
+  content,
+  src,
+  allowScripts = true,
+}: {
+  content: string;
+  src?: string;
+  allowScripts?: boolean;
+}) {
+  const ui = useUiTranslations();
   const srcDoc = useMemo(() => injectHtmlPreviewCsp(content), [content]);
 
   // Server-backed mode (preferred): the iframe loads the sandboxed preview
@@ -611,8 +671,8 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
   if (src) {
     return (
       <iframe
-        title="HTML preview"
-        sandbox="allow-scripts"
+        title={ui("HTML preview")}
+        sandbox={allowScripts ? "allow-scripts" : ""}
         referrerPolicy="no-referrer"
         src={src}
         className="w-full h-full border-0 bg-white"
@@ -627,8 +687,8 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
   // TRUST BOUNDARY at the top of this module.
   return (
     <iframe
-      title="HTML preview"
-      sandbox="allow-scripts"
+      title={ui("HTML preview")}
+      sandbox={allowScripts ? "allow-scripts" : ""}
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
       className="w-full h-full border-0 bg-white"
@@ -637,6 +697,7 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
 }
 
 export function PdfPreview({ content }: { content: string }) {
+  const ui = useUiTranslations();
   // Chromium disables its PDF viewer inside any sandboxed iframe, so we cannot
   // use `sandbox` here. The data: URL gives the frame an opaque origin (no
   // cookie/DOM access) and forcing `application/pdf` prevents HTML execution
@@ -650,17 +711,28 @@ export function PdfPreview({ content }: { content: string }) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
-        <p>Empty or invalid PDF</p>
+        <p>{ui("Empty or invalid PDF")}</p>
       </div>
     );
   }
 
   return (
-    <iframe title="PDF preview" src={dataUrl} className="w-full h-full border-0 bg-neutral-50" />
+    <iframe
+      title={ui("PDF preview")}
+      src={dataUrl}
+      className="w-full h-full border-0 bg-neutral-50"
+    />
   );
 }
 
-export function FilePreview({ content, extension, encoding, htmlPreviewSrc }: PreviewProps) {
+export function FilePreview({
+  content,
+  extension,
+  encoding,
+  htmlPreviewSrc,
+  videoSrc,
+  staticHtml = false,
+}: PreviewProps) {
   const previewType = getPreviewType(extension, encoding);
 
   switch (previewType) {
@@ -675,12 +747,21 @@ export function FilePreview({ content, extension, encoding, htmlPreviewSrc }: Pr
     case "svg":
       return <SVGPreview content={content} encoding={encoding} />;
     case "html":
-      return <HtmlPreview content={content} src={htmlPreviewSrc} />;
+      return <HtmlPreview content={content} src={htmlPreviewSrc} allowScripts={!staticHtml} />;
     case "pdf":
       return <PdfPreview content={content} />;
     case "image":
       return (
         <ImagePreview content={content} extension={extension} fileName={`file.${extension}`} />
+      );
+    case "video":
+      return (
+        <VideoPreview
+          content={content}
+          extension={extension}
+          src={videoSrc}
+          fileName={`file.${extension}`}
+        />
       );
     default:
       return null;

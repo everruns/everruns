@@ -57,6 +57,11 @@ pub(super) struct ToolChangeReplay {
     /// The tool list to send instead of the wanted one, when a removal is
     /// held: the wanted tools with the held ones kept in their places.
     held_tools: Option<Vec<ToolDefinition>>,
+    /// The wanted tools in declaration order: tools sent before keep their
+    /// places and new ones go last. Models that fold changes into `tools`
+    /// then keep the cached prefix up to the first new tool instead of losing
+    /// it wherever a revealed tool sorts in.
+    ordered_tools: Option<Vec<ToolDefinition>>,
 }
 
 /// When a removal may wait: the request time and how long the provider keeps
@@ -95,6 +100,13 @@ impl ColdMoment {
         // it would release one into a warm cache.
         let retention = cache.map(|cache| cache.retention).unwrap_or_default();
         let minutes = match retention {
+            PromptCacheRetention::TwelveHours => 12 * 60,
+            PromptCacheRetention::Default
+                if *provider == DriverId::OpenAI
+                    && everruns_contracts::openai_compat::supports_cache_options(model) =>
+            {
+                12 * 60
+            }
             PromptCacheRetention::OneHour => 60,
             _ if *provider == DriverId::Anthropic || *provider == DriverId::Bedrock => 5,
             _ => 30,
@@ -144,7 +156,7 @@ impl ToolChangeReplay {
     ) {
         config.tool_baseline = self.baseline_for(sent);
         config.system_prompt_baseline = self.system_prompt_for(sent);
-        if let Some(tools) = &self.held_tools {
+        if let Some(tools) = self.held_tools.as_ref().or(self.ordered_tools.as_ref()) {
             config.tools.clone_from(tools);
         }
     }
@@ -212,14 +224,31 @@ pub(super) fn prepare_for(
     model: &str,
     agent: &crate::engine::RuntimeAgent,
 ) -> ToolChangeReplay {
-    prepare_holding(
+    let replay = prepare_holding(
         messages,
         provider.as_str(),
         model,
         &agent.tools,
         &agent.system_prompt,
         ColdMoment::for_model(provider, model, agent.prompt_cache.as_ref()),
-    )
+    );
+    // A live reduction of the disclosure budget takes effect immediately.
+    // Ordinary removal-only changes still preserve a warm provider cache.
+    if replay.held_tools.as_ref().is_some_and(|held| {
+        agent
+            .model_tool_budget
+            .is_some_and(|budget| !budget.admits(held))
+    }) {
+        return prepare_holding(
+            messages,
+            provider.as_str(),
+            model,
+            &agent.tools,
+            &agent.system_prompt,
+            None,
+        );
+    }
+    replay
 }
 
 #[cfg(test)]
@@ -305,12 +334,14 @@ pub(super) fn prepare_holding(
         && !changes.removed.is_empty();
     let held_tools = (only_removes && cold.is_some_and(|cold| cold.warm_since(last_answer)))
         .then(|| with_held(&declared, wanted, &std::mem::take(&mut changes.removed)));
+    let ordered_tools = Some(in_declared_order(&declared, &changes));
     if changes.is_empty() {
         return ToolChangeReplay {
             transitions,
             baseline,
             system_prompt,
             held_tools,
+            ordered_tools,
             ..ToolChangeReplay::default()
         };
     }
@@ -327,7 +358,16 @@ pub(super) fn prepare_holding(
         system_prompt,
         unanchored: at.is_none(),
         held_tools: None,
+        ordered_tools,
     }
+}
+
+/// The declaration after `changes`: the wanted set, with tools already
+/// declared in their places and added ones after them in the order added.
+fn in_declared_order(declared: &DeclaredTools, changes: &ToolChanges) -> Vec<ToolDefinition> {
+    let mut declared = declared.clone();
+    declared.apply(changes);
+    declared.callable().cloned().collect()
 }
 
 #[cfg(test)]
@@ -400,6 +440,48 @@ mod tests {
         assert!(replay.record.is_none());
         assert_eq!(replay.transitions.len(), 1);
         assert_eq!(replay.transitions[&input].added[0].name(), "b");
+    }
+
+    /// Tools already sent keep their places and a revealed tool goes last, even
+    /// when the wanted list sorts it first, so folded `tools` only grow at the
+    /// end and the cached prefix up to them survives.
+    #[test]
+    fn revealed_tools_are_sent_after_the_ones_already_sent() {
+        use everruns_contracts::driver_registry::LlmCallConfig;
+        let order = |replay: &ToolChangeReplay, wanted: &[ToolDefinition]| {
+            let mut config = LlmCallConfig::new(MODEL);
+            config.tools = wanted.to_vec();
+            replay.apply_to(&mut config, &[]);
+            config
+                .tools
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>()
+        };
+        let mut messages = Vec::new();
+        step(&mut messages, "hi", &[tool("b", "B"), tool("d", "D")]);
+        let wanted = [
+            tool("a", "A"),
+            tool("b", "B"),
+            tool("c", "C"),
+            tool("d", "D"),
+        ];
+        let replay = step(&mut messages, "reveal a and c", &wanted);
+        assert_eq!(order(&replay, &wanted), ["b", "d", "a", "c"]);
+
+        // The next request sends the same list.
+        let replay = step(&mut messages, "next", &wanted);
+        assert_eq!(order(&replay, &wanted), ["b", "d", "a", "c"]);
+
+        // A removal together with a reveal drops the tool in place.
+        let wanted = [
+            tool("a", "A"),
+            tool("c", "C"),
+            tool("d", "D"),
+            tool("e", "E"),
+        ];
+        let replay = step(&mut messages, "swap", &wanted);
+        assert_eq!(order(&replay, &wanted), ["d", "a", "c", "e"]);
     }
 
     #[test]
@@ -593,5 +675,58 @@ mod tests {
         let held = ColdMoment::for_model(&DriverId::Gemini, "gemini-unknown", Some(&hour))
             .expect("fallback model holds");
         assert_eq!(held.cache_lifetime, chrono::Duration::minutes(60));
+        let long = PromptCacheConfig {
+            retention: PromptCacheRetention::TwelveHours,
+            ..hour
+        };
+        let held = ColdMoment::for_model(&DriverId::OpenAI, "gpt-unknown", Some(&long)).unwrap();
+        assert_eq!(held.cache_lifetime, chrono::Duration::hours(12));
+    }
+
+    #[test]
+    fn live_budget_reduction_releases_a_fallback_hold_but_ordinary_removal_keeps_it() {
+        use everruns_contracts::runtime::capabilities::ModelToolBudget;
+        let provider = everruns_contracts::DriverId::Gemini;
+        let model = "gemini-unknown";
+        let all = vec![tool("a", "A"), tool("b", "B")];
+        let mut agent = crate::engine::RuntimeAgent::new(PROMPT, model);
+        agent.tools = all.clone();
+        let initial = prepare_for(&[RuntimeMessage::user("first")], &provider, model, &agent);
+        let mut answer = RuntimeMessage::assistant("done");
+        answer.metadata = Some(HashMap::from([
+            ("provider".into(), json!(provider.as_str())),
+            ("model".into(), json!(model)),
+        ]));
+        initial.stamp(answer.metadata.as_mut().unwrap());
+        let messages = vec![
+            RuntimeMessage::user("first"),
+            answer,
+            RuntimeMessage::user("remove b"),
+        ];
+        agent.tools.pop();
+        agent.model_tool_budget = Some(ModelToolBudget {
+            max_tools: 2,
+            max_bytes: 4096,
+        });
+        assert!(
+            prepare_for(&messages, &provider, model, &agent)
+                .held_tools
+                .is_some()
+        );
+        for budget in [
+            ModelToolBudget {
+                max_tools: 1,
+                max_bytes: 4096,
+            },
+            ModelToolBudget {
+                max_tools: 2,
+                max_bytes: serde_json::to_vec(&agent.tools).unwrap().len(),
+            },
+        ] {
+            agent.model_tool_budget = Some(budget);
+            let replay = prepare_for(&messages, &provider, model, &agent);
+            assert!(replay.held_tools.is_none());
+            assert_eq!(replay.record.unwrap().removed, ["b"]);
+        }
     }
 }

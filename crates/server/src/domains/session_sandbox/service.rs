@@ -8,6 +8,7 @@
 // - Capability config is resolved through the Sandbox Template domain, which owns
 //   the effective harness + agent + session merge.
 
+use crate::services::EventService;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use async_trait::async_trait;
 use everruns_capabilities::session_sandbox::{
@@ -16,22 +17,30 @@ use everruns_capabilities::session_sandbox::{
 };
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::{
-    Event, EventData, EventListener, connection_services::UserConnectionResolver,
-    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
-    session_services::SessionStorageStore, tool_context::ToolContext,
+    EgressScope, EgressService, Event, EventData, EventListener, ScopedEgressService,
+    connection_services::UserConnectionResolver, session_services::LeasedResourceStore,
+    session_services::SessionResourceRegistry, session_services::SessionStorageStore,
+    tool_context::ToolContext,
 };
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, OnceLock, Weak};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct SessionSandboxService {
-    db: Arc<StorageBackend>,
+    pub(super) db: Arc<StorageBackend>,
     storage_store: Arc<dyn SessionStorageStore>,
     leased_resource_store: Arc<dyn LeasedResourceStore>,
     session_resource_registry: Arc<dyn SessionResourceRegistry>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+    /// Runtime egress, for the sandbox proxy credential a provider hands a
+    /// sandbox it starts or resumes here (E2B `network.egressProxy`).
+    egress: Option<Arc<dyn EgressService>>,
     idle_tasks: Arc<Mutex<HashMap<SessionId, tokio::task::JoinHandle<()>>>>,
+    pub(super) recordings_in_flight: Arc<Mutex<HashSet<SessionId>>>,
+    /// Bound after construction: the event service is built from the listener
+    /// list this service's listener is part of.
+    events: Arc<OnceLock<Weak<EventService>>>,
 }
 
 impl SessionSandboxService {
@@ -52,8 +61,28 @@ impl SessionSandboxService {
             leased_resource_store,
             session_resource_registry,
             connection_resolver,
+            egress: None,
             idle_tasks: Arc::new(Mutex::new(HashMap::new())),
+            recordings_in_flight: Arc::new(Mutex::new(HashSet::new())),
+            events: Arc::new(OnceLock::new()),
         }
+    }
+
+    /// Decision: sandboxes this service starts (auto-start, resume) must be
+    /// routed like the ones a tool starts. Without the host's egress service
+    /// the provider sees no proxy credential and the sandbox would leave
+    /// directly, so the host passes the same runtime egress the worker uses.
+    pub fn with_egress(mut self, egress: Arc<dyn EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
+    }
+
+    pub(crate) fn bind_events(&self, events: &Arc<EventService>) {
+        let _ = self.events.set(Arc::downgrade(events));
+    }
+
+    pub(super) fn events(&self) -> Option<Arc<EventService>> {
+        self.events.get().and_then(Weak::upgrade)
     }
 
     pub async fn auto_start_for_capabilities(
@@ -71,11 +100,7 @@ impl SessionSandboxService {
         };
 
         if let Err(err) = self.ensure_started(session_id, &config).await {
-            tracing::warn!(
-                session_id = %session_id,
-                error = ?err,
-                "Failed to auto-start session sandbox"
-            );
+            log_auto_start_failure(session_id, &err);
         }
     }
 
@@ -87,11 +112,7 @@ impl SessionSandboxService {
             return;
         }
         if let Err(err) = self.ensure_started(session_id, &config).await {
-            tracing::warn!(
-                session_id = %session_id,
-                error = ?err,
-                "Failed to auto-start session sandbox"
-            );
+            log_auto_start_failure(session_id, &err);
         }
     }
 
@@ -115,6 +136,13 @@ impl SessionSandboxService {
         let service = self.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(timeout)).await;
+            // The activation that cancels this timer may have been handled by
+            // another server replica; a session running a turn keeps its
+            // sandbox, and goes idle (and arms a timer) again later.
+            if service.session_is_active(session_id).await {
+                service.idle_tasks.lock().await.remove(&session_id);
+                return;
+            }
             if let Err(err) = service.pause_for_session(session_id, &config).await {
                 tracing::warn!(
                     session_id = %session_id,
@@ -125,6 +153,14 @@ impl SessionSandboxService {
             service.idle_tasks.lock().await.remove(&session_id);
         });
         self.idle_tasks.lock().await.insert(session_id, handle);
+    }
+
+    async fn session_is_active(&self, session_id: SessionId) -> bool {
+        match self.db.get_session_unscoped(session_id).await {
+            Ok(Some(session)) => session.status == "active",
+            // Unknown: pause as before; a live turn's next sandbox call resumes it.
+            _ => false,
+        }
     }
 
     /// Pause an idle session's sandbox now, if its config asks for idle pause.
@@ -144,12 +180,26 @@ impl SessionSandboxService {
         Ok(true)
     }
 
+    /// Delete a session's paused sandbox that has outlived its template's
+    /// `delete_after_seconds` (`background::sandbox_idle_sweep`). Returns
+    /// whether a sandbox was deleted.
+    pub async fn delete_expired(&self, session_id: SessionId) -> anyhow::Result<bool> {
+        let Some(config) = self.config_for_session(session_id).await? else {
+            return Ok(false);
+        };
+        self.cancel_idle_pause(session_id).await;
+        let context = self.tool_context(session_id).await;
+        everruns_capabilities::session_sandbox::delete_session_sandbox(&context, &config)
+            .await
+            .map_err(|err| anyhow::anyhow!("{err:?}"))
+    }
+
     async fn ensure_started(
         &self,
         session_id: SessionId,
         config: &SessionSandboxConfig,
     ) -> Result<(), everruns_core::ToolExecutionResult> {
-        let context = self.tool_context(session_id);
+        let context = self.tool_context(session_id).await;
         ensure_session_sandbox_running(&context, config).await?;
         Ok(())
     }
@@ -159,7 +209,7 @@ impl SessionSandboxService {
         session_id: SessionId,
         config: &SessionSandboxConfig,
     ) -> Result<(), everruns_core::ToolExecutionResult> {
-        let context = self.tool_context(session_id);
+        let context = self.tool_context(session_id).await;
         pause_session_sandbox(&context, config).await?;
         Ok(())
     }
@@ -181,8 +231,9 @@ impl SessionSandboxService {
         session_sandbox_config_from_capabilities(&capabilities).map_err(|err| anyhow::anyhow!(err))
     }
 
-    pub(crate) fn tool_context(&self, session_id: SessionId) -> ToolContext {
+    pub(crate) async fn tool_context(&self, session_id: SessionId) -> ToolContext {
         let mut context = ToolContext::new(session_id);
+        context.egress_service = self.session_egress(session_id).await;
         context.storage_store = Some(self.storage_store.clone());
         context.leased_resource_store = Some(self.leased_resource_store.clone());
         context.session_resource_registry = Some(self.session_resource_registry.clone());
@@ -197,6 +248,27 @@ impl SessionSandboxService {
             everruns_capabilities::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
         ));
         context
+    }
+
+    /// The runtime egress scoped to the session and its org, which is what a
+    /// sandbox proxy credential names. Without an org the scope stays empty,
+    /// so a routed host refuses the credential and the sandbox does not start
+    /// with direct egress instead.
+    async fn session_egress(&self, session_id: SessionId) -> Option<Arc<dyn EgressService>> {
+        let egress = self.egress.clone()?;
+        let org_id = match self.db.get_session_organization_id(session_id).await {
+            Ok(org_id) => org_id,
+            Err(err) => {
+                tracing::warn!(%session_id, error = %err, "session org lookup failed");
+                None
+            }
+        };
+        let scope = EgressScope {
+            org_id: org_id
+                .and_then(|id| everruns_core::org_public_id_from_internal(id).parse().ok()),
+            session_id: Some(session_id),
+        };
+        Some(Arc::new(ScopedEgressService::new(egress, scope)))
     }
 }
 
@@ -219,6 +291,9 @@ impl EventListener for SessionSandboxEventListener {
             }
             EventData::SessionIdled(_) => {
                 self.service.schedule_idle_pause(event.session_id).await;
+                let service = self.service.clone();
+                let session_id = event.session_id;
+                tokio::spawn(async move { service.collect_recordings(session_id).await });
             }
             _ => {}
         }
@@ -234,6 +309,32 @@ impl EventListener for SessionSandboxEventListener {
     fn name(&self) -> &'static str {
         "SessionSandboxEventListener"
     }
+}
+
+/// Auto-start is best effort: the session still opens and the sandbox tools report the
+/// failure on first use. A missing provider connection is the user's setup state, not a
+/// server fault, so it stays below `warn` and out of error reporting (EVERRUNS-2C).
+fn log_auto_start_failure(session_id: SessionId, err: &everruns_core::ToolExecutionResult) {
+    if is_expected_auto_start_failure(err) {
+        tracing::info!(
+            session_id = %session_id,
+            error = ?err,
+            "Session sandbox auto-start skipped: provider connection required"
+        );
+    } else {
+        tracing::warn!(
+            session_id = %session_id,
+            error = ?err,
+            "Failed to auto-start session sandbox"
+        );
+    }
+}
+
+fn is_expected_auto_start_failure(err: &everruns_core::ToolExecutionResult) -> bool {
+    matches!(
+        err,
+        everruns_core::ToolExecutionResult::ConnectionRequired { .. }
+    )
 }
 
 #[cfg(test)]
@@ -260,10 +361,53 @@ mod tests {
         }
     }
 
+    /// Recordings the test provider was asked to delete from its sandbox.
+    static REMOVED_RECORDINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    fn test_recording(
+        name: &str,
+        size_bytes: u64,
+        body: Option<Vec<Result<Vec<u8>, String>>>,
+    ) -> everruns_contracts::session_sandbox::DesktopRecording {
+        use futures::{FutureExt, StreamExt};
+        let removed = name.to_string();
+        everruns_contracts::session_sandbox::DesktopRecording {
+            file_name: format!("{name}.mp4"),
+            duration_seconds: None,
+            size_bytes,
+            body: body.map(|chunks| futures::stream::iter(chunks).boxed()),
+            remove: async move {
+                REMOVED_RECORDINGS.lock().unwrap().push(removed);
+                Ok(())
+            }
+            .boxed(),
+        }
+    }
+
     #[async_trait]
     impl SessionSandboxProvider for TestSessionSandboxProvider {
         fn id(&self) -> &str {
-            "test-session-sandbox"
+            "service-test-session-sandbox"
+        }
+
+        async fn collect_desktop_recordings(
+            &self,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<
+            Vec<everruns_contracts::session_sandbox::DesktopRecording>,
+            everruns_core::ToolExecutionResult,
+        > {
+            Ok(vec![
+                test_recording(
+                    "kept",
+                    4,
+                    Some(vec![Ok(b"ab".to_vec()), Ok(b"cd".to_vec())]),
+                ),
+                test_recording("huge", u64::MAX, None),
+                test_recording("broken", 4, Some(vec![Err("connection reset".into())])),
+            ])
         }
 
         async fn create(
@@ -497,6 +641,123 @@ mod tests {
         }
     }
 
+    /// Starts only when handed a sandbox proxy credential for its org, the
+    /// way a routed E2B sandbox does.
+    struct ProxyRequiredSessionSandboxProvider;
+
+    inventory::submit! {
+        everruns_capabilities::session_sandbox::SessionSandboxProviderPlugin {
+            factory: || Box::new(ProxyRequiredSessionSandboxProvider),
+        }
+    }
+
+    #[async_trait]
+    impl SessionSandboxProvider for ProxyRequiredSessionSandboxProvider {
+        fn id(&self) -> &str {
+            "proxy-required-session-sandbox"
+        }
+
+        async fn create(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+        ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
+            let credential = context
+                .sandbox_proxy_credential(std::time::Duration::from_secs(60))?
+                .ok_or_else(|| {
+                    everruns_core::ToolExecutionResult::tool_error("no proxy credential")
+                })?;
+            let org = everruns_core::org_public_id_from_internal(DEFAULT_ORG_ID);
+            if !credential.password.starts_with(&format!("s1.{org}.")) {
+                return Err(everruns_core::ToolExecutionResult::tool_error(
+                    "credential names another org",
+                ));
+            }
+            TestSessionSandboxProvider.create(context, config).await
+        }
+
+        async fn resume(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
+            TestSessionSandboxProvider
+                .resume(context, config, instance)
+                .await
+        }
+
+        async fn pause(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
+            TestSessionSandboxProvider
+                .pause(context, config, instance)
+                .await
+        }
+
+        async fn delete(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<(), everruns_core::ToolExecutionResult> {
+            TestSessionSandboxProvider
+                .delete(context, config, instance)
+                .await
+        }
+
+        async fn exec(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+            request: &SessionSandboxExecRequest,
+        ) -> Result<SessionSandboxExecResponse, everruns_core::ToolExecutionResult> {
+            TestSessionSandboxProvider
+                .exec(context, config, instance, request)
+                .await
+        }
+
+        async fn read_file(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+            path: &str,
+        ) -> Result<SessionSandboxReadFileResponse, everruns_core::ToolExecutionResult> {
+            TestSessionSandboxProvider
+                .read_file(context, config, instance, path)
+                .await
+        }
+
+        async fn write_file(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+            path: &str,
+            content: &[u8],
+        ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
+            TestSessionSandboxProvider
+                .write_file(context, config, instance, path, content)
+                .await
+        }
+
+        async fn status(
+            &self,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            config: &SessionSandboxConfig,
+            state: &SessionSandboxState,
+        ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {
+            TestSessionSandboxProvider
+                .status(context, config, state)
+                .await
+        }
+    }
+
     struct TestConnectionResolver;
 
     #[async_trait]
@@ -527,10 +788,51 @@ mod tests {
         ))
     }
 
+    async fn create_test_session(
+        db: &StorageBackend,
+        harness_id: everruns_contracts::typed_id::HarnessId,
+    ) -> crate::storage::SessionRow {
+        db.create_session(CreateSessionRow {
+            playground_user_id: None,
+            source: crate::domains::sessions::record::SessionSource::Api,
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            channel_id: None,
+            trigger_id: None,
+            harness_id: Some(harness_id),
+            agent_id: None,
+            agent_revision: None,
+            virtual_user_id: None,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap()
+    }
+
     async fn create_test_harness(db: &StorageBackend) -> everruns_contracts::typed_id::HarnessId {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "sandbox-harness".to_string(),
                 display_name: Some("Sandbox Harness".to_string()),
                 icon: None,
@@ -564,7 +866,7 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_after_seconds": 1
                 }),
@@ -612,16 +914,16 @@ mod tests {
         let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
         service.ensure_started_for_session(session.id).await;
 
-        let state = load_session_sandbox_state(&service.tool_context(session.id))
+        let state = load_session_sandbox_state(&service.tool_context(session.id).await)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(state.provider, "test-session-sandbox");
+        assert_eq!(state.provider, "service-test-session-sandbox");
         assert_eq!(state.status, SessionSandboxStatus::Running);
     }
 
     #[tokio::test]
-    async fn idle_pause_marks_state_paused() {
+    async fn recordings_stream_into_session_files_and_leave_the_sandbox_once_stored() {
         let db = Arc::new(StorageBackend::test_database());
         let harness_id = create_test_harness(db.as_ref()).await;
         db.set_harness_capabilities(
@@ -630,7 +932,61 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
+                    "auto_start": true,
+                    "provider_config": {"desktop": {"display_width": 1280, "display_height": 800}}
+                }),
+            )],
+        )
+        .await
+        .unwrap();
+        let session = create_test_session(db.as_ref(), harness_id).await;
+        let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
+        service.ensure_started_for_session(session.id).await;
+
+        service.collect_recordings(session.id).await;
+
+        let key = crate::domains::session_files::queries::workspace_key_unscoped(&db, session.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let files = crate::domains::session_files::service::WorkspaceFileService::new(db.clone());
+        let kept = files
+            .read_file(key, "/recordings/kept.mp4")
+            .await
+            .unwrap()
+            .expect("the streamed recording is stored");
+        assert_eq!(
+            everruns_contracts::runtime::session_file::SessionFile::decode_content(
+                kept.content.as_deref().unwrap_or_default(),
+                &kept.encoding
+            )
+            .unwrap(),
+            b"abcd"
+        );
+        assert!(kept.is_readonly);
+        assert!(
+            files
+                .read_file(key, "/recordings/broken.mp4")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        // Stored and too-large recordings leave the sandbox; the one whose
+        // store failed stays for the next collection.
+        assert_eq!(*REMOVED_RECORDINGS.lock().unwrap(), ["kept", "huge"]);
+    }
+
+    /// A session whose sandbox idle-pauses after one second.
+    async fn idle_pause_session(db: &Arc<StorageBackend>) -> crate::storage::SessionRow {
+        let harness_id = create_test_harness(db.as_ref()).await;
+        db.set_harness_capabilities(
+            harness_id.uuid(),
+            vec![(
+                "session_sandbox".to_string(),
+                0,
+                json!({
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_after_seconds": 1
                 }),
@@ -638,52 +994,86 @@ mod tests {
         )
         .await
         .unwrap();
-        let session = db
-            .create_session(CreateSessionRow {
-                playground_user_id: None,
-                source: crate::domains::sessions::record::SessionSource::Api,
-                workspace_id: None,
-                org_id: DEFAULT_ORG_ID,
-                app_id: None,
-                channel_id: None,
-                trigger_id: None,
-                harness_id: Some(harness_id),
-                agent_id: None,
-                agent_revision: None,
-                virtual_user_id: None,
-                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                title: Some("test".to_string()),
-                locale: None,
-                tags: vec![],
-                model_id: None,
-                capabilities: json!([]),
-                tools: json!([]),
-                mcp_servers: serde_json::json!({}),
-                system_prompt: None,
-                initial_files: json!([]),
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                blueprint_id: None,
-                blueprint_config: None,
-                parent_session_id: None,
-                budget_root_session_id: None,
-            })
-            .await
-            .unwrap();
+        db.create_session(CreateSessionRow {
+            playground_user_id: None,
+            source: crate::domains::sessions::record::SessionSource::Api,
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            channel_id: None,
+            trigger_id: None,
+            harness_id: Some(harness_id),
+            agent_id: None,
+            agent_revision: None,
+            virtual_user_id: None,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn idle_pause_marks_state_paused() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = idle_pause_session(&db).await;
 
         let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
         service.ensure_started_for_session(session.id).await;
         service.schedule_idle_pause(session.id).await;
         tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
 
-        let state = load_session_sandbox_state(&service.tool_context(session.id))
+        let state = load_session_sandbox_state(&service.tool_context(session.id).await)
             .await
             .unwrap()
             .unwrap();
         assert_eq!(state.status, SessionSandboxStatus::Paused);
+    }
+
+    /// The activation that cancels the timer can land on another server
+    /// replica; the timer then finds the session running and keeps the sandbox.
+    #[tokio::test]
+    async fn idle_pause_skips_a_session_that_became_active_elsewhere() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = idle_pause_session(&db).await;
+
+        let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
+        service.ensure_started_for_session(session.id).await;
+        service.schedule_idle_pause(session.id).await;
+        db.update_session(
+            DEFAULT_ORG_ID,
+            session.id,
+            crate::storage::UpdateSession {
+                status: Some("active".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+
+        let state = load_session_sandbox_state(&service.tool_context(session.id).await)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(state.status, SessionSandboxStatus::Paused);
     }
 
     #[tokio::test]
@@ -696,7 +1086,7 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_after_seconds": 1
                 }),
@@ -750,7 +1140,7 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_enabled": false
                 }),
@@ -764,7 +1154,7 @@ mod tests {
                 .await
                 .unwrap()
         );
-        let state = load_session_sandbox_state(&service.tool_context(session.id))
+        let state = load_session_sandbox_state(&service.tool_context(session.id).await)
             .await
             .unwrap()
             .unwrap();
@@ -776,7 +1166,7 @@ mod tests {
             vec![(
                 "session_sandbox".to_string(),
                 0,
-                json!({ "provider": "test-session-sandbox", "auto_start": true }),
+                json!({ "provider": "service-test-session-sandbox", "auto_start": true }),
             )],
         )
         .await
@@ -788,7 +1178,7 @@ mod tests {
                 .unwrap()
         );
 
-        let state = load_session_sandbox_state(&service.tool_context(session.id))
+        let state = load_session_sandbox_state(&service.tool_context(session.id).await)
             .await
             .unwrap()
             .unwrap();
@@ -857,11 +1247,112 @@ mod tests {
         );
         service.ensure_started_for_session(session.id).await;
 
-        let state = load_session_sandbox_state(&service.tool_context(session.id))
+        let state = load_session_sandbox_state(&service.tool_context(session.id).await)
             .await
             .unwrap()
             .unwrap();
         assert_eq!(state.provider, "resolver-required-session-sandbox");
         assert_eq!(state.instance.external_id, "sb_resolver");
+    }
+
+    async fn proxy_required_session(db: &Arc<StorageBackend>) -> SessionId {
+        let harness_id = create_test_harness(db.as_ref()).await;
+        db.set_harness_capabilities(
+            harness_id.uuid(),
+            vec![(
+                "session_sandbox".to_string(),
+                0,
+                json!({ "provider": "proxy-required-session-sandbox", "auto_start": true }),
+            )],
+        )
+        .await
+        .unwrap();
+        db.create_session(CreateSessionRow {
+            playground_user_id: None,
+            source: crate::domains::sessions::record::SessionSource::Api,
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            channel_id: None,
+            trigger_id: None,
+            harness_id: Some(harness_id),
+            agent_id: None,
+            agent_revision: None,
+            virtual_user_id: None,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    // Regression: sandboxes the server starts (auto-start, resume) got no
+    // proxy credential, so a routed E2B sandbox left from E2B's own address.
+    #[tokio::test]
+    async fn auto_started_sandbox_gets_a_proxy_credential_for_its_org() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = proxy_required_session(&db).await;
+        let egress = everruns_core::host::DirectEgressService::new().with_sandbox_proxy(
+            Some("egress.example.com:443"),
+            true,
+            vec![7; 32],
+        );
+        let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None)
+            .with_egress(Arc::new(egress));
+        service.ensure_started_for_session(session_id).await;
+
+        let state = load_session_sandbox_state(&service.tool_context(session_id).await)
+            .await
+            .unwrap()
+            .expect("sandbox started with a proxy credential");
+        assert_eq!(state.provider, "proxy-required-session-sandbox");
+    }
+
+    #[tokio::test]
+    async fn without_host_egress_the_server_offers_no_proxy_credential() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = proxy_required_session(&db).await;
+        let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
+        service.ensure_started_for_session(session_id).await;
+
+        let state = load_session_sandbox_state(&service.tool_context(session_id).await)
+            .await
+            .unwrap();
+        assert!(
+            state.is_none(),
+            "provider must not start without a credential"
+        );
+    }
+
+    #[test]
+    fn missing_provider_connection_is_an_expected_auto_start_failure() {
+        assert!(is_expected_auto_start_failure(
+            &everruns_core::ToolExecutionResult::ConnectionRequired {
+                provider: "daytona".to_string(),
+                subject: None,
+                setup_url: None,
+            }
+        ));
+        assert!(!is_expected_auto_start_failure(
+            &everruns_core::ToolExecutionResult::ToolError("boom".to_string())
+        ));
     }
 }

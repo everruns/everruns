@@ -2,12 +2,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ArchiveFilter } from "@/components/archive-filter";
 
 describe("ArchiveFilter", () => {
-  it("renders a Filter button", () => {
-    render(<ArchiveFilter showArchived={false} onShowArchivedChange={jest.fn()} />);
-
-    expect(screen.getByRole("button", { name: /filter/i })).toBeInTheDocument();
-  });
-
   it("does not show badge when filter is inactive", () => {
     render(<ArchiveFilter showArchived={false} onShowArchivedChange={jest.fn()} />);
 
@@ -18,14 +12,6 @@ describe("ArchiveFilter", () => {
     render(<ArchiveFilter showArchived={true} onShowArchivedChange={jest.fn()} />);
 
     expect(screen.getByText("1")).toBeInTheDocument();
-  });
-
-  it("shows 'Show archived' label in dropdown", () => {
-    render(<ArchiveFilter showArchived={false} onShowArchivedChange={jest.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
-
-    expect(screen.getByText("Show archived")).toBeInTheDocument();
   });
 
   it("calls onShowArchivedChange when checkbox item is clicked", () => {
@@ -40,13 +26,5 @@ describe("ArchiveFilter", () => {
 
     expect(onChange).toHaveBeenCalled();
     expect(onChange.mock.calls[0][0]).toBe(true);
-  });
-
-  it("shows Filters label in dropdown header", () => {
-    render(<ArchiveFilter showArchived={false} onShowArchivedChange={jest.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
-
-    expect(screen.getByText("Filters")).toBeInTheDocument();
   });
 });

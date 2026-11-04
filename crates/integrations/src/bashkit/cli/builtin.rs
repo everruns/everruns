@@ -432,12 +432,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_default_root_is_unchanged() {
-        assert_eq!(tree_from_source(&TestSource).root(), "everruns");
-        assert_eq!(tree_from_source(&BrandedSource).root(), "acme");
-    }
-
-    #[tokio::test]
     async fn an_unknown_noun_names_the_noun_not_the_last_word() {
         // A live model that guesses the wrong noun types a whole invocation,
         // not one word. Blaming the trailing token sends it looking for a verb

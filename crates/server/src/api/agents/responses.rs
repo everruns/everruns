@@ -28,6 +28,8 @@ pub enum AgentHarnessStatus {
 /// Harness that a newly created session for this agent will resolve to.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentHarnessSummary {
+    /// Locale-keyed display names and descriptions.
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     #[schema(value_type = Option<String>)]
     pub id: Option<HarnessId>,
     pub name: Option<String>,
@@ -156,6 +158,7 @@ async fn resolve_agent_harnesses(
             let summary = effective_id
                 .and_then(|id| harnesses_by_id.get(&id).map(|harness| (id, harness)))
                 .map(|(id, harness)| AgentHarnessSummary {
+                    localizations: harness.localizations.clone(),
                     id: Some(id),
                     name: Some(harness.name.clone()),
                     display_name: harness.display_name.clone(),
@@ -163,6 +166,7 @@ async fn resolve_agent_harnesses(
                     status: harness_status(&harness.status),
                 })
                 .unwrap_or(AgentHarnessSummary {
+                    localizations: Default::default(),
                     id: effective_id,
                     name: None,
                     display_name: None,
@@ -236,6 +240,7 @@ pub(super) async fn add_agents_counts(
             harnesses
                 .remove(&agent.internal_id)
                 .unwrap_or(AgentHarnessSummary {
+                    localizations: Default::default(),
                     id: None,
                     name: None,
                     display_name: None,

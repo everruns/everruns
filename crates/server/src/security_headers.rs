@@ -11,32 +11,20 @@ use crate::channels;
 // `data:application/pdf` iframe (sandboxed viewers don't render in Chromium)
 // and keeps `about:srcdoc` previews (SVG/HTML/MCP cards) working under 'self'.
 // `form-action` must remain the LAST directive: the MCP OAuth consent page
-// extends it by appending sources to this string (see
-// `oauth_consent_page_csp`).
+// removes it while retaining every other directive.
 pub(crate) const BASE_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
-/// CSP for the MCP OAuth consent page, whose confirm POST answers with a 302
-/// to the client's callback.
+/// CSP for the MCP OAuth consent page, whose confirm POST redirects to the client.
 ///
-/// Chrome checks `form-action` against every hop of a form submission's
-/// redirect chain, not just the form target, and a blocked hop silently
-/// cancels the whole submission: the "Authorize client" click appears to do
-/// nothing. Allowing only the registered redirect origin is not enough, because
-/// web callbacks routinely hop on to hosts the client never registered (Cursor
-/// registers `https://www.cursor.com/...`, which 308s to `https://cursor.com/...`).
-/// So any `https:` hop is allowed, plus the origin of an `http://` loopback
-/// callback, the only other scheme `redirect_uri::validate_redirect_uri`
-/// accepts. The page renders only escaped values and its one form posts to
-/// 'self', so the wider directive gives up little.
-pub(crate) fn oauth_consent_page_csp(redirect_uri: &str) -> String {
-    let mut csp = format!("{BASE_CONTENT_SECURITY_POLICY} https:");
-    if let Ok(url) = url::Url::parse(redirect_uri)
-        && url.scheme() == "http"
-    {
-        csp.push(' ');
-        csp.push_str(&url.origin().ascii_serialization());
-    }
-    csp
+/// Browsers apply `form-action` to *every* redirect after form submission. A
+/// registered callback can itself redirect to another origin or local port;
+/// constraining the chain makes the click silently stop after the server has
+/// already granted access. The page has one same-origin form, no scripts, and
+/// escapes all client-controlled text. Keep the global policy for other pages.
+pub(crate) fn oauth_consent_page_csp() -> &'static str {
+    BASE_CONTENT_SECURITY_POLICY
+        .strip_suffix("; form-action 'self'")
+        .expect("baseline CSP ends with form-action")
 }
 
 /// `tools=(self)` lets a browser agent use the WebMCP tools the authenticated
@@ -56,24 +44,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn oauth_consent_csp_allows_https_hops_beyond_the_redirect_origin() {
-        let csp = oauth_consent_page_csp("https://www.cursor.com/agents/mcp/oauth/callback");
-        assert!(csp.ends_with("form-action 'self' https:"), "got: {csp}");
-    }
-
-    #[test]
-    fn oauth_consent_csp_allows_the_loopback_callback_origin() {
-        let csp = oauth_consent_page_csp("http://127.0.0.1:53682/callback");
-        assert!(
-            csp.ends_with("form-action 'self' https: http://127.0.0.1:53682"),
-            "got: {csp}"
-        );
-    }
-
-    #[test]
-    fn oauth_consent_csp_ignores_an_unparseable_redirect() {
-        let csp = oauth_consent_page_csp("not a url");
-        assert!(csp.ends_with("form-action 'self' https:"), "got: {csp}");
+    fn oauth_consent_csp_does_not_restrict_callback_chain() {
+        let csp = oauth_consent_page_csp();
+        assert!(!csp.contains("form-action"), "got: {csp}");
+        assert!(csp.contains("frame-ancestors 'none'"), "got: {csp}");
+        assert!(BASE_CONTENT_SECURITY_POLICY.ends_with("form-action 'self'"));
     }
 
     #[test]

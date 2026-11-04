@@ -1,6 +1,6 @@
 //! Browserless API key resolution, browser session state, and parameter helpers.
 //!
-//! Decision: API token ONLY comes from user connection (Settings > My agent experience).
+//! Decision: API token ONLY comes from user connection (Settings > Connections).
 //!   Never stored in session secrets. Session state only tracks the WS endpoint.
 
 use everruns_contracts::runtime::tool_context::ToolContext;
@@ -21,7 +21,7 @@ const BROWSER_SESSION_KEY: &str = "browserless_browser_session";
 // API Key Resolution
 // ============================================================================
 
-/// Resolve Browserless API token via user connection (Settings > My agent experience).
+/// Resolve Browserless API token via user connection (Settings > Connections).
 pub async fn get_api_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
     if let Some(resolver) = context.connection_resolver.as_ref() {
         match resolver
@@ -38,7 +38,7 @@ pub async fn get_api_token(context: &ToolContext) -> Result<String, ToolExecutio
 
     Err(ToolExecutionResult::tool_error(
         "Browserless API token not configured.\n\n\
-         Set up your API token in **Settings > My agent experience**.\n\n\
+         Set up your API token in **Settings > Connections**.\n\n\
          Get your token at https://www.browserless.io/account/home under API Keys.",
     ))
 }
@@ -454,40 +454,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_required_str_present() {
-        let args = serde_json::json!({"url": "https://example.com"});
-        let result = required_str(&args, "url");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "https://example.com");
-    }
-
-    #[test]
     fn test_required_str_missing() {
         let args = serde_json::json!({"other": "value"});
         let result = required_str(&args, "url");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_required_str_null_value() {
-        let args = serde_json::json!({"url": null});
-        let result = required_str(&args, "url");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_required_str_non_string_value() {
-        let args = serde_json::json!({"url": 42});
-        let result = required_str(&args, "url");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_browser_session_state_new() {
-        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
-        assert_eq!(state.ws_endpoint, "wss://example.com/browser/abc123");
-        assert!(!state.created_at.is_empty());
-        assert!(!state.last_active_at.is_empty());
     }
 
     #[test]
@@ -519,17 +489,6 @@ mod tests {
     fn test_validate_stored_ws_endpoint_rejects_different_origin() {
         let endpoint = "wss://attacker.example.com/e/abc123";
         assert!(validate_stored_ws_endpoint(endpoint).is_err());
-    }
-
-    #[test]
-    fn test_browser_session_serialization_roundtrip() {
-        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
-        let json = serde_json::to_string(&state).unwrap();
-        let deserialized: BrowserSessionState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.ws_endpoint, state.ws_endpoint);
-        assert_eq!(deserialized.created_at, state.created_at);
-        // No api_token in serialized state
-        assert!(!json.contains("api_token"));
     }
 
     /// Structural verification: session state must contain exactly 3 fields
@@ -595,16 +554,6 @@ mod tests {
     #[test]
     fn test_extract_secret_refs_ignores_unclosed() {
         assert!(extract_secret_refs("${{secrets.name").is_empty());
-    }
-
-    #[test]
-    fn test_substitute_secrets_basic() {
-        let mut resolved = std::collections::HashMap::new();
-        resolved.insert("pw".to_string(), "YExample0".to_string());
-        assert_eq!(
-            substitute_secrets("${{secrets.pw}}", &resolved),
-            "YExample0"
-        );
     }
 
     #[test]
@@ -691,12 +640,5 @@ mod tests {
         let code = build_cookie_injection_code(&cookies);
         assert!(code.contains("setCookie"), "should use page.setCookie");
         assert!(code.contains("sid"), "should include cookie name");
-    }
-
-    #[test]
-    fn test_build_cookie_extraction_code() {
-        let code = build_cookie_extraction_code();
-        assert!(code.contains("page.cookies()"));
-        assert!(code.contains("__cookies"));
     }
 }

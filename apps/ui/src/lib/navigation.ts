@@ -17,8 +17,10 @@ import {
   DurableIcon,
   EvalsIcon,
   HarnessDomainIcon,
+  HealthIcon,
   KnowledgeIcon,
   MemoryIcon,
+  OrganizationIcon,
   ObserverIcon,
   PlaygroundIcon,
   QueueIcon,
@@ -70,8 +72,18 @@ export type NavigationSection = {
 };
 
 export const defaultChatsNavigation: NavigationItem[] = [
+  // Home sits above Chat but is not the landing route: Chat is
+  // (knowledge/ui/org-home.md). In the Chat workspace, landing opens Chat with Home beside it.
+  {
+    name: "Home",
+    description: "What needs attention in this organization, and how its agents ran today.",
+    href: "/home",
+    icon: OrganizationIcon,
+    keywords: ["dashboard", "overview", "attention", "health", "status"],
+  },
   {
     name: "Chat",
+    description: "Talk with your personal assistant.",
     href: "/chats",
     icon: ChatIcon,
     exact: true,
@@ -82,7 +94,12 @@ export const defaultChatsNavigation: NavigationItem[] = [
 
 // These links are rendered beneath Chat rather than as peer sidebar destinations.
 export const sideChatNavigation: NavigationItem[] = [
-  { name: "New side chat", href: "/chats/new", icon: Plus, keywords: ["thread", "conversation"] },
+  {
+    name: "New subchat",
+    href: "/chats/new",
+    icon: Plus,
+    keywords: ["thread", "conversation", "new side chat", "new chat"],
+  },
   {
     name: "View all chats",
     href: "/chats/history",
@@ -94,6 +111,7 @@ export const sideChatNavigation: NavigationItem[] = [
 export const defaultOperationalNavigation: NavigationItem[] = [
   {
     name: "Monitoring",
+    description: "Inspect running sessions, actors and leases.",
     href: "/monitoring",
     icon: DurableIcon,
     flag: "monitoring",
@@ -102,6 +120,7 @@ export const defaultOperationalNavigation: NavigationItem[] = [
   },
   {
     name: "Sessions",
+    description: "Review recorded conversations and execution traces.",
     href: "/sessions",
     icon: SessionIcon,
     keywords: ["recordings", "conversation", "transcript"],
@@ -109,14 +128,22 @@ export const defaultOperationalNavigation: NavigationItem[] = [
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
-  { name: "Agents", href: "/agents", icon: AgentIcon, keywords: ["bot", "assistant"] },
+  {
+    name: "Agents",
+    description: "Build and configure your AI assistants.",
+    href: "/agents",
+    icon: AgentIcon,
+    keywords: ["bot", "assistant"],
+  },
   {
     name: "Playground",
+    description: "Try agents in shared test conversations.",
     href: "/playground",
     icon: PlaygroundIcon,
   },
   {
     name: "Harnesses",
+    description: "Reusable instructions and tools for agents.",
     href: "/harnesses",
     icon: HarnessDomainIcon,
     keywords: ["template", "config"],
@@ -125,6 +152,7 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   // templates that configure it, and the provider accounts it runs on.
   {
     name: "Sandboxes",
+    description: "Manage agent environments, templates and providers.",
     href: "/sandboxes",
     icon: SandboxIcon,
     keywords: [
@@ -143,6 +171,7 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
   {
     name: "Virtual Users",
+    description: "Manage the identities and personas agents interact with.",
     href: "/virtual-users",
     icon: VirtualUserIcon,
     keywords: ["persona", "principal", "identity"],
@@ -151,14 +180,23 @@ export const defaultBuildingNavigation: NavigationItem[] = [
 
 export const defaultRegistriesNavigation: NavigationItem[] = [
   ...registryNavigationItems.map<NavigationItem>(
-    ({ name, href, icon, keywords }: RegistryNavigationItem) => {
+    ({ name, href, icon, keywords, description }: RegistryNavigationItem) => {
       const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-      return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
+      return {
+        name,
+        href,
+        icon,
+        keywords,
+        description,
+        flag,
+        experimental: Boolean(flag),
+      };
     },
   ),
   {
-    name: "Knowledge indexes",
-    href: "/knowledge-indexes",
+    name: "Knowledge",
+    description: "Organize collections, sources and searchable knowledge for agents.",
+    href: "/knowledge",
     icon: KnowledgeIcon,
     flag: "knowledge",
     experimental: true,
@@ -166,6 +204,7 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
   },
   {
     name: "Memory",
+    description: "Browse the persistent memory available to agents.",
     href: "/memory",
     icon: MemoryIcon,
     keywords: ["workspace", "files", "storage"],
@@ -177,6 +216,7 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
 export const defaultQualityNavigation: NavigationItem[] = [
   {
     name: "Evals",
+    description: "Test and compare how well agents perform.",
     href: "/evals",
     icon: EvalsIcon,
     keywords: ["evaluation", "test", "benchmark", "score"],
@@ -185,6 +225,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
   },
   {
     name: "Observers",
+    description: "Monitor agent behavior and quality over time.",
     href: "/observers",
     icon: ObserverIcon,
     keywords: ["monitor", "score", "production eval"],
@@ -193,6 +234,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
   },
   {
     name: "Reports",
+    description: "Explore saved views of session activity.",
     href: "/reports",
     icon: ReportIcon,
     flag: "reports",
@@ -204,6 +246,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
 export const defaultBottomNavigation: NavigationItem[] = [
   {
     name: "Settings",
+    description: "Manage your organization, team and preferences.",
     href: "/settings/organization",
     icon: SettingsIcon,
     activePrefix: "/settings",
@@ -214,18 +257,47 @@ export const defaultBottomNavigation: NavigationItem[] = [
 
 export const defaultDurableNavigation: NavigationItem[] = [
   {
+    name: "Health",
+    description: "Check that every part of the install is set up right and working.",
+    href: "/system/health",
+    icon: HealthIcon,
+    keywords: ["doctor", "status", "diagnostics", "setup", "install", "versions"],
+  },
+  {
     name: "Monitoring",
+    description: "Inspect running sessions, actors and leases.",
     href: "/durable",
     icon: DurableIcon,
     exact: true,
     keywords: ["fleet", "workers", "actors", "leases", "monitor"],
   },
-  { name: "Workers", href: "/durable/workers", icon: WorkerIcon },
-  { name: "Workflows", href: "/durable/workflows", icon: WorkflowIcon },
-  { name: "Queues", href: "/durable/queues", icon: QueueIcon },
-  { name: "Schedules", href: "/durable/schedules", icon: ScheduleIcon },
+  {
+    name: "Workers",
+    description: "Inspect the workers that execute agent tasks.",
+    href: "/durable/workers",
+    icon: WorkerIcon,
+  },
+  {
+    name: "Workflows",
+    description: "Inspect durable workflow execution.",
+    href: "/durable/workflows",
+    icon: WorkflowIcon,
+  },
+  {
+    name: "Queues",
+    description: "Inspect queued work and task delivery.",
+    href: "/durable/queues",
+    icon: QueueIcon,
+  },
+  {
+    name: "Schedules",
+    description: "Inspect scheduled work and upcoming runs.",
+    href: "/durable/schedules",
+    icon: ScheduleIcon,
+  },
   {
     name: "Circuit Breakers",
+    description: "Inspect failure protection and recovery state.",
     href: "/durable/circuit-breakers",
     icon: CircuitBreakerIcon,
     keywords: ["failure", "resilience"],
@@ -233,17 +305,22 @@ export const defaultDurableNavigation: NavigationItem[] = [
 ];
 
 export const defaultDevNavigation: NavigationItem[] = [
-  { name: "Dev Tools", href: "/dev", icon: PlaygroundIcon },
+  {
+    name: "Dev Tools",
+    description: "Inspect local development tools and UI examples.",
+    href: "/dev",
+    icon: PlaygroundIcon,
+  },
 ];
 
 export const defaultNavigationSections: NavigationSection[] = [
   { id: "chats", items: defaultChatsNavigation },
   { label: "Building", items: defaultBuildingNavigation },
   { label: "Operational", items: defaultOperationalNavigation },
-  { label: "Registers", items: defaultRegistriesNavigation },
+  { label: "Library", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
-  { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
+  { label: "System", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
@@ -268,17 +345,35 @@ export function navigationGroupForPath(
   pathname: string,
   sections: NavigationSection[] = defaultNavigationSections,
 ): string | undefined {
-  let best: { length: number; label?: string } | undefined;
+  return bestNavigationMatch(pathname, sections)?.section.label;
+}
+
+/**
+ * The destination that owns `pathname` (same longest-href rule as the group), so
+ * other surfaces, such as in-app links in chat replies, can show its sidebar icon.
+ */
+export function navigationItemForPath(
+  pathname: string,
+  sections: NavigationSection[] = defaultNavigationSections,
+): NavigationItem | undefined {
+  return bestNavigationMatch(pathname, sections)?.item;
+}
+
+function bestNavigationMatch(
+  pathname: string,
+  sections: NavigationSection[],
+): { section: NavigationSection; item: NavigationItem } | undefined {
+  let best: { length: number; section: NavigationSection; item: NavigationItem } | undefined;
   for (const section of sections) {
     for (const item of section.items) {
       const href = item.activePrefix ?? item.href;
       if (!isUnder(pathname, href)) continue;
       if (!best || href.length > best.length) {
-        best = { length: href.length, label: section.label };
+        best = { length: href.length, section, item };
       }
     }
   }
-  return best?.label;
+  return best;
 }
 
 /** Visibility is shared by the sidebar and command search, including collapsed sections. */
@@ -303,8 +398,9 @@ export function visibleNavigationSections(
     .filter((section) => section.items.length > 0);
 }
 
+/** The System section: platform users only, like the pages it links to. */
 export function isDurableNavigationSection(section: NavigationSection): boolean {
   return section.items.some(
-    (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
+    (item) => isUnder(item.href, "/durable") || isUnder(item.href, "/system"),
   );
 }

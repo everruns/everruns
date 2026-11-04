@@ -30,7 +30,7 @@ and desktop widths. Check shared layout behavior first, then the representative 
 | Detail and edit | Representative agent, harness, virtual user, memory, knowledge index, capability, provider, and session detail/edit routes |
 | Create forms | New agent, harness, virtual user, declarative capability, eval, observer, and agent-channel routes |
 | Session and chat | `/chats`, `/playground`, plus read-only session Trace, Work, Events, Workspace, and Cost; legacy chat/transcript/timeline links redirect to Trace |
-| Settings | Organization, members, MCP catalog, My agent experience, personal access tokens, profile, features, and payments where available; providers live under `/models/providers` |
+| Settings | Organization, members, MCP catalog, Account, Profile, Connections, MCP servers, AI clients, personal access tokens, features, and payments where available; providers live under `/models/providers` |
 | Durable execution | Overview, workers, workflows, queues, schedules, and circuit breakers |
 | Auth and onboarding | Login, signup/register, password reset, verification, onboarding, connection completion, and invite error state |
 | Developer previews | Developer index and each linked component showcase |

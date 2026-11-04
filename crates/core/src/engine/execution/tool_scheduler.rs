@@ -436,3 +436,7 @@ mod tests {
 #[cfg(test)]
 #[path = "act_call_cap_tests.rs"]
 mod act_call_cap_tests;
+
+#[cfg(test)]
+#[path = "act_connection_required_tests.rs"]
+mod act_connection_required_tests;

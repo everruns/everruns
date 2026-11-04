@@ -185,9 +185,25 @@ impl Tool for E2BCreateSandboxTool {
             .cloned()
             .unwrap_or_else(|| json!({}));
 
+        let egress = match super::network::tool_rules(context).and_then(|rules| {
+            let proxy = super::network::tool_proxy_credential(context, &rules)?;
+            Ok(super::network::E2BEgress::from_rules(
+                &rules,
+                proxy.as_ref(),
+            ))
+        }) {
+            Ok(egress) => egress,
+            Err(error) => return error,
+        };
         let client = E2BClient::new(api_key);
         let create = match client
-            .create_sandbox(template, timeout_seconds, json!(metadata), env_vars)
+            .create_sandbox_with_egress(
+                template,
+                timeout_seconds,
+                json!(metadata),
+                env_vars,
+                &egress,
+            )
             .await
         {
             Ok(create) => create,
@@ -263,7 +279,7 @@ impl Tool for E2BExecTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("E2B");
         Some(
@@ -272,6 +288,7 @@ impl Tool for E2BExecTool {
                 fallback,
                 phase,
                 locale,
+                ctx,
             ),
         )
     }
@@ -861,6 +878,26 @@ impl Tool for E2BManageSandboxTool {
                     Ok(resumed) => resumed,
                     Err(err) => return ToolExecutionResult::tool_error(err),
                 };
+                // A resumed sandbox follows the current policy, with a fresh
+                // proxy credential when the host routes sandboxes.
+                let applied = match super::network::tool_rules(context) {
+                    Ok(rules) => match super::network::tool_proxy_credential(context, &rules) {
+                        Ok(proxy) => {
+                            super::network::apply_to_running(
+                                &client,
+                                sandbox_id,
+                                &rules,
+                                proxy.as_ref(),
+                            )
+                            .await
+                        }
+                        Err(error) => Err(error),
+                    },
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = applied {
+                    return error;
+                }
                 let detail = detail_from_create(resumed);
                 let refreshed = build_state(&detail, timeout_seconds);
                 if let Err(err) = save_sandbox_state(context, &refreshed).await {
@@ -906,21 +943,6 @@ impl Tool for E2BManageSandboxTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn create_sandbox_tool_schema_requires_expected_fields() {
-        let schema = E2BCreateSandboxTool.parameters_schema();
-        let upload_files = schema
-            .get("properties")
-            .and_then(|value| value.get("upload_files"))
-            .and_then(|value| value.get("items"))
-            .and_then(|value| value.get("required"))
-            .and_then(Value::as_array)
-            .expect("upload_files required array");
-
-        let required: Vec<_> = upload_files.iter().filter_map(Value::as_str).collect();
-        assert_eq!(required, vec!["session_path", "sandbox_path"]);
-    }
 
     #[tokio::test]
     async fn no_context_tools_return_context_error() {

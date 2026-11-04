@@ -170,6 +170,30 @@ impl PolicyFileStore {
 
 #[async_trait]
 impl SessionFileSystem for PolicyFileStore {
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.check_write(path)?;
+        self.inner
+            .create_file_if_absent(session, path, content)
+            .await
+    }
+
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::dreaming::DreamMemoryScope>> {
+        let scope = self.inner.dreaming_scope(session, mount).await?;
+        if scope.is_some() {
+            self.check_write(mount)?;
+        }
+        Ok(scope)
+    }
+
     fn display_root(&self) -> String {
         self.inner.display_root()
     }
@@ -184,6 +208,10 @@ impl SessionFileSystem for PolicyFileStore {
 
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
+    }
+
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.inner.session_scoped_path(path)
     }
 
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
@@ -258,6 +286,28 @@ impl SessionFileSystem for PolicyFileStore {
             })
         });
         Ok(entries)
+    }
+
+    /// Same filter as `list_directory`, applied to every entry of the tree.
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        let canonical = self.checked_path(path)?;
+        if !self.policy.permits_read_traversal(&canonical) {
+            self.policy
+                .check_read(&canonical)
+                .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+        }
+        let Some(mut entries) = self.inner.list_tree(session_id, path).await? else {
+            return Ok(None);
+        };
+        let root = path.trim_end_matches('/');
+        entries.retain(|entry| {
+            let full = format!("{root}/{}", entry.path.trim_start_matches('/'));
+            self.checked_path(&full).is_ok_and(|canonical| {
+                self.policy.permits_read(&canonical)
+                    || self.policy.permits_read_traversal(&canonical)
+            })
+        });
+        Ok(Some(entries))
     }
 
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
@@ -415,6 +465,26 @@ impl WriteBlocklistFileStore {
 
 #[async_trait]
 impl SessionFileSystem for WriteBlocklistFileStore {
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::dreaming::DreamMemoryScope>> {
+        self.check(mount)?;
+        self.inner.dreaming_scope(session, mount).await
+    }
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.check(path)?;
+        self.inner
+            .create_file_if_absent(session, path, content)
+            .await
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
@@ -468,6 +538,10 @@ impl SessionFileSystem for WriteBlocklistFileStore {
         self.inner.list_directory(session_id, path).await
     }
 
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        self.inner.list_tree(session_id, path).await
+    }
+
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         self.inner.stat_file(session_id, path).await
     }
@@ -506,6 +580,10 @@ impl SessionFileSystem for WriteBlocklistFileStore {
 
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
+    }
+
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.inner.session_scoped_path(path)
     }
 
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
@@ -577,6 +655,32 @@ impl ApprovalGatingFileStore {
 
 #[async_trait]
 impl SessionFileSystem for ApprovalGatingFileStore {
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::dreaming::DreamMemoryScope>> {
+        self.inner.dreaming_scope(session, mount).await
+    }
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        if self.inner.stat_file(session, path).await?.is_some() {
+            return Ok(false);
+        }
+        if !self.gate.approve_write(path, None, content).await {
+            return Err(AgentLoopError::tool(format!(
+                "user denied write to `{path}`"
+            )));
+        }
+        self.inner
+            .create_file_if_absent(session, path, content)
+            .await
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
@@ -660,6 +764,10 @@ impl SessionFileSystem for ApprovalGatingFileStore {
         self.inner.list_directory(session_id, path).await
     }
 
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        self.inner.list_tree(session_id, path).await
+    }
+
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         self.inner.stat_file(session_id, path).await
     }
@@ -696,6 +804,10 @@ impl SessionFileSystem for ApprovalGatingFileStore {
 
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
+    }
+
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.inner.session_scoped_path(path)
     }
 
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {

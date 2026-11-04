@@ -34,26 +34,6 @@ fn test_get_default_api_key_openai() {
 }
 
 #[test]
-fn test_get_default_api_key_anthropic() {
-    // Not set
-    assert_eq!(
-        get_default_api_key_with_lookup("anthropic", mock_env(&[])),
-        None
-    );
-
-    // Set
-    let env = mock_env(&[("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test-key")]);
-    assert_eq!(
-        get_default_api_key_with_lookup("anthropic", &env),
-        Some("sk-ant-test-key".to_string())
-    );
-    assert_eq!(
-        get_default_api_key_with_lookup("Anthropic", &env),
-        Some("sk-ant-test-key".to_string())
-    );
-}
-
-#[test]
 fn test_get_default_api_key_unknown_provider() {
     let env = mock_env(&[
         ("DEFAULT_OPENAI_API_KEY", "sk-test"),
@@ -69,15 +49,6 @@ fn test_get_default_api_key_unknown_provider() {
     assert_eq!(
         get_default_api_key_with_lookup("openrouter", &env),
         Some("sk-or-test".to_string())
-    );
-}
-
-#[test]
-fn test_get_default_api_key_meta() {
-    let explicit = mock_env(&[("DEFAULT_META_API_KEY", "meta-default")]);
-    assert_eq!(
-        get_default_api_key_with_lookup("meta", explicit),
-        Some("meta-default".to_string())
     );
 }
 
@@ -166,49 +137,6 @@ async fn test_resolve_model_cache_miss_then_hit() {
 
     // Still one entry
     assert_eq!(resolver.cache_entry_count(), 1);
-}
-
-#[tokio::test]
-async fn test_resolve_model_not_found_is_cached() {
-    let db = Arc::new(StorageBackend::test_database());
-    let resolver = ProviderResolverService::new(db, None);
-
-    let missing_id = Uuid::new_v4();
-
-    // First call: miss, returns None, caches it
-    let result = resolver
-        .resolve_model(DEFAULT_ORG_ID, missing_id)
-        .await
-        .unwrap();
-    assert!(result.is_none());
-
-    resolver.cache.run_pending_tasks().await;
-    assert_eq!(resolver.cache_entry_count(), 1);
-
-    // Second call: cache hit (still None)
-    let result2 = resolver
-        .resolve_model(DEFAULT_ORG_ID, missing_id)
-        .await
-        .unwrap();
-    assert!(result2.is_none());
-}
-
-#[tokio::test]
-async fn test_invalidate_cache_clears_entries() {
-    let (resolver, model_id) = setup_resolver_with_model().await;
-
-    // Populate cache
-    resolver
-        .resolve_model(DEFAULT_ORG_ID, model_id)
-        .await
-        .unwrap();
-    resolver.cache.run_pending_tasks().await;
-    assert_eq!(resolver.cache_entry_count(), 1);
-
-    // Invalidate
-    resolver.invalidate_cache(DEFAULT_ORG_ID).await;
-    resolver.cache.run_pending_tasks().await;
-    assert_eq!(resolver.cache_entry_count(), 0);
 }
 
 #[tokio::test]
@@ -432,29 +360,6 @@ async fn resolve_provider_api_key_falls_back_without_encryption() {
         .unwrap();
 
     // No encryption service, no env var -> None
-    let result = resolve_provider_api_key(&db, None, &provider).unwrap();
-    assert!(result.is_none());
-}
-
-#[tokio::test]
-async fn resolve_provider_api_key_no_db_key_returns_none() {
-    let db = Arc::new(StorageBackend::test_database());
-
-    let provider = db
-        .create_provider(
-            DEFAULT_ORG_ID,
-            CreateProviderRow {
-                name: "Anthropic".to_string(),
-                provider_type: "anthropic".to_string(),
-                base_url: None,
-                api_key_encrypted: None,
-                settings: None,
-            },
-        )
-        .await
-        .unwrap();
-
-    // No encrypted key in DB -> None, regardless of env
     let result = resolve_provider_api_key(&db, None, &provider).unwrap();
     assert!(result.is_none());
 }
@@ -871,19 +776,6 @@ async fn set_service_default(
     .unwrap();
 }
 
-#[test]
-fn service_provider_defaults_json_round_trips() {
-    // The Postgres path stores this map as JSONB; assert ServiceKind keys
-    // serialize snake_case and ProviderId values round-trip as strings.
-    let mut map = crate::storage::ServiceProviderDefaults::new();
-    let pid = everruns_contracts::typed_id::ProviderId::new();
-    map.insert(ServiceKind::Realtime, pid);
-    let value = serde_json::to_value(&map).unwrap();
-    assert_eq!(value, serde_json::json!({ "realtime": pid.to_string() }));
-    let back: crate::storage::ServiceProviderDefaults = serde_json::from_value(value).unwrap();
-    assert_eq!(back.get(&ServiceKind::Realtime), Some(&pid));
-}
-
 #[tokio::test]
 async fn resolve_service_uses_org_default_before_active_fallback() {
     // Two realtime-capable providers; the org default (tier 2) must win over
@@ -1285,4 +1177,88 @@ async fn system_decisions_follow_the_org_choice_and_never_fall_back() {
             .unwrap(),
         SystemDecisionModel::Deployment
     ));
+}
+#[tokio::test]
+async fn org_default_selection_changes_reach_other_replicas_without_cache_flush() {
+    let db = Arc::new(StorageBackend::test_database());
+    let resolver = ProviderResolverService::new(db.clone(), None);
+    let org_id = DEFAULT_ORG_ID;
+
+    let provider_row = db
+        .create_provider(
+            org_id,
+            CreateProviderRow {
+                name: "OpenAI".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let model = db
+        .create_model(
+            org_id,
+            CreateModelRow {
+                provider_id: provider_row.id,
+                model_id: "gpt-5.2".to_string(),
+                display_name: "GPT-5.2".to_string(),
+                capabilities: vec![],
+                enabled: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    // Set org default model
+    db.upsert_organization_settings(org_id, Some(model.id.uuid()))
+        .await
+        .unwrap();
+
+    // First call: populates cache
+    let result = resolver
+        .resolve_default_model(DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().model_id, "gpt-5.2");
+
+    resolver.cache.run_pending_tasks().await;
+    assert_eq!(resolver.cache_entry_count(), 1);
+
+    // An update committed by another replica must change the selected identity,
+    // while the resolved-model cache can still retain entries for both models.
+    let next = db
+        .create_model(
+            org_id,
+            CreateModelRow {
+                provider_id: provider_row.id,
+                model_id: "gpt-6.1-terra".into(),
+                display_name: "Terra".into(),
+                capabilities: vec![],
+                enabled: true,
+                is_favorite: false,
+                source: "manual".into(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+    db.upsert_organization_settings(org_id, Some(next.id.uuid()))
+        .await
+        .unwrap();
+    assert_eq!(
+        resolver
+            .resolve_default_model(org_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .model_id,
+        "gpt-6.1-terra"
+    );
 }

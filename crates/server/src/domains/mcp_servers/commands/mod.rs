@@ -125,10 +125,13 @@ impl Command for CreateMcpServer {
             &req.url,
         )
         .map_err(CommandError::bad_request)?;
+        everruns_core::mcp_server::validate_mcp_tool_timeout_ms(req.tool_timeout_ms)
+            .map_err(CommandError::bad_request)?;
         let settings = McpServerSettings {
             auth_mode: auth_mode.clone(),
             protocol_mode: req.protocol_mode.unwrap_or_default(),
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
+            tool_timeout_ms: req.tool_timeout_ms,
             oauth: None,
             service_connection_provider,
             connection_check: None,
@@ -346,6 +349,11 @@ impl Command for UpdateMcpServerCmd {
         }
         if let Some(elicitation_policy) = req.elicitation_policy {
             settings.elicitation_policy = elicitation_policy;
+        }
+        if let Some(tool_timeout_ms) = req.tool_timeout_ms {
+            settings.tool_timeout_ms =
+                crate::domains::mcp_servers::service::updated_tool_timeout_ms(tool_timeout_ms)
+                    .map_err(CommandError::bad_request)?;
         }
         // A connection-backed preset stays pinned to hosts that accept that
         // connection's tokens, whether the provider or the URL changes.

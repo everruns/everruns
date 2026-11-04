@@ -22,16 +22,22 @@ pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
+    /// Page-aware split Chat. Organization Adoption opt-in.
+    #[serde(default)]
+    pub chat_mode: bool,
     /// Organization-scoped live execution monitoring. Adoption opt-in.
     #[serde(default)]
     pub monitoring: bool,
+    /// Background Worker memory consolidation. Organization adoption opt-in.
+    #[serde(default)]
+    pub dreaming: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
     /// Skills registry management UI. Experimental.
     pub skills: bool,
     /// Workspace memory management UI. Experimental.
     pub memory: bool,
-    /// Knowledge index management UI. Experimental.
+    /// Unified Knowledge files and optional search. Organization adoption opt-in.
     pub knowledge: bool,
     /// Plugin marketplace and installed-plugin management UI. Experimental.
     pub plugins: bool,
@@ -73,8 +79,8 @@ pub struct FeatureFlags {
     /// is tier-limited, so chat has not been verified end to end.
     #[serde(default)]
     pub mistral: bool,
-    /// Platform Chat workspace with an integrated Threads panel. Org opt-in.
-    /// Also lets Platform Chat coordinate work through threads.
+    /// Platform Chat delegation and its background Work panel. Org opt-in.
+    /// Independent subchats are available without this flag.
     #[serde(default)]
     pub chat_threads: bool,
     /// Flags declared by integration crates (see
@@ -123,6 +129,18 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 /// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
+        name: "chat_mode",
+        label: "Chat workspace",
+        description: "Work with Chat beside app pages, share page context and review changes with guarded Undo.",
+        grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
+        name: "dreaming",
+        label: "Dreaming",
+        description: "Let Worker harnesses consolidate completed experience into authorized Memory.",
+        grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
         name: "monitoring",
         label: "Monitoring",
         description: "Monitor live execution, actor leases, and durable progress across your organization.",
@@ -130,8 +148,8 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     },
     FeatureFlagDefinition {
         name: "chat_threads",
-        label: "Chat threads",
-        description: "Manage conversations and ongoing work in a Threads panel alongside permanent Chat.",
+        label: "Chat background work",
+        description: "Let Chat delegate background work and inspect its progress in the Work panel. Subchats are always available.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -164,9 +182,9 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     },
     FeatureFlagDefinition {
         name: "knowledge",
-        label: "Knowledge indexes",
-        description: "Connect external document collections and make them searchable by agents.",
-        grade: FeatureFlagGrade::Dev,
+        label: "Knowledge",
+        description: "Mount versioned files and source trees with optional keyword or hybrid search.",
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "plugins",
@@ -324,11 +342,13 @@ impl FeatureFlags {
     pub fn to_map(&self) -> FeatureFlagMap {
         let mut map = BTreeMap::from([
             ("monitoring".to_string(), self.monitoring),
+            ("dreaming".to_string(), self.dreaming),
             ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
             ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
+            ("chat_mode".to_string(), self.chat_mode),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
@@ -358,11 +378,13 @@ impl FeatureFlags {
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
             "monitoring" => self.monitoring,
+            "dreaming" => self.dreaming,
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
             "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
+            "chat_mode" => self.chat_mode,
             "evals" => self.evals,
             "skills" => self.skills,
             "memory" => self.memory,
@@ -383,6 +405,7 @@ impl FeatureFlags {
     fn set(&mut self, name: &str, enabled: bool) {
         match name {
             "monitoring" => self.monitoring = enabled,
+            "dreaming" => self.dreaming = enabled,
             "evals" => self.evals = enabled,
             "skills" => self.skills = enabled,
             "memory" => self.memory = enabled,
@@ -401,6 +424,7 @@ impl FeatureFlags {
             "lua" => self.lua = enabled,
             "mistral" => self.mistral = enabled,
             "chat_threads" => self.chat_threads = enabled,
+            "chat_mode" => self.chat_mode = enabled,
             _ => {
                 assert!(
                     everruns_capabilities::integrations_catalog::feature_flag_definitions()
@@ -431,13 +455,14 @@ impl FeatureFlags {
     /// Feature flag required by a capability, when one exists.
     pub fn required_for_capability(capability_id: &str) -> Option<&'static str> {
         match capability_id {
+            "dreaming" => Some("dreaming"),
             "docker_container" => Some("docker_capability"),
             "container_sandbox" => Some("container_sandbox"),
             "lua" | "lua_code_mode" => Some("lua"),
             "parallel" => Some("machine_payments"),
             "skills" => Some("skills"),
             "memory" => Some("memory"),
-            "knowledge_index" | "knowledge_base" => Some("knowledge"),
+            "knowledge" | "knowledge_index" | "knowledge_base" => Some("knowledge"),
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
@@ -467,11 +492,13 @@ impl FeatureFlags {
     pub fn all_enabled() -> Self {
         Self {
             monitoring: true,
+            dreaming: true,
             docker_capability: true,
             container_sandbox: true,
             lua: true,
             mistral: true,
             chat_threads: true,
+            chat_mode: true,
             evals: true,
             skills: true,
             memory: true,
@@ -507,40 +534,74 @@ mod tests {
     }
 
     #[test]
-    fn chat_threads_require_org_adoption_on_every_deployment() {
+    fn chat_mode_is_an_independent_org_adoption_opt_in() {
+        for deployment in [
+            DeploymentGrade::Dev,
+            DeploymentGrade::Preview,
+            DeploymentGrade::Prod,
+        ] {
+            let policy = FeatureFlagPolicy::from_env(deployment);
+            assert_eq!(
+                API_FEATURE_FLAG_DEFINITIONS
+                    .iter()
+                    .find(|flag| flag.name == "chat_mode")
+                    .unwrap()
+                    .grade,
+                FeatureFlagGrade::Adoption
+            );
+            let policy = policy.with_grade("chat_mode", FeatureFlagGrade::Adoption);
+            assert!(policy.deployment_flags().chat_mode);
+            assert!(!policy.for_org(&HashMap::new()).chat_mode);
+            let enrolled = HashMap::from([("chat_mode".to_string(), true)]);
+            let flags = policy.for_org(&enrolled);
+            assert!(flags.chat_mode);
+            assert!(!flags.chat_threads);
+            assert!(flags.to_map().0["chat_mode"]);
+            assert!(
+                !policy
+                    .with_grade("chat_mode", FeatureFlagGrade::Off)
+                    .for_org(&enrolled)
+                    .chat_mode
+            );
+        }
+    }
+
+    #[test]
+    fn dreaming_requires_org_adoption_and_revocation_filters_the_capability() {
         let definition = API_FEATURE_FLAG_DEFINITIONS
             .iter()
-            .find(|definition| definition.name == "chat_threads")
+            .find(|d| d.name == "dreaming")
             .unwrap();
         assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
-        let enrolled = HashMap::from([("chat_threads".to_string(), true)]);
         for deployment in [
             DeploymentGrade::Dev,
             DeploymentGrade::Preview,
             DeploymentGrade::Prod,
         ] {
             let available = policy(deployment, definition.grade);
-            assert!(available.deployment_flags().chat_threads);
-            assert!(!available.for_org(&HashMap::new()).chat_threads);
-            assert!(available.for_org(&enrolled).chat_threads);
             assert!(
                 !available
-                    .for_org(&HashMap::from([("chat_threads".to_string(), false)]))
-                    .chat_threads
+                    .for_org(&HashMap::new())
+                    .is_capability_enabled("dreaming")
+            );
+            let enrolled = HashMap::from([("dreaming".to_string(), true)]);
+            assert!(
+                available
+                    .for_org(&enrolled)
+                    .is_capability_enabled("dreaming")
             );
             assert!(
                 !available
-                    .with_grade("chat_threads", FeatureFlagGrade::Off)
+                    .for_org(&HashMap::from([("dreaming".to_string(), false)]))
+                    .is_capability_enabled("dreaming")
+            );
+            assert!(
+                !available
+                    .with_grade("dreaming", FeatureFlagGrade::Off)
                     .for_org(&enrolled)
-                    .chat_threads
+                    .is_capability_enabled("dreaming")
             );
         }
-    }
-
-    #[test]
-    fn chatgpt_driver_is_always_offered() {
-        // Connecting the provider is the opt-in; there is no flag for it.
-        assert!(FeatureFlags::default().is_driver_offered("chatgpt"));
     }
 
     #[test]
@@ -561,22 +622,6 @@ mod tests {
             .with_grade("mistral", FeatureFlagGrade::Adoption)
             .for_org(&enrolled);
         assert!(raised.is_driver_offered("mistral"));
-    }
-
-    #[test]
-    fn playground_is_not_a_feature_flag() {
-        assert!(
-            API_FEATURE_FLAG_DEFINITIONS
-                .iter()
-                .all(|flag| flag.name != "playground")
-        );
-        assert!(
-            !FeatureFlagPolicy::from_env(DeploymentGrade::Dev)
-                .deployment_flags()
-                .to_map()
-                .0
-                .contains_key("playground")
-        );
     }
 
     #[test]
@@ -635,7 +680,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = ["chat_threads", "evals", "observers", "voice"];
+        let adoption_flags = ["chat_threads", "evals", "observers", "voice", "knowledge"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))
@@ -671,7 +716,6 @@ mod tests {
         for name in [
             "skills",
             "memory",
-            "knowledge",
             "plugins",
             "public_chat",
             "mcp_events",
@@ -726,32 +770,6 @@ mod tests {
     }
 
     #[test]
-    fn registration_availability_does_not_enroll_an_org() {
-        let policy = policy(DeploymentGrade::Prod, FeatureFlagGrade::Internal);
-        assert!(policy.deployment_flags().openai_agents_api);
-        assert!(!policy.for_org(&HashMap::new()).openai_agents_api);
-        assert!(
-            policy
-                .for_org(&HashMap::from([("openai_agents_api".into(), true)]))
-                .openai_agents_api
-        );
-    }
-
-    #[test]
-    fn production_defaults_can_be_disabled_and_off_ignores_stale_enrollment() {
-        let policy = policy(DeploymentGrade::Prod, FeatureFlagGrade::Prod);
-        assert!(policy.for_org(&HashMap::new()).evals);
-        let overrides = HashMap::from([("evals".into(), false), ("skills".into(), true)]);
-        assert!(!policy.for_org(&overrides).evals);
-        assert!(
-            !policy
-                .with_grade("skills", FeatureFlagGrade::Off)
-                .for_org(&overrides)
-                .skills
-        );
-    }
-
-    #[test]
     fn catalog_and_api_boolean_map_have_exactly_the_same_keys() {
         let flags = FeatureFlags::all_enabled();
         let map = flags.to_map();
@@ -775,6 +793,7 @@ mod tests {
             "skills",
             "skill:example",
             "memory",
+            "knowledge",
             "knowledge_base",
             "knowledge_index",
             "plugin:example",
@@ -846,8 +865,6 @@ mod tests {
             assert!(!disabled.is_connector_enabled(connector), "{connector}");
             assert!(enabled.is_connector_enabled(connector), "{connector}");
         }
-        assert!(!disabled.is_connector_enabled("deno"));
-        assert!(enabled.is_connector_enabled("deno"));
         // Daytona and E2B capabilities and their credential connectors are
         // generally available.
         assert!(disabled.is_capability_enabled("daytona"));
@@ -855,23 +872,5 @@ mod tests {
         assert!(disabled.is_connector_enabled("daytona"));
         assert!(enabled.is_connector_enabled("daytona"));
         assert!(disabled.is_connector_enabled("e2b"));
-    }
-
-    #[test]
-    fn integration_flags_follow_the_same_grade_policy() {
-        let prod = FeatureFlagPolicy {
-            deployment: DeploymentGrade::Prod,
-            grades: feature_flag_definitions()
-                .map(|def| (def.name.to_string(), def.grade))
-                .collect(),
-        };
-        assert_eq!(prod.grade("deno"), FeatureFlagGrade::Off);
-        assert!(!prod.deployment_flags().is_enabled("deno"));
-        assert!(!prod.deployment_flags().is_connector_enabled("deno"));
-        assert!(prod.deployment_flags().is_connector_enabled("daytona"));
-        assert!(
-            prod.for_org(&HashMap::new())
-                .is_connector_enabled("daytona")
-        );
     }
 }

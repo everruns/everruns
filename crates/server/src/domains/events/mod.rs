@@ -5,5 +5,7 @@
 pub mod commands;
 pub mod queries;
 pub mod types;
+pub mod work;
 
 pub use commands::*;
+pub use work::{GetSessionWork, SessionWorkResult};

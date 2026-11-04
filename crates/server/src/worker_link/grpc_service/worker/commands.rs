@@ -41,6 +41,41 @@ impl WorkerServiceImpl {
             ));
         };
 
+        let consumer_messages = self.runner.as_ref().map(|runner| {
+            crate::domains::messages::MessageService::new(
+                self.db.clone(),
+                runner.clone(),
+                self.event_service.event_delivery().clone(),
+            )
+        });
+        if (req.runtime_view || matches!(req.name.as_str(), "create_message" | "list_messages"))
+            && let (Some(session), Some(message)) = (
+                req.platform_session_id.as_ref(),
+                req.input_message_id.as_ref(),
+            )
+        {
+            let output = crate::worker_link::consumer_delegation::dispatch(
+                &self.db,
+                &self.session_service,
+                self.encryption.as_ref(),
+                consumer_messages.as_ref(),
+                req.org_id,
+                everruns_contracts::typed_id::SessionId::from_uuid(parse_uuid(Some(session))?),
+                parse_uuid(Some(message))?,
+                &req.name,
+                &params,
+            )
+            .await
+            .map_err(|_| Status::permission_denied("Consumer delegation refused"))?;
+            if let Some(output) = output {
+                return Ok(Response::new(ExecuteCommandResponse {
+                    result: Some(proto::execute_command_response::Result::OkJson(
+                        output.into_bytes(),
+                    )),
+                }));
+            }
+        }
+
         // gRPC ExecuteCommand is the auth boundary for worker-driven platform
         // tools. Respect the provided user_id; do not silently upgrade to
         // Caller::internal for user-owned sessions.
@@ -188,7 +223,7 @@ impl WorkerServiceImpl {
         .ok_or_else(|| Status::not_found("Harness not found"))?;
 
         let agent = match session.agent_id {
-            Some(agent_id) => crate::domains::agents::queries::get_by_public_id(
+            Some(agent_id) => crate::domains::agents::queries::get_for_execution(
                 &self.db,
                 org_id,
                 &agent_id.to_string(),
@@ -312,13 +347,12 @@ impl WorkerServiceImpl {
             ));
         }
 
-        let api_base = self
-            .api_base_url
-            .clone()
-            .unwrap_or_else(|| "http://localhost:9300".to_string());
-        let ui_base = std::env::var("PUBLIC_APP_URL")
-            .or_else(|_| std::env::var("FRONTEND_URL"))
-            .unwrap_or_else(|_| api_base.clone());
+        // Same public base the in-process worker links with.
+        let ui_base = everruns_core::config::env_string_any(
+            &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
+            "http://localhost:9300",
+        );
+        let api_base = ui_base.clone();
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
@@ -365,8 +399,8 @@ impl WorkerServiceImpl {
 /// shared gRPC test file does not accumulate transport plumbing.
 #[cfg(test)]
 pub(crate) mod test_support {
+    use crate::worker_link::grpc_service::tests::trusted_request;
     use crate::worker_link::grpc_service::*;
-    use tonic::Request;
 
     /// Run one registered command over the gRPC command transport and return its
     /// JSON result, failing the test on a domain error rather than swallowing it.
@@ -376,7 +410,7 @@ pub(crate) mod test_support {
         params: serde_json::Value,
     ) -> serde_json::Value {
         let response = service
-            .execute_command(Request::new(ExecuteCommandRequest {
+            .execute_command(trusted_request(ExecuteCommandRequest {
                 runtime_view: false,
                 input_message_id: None,
                 platform_session_id: None,

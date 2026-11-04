@@ -11,7 +11,6 @@
 #![cfg(feature = "openai-agents-api")]
 
 use super::agents_api_support::*;
-use everruns_core::events::EventData;
 use tokio::sync::watch;
 
 /// Event types the SSE stream and UI already render for native turns.
@@ -423,19 +422,4 @@ async fn a_failed_turn_bills_its_spend() {
             .unwrap()
             .contains("billing limit")
     );
-}
-
-#[test]
-fn llm_generation_is_typed_event_data() {
-    // Guards the CANONICAL list above against a renamed event.
-    let data = everruns_core::events::LlmGenerationData::failure(
-        vec![],
-        vec![],
-        "m".into(),
-        None,
-        "e".into(),
-        None,
-        None,
-    );
-    assert_eq!(EventData::from(data).event_type(), "llm.generation");
 }

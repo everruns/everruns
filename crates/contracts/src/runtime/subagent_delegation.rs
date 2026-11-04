@@ -17,6 +17,7 @@ use crate::runtime::typed_id::{AgentId, HarnessId, SessionId, SessionParticipant
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+mod causal;
 
 /// Simplified message representation for subagent/handoff result collection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +90,17 @@ pub trait SubagentSessionDelegate: Send + Sync {
     /// Send a user message to a session, triggering a turn.
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()>;
 
+    /// Deliver validated causal identities alongside a child input. Custom
+    /// hosts can override this to retain links in their admission metadata.
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        _causes: &crate::runtime::causal::CausalContext,
+    ) -> Result<()> {
+        self.send_message(session_id, content).await
+    }
+
     /// Get messages from a session (most recent first). Default limit is 10.
     async fn get_messages(
         &self,
@@ -148,6 +160,7 @@ pub mod tests {
         pub created_session_budget_roots: std::sync::Mutex<Vec<Option<SessionId>>>,
         pub wait_for_idle_status: std::sync::Mutex<String>,
         pub sent_messages: std::sync::Mutex<Vec<(SessionId, String)>>,
+        pub causal_messages: std::sync::Mutex<Vec<crate::runtime::causal::CausalContext>>,
     }
 
     impl Default for MockSubagentDelegate {
@@ -184,6 +197,7 @@ pub mod tests {
                 created_session_budget_roots: std::sync::Mutex::new(Vec::new()),
                 wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
                 sent_messages: std::sync::Mutex::new(Vec::new()),
+                causal_messages: std::sync::Mutex::new(Vec::new()),
             }
         }
 
@@ -293,6 +307,16 @@ pub mod tests {
                 .unwrap()
                 .push((id, content.to_string()));
             Ok(())
+        }
+
+        async fn send_message_with_causal_context(
+            &self,
+            id: SessionId,
+            content: &str,
+            causes: &crate::runtime::causal::CausalContext,
+        ) -> Result<()> {
+            self.causal_messages.lock().unwrap().push(causes.clone());
+            self.send_message(id, content).await
         }
 
         async fn get_messages(

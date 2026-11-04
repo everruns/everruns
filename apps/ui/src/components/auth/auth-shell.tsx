@@ -26,7 +26,7 @@ import {
 // Frame 2 default brand copy for the login page. Register overrides the
 // headline with an on-brand variant.
 const DEFAULT_HEADLINE =
-  "Every step persisted — agents that survive restarts, deploys, and outages.";
+  "Every step persisted: agents that survive restarts, deploys, and outages.";
 
 export interface AuthShellProps {
   /** Optional right-aligned header note, e.g. "Secured by …". */

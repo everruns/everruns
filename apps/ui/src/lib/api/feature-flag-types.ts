@@ -1,7 +1,11 @@
 export interface FeatureFlags {
+  /** Worker memory consolidation. Organization adoption opt-in. */
+  dreaming?: boolean;
+  /** Page-aware split Chat. Organization Adoption opt-in. */
+  chat_mode?: boolean;
   /** Organization execution monitoring. Adoption opt-in. */
   monitoring?: boolean;
-  /** Integrated platform Chat workspace. Organization adoption opt-in. */
+  /** Chat delegation and its background Work panel. Organization Adoption opt-in. */
   chat_threads?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
@@ -15,7 +19,7 @@ export interface FeatureFlags {
   skills: boolean;
   /** Workspace memory management UI. Experimental. */
   memory: boolean;
-  /** Knowledge index management UI. Experimental. */
+  /** Unified Knowledge files and optional search. Organization adoption opt-in. */
   knowledge: boolean;
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;

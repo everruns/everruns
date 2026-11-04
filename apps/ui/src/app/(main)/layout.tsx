@@ -4,7 +4,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { MobileSidebar, Sidebar } from "@/components/layout/sidebar";
+import { ChatModeShell } from "@/components/chat-mode/chat-mode-shell";
 import { EarlyAccessBanner } from "@/components/layout/early-access-banner";
 import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
 import { CommandPalette } from "@/components/command-palette";
@@ -133,12 +133,10 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     <div className="flex h-screen flex-col">
       <EarlyAccessBanner />
       <VerifyEmailBanner />
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <Sidebar className="hidden md:flex" />
-        <MobileSidebar />
-        <main className="min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
-      </div>
-      <CommandPalette />
+      <ChatModeShell>
+        {children}
+        <CommandPalette />
+      </ChatModeShell>
     </div>
   );
 

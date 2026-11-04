@@ -211,6 +211,34 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
         self.inner.send_message(session_id, content).await
     }
 
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &crate::CausalContext,
+    ) -> Result<()> {
+        let Some(_delivery) = self.routes.deliver_or_claim(session_id, content) else {
+            return Ok(());
+        };
+        self.inner
+            .send_message_with_causal_context(session_id, content, causes)
+            .await
+    }
+
+    async fn deliver_occurrence(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        occurrence: everruns_contracts::typed_id::MessageId,
+    ) -> Result<()> {
+        let Some(_delivery) = self.routes.deliver_or_claim(session_id, content) else {
+            return Ok(());
+        };
+        self.inner
+            .deliver_occurrence(session_id, content, occurrence)
+            .await
+    }
+
     async fn create_session(
         &self,
         harness_id: HarnessId,
@@ -253,6 +281,10 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
 
     async fn get_session_status(&self, session_id: SessionId) -> Result<Option<String>> {
         self.inner.get_session_status(session_id).await
+    }
+
+    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
+        self.inner.latest_terminal_turn_status(session_id).await
     }
 }
 

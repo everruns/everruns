@@ -1,0 +1,34 @@
+{
+  "task": "synthetic incident owner and linked ticket status",
+  "task_passed": true,
+  "checks": {
+    "scoped_incident_lookup": true,
+    "linked_ticket_read": true,
+    "read_only_backend_calls": true,
+    "owner_and_status_match_state": true,
+    "linked_ticket_in_answer": true
+  },
+  "backend_calls": [
+    {
+      "arguments": {
+        "environment": "staging",
+        "service": "billing-api"
+      },
+      "at": "2026-10-18T21:53:09.263449+00:00",
+      "method": "tools/call",
+      "ok": true,
+      "tool": "list_incidents"
+    },
+    {
+      "arguments": {
+        "ticket_id": "OPS-8421"
+      },
+      "at": "2026-10-18T21:53:12.528840+00:00",
+      "method": "tools/call",
+      "ok": true,
+      "tool": "get_ticket"
+    }
+  ],
+  "fixture_tool_count": 600,
+  "gateway_tool_count": 2
+}

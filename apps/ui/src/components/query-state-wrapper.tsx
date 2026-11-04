@@ -1,3 +1,5 @@
+import { EmptyState } from "@/components/layout";
+import { Notice, NoticeDescription } from "@/components/ui/notice";
 /**
  * Generic wrapper for React Query list pages.
  * Handles loading, error, and empty states so each page
@@ -32,20 +34,18 @@ function DefaultLoadingSkeleton({ count = 6 }: { count?: number }) {
 
 function DefaultError({ prefix, message }: { prefix: string; message: string }) {
   return (
-    <div className="bg-destructive/10 p-4 text-destructive">
-      {prefix}: {message}
-    </div>
+    <Notice variant="destructive" role="alert">
+      <NoticeDescription>
+        {prefix}: {message}
+      </NoticeDescription>
+    </Notice>
   );
 }
 
 /* ---------- default empty ---------- */
 
 function DefaultEmpty({ message }: { message: string }) {
-  return (
-    <div className="text-center py-12">
-      <p className="text-muted-foreground">{message}</p>
-    </div>
-  );
+  return <EmptyState title={message} />;
 }
 
 /* ---------- main component ---------- */

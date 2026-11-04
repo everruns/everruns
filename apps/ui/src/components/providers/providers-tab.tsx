@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { Notice, NoticeDescription } from "@/components/ui/notice";
@@ -7,6 +8,7 @@ import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
 import { SetApiKeyDialog } from "./provider-dialogs";
 import { useSyncProviderModels } from "@/hooks/use-providers";
 import { ApiError } from "@/lib/api/client";
+import { isPlatformProviderVisible } from "@/lib/api/provider-driver-types";
 import type { ModelWithProvider, Provider } from "@/lib/api/types";
 
 export function ProvidersTab({
@@ -30,9 +32,13 @@ export function ProvidersTab({
   onReviewNew: (provider: Provider) => void;
   onNotice: (notice: { kind: "success" | "error"; text: string }) => void;
 }) {
+  const ui = useUiTranslations();
   const syncModels = useSyncProviderModels();
   const [apiKeyProvider, setApiKeyProvider] = useState<Provider | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const visibleProviders = providers.filter((provider) =>
+    isPlatformProviderVisible(provider.provider_type),
+  );
 
   const modelsByProvider = useMemo(() => {
     const grouped = new Map<string, ModelWithProvider[]>();
@@ -73,26 +79,29 @@ export function ProvidersTab({
     <>
       {providersError && (
         <Notice variant="destructive">
-          <NoticeDescription>Failed to load providers: {providersError.message}</NoticeDescription>
+          <NoticeDescription>
+            {ui("Failed to load providers:")} {providersError.message}
+          </NoticeDescription>
         </Notice>
       )}
       {!canManage && (
         <p className="text-sm text-muted-foreground">
-          Only organization admins connect, rotate or delete providers. You can see what is
-          connected and which models it serves.
+          {ui(
+            "Only organization admins connect, rotate or delete providers. You can see what is connected and which models it serves.",
+          )}
         </p>
       )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {providersLoading
           ? [...Array(3)].map((_, index) => <ProviderCardSkeleton key={index} />)
-          : providers.map((provider) => (
+          : visibleProviders.map((provider) => (
               <ProviderCard
                 key={provider.id}
                 provider={provider}
                 models={modelsByProvider.get(provider.id) ?? []}
                 modelsLoading={modelsLoading}
                 siblings={
-                  providers.filter((p) => p.provider_type === provider.provider_type).length
+                  visibleProviders.filter((p) => p.provider_type === provider.provider_type).length
                 }
                 canManage={canManage}
                 isSyncing={syncingId === provider.id}
@@ -108,13 +117,13 @@ export function ProvidersTab({
             className="flex min-h-48 flex-col items-center justify-center gap-2 border border-dashed text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Plus className="icon-sharp size-5" />
-            Connect provider
+            {ui("Connect provider")}
           </button>
         )}
       </div>
-      {!providersLoading && providers.length === 0 && !canManage && (
+      {!providersLoading && visibleProviders.length === 0 && !canManage && (
         <p className="text-sm text-muted-foreground">
-          No providers are connected yet. Ask an organization admin to connect one.
+          {ui("No providers are connected yet. Ask an organization admin to connect one.")}
         </p>
       )}
       <SetApiKeyDialog

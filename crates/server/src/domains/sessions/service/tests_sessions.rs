@@ -19,6 +19,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "list-parent-harness".to_string(),
         display_name: Some("List Parent Harness".to_string()),
         description: None,
@@ -39,6 +40,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     .await
     .unwrap();
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "list-child-harness".to_string(),
         display_name: Some("List Child Harness".to_string()),
         description: None,
@@ -59,6 +61,9 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     .await
     .unwrap();
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        owner_agent_id: None,
+        completion_check: Default::default(),
+        localizations: Default::default(),
         service_virtual_user_id: None,
 
         id: None,
@@ -237,6 +242,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "hydration-parent".to_string(),
         display_name: Some("Hydration Parent".to_string()),
         description: None,
@@ -257,6 +263,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     .await
     .unwrap();
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "hydration-child".to_string(),
         display_name: Some("Hydration Child".to_string()),
         description: None,
@@ -277,6 +284,9 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     .await
     .unwrap();
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        owner_agent_id: None,
+        completion_check: Default::default(),
+        localizations: Default::default(),
         service_virtual_user_id: None,
 
         id: None,
@@ -333,14 +343,19 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .await
         .unwrap();
 
-    for (event_type, text) in [
+    let message_time = chrono::Utc::now() - chrono::Duration::minutes(5);
+    for (index, (event_type, text)) in [
         ("input.message", "input preview"),
         ("output.message.completed", "output preview"),
-    ] {
+        ("input.message", "follow-up message"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         db.create_event(CreateEventRow {
             session_id: agent_session.id,
             event_type: event_type.to_string(),
-            ts: chrono::Utc::now(),
+            ts: message_time + chrono::Duration::seconds(index as i64),
             context: serde_json::json!({}),
             data: serde_json::json!({
                 "message": {"content": [{"type": "text", "text": text}]}
@@ -351,6 +366,18 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .await
         .unwrap();
     }
+    // A later tool/status event must not be presented as a sent message.
+    db.create_event(CreateEventRow {
+        session_id: agent_session.id,
+        event_type: "session.activated".to_string(),
+        ts: chrono::Utc::now(),
+        context: serde_json::json!({}),
+        data: serde_json::json!({}),
+        metadata: None,
+        tags: None,
+    })
+    .await
+    .unwrap();
     db.pin_session(
         db.default_virtual_user(
             DEFAULT_ORG_ID,
@@ -450,6 +477,11 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     assert_eq!(listed_agent.agent_id, Some(agent.public_id));
     assert!(listed_agent.owner.is_some());
     assert_eq!(listed_agent.preview.as_deref(), Some("input preview"));
+    // PostgreSQL stores timestamps with microsecond precision.
+    assert_eq!(
+        listed_agent.last_message_at.map(|ts| ts.timestamp_micros()),
+        Some((message_time + chrono::Duration::seconds(2)).timestamp_micros())
+    );
     assert_eq!(
         listed_agent.output_preview.as_deref(),
         Some("output preview")
@@ -468,6 +500,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .find(|session| session.id == no_agent_session.id)
         .unwrap();
     assert_eq!(listed_no_agent.agent_id, None);
+    assert_eq!(listed_no_agent.last_message_at, None);
     assert_eq!(listed_no_agent.is_pinned, Some(false));
     assert!(
         listed_no_agent
@@ -576,6 +609,7 @@ async fn resolved_model_id_tracks_default_and_preserves_explicit_binding() {
     );
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "resolved-model-harness".to_string(),
         display_name: Some("Resolved Model Harness".to_string()),
         description: None,
@@ -624,6 +658,7 @@ async fn app_backreference_is_only_set_by_app_session_create() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "app-backref-harness".to_string(),
         display_name: Some("App Backref Harness".to_string()),
         description: None,
@@ -744,6 +779,7 @@ async fn fork_copies_history_files_and_records_lineage() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "fork-harness".to_string(),
         display_name: Some("Fork Harness".to_string()),
         description: None,
@@ -793,7 +829,7 @@ async fn fork_copies_history_files_and_records_lineage() {
         .await
         .unwrap();
     }
-    db.create_session_file(CreateSessionFileRow {
+    db.create_session_file(crate::storage::CreateSessionFileRow {
         session_id: SessionId::from_uuid(parent.workspace_id.uuid()),
         path: "/notes.txt".to_string(),
         content: Some(b"fork me".to_vec()),
@@ -889,6 +925,7 @@ async fn starter_files_are_copied_into_new_sessions() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "harness".to_string(),
         display_name: Some("Harness".to_string()),
         description: None,
@@ -923,6 +960,9 @@ async fn starter_files_are_copied_into_new_sessions() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        owner_agent_id: None,
+        completion_check: Default::default(),
+        localizations: Default::default(),
         service_virtual_user_id: None,
 
         id: None,
@@ -1031,6 +1071,7 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "scoped-memory-harness".to_string(),
         display_name: Some("Scoped Memory Harness".to_string()),
         description: None,
@@ -1052,6 +1093,9 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        owner_agent_id: None,
+        completion_check: Default::default(),
+        localizations: Default::default(),
         service_virtual_user_id: None,
 
         id: None,
@@ -1144,6 +1188,7 @@ async fn session_initial_files_cannot_claim_reserved_memory_paths() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "reserved-memory-path-harness".to_string(),
         display_name: Some("Reserved Memory Path Harness".to_string()),
         description: None,
@@ -1198,6 +1243,7 @@ async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "parent".to_string(),
         display_name: Some("Parent".to_string()),
         description: None,
@@ -1232,6 +1278,7 @@ async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
     .unwrap();
 
     let child = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "child".to_string(),
         display_name: Some("Child".to_string()),
         description: None,
@@ -1293,6 +1340,7 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "harness".to_string(),
         display_name: Some("Harness".to_string()),
         description: None,
@@ -1314,6 +1362,9 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        owner_agent_id: None,
+        completion_check: Default::default(),
+        localizations: Default::default(),
         service_virtual_user_id: None,
 
         id: None,
@@ -1367,6 +1418,7 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
     );
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "harness-2".to_string(),
         display_name: Some("Harness 2".to_string()),
         description: None,

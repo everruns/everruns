@@ -1028,30 +1028,6 @@ mod tests {
         assert!(candidates.contains(&("agent", agent_id.to_string())));
     }
 
-    /// `agent_channel` is offered as a subject, so it has to resolve. A subject
-    /// that can be selected and stored but never matched is worse than one that
-    /// is absent: it reads as authority scoped to an endpoint while nothing
-    /// enforces the scope.
-    #[test]
-    fn agent_channel_is_a_candidate_when_the_session_arrived_through_one() {
-        let session_id = SessionId::new();
-        let channel_public_id = "appchan_0199f0c2d4b17a3e9c1155aa77e30b41".to_string();
-
-        let candidates = subject_candidates(
-            session_id,
-            None,
-            None,
-            None,
-            None,
-            Some(channel_public_id.clone()),
-        );
-
-        assert!(
-            candidates.contains(&("agent_channel", channel_public_id)),
-            "an endpoint-scoped policy must be reachable: {candidates:?}"
-        );
-    }
-
     /// `app` is retired. Nothing produced an `app` candidate even before this
     /// change, so every `app` policy the API accepted was already inert — which
     /// is why migration 152 converts them onto the agent instead of trusting

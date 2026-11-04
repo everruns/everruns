@@ -1,7 +1,6 @@
 //! Tests: signature.
 
 use super::*;
-use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use everruns_core::channel::{InboundAttachment, SessionBinding};
@@ -142,15 +141,6 @@ fn test_slack_event_bot_message_detected() {
 // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
 #[test]
-fn test_slack_channel_config_defaults() {
-    let json = r#"{"signing_secret": "sec", "bot_token": "tok"}"#;
-    let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.session_strategy, SessionBinding::Thread);
-    assert!(config.channel_id.is_none());
-    assert!(config.team_id.is_none());
-}
-
-#[test]
 fn test_event_matches_slack_scope_unrestricted() {
     let config = test_config(SessionBinding::Thread);
     let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
@@ -237,25 +227,6 @@ fn test_extract_response_text_empty_content() {
 }
 
 #[tokio::test]
-async fn test_resolve_slack_user_name_cache_hit() {
-    let cache: SlackUserCache = new_slack_user_cache();
-    cache.insert("U123".to_string(), Some("Alice".to_string()));
-
-    let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
-    assert_eq!(result, Some("Alice".to_string()));
-}
-
-#[tokio::test]
-async fn test_resolve_slack_user_name_cache_hit_none() {
-    // Cached failure (e.g., missing_scope) should return None without API call
-    let cache: SlackUserCache = new_slack_user_cache();
-    cache.insert("U123".to_string(), None);
-
-    let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
-    assert_eq!(result, None);
-}
-
-#[tokio::test]
 async fn transport_failure_does_not_cache_user_lookup() {
     use tokio::io::AsyncReadExt;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -316,25 +287,6 @@ fn test_external_actor_display_label_fallback_to_id() {
         metadata: None,
     };
     assert_eq!(actor.display_label(), "U0123456789");
-}
-
-#[test]
-fn test_external_actor_with_metadata() {
-    let mut metadata = std::collections::HashMap::new();
-    metadata.insert("channel".to_string(), "C123".to_string());
-    metadata.insert("team_id".to_string(), "T456".to_string());
-
-    let actor = everruns_core::ExternalActor {
-        actor_id: "U123".to_string(),
-        actor_name: Some("Alice".to_string()),
-        source: "slack".to_string(),
-        metadata: Some(metadata),
-    };
-
-    assert_eq!(actor.source, "slack");
-    let meta = actor.metadata.as_ref().unwrap();
-    assert_eq!(meta.get("channel").unwrap(), "C123");
-    assert_eq!(meta.get("team_id").unwrap(), "T456");
 }
 
 // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.

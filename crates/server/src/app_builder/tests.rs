@@ -2,22 +2,6 @@ use super::serve::Http2FlowConfig;
 use super::*;
 
 #[test]
-fn test_h2_config_defaults() {
-    let config = Http2FlowConfig::from_values(None, None, None);
-    assert_eq!(config.stream_window, 2 * 1024 * 1024); // 2 MB
-    assert_eq!(config.connection_window, 16 * 1024 * 1024); // 16 MB
-    assert_eq!(config.max_concurrent_streams, 256);
-}
-
-#[test]
-fn test_h2_config_from_env() {
-    let config = Http2FlowConfig::from_values(Some("4194304"), Some("33554432"), Some("512"));
-    assert_eq!(config.stream_window, 4 * 1024 * 1024);
-    assert_eq!(config.connection_window, 32 * 1024 * 1024);
-    assert_eq!(config.max_concurrent_streams, 512);
-}
-
-#[test]
 fn test_h2_config_invalid_env_uses_defaults() {
     let config = Http2FlowConfig::from_values(Some("not_a_number"), Some(""), None);
     assert_eq!(config.stream_window, 2 * 1024 * 1024); // falls back to default

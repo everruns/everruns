@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{BudgetId, SessionId};
-use everruns_core::budget::{BudgetPeriod, BudgetStatus, BudgetSubjectType};
+use everruns_core::budget::{BudgetPeriod, BudgetStatus, BudgetSubjectType, UsagePolicy};
 use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
@@ -16,7 +16,8 @@ pub struct Budget {
     pub subject_type: BudgetSubjectType,
     /// Public ID of the subject entity.
     pub subject_id: String,
-    /// Currency: "usd", "tokens", "credits", or custom.
+    /// What the limit is measured in: "usd" (cost from the org's price
+    /// list) or "tokens".
     pub currency: String,
     /// Hard limit — budget ceiling.
     pub limit: f64,
@@ -36,6 +37,11 @@ pub struct Budget {
     /// Arbitrary metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
+    /// Name, steps (notify, ask to continue, stop) and which usage counts.
+    /// Empty steps mean the legacy shape: notify at 80%, ask at the soft
+    /// limit, stop at the limit.
+    #[serde(default)]
+    pub policy: UsagePolicy,
     pub status: BudgetStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

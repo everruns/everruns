@@ -23,7 +23,8 @@ split and the marking convention so later changes stay deliberate.
   the provider traits behind them (`Provider`, `ChatDriver`, `DriverRegistry`
   in `crates/everruns/src/providers/`), and the in-process Ask User host
   contract in `crates/everruns/src/ask_user.rs`.
-* **Alpha** may break without a major bump. Applies to the decisions
+* **Alpha** may break without a major bump. Applies to the provider-native batch
+  surface (`crates/everruns/src/batch.rs`) and to the decisions
   surface: `crates/everruns/src/decisions.rs` and its `everruns-core`
   re-exports in `crates/everruns/src/lib.rs`, including the decision-driver
   types (`DecisionDriver`, `DecisionRouter`). Adding

@@ -7,12 +7,12 @@
 use std::time::Duration;
 
 use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_core::host::{
     AcceptedTurnInput, HostBackends, InProcessBackend, InProcessRuntime, TurnBackend, TurnInput,
     TurnRequest, TurnTicket,
 };
-use everruns_core::turn::TurnStopReason;
 
 use crate::{Agent, Model};
 

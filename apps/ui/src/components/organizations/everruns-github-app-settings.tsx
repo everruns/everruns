@@ -7,6 +7,8 @@
 // Agents then choose a link on their GitHub section. Unlinking removes every
 // agent's choice of it; it does not uninstall the App on GitHub.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -27,6 +29,8 @@ import { useOrg } from "@/providers/org-provider";
 const RETURN_TO = "/settings/organization";
 
 export function EverrunsGitHubAppSettings() {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const { data: links, isLoading, error } = useEverrunsAppLinks();
   const unlink = useUnlinkEverrunsApp();
@@ -56,25 +60,29 @@ export function EverrunsGitHubAppSettings() {
             id="organization-settings-everruns-github-app"
             className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground"
           >
-            Everruns GitHub App
+            {ui("Everruns GitHub App")}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            GitHub accounts where the shared Everruns App is installed for this organization. Agents
-            can choose a linked account instead of creating their own App
-            {links.app_slug ? `, and then appear as ${links.app_slug}[bot]` : ""}.
+            {ui(
+              "GitHub accounts where the shared Everruns App is installed for this organization. Agents can choose a linked account instead of creating their own App",
+            )}
+            {links.app_slug
+              ? ui(", and then appear as {value0}[bot]", { value0: links.app_slug })
+              : ""}
+            .
           </p>
         </div>
         <a
           href={everrunsAppLinkUrl(currentOrg.public_id, RETURN_TO)}
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >
-          <Plus className="size-4" /> Link
+          <Plus className="size-4" /> {ui("Link")}
         </a>
       </div>
       <Card className="gap-0 overflow-hidden p-0">
         {links.installations.length === 0 ? (
           <p className="px-5 py-4 text-sm text-muted-foreground">
-            No GitHub account is linked yet.
+            {ui("No GitHub account is linked yet.")}
           </p>
         ) : (
           <ul className="divide-y">
@@ -91,14 +99,14 @@ export function EverrunsGitHubAppSettings() {
                       link.repository_selection === "selected"
                         ? "Selected repositories"
                         : "All repositories",
-                      formatCountLabel(link.agent_count, "agent"),
+                      formatCountLabel(link.agent_count, "agent", undefined, displayLocale),
                     ]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => setPending(link)}>
-                  Unlink
+                  {ui("Unlink")}
                 </Button>
               </li>
             ))}
@@ -109,20 +117,23 @@ export function EverrunsGitHubAppSettings() {
       <Dialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Unlink {pending?.account}?</DialogTitle>
+            <DialogTitle>
+              {ui("Unlink")} {pending?.account}?
+            </DialogTitle>
             <DialogDescription>
-              Agents using this account through the Everruns App lose their GitHub identity, and
-              their GitHub triggers stop firing. The App stays installed on GitHub.
+              {ui(
+                "Agents using this account through the Everruns App lose their GitHub identity, and their GitHub triggers stop firing. The App stays installed on GitHub.",
+              )}
             </DialogDescription>
           </DialogHeader>
           {unlinkError && <p className="text-sm text-destructive">{unlinkError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPending(null)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button variant="destructive" onClick={onUnlink} disabled={unlink.isPending}>
               {unlink.isPending && <Loader2 className="size-4 animate-spin" />}
-              Unlink
+              {ui("Unlink")}
             </Button>
           </DialogFooter>
         </DialogContent>

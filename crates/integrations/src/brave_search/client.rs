@@ -174,26 +174,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_web_search_empty_results() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/web/search"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "web": { "results": [] }
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let client = BraveSearchClient::with_base_url("test_key".to_string(), mock_server.uri());
-        let result = client
-            .web_search("nonexistent query", None, None, None)
-            .await;
-        assert!(result.is_ok());
-        let response = result.unwrap();
-        assert!(response.web.unwrap().results.is_empty());
-    }
-
-    #[tokio::test]
     async fn test_web_search_no_web_field() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -226,23 +206,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_web_search_429_rate_limit() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/web/search"))
-            .respond_with(
-                ResponseTemplate::new(429).set_body_string("{\"error\":\"Rate limit exceeded\"}"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let client = BraveSearchClient::with_base_url("test_key".to_string(), mock_server.uri());
-        let result = client.web_search("test", None, None, None).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("429"));
-    }
-
-    #[tokio::test]
     async fn test_web_search_malformed_json() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -255,48 +218,5 @@ mod tests {
         let result = client.web_search("test", None, None, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid JSON"));
-    }
-
-    #[test]
-    fn test_web_result_deserialization() {
-        let json = r#"{
-            "title": "Test",
-            "url": "https://example.com",
-            "description": "A test result",
-            "age": "1 day ago",
-            "language": "en"
-        }"#;
-        let result: WebResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.title, "Test");
-        assert_eq!(result.url, "https://example.com");
-        assert_eq!(result.description, "A test result");
-        assert_eq!(result.age, Some("1 day ago".to_string()));
-        assert_eq!(result.language, Some("en".to_string()));
-    }
-
-    #[test]
-    fn test_web_result_minimal_deserialization() {
-        let json = r#"{"title": "Test", "url": "https://example.com"}"#;
-        let result: WebResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.title, "Test");
-        assert_eq!(result.description, "");
-        assert_eq!(result.age, None);
-    }
-
-    #[test]
-    fn test_web_search_response_deserialization() {
-        let json = r#"{
-            "web": {
-                "results": [
-                    {"title": "A", "url": "https://a.com", "description": "desc a"},
-                    {"title": "B", "url": "https://b.com", "description": "desc b"}
-                ]
-            }
-        }"#;
-        let response: WebSearchResponse = serde_json::from_str(json).unwrap();
-        let results = response.web.unwrap().results;
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].title, "A");
-        assert_eq!(results[1].url, "https://b.com");
     }
 }

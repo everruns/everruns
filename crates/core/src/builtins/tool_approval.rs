@@ -35,8 +35,7 @@ use crate::builtins::tool_types::{
 };
 
 pub use crate::builtins::tool_approval_durable::{
-    DurableToolApprover, ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_KV_PREFIX,
-    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
+    DurableToolApprover, TOOL_APPROVAL_KV_PREFIX, approval_fingerprint,
 };
 use crate::builtins::typed_id::SessionId;
 use crate::tool_context::ToolContext;
@@ -321,6 +320,14 @@ impl ToolApprovalCapability {
 
 #[async_trait]
 impl Capability for ToolApprovalCapability {
+    fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
+        vec![crate::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Підтвердження інструментів",
+            "Призупиняє ризиковані виклики інструментів до інтерактивного підтвердження відповідно до вибраного режиму.",
+        )]
+    }
+
     fn id(&self) -> &str {
         TOOL_APPROVAL_CAPABILITY_ID
     }

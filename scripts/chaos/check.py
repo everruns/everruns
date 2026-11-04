@@ -371,7 +371,20 @@ class ActorLeaseSampler:
     - a takeover: a new holder seen while the previous holder's lease was
       still unexpired at its last sample, with no release in between (the
       row showed no holder). A takeover after expiry or release is normal.
+
+    A release between two samples is read from the database's own lease
+    journal (`session_actor_lease_history`, written by a trigger on the
+    row), matched by holder and fence. The workers' "Actor released" lines
+    are only a fallback: a worker SIGKILLed after sending its release RPC
+    never logs the acknowledgement, though the server already committed it
+    (main batch 39222530399: released ~40 ms before the kill, re-leased by
+    another worker ~0.1 s later, both between two samples).
     """
+
+    RELEASES_SQL = (
+        "select session_id, holder, fence from session_actor_lease_history "
+        "where kind = 'released' and occurred_at > now() - interval '1 hour'"
+    )
 
     SQL = (
         "select session_id, coalesce(lease_holder,''), lease_fence, "
@@ -393,6 +406,22 @@ class ActorLeaseSampler:
             capture_output=True, text=True, timeout=30,
         )
         return out.stdout.strip() == "t"
+
+    def journal_releases(self) -> set | None:
+        """{(session uuid, holder, fence)} the lease journal shows released, or
+        None when this build has no journal."""
+        out = subprocess.run(
+            ["psql", self.db_url, "-At", "-F", "\t", "-c", self.RELEASES_SQL],
+            capture_output=True, text=True, timeout=60,
+        )
+        if out.returncode != 0:
+            return None
+        rows = set()
+        for row in out.stdout.splitlines():
+            p = row.split("\t")
+            if len(p) == 3:
+                rows.add((p[0], p[1], int(p[2])))
+        return rows
 
     def run(self):
         import time as _t
@@ -417,11 +446,14 @@ class ActorLeaseSampler:
                         h[-1] = (h[-1][0], holder, int(fence), rec[3])  # keep first-seen time
             _t.sleep(self.interval)
 
-    def check(self, rep: Report, releases: dict | None = None):
-        """`releases`: session -> [(t, worker)] from the workers' "Actor
-        released" debug lines; a takeover right after the previous holder
-        released (between two samples) is not a takeover before expiry."""
+    def check(self, rep: Report, releases: dict | None = None, journal: set | None = None):
+        """`journal`: {(session, holder, fence)} released per the database's
+        lease journal; `releases`: session -> [(t, worker)] from the workers'
+        "Actor released" debug lines. A takeover right after the previous
+        holder released (between two samples) is not a takeover before
+        expiry."""
         releases = releases or {}
+        journal = journal or set()
         holders = set()
         for sid, h in self.history.items():
             fence_holder = {}
@@ -436,9 +468,12 @@ class ActorLeaseSampler:
                     if fence in fence_holder and fence_holder[fence] != holder:
                         rep.fail("actor_fence_two_holders", sid, f"fence {fence}: {fence_holder[fence]} and {holder}")
                     fence_holder[fence] = holder
-                    released = any(
-                        prev and w in prev[1] and prev[0] - 1.0 <= rt <= t + 0.5
-                        for rt, w in releases.get(sid.replace("session_", "").replace("-", ""), [])
+                    released = prev is not None and (
+                        (sid, prev[1], prev[2]) in journal
+                        or any(
+                            w in prev[1] and prev[0] - 1.0 <= rt <= t + 0.5
+                            for rt, w in releases.get(sid.replace("session_", "").replace("-", ""), [])
+                        )
                     )
                     if prev and prev[1] and prev[1] != holder and prev[3] and prev[3] > t and not released:
                         rep.fail(

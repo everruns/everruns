@@ -47,7 +47,8 @@ Fields:
 | `id` | Stable target key used in tool calls. |
 | `name` | Human-readable target label and child-session title. |
 | `description` | Prompt-visible summary for target selection. |
-| `agent_id` | Public id of the configured target Agent. |
+| `agent_id` | Public id of the configured target Agent. The only required field; on save the platform fills `id`, `name` and `description` from the agent ([Agents That Use Other Agents](agents-using-agents.md)). |
+| `harness_id` | Optional override. Omitted, the target runs on its own current harness, looked up at hand-off. |
 | `required_connections` | Provider ids that must be connected before handoff starts. |
 | `required_scopes` | Non-secret audit labels recorded in resource metadata. |
 
@@ -180,7 +181,7 @@ Create an RDS database named app-db in us-east-1.
 
 4. The first handoff should return `connection_required: "fake_aws"` if the
    fake AWS connection is not configured.
-5. Add a Fake AWS connection in Settings → My agent experience. Any non-empty key is
+5. Add a Fake AWS connection in Settings → Connections. Any non-empty key is
    accepted by the fake provider for local testing.
 6. Retry the user request. The welcome agent should call
    `spawn_agent` with `target.type = "agent"`, and the child AWS Operator session

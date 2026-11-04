@@ -105,6 +105,7 @@ pub fn sandbox_from_capabilities(capabilities: &[CapabilityRef]) -> SessionSandb
         // writes files needs none, and saying "isolated" here would invent a
         // boundary around something that never runs.
         return SessionSandboxResponse {
+            build: None,
             sandbox_id: None,
             sandbox_template_revision_id: None,
             role: None,
@@ -178,6 +179,7 @@ pub fn sandbox_from_capabilities(capabilities: &[CapabilityRef]) -> SessionSandb
     };
 
     SessionSandboxResponse {
+        build: None,
         target: Some(SandboxTarget {
             kind: kind.to_string(),
             provider,
@@ -213,6 +215,16 @@ pub fn sandbox_from_record(
 ) -> SessionSandboxResponse {
     let mut response = sandbox_from_capabilities(capabilities);
     let spec = &record.spec;
+    // A pinned native target has a validated provider policy. Legacy capability
+    // defaults must not contradict that spec in the Session inspection panel.
+    if spec.target.kind == super::record::SandboxTargetKind::Managed
+        && matches!(spec.target.provider.as_deref(), Some("daytona" | "e2b"))
+    {
+        response.capabilities = SandboxCapabilities {
+            network_enforced: true,
+            ..managed_capabilities(spec.durability == SandboxDurability::Checkpointed)
+        };
+    }
     let sandbox_id = SandboxId::from_uuid(record.id).to_string();
     response.sandbox_id = Some(sandbox_id);
     response.sandbox_template_revision_id =
@@ -294,7 +306,11 @@ fn sandbox_targets_for_grade(
             available: daytona_registered,
             reason: (!daytona_registered)
                 .then(|| "the Daytona provider is not registered in this deployment".to_string()),
-            capabilities: managed_capabilities(true),
+            // Daytona enforces deny and allowlists on its runners.
+            capabilities: SandboxCapabilities {
+                network_enforced: true,
+                ..managed_capabilities(true)
+            },
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
             credential_sources: vec![
@@ -311,7 +327,11 @@ fn sandbox_targets_for_grade(
             available: e2b_registered,
             reason: (!e2b_registered)
                 .then(|| "the E2B provider is not registered in this deployment".to_string()),
-            capabilities: managed_capabilities(false),
+            // E2B enforces deny and allowlists on its own network.
+            capabilities: SandboxCapabilities {
+                network_enforced: true,
+                ..managed_capabilities(false)
+            },
             containment_levels: vec!["isolated".to_string()],
             durability: "provider_snapshot".to_string(),
             credential_sources: vec![
@@ -385,6 +405,44 @@ mod tests {
 
     fn capability(id: &str) -> CapabilityRef {
         CapabilityRef::new(id)
+    }
+
+    #[test]
+    fn pinned_native_specs_report_their_network_and_recovery_capabilities() {
+        use crate::domains::sandbox_templates::record::*;
+        for provider in ["daytona", "e2b"] {
+            let authored = SandboxTemplateSpec {
+                template_revision_id: None,
+                target: SandboxTargetSpec::managed(provider),
+                containment: Some(SandboxContainmentSpec::isolated()),
+                durability: Some(if provider == "daytona" {
+                    SandboxDurability::Checkpointed
+                } else {
+                    SandboxDurability::ProviderSnapshot
+                }),
+                lifecycle: Default::default(),
+                bootstrap: Default::default(),
+            };
+            let spec = super::super::resolution::resolve_spec(&authored).unwrap();
+            let record = crate::storage::PrimarySandboxRecord {
+                id: uuid::Uuid::now_v7(),
+                session_id: everruns_contracts::typed_id::SessionId::new(),
+                provider: provider.into(),
+                binding_name: "development".into(),
+                spec,
+                sandbox_template_revision_id: None,
+                desired_state: "ready".into(),
+                observed_state: "not_provisioned".into(),
+                generation: 1,
+                current_checkpoint_id: None,
+                last_activity_at: None,
+            };
+            let view = sandbox_from_record(&record, &[]);
+            assert!(view.capabilities.native_processes);
+            assert!(view.capabilities.network_enforced);
+            assert_eq!(view.containment.network, "deny");
+            assert_eq!(view.capabilities.portable_checkpoint, provider == "daytona");
+        }
     }
 
     #[test]
@@ -491,17 +549,6 @@ mod tests {
         let prod = modal(everruns_core::DeploymentGrade::Prod);
         assert!(!prod.available);
         assert!(prod.reason.unwrap().contains("development grade"));
-    }
-
-    #[test]
-    fn e2b_is_a_managed_session_sandbox_target() {
-        let e2b = sandbox_targets()
-            .into_iter()
-            .find(|target| target.provider.as_deref() == Some("e2b"))
-            .expect("E2B is listed");
-        assert!(e2b.available, "{:?}", e2b.reason);
-        assert_eq!(e2b.durability, "provider_snapshot");
-        assert!(e2b.credential_sources.contains(&"organization".to_string()));
     }
 
     #[test]

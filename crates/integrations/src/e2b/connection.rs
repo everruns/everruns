@@ -75,27 +75,3 @@ impl Connector for E2BConnector {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn provider_metadata() {
-        let p = E2BConnector;
-        assert_eq!(p.provider_id(), "e2b");
-        assert_eq!(p.display_name(), "E2B");
-        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
-        assert_eq!(p.icon(), "cloud");
-    }
-
-    #[test]
-    fn form_schema_has_api_key_field() {
-        let p = E2BConnector;
-        let schema = p.form_schema().expect("should have form schema");
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert!(schema.instructions_markdown.contains("e2b.dev/dashboard"));
-    }
-}

@@ -96,6 +96,13 @@ pub fn routes(state: AppState) -> Router {
 /// The agent page's GitHub routes: commands, served by the generic adapter.
 pub fn agent_routes(state: super::state::ApiState) -> Router {
     Router::new()
+        .command::<crate::domains::agents::source::GetAgentSource>()
+        .command::<crate::domains::agents::source::GetAgentSourceOptions>()
+        .command::<crate::domains::agents::source::ListAgentSourceAccounts>()
+        .command::<crate::domains::agents::source::PreviewAgentSource>()
+        .command::<crate::domains::agents::source::ConnectAgentSource>()
+        .command::<crate::domains::agents::source::DisconnectAgentSource>()
+        .command::<crate::domains::agents::source::SyncAgentSource>()
         .command::<GetAgentGitHub>()
         .command::<ConnectAgentGitHub>()
         .command::<DisconnectAgentGitHub>()
@@ -518,6 +525,108 @@ async fn finish_setup(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn rest_routes_preview_connect_read_and_disconnect_the_same_domain_binding() {
+        use crate::domains::agents::source::{GetAgentSource, test_support::*};
+        use crate::domains::common::Command;
+        use axum::{
+            Router,
+            body::{Body, to_bytes},
+            http::{Request, StatusCode},
+        };
+        use serde_json::{Value, json};
+        use tower::ServiceExt;
+        async fn request(
+            app: &Router,
+            method: &str,
+            uri: &str,
+            body: Value,
+        ) -> (StatusCode, Value) {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(uri)
+                        .header("content-type", "application/json")
+                        .body(if body.is_null() {
+                            Body::empty()
+                        } else {
+                            Body::from(body.to_string())
+                        })
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            (status, serde_json::from_slice(&bytes).unwrap())
+        }
+        let (ctx, remote, id) = setup().await;
+        // Exercise the deployment-default policy, which does not enable skills.
+        package_with_skills(&remote, 'a', "From REST", None, false).await;
+        get(
+            &remote,
+            "/repos/acme/agents/branches",
+            json!([{"name":"main"}]),
+        )
+        .await;
+        let auth = crate::auth::AuthState::builtin(
+            crate::auth::AuthConfig {
+                mode: crate::auth::config::AuthMode::None,
+                ..Default::default()
+            },
+            ctx.db.clone(),
+        );
+        let app = crate::api::github_apps::agent_routes(crate::api::state::ApiState::new(
+            ctx.clone(),
+            auth,
+        ));
+        let uri = format!("/v1/agents/{id}/source");
+        let (status, options) = request(
+            &app,
+            "POST",
+            &format!("{uri}/options"),
+            json!({"repository":"acme/agents"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{options}");
+        assert_eq!(options["branches"], json!(["main"]));
+        let (status, preview) = request(
+            &app,
+            "POST",
+            &format!("{uri}/preview"),
+            json!({"repository":"acme/agents","branch":"main","path":""}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{preview}");
+        assert_eq!(preview["valid"], true, "{preview}");
+        let (status,result)=request(&app,"PUT",&uri,json!({"repository":"acme/agents","branch":"main","path":"","commit":preview["commit"],"agent_digest":preview["agent_digest"]})).await;
+        assert_eq!(status, StatusCode::OK, "{result}");
+        let (status, result) = request(&app, "GET", &uri, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{result}");
+        assert_eq!(result["applied_commit"], json!("a".repeat(40)));
+        let (status, result) = request(&app, "DELETE", &uri, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{result}");
+        assert!(
+            GetAgentSource {
+                agent_id: id.clone()
+            }
+            .run(&ctx)
+            .await
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(
+            crate::domains::agents::GetAgent { id }
+                .run(&ctx)
+                .await
+                .unwrap()
+                .system_prompt,
+            "From REST"
+        );
+    }
+
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
     use crate::storage::CreateVirtualUserRow;
@@ -828,75 +937,6 @@ mod tests {
             location(ui_redirect(&state, None, "failed")),
             format!("{base}/agents?github_connect=failed")
         );
-    }
-
-    /// "Connect GitHub" routes sit beside the generic `{provider}` routes; the
-    /// generic ones must still match for `github`.
-    #[tokio::test]
-    async fn github_routes_do_not_shadow_generic_provider_routes() {
-        use axum::body::Body;
-        use tower::ServiceExt;
-        let app: Router = Router::new()
-            .route(
-                "/v1/virtual-users/{identity_id}/connections/{provider}",
-                post(|| async { "generic" }).delete(|| async { "generic-delete" }),
-            )
-            .route(
-                "/v1/virtual-users/{identity_id}/connections/{provider}/verify",
-                post(|| async { "verify" }),
-            )
-            .merge(
-                Router::new()
-                    .route(
-                        "/v1/virtual-users/{identity_id}/connections/github/app",
-                        post(|| async { "app" }),
-                    )
-                    .route(
-                        "/v1/virtual-users/{identity_id}/connections/github/repositories",
-                        get(|| async { "repos" }),
-                    ),
-            );
-        for (verb, uri, expected) in [
-            ("POST", "/v1/virtual-users/i/connections/github", "generic"),
-            (
-                "DELETE",
-                "/v1/virtual-users/i/connections/github",
-                "generic-delete",
-            ),
-            (
-                "POST",
-                "/v1/virtual-users/i/connections/github/verify",
-                "verify",
-            ),
-            (
-                "POST",
-                "/v1/virtual-users/i/connections/linear/verify",
-                "verify",
-            ),
-            ("POST", "/v1/virtual-users/i/connections/github/app", "app"),
-            (
-                "GET",
-                "/v1/virtual-users/i/connections/github/repositories",
-                "repos",
-            ),
-        ] {
-            let response = app
-                .clone()
-                .oneshot(
-                    axum::http::Request::builder()
-                        .method(verb)
-                        .uri(uri)
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            assert_eq!(response.status(), StatusCode::OK, "{verb} {uri}");
-            let body = axum::body::to_bytes(response.into_body(), 1024)
-                .await
-                .unwrap();
-            assert_eq!(body, expected, "{verb} {uri}");
-        }
     }
 
     fn owner() -> ResolvedOrg {

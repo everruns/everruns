@@ -9,8 +9,11 @@
 //! Requires migrated PostgreSQL through DATABASE_URL.
 
 mod capability_mcp_acts_as;
+mod cards;
 mod resources;
 mod skills;
+mod status;
+mod tasks;
 use crate::test_harness;
 
 use axum::http::{Method, StatusCode};
@@ -142,8 +145,8 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         ("/v1/skills/config", "skills"),
         ("/v1/memories", "memory"),
         ("/v1/memories/memory_missing/fs", "memory"),
-        ("/v1/knowledge-indexes", "knowledge"),
-        ("/v1/knowledge-bases", "knowledge"),
+        ("/v1/knowledge", "knowledge"),
+        ("/v1/knowledge-indexers", "knowledge"),
         ("/v1/plugins", "plugins"),
     ] {
         let response = server.get(path).await;
@@ -179,14 +182,7 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
             .iter()
             .all(|category| !matches!(
                 category["category"].as_str(),
-                Some(
-                    "evals"
-                        | "skills"
-                        | "memories"
-                        | "knowledge_indexes"
-                        | "knowledge_bases"
-                        | "plugins"
-                )
+                Some("evals" | "skills" | "memories" | "knowledge" | "plugins")
             ))
     );
 
@@ -248,23 +244,6 @@ fn tool_text(resp: &Value) -> String {
 /// Check if a tools/call result is an error.
 fn tool_is_error(resp: &Value) -> bool {
     resp["result"]["isError"].as_bool().unwrap_or(false)
-}
-
-/// Extract the plain-text summary from a card tool result. Card tools return a
-/// content array of `[{type:"resource", ...}, {type:"text", text: summary}]`
-/// (see `card_tool_content`), so the summary lives on the first `text` item,
-/// not at `content[0]`.
-fn card_summary_text(resp: &Value) -> String {
-    resp["result"]["content"]
-        .as_array()
-        .and_then(|items| {
-            items
-                .iter()
-                .find(|item| item["type"] == "text")
-                .and_then(|item| item["text"].as_str())
-        })
-        .unwrap_or("")
-        .to_string()
 }
 
 /// Parse the text content of a tool result as JSON.
@@ -450,7 +429,7 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 13, "9 MCP tools plus 4 MCP Apps view tools");
+    assert_eq!(tools.len(), 20, "9 MCP tools plus 11 MCP Apps tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");
@@ -754,15 +733,6 @@ async fn test_mcp_notification_contract_matrix() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tools_call_unknown_tool() {
-    let server = TestServer::new().await;
-    let resp = mcp_tool_call(&server, "nonexistent_tool", json!({})).await;
-
-    assert!(tool_is_error(&resp), "Expected isError for unknown tool");
-    assert!(tool_text(&resp).contains("Unknown tool"));
-}
-
 /// EVE-492: unknown-tool errors carry the typed `structuredContent`
 /// envelope alongside the legacy `content[0].text`. The legacy text path
 /// stays the same for back-compat; new SDKs branch on the structured
@@ -916,83 +886,6 @@ async fn test_mcp_agent_run_invalid_agent_id() {
     assert!(tool_is_error(&resp), "Expected error for invalid agent_id");
 }
 
-// Regression test for the `agent_get_card` session-count bug: the count must
-// be keyed by the agent's internal id, not its public id. Public and internal
-// ids are distinct UUIDs (see `crates/server/src/storage/repositories/agents/mod.rs`
-// where `id` and `public_id` are populated independently), and
-// `sessions.agent_id` references `agents.id`. If the count keyed by public_id
-// instead, the assertion below would observe `0` sessions despite one existing.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
-    let server = TestServer::new().await;
-
-    // Create an agent via REST (auto-generated public_id != internal_id).
-    let agent: Value = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": format!("card-count-agent-{}", unique_suffix()),
-                "display_name": "Card Count Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_success()
-        .json();
-    let agent_public_id = agent["id"].as_str().unwrap().to_string();
-
-    // Baseline: no sessions yet, card should report 0.
-    let resp = mcp_tool_call_latest(
-        &server,
-        "agent_get_card",
-        json!({ "agent_id": agent_public_id }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&resp),
-        "agent_get_card failed: {}",
-        tool_text(&resp)
-    );
-    assert!(
-        card_summary_text(&resp).contains("0 session(s)"),
-        "expected 0 sessions in summary, got: {}",
-        card_summary_text(&resp)
-    );
-
-    // Create a session bound to this agent (REST resolves public_id ->
-    // internal_id and stores the internal id in `sessions.agent_id`).
-    let _session: Value = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_public_id,
-            }),
-        )
-        .await
-        .assert_success()
-        .json();
-
-    // Now the card must reflect 1 session. With the old (buggy) code that
-    // counted by public_id, this would still be 0.
-    let resp = mcp_tool_call_latest(
-        &server,
-        "agent_get_card",
-        json!({ "agent_id": agent_public_id }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&resp),
-        "agent_get_card failed: {}",
-        tool_text(&resp)
-    );
-    assert!(
-        card_summary_text(&resp).contains("1 session(s)"),
-        "expected 1 session in summary, got: {}",
-        card_summary_text(&resp)
-    );
-}
-
 // ============================================================================
 // Tier 1: session_send_message
 // ============================================================================
@@ -1079,101 +972,6 @@ async fn test_mcp_session_send_message_nonexistent_session() {
     )
     .await;
 
-    assert!(
-        tool_is_error(&resp),
-        "Expected error for nonexistent session"
-    );
-}
-
-// ============================================================================
-// Tier 1: session_get_status
-// ============================================================================
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status() {
-    let server = TestServer::new().await;
-
-    // Create a session
-    let run_resp = mcp_tool_call(&server, "agent_run", json!({ "message": "Status test" })).await;
-    assert!(
-        !tool_is_error(&run_resp),
-        "agent_run failed: {}",
-        tool_text(&run_resp)
-    );
-    let session_id = tool_json(&run_resp)["session_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    // Get status
-    let resp = mcp_tool_call(
-        &server,
-        "session_get_status",
-        json!({ "session_id": session_id }),
-    )
-    .await;
-
-    assert!(
-        !tool_is_error(&resp),
-        "session_get_status failed: {}",
-        tool_text(&resp)
-    );
-    let result = tool_json(&resp);
-    assert_eq!(result["session_id"], session_id);
-    assert!(result["status"].is_string());
-    assert!(result["events"].is_array());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status_with_event_filter() {
-    let server = TestServer::new().await;
-
-    // Create a session
-    let run_resp = mcp_tool_call(&server, "agent_run", json!({ "message": "Filter test" })).await;
-    assert!(
-        !tool_is_error(&run_resp),
-        "agent_run failed: {}",
-        tool_text(&run_resp)
-    );
-    let session_id = tool_json(&run_resp)["session_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    // Get status with event type filter
-    let resp = mcp_tool_call(
-        &server,
-        "session_get_status",
-        json!({
-            "session_id": session_id,
-            "event_types": ["session.idled"]
-        }),
-    )
-    .await;
-
-    assert!(
-        !tool_is_error(&resp),
-        "session_get_status failed: {}",
-        tool_text(&resp)
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status_missing_session_id() {
-    let server = TestServer::new().await;
-    let resp = mcp_tool_call(&server, "session_get_status", json!({})).await;
-    assert!(tool_is_error(&resp));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status_nonexistent() {
-    let server = TestServer::new().await;
-    let resp = mcp_tool_call(
-        &server,
-        "session_get_status",
-        json!({ "session_id": "session_00000000000000000000000000000000" }),
-    )
-    .await;
     assert!(
         tool_is_error(&resp),
         "Expected error for nonexistent session"
@@ -1271,24 +1069,6 @@ async fn test_mcp_discover_harnesses() {
             .as_array()
             .is_some_and(|fields| fields.iter().any(|field| field == "id")),
         "exact discovery should expose compact jq field paths"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_discover_mcp_servers() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_tool_call(&server, "discover", json!({ "query": "mcp" })).await;
-
-    assert!(
-        !tool_is_error(&resp),
-        "discover failed: {}",
-        tool_text(&resp)
-    );
-    let payload = tool_json(&resp);
-    let text = payload.to_string();
-    assert!(
-        text.contains("mcp"),
-        "discover should find MCP-related operations"
     );
 }
 
@@ -1473,21 +1253,6 @@ async fn test_mcp_discover_resource_phrase_ranks_read_paths() {
 // ============================================================================
 // Tier 2: query/execute scripted tools
 // ============================================================================
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_query_list_harnesses() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_tool_call(&server, "query", json!({ "commands": "list_harnesses" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "query list_harnesses failed: {}",
-        tool_text(&resp)
-    );
-
-    let result = tool_json(&resp);
-    let harnesses = result.as_array().expect("Expected harnesses array");
-    assert!(!harnesses.is_empty(), "Should have seed harnesses");
-}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_query_reporting_catalog_and_model_usage() {
@@ -1841,21 +1606,6 @@ async fn test_mcp_execute_session_files_reads_virtual_mounts() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_agents() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_agents" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_agents failed: {}",
-        tool_text(&resp)
-    );
-
-    let result = tool_json(&resp);
-    assert!(result["data"].is_array());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_create_and_get_agent() {
     let (_server, url) = TestServer::serving().await;
 
@@ -1893,31 +1643,6 @@ async fn test_mcp_execute_create_and_get_agent() {
 
     let fetched = tool_json(&resp);
     assert_eq!(fetched["name"], "mcp-execute-agent");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_models() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_models" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_models failed: {}",
-        tool_text(&resp)
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_capabilities() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp =
-        mcp_tool_call_http(&url, "execute", json!({ "commands": "list_capabilities" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_capabilities failed: {}",
-        tool_text(&resp)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2120,18 +1845,6 @@ async fn test_mcp_execute_argument_coercion_contract_matrix() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_mcp_servers() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_mcp_servers" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_mcp_servers failed: {}",
-        tool_text(&resp)
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_create_mcp_server() {
     let (_server, url) = TestServer::serving().await;
 
@@ -2269,63 +1982,43 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
         .as_str()
         .expect("org2 session id");
 
-    let discover_agents = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "agent", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_agents),
-        "discover agent failed: {}",
-        tool_text(&discover_agents)
-    );
-    let discover_agent_text = tool_text(&discover_agents);
-    assert!(discover_agent_text.contains("list_agents"));
-    assert!(discover_agent_text.contains("get_agent"));
-
-    // Broad entity discovery is intentionally bounded and read-first. Resolve
-    // the mutation by exact name before exercising its tenant boundary below.
-    let discover_update_agent = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "update_agent", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_update_agent),
-        "discover update_agent failed: {}",
-        tool_text(&discover_update_agent)
-    );
-    assert!(tool_text(&discover_update_agent).contains("update_agent"));
-
-    let discover_sessions = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "session", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_sessions),
-        "discover session failed: {}",
-        tool_text(&discover_sessions)
-    );
-    let discover_session_text = tool_text(&discover_sessions);
-    assert!(discover_session_text.contains("list_sessions"));
-    assert!(discover_session_text.contains("get_session"));
-
-    let discover_create_message = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "create_message", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_create_message),
-        "discover create_message failed: {}",
-        tool_text(&discover_create_message)
-    );
-    assert!(tool_text(&discover_create_message).contains("create_message"));
+    // Broad searches are bounded and their rankings change as the catalog
+    // grows. Resolve every command exactly so this chain always reaches its
+    // tenant-boundary assertions instead of depending on the first page.
+    for command in [
+        "list_agents",
+        "get_agent",
+        "update_agent",
+        "list_sessions",
+        "get_session",
+        "create_message",
+    ] {
+        let response = mcp_tool_call(
+            &server,
+            "discover",
+            json!({ "query": command, "include_schemas": true }),
+        )
+        .await;
+        assert!(
+            !tool_is_error(&response),
+            "discover {command} failed: {}",
+            tool_text(&response)
+        );
+        let payload = tool_json(&response);
+        let operations = payload["operations"].as_array().unwrap();
+        assert_eq!(operations.len(), 1, "exact lookup for {command}: {payload}");
+        assert_eq!(operations[0]["name"], command);
+        assert_eq!(payload["include_schemas"], true);
+        // Oversized schemas are intentionally replaced by runnable help.
+        assert!(
+            operations[0]
+                .get("help")
+                .or_else(|| operations[0].get("bash_usage"))
+                .and_then(Value::as_str)
+                .is_some(),
+            "missing command help for {command}: {payload}"
+        );
+    }
 
     let wrong_org_query = mcp_tool_call(
         &server,
@@ -2518,18 +2211,6 @@ async fn test_mcp_execute_bash_script() {
 
     let count: i64 = tool_text(&resp).trim().parse().unwrap();
     assert!(count >= 1, "Should have at least 1 agent after creation");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_providers() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_providers" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "list_providers failed: {}",
-        tool_text(&resp)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3071,7 +2752,7 @@ async fn test_oauth_token_is_mcp_scoped_with_audience() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_oauth_refresh_token_rotates_and_rejects_reuse() {
+async fn test_oauth_refresh_token_rotates_with_one_grace_replay() {
     let server = TestServer::in_memory().await;
     let (client_id, client_secret) = register_oauth_client(&server).await;
     let initial: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
@@ -3095,18 +2776,25 @@ async fn test_oauth_refresh_token_rotates_and_rejects_reuse() {
         jwt_lifetime_secs(refreshed["access_token"].as_str().unwrap())
     );
 
+    // A replay right after rotation (lost response) is honoured once.
+    let replayed: Value =
+        refresh_mcp_oauth_token(&server, &client_id, &client_secret, &old_refresh)
+            .await
+            .assert_success()
+            .json();
+    assert_ne!(replayed["refresh_token"], refreshed["refresh_token"]);
+
     let reuse = refresh_mcp_oauth_token(&server, &client_id, &client_secret, &old_refresh).await;
     assert_eq!(reuse.status(), StatusCode::BAD_REQUEST);
-    let body: Value = reuse.json();
-    assert_eq!(body["error"], "invalid_grant");
-
+    assert_eq!(reuse.json::<Value>()["error"], "invalid_grant");
+    // A refused in-window replay revokes nothing.
     refresh_mcp_oauth_token(&server, &client_id, &client_secret, &new_refresh)
         .await
         .assert_success();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_oauth_refresh_token_concurrent_retries_are_single_use() {
+async fn test_oauth_refresh_token_concurrent_retries_both_succeed() {
     let server = TestServer::in_memory().await;
     let (client_id, client_secret) = register_oauth_client(&server).await;
     let initial: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
@@ -3115,33 +2803,22 @@ async fn test_oauth_refresh_token_concurrent_retries_are_single_use() {
         .expect("initial refresh_token must be present")
         .to_string();
 
+    // Two sessions of one host refreshing together must not force a reconnect:
+    // one rotates, the other takes the single grace replay.
     let (first, second) = tokio::join!(
         refresh_mcp_oauth_token(&server, &client_id, &client_secret, &refresh),
         refresh_mcp_oauth_token(&server, &client_id, &client_secret, &refresh),
     );
+    let first: Value = first.assert_success().json();
+    let second: Value = second.assert_success().json();
+    assert_ne!(first["refresh_token"], second["refresh_token"]);
 
-    let statuses = [first.status(), second.status()];
-    assert_eq!(
-        statuses.iter().filter(|status| status.is_success()).count(),
-        1,
-        "exactly one concurrent refresh should succeed: {statuses:?}",
-    );
-    assert_eq!(
-        statuses
-            .iter()
-            .filter(|status| **status == StatusCode::BAD_REQUEST)
-            .count(),
-        1,
-        "exactly one concurrent refresh should fail as invalid_grant: {statuses:?}",
-    );
-
-    let failed = if first.status().is_success() {
-        second
-    } else {
-        first
-    };
-    let body: Value = failed.json();
-    assert_eq!(body["error"], "invalid_grant");
+    for next in [&first, &second] {
+        let next = next["refresh_token"].as_str().unwrap();
+        refresh_mcp_oauth_token(&server, &client_id, &client_secret, next)
+            .await
+            .assert_success();
+    }
 }
 
 /// Helper: create a single authorization code and return the params needed to
@@ -3458,13 +3135,11 @@ async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
     );
 }
 
-/// The consent page must carry its own CSP whose `form-action` allows every
-/// hop of the confirm POST's redirect chain: Chrome checks each hop, so both
-/// the global `form-action 'self'` and allowing only the callback origin (when
-/// Cursor's `www.cursor.com` 308s on to `cursor.com`) make the click silently
-/// do nothing. See `security_headers::oauth_consent_page_csp`.
+/// Browsers apply `form-action` to every hop of the confirm POST's redirect
+/// chain. The registered callback can redirect again to an unknown origin or
+/// loopback port, so this page must not carry that directive.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
+async fn test_oauth_authorize_page_csp_does_not_block_callback_redirects() {
     let server = TestServer::in_memory().await;
     let (client_id, _) = register_oauth_client(&server).await;
 
@@ -3476,9 +3151,11 @@ async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
         .get("content-security-policy")
         .and_then(|v| v.to_str().ok())
         .expect("consent page must set its own content-security-policy");
+    assert!(!csp.contains("form-action"), "got: {csp}");
+    assert!(csp.contains("frame-ancestors 'none'"), "got: {csp}");
     assert!(
-        csp.ends_with("form-action 'self' https: http://localhost:9999"),
-        "form-action must allow https hops and the loopback callback origin, got: {csp}"
+        page.text()
+            .contains(r#"<form method="post" action="/oauth/authorize">"#)
     );
 }
 
@@ -3540,495 +3217,13 @@ async fn test_oauth_register_is_rate_limited() {
 }
 
 // ============================================================================
-// MCP 2026-07-28 Tasks extension (SEP-2663)
+// MCP 2026-07-28 protocol (Tasks extension tests live in `tasks.rs`)
 // ============================================================================
 
 /// The real 2026-07-28 protocol version. The file-level `..._LATEST` const is
 /// `2025-06-18` (the version that first exposed the richer tool shape); the
 /// Tasks extension needs the actual negotiated 2026 version.
 const MCP_PROTOCOL_VERSION_2026: &str = "2026-07-28";
-
-/// Per-request `_meta` block that advertises the Tasks extension opt-in, as an
-/// MCP 2026 client would send it.
-fn tasks_opt_in_meta() -> Value {
-    json!({
-        "io.modelcontextprotocol/clientCapabilities": {
-            "extensions": { "io.modelcontextprotocol/tasks": {} }
-        }
-    })
-}
-
-fn assert_final_tasks_duration_fields(result: &Value) {
-    assert!(
-        result.get("ttlMs").and_then(Value::as_u64).is_some(),
-        "final SEP-2663 task shape must include ttlMs, got: {result}"
-    );
-    assert!(
-        result
-            .get("pollIntervalMs")
-            .and_then(Value::as_u64)
-            .is_some(),
-        "final SEP-2663 task shape must include pollIntervalMs, got: {result}"
-    );
-    assert!(
-        result.get("ttlSeconds").is_none(),
-        "draft ttlSeconds field must not be emitted, got: {result}"
-    );
-    assert!(
-        result.get("pollIntervalMilliseconds").is_none(),
-        "draft pollIntervalMilliseconds field must not be emitted, got: {result}"
-    );
-}
-
-/// tools/call with the 2026 protocol header AND the tasks opt-in `_meta`.
-async fn mcp_task_tool_call(server: &TestServer, tool: &str, arguments: Value) -> Value {
-    mcp_call_with_headers(
-        server,
-        "tools/call",
-        json!({ "name": tool, "arguments": arguments, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await
-}
-
-/// A 2026 `initialize` advertises the tasks extension under
-/// `capabilities.extensions`.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_capability_advertised_for_2026() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_call(
-        &server,
-        "initialize",
-        json!({ "protocolVersion": MCP_PROTOCOL_VERSION_2026 }),
-    )
-    .await;
-
-    assert_eq!(resp["result"]["protocolVersion"], MCP_PROTOCOL_VERSION_2026);
-    assert!(
-        resp["result"]["capabilities"]["extensions"]["io.modelcontextprotocol/tasks"].is_object(),
-        "2026 initialize must advertise the tasks extension, got: {}",
-        resp["result"]["capabilities"]
-    );
-}
-
-/// 2025-* `initialize` responses are unchanged — no `extensions` key.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_capability_absent_for_2025() {
-    let server = TestServer::in_memory().await;
-    for version in [MCP_PROTOCOL_VERSION_LATEST, MCP_PROTOCOL_VERSION_FALLBACK] {
-        let resp = mcp_call(&server, "initialize", json!({ "protocolVersion": version })).await;
-        assert_eq!(resp["result"]["protocolVersion"], version);
-        assert!(
-            resp["result"]["capabilities"].get("extensions").is_none(),
-            "2025 initialize ({version}) must not advertise extensions, got: {}",
-            resp["result"]["capabilities"]
-        );
-    }
-}
-
-/// A 2026 tasks-opted-in `agent_run` returns the CreateTaskResult task-handle
-/// shape (resultType/taskId/status) alongside the existing session fields.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_agent_run_returns_task_handle_for_2026() {
-    let server = TestServer::new().await;
-
-    let resp =
-        mcp_task_tool_call(&server, "agent_run", json!({ "message": "Hello via task" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "agent_run failed: {}",
-        tool_text(&resp)
-    );
-
-    let result = &resp["result"];
-    // Additive task handle.
-    assert_eq!(result["resultType"], "task");
-    let task_id = result["taskId"].as_str().expect("taskId present");
-    assert!(task_id.starts_with("session_"), "taskId is session id");
-    assert_eq!(result["status"], "working");
-    assert_final_tasks_duration_fields(result);
-
-    // Legacy content preserved: taskId equals the session_id in the body.
-    let body = tool_json(&resp);
-    assert_eq!(body["session_id"].as_str(), Some(task_id));
-}
-
-/// Without the opt-in `_meta`, a 2026 `agent_run` does NOT get task fields —
-/// the server must not push tasks onto a client that didn't advertise support.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_agent_run_no_task_handle_without_opt_in() {
-    let server = TestServer::new().await;
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tools/call",
-        json!({ "name": "agent_run", "arguments": { "message": "Hi" } }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    // 2026 marks every result's type, so the absence of a task shows up as
-    // `complete` rather than a missing field.
-    assert_eq!(resp["result"]["resultType"], "complete");
-    assert!(resp["result"].get("taskId").is_none());
-}
-
-/// 2025-* clients never see task fields even if they somehow send the `_meta`.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_agent_run_no_task_handle_for_2025() {
-    let server = TestServer::new().await;
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tools/call",
-        json!({ "name": "agent_run", "arguments": { "message": "Hi" }, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
-    )
-    .await;
-
-    assert!(
-        !tool_is_error(&resp),
-        "agent_run failed: {}",
-        tool_text(&resp)
-    );
-    assert!(resp["result"].get("resultType").is_none());
-    assert!(resp["result"].get("taskId").is_none());
-}
-
-/// tasks/get resolves a task handle (session_id) to a Task object with a
-/// lifecycle status and a result snapshot.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_get_round_trip() {
-    let server = TestServer::new().await;
-
-    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "task get" })).await;
-    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/get",
-        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    let result = &resp["result"];
-    assert_eq!(result["taskId"].as_str(), Some(task_id.as_str()));
-    assert_final_tasks_duration_fields(result);
-    let status = result["status"].as_str().unwrap();
-    assert!(
-        [
-            "working",
-            "input_required",
-            "completed",
-            "failed",
-            "cancelled"
-        ]
-        .contains(&status),
-        "unexpected task status: {status}"
-    );
-    // The session_get_status payload is surfaced as the task result.
-    assert_eq!(
-        result["result"]["session_id"].as_str(),
-        Some(task_id.as_str())
-    );
-}
-
-/// Seed a deterministic structured result (EVE-678) on `session_id`: create a
-/// `result_schema`-bound task owned by the session, point it at a result file,
-/// and write that file into the session's workspace VFS.
-async fn seed_structured_result(server: &TestServer, session_id: &str, result: Value) {
-    use everruns_core::session_task::{
-        CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task, task_result_path,
-    };
-    use everruns_server::storage::CreateSessionFileRow;
-
-    let sid = session_id.parse::<SessionId>().expect("valid session id");
-    let session = server
-        .db
-        .get_session(DEFAULT_ORG_ID, sid)
-        .await
-        .expect("get_session")
-        .expect("session exists");
-
-    let task = new_session_task(
-        CreateSessionTask {
-            session_id: sid,
-            id: None,
-            kind: "subagent".to_string(),
-            display_name: "structured result".to_string(),
-            spec: json!({ "result_schema": { "type": "object" } }),
-            state: SessionTaskState::Running,
-            links: Default::default(),
-            wake_policy: Default::default(),
-        },
-        chrono::Utc::now(),
-    );
-    server
-        .db
-        .create_session_task(&task)
-        .await
-        .expect("create task");
-
-    let path = task_result_path(&task.id);
-    server
-        .db
-        .update_session_task(
-            sid,
-            &task.id,
-            SessionTaskUpdate {
-                state: Some(SessionTaskState::Succeeded),
-                result_path: Some(path.clone()),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("set result_path");
-
-    server
-        .db
-        .create_session_file(CreateSessionFileRow {
-            session_id: SessionId::from_uuid(session.workspace_id),
-            path,
-            content: Some(serde_json::to_vec(&result).unwrap()),
-            is_directory: false,
-            is_readonly: false,
-        })
-        .await
-        .expect("write result file");
-}
-
-async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, result: Value) {
-    use everruns_core::session_task::{
-        CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
-    };
-    use everruns_server::storage::CreateSessionFileRow;
-
-    let sid = session_id.parse::<SessionId>().expect("valid session id");
-    let session = server
-        .db
-        .get_session(DEFAULT_ORG_ID, sid)
-        .await
-        .expect("get_session")
-        .expect("session exists");
-
-    let task = new_session_task(
-        CreateSessionTask {
-            session_id: sid,
-            id: None,
-            kind: "background_tool".to_string(),
-            display_name: "background result".to_string(),
-            spec: json!({ "tool": "internal_scan" }),
-            state: SessionTaskState::Running,
-            links: Default::default(),
-            wake_policy: Default::default(),
-        },
-        chrono::Utc::now(),
-    );
-    server
-        .db
-        .create_session_task(&task)
-        .await
-        .expect("create non-schema task");
-
-    let path = format!("/.background/{}/result.json", task.id);
-    server
-        .db
-        .update_session_task(
-            sid,
-            &task.id,
-            SessionTaskUpdate {
-                state: Some(SessionTaskState::Succeeded),
-                result_path: Some(path.clone()),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("set non-schema result_path");
-
-    server
-        .db
-        .create_session_file(CreateSessionFileRow {
-            session_id: SessionId::from_uuid(session.workspace_id),
-            path,
-            content: Some(serde_json::to_vec(&result).unwrap()),
-            is_directory: false,
-            is_readonly: false,
-        })
-        .await
-        .expect("write non-schema result file");
-}
-
-/// EVE-728: when a task reported a schema-bound `result.json`, `tasks/get`
-/// surfaces it under `result.structured_result` for Tasks clients — not just
-/// the last-message / status snapshot.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_get_surfaces_structured_result() {
-    let server = TestServer::new().await;
-
-    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "task result" })).await;
-    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
-
-    // Before a structured result is reported, only the status snapshot is
-    // present under `result`.
-    let before = mcp_call_with_headers(
-        &server,
-        "tasks/get",
-        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-    assert!(
-        before["result"]["result"]
-            .get("structured_result")
-            .is_none()
-    );
-
-    let expected = json!({ "verdict": "ok", "score": 42 });
-    seed_structured_result(&server, &task_id, expected.clone()).await;
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/get",
-        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    assert_eq!(resp["result"]["taskId"].as_str(), Some(task_id.as_str()));
-    assert_eq!(resp["result"]["result"]["structured_result"], expected);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_get_ignores_non_schema_result_path() {
-    let server = TestServer::in_memory().await;
-
-    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "task result" })).await;
-    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
-
-    seed_non_schema_result_path(&server, &task_id, json!({ "internal": "tool-output" })).await;
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/get",
-        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    assert!(
-        resp["result"]["result"].get("structured_result").is_none(),
-        "non-schema result_path leaked as structured_result: {resp}"
-    );
-}
-
-/// tasks/get for 2025-* is method_not_found (extension doesn't exist there).
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_get_rejected_for_2025() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/get",
-        json!({ "taskId": "session_00000000000000000000000000000000" }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
-    )
-    .await;
-    assert_eq!(resp["error"]["code"], -32601, "expected method not found");
-}
-
-/// tasks/* for 2026 clients still require the per-request Tasks opt-in.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_get_rejected_without_tasks_opt_in() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/get",
-        json!({ "taskId": "session_00000000000000000000000000000000" }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-    assert_eq!(resp["error"]["code"], -32601, "expected method not found");
-}
-
-/// tasks/update sends input to a session and returns an updated Task object.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_update_round_trip() {
-    let server = TestServer::new().await;
-
-    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "first" })).await;
-    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/update",
-        json!({ "taskId": task_id, "message": "follow up", "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    let result = &resp["result"];
-    assert_eq!(result["taskId"].as_str(), Some(task_id.as_str()));
-    assert!(result["status"].is_string());
-    // Underlying session_send_message result surfaced under `result`.
-    assert!(result["result"]["message_id"].as_str().is_some());
-}
-
-/// tasks/update accepts the SEP-2663 `inputResponses` map form too.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_update_accepts_input_responses_map() {
-    let server = TestServer::new().await;
-
-    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "first" })).await;
-    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/update",
-        json!({ "taskId": task_id, "inputResponses": { "prompt": "map form input" }, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    assert_eq!(resp["result"]["taskId"].as_str(), Some(task_id.as_str()));
-    assert!(resp["result"]["result"]["message_id"].as_str().is_some());
-}
-
-/// tasks/cancel acknowledges cancellation of a task handle.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_cancel_round_trip() {
-    let server = TestServer::new().await;
-
-    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "cancel me" })).await;
-    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/cancel",
-        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    let result = &resp["result"];
-    assert_eq!(result["taskId"].as_str(), Some(task_id.as_str()));
-    // Cooperative cancel: status is a valid lifecycle value (often the
-    // post-cancel session state rather than literally `cancelled`).
-    assert!(result["status"].is_string());
-}
-
-/// tasks/* with a missing taskId is an invalid-params error.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tasks_get_missing_task_id() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_call_with_headers(
-        &server,
-        "tasks/get",
-        json!({ "_meta": tasks_opt_in_meta() }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-    assert_eq!(resp["error"]["code"], -32602, "expected invalid params");
-}
 
 // ===========================================================================
 // 2026-07-28 cacheable results (`resultType` / `ttlMs` / `cacheScope`)

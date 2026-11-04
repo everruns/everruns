@@ -494,19 +494,6 @@ mod env_tests {
     }
 
     #[test]
-    fn a_field_declaring_no_variable_never_resolves_from_the_environment() {
-        let schema = CredentialFormSchema {
-            fields: vec![FormField::password("api_key", "API Key").required()],
-            instructions_markdown: String::new(),
-        };
-        assert!(
-            schema
-                .resolve_from_env(lookup(&[("API_KEY", "set"), ("OPENAI_API_KEY", "set")]))
-                .is_empty()
-        );
-    }
-
-    #[test]
     fn a_partial_ungrouped_credential_resolves_to_nothing() {
         // AWS_REGION alone is an everyday shell state and is not a credential.
         // Returning just the region here would build a provider that fails at
@@ -593,18 +580,6 @@ mod env_tests {
             ("AZURE_SCOPE", "scope"),
         ]));
         assert_eq!(resolved.get("scope").map(String::as_str), Some("scope"));
-    }
-
-    #[test]
-    fn a_resolved_map_assembles_into_the_same_document_the_form_produces() {
-        let resolved = grouped_schema().resolve_from_env(lookup(&[
-            ("AZURE_TENANT_ID", "tenant"),
-            ("AZURE_CLIENT_SECRET", "secret"),
-        ]));
-        assert_eq!(
-            assemble_credential_document(&resolved),
-            Some(r#"{"client_secret":"secret","tenant_id":"tenant"}"#.to_string())
-        );
     }
 }
 

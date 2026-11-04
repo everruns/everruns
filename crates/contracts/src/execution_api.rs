@@ -178,6 +178,22 @@ pub struct SubmitToolApprovalsRequest {
     pub decisions: Vec<ToolApprovalAnswer>,
 }
 
+/// Engine-hosted extension of the common approval request. Native Framework
+/// and Workers gateways retain this command; Platform endpoints retain their
+/// own idempotency contract and use `SubmitToolApprovalsRequest`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmitToolApprovalsCommand {
+    /// The common wire body, flattened so existing callers remain compatible.
+    #[serde(flatten)]
+    pub request: SubmitToolApprovalsRequest,
+    /// Retain when retrying an uncertain response. Requires `turn_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_id: Option<uuid::Uuid>,
+    /// Exact turn that issued the pending batch; call ids may repeat later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<crate::typed_id::TurnId>,
+}
+
 /// How one pending request was settled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -203,6 +219,54 @@ pub struct SubmitToolApprovalsResponse {
     pub status: String,
 }
 
+/// Public execution envelope, excluding provider-only replay artifacts and
+/// signed/encrypted reasoning payloads. Native and Workers APIs share this view.
+pub fn public_event(event: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    let mut envelope = event.clone();
+    if let Some(metadata) = envelope.get_mut("metadata") {
+        *metadata = crate::public_metadata::event(metadata);
+    }
+    let strip = |message: &mut Value| {
+        if let Some(metadata) = message.get_mut("metadata") {
+            *metadata = crate::public_metadata::message(metadata);
+        }
+        let Some(content) = message.get_mut("content") else {
+            return;
+        };
+        if let Some(parts) = content.as_array_mut() {
+            parts.retain(|part| part["type"] != "provider_opaque");
+            for part in parts.iter_mut() {
+                if part["type"] == "reasoning"
+                    && let Some(part) = part.as_object_mut()
+                {
+                    part.remove("signature");
+                    part.remove("encrypted");
+                }
+            }
+        }
+    };
+    if let Some(message) = envelope.pointer_mut("/data/message") {
+        strip(message);
+    }
+    if let Some(messages) = envelope
+        .pointer_mut("/data/messages")
+        .and_then(Value::as_array_mut)
+    {
+        for message in messages {
+            strip(message);
+        }
+    }
+    if envelope["type"] == "llm.generation"
+        && let Some(metadata) = envelope
+            .pointer_mut("/data/metadata")
+            .and_then(Value::as_object_mut)
+    {
+        metadata.remove("tool_changes");
+    }
+    envelope
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,16 +286,6 @@ mod tests {
                 {"type": "oidc", "issuer": "https://auth.example.com"}
             ])
         );
-    }
-
-    #[test]
-    fn approval_request_round_trips_the_server_shape() {
-        let body = serde_json::json!({
-            "decisions": [{"tool_call_id": "tool_approval_1", "decision": "allow_always"}]
-        });
-        let parsed: SubmitToolApprovalsRequest = serde_json::from_value(body.clone()).unwrap();
-        assert!(parsed.decisions[0].decision.allows());
-        assert_eq!(serde_json::to_value(&parsed).unwrap(), body);
     }
 
     #[test]

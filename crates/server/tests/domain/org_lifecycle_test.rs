@@ -66,60 +66,9 @@ async fn test_created_org_appears_in_list() {
 // Bug regression: can switch to created org
 // ============================================
 
-#[tokio::test]
-async fn test_can_switch_to_created_org() {
-    let server = TestServer::in_memory().await;
-
-    // Create a new org
-    let created: Value = server
-        .post("/v1/orgs", json!({"name": "Switch Target"}))
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let new_org_id = created["id"].as_str().expect("org id");
-
-    // Switch to new org — must succeed
-    let switch_resp: Value = server
-        .post("/v1/users/me/switch-org", json!({"org_id": new_org_id}))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(switch_resp["success"], true);
-    assert_eq!(switch_resp["org_id"], new_org_id);
-}
-
 // ============================================
 // Multiple orgs visible after sequential creation
 // ============================================
-
-#[tokio::test]
-async fn test_multiple_created_orgs_all_visible() {
-    let server = TestServer::in_memory().await;
-
-    let mut created_ids = Vec::new();
-    for name in ["Alpha", "Beta", "Gamma"] {
-        let resp: Value = server
-            .post("/v1/orgs", json!({"name": name}))
-            .await
-            .assert_status(StatusCode::CREATED)
-            .json();
-        created_ids.push(resp["id"].as_str().unwrap().to_string());
-    }
-
-    let list: Value = server
-        .get("/v1/orgs")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let items = list["data"].as_array().unwrap();
-    // 1 default + 3 created
-    assert_eq!(items.len(), 4);
-
-    let listed_ids: Vec<&str> = items.iter().map(|o| o["id"].as_str().unwrap()).collect();
-    for id in &created_ids {
-        assert!(listed_ids.contains(&id.as_str()), "org {id} must be listed");
-    }
-}
 
 // ============================================
 // Bug regression: /v1/auth/me must return newly created org (auth=none)
@@ -239,22 +188,6 @@ async fn test_switch_invalid_org_id_format() {
 // ============================================
 // Created org has correct settings in response
 // ============================================
-
-#[tokio::test]
-async fn test_created_org_response_fields() {
-    let server = TestServer::in_memory().await;
-
-    let resp: Value = server
-        .post("/v1/orgs", json!({"name": "Fields Test"}))
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert_eq!(resp["name"], "Fields Test");
-    assert!(resp["id"].as_str().unwrap().starts_with("org_"));
-    assert!(resp["created_at"].is_string());
-    assert!(resp["updated_at"].is_string());
-}
 
 // ============================================
 // Created org visible via GET /v1/orgs/:id

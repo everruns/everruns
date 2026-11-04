@@ -53,7 +53,7 @@ impl Command for ManageSessionSandbox {
             .ok_or_else(|| {
                 CommandError::bad_request("Session sandbox is not configured for this session")
             })?;
-        let tool_context = service.tool_context(session_id);
+        let tool_context = service.tool_context(session_id).await;
 
         match self.action {
             SessionSandboxAction::Pause => {
@@ -253,6 +253,7 @@ mod tests {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "sandbox-harness".to_string(),
                 display_name: Some("Sandbox Harness".to_string()),
                 icon: None,

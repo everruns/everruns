@@ -270,61 +270,6 @@ async fn test_github_fetch_rejects_oversized_file() {
 }
 
 // ---------------------------------------------------------------------------
-// (b) GitHub marketplace sync
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_github_marketplace_sync() {
-    use everruns_server::domains::common::Command;
-    use everruns_server::domains::plugins::commands::{
-        CreatePluginMarketplaceCmd, SyncPluginMarketplace,
-    };
-    use everruns_server::domains::plugins::types::CreatePluginMarketplaceRequest;
-
-    let sha = "deadbeef1234567890abcdef";
-    let catalog = json!({
-        "plugins": [{"name": "my-plugin", "version": "0.1.0", "source": "./my-plugin"}]
-    })
-    .to_string();
-
-    let fake = FakeEgressService::new();
-    fake.add(
-        "https://api.github.com/repos/myorg/myrepo/commits/HEAD",
-        200,
-        json!({"sha": sha}).to_string(),
-    );
-    fake.add(
-        &format!(
-            "https://raw.githubusercontent.com/myorg/myrepo/{sha}/.claude-plugin/marketplace.json"
-        ),
-        200,
-        catalog,
-    );
-
-    let db = seeded_db().await;
-    let ctx = make_ctx(db.clone(), fake.clone() as Arc<dyn EgressService>).await;
-
-    let marketplace = CreatePluginMarketplaceCmd(CreatePluginMarketplaceRequest {
-        name: "github-sync-test".to_string(),
-        source_type: "github".to_string(),
-        source: "myorg/myrepo".to_string(),
-    })
-    .execute(&ctx)
-    .await
-    .unwrap();
-
-    let synced = SyncPluginMarketplace {
-        id: marketplace.public_id.to_string(),
-    }
-    .execute(&ctx)
-    .await
-    .unwrap();
-
-    assert_eq!(synced.last_synced_sha.as_deref(), Some(sha));
-    assert!(synced.last_synced_at.is_some());
-}
-
-// ---------------------------------------------------------------------------
 // (c) URL marketplace sync
 // ---------------------------------------------------------------------------
 

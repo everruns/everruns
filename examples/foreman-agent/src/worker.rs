@@ -241,15 +241,30 @@ pub async fn pump_session(
     mut stream: everruns::EventStream,
     pending: everruns::SentMessage,
 ) {
-    let turn_id = pending.turn_id.clone();
+    let mut turn_id = pending.turn_id.clone();
     loop {
-        let event = match stream.recv().await {
-            Ok(Some(event)) => event,
-            // A lagging observer misses events; it does not stop observing.
-            Err(_) => continue,
-            Ok(None) => break,
+        let event = tokio::select! {
+            // Preparation can reject admission before any turn event exists.
+            _ = pending.wait() => break,
+            next = stream.recv() => match next {
+                Ok(Some(event)) => event,
+                // A lagging observer misses events; it does not stop observing.
+                Err(_) => continue,
+                Ok(None) => break,
+            },
         };
-        if event.turn_id.as_deref().is_some_and(|id| id != turn_id) {
+        if turn_id.is_none() {
+            turn_id = match pending.assignment().await {
+                Ok(Some(assignment)) => Some(assignment.turn_id.to_string()),
+                Ok(None) => continue,
+                Err(_) => break,
+            };
+        }
+        if event
+            .turn_id
+            .as_deref()
+            .is_some_and(|id| Some(id) != turn_id.as_deref())
+        {
             continue;
         }
         if event.kind.is_terminal() {

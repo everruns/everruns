@@ -33,9 +33,6 @@ const CACHE_TTL: Duration = Duration::from_secs(3600);
 /// Max cache entries. Each org+model combo is one entry.
 const CACHE_MAX_ENTRIES: u64 = 1_000;
 
-/// Sentinel UUID for default-model cache key (all zeros is unused by uuidv7).
-const DEFAULT_MODEL_SENTINEL: Uuid = Uuid::nil();
-
 mod environment;
 pub use environment::get_default_api_key_from_env;
 #[cfg(test)]
@@ -78,12 +75,17 @@ pub fn resolve_provider_api_key(
     Ok(None)
 }
 
-/// Read a provider row's connection-level request options from its stored
-/// settings.
-///
-/// A malformed or absent `request_options` blob yields the empty options rather
-/// than failing resolution: a bad settings value must not take a provider
-/// offline.
+/// Read the connection's chat API selection, rejecting malformed stored values.
+pub(crate) fn provider_api(settings: &serde_json::Value) -> Result<Option<String>> {
+    match settings.get("api") {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(api)) => Ok(Some(api.clone())),
+        Some(_) => anyhow::bail!("Provider chat API must be a string"),
+    }
+}
+
+/// Read connection-level request options from the provider's stored settings.
+/// Malformed or absent options yield empty options rather than taking a provider offline.
 pub fn provider_request_options(
     settings: &serde_json::Value,
 ) -> everruns_contracts::provider::ProviderRequestOptions {
@@ -122,6 +124,8 @@ pub struct ResolvedServiceProvider {
     pub credentials: ResolvedProviderCredentials,
     /// Connection-level request options stored on the provider row.
     pub request_options: everruns_contracts::provider::ProviderRequestOptions,
+    /// Connection-level chat API chosen by the provider owner.
+    pub api: Option<String>,
 }
 
 /// A realtime provider ready to place calls.
@@ -143,9 +147,11 @@ pub(crate) struct ResolvedRuntimeProviderConfig {
     pub base_url: Option<String>,
     /// Connection-level request options stored on the provider row.
     pub request_options: everruns_contracts::provider::ProviderRequestOptions,
+    /// Connection-level chat API chosen by the provider owner.
+    pub api: Option<String>,
 }
 
-/// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
+/// Cache key: (org_id, model_uuid). Organization defaults select an identity before lookup.
 type CacheKey = (i64, Uuid);
 
 pub struct ProviderResolverService {
@@ -179,6 +185,14 @@ impl ProviderResolverService {
     pub fn with_driver_registry(mut self, driver_registry: DriverRegistry) -> Self {
         self.driver_registry = driver_registry;
         self
+    }
+
+    pub(crate) fn validate_api(&self, driver: &DriverId, api: &str) -> Result<()> {
+        let descriptor = self
+            .driver_registry
+            .descriptor(driver)
+            .ok_or_else(|| anyhow::anyhow!("Provider driver is not registered"))?;
+        descriptor.validate_api(Some(api)).map_err(Into::into)
     }
 
     /// Resolve tenant decisions without reading deployment utility credentials.
@@ -315,18 +329,14 @@ impl ProviderResolverService {
         Ok(result)
     }
 
-    /// Resolve the default model without provider credentials or endpoint details.
-    /// Cached under sentinel key (org_id, nil UUID).
+    /// Resolve the current organization binding, then reuse the per-model cache.
+    /// The binding must be read on every call: another replica can change it,
+    /// and caching a sentinel would keep the old default for up to an hour.
     pub async fn resolve_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
-        let key = (org_id, DEFAULT_MODEL_SENTINEL);
-
-        if let Some(cached) = self.cache.get(&key).await {
-            return Ok(cached);
-        }
-
-        let result = self.resolve_default_model_uncached(org_id).await?;
-        self.cache.insert(key, result.clone()).await;
-        Ok(result)
+        let Some(row) = self.db.get_default_model(org_id).await? else {
+            return Ok(None);
+        };
+        self.resolve_model(org_id, row.id.uuid()).await
     }
 
     /// Resolve default credentials for a provider type (fail-closed).
@@ -420,6 +430,7 @@ impl ProviderResolverService {
                     base_url: provider.base_url.clone(),
                 },
                 request_options: provider_request_options(&provider.settings),
+                api: provider_api(&provider.settings)?,
             });
         }
 
@@ -464,6 +475,7 @@ impl ProviderResolverService {
                     base_url: provider.base_url.clone(),
                 },
                 request_options: provider_request_options(&provider.settings),
+                api: provider_api(&provider.settings)?,
             });
         }
 
@@ -482,6 +494,7 @@ impl ProviderResolverService {
                         base_url: provider.base_url.clone(),
                     },
                     request_options: provider_request_options(&provider.settings),
+                    api: provider_api(&provider.settings)?,
                 });
             }
         }
@@ -519,6 +532,7 @@ impl ProviderResolverService {
         config.api_key = Some(resolved.credentials.api_key);
         config.base_url = resolved.credentials.base_url;
         config.request_options = resolved.request_options;
+        config.api = resolved.api;
         let (driver, endpoint) = self
             .driver_registry
             .create_realtime_driver(&config)
@@ -582,37 +596,6 @@ impl ProviderResolverService {
         }))
     }
 
-    /// Uncached default model resolution.
-    async fn resolve_default_model_uncached(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
-        let model_row = self.db.get_default_model(org_id).await?;
-
-        let model_row = match model_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        if crate::domains::models::catalog::service(model_row.provider_metadata.as_ref())
-            != ServiceKind::Chat
-        {
-            anyhow::bail!("Chat model required");
-        }
-        let provider_row = self
-            .db
-            .get_provider(org_id, model_row.provider_id.uuid())
-            .await?;
-
-        let provider_row = match provider_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        Ok(Some(ResolvedModel {
-            model_id: model_row.model_id,
-            provider_type: provider_row.provider_type.clone(),
-            provider_id: provider_row.id.to_string(),
-        }))
-    }
-
     /// Resolve one exact persisted provider for model execution.
     pub async fn resolve_runtime_provider(
         &self,
@@ -622,7 +605,7 @@ impl ProviderResolverService {
         let id: ProviderId = provider_id
             .parse()
             .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
-        let Some(provider) = self.db.get_provider(org_id, id.uuid()).await? else {
+        let Some(provider) = self.db.get_provider_config(org_id, id.uuid()).await? else {
             return Ok(None);
         };
         let Some(api_key) = self.resolve_api_key(&provider)? else {
@@ -636,6 +619,7 @@ impl ProviderResolverService {
                 base_url: provider.base_url,
             },
             request_options: provider_request_options(&provider.settings),
+            api: provider_api(&provider.settings)?,
         }))
     }
 
@@ -661,7 +645,7 @@ impl ProviderResolverService {
         let id: ProviderId = provider_id
             .parse()
             .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
-        let Some(provider) = self.db.get_provider(org_id, id.uuid()).await? else {
+        let Some(provider) = self.db.get_provider_config(org_id, id.uuid()).await? else {
             return Ok(None);
         };
         crate::domains::user_connections::chatgpt::check_session(&self.db, &provider, session)
@@ -680,11 +664,13 @@ impl ProviderResolverService {
         };
 
         let request_options = provider_request_options(&provider.settings);
+        let api = provider_api(&provider.settings)?;
         Ok(Some(ResolvedRuntimeProviderConfig {
             provider_type: provider.provider_type,
             api_key,
             base_url: provider.base_url,
             request_options,
+            api,
         }))
     }
 

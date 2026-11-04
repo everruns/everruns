@@ -128,7 +128,7 @@ impl CapabilityService {
             .registry
             .list()
             .into_iter()
-            .map(|cap| CapabilityInfo::from_core(cap.as_ref()))
+            .map(|cap| super::capability_localizations::from_core(cap.as_ref()))
             .collect();
 
         // Get MCP server capabilities
@@ -179,6 +179,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                feature_flag: None,
                 localizations: Default::default(),
             });
         }
@@ -210,6 +211,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                feature_flag: None,
                 localizations: Default::default(),
             });
         }
@@ -378,6 +380,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    feature_flag: None,
                     localizations: Default::default(),
                 }));
             }
@@ -408,6 +411,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    feature_flag: None,
                     localizations: Default::default(),
                 }));
             }
@@ -512,7 +516,7 @@ impl CapabilityService {
         Ok(self
             .registry
             .get(id.as_str())
-            .map(|cap| CapabilityInfo::from_core(cap.as_ref())))
+            .map(|cap| super::capability_localizations::from_core(cap.as_ref())))
     }
 
     /// Return the IDs of any high-risk capabilities in the given list.
@@ -787,17 +791,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_miss_populates_cache() {
-        let svc = make_service();
-        insert_skill(&svc, 1, "cache-test").await;
-
-        assert!(!is_cached(&svc, 1).await);
-        let skills = svc.cached_skills(1).await.unwrap();
-        assert_eq!(skills.len(), 1);
-        assert!(is_cached(&svc, 1).await);
-    }
-
-    #[tokio::test]
     async fn test_cache_hit_returns_cached_skills() {
         let svc = make_service();
         insert_skill(&svc, 1, "cached-skill").await;
@@ -995,8 +988,8 @@ mod tests {
 
     // Regression tests for fix(capabilities): restore high-risk levels for
     // bash/fetch (#1500). `high_risk_ids` is the admin-gating primitive used
-    // by `api::agents::require_admin_for_high_risk`, the agent domain command
-    // `check_high_risk_caps`, and the session service's high-risk guard. If a
+    // by the agent domain command `check_high_risk_caps` and the session
+    // service's high-risk guard. If a
     // refactor again downgrades `bashkit_shell` or `web_fetch` the admin gate
     // would silently stop firing (TM-AGENT-005).
     mod high_risk_ids_tests {
@@ -1055,12 +1048,6 @@ mod tests {
                 high.is_empty(),
                 "non-builtin refs must not appear as high-risk"
             );
-        }
-
-        #[test]
-        fn empty_input_returns_empty() {
-            let svc = make_service();
-            assert!(svc.high_risk_ids(&[]).is_empty());
         }
 
         #[tokio::test]

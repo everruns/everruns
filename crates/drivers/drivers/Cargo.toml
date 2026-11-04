@@ -35,7 +35,7 @@ all-features = true
 # No vendor is on by default: a consumer names the ones it serves, so nothing
 # ships a driver it never constructs.
 default = []
-anthropic = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
+anthropic = ["dep:sha2", "dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 bedrock = [
     "dep:tokio",
     "dep:futures",
@@ -51,11 +51,12 @@ bedrock-default-credentials = ["bedrock", "dep:aws-config", "dep:aws-credential-
 chatgpt = ["dep:tokio", "dep:tracing", "dep:futures", "dep:anyhow", "dep:rand", "dep:sha2", "dep:base64", "dep:jsonwebtoken"]
 codex = ["chatgpt"]
 cloudflare = []
-fireworks = []
+fireworks = ["dep:tokio", "dep:uuid"]
+groq = ["dep:tokio"]
 gemini = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 mai = ["dep:tokio", "dep:tracing"]
 meta = []
-mistral = []
+mistral = ["dep:tokio"]
 openai = ["dep:futures", "dep:tokio", "dep:tracing", "dep:tokio-tungstenite", "dep:base64", "reqwest/multipart", "everruns-contracts/responses-websocket"]
 openrouter = ["dep:tokio", "dep:tracing"]
 typesafe = ["dep:tokio", "dep:tracing"]
@@ -64,32 +65,29 @@ vercel = []
 [dependencies]
 async-trait.workspace = true
 
-# HTTP client (model discovery)
-reqwest.workspace = true
-
 # Serialization (model-discovery responses). Cloudflare's model properties are
 # a name/value list whose value is a string for flags and an array for pricing,
 # so the value stays untyped and each reader interprets its own.
 serde.workspace = true
 serde_json.workspace = true
+uuid = { workspace = true, optional = true }
 thiserror.workspace = true
 
 # Date/time (model `created` timestamps)
 chrono.workspace = true
+web-time = "1"
 
 # Per-vendor dependencies, each pulled in only by the features that need it.
 anyhow = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 jsonwebtoken = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 tokio-stream = { workspace = true, optional = true }
 eventsource-stream = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 # OpenAI Realtime voice control connection (`openai::realtime`).
-tokio-tungstenite = { workspace = true, optional = true }
 aws-sdk-bedrockruntime = { version = "1", optional = true, default-features = false, features = [
     "default-https-client",
     "rt-tokio",
@@ -107,7 +105,16 @@ aws-credential-types = { version = "1", optional = true }
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-contracts (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off.
-everruns-contracts = { path = "../../contracts", version = "0.48.0", default-features = false, features = ["http"] }
+everruns-contracts = { path = "../../contracts", version = "0.50.1", default-features = false, features = ["http"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, optional = true }
+# Native HTTP (model discovery and non-chat services).
+reqwest.workspace = true
+tokio-tungstenite = { workspace = true, optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1.50", default-features = false, features = ["sync", "rt", "time", "macros"], optional = true }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures the wire; futures drains the
@@ -134,36 +141,8 @@ name = "anthropic_browser_toolset_wire"
 required-features = ["anthropic"]
 
 [[test]]
-name = "anthropic_parallel_tool_calls_live"
-required-features = ["anthropic"]
-
-[[test]]
-name = "openai_astra_compaction_live"
-required-features = ["openai"]
-
-[[test]]
-name = "openai_completions_max_tokens_live"
-required-features = ["openai"]
-
-[[test]]
-name = "openai_hosted_tools_live"
-required-features = ["openai"]
-
-[[test]]
-name = "openai_parallel_tool_calls_live"
-required-features = ["openai"]
-
-[[test]]
 name = "gemini_chat_wire"
 required-features = ["gemini"]
-
-[[test]]
-name = "openrouter_chat_live"
-required-features = ["openrouter"]
-
-[[test]]
-name = "openrouter_discovery_live"
-required-features = ["openrouter"]
 
 [[test]]
 name = "openrouter_request_wire"
@@ -182,16 +161,8 @@ name = "native_web_search_live"
 required-features = ["openai", "openrouter", "anthropic", "gemini"]
 
 [[test]]
-name = "fireworks_chat_live"
-required-features = ["fireworks"]
-
-[[test]]
 name = "mai_chat_wire"
 required-features = ["mai"]
-
-[[test]]
-name = "meta_model_api_live"
-required-features = ["meta"]
 
 [[example]]
 name = "chatgpt-login"
@@ -213,5 +184,26 @@ required-features = ["openai"]
 name = "chatgpt_wire"
 required-features = ["chatgpt", "codex"]
 
+[[test]]
+name = "codex_builder_wire"
+required-features = ["codex"]
+
 [lints]
 workspace = true
+
+[[test]]
+name = "non_streaming_wire"
+required-features = ["openai", "anthropic", "gemini"]
+
+[[bench]]
+name = "native_transport"
+harness = false
+required-features = ["openai"]
+
+[[test]]
+name = "mistral_responses_wire"
+required-features = ["mistral"]
+
+[[test]]
+name = "anthropic_message_threads_wire"
+required-features = ["anthropic"]

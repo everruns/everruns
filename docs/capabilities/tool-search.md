@@ -23,7 +23,9 @@ Four capabilities provide it:
 Use `auto_tool_search` unless you know the model and want one mechanism
 explicitly. It is what the [Worker](/built-ins/harnesses/worker/) harness
 uses. Do not combine `auto_tool_search` with any of the other three on the same
-agent; it already provides all three paths.
+agent; it already provides all three paths. An explicit `tool_search` with
+`bounded: true` overrides inherited automatic or hosted search, so an Agent can
+enforce a bounded catalog on a Worker harness.
 
 All four capabilities have category Optimization, no features, and no
 dependencies.
@@ -164,6 +166,20 @@ optional `threshold`.
 Gemini, OpenAI Completions, models reached through gateways that don't
 implement hosted search, and any other provider.
 
+Bounded search and CLI `tools search` normalize Unicode accents and segment
+multilingual words. For example, `仓库` matches `搜索仓库问题`, and composed
+`café` matches the same word written with a combining acute accent. This is
+same-language lexical matching, not translation or accent removal. Exact name
+matches retain canonical invocation names and current access checks.
+
+For large MCP catalogs, `tool_search` can use bounded schema disclosure. Set
+`bounded: true`; the optional `max_active_tools`, `max_active_bytes`, and
+`max_result_bytes` settings adjust the built-in limits for active native schemas
+and search responses. Legacy behavior remains the default unless bounded mode
+is enabled. See [Large MCP catalogs and tool
+surfaces](/features/large-mcp-catalogs/) for the complete configuration and
+runtime behavior.
+
 ### Tools
 
 - **`tool_search`**: search the available tools by keyword and load their full parameter schemas. It is never deferred itself.
@@ -190,7 +206,13 @@ The diagram below traces one deferred tool through a full round-trip, from schem
 
 Allowlisted tools behave exactly like `DeferrablePolicy::Never` tools, their full schema is always sent, so the agent is never forced through a `tool_search` round-trip before its first read/edit/shell call.
 
-### Search ranking and result bounding
+### Legacy search ranking and result bounding
+
+The behavior in this section describes the default, legacy generic search.
+Bounded mode uses the server-aware index and active/result byte limits
+described in [Large MCP catalogs](/features/large-mcp-catalogs/). In bounded
+mode, a source-only query returns a server refinement rather than arbitrary
+operation schemas.
 
 Because there is no hosted semantic index, `tool_search` ranks matches client-side with a deliberately simple, predictable scheme:
 

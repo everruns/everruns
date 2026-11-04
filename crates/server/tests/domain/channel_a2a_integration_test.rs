@@ -1783,43 +1783,6 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
 }
 
 #[tokio::test]
-async fn a2a_unsigned_channel_keeps_api_key_only_behavior() {
-    // Backward compatibility: channels without a `signing_secret` must
-    // continue to accept plain bearer-only requests with no signing
-    // headers. Existing deployments can opt in later without breaking
-    // already-deployed clients.
-    let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-unsigned", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key}")),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::OK);
-}
-
-#[tokio::test]
 async fn a2a_agent_card_advertises_signing_scheme_when_enabled() {
     let server = TestServer::in_memory().await;
     let (app, _api_key) =

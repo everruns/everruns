@@ -51,7 +51,8 @@ const MAX_EVENT_FIELD_LEN: usize = 512;
 /// A normalized event, as handed to the pipeline by a source.
 #[derive(Debug, Clone)]
 pub struct TriggerEvent {
-    /// Source name recorded on the delivery (`schedule`, `webhook`, `github`).
+    /// Source name recorded on the delivery (`schedule`, `webhook`, `github`,
+    /// `mcp_event`, or `manual` for an event fired by hand).
     pub source: &'static str,
     /// Idempotency key from the source, if it has one.
     pub event_id: Option<String>,
@@ -75,13 +76,27 @@ pub struct TriggerEventRoute<'a> {
     pub webhook_compat: Option<&'a WebhookCompatibilityContext>,
     /// Saved script the event runs instead of asking the model.
     pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
+    /// A channel conversation the run speaks in instead of a session of the
+    /// trigger's own (schedule triggers with a target).
+    pub channel: Option<ChannelRun<'a>>,
+}
+
+/// A run in one of the agent's channel conversations, and what it needs.
+#[derive(Clone, Copy)]
+pub struct ChannelRun<'a> {
+    pub target: &'a super::record::ScheduleTriggerTarget,
+    pub channels: Option<&'a crate::channels::host::ServerChannels>,
+    pub encryption: Option<&'a Arc<crate::storage::EncryptionService>>,
 }
 
 /// Result of handing one event to one trigger.
 #[derive(Debug, Clone)]
 pub enum TriggerEventOutcome {
     Dispatched(AgentTriggerInvocationResult),
-    Filtered,
+    /// The event missed the filter; `reason` is the first condition it missed.
+    Filtered {
+        reason: String,
+    },
     Duplicate,
 }
 
@@ -133,7 +148,10 @@ pub async fn dispatch_trigger_event(
 
     if let Some(reason) = miss {
         let claimed = db
-            .record_agent_trigger_delivery(new_row(TriggerDeliveryStatus::Filtered, Some(reason)))
+            .record_agent_trigger_delivery(new_row(
+                TriggerDeliveryStatus::Filtered,
+                Some(reason.clone()),
+            ))
             .await?;
         if claimed.is_none() {
             record_duplicate(db, new_row(TriggerDeliveryStatus::Duplicate, None)).await?;
@@ -145,7 +163,7 @@ pub async fn dispatch_trigger_event(
             change.record(db, trigger).await?;
         }
         prune(db, trigger).await;
-        return Ok(TriggerEventOutcome::Filtered);
+        return Ok(TriggerEventOutcome::Filtered { reason });
     }
 
     let Some(delivery) = db
@@ -216,6 +234,21 @@ async fn run(
         .map(|run| super::script_target::rendered(run, &event.context));
     let trigger = route.trigger;
     let agent = route.agent;
+    if let Some(channel) = &route.channel {
+        let (session_id, created_session) = super::channel_target::run(
+            db,
+            channel,
+            agent,
+            trigger.id,
+            rendered_message,
+            request_id,
+        )
+        .await?;
+        return Ok(AgentTriggerInvocationResult {
+            session_id,
+            created_session,
+        });
+    }
     let execution_context =
         resolve_trigger_execution_context(db, trigger.org_id, agent, trigger).await?;
     let (session_id, created_session) = find_or_create_trigger_session(
@@ -238,6 +271,7 @@ async fn run(
         trigger.org_id,
         agent,
         trigger.id,
+        &trigger.trigger_type,
         session_id,
         execution_context.harness_id,
         execution_context.owner_principal_id,

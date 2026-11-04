@@ -95,7 +95,7 @@ pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: 
         let _guard = &guard;
         event
     });
-    Sse::new(with_guard)
+    Sse::new(crate::api::sse::until_shutdown(with_guard))
         .keep_alive(
             KeepAlive::new()
                 .interval(std::time::Duration::from_secs(15))
@@ -199,6 +199,7 @@ mod tests {
         use everruns_contracts::typed_id::TurnId;
         use everruns_core::events::TurnCompletedData;
         let data = EventData::TurnCompleted(TurnCompletedData {
+            termination_reason: None,
             issue_count: None,
             turn_id: TurnId::new(),
             iterations: 1,
@@ -267,17 +268,5 @@ mod tests {
             phase: None,
         });
         assert!(translate_session_event(&data, "t", "c", "").is_none());
-    }
-
-    #[test]
-    fn jsonrpc_sse_frame_wraps_result_in_envelope() {
-        let frame = jsonrpc_sse_frame(
-            &Value::String("req-1".into()),
-            WireVersion::V0_3,
-            json!({"hello": "world"}),
-        );
-        let json_field = format!("{frame:?}");
-        assert!(json_field.contains("req-1"));
-        assert!(json_field.contains("hello"));
     }
 }

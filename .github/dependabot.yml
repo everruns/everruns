@@ -20,6 +20,12 @@ updates:
       # graph and the connectrpc-generated e2b code stops type-checking against
       # `::buffa::bytes::BufMut`. Drop this once connectrpc ships a 0.9 release.
       - dependency-name: "buffa"
+      # parking_lot 0.13 (with lock_api 0.5 and parking_lot_core 0.10) raises its
+      # MSRV to Rust 1.95, above the 1.94 `rust-version` the published crates
+      # (everruns-durable, everruns) promise and the Published Crate MSRV job
+      # checks. Drop this when the workspace MSRV moves to 1.95.
+      - dependency-name: "parking_lot"
+        versions: [">=0.13"]
 
   - package-ecosystem: "docker"
     directories:

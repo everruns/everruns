@@ -53,14 +53,14 @@ fn skill_activation_resource_id(name: &str) -> String {
     format!("{SKILL_ACTIVATION_KIND}:{name}")
 }
 
-/// Max skills to include in the system prompt (rest via list_skills tool)
+/// Max skills to include in the inventory (rest via list_skills tool)
 const MAX_SKILLS_IN_PROMPT: usize = 15;
 
-/// Max skill directories to scan when building the system prompt.
-/// Bounds per-turn filesystem reads to avoid prompt-build DoS.
+/// Max skill directories to scan when building the inventory.
+/// Bounds per-turn filesystem reads to avoid inventory-build DoS.
 const MAX_SKILLS_SCAN_IN_PROMPT: usize = 64;
 
-/// Max description length in system prompt (truncated with "…")
+/// Max description length in the inventory (truncated with "…")
 const MAX_DESCRIPTION_CHARS: usize = 76;
 
 /// Workspace prefix for agent-facing paths (matches file_system capability convention)
@@ -91,12 +91,48 @@ fn workspace_path(path: &str) -> String {
 /// SKILL.md files to `/.agents/skills/{name}/SKILL.md` in the session VFS.
 pub struct SkillsCapability;
 
+/// An explicit empty catalog also establishes freshness after a history cut.
+pub(super) const EMPTY_SKILL_INVENTORY: &str = "No skills are currently available.";
+
 /// Static skills system prompt (used by sync callers and as fallback)
 const SKILLS_SYSTEM_PROMPT: &str = "Skills location: `/workspace/.agents/skills/{skill-name}/SKILL.md`. \
 Only activate skills that are relevant to the current task.";
 
 #[async_trait]
 impl Capability for SkillsCapability {
+    fn config_schema(&self) -> Option<Value> {
+        Some(super::artifact_inspection::config_schema())
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        super::artifact_inspection::validate_config(config)
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        if super::artifact_inspection::enabled(config) {
+            super::ScopedSkillsCapability::new(super::SkillsConfig::default())
+                .with_report_only_inspection()
+                .tools()
+        } else {
+            self.tools()
+        }
+    }
+
+    async fn conversation_context_update_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        if super::artifact_inspection::enabled(config) {
+            super::ScopedSkillsCapability::new(super::SkillsConfig::default())
+                .with_report_only_inspection()
+                .conversation_context_update_contribution(ctx)
+                .await
+        } else {
+            self.conversation_context_update_contribution(ctx).await
+        }
+    }
+
     fn id(&self) -> &str {
         SKILLS_CAPABILITY_ID
     }
@@ -143,41 +179,22 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
         Some(SKILLS_SYSTEM_PROMPT)
     }
 
-    /// Dynamically discovers skills from the session filesystem and includes
-    /// them in the system prompt.
-    ///
-    /// When a file store is available, scans `/.agents/skills/` for SKILL.md
-    /// files and lists discovered skills directly in the prompt. Falls back
-    /// to the static prompt when no file store is available.
-    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
-        let file_store = match ctx.file_store.as_ref() {
-            Some(fs) => fs,
-            None => {
-                // No file store — fall back to static prompt with capability wrapping
-                return Some(format!(
-                    "<capability id=\"{}\">\n{}\n</capability>",
-                    self.id(),
-                    SKILLS_SYSTEM_PROMPT
-                ));
-            }
-        };
-
-        // Scan /.agents/skills/ for SKILL.md files
-        let entries = match file_store.list_directory(ctx.session_id, SKILLS_PATH).await {
-            Ok(entries) => entries,
-            Err(_) => {
-                // Directory doesn't exist — use static prompt
-                return Some(format!(
-                    "<capability id=\"{}\">\n{}\n</capability>",
-                    self.id(),
-                    SKILLS_SYSTEM_PROMPT
-                ));
-            }
-        };
+    // Keep the instructions static. Mutable workspace metadata rides in later
+    // user-role updates so partial installs cannot rewrite the cached prefix.
+    async fn conversation_context_update_contribution(
+        &self,
+        ctx: &SystemPromptContext,
+    ) -> Option<String> {
+        let file_store = ctx.file_store.as_ref()?;
+        let entries = file_store
+            .list_directory(ctx.session_id, SKILLS_PATH)
+            .await
+            .unwrap_or_default();
 
         // Only scan a bounded number of skill directories for prompt generation.
         // Full discovery remains available through list_skills tool.
-        let skill_dirs: Vec<_> = entries.iter().filter(|entry| entry.is_directory).collect();
+        let mut skill_dirs: Vec<_> = entries.iter().filter(|entry| entry.is_directory).collect();
+        skill_dirs.sort_by(|a, b| a.path.cmp(&b.path));
         let scan_truncated = skill_dirs.len() > MAX_SKILLS_SCAN_IN_PROMPT;
 
         let mut discovered_skills = Vec::new();
@@ -196,7 +213,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
             }
         }
 
-        let mut prompt = String::from(SKILLS_SYSTEM_PROMPT);
+        let mut prompt = String::new();
 
         if !discovered_skills.is_empty() {
             // Filter out skills where disable_model_invocation is true
@@ -228,11 +245,11 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
             }
         }
 
-        Some(format!(
-            "<capability id=\"{}\">\n{}\n</capability>",
-            self.id(),
+        Some(if prompt.is_empty() {
+            EMPTY_SKILL_INVENTORY.to_string()
+        } else {
             prompt
-        ))
+        })
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -714,7 +731,7 @@ mod tests {
     use crate::session_files::SessionFileSystem;
     use crate::session_services::SessionResourceRegistry;
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     struct FileSystemDependencyFixture;
@@ -746,49 +763,7 @@ mod tests {
         /// Counter used by the idempotence test to prove the cache-hit path
         /// does not re-read SKILL.md on the second activation.
         read_count: AtomicUsize,
-    }
-
-    impl MockFileStore {
-        fn new() -> Self {
-            Self {
-                files: Mutex::new(HashMap::new()),
-                readonly_files: Mutex::new(std::collections::HashSet::new()),
-                dirs: Mutex::new(std::collections::HashSet::new()),
-                read_count: AtomicUsize::new(0),
-            }
-        }
-
-        fn read_count(&self) -> usize {
-            self.read_count.load(Ordering::SeqCst)
-        }
-
-        /// Add a file and auto-create parent directories
-        fn add_file(&self, session_id: SessionId, path: &str, content: &str) {
-            self.files
-                .lock()
-                .unwrap()
-                .insert((session_id, path.to_string()), content.to_string());
-
-            // Auto-create parent directories
-            let mut dir = path.to_string();
-            while let Some(idx) = dir.rfind('/') {
-                if idx == 0 {
-                    break;
-                }
-                dir = dir[..idx].to_string();
-                self.dirs.lock().unwrap().insert((session_id, dir.clone()));
-            }
-        }
-
-        /// Add a file and mark it as readonly (simulates a capability or
-        /// registry mount).
-        fn add_readonly_file(&self, session_id: SessionId, path: &str, content: &str) {
-            self.add_file(session_id, path, content);
-            self.readonly_files
-                .lock()
-                .unwrap()
-                .insert((session_id, path.to_string()));
-        }
+        list_unavailable: AtomicBool,
     }
 
     #[async_trait]
@@ -858,6 +833,9 @@ mod tests {
         }
 
         async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+            if self.list_unavailable.load(Ordering::SeqCst) {
+                return Err(anyhow::anyhow!("inventory unavailable").into());
+            }
             let files = self.files.lock().unwrap();
             let dirs = self.dirs.lock().unwrap();
             let mut entries = Vec::new();
@@ -1031,29 +1009,9 @@ mod tests {
     // covered registry-wide by `builtin_capabilities_satisfy_registry_invariants`
     // in `capabilities::tests`; the per-capability constant mirrors were removed.
 
-    #[test]
-    fn test_skills_has_system_prompt() {
-        let cap = SkillsCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-
-        assert!(prompt.contains("/workspace/.agents/skills/"));
-    }
-
     // ========================================================================
     // Tool Basics (no context)
     // ========================================================================
-
-    #[test]
-    fn test_list_skills_requires_context() {
-        let tool = ListSkillsTool;
-        assert!(tool.requires_context());
-    }
-
-    #[test]
-    fn test_activate_skill_requires_context() {
-        let tool = ActivateSkillFromVfsTool;
-        assert!(tool.requires_context());
-    }
 
     #[tokio::test]
     async fn test_list_skills_without_context() {
@@ -1566,48 +1524,9 @@ mod tests {
     // Integration: CapabilityInfo DTO
     // ========================================================================
 
-    #[test]
-    fn test_capability_info_from_core_marks_is_skill() {
-        use crate::builtins::capability_dto::CapabilityInfo;
-        let cap = SkillsCapability;
-        let info = CapabilityInfo::from_core(&cap);
-
-        assert_eq!(info.id.as_str(), "skills");
-        assert!(info.is_skill, "skills capability should have is_skill=true");
-        assert!(!info.is_mcp);
-        assert_eq!(info.category, Some("Core".to_string()));
-        assert!(!info.tool_definitions.is_empty());
-        assert!(!info.dependencies.is_empty());
-    }
-
     // ========================================================================
     // Integration: Dependency Resolution
     // ========================================================================
-
-    #[test]
-    fn test_skills_dependency_resolution() {
-        use crate::builtins::capabilities::resolve_dependencies;
-
-        let mut registry = crate::builtins::capabilities::CapabilityRegistry::new();
-        crate::builtins::register_runtime_capabilities(&mut registry).unwrap();
-        registry.register(FileSystemDependencyFixture);
-        let resolved = resolve_dependencies(&["skills".to_string()], &registry).unwrap();
-
-        // Should auto-include session_file_system as dependency
-        assert!(
-            resolved
-                .resolved_ids
-                .contains(&"session_file_system".to_string()),
-            "skills should pull in session_file_system dependency"
-        );
-        assert!(resolved.resolved_ids.contains(&"skills".to_string()));
-        assert!(
-            resolved
-                .added_as_dependencies
-                .contains(&"session_file_system".to_string()),
-            "session_file_system should be marked as auto-added"
-        );
-    }
 
     // ========================================================================
     // Integration: apply_capabilities
@@ -1659,7 +1578,7 @@ mod tests {
     }
 
     // ========================================================================
-    // Dynamic system_prompt_contribution tests
+    // Skill inventory contribution tests
     // ========================================================================
 
     #[tokio::test]
@@ -1684,8 +1603,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
-        assert!(result.contains("<capability id=\"skills\">"));
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
         assert!(result.contains("pdf-processor"));
         assert!(result.contains("data-analysis"));
         assert!(result.contains("Available skills:"));
@@ -1753,7 +1674,7 @@ mod tests {
     }
 
     // ========================================================================
-    // System prompt caps at MAX_SKILLS_IN_PROMPT
+    // Inventory caps at MAX_SKILLS_IN_PROMPT
     // ========================================================================
 
     #[tokio::test]
@@ -1777,7 +1698,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         // Should contain "Available skills:"
         assert!(result.contains("Available skills:"));
@@ -1815,7 +1739,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         let skill_lines: Vec<&str> = result
             .lines()
@@ -1847,7 +1774,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         assert_eq!(store.read_count(), MAX_SKILLS_SCAN_IN_PROMPT);
         assert!(result.contains("Additional skills may exist"));
@@ -1964,42 +1894,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_attach_skill_with_files_discovered() {
-        use crate::builtins::capabilities::attach_skill::AttachSkillCapability;
-
-        let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let cap = AttachSkillCapability::from_registry(
-            skill_id,
-            "data-pipeline".to_string(),
-            "Build data pipelines".to_string(),
-            "# Instructions\nUse the bundled script.".to_string(),
-            vec![
-                ("run.py".to_string(), "import pandas as pd".to_string()),
-                ("README.md".to_string(), "# Reference docs".to_string()),
-            ],
-        );
-
-        let store = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        for mount in cap.mounts() {
-            materialize_mount_into_store(&store, session_id, &mount);
-        }
-
-        // list_skills discovers it
-        let context = ToolContext::with_file_store(session_id, store.clone());
-        let tool = ListSkillsTool;
-        let result = tool
-            .execute_with_context(serde_json::json!({}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                assert_eq!(val["skills"][0]["name"], "data-pipeline");
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    #[tokio::test]
     async fn test_multiple_attach_skills_all_discovered() {
         use crate::builtins::capabilities::attach_skill::AttachSkillCapability;
 
@@ -2069,13 +1963,16 @@ mod tests {
             materialize_mount_into_store(&store, session_id, &mount);
         }
 
-        // SkillsCapability dynamic prompt should include the mounted skill
+        // SkillsCapability inventory should include the mounted skill
         let skills_cap = SkillsCapability;
         let ctx = SystemPromptContext {
             file_store: Some(store),
             ..SystemPromptContext::without_file_store(session_id)
         };
-        let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = skills_cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
         assert!(result.contains("pdf-tool"));
         assert!(result.contains("Extract text from PDFs"));
         assert!(result.contains("Available skills:"));
@@ -2132,183 +2029,7 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // activate_skill env var substitution tests
-    // ========================================================================
-
-    #[tokio::test]
-    async fn test_activate_skill_substitutes_session_id() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let skill_md =
-            "---\nname: test-env\ndescription: Test env vars.\n---\n\nSession: ${SESSION_ID}";
-        fs.add_file(session_id, "/.agents/skills/test-env/SKILL.md", skill_md);
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "test-env"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                let instructions = val["instructions"].as_str().unwrap();
-                let expected_id = session_id.to_string();
-                assert!(
-                    instructions.contains(&expected_id),
-                    "Instructions should contain session ID '{}', got: {}",
-                    expected_id,
-                    instructions
-                );
-                assert!(
-                    !instructions.contains("${SESSION_ID}"),
-                    "Raw placeholder should be replaced"
-                );
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_activate_skill_substitutes_skill_dir() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let skill_md =
-            "---\nname: test-dir\ndescription: Test skill dir.\n---\n\nDir: ${SKILL_DIR}";
-        fs.add_file(session_id, "/.agents/skills/test-dir/SKILL.md", skill_md);
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "test-dir"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                let instructions = val["instructions"].as_str().unwrap();
-                assert!(
-                    instructions.contains("/.agents/skills/test-dir"),
-                    "Instructions should contain skill dir path, got: {}",
-                    instructions
-                );
-                assert!(
-                    !instructions.contains("${SKILL_DIR}"),
-                    "Raw placeholder should be replaced"
-                );
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_activate_skill_substitutes_both_env_vars() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let skill_md = "---\nname: test-both\ndescription: Both vars.\n---\n\n${SKILL_DIR}/run.sh --session ${SESSION_ID}";
-        fs.add_file(session_id, "/.agents/skills/test-both/SKILL.md", skill_md);
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "test-both"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                let instructions = val["instructions"].as_str().unwrap();
-                let expected_id = session_id.to_string();
-                assert!(instructions.contains("/.agents/skills/test-both/run.sh"));
-                assert!(instructions.contains(&format!("--session {}", expected_id)));
-                assert!(!instructions.contains("${SESSION_ID}"));
-                assert!(!instructions.contains("${SKILL_DIR}"));
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    // Regression test for PR #1449 / EVE-388: SKILL.md written via the VFS
-    // at runtime must leave `!`command`` placeholders literal — no shell
-    // execution on the worker host.
-    #[tokio::test]
-    async fn test_activate_skill_does_not_execute_commands_for_writable_skill() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let skill_md = "---\nname: test-no-exec\ndescription: Leaves command placeholders literal.\n---\n\nLiteral: !`echo pwned`";
-        // add_file — writable (user-authored) source.
-        fs.add_file(
-            session_id,
-            "/.agents/skills/test-no-exec/SKILL.md",
-            skill_md,
-        );
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "test-no-exec"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                let instructions = val["instructions"].as_str().unwrap();
-                assert!(
-                    instructions.contains("Literal: !`echo pwned`"),
-                    "writable SKILL.md must not execute commands; got: {}",
-                    instructions
-                );
-                assert!(
-                    !instructions.contains("pwned\n") && !instructions.contains("\npwned"),
-                    "command output must not appear in skill instructions; got: {}",
-                    instructions
-                );
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    // Regression test for the Copilot review of EVE-388: a SKILL.md whose
-    // `is_readonly = true` does NOT earn trust. Users can set `is_readonly`
-    // via the session-files API and `InitialFile`, so it is not a valid
-    // provenance signal. The trust gate must remain off until a
-    // platform-controlled signal (e.g. `mount_capability_id`) exists.
-    #[tokio::test]
-    async fn test_activate_skill_does_not_execute_commands_for_readonly_user_skill() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let skill_md = "---\nname: test-readonly-no-exec\ndescription: is_readonly alone must not unlock exec.\n---\n\nLiteral: !`echo pwned`";
-        // add_readonly_file simulates a user marking a SKILL.md is_readonly=true
-        // via the session-files API or InitialFile configuration.
-        fs.add_readonly_file(
-            session_id,
-            "/.agents/skills/test-readonly-no-exec/SKILL.md",
-            skill_md,
-        );
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(
-                serde_json::json!({"name": "test-readonly-no-exec"}),
-                &context,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                let instructions = val["instructions"].as_str().unwrap();
-                assert!(
-                    instructions.contains("Literal: !`echo pwned`"),
-                    "is_readonly=true must not bypass the command-substitution gate; got: {}",
-                    instructions
-                );
-                assert!(
-                    !instructions.contains("pwned\n") && !instructions.contains("\npwned"),
-                    "command output must not appear in skill instructions; got: {}",
-                    instructions
-                );
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
+    mod substitution;
 
     #[tokio::test]
     async fn test_contribution_excludes_disable_model_invocation_skills() {
@@ -2335,7 +2056,10 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
         assert!(
             result.contains("normal-skill"),
             "Normal skill should appear"
@@ -2364,38 +2088,16 @@ mod tests {
             ..SystemPromptContext::without_file_store(session_id)
         };
 
-        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        let result = cap
+            .conversation_context_update_contribution(&ctx)
+            .await
+            .unwrap();
 
         // The full 200-char description should NOT appear
         assert!(!result.contains(&long_desc));
         // Should contain truncated version with ellipsis
         assert!(result.contains('…'));
     }
-
-    #[test]
-    fn localized_name_differs_from_default() {
-        let cap = SkillsCapability;
-        assert_ne!(cap.localized_name(Some("uk")), cap.name());
-    }
-
-    #[tokio::test]
-    async fn activation_preserves_literal_and_empty_arguments_through_vfs_pipeline() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        fs.add_file(session_id,"/.agents/skills/args/SKILL.md","---\nname: args\ndescription: Literal arguments.\n---\n$ARGUMENTS[0]|$1|$2|${SKILL_DIR}|!`unused-command`");
-        let context = ToolContext::with_file_store(session_id, fs);
-        let result = ActivateSkillFromVfsTool
-            .execute_with_context(
-                serde_json::json!({"name":"args","arguments":"'$1' \"\" tail"}),
-                &context,
-            )
-            .await;
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success: {result:?}")
-        };
-        assert_eq!(
-            value,
-            serde_json::json!({"skill":"args","description":"Literal arguments.","instructions":"<skill name=\"args\">\n$1||tail|/.agents/skills/args|!`unused-command`\n</skill>"})
-        );
-    }
+    mod cache_tests;
+    mod mock;
 }

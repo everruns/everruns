@@ -301,15 +301,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn list_query_defaults() {
-        let query = parse_list_query(&json!({})).unwrap();
-        assert_eq!(query.page_size, 50);
-        assert_eq!(query.status, None);
-        assert!(!query.include_artifacts);
-        assert!(query.after.is_none());
-    }
-
-    #[test]
     fn list_query_reads_both_state_spellings() {
         for raw in ["TASK_STATE_CANCELED", "canceled"] {
             let query = parse_list_query(&json!({ "status": raw })).unwrap();

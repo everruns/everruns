@@ -1,6 +1,9 @@
 "use client";
 
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import Link from "next/link";
+import { useId } from "react";
 import { CalendarClock, Webhook, Zap } from "lucide-react";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { ChannelIcon } from "@/components/agents/channels/channel-icon";
@@ -24,6 +27,8 @@ import type {
   AgentTriggerSummary,
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { agentFailureHref } from "@/lib/agent-failures";
 
 const TRIGGER_ICON: Record<string, typeof Zap> = {
   schedule: CalendarClock,
@@ -54,7 +59,10 @@ function channelTone(agent: Agent, channel: AgentChannelSummary): { tone: DotTon
   return { tone: "draft", text: "Draft, not accepting traffic" };
 }
 
-const EMPTY_BUCKETS = Array.from({ length: 24 }, () => ({ runs: 0, failed: 0 }));
+const EMPTY_BUCKETS = Array.from({ length: 24 }, () => ({
+  runs: 0,
+  failed: 0,
+}));
 
 /**
  * One agent: who it is, what it is doing now, how it is reached, and how the
@@ -65,12 +73,22 @@ export function AgentRow({
   agent,
   activity,
   attention,
+  activityGeneratedAt,
+  activityWindowStart,
+  nested = false,
 }: {
+  /** Created as part of the agent listed above it. */
+  nested?: boolean;
   agent: Agent;
   activity: AgentActivity | undefined;
   attention: AttentionItem[];
+  activityGeneratedAt?: string;
+  activityWindowStart?: string;
 }) {
-  const name = getDisplayName(agent);
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
+  const name = getDisplayName(agent, displayLocale);
+  const tooltipId = useId();
   const now = agentNow(agent, activity);
   const channels = (agent.channels ?? []).filter((channel) => channel.channel_type !== "schedule");
   const triggers: AgentTriggerSummary[] = activity?.triggers ?? [];
@@ -79,7 +97,13 @@ export function AgentRow({
   const failed = activity?.failed ?? 0;
 
   return (
-    <li className="grid gap-x-6 gap-y-3 px-4 py-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_9rem] lg:items-center">
+    <li
+      data-nested={nested || undefined}
+      className={cn(
+        "grid gap-x-6 gap-y-3 px-4 py-4 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_9rem] lg:items-center",
+        nested && "border-l-2 border-l-border pl-10",
+      )}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <AgentAvatar
           avatar={agent.avatar}
@@ -123,7 +147,7 @@ export function AgentRow({
 
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px]">
         {channels.length === 0 && triggers.length === 0 ? (
-          <span className="text-muted-foreground">No channels or triggers</span>
+          <span className="text-muted-foreground">{ui("No channels or triggers")}</span>
         ) : (
           <>
             {channels.map((channel) => {
@@ -134,8 +158,14 @@ export function AgentRow({
                   key={channel.id}
                   href={agentChannelHref(agent.id, channel.id)}
                   className="inline-flex items-center gap-1.5 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-                  title={`${label} · ${state.text}`}
-                  aria-label={`${label} channel, ${state.text}`}
+                  title={ui("{value0} · {value1}", {
+                    value0: label,
+                    value1: state.text,
+                  })}
+                  aria-label={ui("{value0} channel, {value1}", {
+                    value0: label,
+                    value1: state.text,
+                  })}
                 >
                   <ChannelIcon kind={channel.channel_type} className="size-3.5" />
                   {label}
@@ -152,7 +182,10 @@ export function AgentRow({
                   // Triggers have no id in this summary; order is stable (oldest first).
                   key={`${trigger.trigger_type}-${index}`}
                   className="inline-flex items-center gap-1.5"
-                  title={`${label} trigger · ${text}`}
+                  title={ui("{value0} trigger · {value1}", {
+                    value0: label,
+                    value1: text,
+                  })}
                 >
                   <Icon className="size-3.5" aria-hidden="true" />
                   {label}
@@ -165,17 +198,42 @@ export function AgentRow({
       </div>
 
       <div className="min-w-0">
-        <RunBars
-          buckets={activity?.hourly ?? EMPTY_BUCKETS}
-          label={`${runs} ${pluralize(runs, "run")} in the last 24 hours, ${failed} failed`}
-        />
+        <Tooltip>
+          <TooltipTrigger
+            aria-describedby={tooltipId}
+            className="block w-full cursor-help outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <RunBars
+              buckets={activity?.hourly ?? EMPTY_BUCKETS}
+              label={ui("{value0} {value1} in the last 24 hours, {value2} failed", {
+                value0: runs,
+                value1: pluralize(runs, "run", undefined, displayLocale),
+                value2: failed,
+              })}
+            />
+          </TooltipTrigger>
+          <TooltipContent id={tooltipId} role="tooltip">
+            <p>{ui("Last 24 hours")}</p>
+            <p className="text-xs text-muted-foreground">{ui("Each bar is 1 hour")}</p>
+          </TooltipContent>
+        </Tooltip>
         <p className="mt-1 text-xs text-muted-foreground">
-          {runs === 0 ? (
+          {runs === 0 && failed === 0 ? (
             "No runs"
           ) : (
             <>
-              {runs} {pluralize(runs, "run")}
-              {failed > 0 && <span className="text-destructive"> · {failed} failed</span>}
+              {runs} {pluralize(runs, "run", undefined, displayLocale)}
+              {failed > 0 && activityGeneratedAt && (
+                <>
+                  {" · "}
+                  <Link
+                    href={agentFailureHref(agent.id, activityGeneratedAt, activityWindowStart)}
+                    className="text-destructive underline underline-offset-2"
+                  >
+                    {failed} {ui("failed")}
+                  </Link>
+                </>
+              )}
             </>
           )}
         </p>

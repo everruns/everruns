@@ -33,7 +33,7 @@ describe("FcpSetupGuidance", () => {
       />,
     );
 
-    expect(screen.getByText(/Never.*sessions can be resumed indefinitely/)).toBeInTheDocument();
+    expect(screen.getByText(/Never.*Sessions can be resumed indefinitely/)).toBeInTheDocument();
   });
 
   it("renders 'Token Protected' badge and token value when token is provided", () => {
@@ -80,7 +80,7 @@ describe("FcpSetupGuidance", () => {
     );
 
     expect(screen.getByText("Restricted")).toBeInTheDocument();
-    expect(screen.getByText(/Anonymous access is off.*configure a token/)).toBeInTheDocument();
+    expect(screen.getByText(/Anonymous access is off.*Configure a token/)).toBeInTheDocument();
   });
 
   it("displays per-minute rate limit when configured", () => {

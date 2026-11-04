@@ -22,7 +22,7 @@ sandbox after connecting, runs a command in it, and terminates it.
   experimental and not registered at production grade)
 - LLM provider configured
 - Seed agent **Modal Coder** available (or any agent with the `modal` capability)
-- **No** existing Modal connection in Settings → My agent experience
+- **No** existing Modal connection in Settings → Connections
 - A valid Modal token pair (`ak-...` and `as-...`)
 
 ## Test Data

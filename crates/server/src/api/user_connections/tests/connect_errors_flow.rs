@@ -118,14 +118,14 @@ async fn unreachable_provider_returns_with_provider_unreachable() {
     let provider = mcp_oauth_provider_id_for_uuid(server_id);
 
     let (_, redirect) =
-        begin_user_oauth_returning_to(state, org, server_id, Some("/settings/agent-experience"))
+        begin_user_oauth_returning_to(state, org, server_id, Some("/settings/mcp-servers"))
             .await
             .unwrap();
 
     let target = location(redirect);
     assert!(
         target.ends_with(&format!(
-            "/settings/agent-experience?connect_error=provider_unreachable&provider={provider}"
+            "/settings/mcp-servers?connect_error=provider_unreachable&provider={provider}"
         )),
         "{target}"
     );

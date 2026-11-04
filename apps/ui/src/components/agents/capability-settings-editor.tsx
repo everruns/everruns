@@ -1,6 +1,7 @@
 "use client";
 
-import { DecisionModelPicker } from "@/components/models/model-picker";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { DecisionModelPicker, ModelPicker } from "@/components/models/model-picker";
 import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
 import type {
@@ -24,8 +25,9 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
 import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capability-localization";
 import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
-import { useLocale } from "@/providers/locale-provider";
+
 import { GuardrailsConfigEditor } from "./guardrails-config-editor";
+import { KnowledgeConfigEditor } from "./knowledge-config-editor";
 import { KnowledgeIndexConfigEditor } from "./knowledge-index-config-editor";
 import { MemoryConfigEditor } from "./memory-config-editor";
 import { WebSearchConfigEditor } from "./web-search-config-editor";
@@ -57,6 +59,8 @@ export function CapabilitySettingsEditor({
   if (capability.id === MEMORY_CAPABILITY_ID) {
     return <MemoryConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }
+  if (capability.id === "knowledge")
+    return <KnowledgeConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   if (capability.id === KNOWLEDGE_INDEX_CAPABILITY_ID) {
     return <KnowledgeIndexConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }
@@ -187,7 +191,22 @@ function DecisionModelWidget(props: WidgetProps) {
   );
 }
 
+function SessionTitleModelWidget(props: WidgetProps) {
+  const ui = useUiTranslations();
+  return (
+    <ModelPicker
+      id={props.id}
+      value={props.value || ""}
+      placeholder={ui("Organization small model (or session)")}
+      additionalOptions={[{ value: "session", label: ui("Use session model") }]}
+      onChange={(value) => props.onChange(value || undefined)}
+      disabled={props.disabled || props.readonly}
+    />
+  );
+}
+
 const CAPABILITY_CONFIG_WIDGETS = {
+  SessionTitleModel: SessionTitleModelWidget,
   DecisionModel: DecisionModelWidget,
   CheckboxWidget,
   EmailWidget: TextWidget,

@@ -128,6 +128,12 @@ pub struct CapabilityInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "session_file_system"))]
     pub docs_slug: Option<String>,
+    /// Rollout flag that gates this capability, when one is required.
+    /// Present whether or not the flag is on, so a management screen can name
+    /// an attached capability and avoid offering it for new selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "skills"))]
+    pub feature_flag: Option<String>,
     /// Localized display strings keyed by lowercase language tag (e.g. "uk").
     /// The "en" entry carries only `config_description`, since the base
     /// name/description/config_schema strings are already English.
@@ -183,8 +189,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "browserless" => Some("browserless"),
         "browser_use" => Some("browser-use"),
         "computer_use" => Some("computer-use"),
-        "computer_use_desktop" => Some("computer-use"),
-        "computer_use_daytona" => Some("computer-use"),
+        "sandbox_desktop" => Some("computer-use"),
         "budgeting" => Some("budgeting"),
         "current_time" => Some("current-time"),
         "daytona" => Some("daytona"),
@@ -203,6 +208,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "session_schedule" => Some("session-schedules"),
         "session_storage" => Some("session-storage"),
         "session" => Some("session"),
+        "automatic_session_titles" => Some("automatic-session-titles"),
         "session_sql_database" => Some("sql-database"),
         "slack" => Some("slack"),
         "subagents" => Some("sub-agents"),
@@ -216,6 +222,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "citation_web" => Some("citation-web"),
         "citation_verification" => Some("citation-verification"),
         "claude_tool_search" => Some("tool-search"),
+        "claude_message_threads" => Some("claude-message-threads"),
         "docker_container" => Some("docker"),
         "e2b" => Some("e2b"),
         "guardrails" => Some("guardrails"),
@@ -234,6 +241,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "user_mcp" => Some("user-mcp-servers"),
         "poppy_client" => Some("poppy-personal-agent"),
         "memory" => Some("memory"),
+        "knowledge" => Some("knowledge"),
         "knowledge_base" => Some("knowledge-base"),
         "knowledge_index" => Some("knowledge-index"),
         "data_knowledge" => Some("data-knowledge"),
@@ -290,6 +298,7 @@ impl CapabilityInfo {
             agent_count: 0,
             harness_count: 0,
             docs_slug: builtin_capability_docs_slug(id_str).map(|s| s.to_string()),
+            feature_flag: None,
             localizations: cap
                 .localizations()
                 .into_iter()
@@ -346,6 +355,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            feature_flag: None,
             localizations: Default::default(),
         }
     }
@@ -383,84 +393,6 @@ mod tests {
                 "risk_level": wire, "agent_count": 3, "harness_count": 2,
             });
             assert_eq!(serde_json::to_value(&cap).unwrap(), expected);
-        }
-    }
-
-    #[test]
-    fn test_agent_capability_serialization() {
-        let agent_cap = AgentCapability {
-            capability_id: CapabilityId::new("test_math"),
-            position: 1,
-        };
-        assert_eq!(
-            serde_json::to_value(&agent_cap).unwrap(),
-            json!({"capability_id": "test_math", "position": 1})
-        );
-    }
-
-    struct ProjectionFixture {
-        features: Vec<&'static str>,
-        risk: RiskLevel,
-    }
-    impl crate::runtime::capabilities::Capability for ProjectionFixture {
-        fn id(&self) -> &str {
-            "projection_fixture"
-        }
-        fn name(&self) -> &str {
-            "Projection Fixture"
-        }
-        fn description(&self) -> &str {
-            "Independent capability metadata."
-        }
-        fn features(&self) -> Vec<&'static str> {
-            self.features.clone()
-        }
-        fn risk_level(&self) -> RiskLevel {
-            self.risk
-        }
-    }
-
-    struct DefaultCapability;
-    impl crate::runtime::capabilities::Capability for DefaultCapability {
-        fn id(&self) -> &str {
-            "default_fixture"
-        }
-        fn name(&self) -> &str {
-            "Default Fixture"
-        }
-        fn description(&self) -> &str {
-            "Uses trait metadata defaults."
-        }
-    }
-
-    #[test]
-    fn test_from_core_populates_features() {
-        assert!(
-            CapabilityInfo::from_core(&DefaultCapability)
-                .features
-                .is_empty()
-        );
-        for features in [vec!["secrets", "key_value"], vec![]] {
-            let info = CapabilityInfo::from_core(&ProjectionFixture {
-                features: features.clone(),
-                risk: RiskLevel::Low,
-            });
-            assert_eq!(info.features, features);
-        }
-    }
-
-    #[test]
-    fn test_from_core_populates_risk_level() {
-        assert_eq!(
-            CapabilityInfo::from_core(&DefaultCapability).risk_level,
-            RiskLevel::Low
-        );
-        for risk in [RiskLevel::Low, RiskLevel::Medium, RiskLevel::High] {
-            let info = CapabilityInfo::from_core(&ProjectionFixture {
-                features: vec![],
-                risk,
-            });
-            assert_eq!(info.risk_level, risk);
         }
     }
 

@@ -6,6 +6,7 @@ import { InstalledPluginCard } from "@/app/(main)/plugins/page";
 import type { Agent, VirtualUser, InstalledPlugin } from "@/lib/api/types";
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({ locale: "en" }),
 }));
 

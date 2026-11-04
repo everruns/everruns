@@ -117,6 +117,8 @@ URL blocked by network access policy: https://blocked-domain.com/path
 
 Standard SSRF protections (blocking private IPs, loopback, cloud metadata endpoints) are always enforced regardless of the network access list.
 
+These lists narrow what one agent may reach. The deployment-wide policy (`EVERRUNS_EGRESS_POLICY`), per-org grants and the optional tenant egress proxy sit underneath them; see [Outbound traffic](/advanced/physical-architecture/#outbound-traffic).
+
 ## Capabilities Affected
 
 | Capability | Enforced | Notes |

@@ -20,6 +20,7 @@ use everruns_core::Caller;
 
 /// A REST change in progress: checked, not yet recorded.
 pub struct RestChange {
+    _lease: Option<super::mutation_guard::Lease>,
     ctx: Ctx,
     operation: &'static str,
     pending: Option<PendingChange>,
@@ -44,6 +45,18 @@ impl RestChange {
             None,
             Arc::new(everruns_core::DefaultPermissionResolver),
         );
+        Self::begin_with_context(ctx, operation, kind, action, entity_ref, fields).await
+    }
+
+    /// Preserve host permissions and secret fingerprints for protected REST changes.
+    pub async fn begin_with_context(
+        ctx: Ctx,
+        operation: &'static str,
+        kind: EntityKind,
+        action: ChangeAction,
+        entity_ref: Option<&str>,
+        fields: &[&str],
+    ) -> Result<Self, CommandError> {
         let mut params = serde_json::Map::new();
         for field in fields {
             params.insert((*field).to_string(), Value::Bool(true));
@@ -56,11 +69,23 @@ impl RestChange {
             action,
             id: SubjectId::Output("id"),
         };
-        let pending = PendingChange::prepare(change, Value::Object(params), &ctx)?;
-        if let Some(pending) = &pending {
-            pending.check_context(&ctx).await?;
+        let lease = if let Some(reference) = entity_ref.filter(|_| kind != EntityKind::Session) {
+            Some(
+                super::mutation_guard::acquire(
+                    &ctx,
+                    &super::mutation_guard::Key::new(&ctx, kind, reference),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        let mut pending = PendingChange::prepare(change, Value::Object(params), &ctx)?;
+        if let Some(pending) = &mut pending {
+            pending.prepare_write(&ctx).await?;
         }
         Ok(Self {
+            _lease: lease,
             ctx,
             operation,
             pending,

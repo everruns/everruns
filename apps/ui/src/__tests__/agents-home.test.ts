@@ -1,6 +1,5 @@
 import {
   adoptedExample,
-  agentChannelHref,
   agentNow,
   attentionItems,
   channelState,
@@ -8,6 +7,7 @@ import {
   fastestFirstReply,
   formatReplyTime,
   matchesAgentTab,
+  nestUnderOwners,
   sortChannels,
 } from "@/lib/agents-home";
 import type { OrgExposure } from "@/hooks/use-org-exposures";
@@ -73,14 +73,6 @@ function issue(overrides: Partial<HealthIssue> = {}): HealthIssue {
     ...overrides,
   } as HealthIssue;
 }
-
-describe("agent channel link", () => {
-  it("opens that channel on its agent", () => {
-    expect(agentChannelHref("agent_dj", "appchan_slack")).toBe(
-      "/agents/agent_dj?tab=integrations&channel=appchan_slack",
-    );
-  });
-});
 
 describe("channel words", () => {
   it.each([
@@ -289,5 +281,25 @@ describe("setup not finished", () => {
     const plain = agent({ tags: ["example:researcher"] });
     expect(attentionItems({ ...inputs, agents: [plain], activity: new Map() })).toEqual([]);
     expect(attentionItems({ ...inputs, agents: [adopted] })).toEqual([]);
+  });
+});
+
+describe("nestUnderOwners", () => {
+  it("lists agents created as part of another agent right under it", () => {
+    const lead = agent({ id: "agent_lead" });
+    const other = agent({ id: "agent_other" });
+    const child = agent({ id: "agent_child", owner_agent_id: "agent_lead" });
+    expect(
+      nestUnderOwners([child, other, lead]).map(({ agent, nested }) => [agent.id, nested]),
+    ).toEqual([
+      ["agent_other", false],
+      ["agent_lead", false],
+      ["agent_child", true],
+    ]);
+  });
+
+  it("keeps an owned agent at the top level when its owner is filtered out", () => {
+    const child = agent({ id: "agent_child", owner_agent_id: "agent_lead" });
+    expect(nestUnderOwners([child])).toEqual([{ agent: child, nested: false }]);
   });
 });

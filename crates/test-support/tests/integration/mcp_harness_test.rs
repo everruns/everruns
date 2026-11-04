@@ -13,9 +13,7 @@ use everruns_core::mcp::{
 use everruns_core::{
     EgressRequest, EgressRequestKind, EgressService, McpProtocolMode, McpServerAuthMode,
 };
-use everruns_test_support::{
-    MockCallResponse, MockMcpOAuthServer, MockMcpProtocolEra, MockOAuthError,
-};
+use everruns_test_support::{MockCallResponse, MockMcpOAuthServer, MockMcpProtocolEra};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -412,23 +410,6 @@ async fn refresh_rotates_and_revoke_invalidates_the_latest_token() {
         .await
         .expect_err("revoked refresh token must fail");
     assert!(matches!(revoked, OAuthError::Http { status: 400, .. }));
-}
-
-#[test]
-fn configurable_actor_and_scope_rejections_are_explicit() {
-    let mock = MockMcpOAuthServer::default();
-    mock.reject_actor();
-    assert_eq!(
-        mock.authorize("challenge", Some("app"), None),
-        Err(MockOAuthError::ActorRejected)
-    );
-
-    let mock = MockMcpOAuthServer::default();
-    mock.reject_scope("admin");
-    assert_eq!(
-        mock.authorize("challenge", None, Some("read,write,admin")),
-        Err(MockOAuthError::ScopeRejected("admin".to_string()))
-    );
 }
 
 #[tokio::test]

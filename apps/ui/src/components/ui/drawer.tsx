@@ -1,11 +1,24 @@
+"use client";
+
+import { useUiTranslations } from "@/providers/locale-provider";
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
 
 function Drawer({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="drawer" {...props} />;
+  const mode = usePageChatMode();
+  return (
+    <DialogPrimitive.Root
+      data-slot="drawer"
+      {...props}
+      modal={mode?.open ? false : props.modal}
+      disablePointerDismissal={mode?.open || props.disablePointerDismissal}
+    />
+  );
 }
 
 function DrawerPortal({ ...props }: DialogPrimitive.Portal.Props) {
@@ -30,15 +43,25 @@ function DrawerContent({
   children,
   showCloseButton = true,
   side = "right",
+  scopeToPage = true,
+  chatProtected,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   side?: "left" | "right";
+  scopeToPage?: boolean;
+  chatProtected?: string;
 }) {
+  const ui = useUiTranslations();
+  const mode = usePageChatMode();
+  // Keep the same portal parent while Chat opens/closes, preserving form state.
+  const container = scopeToPage
+    ? (mode?.pageContainerElement ?? mode?.pageContainer.current ?? null)
+    : null;
   // Tailwind's slide utilities change translate, so the transition must include it.
   return (
-    <DrawerPortal data-slot="drawer-portal">
-      <DrawerOverlay />
+    <DrawerPortal data-slot="drawer-portal" container={container ?? undefined}>
+      <DrawerOverlay className={container ? "absolute" : undefined} />
       <DialogPrimitive.Popup
         data-slot="drawer-content"
         className={cn(
@@ -47,9 +70,11 @@ function DrawerContent({
             ? "right-0 border-l data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full"
             : "left-0 border-r data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full",
           className,
+          container && "absolute w-[440px] max-w-full sm:max-w-full",
         )}
         {...props}
       >
+        {chatProtected && <ManualPageContext label={chatProtected} />}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
@@ -57,7 +82,7 @@ function DrawerContent({
             className="ring-offset-background focus:ring-ring data-[open]:bg-muted data-[open]:text-muted-foreground absolute top-4 right-4 opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{ui("Close")}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>

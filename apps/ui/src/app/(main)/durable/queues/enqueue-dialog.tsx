@@ -1,5 +1,10 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useDurablePageAccess } from "@/components/chat-mode/use-durable-page-rows";
+
+import { z } from "zod";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +19,12 @@ import {
 } from "@/components/ui/dialog";
 import { useEnqueueTask } from "@/hooks";
 
+const enqueueDraftSchema = z.strictObject({
+  activity_type: z.string(),
+  max_attempts: z.string().regex(/^(?:[1-9]|10)$/),
+  priority: z.string().regex(/^-?(?:[0-9]|10)$/),
+});
+
 export function EnqueueDialog({
   open,
   onOpenChange,
@@ -21,6 +32,7 @@ export function EnqueueDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [activityType, setActivityType] = useState("");
   const [inputJson, setInputJson] = useState("{}");
   const [maxAttempts, setMaxAttempts] = useState("3");
@@ -28,8 +40,29 @@ export function EnqueueDialog({
   const [jsonError, setJsonError] = useState<string | null>(null);
   const enqueueMutation = useEnqueueTask();
 
+  // Payloads may contain credentials. Chat can stage queue metadata, while the
+  // task body and the actual enqueue action stay in the manual form.
+  const { manage: canManageDraft } = useDurablePageAccess();
+  const chat = usePageFormDraft({
+    schema: enqueueDraftSchema,
+    entityType: "queued_task",
+    label: ui("Enqueue task metadata"),
+    priority: 30,
+    enabled: open,
+    values: { activity_type: activityType, max_attempts: maxAttempts, priority },
+    baseline: "new",
+    dirty: !!activityType || maxAttempts !== "3" || priority !== "0",
+    writable: canManageDraft && !enqueueMutation.isPending,
+    apply: (next) => {
+      setActivityType(next.activity_type);
+      setMaxAttempts(next.max_attempts);
+      setPriority(next.priority);
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (chat.blocked) return;
     try {
       const parsed = JSON.parse(inputJson);
       setJsonError(null);
@@ -59,22 +92,23 @@ export function EnqueueDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Enqueue Task</DialogTitle>
-          <DialogDescription>Add a standalone task to the queue.</DialogDescription>
+          <DialogTitle>{ui("Enqueue Task")}</DialogTitle>
+          <DialogDescription>{ui("Add a standalone task to the queue.")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chat.notice}
           <div className="space-y-2">
-            <Label htmlFor="activity-type">Activity Type</Label>
+            <Label htmlFor="activity-type">{ui("Activity Type")}</Label>
             <Input
               id="activity-type"
               value={activityType}
               onChange={(e) => setActivityType(e.target.value)}
-              placeholder="e.g. send_email"
+              placeholder={ui("e.g. send_email")}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="input-json">Input (JSON)</Label>
+            <Label htmlFor="input-json">{ui("Input (JSON)")}</Label>
             <textarea
               id="input-json"
               value={inputJson}
@@ -83,14 +117,14 @@ export function EnqueueDialog({
                 setJsonError(null);
               }}
               className="flex min-h-[100px] w-full border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder='{"key": "value"}'
-              aria-label="Input JSON"
+              placeholder={ui('{"key": "value"}')}
+              aria-label={ui("Input JSON")}
             />
             {jsonError && <p className="text-sm text-destructive">{jsonError}</p>}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="max-attempts">Max Attempts</Label>
+              <Label htmlFor="max-attempts">{ui("Max Attempts")}</Label>
               <Input
                 id="max-attempts"
                 type="number"
@@ -101,7 +135,7 @@ export function EnqueueDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="priority">Priority</Label>
+              <Label htmlFor="priority">{ui("Priority")}</Label>
               <Input
                 id="priority"
                 type="number"
@@ -114,15 +148,18 @@ export function EnqueueDialog({
           </div>
           {enqueueMutation.isError && (
             <p className="text-sm text-destructive">
-              Failed to enqueue: {enqueueMutation.error.message}
+              {ui("Failed to enqueue:")} {enqueueMutation.error.message}
             </p>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
-            <Button type="submit" disabled={enqueueMutation.isPending || !activityType.trim()}>
-              {enqueueMutation.isPending ? "Enqueuing..." : "Enqueue"}
+            <Button
+              type="submit"
+              disabled={chat.blocked || enqueueMutation.isPending || !activityType.trim()}
+            >
+              {enqueueMutation.isPending ? ui("Enqueuing...") : ui("Enqueue")}
             </Button>
           </DialogFooter>
         </form>

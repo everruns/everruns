@@ -29,6 +29,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 pub struct SessionCommandService {
+    encryption: Option<Arc<crate::storage::EncryptionService>>,
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     provider_resolver: Arc<ProviderResolverService>,
@@ -52,6 +53,7 @@ impl SessionCommandService {
         sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
     ) -> Self {
         Self {
+            encryption: None,
             db,
             event_service,
             provider_resolver,
@@ -61,6 +63,14 @@ impl SessionCommandService {
             sqldb_store,
             virtual_registry: None,
         }
+    }
+
+    pub fn with_encryption(
+        mut self,
+        encryption: Option<Arc<crate::storage::EncryptionService>>,
+    ) -> Self {
+        self.encryption = encryption;
+        self
     }
 
     pub fn with_virtual_registry(
@@ -142,6 +152,17 @@ impl SessionCommandService {
             .load_session_components(caller.org_id, session_id)
             .await?;
         authorize_platform_chat_owner(&self.db, caller, &session).await?;
+        if req.name == "dream"
+            && !caller.is_internal
+            && session.resolved_owner_user_id.is_some()
+            && caller.user_id != session.resolved_owner_user_id
+        {
+            return Err(crate::domains::common::CommandError::forbidden(
+                "Dreaming requires the session owner",
+            )
+            .into());
+        }
+
         let harness_definition = harness.definition();
         // EVE-882: capability resolution consumes the portable execution view.
         let execution_session = session.execution_session();
@@ -199,6 +220,7 @@ impl SessionCommandService {
             self.driver_registry.clone(),
             self.sqldb_store.clone(),
         );
+        adapters = adapters.with_encryption(self.encryption.clone());
         if let Some(registry) = &self.virtual_registry {
             adapters = adapters.with_virtual_registry(registry.clone());
         }
@@ -219,7 +241,16 @@ impl SessionCommandService {
         )
         .with_image_resolver(Arc::new(OrgAdapter::new(adapters.clone(), org_id)))
         .with_file_resolver(Arc::new(OrgAdapter::new(adapters.clone(), org_id)))
-        .with_file_store(Arc::new(SessionAdapter::new(adapters)))
+        .with_file_store(Arc::new(
+            SessionAdapter::new(adapters.clone()).for_org(org_id),
+        ))
+        .with_dreaming(Arc::new(
+            everruns_core::host::dreaming::RuntimeDreamingCommand::new(
+                everruns_worker::WorkerRuntimeHost::new(adapters),
+                org_id,
+                session_id,
+            ),
+        ))
     }
 
     async fn load_session_components(

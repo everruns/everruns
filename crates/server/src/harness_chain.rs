@@ -64,6 +64,7 @@ pub async fn resolve_effective_harness(
 
         cursor = row.parent_harness_id;
         chain.push(Harness {
+            localizations: Default::default(),
             id: row.id,
             name: row.name,
             display_name: row.display_name,
@@ -135,6 +136,7 @@ mod tests {
             .create_harness(
                 org_id,
                 CreateHarnessRow {
+                    localizations: Default::default(),
                     name: "secured".to_string(),
                     display_name: None,
                     icon: None,

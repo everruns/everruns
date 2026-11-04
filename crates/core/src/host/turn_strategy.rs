@@ -279,6 +279,14 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
                 lifecycle
                     .fire_turn_end_hooks(harness_id, agent_id, turn_id, success)
                     .await;
+                #[cfg(feature = "builtins")]
+                if success
+                    && let Err(error) =
+                        super::dreaming::after_turn(adapter.clone(), org_id, session_id, turn_id)
+                            .await
+                {
+                    tracing::debug!(%error, "dreaming not scheduled");
+                }
             }
             TurnLifecycleEffect::WaitingForToolResults => {
                 lifecycle.waiting_for_tool_results().await?;

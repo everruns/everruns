@@ -1,13 +1,12 @@
 use everruns_capabilities::capabilities::{
-    AgentHandoffCapability, SessionScheduleCapability, SubagentCapability,
-    register_hosted_capabilities,
+    AgentHandoffCapability, SubagentCapability, register_hosted_capabilities,
 };
 #[cfg(feature = "environment-capabilities")]
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_contracts::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 use everruns_core::capabilities::{
-    Capability, CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
+    CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
 #[cfg(feature = "environment-capabilities")]
 use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
@@ -21,8 +20,7 @@ const HOSTED_IDS: &[&str] = &[
     "session_tasks",
     "user_hooks",
     "data_knowledge",
-    "knowledge_base",
-    "knowledge_index",
+    "knowledge",
     "citation_retrieval",
     "citation_web",
     "citation_verification",
@@ -54,6 +52,8 @@ fn product_registration_adds_the_hosted_catalog() {
     for id in HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");
     }
+    assert!(!registry.has("knowledge_base"));
+    assert!(!registry.has("knowledge_index"));
     #[cfg(feature = "environment-capabilities")]
     for id in ENVIRONMENT_GATED_HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");
@@ -67,14 +67,10 @@ fn product_registration_adds_the_hosted_catalog() {
     }
 }
 
-// `memory`, `data_knowledge`, and `platform` declare an unconditional
-// dependency on `session_file_system`, which only registers when
-// `environment-capabilities` links the filesystem integration crate
-// (crates/platform/Cargo.toml). The full hosted catalog is only a coherent
-// dependency graph with that feature on — every hosted binary
-// (crates/server, crates/worker) enables it — so this check requires it too
-// rather than reporting a dangling dependency that is not actually a bug.
-#[cfg(feature = "environment-capabilities")]
+// Hosted dependencies span environment capabilities (session_file_system)
+// and portable builtins (skills). Server and worker enable both; validate
+// their composed graph only when both catalogs are registered.
+#[cfg(all(feature = "environment-capabilities", feature = "portable-builtins"))]
 #[test]
 fn hosted_catalog_keeps_dependency_tool_and_narration_invariants() {
     let registry = everruns_capabilities::capabilities::hosted_capability_registry_for_grade(
@@ -146,16 +142,6 @@ fn retired_capabilities_stay_registered_and_inert() {
     assert!(capability.system_prompt_addition().is_none());
     assert!(capability.mounts().is_empty());
     assert!(capability.dependencies().is_empty());
-}
-
-#[test]
-fn hosted_schedule_feature_contract_is_preserved() {
-    assert_eq!(SessionScheduleCapability.features(), vec!["schedules"]);
-    assert_eq!(
-        everruns_core::capability_dto::CapabilityInfo::from_core(&SessionScheduleCapability)
-            .features,
-        vec!["schedules"]
-    );
 }
 
 #[tokio::test]

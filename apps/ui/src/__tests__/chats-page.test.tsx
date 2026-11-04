@@ -6,6 +6,14 @@ import { ChatThreadView } from "@/components/chat/chat-thread-view";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import type { Session } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
+
 const mockPinMutate = jest.fn();
 const mockUnpinMutate = jest.fn();
 const mockArchiveMutate = jest.fn();
@@ -46,7 +54,7 @@ jest.mock("@/hooks", () => ({
   usePageTitle: jest.fn(),
 }));
 
-// The page now decides whether its empty state is "No side chats yet" or the
+// The page now decides whether its empty state is "No subchats yet" or the
 // no-intelligence message, so it reads intelligence status (org context this
 // suite does not stub). Default to available; the no-intelligence branch has
 // its own coverage.
@@ -102,8 +110,8 @@ describe("Chats surface", () => {
   it("offers a way to start a chat when there are no threads yet", () => {
     render(<ChatsPageClient />);
 
-    expect(screen.getByText("No side chats yet")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "New chat" })[0]).toBeInTheDocument();
+    expect(screen.getByText("No subchats yet")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "New subchat" })[0]).toBeInTheDocument();
   });
 
   it("swaps the whole empty state for the no-intelligence message", () => {
@@ -113,7 +121,7 @@ describe("Chats surface", () => {
 
     expect(screen.getByText("No intelligence available")).toBeInTheDocument();
     // One centred message replaces the ordinary empty state.
-    expect(screen.queryByText("No side chats yet")).not.toBeInTheDocument();
+    expect(screen.queryByText("No subchats yet")).not.toBeInTheDocument();
   });
 
   it("lists threads, linking each to its thread route", () => {
@@ -214,13 +222,6 @@ describe("Thread surface", () => {
       );
     });
   }
-
-  it("loads the thread without feature-flag configuration", async () => {
-    await renderThread();
-
-    expect(mockSessionContext).toHaveBeenCalled();
-    expect(screen.getByText("chat-panel:Platform Chat")).toBeInTheDocument();
-  });
 
   it("resolves and reopens an adopted thread through the existing lifecycle", () => {
     const { rerender } = render(<ChatThreadView threadId="sess_1" threadMode />);

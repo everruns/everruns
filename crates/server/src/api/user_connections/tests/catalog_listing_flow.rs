@@ -41,7 +41,7 @@ async fn connect(
         CookieJar::new(),
         Path(provider.clone()),
         Query(OAuthAuthorizeQuery {
-            return_to: Some("/settings/agent-experience".to_string()),
+            return_to: Some("/settings/mcp-servers".to_string()),
             mode: mode.map(ToOwned::to_owned),
             session_id: None,
             agent_id: None,

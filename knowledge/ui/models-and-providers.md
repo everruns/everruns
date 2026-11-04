@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Models and Providers"
-description: "Why providers live under Registries → Models with Models, Providers and Defaults tabs, share the models permission, and how new and stale models are surfaced."
+description: "Why providers live under Library → Models with Models, Providers and Defaults tabs, share the models permission, and how new and stale models are surfaced."
 tags:
   - everruns
   - ui
@@ -14,7 +14,7 @@ tags:
 ## Purpose
 
 One page for everything that decides which models agents can use: the
-models page (`apps/ui/src/app/(main)/models/(tabs)/`) under Registries,
+models page (`apps/ui/src/app/(main)/models/(tabs)/`) under Library,
 with three tabs at their own paths: `/models`, `/models/providers` and
 `/models/defaults`. **Models** lists every model from every provider, **Providers**
 lists the connected vendor accounts, **Defaults** holds the org-wide picks per
@@ -57,16 +57,19 @@ service. The provider record itself is described in
 - **Built for scale.** Enabled models are the default view once any exist, rows
   render 50 at a time, and bulk changes go through the selection drawer rather
   than row by row. Bulk enable is a batch of per-model updates from the client;
-  there is no bulk endpoint.
+  the legacy flow uses separate updates. With Adoption Chat mode, the drawer
+  applies reviewed booleans in an atomic batch and returns child revisions for
+  guarded per-model or whole-batch Undo. It retains its picker-open baseline until
+  Discard/reopen, so background catalog refresh cannot silently rebase dirty work.
 - **Defaults say when they cannot be used.** Pickers are searchable. A default
   that is missing, disabled, stale or on a provider without a key gets a warning
   on its row. The decision default accepts calibrated models only. When system
   decisions use the org's own decision model there is no fallback to deployment
   keys, and the row says so.
-- **Managed and personal providers.** Host-managed providers keep their
-  credential and catalog with the host, so credentials are read-only; choosing
-  which of their models to enable stays with the org. A personal ChatGPT provider
-  is visible only to its owner and is skipped by shared defaults.
+- **Managed providers.** Host-managed providers keep their credential and
+  catalog with the host, so credentials are read-only; choosing which of their
+  models to enable stays with the org. The framework's ChatGPT Plan driver is
+  excluded from Platform provider and model lists, connect setup, and defaults.
 
 ## Limits
 

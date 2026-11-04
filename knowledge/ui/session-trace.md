@@ -148,8 +148,27 @@ rendered with a virtualized list (`@tanstack/react-virtual`, a new dependency), 
 rows on screen exist in the DOM. Loaded turns are kept in a sliding window; scrolling far
 away drops the farthest ones. Nothing derives over the whole session in the browser.
 
+A turn reads as one unit. The step spine runs unbroken from under the turn header,
+through the labeled timeline strip (0s, midpoint, total) and every step, and ends in a node
+on the footer: filled red for a failed turn, a hollow ring otherwise. A failed step keeps its
+kind icon and a white row, gets a Failed badge, and shows its error as a three-line quote
+with a red edge (the shape of the final answer's quote); "Show full error" selects it. Only
+the footer's "Turn failed" label is red, its reason reads as normal text. The inspector's
+Error section leads with the provider's own message, the provider account that served the
+call (linked), who reported it and the HTTP status, then the raw error. A turn that fails
+because a step failed counts one error, not two. A failed turn's header names its
+classified failure (the turn's `error_code`: Out of credits, Rate limited, Provider down,
+...) and a model call that needed retries says so on its row (Retried 3× · waited 42s);
+rows indexed before these fields existed show the error text alone.
+
 Filters and the selected step live in the URL
 (`?view=tools&errors=1&lifecycle=1&turn=2418&step=3`), so a debugging link can be shared.
+
+Agent failure-history links anchor on the terminal event's sequence, resolve its turn through
+the trace index after catch-up, and select the latest recorded failed step when available. A
+short banner names that failed turn and its recorded error independently of the session's
+current outcome. A turn that failed before any indexed step still opens on the turn, without
+inventing an assistant error message.
 
 ### 3. Live sessions refresh the tail, not the session
 
@@ -173,6 +192,10 @@ redirect: `?tab=transcript` to Trace with `view=messages`, `?tab=timeline` to Tr
 
 Evidence chips (answer claim to step) need a contract from the agent or a post-hoc mapping.
 Trace ships without them; the answer renders as prose. This is designed separately.
+
+Model narration and answers render as Markdown by default, using the same renderer as chat.
+The trace controls also offer plain text for inspecting the original Markdown source. The
+choice applies across the trace, including expanded sub-agent steps, and is shareable in the URL.
 
 ## Relation to the actor-based design
 

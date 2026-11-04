@@ -80,8 +80,13 @@ impl EgressService for CountingMcpServer {
         })
     }
 
-    async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
-        panic!("MCP tool discovery must use a bounded non-streaming response")
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let response = self.send(request).await?;
+        Ok(EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 }
 
@@ -145,6 +150,8 @@ impl CacheFixture {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    completion_check: Default::default(),
+                    localizations: Default::default(),
                     public_id: AgentId::new().to_string(),
                     name: "cache-agent".into(),
                     display_name: None,

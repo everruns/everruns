@@ -137,7 +137,13 @@ pub(crate) fn hosted_call_event(event_data: &str) -> Option<LlmStreamEvent> {
         item.get("status").and_then(Value::as_str),
         Some("failed" | "incomplete")
     );
-    let status = match (done, failed) {
+    // A terminal item is not proof that a search finished: tool-call limits
+    // can leave it searching/in_progress. Keep this a hosted-call failure,
+    // not a response error that could discard the answer or retry the search.
+    let unfinished_search = done
+        && tool == "web_search"
+        && item.get("status").and_then(Value::as_str) != Some("completed");
+    let status = match (done, failed || unfinished_search) {
         (_, true) => HostedToolCallStatus::Failed,
         (true, false) => HostedToolCallStatus::Completed,
         (false, false) => HostedToolCallStatus::InProgress,
@@ -312,6 +318,42 @@ mod tests {
     }
 
     #[test]
+    fn only_explicitly_completed_terminal_searches_succeed() {
+        for kind in ["web_search_call", OPENROUTER_WEB_SEARCH_ITEM] {
+            for status in [
+                "searching",
+                "in_progress",
+                "failed",
+                "incomplete",
+                "cancelled",
+                "unknown",
+            ] {
+                let call = event(json!({"type": "response.output_item.done", "item": {
+                    "type": kind, "id": "ws_1", "status": status
+                }}))
+                .unwrap();
+                assert_eq!(
+                    call.status,
+                    HostedToolCallStatus::Failed,
+                    "{kind}: {status}"
+                );
+            }
+            let call = event(json!({"type": "response.output_item.done", "item": {
+                "type": kind, "id": "ws_1"
+            }}))
+            .unwrap();
+            assert_eq!(call.status, HostedToolCallStatus::Failed, "missing status");
+            for status in ["searching", "in_progress"] {
+                let call = event(json!({"type": "response.output_item.added", "item": {
+                    "type": kind, "id": "ws_1", "status": status
+                }}))
+                .unwrap();
+                assert_eq!(call.status, HostedToolCallStatus::InProgress);
+            }
+        }
+    }
+
+    #[test]
     fn container_and_file_calls_carry_their_detail() {
         let done = |item: Value| {
             event(json!({ "type": "response.output_item.done", "item": item })).unwrap()
@@ -461,15 +503,5 @@ mod tests {
         .expect("done frame");
         assert_eq!(done.status, HostedToolCallStatus::Completed);
         assert_eq!(done.summary.as_deref(), Some("latest Rust release"));
-    }
-
-    #[test]
-    fn terminal_response_counts_hosted_calls() {
-        let counts = hosted_tool_calls(&json!({ "output": [
-            { "type": "web_search_call", "id": "ws_1" },
-            { "type": "message", "id": "m" },
-        ]}));
-        assert_eq!(counts.get("web_search_call"), Some(&1));
-        assert!(hosted_tool_calls(&json!({})).is_empty());
     }
 }

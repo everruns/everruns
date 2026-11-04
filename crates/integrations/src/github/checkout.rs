@@ -16,10 +16,11 @@ use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 
+use super::checkout_files::{self, FileCheckout};
 use crate::github::GitHubActsAs;
 use crate::github::client::GitHubClient;
 use crate::github::fix_pull_requests::is_valid_branch;
-use crate::github::pull_requests::{target, target_schema};
+use crate::github::pull_requests::{github_token, target, target_schema};
 use crate::github::tools::enforce_github_network_access;
 use everruns_contracts::runtime::GitHubAccess;
 
@@ -27,6 +28,7 @@ const WORKSPACE: &str = "/workspace";
 const DEFAULT_DEPTH: u64 = 100;
 const MAX_DEPTH: u64 = 5_000;
 const MAX_ERROR_BYTES: usize = 2_000;
+const MAX_FILE_KIB: u64 = 2_048;
 
 /// Only the trusted resolver can attest installation scope. Session secrets
 /// and personal tokens remain host-side; requested access is not evidence.
@@ -79,6 +81,33 @@ struct Checkout {
     number: u64,
     path: String,
     depth: u64,
+    /// Files-mode only: repository-relative prefixes to copy.
+    paths: Vec<String>,
+    /// Files-mode only: larger files are skipped.
+    max_file_bytes: u64,
+}
+
+fn parse_paths(arguments: &Value) -> Result<Vec<String>, ToolExecutionResult> {
+    let Some(value) = arguments.get("paths") else {
+        return Ok(Vec::new());
+    };
+    let invalid = || {
+        ToolExecutionResult::tool_error(
+            "paths must be an array of repository-relative paths without `..`",
+        )
+    };
+    let items = value.as_array().ok_or_else(invalid)?;
+    items
+        .iter()
+        .map(|item| {
+            let path = item.as_str().ok_or_else(invalid)?.trim().trim_matches('/');
+            let valid = !path.is_empty()
+                && path
+                    .split('/')
+                    .all(|segment| !segment.is_empty() && segment != "." && segment != "..");
+            valid.then(|| path.to_string()).ok_or_else(invalid)
+        })
+        .collect()
 }
 
 fn quote(value: &str) -> String {
@@ -127,11 +156,25 @@ fn parse(arguments: &Value) -> Result<Checkout, ToolExecutionResult> {
                 ))
             })?,
     };
+    let max_file_bytes = match arguments.get("max_file_kib") {
+        None => checkout_files::DEFAULT_MAX_FILE_BYTES,
+        Some(kib) => kib
+            .as_u64()
+            .filter(|kib| (1..=MAX_FILE_KIB).contains(kib))
+            .map(|kib| kib * 1024)
+            .ok_or_else(|| {
+                ToolExecutionResult::tool_error(format!(
+                    "max_file_kib must be an integer from 1 to {MAX_FILE_KIB}"
+                ))
+            })?,
+    };
     Ok(Checkout {
         repo,
         number,
         path,
         depth,
+        paths: parse_paths(arguments)?,
+        max_file_bytes,
     })
 }
 
@@ -142,6 +185,7 @@ fn script(checkout: &Checkout, base_ref: &str) -> String {
         number,
         path,
         depth,
+        ..
     } = checkout;
     let url = quote(&format!("https://github.com/{repo}.git"));
     let pull = format!("refs/remotes/origin/pull/{number}");
@@ -242,6 +286,44 @@ async fn checkout(
     }))
 }
 
+impl CheckoutGitHubPullRequestTool {
+    async fn checkout_into_files(
+        &self,
+        request: Checkout,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let Some(store) = context.file_store.clone() else {
+            return ToolExecutionResult::tool_error(
+                "github_checkout_pull_request needs somewhere to put the code: a managed sandbox \
+                 (session_sandbox) or session files (Bashkit or session_file_system).",
+            );
+        };
+        let token = match github_token(
+            context,
+            self.acts_as,
+            &request.repo,
+            &[("contents", "read"), ("pull_requests", "read")],
+        )
+        .await
+        {
+            Ok(token) => token,
+            Err(e) => return e,
+        };
+        let client = GitHubClient::with_base_url(token, self.api_base.clone());
+        let files = FileCheckout {
+            repo: &request.repo,
+            number: request.number,
+            path: &request.path,
+            paths: &request.paths,
+            max_file_bytes: request.max_file_bytes,
+        };
+        match checkout_files::checkout_into_files(&client, &store, context, files).await {
+            Ok(result) => ToolExecutionResult::success(result),
+            Err(e) => e,
+        }
+    }
+}
+
 pub struct CheckoutGitHubPullRequestTool {
     pub(crate) acts_as: GitHubActsAs,
     pub(crate) api_base: String,
@@ -299,10 +381,12 @@ impl Tool for CheckoutGitHubPullRequestTool {
     }
 
     fn description(&self) -> &str {
-        "Check out a GitHub pull request (private repositories too) into the managed sandbox at \
-         /workspace/<repo name> or `path`: its head at a detached HEAD, plus its base branch, so \
-         `bash` can build, test and diff it. Needs a managed sandbox. The sandbox gets no lasting \
-         GitHub credential; call this again to refresh."
+        "Check out a GitHub pull request (private repositories too) at /workspace/<repo name> or \
+         `path`. In a managed sandbox: a git checkout of its head at a detached HEAD plus its base \
+         branch, so `bash` can build, test and diff it. Without one (Bashkit): a snapshot of the \
+         head's text files in the session files, readable with `bash` and the file tools, with no \
+         git history; narrow it with `paths`. No lasting GitHub credential is left behind; call \
+         this again to refresh."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -315,7 +399,18 @@ impl Tool for CheckoutGitHubPullRequestTool {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": MAX_DEPTH,
-                "description": "Commits of history to fetch for the head and the base (default 100)."
+                "description": "Commits of history to fetch for the head and the base (default 100). Managed sandbox only."
+            },
+            "paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Snapshot only: repository-relative files or directories to copy or refresh, e.g. [\"AGENTS.md\", \"crates/core\"]; files outside them are left as they are. Default: the whole repository."
+            },
+            "max_file_kib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_FILE_KIB,
+                "description": "Snapshot only: skip files larger than this many KiB (default 1024)."
             }
         }))
     }
@@ -340,12 +435,10 @@ impl Tool for CheckoutGitHubPullRequestTool {
             Ok(request) => request,
             Err(e) => return e,
         };
-        // Before any token is minted: without a sandbox there is nowhere to put it.
+        // Before any token is minted: without a sandbox the token stays
+        // host-side and the head is copied into the session files instead.
         let Some(sandbox) = context.extension::<SandboxWorkspaceExt>() else {
-            return ToolExecutionResult::tool_error(
-                "github_checkout_pull_request needs a managed sandbox: add the Managed Sandbox \
-                 (session_sandbox) capability and run the agent on a Sandbox Worker.",
-            );
+            return self.checkout_into_files(request, context).await;
         };
         let token = match checkout_token(context, self.acts_as, &request.repo).await {
             Ok(token) => token,

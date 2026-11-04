@@ -52,6 +52,8 @@ pub(crate) async fn init_storage(
             .await
             .context("Failed to connect to embedded PostgreSQL")?;
         run_migrations(&backend, migrations).await?;
+        // Direct execution shares trusted server stores, not scoped ingress.
+        backend.require_legacy_worker_hosting().await?;
 
         let pool = backend.pool().clone();
         let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool));
@@ -98,7 +100,11 @@ pub(crate) async fn init_storage(
     // (knowledge/runtime-resources/object-storage.md). Defaults to inline PostgreSQL storage.
     let blob_store = crate::storage::blob_store::blob_store_from_env()
         .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
-    let backend = backend.with_blob_store(blob_store);
+    let knowledge_blob_store = crate::storage::blob_store::knowledge_blob_store_from_env()
+        .context("Invalid Knowledge content-storage configuration")?;
+    let backend = backend
+        .with_blob_store(blob_store)
+        .with_knowledge_blob_store(knowledge_blob_store);
 
     if !config.no_migrations {
         run_migrations(&backend, migrations).await?;

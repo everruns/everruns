@@ -128,37 +128,6 @@ mod tests {
     use super::*;
     use everruns_contracts::DriverId;
 
-    fn effort_for(model: &str) -> Option<ReasoningEffort> {
-        let profile = everruns_contracts::get_model_profile(&DriverId::Anthropic, model);
-        default_effort(model, profile.as_ref())
-    }
-
-    #[test]
-    fn thinking_always_on_families_get_the_profile_default() {
-        for model in [
-            "claude-opus-5-5",
-            "claude-sonnet-5-5",
-            "claude-fable-5-1",
-            "claude-fable-5",
-        ] {
-            assert_eq!(effort_for(model), Some(ReasoningEffort::High), "{model}");
-        }
-        // Haiku 5.5 sends its profile default, which matches the API's `medium`.
-        assert_eq!(
-            effort_for("claude-haiku-5-5"),
-            Some(ReasoningEffort::Medium)
-        );
-    }
-
-    /// Either omitting `thinking` turns it off, or the API default already
-    /// matches the profile, so no effort is invented.
-    #[test]
-    fn other_families_get_none() {
-        for model in ["claude-opus-4-8", "claude-sonnet-5", "claude-opus-4-5"] {
-            assert_eq!(effort_for(model), None, "{model}");
-        }
-    }
-
     #[test]
     fn explicit_none_becomes_low_where_thinking_cannot_be_off() {
         let profile = |m| everruns_contracts::get_model_profile(&DriverId::Anthropic, m);

@@ -63,6 +63,8 @@ mod update_field;
 // `/proc` readings for the worker pool's backpressure and the bench reports.
 // Not part of the API.
 pub(crate) mod sysstat;
+// Bounds repeated failure reports per call site (EVE-1328).
+pub(crate) mod report_throttle;
 pub mod task_events;
 pub mod worker;
 pub mod workflow;
@@ -115,9 +117,10 @@ pub use persistence::{
     ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter,
     ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
     SealedTaskInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter,
-    TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter, WorkerHeartbeat,
-    WorkerInfo, WorkerRegistry, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter,
-    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS,
+    WorkerFilter, WorkerHeartbeat, WorkerInfo, WorkerRegistry, WorkflowEventInfo,
+    WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    begin_transaction, commit_in_place, commit_transaction,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
@@ -136,3 +139,5 @@ pub use task_events::{
     append_event, record_activity_completed, record_activity_failed, record_activity_started,
     record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
 };
+
+pub mod schedule_transaction;

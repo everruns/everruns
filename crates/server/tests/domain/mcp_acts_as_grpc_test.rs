@@ -158,6 +158,8 @@ impl ActsAsArrangement {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    completion_check: Default::default(),
+                    localizations: Default::default(),
                     public_id: public_id.to_string(),
                     name: "acts-as-agent".to_string(),
                     display_name: None,
@@ -393,6 +395,9 @@ async fn start_grpc_server(
             }
         });
         tonic::transport::Server::builder()
+            .layer(tonic::service::InterceptorLayer::new(
+                everruns_server::worker_link::grpc_service::GrpcAuthInterceptor::new(None),
+            ))
             .add_service(service.into_server())
             .serve_with_incoming(ReceiverStream::new(incoming_rx))
             .await
@@ -663,6 +668,36 @@ async fn unattended_user_attachment_fails_closed_before_mcp_over_grpc() {
 
     assert!(result.connection_required.is_some());
     assert!(fixture.mock.mcp_requests().is_empty());
+}
+
+#[tokio::test]
+async fn user_attachment_in_a_shared_surface_does_not_become_connection_required() {
+    let fixture = ActsAsArrangement::new(true).await;
+    fixture.user_grant("user-token").await;
+    let session_id = fixture.attended_session(McpServerActsAs::User).await;
+    sqlx::query("UPDATE sessions SET source='ag_ui' WHERE id=$1")
+        .bind(session_id.uuid())
+        .execute(fixture.db.pool())
+        .await
+        .unwrap();
+    let (addr, shutdown, server) = start_grpc_server(fixture.worker_service()).await;
+    let executor = connect_executor(&fixture, &addr, session_id).await;
+
+    let result = executor
+        .invoke(&ToolCall {
+            id: "shared-surface".into(),
+            name: everruns_core::mcp_tool_name("linear", "echo"),
+            arguments: json!({"value": "hello"}),
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "a proved user still requires a private context"
+    );
+    assert!(fixture.mock.mcp_requests().is_empty());
+    let _ = shutdown.send(());
+    server.await.unwrap();
 }
 
 #[tokio::test]

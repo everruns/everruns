@@ -3,8 +3,9 @@
  *
  * Decisions:
  * - The texts stay written for the model (task ids, the worker's
- *   instructions); the UI shows a readable version and falls back to the raw
- *   text whenever a message does not match.
+ *   instructions). The transcript shows the readable headline and folds the
+ *   rest; it falls back to the raw text, still folded, when a message does
+ *   not match.
  * - Formats come from `wake_text_for` (crates/core/src/wake_queue.rs) and
  *   `frame_brief` / `frame_relay` (crates/capabilities/src/capabilities/coordination.rs).
  *   Change them together.

@@ -1,0 +1,11 @@
+{"arguments": {"environment": "staging", "service": "billing-api", "status": "failed"}, "at": "2026-10-18T21:58:02.361567+00:00", "method": "tools/call", "ok": true, "tool": "list_deployments"}
+{"arguments": {"environment": "staging", "query": "error", "service": "billing-api", "time_range": "1h"}, "at": "2026-10-18T21:58:09.658285+00:00", "method": "tools/call", "ok": true, "tool": "search_logs"}
+{"arguments": {"deployment_id": "dep-bill-stg-2042"}, "at": "2026-10-18T21:58:09.987083+00:00", "method": "tools/call", "ok": true, "tool": "get_deployment"}
+{"arguments": {"environment": "staging", "query": "dep-bill-stg-2042", "service": "billing-api", "time_range": "24h"}, "at": "2026-10-18T21:58:20.971084+00:00", "method": "tools/call", "ok": true, "tool": "search_logs"}
+{"arguments": {"environment": "staging", "query": "error", "service": "billing-api", "time_range": "24h"}, "at": "2026-10-18T21:58:21.413131+00:00", "method": "tools/call", "ok": true, "tool": "search_logs"}
+{"arguments": {"environment": "staging", "query": "500", "service": "billing-api", "time_range": "7d"}, "at": "2026-10-18T21:58:32.246402+00:00", "method": "tools/call", "ok": true, "tool": "search_logs"}
+{"arguments": {"environment": "staging", "query": "exception", "service": "billing-api", "time_range": "7d"}, "at": "2026-10-18T21:58:32.420839+00:00", "method": "tools/call", "ok": true, "tool": "search_logs"}
+{"arguments": {"environment": "staging", "query": "timeout", "service": "billing-api", "time_range": "7d"}, "at": "2026-10-18T21:58:32.431817+00:00", "method": "tools/call", "ok": true, "tool": "search_logs"}
+{"arguments": {"deployment_id": "dep-bill-stg-2042", "reason": "Failed staging deployment 3.8.1 produced HTTP 500 from missing account_region column and ledger timeout after schema v4 migration; restore recorded previous version 3.8.0."}, "at": "2026-10-18T21:58:43.114202+00:00", "method": "tools/call", "ok": true, "tool": "rollback_deployment"}
+{"arguments": {"deployment_id": "dep-bill-stg-2042"}, "at": "2026-10-18T21:58:47.299152+00:00", "method": "tools/call", "ok": true, "tool": "get_deployment"}
+{"arguments": {"environment": "prod", "service": "billing-api"}, "at": "2026-10-18T21:58:50.466044+00:00", "method": "tools/call", "ok": true, "tool": "list_deployments"}

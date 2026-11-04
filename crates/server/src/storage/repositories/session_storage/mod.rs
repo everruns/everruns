@@ -127,6 +127,24 @@ impl Database {
         &self,
         input: UpsertSessionSecret,
     ) -> Result<SessionSecretRow> {
+        if let Some(binding) = &input.binding {
+            let mut tx = self.pool.begin().await?;
+            let id:Option<Uuid>=sqlx::query_scalar("SELECT c.id FROM credential_bindings c JOIN resource_access r ON r.id=c.id WHERE r.owner_session_id=$1 AND r.usage='service' AND r.subject_id IS NULL AND c.env_name=$2 FOR UPDATE OF r").bind(input.session_id).bind(&input.name).fetch_optional(&mut *tx).await?;
+            let id = id.unwrap_or_else(Uuid::now_v7);
+            sqlx::query("INSERT INTO resource_access(id,org_id,kind,scope,owner_session_id,usage) SELECT $1,org_id,'credential_binding','session',id,'service' FROM sessions WHERE id=$2 ON CONFLICT(id) DO NOTHING").bind(id).bind(input.session_id).execute(&mut *tx).await?;
+            let row=sqlx::query_as::<_,SessionSecretRow>("INSERT INTO credential_bindings(id,org_id,kind,env_name,binding,label,value_encrypted) SELECT $1,org_id,'http',$3,$4,$3,$5 FROM sessions WHERE id=$2 ON CONFLICT(id) DO UPDATE SET binding=EXCLUDED.binding,value_encrypted=EXCLUDED.value_encrypted,updated_at=now() RETURNING id,$2 AS session_id,env_name AS name,value_encrypted,binding,created_at,updated_at")
+            .bind(id).bind(input.session_id).bind(&input.name).bind(sqlx::types::Json(binding)).bind(&input.value_encrypted).fetch_one(&mut *tx).await?;
+            sqlx::query("DELETE FROM session_secrets WHERE session_id=$1 AND name=$2")
+                .bind(input.session_id)
+                .bind(&input.name)
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            return Ok(row);
+        }
+        // Only the secure management adapter may replace a session-wide binding
+        // with a newly supplied ordinary value. Runtime writers refuse bound names.
+        sqlx::query("DELETE FROM credential_bindings c USING resource_access r WHERE c.id=r.id AND r.owner_session_id=$1 AND r.usage='service' AND r.subject_id IS NULL AND c.env_name=$2").bind(input.session_id).bind(&input.name).execute(&self.pool).await?;
         let row = sqlx::query_as::<_, SessionSecretRow>(
             r#"
             INSERT INTO session_secrets (session_id, name, value_encrypted, binding)
@@ -158,6 +176,7 @@ impl Database {
             SELECT id, session_id, name, value_encrypted, binding, created_at, updated_at
             FROM session_secrets
             WHERE session_id = $1 AND name = $2
+            UNION ALL SELECT c.id,$1 AS session_id,c.env_name AS name,c.value_encrypted,c.binding,c.created_at,c.updated_at FROM credential_bindings c JOIN resource_access r ON r.id=c.id WHERE r.owner_session_id=$1 AND r.usage='service' AND r.subject_id IS NULL AND c.env_name=$2 AND r.revoked_at IS NULL
             "#,
         )
         .bind(session_id)
@@ -262,6 +281,7 @@ impl Database {
             SELECT {SessionSecretInfoRow}
             FROM session_secrets
             WHERE session_id = $1
+            UNION ALL SELECT c.env_name AS name,c.binding,c.created_at,c.updated_at FROM credential_bindings c JOIN resource_access r ON r.id=c.id WHERE r.owner_session_id=$1 AND r.usage='service' AND r.subject_id IS NULL AND r.revoked_at IS NULL
             ORDER BY name
             "#
         ))
@@ -272,33 +292,9 @@ impl Database {
         Ok(rows)
     }
 
-    /// Bound secrets a session can use: its own plus its agent's configured
-    /// HTTP credentials, a session secret shadowing an agent credential of the
-    /// same name. Still encrypted.
+    /// Metadata-only legacy adapter. Runtime resolution requires an invocation.
     pub async fn list_bound_secrets(&self, session_id: Uuid) -> Result<Vec<BoundSecretRow>> {
-        let rows = sqlx::query_as::<_, BoundSecretRow>(
-            r#"
-            SELECT name, binding, value_encrypted, 'session' AS scope
-            FROM session_secrets
-            WHERE session_id = $1 AND binding IS NOT NULL
-            UNION ALL
-            SELECT a.env_name AS name, a.binding, a.value_encrypted, 'agent' AS scope
-            FROM agent_mcp_secret_bindings a
-            JOIN sessions s ON s.agent_id = a.agent_id AND s.org_id = a.org_id
-            WHERE s.id = $1
-              AND a.kind = 'http'
-              AND a.value_encrypted IS NOT NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM session_secrets ss
-                  WHERE ss.session_id = $1 AND ss.name = a.env_name
-              )
-            ORDER BY name
-            "#,
-        )
-        .bind(session_id)
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows)
+        Ok(sqlx::query_as("SELECT c.env_name AS name,c.binding,c.value_encrypted,r.scope FROM credential_bindings c JOIN resource_access r ON r.id=c.id JOIN sessions s ON s.org_id=r.org_id WHERE s.id=$1 AND c.kind='http' AND c.value_encrypted IS NOT NULL AND r.revoked_at IS NULL AND (r.owner_session_id=s.id OR r.owner_agent_id=s.agent_id)").bind(session_id).fetch_all(&self.pool).await?)
     }
 
     /// Delete a session secret by name

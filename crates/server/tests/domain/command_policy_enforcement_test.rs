@@ -71,6 +71,7 @@ fn make_ctx(caller: Caller, resolver: Arc<dyn PermissionResolver>) -> Ctx {
 
 fn minimal_harness(name: &str) -> CreateHarnessRequest {
     CreateHarnessRequest {
+        localizations: Default::default(),
         name: name.to_string(),
         display_name: None,
         description: None,
@@ -179,6 +180,7 @@ async fn run_blocks_member_from_creating_a_provider() {
         Arc::new(DefaultPermissionResolver),
     );
     let err = CreateProvider {
+        api: None,
         name: "member-denied".to_string(),
         provider_type: DriverId::OpenAI,
         base_url: None,
@@ -546,6 +548,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("harness-{name}"),
                 display_name: None,
                 icon: None,
@@ -571,6 +574,8 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: public_id.to_string(),
                 name: name.to_string(),
                 display_name: None,
@@ -670,6 +675,7 @@ async fn eval_run_creation_requires_session_permission() {
         req: CreateEvalRunRequest {
             target: None,
             model_override: None,
+            ..Default::default()
         },
     }
     .run(&ctx)
@@ -771,6 +777,8 @@ const ALLOWED_PUBLIC: &[&str] = &[
 /// Agent commands that reject built-in agents via `q::ensure_not_built_in`.
 /// Each has a matching `built_in_agent_rejects_*` test.
 const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
+    "connect_agent_source",
+    "register_external_agent",
     "delete_agent",
     "destroy_agent",
     "update_agent",
@@ -786,6 +794,14 @@ const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
 /// agent's own definition is guarded; one that only creates something new, or
 /// attaches an org's own binding around the agent, is not.
 const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
+    // Revokes only an external routing binding, never the protected definition.
+    // Cleanup must remain available for built-in or archived agents.
+    "disable_external_agent",
+    // Removes only the source binding and retains the current definition.
+    "disconnect_agent_source",
+    // Only reschedules an existing binding. Connecting a built-in is rejected,
+    // and reconciliation still applies through the guarded package importer.
+    "sync_agent_source",
     // Creates a fresh agent; cannot mint a built-in (is_built_in is false on
     // every API-facing creation path).
     "create_agent",
@@ -798,6 +814,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // The escape hatch. Blocking copy would leave built-in agents unusable as
     // a starting point, and the rejection message tells users to copy first.
     "copy_agent",
+    // Creates a fresh agent from a bundled example through CreateAgent, which
+    // never mints a built-in; there is no existing agent to protect.
+    "adopt_agent_example",
     // --- Bindings, not definition -------------------------------------------
     // These live in adjacent domains and never touch the agents row. An org
     // must be able to wire a built-in agent into its own environment; a
@@ -818,6 +837,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     "analyze_agent",
     // Returns a revised draft from the utility LLM; creates nothing.
     "draft_agent",
+    // Suggests workloads from a draft and spends utility budget; never runs
+    // or changes an agent, including a built-in definition.
+    "plan_agent_costs",
     // --- Operational state on the agents row (EVE-1007) ----------------------
     // Unlike the bindings above these do write the `agents` row, so they are
     // exempted on a narrower ground: `exposures_suspended` is deployment state,
@@ -832,8 +854,8 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // off the internet during an incident. Same shape of reasoning as
     // `copy_agent` above — a protection that makes the agent unusable is the
     // wrong protection.
-    "suspend_agent_exposures",
-    "resume_agent_exposures",
+    "pause_agent",
+    "resume_agent",
 ];
 
 /// The guard lives in `Command::execute`, so it must hold over `dispatch()` —
@@ -886,6 +908,108 @@ async fn dispatch_blocks_built_in_agent_mutation() {
     );
 }
 
+#[tokio::test]
+async fn built_in_agent_rejects_source_connect() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let agent_id = seed_agent(&ctx, "source-built-in").await;
+    let row = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("load agent")
+        .expect("agent exists");
+    ctx.db
+        .mark_agent_built_in(DEFAULT_ORG_ID, row.id)
+        .await
+        .expect("mark built-in");
+
+    let err = dispatch(
+        "connect_agent_source",
+        serde_json::json!({
+            "agent_id": agent_id.to_string(),
+            "repository": "acme/agents",
+            "branch": "main",
+            "path": "agents/support",
+            "commit": "0123456789abcdef0123456789abcdef01234567",
+            "agent_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }),
+        &ctx,
+    )
+    .await
+    .expect_err("source sync must not replace a built-in definition");
+    assert!(err.message().contains("built-in agent"), "{err:?}");
+    assert!(!matches!(err.kind, CommandErrorKind::Forbidden(_)));
+
+    // Disconnecting is binding cleanup and preserves built-in immutability.
+    dispatch(
+        "disconnect_agent_source",
+        serde_json::json!({ "agent_id": agent_id.to_string() }),
+        &ctx,
+    )
+    .await
+    .expect("an empty binding can be disconnected");
+    let retained = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("reload agent")
+        .expect("agent remains");
+    assert!(retained.is_built_in);
+    assert_eq!(retained.system_prompt, row.system_prompt);
+}
+
+#[tokio::test]
+async fn built_in_agent_rejects_external_registration_but_allows_revocation() {
+    use everruns_server::domains::external_agents::{DisableExternalAgent, RegisterExternalAgent};
+
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let agent_id = seed_agent(&ctx, "external-built-in").await;
+    let row = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("load agent")
+        .expect("agent exists");
+    ctx.db
+        .mark_agent_built_in(DEFAULT_ORG_ID, row.id)
+        .await
+        .expect("mark built-in");
+
+    // This must be rejected by the command guard even with no egress client,
+    // encryption service or installation opt-in configured.
+    let err = RegisterExternalAgent {
+        agent_id: agent_id.to_string(),
+        endpoint_url: "https://agent.example/".into(),
+        endpoint_secret: "synthetic-endpoint-secret-of-sufficient-length".into(),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("built-in execution must remain protected");
+    assert!(err.message().contains("built-in agent"), "{err:?}");
+    assert!(!matches!(err.kind, CommandErrorKind::Forbidden(_)));
+
+    DisableExternalAgent {
+        agent_id: agent_id.to_string(),
+    }
+    .run(&ctx)
+    .await
+    .expect("revocation leaves the definition intact");
+    let retained = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("reload agent")
+        .expect("agent remains");
+    assert!(retained.is_built_in);
+    assert_eq!(retained.system_prompt, row.system_prompt);
+}
+
 #[test]
 fn every_mutating_agent_command_is_classified_for_built_in_protection() {
     use everruns_server::domains::common::CommandDescriptor;
@@ -935,9 +1059,13 @@ fn every_mutating_agent_command_is_classified_for_built_in_protection() {
     }
 }
 
-/// POST-style helpers intentionally available through MCP `query`.
-/// They do not persist state and each still declares a view policy.
+/// Reviewed non-GET reads, each with a view policy. Public helpers are available
+/// through MCP `query`; internal ones also require the internal-caller guard.
+/// Usage accounting and derived evidence do not change user configuration.
 const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
+    // Browse and validate GitHub packages without persisting Agent or binding changes.
+    "get_agent_source_options",
+    "preview_agent_source",
     "validate_agent_package",
     "diff_agent_package",
     "export_report_query",
@@ -947,6 +1075,31 @@ const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
     "preview_harness",
     "run_report_query",
     "run_saved_report",
+    // Cited retrieval: no collection/file mutations; ordinary usage accounting applies.
+    "search_knowledge_collections",
     "search_workspace_files",
     "stat_workspace_file",
+    // Internal-only session reads and replay evidence; never exposed through MCP query.
+    "worker_knowledge",
 ];
+
+#[tokio::test]
+async fn org_owners_cannot_dispatch_internal_knowledge_transport() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let error = dispatch(
+        "worker_knowledge",
+        serde_json::json!({
+            "session_id": everruns_contracts::typed_id::SessionId::new().to_string(),
+            "operation": "search",
+            "query": {"query": "private context"}
+        }),
+        &ctx,
+    )
+    .await
+    .expect_err("internal transport must reject ordinary organization owners");
+    assert!(matches!(error.kind, CommandErrorKind::Forbidden(_)));
+    assert!(error.message().contains("Internal command"), "{error:?}");
+}

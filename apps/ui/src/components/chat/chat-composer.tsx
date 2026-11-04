@@ -9,6 +9,7 @@
  */
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { AtSign, ImagePlus, Loader2, Mic, MicOff, Send, StopCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,7 +42,6 @@ import type {
 } from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 import { useEffect, useRef, useState } from "react";
-import { useLocale } from "@/providers/locale-provider";
 
 export function ChatComposer({
   commands,
@@ -66,7 +66,6 @@ export function ChatComposer({
   handlePaste,
   placeholder,
   selectedModelId,
-  usingChatGptPlan = false,
   recentModels,
   onModelChange,
   modelTriggerLabel,
@@ -89,6 +88,7 @@ export function ChatComposer({
   modelReady,
   modelLoading,
   hideModelNotice = false,
+  hideModelPicker = false,
   isUploading,
   sendPending,
   textareaRef,
@@ -120,7 +120,6 @@ export function ChatComposer({
   /** Overrides the generic prompt, e.g. to name the agent being replied to. */
   placeholder?: string;
   selectedModelId: string;
-  usingChatGptPlan?: boolean;
   recentModels: Model[];
   onModelChange: (value: string) => void;
   modelTriggerLabel: string;
@@ -144,6 +143,7 @@ export function ChatComposer({
   modelLoading: boolean;
   /** Hide the model-required notice above the input; the surrounding empty state already guides model choice. */
   hideModelNotice?: boolean;
+  hideModelPicker?: boolean;
   isUploading: boolean;
   sendPending: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -152,6 +152,7 @@ export function ChatComposer({
   voicePending?: boolean;
   onToggleVoice?: () => void;
 }) {
+  const ui = useUiTranslations();
   const { backendLocale, t } = useLocale();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCommands, setShowCommands] = useState(false);
@@ -249,7 +250,7 @@ export function ChatComposer({
           multiple
           className="hidden"
           onChange={handleFileChange}
-          aria-label="Attach images"
+          aria-label={ui("Attach images")}
         />
 
         {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}
@@ -291,7 +292,7 @@ export function ChatComposer({
                 <button
                   type="button"
                   className="ml-1 inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                  aria-label={`Remove mention of ${selectedMention.label}`}
+                  aria-label={ui("Remove mention of {value0}", { value0: selectedMention.label })}
                   onClick={() => {
                     onMentionChange(null);
                     textareaRef.current?.focus();
@@ -344,36 +345,28 @@ export function ChatComposer({
                 <ImagePlus className="icon-sharp h-4 w-4" />
               </Button>
 
-              {usingChatGptPlan && (
-                <a
-                  href="https://chatgpt.com/settings/usage"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Using ChatGPT plan
-                </a>
+              {(!hideModelPicker || !modelReady) && (
+                <ModelEffortMenu
+                  models={models}
+                  recentModels={recentModels}
+                  selectedModelId={selectedModelId}
+                  onModelChange={onModelChange}
+                  modelTriggerLabel={modelTriggerLabel}
+                  defaultModelOptionLabel={defaultModelOptionLabel}
+                  supportsReasoning={supportsReasoning}
+                  reasoningEffort={reasoningEffort}
+                  reasoningEffortConfig={reasoningEffortConfig}
+                  defaultEffortName={defaultEffortName}
+                  getReasoningEffortName={getReasoningEffortName}
+                  onReasoningEffortChange={onReasoningEffortChange}
+                  supportsVerbosity={supportsVerbosity}
+                  verbosity={verbosity}
+                  verbosityConfig={verbosityConfig}
+                  defaultVerbosityName={defaultVerbosityName}
+                  getVerbosityName={getVerbosityName}
+                  onVerbosityChange={onVerbosityChange}
+                />
               )}
-              <ModelEffortMenu
-                models={models}
-                recentModels={recentModels}
-                selectedModelId={selectedModelId}
-                onModelChange={onModelChange}
-                modelTriggerLabel={modelTriggerLabel}
-                defaultModelOptionLabel={defaultModelOptionLabel}
-                supportsReasoning={supportsReasoning}
-                reasoningEffort={reasoningEffort}
-                reasoningEffortConfig={reasoningEffortConfig}
-                defaultEffortName={defaultEffortName}
-                getReasoningEffortName={getReasoningEffortName}
-                onReasoningEffortChange={onReasoningEffortChange}
-                supportsVerbosity={supportsVerbosity}
-                verbosity={verbosity}
-                verbosityConfig={verbosityConfig}
-                defaultVerbosityName={defaultVerbosityName}
-                getVerbosityName={getVerbosityName}
-                onVerbosityChange={onVerbosityChange}
-              />
             </div>
 
             <div className="flex items-center gap-2">
@@ -388,7 +381,7 @@ export function ChatComposer({
                   )}
                   disabled={voicePending || (composerDisabled && !voiceActive)}
                   onClick={onToggleVoice}
-                  title={voiceActive ? "End voice session" : "Start voice session"}
+                  title={voiceActive ? ui("End voice session") : ui("Start voice session")}
                 >
                   {voicePending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

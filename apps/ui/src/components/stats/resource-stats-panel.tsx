@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { BarChart3, Clock, DollarSign, Play, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,8 +27,12 @@ function formatDuration(ms: number | null | undefined): string {
   return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
-function formatOptionalDate(value: string | null | undefined): string {
-  return value ? formatDate(value) : "Never";
+function formatOptionalDate(
+  value: string | null | undefined,
+  locale: string,
+  never: string,
+): string {
+  return value ? formatDate(value, locale) : never;
 }
 
 function StatCard({
@@ -56,6 +61,8 @@ function StatCard({
 }
 
 export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPanelProps) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -70,7 +77,7 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
     return (
       <Card>
         <CardContent className="py-8 text-center text-sm text-destructive">
-          Failed to load stats.
+          {ui("Failed to load stats.")}
         </CardContent>
       </Card>
     );
@@ -90,7 +97,7 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
-          title="Sessions"
+          title={ui("Sessions")}
           value={formatCompactNumber(stats.session_count)}
           detail={`${formatCompactNumber(stats.active_session_count)} active / ${formatCompactNumber(
             stats.idle_session_count,
@@ -98,19 +105,19 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
           icon={BarChart3}
         />
         <StatCard
-          title="Executions"
+          title={ui("Executions")}
           value={formatCompactNumber(stats.execution_count)}
           detail={`${executionsPerSession.toFixed(1)} per session`}
           icon={Play}
         />
         <StatCard
-          title="Session Time"
+          title={ui("Session Time")}
           value={formatDuration(stats.total_session_duration_ms)}
           detail={`Avg ${formatDuration(stats.avg_session_duration_ms)}`}
           icon={Clock}
         />
         <StatCard
-          title="Tokens"
+          title={ui("Tokens")}
           value={formatTokens(totalTokens)}
           detail={`${formatTokens(stats.total_input_tokens)} input / ${formatTokens(
             stats.total_output_tokens,
@@ -118,7 +125,7 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
           icon={Zap}
         />
         <StatCard
-          title="Cost"
+          title={ui("Cost")}
           value={formatCostUsd(stats.total_cost_usd)}
           detail={`${formatCostUsd(stats.total_actual_cost_usd)} actual / ${formatCostUsd(
             stats.total_estimated_cost_usd,
@@ -130,27 +137,27 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Session Status</CardTitle>
+            <CardTitle>{ui("Session Status")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Started</span>
+              <span className="text-muted-foreground">{ui("Started")}</span>
               <span className="font-medium">
                 {formatCompactNumber(stats.started_session_count)}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Active</span>
+              <span className="text-muted-foreground">{ui("Active")}</span>
               <span className="font-medium">{formatCompactNumber(stats.active_session_count)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Waiting for tools</span>
+              <span className="text-muted-foreground">{ui("Waiting for tools")}</span>
               <span className="font-medium">
                 {formatCompactNumber(stats.waiting_for_tool_results_session_count)}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Idle</span>
+              <span className="text-muted-foreground">{ui("Idle")}</span>
               <span className="font-medium">{formatCompactNumber(stats.idle_session_count)}</span>
             </div>
           </CardContent>
@@ -158,29 +165,29 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
 
         <Card>
           <CardHeader>
-            <CardTitle>Activity</CardTitle>
+            <CardTitle>{ui("Activity")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-muted-foreground">First session</span>
+              <span className="text-muted-foreground">{ui("First session")}</span>
               <span className="text-right font-medium">
-                {formatOptionalDate(stats.first_session_at)}
+                {formatOptionalDate(stats.first_session_at, displayLocale, ui("Never"))}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-muted-foreground">Latest session</span>
+              <span className="text-muted-foreground">{ui("Latest session")}</span>
               <span className="text-right font-medium">
-                {formatOptionalDate(stats.last_session_at)}
+                {formatOptionalDate(stats.last_session_at, displayLocale, ui("Never"))}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-muted-foreground">Latest execution</span>
+              <span className="text-muted-foreground">{ui("Latest execution")}</span>
               <span className="text-right font-medium">
-                {formatOptionalDate(stats.last_execution_at)}
+                {formatOptionalDate(stats.last_execution_at, displayLocale, ui("Never"))}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-muted-foreground">Cached tokens</span>
+              <span className="text-muted-foreground">{ui("Cached tokens")}</span>
               <span className="text-right font-medium">
                 {formatTokens(stats.total_cache_read_tokens + stats.total_cache_creation_tokens)}
               </span>

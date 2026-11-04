@@ -297,57 +297,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_lists_every_tool_with_a_title() {
-        let schema = OpenRouterServerToolsCapability.config_schema().unwrap();
-        let one_of = schema["properties"][TOOLS_KEY]["items"]["oneOf"]
-            .as_array()
-            .expect("tools render as a oneOf of labeled consts");
-        assert_eq!(one_of.len(), OpenRouterServerToolKind::ALL.len());
-        for entry in one_of {
-            assert!(entry["const"].is_string());
-            assert!(
-                entry["title"].as_str().is_some_and(|t| !t.is_empty()),
-                "every server tool needs a UI title: {entry}"
-            );
-        }
-    }
-
-    #[test]
-    fn localization_resolves_ukrainian() {
-        let cap = OpenRouterServerToolsCapability;
-        assert_eq!(
-            cap.localized_name(Some("uk")),
-            "Серверні інструменти OpenRouter"
-        );
-        // config_description has an `en` base and a `uk` override.
-        assert!(cap.describe_schema(Some("en")).is_some());
-        assert!(cap.describe_schema(Some("uk")).is_some());
-        assert_ne!(
-            cap.describe_schema(Some("en")),
-            cap.describe_schema(Some("uk"))
-        );
-    }
-
-    #[test]
-    fn ukrainian_overlay_labels_every_tool() {
-        // Drift guard: adding a server tool must also add its localized label.
-        let loc = OpenRouterServerToolsCapability
-            .localizations()
-            .into_iter()
-            .find(|l| l.locale == "uk")
-            .expect("uk localization present");
-        let overlay = loc.config_overlay.expect("uk overlay present");
-        let labels = &overlay["properties"][TOOLS_KEY]["items"]["enum_labels"];
-        for kind in OpenRouterServerToolKind::ALL {
-            assert!(
-                labels[kind.name()].as_str().is_some_and(|s| !s.is_empty()),
-                "missing uk enum_label for {}",
-                kind.name()
-            );
-        }
-    }
-
-    #[test]
     fn searches_the_web_only_with_the_web_search_tool_on() {
         let capability = OpenRouterServerToolsCapability;
         assert!(capability.web_search_source(&json!({ "tools": ["web_search"] })));

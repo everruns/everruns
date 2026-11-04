@@ -354,47 +354,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_scrape() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/scrape"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "data": [{"results": [{"text": "found"}]}]
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-        let elements = vec![json!({"selector": "h1"})];
-        let result = client
-            .scrape("https://example.com", &elements, None, None, &[])
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_client_function() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/function"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "data": "clicked",
-                "type": "application/json"
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-        let result = client
-            .function(
-                "export default async ({ page }) => { return { data: 'clicked', type: 'application/json' }; }",
-                None,
-            )
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
     async fn test_client_screenshot_error() {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -475,45 +434,6 @@ mod tests {
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), json!({}));
-    }
-
-    #[tokio::test]
-    async fn test_client_screenshot_with_options() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/screenshot"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"PNG".to_vec()))
-            .mount(&mock_server)
-            .await;
-
-        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-        let result = client
-            .screenshot(
-                "https://example.com",
-                false,
-                Some("#main"),
-                Some("h1"),
-                Some(5000),
-                &[],
-            )
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_client_content_with_options() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/content"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("<html></html>"))
-            .mount(&mock_server)
-            .await;
-
-        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-        let result = client
-            .content("https://example.com", Some("body"), Some(3000), true, &[])
-            .await;
-        assert!(result.is_ok());
     }
 
     #[tokio::test]

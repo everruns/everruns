@@ -3,45 +3,12 @@ import { render } from "@testing-library/react";
 import * as icons from "@/components/icons/facet-icons";
 import { facetIconData, type FacetIconName } from "@/components/icons/facet-icon-data";
 import { facetIconSvg } from "@/components/icons/facet-icon-data";
-import { defaultNavigationSections } from "@/lib/navigation";
-import { settingsNavigationSections } from "@/lib/settings-navigation";
-import { registryDomainIcons } from "@/lib/registry-navigation";
-import { AgentAvatar } from "@/components/agents/agent-avatar";
-import { capabilityIconMap } from "@/lib/capability-icons";
 
 function parseSvg(markup: string) {
   return new DOMParser().parseFromString(markup, "image/svg+xml").documentElement;
 }
 
 describe("Facet domain identity", () => {
-  it("uses the same domain glyph in navigation and avatar fallbacks while retaining official logos", () => {
-    const items = defaultNavigationSections.flatMap((section) => section.items);
-    expect(items.find((item) => item.href === "/agents")?.icon).toBe(icons.AgentIcon);
-    expect(items.find((item) => item.href === "/models")?.icon).toBe(registryDomainIcons.models);
-    expect(registryDomainIcons.models).toBe(icons.ModelsIcon);
-    expect(registryDomainIcons.mcpServers).toBe(capabilityIconMap.mcp);
-    const settings = settingsNavigationSections.flatMap((section) => section.items);
-    expect(settings.find((item) => item.href === "/settings/agent-experience")?.icon).toBe(
-      icons.AgentExperienceIcon,
-    );
-    expect(settings.find((item) => item.href === "/settings/profile")?.icon).toBe(
-      icons.AccountIcon,
-    );
-    const { container } = render(<AgentAvatar size={16} />);
-    expect(container.querySelector("svg")).toHaveAttribute("data-facet-icon", "agent");
-  });
-
-  it("preserves the approved original Intent silhouette", () => {
-    const { container } = render(<icons.AgentIcon />);
-    const svg = container.querySelector("svg")!;
-    expect(svg).toHaveAttribute("fill", "currentColor");
-    expect(svg).toHaveAttribute("stroke", "none");
-    expect([...svg.querySelectorAll("path")].map((path) => path.getAttribute("d"))).toEqual([
-      "M4 7 11 3V10L4 14Z M4 16 19 8V15L4 23Z",
-      "M14 2 19 5V6L14 9Z",
-    ]);
-  });
-
   it("forwards ref, size, color, class, and accessible overrides", () => {
     const ref = createRef<SVGSVGElement>();
     const { container } = render(

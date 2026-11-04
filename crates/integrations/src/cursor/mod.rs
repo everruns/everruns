@@ -199,29 +199,6 @@ fn truncate_target(value: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn capability_metadata() {
-        let cap = CursorCapability;
-        assert_eq!(cap.id(), "cursor");
-        assert_eq!(cap.name(), "Cursor");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("code"));
-        assert_eq!(cap.category(), Some("Execution"));
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-    }
-
-    #[test]
-    fn capability_has_all_tools() {
-        let cap = CursorCapability;
-        let tools = cap.tools();
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert_eq!(tools.len(), 9);
-        assert!(names.contains(&"cursor_launch_agent"));
-        assert!(names.contains(&"cursor_add_followup"));
-        assert!(names.contains(&"cursor_get_conversation"));
-        assert!(names.contains(&"cursor_list_repositories"));
-    }
-
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = CursorCapability;

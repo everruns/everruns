@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { waitFor, fireEvent, render, screen } from "@testing-library/react";
 import { UserMcpServersPanel } from "@/components/connections/user-mcp-servers-panel";
 
 const mockUseUserMcpServers = jest.fn();
@@ -65,13 +65,6 @@ describe("UserMcpServersPanel", () => {
     mockAdd.mockReset();
     mockRevoke.mockReset();
     mockUseUserMcpConnections.mockReturnValue({ data: [], isLoading: false, error: null });
-  });
-
-  it("explains the section when there are no servers", () => {
-    mockUseUserMcpServers.mockReturnValue({ data: [], isLoading: false, error: null });
-    render(<UserMcpServersPanel />);
-    expect(screen.getByText("My MCP servers")).toBeInTheDocument();
-    expect(screen.getByText("No MCP servers yet")).toBeInTheDocument();
   });
 
   it("offers Connect to servers that need it and Reconnect to signed-in ones", () => {
@@ -210,7 +203,7 @@ describe("UserMcpServersPanel", () => {
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
   });
 
-  it("warns that removing a catalog server signs the person out of it", () => {
+  it("warns that removing a catalog server signs the person out of it", async () => {
     const confirm = jest.spyOn(window, "confirm").mockReturnValue(true);
     mockUseUserMcpServers.mockReturnValue({
       data: [
@@ -226,7 +219,12 @@ describe("UserMcpServersPanel", () => {
     render(<UserMcpServersPanel />);
     fireEvent.click(screen.getByRole("button", { name: /Remove/ }));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("you are signed out of it"));
-    expect(mockRemove).toHaveBeenCalledWith("mcp_1");
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith("mcp_1"));
     confirm.mockRestore();
   });
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

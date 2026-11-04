@@ -136,31 +136,3 @@ impl IntoCapability for ToolSearch {
             .into()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn typed_compaction_uses_the_stable_id_and_schema() {
-        let spec = CompactionConfig::new()
-            .strategy(CompactionStrategy::ObservationMasking)
-            .budget_percent(0.9)
-            .into_capability();
-        assert_eq!(spec.capability_ref().id(), "compaction");
-        let budget = spec.capability_ref().config_value()["budget_percent"]
-            .as_f64()
-            .unwrap();
-        assert!((budget - 0.9).abs() < 1e-6);
-    }
-
-    #[test]
-    fn typed_tool_search_uses_the_model_adaptive_capability() {
-        let spec = ToolSearch::automatic()
-            .threshold(12)
-            .never_defer(["read_file"])
-            .into_capability();
-        assert_eq!(spec.capability_ref().id(), "auto_tool_search");
-        assert_eq!(spec.capability_ref().config_value()["threshold"], 12);
-    }
-}

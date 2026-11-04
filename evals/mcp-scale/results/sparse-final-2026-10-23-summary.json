@@ -1,0 +1,253 @@
+{
+  "binary_sha256": "e1777252c2e9808aca4ce04f400366e3d1179965db57613fd0234633bf9af664",
+  "cases": [
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]",
+      "duration_ms": 10994,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1066.0,
+        "llm.input_tokens_peak": 3628.0,
+        "llm.input_tokens_total": 17155.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.000983574,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4583.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 9.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 8368.0,
+        "mcp.unique_operations": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 8787,
+        "cost_usd": 0.000983574,
+        "input_tokens": 8368,
+        "output_tokens": 646
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "duration_ms": 17753,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 8.0,
+        "llm.input_tokens_first": 2346.0,
+        "llm.input_tokens_peak": 5081.0,
+        "llm.input_tokens_total": 29733.0,
+        "llm.provider_cost_calls": 8.0,
+        "llm.provider_reported_cost_usd": 0.0008219000000000002,
+        "llm.tool_bytes_first": 4017.0,
+        "llm.tool_bytes_peak": 4017.0,
+        "llm.tool_requests_captured": 8.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 8.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 8.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 5533.0,
+        "mcp.unique_operations": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 24200,
+        "cost_usd": 0.0008219000000000002,
+        "input_tokens": 5533,
+        "output_tokens": 1101
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]",
+      "duration_ms": 10938,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2808.0,
+        "llm.input_tokens_peak": 5597.0,
+        "llm.input_tokens_total": 28726.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.001348272,
+        "llm.tool_bytes_first": 5785.0,
+        "llm.tool_bytes_peak": 9680.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 11890.0,
+        "mcp.unique_operations": 4.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 16836,
+        "cost_usd": 0.001348272,
+        "input_tokens": 11890,
+        "output_tokens": 628
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]",
+      "duration_ms": 6984,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1054.0,
+        "llm.input_tokens_peak": 2201.0,
+        "llm.input_tokens_total": 5280.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000545238,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 4911.0,
+        "mcp.unique_operations": 1.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 369,
+        "cost_usd": 0.000545238,
+        "input_tokens": 4911,
+        "output_tokens": 267
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "duration_ms": 7960,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 4.0,
+        "llm.input_tokens_first": 2334.0,
+        "llm.input_tokens_peak": 3044.0,
+        "llm.input_tokens_total": 10826.0,
+        "llm.provider_cost_calls": 4.0,
+        "llm.provider_reported_cost_usd": 0.0006852679999999999,
+        "llm.tool_bytes_first": 4017.0,
+        "llm.tool_bytes_peak": 4017.0,
+        "llm.tool_requests_captured": 4.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 4.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 5992.0,
+        "mcp.unique_operations": 1.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 4834,
+        "cost_usd": 0.0006852679999999999,
+        "input_tokens": 5992,
+        "output_tokens": 382
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]",
+      "duration_ms": 5606,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 2796.0,
+        "llm.input_tokens_peak": 5019.0,
+        "llm.input_tokens_total": 12656.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00119163,
+        "llm.tool_bytes_first": 5785.0,
+        "llm.tool_bytes_peak": 8184.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 11391.0,
+        "mcp.unique_operations": 1.0
+      },
+      "passed": true,
+      "usage": {
+        "cache_read_tokens": 1265,
+        "cost_usd": 0.00119163,
+        "input_tokens": 11391,
+        "output_tokens": 250
+      }
+    }
+  ],
+  "catalog_tools": 2000,
+  "command": "EVERRUNS_EVAL_TRIALS=1 EVERRUNS_EVAL_CONCURRENCY=1 target/debug/mcp_scale --run --sample readonly-ticket,staged-rollback --filter catalog_size=2000,servers=1, --runs-report /tmp/mcp-sparse-final-2026-10-23-live.jsonl",
+  "lock_sha256": "90b064231069021720911919c35403a39f08bd176d1332e0c5235588e81f0dae",
+  "model": "openrouter/meta/muse-spark-1.3-contributor",
+  "offline_stress": {
+    "path": "sparse-2026-10-23-final-stress.json",
+    "sha256": "91fcf4baf5039f73f8f2a515f6aadbd8e6a05193a0e9c741060a6d5b3b9d953a"
+  },
+  "phase": "final exact-lookup cache source smoke",
+  "report": {
+    "cases": 6,
+    "infra": 0,
+    "passed": 6,
+    "path": "sparse-final-2026-10-23-live.jsonl.gz",
+    "sha256": "3af1fb8a460bcd72772ab8f78c744dfe748ff77dacf683eb32396a1855025cd3",
+    "skipped": 0
+  },
+  "servers": 1,
+  "source_commit": "a6b4825af5d98d48babf161368f6c4dc2e2bb4b1",
+  "trials_per_cell": 1,
+  "usage_by_surface": {
+    "cli": {
+      "cache_read_tokens": 29034,
+      "cost_usd": 0.0015071680000000001,
+      "input_tokens": 11525,
+      "max_request_input": 5081.0,
+      "output_tokens": 1483,
+      "total_input": 40559.0,
+      "trials": 2,
+      "unique_mcp_operations": [
+        4.0,
+        1.0
+      ]
+    },
+    "hybrid": {
+      "cache_read_tokens": 18101,
+      "cost_usd": 0.002539902,
+      "input_tokens": 23281,
+      "max_request_input": 5597.0,
+      "output_tokens": 878,
+      "total_input": 41382.0,
+      "trials": 2,
+      "unique_mcp_operations": [
+        4.0,
+        1.0
+      ]
+    },
+    "native": {
+      "cache_read_tokens": 9156,
+      "cost_usd": 0.001528812,
+      "input_tokens": 13279,
+      "max_request_input": 3628.0,
+      "output_tokens": 913,
+      "total_input": 22435.0,
+      "trials": 2,
+      "unique_mcp_operations": [
+        4.0,
+        1.0
+      ]
+    }
+  },
+  "working_tree": "clean at build and run start"
+}

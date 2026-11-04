@@ -1,3 +1,6 @@
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({ currentOrg: { role: "owner" } }),
+}));
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import * as mockReact from "react";
 import MemoryPage from "@/app/(main)/memory/page";
@@ -127,18 +130,6 @@ describe("MemoryPage", () => {
       mutateAsync: jest.fn().mockResolvedValue({}),
       isPending: false,
     });
-  });
-
-  it("renders memory", () => {
-    render(<MemoryPage />);
-
-    expect(screen.getByRole("heading", { level: 1, name: "Memory" })).toBeInTheDocument();
-    expect(screen.getByText("Research")).toBeInTheDocument();
-    expect(screen.getByText("Shared research files")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open/i })).toHaveAttribute(
-      "href",
-      "/memory/mem_019dfb261a407c6085dcdd602402c3f7",
-    );
   });
 
   it("passes search text into the memory query", () => {

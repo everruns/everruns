@@ -45,7 +45,6 @@ impl Mode {
 pub(crate) struct AgentEntry {
     pub name: String,
     pub doc: String,
-    pub sub: bool,
     pub default: bool,
     pub source: String,
     pub spec: Agent,
@@ -84,6 +83,7 @@ pub(crate) struct Skill {
 }
 
 pub(crate) struct AppInner {
+    pub declared_secrets: std::collections::BTreeSet<&'static str>,
     pub name: String,
     pub version: String,
     pub config: AppConfig,
@@ -135,19 +135,11 @@ impl App {
 
     /// The agent `POST /v1/sessions` uses when the body names none.
     pub(crate) fn default_agent(&self) -> Option<&AgentEntry> {
-        let top: Vec<_> = self.inner.agents.iter().filter(|a| !a.sub).collect();
-        top.iter()
-            .find(|agent| agent.default)
-            .or_else(|| (top.len() == 1).then(|| &top[0]))
-            .copied()
-    }
-
-    pub(crate) fn asset(&self, path: &str) -> Option<&'static AssetRegistration> {
-        self.inner
-            .assets
+        let agents = &self.inner.agents;
+        agents
             .iter()
-            .copied()
-            .find(|asset| asset.path == path)
+            .find(|agent| agent.default)
+            .or_else(|| (agents.len() == 1).then(|| &agents[0]))
     }
 
     /// Tools an agent gets: its filter, or every discovered tool.
@@ -244,6 +236,7 @@ impl AppBuilder {
         }
 
         let mut app = AppInner {
+            declared_secrets: Default::default(),
             name,
             version,
             config,
@@ -259,7 +252,8 @@ impl AppBuilder {
             errors,
         };
         if self.discover {
-            discover(&mut app);
+            let ((), secrets) = crate::connection::capture_secrets(|| discover(&mut app));
+            app.declared_secrets = secrets;
         }
         for (source, spec) in self.packages {
             match spec {
@@ -284,7 +278,6 @@ impl AppBuilder {
                         name,
                         doc: String::new(),
                         source,
-                        sub: false,
                         default: false,
                         spec,
                     });
@@ -292,7 +285,9 @@ impl AppBuilder {
                 Err(error) => app.errors.push(format!("{source}: {error}")),
             }
         }
-        if !app.agents.iter().any(|a| !a.sub) {
+        let errors = check_members(&app.agents);
+        app.errors.extend(errors);
+        if app.agents.is_empty() {
             app.errors
                 .push("no agents found; register an agent or load .agent_package(path)".into());
         }
@@ -312,6 +307,34 @@ impl AppBuilder {
     }
 }
 
+/// Members name other agents of this app. A member runs in its lead's
+/// sessions as a hand-off target, so it must exist, must not be the lead
+/// itself, and has no members of its own: the Framework resolves a member's
+/// build from its lead's registration, one level deep.
+pub(crate) fn check_members(agents: &[AgentEntry]) -> Vec<String> {
+    let mut errors = Vec::new();
+    for agent in agents {
+        for member in &agent.spec.members {
+            if *member == agent.name {
+                errors.push(format!("agent `{}` lists itself as a member", agent.name));
+                continue;
+            }
+            match agents.iter().find(|entry| entry.name == *member) {
+                None => errors.push(format!(
+                    "agent `{}` lists member `{member}`, which is not an agent of this app",
+                    agent.name
+                )),
+                Some(entry) if !entry.spec.members.is_empty() => errors.push(format!(
+                    "agent `{}` lists member `{member}`, which has members of its own; a member cannot lead other agents",
+                    agent.name
+                )),
+                Some(_) => {}
+            }
+        }
+    }
+    errors
+}
+
 fn discover(app: &mut AppInner) {
     let mut tools: Vec<&'static ToolRegistration> =
         inventory::iter::<ToolRegistration>.into_iter().collect();
@@ -327,16 +350,6 @@ fn discover(app: &mut AppInner) {
     check_unique(&mut app.errors, "agent", agents.iter().map(|a| a.name));
     for registration in agents {
         let spec = (registration.build)();
-        let dir = if registration.sub { "subagents" } else { "" };
-        if !dir.is_empty() {
-            convention(
-                &mut app.warnings,
-                "subagent",
-                registration.name,
-                registration.source,
-                dir,
-            );
-        }
         if spec.model.trim().is_empty() {
             app.errors.push(format!(
                 "agent `{}` ({}) has no model; call .model(\"provider/model\")",
@@ -353,31 +366,19 @@ fn discover(app: &mut AppInner) {
                 }
             }
         }
-        if registration.sub
-            && tools
-                .iter()
-                .any(|tool| tool.name == format!("ask_{}", registration.name))
-        {
-            app.errors.push(format!(
-                "tool `ask_{0}` collides with the tool generated for subagent `{0}`",
-                registration.name
-            ));
-        }
         app.agents.push(AgentEntry {
             name: registration.name.into(),
             doc: registration.doc.into(),
-            sub: registration.sub,
             default: registration.default,
             source: registration.source.into(),
             spec,
         });
     }
-    let top: Vec<_> = app.agents.iter().filter(|a| !a.sub).collect();
-    let defaults = top.iter().filter(|a| a.default).count();
+    let defaults = app.agents.iter().filter(|a| a.default).count();
     if defaults > 1 {
         app.errors
             .push("more than one #[agent(default)]; mark exactly one".into());
-    } else if top.len() > 1 && defaults == 0 {
+    } else if app.agents.len() > 1 && defaults == 0 {
         app.warnings.push(
             "several agents and none is #[agent(default)]; sessions must name one with agent_name"
                 .into(),
@@ -401,7 +402,7 @@ fn discover(app: &mut AppInner) {
         if app
             .agents
             .iter()
-            .any(|agent| !agent.sub && agent.name == registration.name)
+            .any(|agent| agent.name == registration.name)
         {
             app.errors.push(format!(
                 "channel `{}` has the name of an agent; both are served at /v1/channels/{{name}}, rename one",
@@ -409,20 +410,13 @@ fn discover(app: &mut AppInner) {
             ));
         }
         match registration.agent {
-            Some(agent)
-                if !app
-                    .agents
-                    .iter()
-                    .any(|entry| !entry.sub && entry.name == agent) =>
-            {
+            Some(agent) if !app.agents.iter().any(|entry| entry.name == agent) => {
                 app.errors.push(format!(
-                    "channel `{}` names agent `{agent}`, which is not a top-level agent",
+                    "channel `{}` names agent `{agent}`, which is not an agent of this app",
                     registration.name
                 ));
             }
-            None if app.agents.iter().filter(|entry| !entry.sub).count() > 1
-                && !app.agents.iter().any(|entry| entry.default) =>
-            {
+            None if app.agents.len() > 1 && !app.agents.iter().any(|entry| entry.default) => {
                 app.errors.push(format!(
                     "channel `{}` names no agent and the app has no default; use #[channel(agent = \"…\")]",
                     registration.name

@@ -1,5 +1,7 @@
 "use client";
 
+import type { EntityLocalizations } from "@/lib/entity-localization";
+
 // Draft state for the agent page's in-place edit mode.
 //
 // The agent page shows and edits an agent in one layout, so the draft lives
@@ -109,6 +111,7 @@ export function useAgentDraft(agent: Agent | undefined) {
   );
   const initialNetworkAccess = agent?.network_access ?? null;
 
+  const [localizations, setLocalizations] = useState<EntityLocalizations | null>(null);
   const [fieldChanges, setFieldChanges] = useState<Partial<AgentDraftFields>>({});
   const [capabilities, setCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
   const [starters, setStarters] = useState<ConversationStarter[] | null>(null);
@@ -129,6 +132,7 @@ export function useAgentDraft(agent: Agent | undefined) {
   }, []);
 
   const values = {
+    localizations: localizations ?? agent?.localizations ?? {},
     fields,
     capabilities: capabilities ?? initialCapabilities,
     starters: starters ?? initialStarters,
@@ -152,7 +156,10 @@ export function useAgentDraft(agent: Agent | undefined) {
   const harnessChanged =
     fieldChanges.harness_id !== undefined && fieldChanges.harness_id !== initialFields.harness_id;
 
+  const localizationsChanged =
+    localizations !== null && !same(localizations, agent?.localizations ?? {});
   const isDirty =
+    localizationsChanged ||
     (Object.keys(fieldChanges) as (keyof AgentDraftFields)[]).some(
       (key) => fieldChanges[key] !== initialFields[key],
     ) ||
@@ -163,6 +170,7 @@ export function useAgentDraft(agent: Agent | undefined) {
     sandboxPolicyChanged;
 
   const reset = useCallback(() => {
+    setLocalizations(null);
     setFieldChanges({});
     setCapabilities(null);
     setStarters(null);
@@ -184,6 +192,7 @@ export function useAgentDraft(agent: Agent | undefined) {
     return {
       ok: true,
       request: {
+        ...(localizationsChanged && { localizations: values.localizations }),
         name: data.name,
         display_name: data.display_name,
         description: data.description,
@@ -215,6 +224,7 @@ export function useAgentDraft(agent: Agent | undefined) {
     errors,
     isDirty,
     nameChanged: fields.name !== initialFields.name,
+    setLocalizations,
     setField,
     setCapabilities,
     setStarters,

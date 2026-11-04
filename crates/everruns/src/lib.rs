@@ -14,7 +14,11 @@
 //!
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Ordinary applications begin
-//! here; advanced execution hosts select the `host`, `engine`, `builtins`, MCP
+//! here. Engine hosting adapters use [`hosting::SessionHosting`] and
+//! [`hosting::spi`] without a direct Core dependency. Embedding hosts that keep
+//! their own capabilities, provider resolution, recovery budgets, MCP
+//! credentials and observers compose them with [`hosting::services`]. Separately composed
+//! low-level execution hosts select the `host`, `engine`, `builtins`, MCP
 //! or AG-UI features of [`everruns-core`](https://docs.rs/everruns-core), with
 //! [`everruns-contracts`](https://docs.rs/everruns-contracts) for neutral extension
 //! types and `everruns::batteries` for concrete integration presets.
@@ -99,7 +103,9 @@ pub mod conversation {
 pub mod decisions;
 mod default_workspace;
 mod engine;
+pub use events::{SessionEventCursor, SessionEventPage};
 mod events;
+pub mod hosting;
 /// Wire types of the Agent Execution API, the per-agent session API that the
 /// everruns server and serve both expose.
 ///
@@ -110,6 +116,9 @@ mod history;
 mod hooks;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 pub mod llm;
+
+/// Stability: alpha — provider-native offline model requests.
+pub mod batch;
 mod mcp;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod models;
@@ -136,7 +145,7 @@ pub mod voice;
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
-pub use context::{ContextMessage, SessionContext, ToolInfo};
+pub use context::{CommandArgument, CommandInfo, ContextMessage, SessionContext, ToolInfo};
 pub use decisions::{Answers, Decision, Decisions, DecisionsError};
 pub use engine::{Engine, EngineBuilder, InMemoryEngine};
 pub use events::{
@@ -212,8 +221,8 @@ pub use history::{
     ResumeError, SessionMessage,
 };
 pub use hooks::{
-    AgentStartContext, CompletionContext, HookFailure, HookPoint, IntoHookResult, ToolEndContext,
-    ToolStartContext, TurnStartContext,
+    AgentStartContext, CompletionContext, HookFailure, HookPoint, HookRecovery, IntoHookResult,
+    ToolEndContext, ToolStartContext, TurnStartContext,
 };
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
@@ -224,11 +233,15 @@ pub use observers::{
 };
 pub use plugin::PluginError;
 pub use session::{
-    AttachError, CancelError, EnvironmentSessionBuilder, InterruptedTurn, RunError,
-    SendDisposition, SentMessage, Session, Turn, TurnHandle,
+    AttachError, COMPLETION_PURPOSE_KEY, CancelError, CapabilityChange,
+    CapabilityRegistrationError, CommandOutput, CompletionRequest, EnvironmentSessionBuilder,
+    InterruptedTurn, MAX_COMPLETION_MESSAGES, MAX_COMPLETION_SYSTEM_PROMPTS, RunError,
+    SendDisposition, SentMessage, Session, SessionControlError, Turn, TurnHandle,
 };
 pub use session_environment::SessionEnvironmentError;
-pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolCallContext, ToolResponse};
+pub use tool::{
+    FunctionTool, IntoTool, IntoToolResult, Tool, ToolAnswer, ToolCallContext, ToolResponse,
+};
 
 #[cfg(feature = "local")]
 pub mod coordination;
@@ -298,20 +311,53 @@ pub mod providers;
     feature = "anthropic",
     feature = "bedrock",
     feature = "gemini",
+    feature = "mistral",
+    feature = "groq",
+    feature = "fireworks",
     feature = "openai",
-    feature = "openrouter"
+    feature = "openrouter",
+    feature = "meta",
+    feature = "mai",
+    feature = "cloudflare",
+    feature = "vercel",
+    feature = "typesafe",
+    feature = "chatgpt",
+    feature = "codex"
 ))]
 pub use everruns_drivers as drivers;
 #[cfg(feature = "anthropic")]
 pub use providers::anthropic::{Anthropic, AnthropicError};
 #[cfg(feature = "bedrock")]
 pub use providers::bedrock::Bedrock;
+#[cfg(feature = "fireworks")]
+pub use providers::fireworks::Fireworks;
 #[cfg(feature = "gemini")]
 pub use providers::gemini::{Gemini, GeminiError};
+#[cfg(feature = "groq")]
+pub use providers::groq::{Groq, GroqError};
+#[cfg(feature = "mistral")]
+pub use providers::mistral::{Mistral, MistralApi, MistralError};
 #[cfg(feature = "openai")]
-pub use providers::openai::{OpenAI, OpenAIError};
+pub use providers::openai::{OpenAI, OpenAIApi, OpenAIError};
 #[cfg(feature = "openrouter")]
 pub use providers::openrouter::{OpenRouter, OpenRouterError};
+
+#[cfg(feature = "openai")]
+pub use providers::azure::AzureOpenAI;
+#[cfg(feature = "chatgpt")]
+pub use providers::chatgpt::ChatGpt;
+#[cfg(feature = "cloudflare")]
+pub use providers::cloudflare::Cloudflare;
+#[cfg(feature = "codex")]
+pub use providers::codex::Codex;
+#[cfg(feature = "mai")]
+pub use providers::mai::Mai;
+#[cfg(feature = "meta")]
+pub use providers::meta::Meta;
+#[cfg(feature = "typesafe")]
+pub use providers::typesafe::TypeSafe;
+#[cfg(feature = "vercel")]
+pub use providers::vercel::Vercel;
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the
@@ -325,7 +371,7 @@ pub use everruns_core::host::{
 };
 
 // --- Portable message, model, and platform types ------------------------
-pub use everruns_core::turn::TurnStopReason;
+pub use everruns_contracts::turn::TurnStopReason;
 // `MessageRole` is the role on stored and inspected session messages
 // (`SessionMessage`, `ContextMessage`) — the common path. The wire message and
 // role that travel on a direct model call live in [`llm`], so both keep the
@@ -378,12 +424,13 @@ pub use everruns_contracts::driver_registry::{
 };
 pub use everruns_contracts::provider::DriverId;
 pub use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
-pub use everruns_contracts::typed_id::{SessionId, WorkspaceId};
+pub use everruns_contracts::typed_id::{MessageId, SessionId, TurnId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
 // `LlmSimConfig::scripted` takes `SimTurn`s, so the turn, tool-call, and
 // exhaustion types belong here beside it: without them the facade exposes a
 // constructor nothing outside the workspace can call.
+#[cfg(not(target_arch = "wasm32"))]
 pub use everruns_llmsim::{LlmSimConfig, OnExhausted, SimError, SimToolCall, SimTurn};
 
 /// The common path: everything needed to describe an agent and run turns.
@@ -404,6 +451,8 @@ pub mod prelude {
     pub use crate::DuckDuckGo;
     #[cfg(feature = "filesystem")]
     pub use crate::FileSystem;
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use crate::LlmSimConfig;
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
     #[cfg(feature = "local")]
@@ -431,14 +480,14 @@ pub mod prelude {
         EventListener, EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError,
         HarnessBuilder, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
         HistoryPages, HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile,
-        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
-        ObserverReport, ObserverStats, PluginError, ResumeError, RunError, RunOptions,
-        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolCallContext,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, McpServer, Model, ObserverReport,
+        ObserverStats, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
+        SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
+        SessionEventKind, SessionId, SessionMessage, Tool, ToolCallContext, ToolEndContext,
+        ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
+        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{
@@ -450,11 +499,11 @@ pub mod prelude {
     pub use crate::{ContainmentMode, HostShell};
     pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
-    pub use crate::{OpenAI, OpenAIError};
+    pub use crate::{OpenAI, OpenAIApi, OpenAIError};
     #[allow(deprecated)]
     #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
     pub use crate::{WorkspaceProvider, WorkspaceProviderId};
-    pub use everruns_core::turn::TurnStopReason;
+    pub use everruns_contracts::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole as MessageRole};
 }
 
@@ -463,3 +512,10 @@ pub mod batteries;
 /// Deployment-owned utility LLM bootstrap wiring.
 #[cfg(feature = "utility-llm")]
 pub mod utility_llm;
+
+/// Bounded durable causal identities, independent of any exporter.
+pub use everruns_contracts::runtime::causal::{CausalContext, CausalLink};
+/// Background memory consolidation configuration.
+pub use everruns_core::dreaming::{
+    DreamBudget, DreamCommitMode, DreamDestination, DreamTrigger, DreamTriggerMode, DreamingConfig,
+};

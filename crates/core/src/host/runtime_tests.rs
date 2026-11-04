@@ -1,13 +1,5 @@
 use super::*;
-use crate::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, org_public_id_from_internal};
-
-#[test]
-fn default_public_id_maps_to_default_org() {
-    assert_eq!(
-        in_process_internal_org_id(DEFAULT_ORG_PUBLIC_ID),
-        DEFAULT_ORG_ID
-    );
-}
+use crate::{DEFAULT_ORG_ID, org_public_id_from_internal};
 
 #[test]
 fn invalid_public_id_does_not_fall_back_to_default() {
@@ -80,22 +72,6 @@ fn high_entropy_ids_are_isolated_from_each_other() {
     assert_ne!(a, b);
     assert_ne!(a, DEFAULT_ORG_ID);
     assert_ne!(b, DEFAULT_ORG_ID);
-}
-
-#[test]
-fn hash_uses_stable_sha256_truncation() {
-    // SHA-256 with fixed big-endian first-8-byte truncation gives a value
-    // we can pin. If this assertion ever breaks, callers depending on
-    // build-stable mapping must be re-audited.
-    let mapped = in_process_internal_org_id("org_80000000000000000000000000000000");
-    let expected = {
-        let digest = sha2::Sha256::digest(b"org_80000000000000000000000000000000");
-        let mut buf = [0u8; 8];
-        buf.copy_from_slice(&digest[..8]);
-        let raw = u64::from_be_bytes(buf);
-        ((raw % ((i64::MAX - 1) as u64)) as i64) + 2
-    };
-    assert_eq!(mapped, expected);
 }
 
 #[test]

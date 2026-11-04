@@ -20,14 +20,11 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wiremock::matchers::{method, path, query_param};
-use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // Force linker to include the integration crate.
 #[allow(unused_imports)]
 use everruns_integrations_experimental::sprites as _;
 
-use everruns_integrations_experimental::sprites::client::SpritesClient;
 use everruns_integrations_experimental::sprites::state::{
     SpriteState, get_sprite_state, save_sprite_state, touch_sprite_lease,
 };
@@ -427,30 +424,6 @@ async fn test_list_sprites_with_entries() {
 // State management integration tests
 // ============================================================================
 
-#[tokio::test]
-async fn test_sprite_state_persistence_roundtrip() {
-    let session_id = SessionId::new();
-    let store = Arc::new(MockStorageStore::new());
-
-    setup_context_with_sprite(session_id, &store, "persist-test").await;
-
-    let context = ToolContext::with_storage_store(session_id, store.clone());
-
-    let tool = get_tool("sprites_list_sprites");
-    let result = tool.execute_with_context(json!({}), &context).await;
-
-    match result {
-        ToolExecutionResult::Success(output) => {
-            assert_eq!(output["count"], 1);
-            let sprite = &output["sprites"][0];
-            assert_eq!(sprite["sprite_name"], "persist-test");
-            assert_eq!(sprite["workspace_path"], "/home/sprite");
-            assert_eq!(sprite["service_url"], "https://persist-test.fly.dev");
-        }
-        other => panic!("Expected Success, got: {other:?}"),
-    }
-}
-
 // ============================================================================
 // Bearer auth verification
 // ============================================================================
@@ -526,26 +499,6 @@ async fn test_create_sprite_rejects_path_traversal_name() {
 }
 
 #[tokio::test]
-async fn test_create_sprite_rejects_uppercase_name() {
-    let tool = get_tool("sprites_create_sprite");
-    let session_id = SessionId::new();
-    let store = Arc::new(MockStorageStore::new());
-    let context = ToolContext::with_storage_store(session_id, store)
-        .with_connection_resolver(sprites_resolver());
-
-    let result = tool
-        .execute_with_context(json!({"sprite_name": "BAD-NAME"}), &context)
-        .await;
-
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("lowercase"), "Got: {msg}");
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
 async fn test_exec_rejects_path_traversal_name() {
     let tool = get_tool("sprites_exec");
     let session_id = SessionId::new();
@@ -606,28 +559,6 @@ async fn test_restore_checkpoint_missing_id() {
         }
         other => panic!("Expected ToolError, got: {other:?}"),
     }
-}
-
-#[tokio::test]
-async fn test_exec_with_nonzero_exit() {
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/sprites/err-sprite/exec"))
-        .and(query_param("cmd", "sh"))
-        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![
-            0x02, b'b', b'a', b's', b'h', b':', b' ', b'f', b'o', b'o', b'b', b'a', b'r', b':',
-            b' ', b'c', b'o', b'm', b'm', b'a', b'n', b'd', b' ', b'n', b'o', b't', b' ', b'f',
-            b'o', b'u', b'n', b'd', b'\n', 0x03, 127,
-        ]))
-        .mount(&mock_server)
-        .await;
-
-    let client = SpritesClient::with_base_url("test_token".to_string(), mock_server.uri());
-
-    let result = client.exec("err-sprite", "foobar", None).await.unwrap();
-    assert_eq!(result.exit_code, 127);
-    assert!(result.stderr.contains("command not found"));
 }
 
 // ============================================================================

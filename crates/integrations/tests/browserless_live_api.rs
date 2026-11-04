@@ -308,22 +308,6 @@ async fn live_cdp_session_interact() {
 // ============================================================================
 
 #[tokio::test]
-async fn live_no_resources_leaked_rest() {
-    // REST calls are stateless. Verify multiple independent calls work fine.
-    let client = BrowserlessClient::new(api_token());
-
-    let r1 = client
-        .content("https://example.com", None, None, false, &[])
-        .await;
-    let r2 = client
-        .content("https://example.com", None, None, false, &[])
-        .await;
-
-    assert!(r1.is_ok());
-    assert!(r2.is_ok());
-}
-
-#[tokio::test]
 async fn live_no_resources_leaked_cdp() {
     // Open a CDP session, then let it expire without explicitly closing.
     // Verify no resources are leaked (browser destroyed after timeout).
@@ -550,8 +534,10 @@ mod network_guard {
     /// A public URL that answers 302 to a private address. Browserless cloud
     /// itself drops the connection when a page touches a loopback or metadata
     /// URL, so a private RFC 1918 target is what shows the Everruns guard.
+    /// httpbin.org now answers 403 for internal redirect targets, so this uses
+    /// postman-echo, which still redirects anywhere.
     const REDIRECT_TO_PRIVATE: &str =
-        "https://httpbin.org/redirect-to?url=http%3A%2F%2F10.0.0.5%2Fadmin";
+        "https://postman-echo.com/redirect-to?url=http%3A%2F%2F10.0.0.5%2Fadmin";
 
     fn tool(name: &str) -> Box<dyn Tool> {
         BrowserlessCapability

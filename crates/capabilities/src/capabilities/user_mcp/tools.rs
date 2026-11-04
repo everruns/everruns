@@ -41,6 +41,7 @@ fn narrate_user_mcp(
 }
 
 pub(super) const LIST_TOOL: &str = "list_user_mcp_servers";
+pub(super) const CATALOG_TOOL: &str = "list_mcp_catalog";
 pub(super) const ADD_TOOL: &str = "add_user_mcp_server";
 pub(super) const REMOVE_TOOL: &str = "remove_user_mcp_server";
 pub(super) const ENABLE_TOOL: &str = "enable_user_mcp_server";
@@ -70,6 +71,7 @@ pub(super) fn connect_tools() -> Vec<Box<dyn Tool>> {
 pub(super) fn manage_tools(allow_custom_urls: bool) -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(ListUserMcpServersTool),
+        Box::new(ListMcpCatalogTool),
         Box::new(AddUserMcpServerTool { allow_custom_urls }),
         Box::new(RemoveUserMcpServerTool),
         Box::new(SetUserMcpServerEnabledTool { enabled: true }),
@@ -198,6 +200,88 @@ impl Tool for ListUserMcpServersTool {
 }
 
 // ============================================================================
+// catalog discovery
+// ============================================================================
+
+/// Read-only discovery stays on the same verified-person store as management.
+pub struct ListMcpCatalogTool;
+
+#[async_trait]
+impl Tool for ListMcpCatalogTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            match phase {
+                ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
+                    "Listing approved MCP servers"
+                }
+                ToolNarrationPhase::Completed => "Listed approved MCP servers",
+                ToolNarrationPhase::Failed => "Listing approved MCP servers failed",
+            }
+            .to_string(),
+        )
+    }
+
+    fn name(&self) -> &str {
+        CATALOG_TOOL
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("List Approved MCP Catalog")
+    }
+
+    fn description(&self) -> &str {
+        "Discover approved MCP servers in the current organization's catalog before adding one. Returns exact catalog names, endpoint URLs without credentials, descriptions and auth modes. Pass the chosen name to add_user_mcp_server's catalog argument; do not guess it from the provider name. Continue with next_cursor until null, even after an empty page. This does not add servers, contact them or start OAuth."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({"type": "object", "properties": {
+            "cursor": {"type": "string", "description": "Opaque next_cursor from the previous catalog page; omit for the first page."}
+        }, "additionalProperties": false})
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints {
+            readonly: Some(true),
+            ..Default::default()
+        }
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(NO_STORE)
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match store(context) {
+            Ok(store) => store,
+            Err(error) => return error,
+        };
+        let cursor = match arguments.get("cursor") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(cursor)) => Some(cursor.as_str()),
+            _ => return ToolExecutionResult::tool_error("cursor must be a string"),
+        };
+        match store.list_catalog(cursor).await {
+            Ok(page) => ToolExecutionResult::success(json!(page)),
+            Err(error) => store_error(error),
+        }
+    }
+}
+
+// ============================================================================
 // add
 // ============================================================================
 
@@ -233,9 +317,9 @@ impl Tool for AddUserMcpServerTool {
 
     fn description(&self) -> &str {
         if self.allow_custom_urls {
-            "Add an MCP server to the person's own list: give `catalog` with the name of a server in the organization's MCP catalog, or `name` and an HTTPS `url`. With `scope: \"chat\"` it joins only this conversation instead. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
+            "Add an MCP server to the person's own list: give `catalog` with the name of a server in the organization's MCP catalog, or `name` and an HTTPS `url`. With `scope: \"chat\"` it joins only this conversation instead. The agent's configured tool approval policy applies. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
         } else {
-            "Add a server from the organization's MCP catalog to the person's own list: give `catalog` with its catalog name. With `scope: \"chat\"` it joins only this conversation instead. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
+            "Add a server from the organization's MCP catalog to the person's own list: give `catalog` with its catalog name. With `scope: \"chat\"` it joins only this conversation instead. The agent's configured tool approval policy applies. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
         }
     }
 
@@ -243,7 +327,7 @@ impl Tool for AddUserMcpServerTool {
         let mut properties = json!({
             "catalog": {
                 "type": "string",
-                "description": "Name of the server in the organization's MCP catalog, e.g. 'linear'."
+                "description": "Exact catalog name returned by list_mcp_catalog; do not guess the name from the provider or URL."
             },
             "name": {
                 "type": "string",
@@ -462,7 +546,7 @@ impl Tool for RemoveUserMcpServerTool {
 // enable / disable
 // ============================================================================
 
-/// `enable_user_mcp_server` (approval) or `disable_user_mcp_server`.
+/// `enable_user_mcp_server` (shared approval policy) or `disable_user_mcp_server`.
 pub struct SetUserMcpServerEnabledTool {
     pub enabled: bool,
 }
@@ -510,7 +594,7 @@ impl Tool for SetUserMcpServerEnabledTool {
 
     fn description(&self) -> &str {
         if self.enabled {
-            "Turn on an MCP server in the person's own list so it joins their conversations from their next message. The person approves it first."
+            "Turn on an MCP server in the person's own list so it joins their conversations from their next message. The agent's configured tool approval policy applies."
         } else {
             "Turn off an MCP server in the person's own list without removing it. It stops joining their conversations from their next message."
         }

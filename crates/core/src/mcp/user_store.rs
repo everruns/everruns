@@ -90,6 +90,32 @@ pub struct UserMcpServerSummary {
     pub chat_only: bool,
 }
 
+/// Public metadata for an approved organization preset. Never includes headers,
+/// credentials, OAuth client configuration, or connection state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMcpCatalogEntry {
+    /// Exact name accepted by the add tool's `catalog` argument.
+    pub name: String,
+    /// Endpoint for identification, with userinfo, query and fragment removed.
+    pub url: String,
+    /// Operator-provided description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// How an attached server authenticates; listing never starts sign-in.
+    pub auth_mode: crate::McpServerAuthMode,
+}
+
+/// A bounded catalog page. Continue with `next_cursor`, including after an
+/// empty page: a host may omit unavailable entries without exposing them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMcpCatalogPage {
+    /// Opaque continuation token, or None at the end.
+    /// Kept before metadata so partial display does not bury continuation.
+    pub next_cursor: Option<String>,
+    /// Approved presets, not the person's own server list.
+    pub servers: Vec<UserMcpCatalogEntry>,
+}
+
 /// Why a store or prompter refused a request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "kind", content = "message", rename_all = "snake_case")]
@@ -117,6 +143,15 @@ pub type UserMcpStoreResult<T> = std::result::Result<T, UserMcpStoreError>;
 pub trait UserMcpStore: Send + Sync {
     /// Every server in the list, enabled or not.
     async fn list(&self) -> UserMcpStoreResult<Vec<UserMcpServerSummary>>;
+
+    /// Discover approved presets without adding a server or contacting it.
+    /// Hosts without an organization catalog refuse explicitly.
+    async fn list_catalog(&self, cursor: Option<&str>) -> UserMcpStoreResult<UserMcpCatalogPage> {
+        let _ = cursor;
+        Err(UserMcpStoreError::Unavailable(
+            "An organization MCP catalog is not available in this host.".into(),
+        ))
+    }
 
     /// Add `name`, or replace the entry already under that name.
     async fn upsert(
@@ -196,6 +231,12 @@ pub trait McpLoginPrompter: Send + Sync {
 pub enum UserMcpStoreCall {
     /// [`UserMcpStore::list`].
     List,
+    /// [`UserMcpStore::list_catalog`].
+    ListCatalog {
+        /// Opaque token from the previous catalog page.
+        #[serde(default)]
+        cursor: Option<String>,
+    },
     /// [`UserMcpStore::upsert`].
     Upsert {
         /// Server name.
@@ -233,6 +274,11 @@ pub enum UserMcpStoreCall {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "reply", rename_all = "snake_case")]
 pub enum UserMcpStoreReply {
+    /// Answer to [`UserMcpStoreCall::ListCatalog`].
+    Catalog {
+        /// One bounded page of approved organization presets.
+        page: UserMcpCatalogPage,
+    },
     /// Answer to [`UserMcpStoreCall::List`].
     Servers {
         /// Every server in the list.

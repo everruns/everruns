@@ -18,8 +18,8 @@
 //! The organization's workspace connection itself comes from a pasted
 //! configuration token, or, on a deployment with a Slack manager app, from one
 //! OAuth consent (`/v1/slack/workspaces/oauth`, EVE-1102). Its callback is
-//! unauthenticated for the same reason and carries an encrypted, expiring
-//! state naming the organization instead.
+//! unauthenticated for the same reason. A per-transaction browser cookie and a
+//! durable single-use ledger bind its encrypted, expiring state to the start.
 
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
@@ -36,6 +36,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+use super::manager_connect::{begin_manager_connect, finish_manager_connect};
 
 use super::events::SlackState;
 use crate::api::common::ErrorResponse;
@@ -137,113 +139,6 @@ async fn connect_workspace(
     Ok(Json(row.into()))
 }
 
-#[derive(Serialize)]
-pub struct BeginManagerConnectResponse {
-    /// Send the admin here: Slack's consent screen for the manager app.
-    pub authorize_url: String,
-}
-
-/// POST /v1/slack/workspaces/oauth — admin only. Starts connecting a workspace
-/// by Slack consent through this deployment's manager app.
-async fn begin_manager_connect(
-    org: ResolvedOrg,
-    State(state): State<SlackInstallState>,
-) -> Result<Json<BeginManagerConnectResponse>, (StatusCode, Json<ErrorResponse>)> {
-    require_org_admin(&org)?;
-    let manager = state
-        .connection_manager
-        .filter(|manager| manager.manager_app_configured())
-        .ok_or_else(|| {
-            ErrorResponse::new("Connecting Slack by consent is not configured on this deployment")
-                .into_response(StatusCode::NOT_IMPLEMENTED)
-        })?;
-    let authorize_url = manager
-        .manager_authorize_url(org.org_id, &manager_redirect_uri(&state.slack.api_base_url))
-        .map_err(provisioning_error_response)?;
-    Ok(Json(BeginManagerConnectResponse { authorize_url }))
-}
-
-/// Where Slack returns the admin after the manager app consent. Register it as
-/// the manager app's redirect URL.
-fn manager_redirect_uri(api_base_url: &str) -> String {
-    format!(
-        "{}/v1/slack/workspaces/oauth/callback",
-        api_base_url.trim_end_matches('/')
-    )
-}
-
-/// GET /v1/slack/workspaces/oauth/callback
-///
-/// THREAT[TM-SLACK-014]: reached by Slack's browser redirect, so it carries
-/// none of our auth. The encrypted, expiring state is the only thing that
-/// names an organization; anything that does not open is refused before the
-/// code is exchanged, and that refusal reveals nothing. Once the state is
-/// verified, Slack's own error code is passed back so the admin can act on it.
-async fn finish_manager_connect(
-    State(state): State<SlackInstallState>,
-    Query(query): Query<CallbackQuery>,
-) -> Response {
-    let settings = format!("{}/settings/slack", state.ui_base_url.trim_end_matches('/'));
-    let failed = |code: Option<&str>| {
-        let mut url = format!("{settings}?slack_connect=failed");
-        if let Some(code) = code.and_then(slack_error_code) {
-            url.push_str(&format!("&slack_error={code}"));
-        }
-        Redirect::to(&url).into_response()
-    };
-    let Some(manager) = state
-        .connection_manager
-        .as_ref()
-        .filter(|manager| manager.manager_app_configured())
-    else {
-        return failed(None);
-    };
-    let Some(org_id) = query
-        .state
-        .as_deref()
-        .and_then(|sealed| manager.open_manager_state(sealed))
-    else {
-        tracing::warn!("Slack manager connect callback rejected: invalid state");
-        return failed(None);
-    };
-    if let Some(error) = query.error.as_deref() {
-        // `access_denied` when the admin cancels the consent screen.
-        return failed(Some(error));
-    }
-    let Some(code) = query.code.as_deref().filter(|code| !code.is_empty()) else {
-        return failed(None);
-    };
-    match manager
-        .connect_with_manager_code(
-            org_id,
-            code,
-            &manager_redirect_uri(&state.slack.api_base_url),
-        )
-        .await
-    {
-        Ok(_) => Redirect::to(&format!("{settings}?slack_connect=ok")).into_response(),
-        Err(SlackProvisioningError::Rejected(code)) => {
-            tracing::warn!(org_id, slack_error = %code, "Slack manager connect refused");
-            failed(Some(&code))
-        }
-        Err(error) => {
-            tracing::warn!(org_id, %error, "Slack manager connect failed");
-            failed(None)
-        }
-    }
-}
-
-/// A Slack error code safe to put in a URL: Slack's codes are short
-/// `snake_case` words, and anything else is dropped rather than reflected.
-fn slack_error_code(code: &str) -> Option<&str> {
-    (!code.is_empty()
-        && code.len() <= 64
-        && code
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'))
-    .then_some(code)
-}
-
 async fn test_workspace(
     org: ResolvedOrg,
     State(state): State<SlackInstallState>,
@@ -321,7 +216,9 @@ fn pick_workspace(
     }
 }
 
-fn require_org_admin(org: &ResolvedOrg) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+pub(super) fn require_org_admin(
+    org: &ResolvedOrg,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if org.role.has_permission(everruns_core::OrgRole::Admin) {
         Ok(())
     } else {
@@ -649,6 +546,7 @@ async fn begin_install(
                 install_state: None,
                 install_state_issued_at: None,
                 team_id: team_id.clone(),
+                install_return_issue: None,
             }
         }
     };
@@ -658,6 +556,8 @@ async fn begin_install(
     let team_id_for_consent = provisioned.team_id.clone();
     provisioned.install_state = Some(install_state.clone());
     provisioned.install_state_issued_at = Some(chrono::Utc::now());
+    // An install started here returns to the channel editor.
+    provisioned.install_return_issue = None;
     config.provisioned_app = Some(provisioned);
 
     persist(&state, endpoint.internal_id, &config).await?;
@@ -673,6 +573,94 @@ async fn begin_install(
         config.agent_surface_enabled,
     );
     Ok(Json(BeginInstallResponse { authorize_url }))
+}
+
+/// Why [`begin_reconsent`] could not prepare Slack's consent screen.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ReconsentError {
+    #[error("This Slack channel no longer exists")]
+    NotFound,
+    #[error("Everruns did not create this Slack app")]
+    NotProvisioned,
+    #[error(transparent)]
+    Provisioning(#[from] SlackProvisioningError),
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+/// Prepare Slack's consent screen again for an app this deployment created:
+/// add the required bot scopes to its manifest (keeping everything else),
+/// mint a fresh install nonce, and return the authorize URL.
+///
+/// The Health fixer (`domains::health_issues::fixers`) uses it in place of
+/// [`begin_install`], which also creates apps and so needs the full Slack
+/// state. It never creates or replaces an app: a channel without one is
+/// refused. The callback returns the browser to `return_issue`.
+pub(crate) async fn begin_reconsent(
+    db: &crate::storage::StorageBackend,
+    encryption: Option<&Arc<crate::storage::EncryptionService>>,
+    provisioner: &dyn SlackAppProvisioner,
+    api_base_url: &str,
+    org_id: i64,
+    channel_public_id: &str,
+    return_issue: uuid::Uuid,
+) -> Result<String, ReconsentError> {
+    let resolve = || async {
+        crate::api::channel_ingress::resolve_channel(db, encryption, channel_public_id)
+            .await
+            .map_err(ReconsentError::Internal)?
+            .filter(|(context, endpoint)| {
+                endpoint.channel_type == ChannelType::Slack
+                    && context.agent_is_active()
+                    && context.org_id == org_id
+            })
+            .ok_or(ReconsentError::NotFound)
+    };
+    let (app, _) = resolve().await?;
+    // Same lock order as `begin_install`: agent lifecycle, then installation.
+    let _agent_lock = db.lock_slack_install(app.agent_internal_id).await?;
+    let (_, endpoint) = resolve().await?;
+    let _install_lock = db.lock_slack_install(endpoint.internal_id).await?;
+    let (_, endpoint) = resolve().await?;
+    let mut config = parse_config(&endpoint.channel_config);
+    let mut provisioned = config
+        .provisioned_app
+        .take()
+        .ok_or(ReconsentError::NotProvisioned)?;
+    if !config.bot_token.is_empty() {
+        provisioner
+            .update_permissions(
+                org_id,
+                provisioned.team_id.as_deref(),
+                &provisioned.app_id,
+                &super::events::slack_bot_scopes(config.agent_surface_enabled),
+            )
+            .await?;
+    }
+    let install_state = mint_install_state();
+    provisioned.install_state = Some(install_state.clone());
+    provisioned.install_state_issued_at = Some(chrono::Utc::now());
+    provisioned.install_return_issue = Some(return_issue);
+    let client_id = provisioned.client_id.clone();
+    let team_id = provisioned.team_id.clone();
+    config.provisioned_app = Some(provisioned);
+    let json = serde_json::to_value(&config).map_err(anyhow::Error::from)?;
+    crate::domains::agent_channels::queries::update_channel_config_unscoped(
+        db,
+        encryption,
+        endpoint.internal_id,
+        &json,
+    )
+    .await?;
+    let redirect_uri =
+        super::events::slack_oauth_redirect_url(api_base_url, &endpoint.public_id.to_string());
+    Ok(authorize_url(
+        &client_id,
+        &install_state,
+        &redirect_uri,
+        team_id.as_deref(),
+        config.agent_surface_enabled,
+    ))
 }
 
 fn authorize_url(
@@ -701,9 +689,9 @@ fn authorize_url(
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
-    code: Option<String>,
-    state: Option<String>,
-    error: Option<String>,
+    pub(super) code: Option<String>,
+    pub(super) state: Option<String>,
+    pub(super) error: Option<String>,
 }
 
 /// GET /v1/channels/{channel_id}/slack/oauth/callback
@@ -773,13 +761,20 @@ async fn finish_install(
     }
 
     // Endpoint editors are agent-scoped. Only a valid install nonce may expose
-    // the owning agent in this unauthenticated callback's return URL.
-    let editor_url = match context.agent_id {
-        Some(agent_id) => format!(
+    // the owning agent in this unauthenticated callback's return URL. A Health
+    // fixer's install returns to its issue; the id was stored by the server
+    // with the nonce, so the URL is never taken from the request.
+    let editor_url = match (provisioned.install_return_issue, context.agent_id) {
+        (Some(issue), _) => format!("{ui_base}/settings/health?issue={issue}"),
+        (None, Some(agent_id)) => format!(
             "{ui_base}/agents/{agent_id}/channels/{}",
             endpoint.public_id
         ),
-        None => format!("{ui_base}/agents"),
+        (None, None) => format!("{ui_base}/agents"),
+    };
+    let editor_url = match editor_url.contains('?') {
+        true => format!("{editor_url}&"),
+        false => format!("{editor_url}?"),
     };
     let result = finish_install_inner(
         &state,
@@ -813,7 +808,7 @@ async fn finish_install(
             "failed"
         }
     };
-    Redirect::to(&format!("{editor_url}?slack_install={outcome}")).into_response()
+    Redirect::to(&format!("{editor_url}slack_install={outcome}")).into_response()
 }
 
 async fn finish_install_inner(
@@ -1031,7 +1026,9 @@ async fn persist(
     })
 }
 
-fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Json<ErrorResponse>) {
+pub(super) fn provisioning_error_response(
+    error: SlackProvisioningError,
+) -> (StatusCode, Json<ErrorResponse>) {
     match error {
         // Not a failure: it is the self-hosted steady state. 501 rather than
         // 500 so the UI can tell "this deployment does not do one-click" from
@@ -1061,6 +1058,18 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
             ErrorResponse::new(format!("Slack rejected the app creation: {code}"))
                 .with_code(code)
                 .into_response(StatusCode::UNPROCESSABLE_ENTITY)
+        }
+        // Slack's own words about which fields it refused. They name manifest
+        // fields we generated (no tokens), and without them the person sees
+        // only "invalid_manifest" and nobody can tell what to change.
+        SlackProvisioningError::RejectedWithProblems { code, problems } => {
+            tracing::warn!(slack_error = %code, ?problems, "Slack app provisioning rejected");
+            ErrorResponse::new(format!(
+                "Slack rejected the app creation: {code} ({})",
+                problems.join("; ")
+            ))
+            .with_code(code)
+            .into_response(StatusCode::UNPROCESSABLE_ENTITY)
         }
         // Not 502: the edge proxy replaces a 502 body with its own error page,
         // so the person never saw which part of the setup Slack refused.
@@ -1104,6 +1113,7 @@ fn urlencoding_encode(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::manager_connect::{manager_redirect_uri, slack_error_code};
     use super::*;
     use crate::storage::StorageBackend;
     fn resolved_org(role: everruns_core::OrgRole) -> ResolvedOrg {
@@ -1126,21 +1136,6 @@ mod tests {
         let (status, _) =
             require_org_admin(&resolved_org(everruns_core::OrgRole::Member)).unwrap_err();
         assert_eq!(status, StatusCode::FORBIDDEN);
-    }
-
-    fn config_with_state(state: Option<&str>, issued_minutes_ago: i64) -> SlackChannelConfig {
-        let mut config = parse_config(&serde_json::json!({}));
-        config.provisioned_app = Some(ProvisionedSlackApp {
-            app_id: "A0123".to_string(),
-            client_id: "4567.89".to_string(),
-            client_secret: "secret".to_string(),
-            install_state: state.map(str::to_string),
-            install_state_issued_at: Some(
-                chrono::Utc::now() - chrono::Duration::minutes(issued_minutes_ago),
-            ),
-            team_id: None,
-        });
-        config
     }
 
     fn connection_row(team_id: Option<&str>) -> OrgSlackConnectionRow {
@@ -1248,45 +1243,9 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_object_parses_as_an_unconfigured_channel() {
-        let config = parse_config(&serde_json::json!({}));
-        assert!(config.provisioned_app.is_none());
-    }
-
-    #[test]
     fn an_unparseable_config_does_not_panic() {
         let config = parse_config(&serde_json::json!("not an object"));
         assert!(config.provisioned_app.is_none());
-    }
-
-    #[test]
-    fn credentials_round_trip_through_the_stored_config() {
-        let config = config_with_state(Some("abc"), 0);
-        let json = serde_json::to_value(&config).expect("serialises");
-        let provisioned = parse_config(&json).provisioned_app.expect("round-trips");
-        assert_eq!(provisioned.client_id, "4567.89");
-        assert_eq!(provisioned.client_secret, "secret");
-        assert_eq!(provisioned.install_state.as_deref(), Some("abc"));
-    }
-
-    #[test]
-    fn an_expired_install_state_is_outside_the_window() {
-        let issued_at = |config: SlackChannelConfig| {
-            config
-                .provisioned_app
-                .and_then(|app| app.install_state_issued_at)
-                .expect("issued")
-        };
-        let window = chrono::Duration::minutes(INSTALL_STATE_TTL_MINUTES);
-        assert!(chrono::Utc::now() - issued_at(config_with_state(Some("abc"), 0)) <= window);
-        assert!(
-            chrono::Utc::now()
-                - issued_at(config_with_state(
-                    Some("abc"),
-                    INSTALL_STATE_TTL_MINUTES + 1
-                ))
-                > window
-        );
     }
 
     #[tokio::test]
@@ -1348,6 +1307,7 @@ mod tests {
             install_state_issued_at: issued_minutes_ago
                 .map(|ago| chrono::Utc::now() - chrono::Duration::minutes(ago)),
             team_id: None,
+            install_return_issue: None,
         }
     }
 

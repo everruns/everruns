@@ -27,7 +27,7 @@ Use the current gallery at `/dev/icons` and seeded Agent/session data.
 2. Open command search via the Search control. Query Agents, Models, and an Agent ID, then
    a session ID. Confirm page/entity/ID results use the relevant domain glyph; a session ID
    must not display an Agent glyph. Existing visibility and navigation behavior still work.
-3. Inspect Settings: Account and My agent experience are distinct; Organization, Team,
+3. Inspect Settings: Account, Profile, Connections, MCP servers, and AI clients are distinct; Organization, Team,
    Providers, Health, Features, and access tokens use domain outlines. MCP and Slack retain
    their official marks.
 4. Open `/dev/icons`. Inspect every master at 16, 20, 24, and 32 pixels. Check distinct

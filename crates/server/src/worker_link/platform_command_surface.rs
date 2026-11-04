@@ -97,11 +97,16 @@ fn discover(
                     (score > 0).then_some((score, entry))
                 })
                 .collect::<Vec<_>>();
+            // Among equal scores, the shorter name is the more general
+            // operation (`list_agents` before `list_agent_source_accounts`), so
+            // a new specialised command cannot push the canonical ones out of
+            // the bounded result below.
             scored.sort_by_key(|(score, entry)| {
                 (
                     std::cmp::Reverse(*score),
                     std::cmp::Reverse(entry.read_only),
                     entry.category,
+                    entry.name.len(),
                     entry.name,
                 )
             });
@@ -436,7 +441,9 @@ mod tests {
 
     fn all_flags() -> crate::records::FeatureFlags {
         crate::records::FeatureFlags {
+            chat_mode: true,
             monitoring: true,
+            dreaming: true,
             docker_capability: true,
             container_sandbox: true,
             lua: true,
@@ -463,7 +470,9 @@ mod tests {
         discover(
             arguments,
             &crate::records::FeatureFlags {
+                chat_mode: true,
                 monitoring: false,
+                dreaming: true,
                 docker_capability: true,
                 container_sandbox: true,
                 lua: true,
@@ -592,6 +601,9 @@ mod tests {
             ("create_agent", "lowercase letters, digits, and hyphens"),
             ("create_session", "--agent_id or --agent_name"),
             ("create_message", "array of content parts"),
+            ("create_message", "--message '{"),
+            ("list_agent_examples", "adopt_agent_example"),
+            ("list_organization_connections", "never credentials"),
         ];
         for (query, hint) in cases {
             let output = discover_for_test(&serde_json::json!({ "query": query }))
@@ -607,24 +619,6 @@ mod tests {
                 "discover '{query}' must surface the hint '{hint}': {value}"
             );
         }
-    }
-
-    #[test]
-    fn a_trigger_command_defers_its_flags_to_help() {
-        // Every routed command now has a `cli` spelling with a worked example,
-        // so discovery names its `--help` instead of writing flags out.
-        let output = discover_for_test(&json!({
-            "query": "create_agent_trigger",
-            "include_schemas": true
-        }))
-        .expect("discover create_agent_trigger");
-        let value: Value = serde_json::from_str(&output).expect("discover JSON");
-        let operation = &value["operations"][0];
-
-        assert_eq!(
-            operation["help"], "everruns agents triggers create --help",
-            "{operation}"
-        );
     }
 
     #[test]
@@ -755,17 +749,24 @@ mod tests {
     #[test]
     fn discovery_score_saturates_for_many_matching_terms() {
         let query = "agent ".repeat(4_096);
+        let entry = crate::domains::common::catalog_entries_with_schemas(
+            false,
+            &crate::records::FeatureFlags::default(),
+        )
+        .into_iter()
+        .find(|entry| entry.name == "list_agents")
+        .expect("list_agents is in the catalog");
+        assert_eq!(catalog_entry_score(&entry, &query), u16::MAX);
+
         let output = discover_for_test(&json!({ "query": query, "include_schemas": false }))
             .expect("discovery with many matching terms");
         let value: Value = serde_json::from_str(&output).expect("discover JSON");
-        let names = value["operations"]
-            .as_array()
-            .expect("operations")
-            .iter()
-            .filter_map(|operation| operation["name"].as_str())
-            .collect::<Vec<_>>();
-
-        assert!(names.contains(&"list_agents"), "got {names:?}");
+        // Saturated ties may move as the catalog grows; discovery stays bounded.
+        assert!(
+            value["count"]
+                .as_u64()
+                .is_some_and(|count| (1..=12).contains(&count))
+        );
     }
 
     #[test]

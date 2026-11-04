@@ -142,7 +142,7 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
     }
 
     Err(ToolExecutionResult::tool_error(
-        "TypeSafe API key not configured. Connect TypeSafe in Settings > My agent experience, \
+        "TypeSafe API key not configured. Connect TypeSafe in Settings > Connections, \
          or use `secret_store set TYPESAFE_API_KEY <your-key>`. \
          Get a key at https://typesafe.ai",
     ))
@@ -365,18 +365,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn capability_exposes_one_read_only_tool() {
-        let capability = JevCapability;
-        assert_eq!(capability.id(), "jev");
-        let tools = capability.tools();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "jev_decision");
-        assert_eq!(tools[0].hints().readonly, Some(true));
-        assert_eq!(tools[0].hints().requires_secrets, Some(true));
-        assert!(tools[0].requires_context());
-    }
-
     #[tokio::test]
     async fn execute_without_context_is_rejected() {
         let result = JevDecisionTool { model_id: None }.execute(json!({})).await;
@@ -506,10 +494,7 @@ mod tests {
 
         let error = get_api_key(&context).await.unwrap_err();
         let rendered = format!("{error:?}");
-        assert!(
-            rendered.contains("Settings > My agent experience"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("Settings > Connections"), "{rendered}");
         assert!(rendered.contains(TYPESAFE_API_KEY_SECRET), "{rendered}");
     }
 }

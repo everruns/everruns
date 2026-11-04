@@ -2,6 +2,7 @@
 
 pub mod commands;
 pub mod principal;
+pub mod profile;
 pub mod queries;
 pub mod record;
 pub mod types;

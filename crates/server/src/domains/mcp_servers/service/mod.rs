@@ -22,6 +22,7 @@ use everruns_core::host::DirectEgressService;
 use everruns_core::{
     Caller, EgressService, McpElicitationPolicy, McpProtocolMode, McpServerActsAs,
     McpServerAuthMode, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
+    mcp_server::validate_mcp_tool_timeout_ms,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -97,6 +98,10 @@ pub struct McpServerSettings {
     /// JSON and omitted when default, so existing rows are unchanged.
     #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
     pub elicitation_policy: McpElicitationPolicy,
+    /// Configured `tools/call` timeout in milliseconds; absent means the
+    /// default. Kept in `settings`, so no migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_timeout_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth: Option<McpServerOAuthSettings>,
     /// Connection provider (e.g. `github`) whose connection on an agent's
@@ -178,6 +183,7 @@ impl McpServerService {
                 auth_mode: McpServerAuthMode::None,
                 protocol_mode: McpProtocolMode::Auto,
                 elicitation_policy: McpElicitationPolicy::Url,
+                tool_timeout_ms: None,
                 oauth: None,
                 service_connection_provider: None,
                 connection_check: None,
@@ -259,10 +265,13 @@ impl McpServerService {
             &req.url,
         )
         .map_err(|message| anyhow!(crate::errors::BadRequestError::new(message)))?;
+        validate_mcp_tool_timeout_ms(req.tool_timeout_ms)
+            .map_err(|message| anyhow!(crate::errors::BadRequestError::new(message)))?;
         let settings = McpServerSettings {
             auth_mode,
             protocol_mode: req.protocol_mode.unwrap_or_default(),
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
+            tool_timeout_ms: req.tool_timeout_ms,
             oauth: None,
             service_connection_provider,
             connection_check: None,
@@ -378,6 +387,10 @@ impl McpServerService {
         }
         if let Some(elicitation_policy) = req.elicitation_policy {
             settings.elicitation_policy = elicitation_policy;
+        }
+        if let Some(tool_timeout_ms) = req.tool_timeout_ms {
+            settings.tool_timeout_ms = updated_tool_timeout_ms(tool_timeout_ms)
+                .map_err(|message| anyhow!(crate::errors::BadRequestError::new(message)))?;
         }
         settings.service_connection_provider = super::connection_backed::normalize(
             req.service_connection_provider
@@ -842,6 +855,7 @@ impl McpServerService {
             auth_mode: server.auth_mode,
             protocol_mode: server.protocol_mode,
             elicitation_policy: server.elicitation_policy,
+            tool_timeout_ms: server.tool_timeout_ms,
             oauth_provider_id: server.oauth_provider_id,
             acts_as: McpServerActsAs::None,
             connect_in_chat: Default::default(),
@@ -875,6 +889,7 @@ impl McpServerService {
             auth_mode: McpServerAuthMode::None,
             protocol_mode: settings.protocol_mode,
             elicitation_policy: settings.elicitation_policy,
+            tool_timeout_ms: settings.tool_timeout_ms,
             oauth_provider_id: None,
             acts_as: McpServerActsAs::None,
             connect_in_chat: Default::default(),
@@ -903,6 +918,16 @@ pub struct McpServerWithTools {
     pub tools_cached_at: Option<DateTime<Utc>>,
 }
 
+/// Apply an update request's `tool_timeout_ms`: `0` clears the setting back
+/// to the default, anything else must be in the accepted range.
+pub(crate) fn updated_tool_timeout_ms(value: u64) -> Result<Option<u64>, String> {
+    if value == 0 {
+        return Ok(None);
+    }
+    validate_mcp_tool_timeout_ms(Some(value))?;
+    Ok(Some(value))
+}
+
 /// Resolved MCP server descriptor for worker transport.
 ///
 /// Organization-level resolution can include credentials. Scoped catalog
@@ -917,6 +942,8 @@ pub struct McpServerResolved {
     pub protocol_mode: McpProtocolMode,
     /// Elicitation modes the operator allows this server to use.
     pub elicitation_policy: McpElicitationPolicy,
+    /// Configured `tools/call` timeout in milliseconds; `None` is the default.
+    pub tool_timeout_ms: Option<u64>,
     pub oauth_provider_id: Option<String>,
     pub acts_as: McpServerActsAs,
     /// Whether a missing grant may pause the turn with an in-chat card.

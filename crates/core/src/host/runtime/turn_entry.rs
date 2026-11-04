@@ -116,6 +116,8 @@ impl InProcessRuntime {
         // A new turn supersedes one parked on client-side tool calls; its
         // calls stay unanswered in history.
         self.take_parked_turn(session_id);
-        self.drive_turn_plan(drive, execution, plan, steering).await
+        // THREAT[TM-DOS-027]: keep the loop state off caller stacks: foreground delegation nests
+        // turn entries, and embedding each future can overflow normal stacks.
+        Box::pin(self.drive_turn_plan(drive, execution, plan, steering)).await
     }
 }

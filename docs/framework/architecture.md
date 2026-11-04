@@ -1,24 +1,33 @@
 ---
 title: Framework Architecture
-description: Understand Agent, Engine, Session, the TurnBackend entry point, and how in-process and Platform execution share one kernel.
+description: Understand Agent, Engine, Session, pluggable session hosting, and the shared execution kernel.
 ---
 
-Everruns has one turn model and two ways to execute it. Either way a session
-is an actor whose state is its event log, and a lease keeps one runner on it.
-A library application uses the concrete `everruns::Engine`, whose sessions run
-in process. The Everruns Platform runs them on workers: the server marks a
-session runnable, and a worker leases it and runs the whole turn. Every path
-converges on the same `everruns-core` (`engine` feature) Input/Reason/Act
-state machine.
+Everruns uses one agent runtime across native processes, platform workers and
+Wasm isolates. Applications define ordinary `Agent` values and use
+`everruns::Engine` and `Session`. A session hosting profile owns durable admission,
+canonical state, ownership epochs and activation. It does not reimplement agent
+planning, tool policy or recovery.
 
-![Framework execution architecture: the Framework app and the Platform server start turns through the TurnBackend entry point in everruns-core; the Framework's ActorRunner (the in-process backend plus a session lease) drives the core::engine kernel directly, while on the Platform the server's ActorTurnBackend marks a session runnable in session_actors and a worker's actor_runtime leases it over gRPC and drives the same kernel for one whole turn, resumed by folding the session log; the generic everruns-durable engine over an in-memory or PostgreSQL store carries background tasks.](./architecture.svg)
+```mermaid
+flowchart TD
+  App[Framework application or serve] --> Engine[Engine and Session]
+  Engine --> Memory[Memory hosting]
+  Engine --> SQLite[Native SQLite hosting]
+  Engine --> External[External session hosting]
+  Memory --> Driver[Shared SessionActorDriver]
+  SQLite --> Driver
+  External --> Driver
+  Platform[Platform API and workers] --> Driver
+  Driver --> Runtime[Shared Input / Reason / Act runtime]
+```
 
 ## Public Framework objects
 
 | Object | Responsibility |
 | --- | --- |
 | `Agent` | Immutable behavior: instructions, model and provider, tools, capabilities, files, and lifecycle hooks |
-| `Engine` | Concrete process-local owner of Agent snapshots, session identity, backends, history, and resume authority |
+| `Engine` | Retained behavior registry, session admission, lifecycle, queries and activation through the selected hosting profile |
 | `Session` | First-class, engine-bound conversation used for turns, steering, events, cancellation, inspection, and history |
 | `Environment` | Session resources, including one exact backend-owned workspace head and typed extensions |
 
@@ -47,55 +56,44 @@ assert_eq!(resumed.session_id(), session_id);
 # }
 ```
 
-## Two execution paths, one kernel
+## Shared execution, different authorities
 
-A host hands each turn to a `TurnBackend`, the turn entry point in
-`everruns-core` (`host` feature) that starts, cancels, and observes a session's turns. The backend
-decides only where the planned steps run and what survives a crash; it never
-plans the turn itself.
+Framework profiles use the same core `SessionActorDriver`, turn loop and event-log
+recovery. Memory coordinates one process. SQLite commits creation, commands,
+receipts and wakeups in one database and can run an independent native supervisor.
+External hosts implement the [public hosting SPI](/framework/hosting/). The
+source-only Durable Object reference demonstrates object-local Wasm and a
+separately authenticated native Engine executor without a Framework vendor
+dependency.
 
-- **In process, as an actor.** `InProcessBackend` runs the turn on the task
-  that awaits it, through `InProcessRuntime`. Every `everruns::Engine` session
-  runs on `ActorRunner`, which wraps it and holds the session's lease while a
-  turn runs, so two processes sharing a local data directory never run one
-  session at once (see [One process runs a session at a
-  time](/framework/sessions/#one-process-runs-a-session-at-a-time)). Dropping
-  the turn's future stops it; a turn a restart cut off resumes from the event
-  log.
-- **On workers (Platform).** The Platform server persists each input and
-  starts the turn from it through the same trait, on its `ActorTurnBackend`,
-  which marks the session runnable in the transaction that stored the input.
-  A worker leases the session over gRPC and runs the whole turn with the same
-  loop the in-process runtime uses, renewing the lease while it runs. When a
-  worker dies, its lease expires and another worker resumes the turn from the
-  session's event log: recorded results stand, and a call cut off mid-run is
-  rerun only when its tool declares that safe.
+Admission commits before a send is acknowledged; a turn identity is assigned
+later. Retain command identities across uncertain replies. Dropping a Session,
+wait handle or SSE connection does not cancel durable accepted work. Reopen its
+admission handle to observe assignment, pending client tools, suspension or a
+finalized outcome. Awaited Framework completion hooks settle before that outcome
+becomes final.
 
-A caller either hands the backend input to record (`TurnInput::Message`,
-`TurnInput::ToolResults`) or names input it already recorded through its own
-store (`TurnInput::StoredMessage`, `TurnInput::RecordedToolResults`). Every
-backend serves the stored forms, so a host that persists input itself starts
-and continues turns the way the Platform server does.
+The Platform server uses its existing transactional PostgreSQL actor authority.
+Workers lease runnable sessions and drive the same runtime. The Platform API's
+internal `TurnBackend` remains a control-plane integration detail.
 
-`everruns-durable` is a generic core the Platform uses for background work: a
-task queue, an event log, a worker registry and pool, a dead letter queue,
-circuit breakers, and schedules, with an in-memory store and a PostgreSQL
-store. It knows nothing about agents or turns; Platform turns do not run on
-it.
-
-Neither path owns a private copy of the turn algorithm. `everruns-core` (`engine` feature) owns
-the `Execution` contract, `TurnExecution` state, Input/Reason/Act atoms, phase
-ordering, and effect production, and its host module owns the turn loop and
-the log fold that resumes a turn. Each path only selects where the turn runs
-and which lease keeps it single.
+The generic `everruns-durable` task engine supplies Platform background jobs,
+worker management and schedules. Agent turns use the shared actor driver.
 
 ## Choose a recovery boundary
 
 - **Volatile Framework:** `Engine::new()` is offline and database-free. The
   creating Engine can resume a dropped Session, but process exit loses it.
-- **Local crash-durable Framework:** `LocalConfig` stores canonical events and
-  session identity locally. Rebuild the trusted Agent configuration, attach it
-  to a new Engine, and resume by typed `SessionId`.
+- **Native durable Engine:** select `hosting::SqliteHosting`, register the exact
+  `AgentBuild` and Environment factory, and start its supervisor for independent
+  recovery. SQLite durability covers the configured disk's failure domain.
+- **External durable Engine:** implement `SessionHosting`, retain exact builds,
+  and configure independent activation plus explicit host services. The
+  [Durable Object reference](/framework/durable-objects/) is one source-only
+  implementation, outside the product publish set.
+- **Legacy local storage:** explicit `LocalConfig` and custom host backends retain
+  the older facade actor lane and its weaker recovery boundary. Persistent stores
+  alone do not provide coherent session hosting or independent activation.
 - **Distributed durable Platform:** server and workers keep each session's
   event log in PostgreSQL and lease sessions to workers, so a turn recovers
   across process or worker loss. Applications call it
@@ -106,15 +104,14 @@ Resume](/framework/sessions/#history-and-resume) for the exact application lifec
 
 ## Extension boundaries
 
-Normal applications depend on `everruns`. `everruns::Engine` is concrete and is
-not implemented by applications. Provider integrations implement the open
-`ChatDriver` boundary, while canonical storage hosts can implement
-`EventLog`/`EventReader` through `everruns-core` (`host` feature).
+Normal applications depend on `everruns`. Engine is concrete. Hosting plugins
+implement `SessionHosting` using `hosting::spi` and supply a coherent authority
+plus epoch-scoped storage ports. The Framework owns lifecycle execution and outcome projection;
+plugins never implement another agent loop. Providers implement `ChatDriver`.
 
-An application that is itself an execution host may compose
-`everruns_core::engine::Execution` with `everruns-core` (`host` feature), or
-implement `TurnBackend` for its own backend. Both interfaces are
-experimental. That is
-an advanced deployment boundary: preserve event ordering, workspace isolation,
-credential separation, cancellation, and committed effect semantics. Start
-with [Custom Backends](/framework/custom-backends/) before crossing it.
+Advanced core hosts can still compose the experimental `Execution` and internal
+turn-backend contracts. Framework applications should use the session hosting
+boundary, which also covers creation, admission, callbacks, reads and wakeups.
+Workspaces, compute, secrets, channels and schedules require explicit services
+with their own lifetime and isolation guarantees. A durable journal does not
+preserve those resources automatically.

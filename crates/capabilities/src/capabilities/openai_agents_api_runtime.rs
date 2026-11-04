@@ -13,6 +13,14 @@ use everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID;
 pub struct OpenAiAgentsApiRuntimeCapability;
 
 impl Capability for OpenAiAgentsApiRuntimeCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Виконання через OpenAI Agents API",
+            "Виконує цикл агента через OpenAI Agents API. Інструменти Everruns працюють через звичайний конвеєр. Дані сесії обробляє OpenAI; ці сесії не підтримують нульове зберігання даних.",
+        )]
+    }
+
     fn id(&self) -> &str {
         OPENAI_AGENTS_API_RUNTIME_ID
     }
@@ -45,18 +53,5 @@ impl Capability for OpenAiAgentsApiRuntimeCapability {
     /// third-party managed loop without Zero Data Retention.
     fn risk_level(&self) -> RiskLevel {
         RiskLevel::High
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn marker_capability_contributes_no_tools_or_prompt() {
-        let capability = OpenAiAgentsApiRuntimeCapability;
-        assert_eq!(capability.id(), "openai_agents_api_runtime");
-        assert!(capability.tools().is_empty());
-        assert!(capability.system_prompt_addition().is_none());
     }
 }

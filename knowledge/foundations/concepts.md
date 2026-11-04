@@ -110,7 +110,7 @@ See `crates/contracts/src/runtime/config_layer.rs` for implementation.
 
 | Field | Merge rule |
 |-------|-----------|
-| `system_prompt` | Base first, overlay appended |
+| `system_prompt` | Base first, overlay appended. No built-in harness level carries a persona line; when no layer supplies a prompt, `from_overlay` uses the fallback `FALLBACK_SYSTEM_PROMPT`, so it never precedes a prompt someone wrote |
 | `capabilities` | Overlay overrides base by capability ID |
 | `initial_files` | Overlay overrides base by normalized path |
 | `network_access` | Allowed intersects, blocked unions (can only narrow) |

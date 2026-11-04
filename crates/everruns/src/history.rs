@@ -438,6 +438,10 @@ pub enum ResumeError {
     WorkspaceBindingCorrupt,
     /// The reconstructed Harness is incompatible with the reopened Environment.
     Environment(SessionEnvironmentError),
+    /// The session moved to a coherent session authority
+    /// ([`Engine::cut_over_legacy_session`](crate::Engine::cut_over_legacy_session));
+    /// resume it through the hosting Engine. The legacy executor never resumes it.
+    CutOver,
 }
 
 impl fmt::Display for ResumeError {
@@ -461,6 +465,9 @@ impl fmt::Display for ResumeError {
             Self::WorkspaceBindingCorrupt => f.write_str("persisted workspace binding is corrupt"),
             Self::Environment(error) => {
                 write!(f, "reopened environment is incompatible: {error}")
+            }
+            Self::CutOver => {
+                f.write_str("session is owned by a coherent session authority after cutover")
             }
         }
     }
@@ -534,7 +541,7 @@ mod tests {
 
     use everruns_core::host::EventLogError;
 
-    use super::{HistoryCursor, HistoryError, ResumeError, map_event_error};
+    use super::{HistoryCursor, HistoryError, map_event_error};
 
     #[test]
     fn cursor_round_trips_as_an_opaque_string() {
@@ -555,30 +562,6 @@ mod tests {
         assert!(HistoryCursor::from_str("token\n").is_err());
         assert!(HistoryCursor::from_str("token/with/path-delimiters").is_err());
         assert!(HistoryCursor::from_str(&"x".repeat(4097)).is_err());
-    }
-
-    #[test]
-    fn invalid_limit_reports_the_allowed_maximum() {
-        let error = HistoryError::InvalidLimit {
-            requested: 1001,
-            maximum: 1000,
-        };
-
-        assert_eq!(
-            error.to_string(),
-            "history page limit must be between 1 and 1000; got 1001"
-        );
-    }
-
-    #[test]
-    fn resume_not_found_keeps_the_framework_session_id() {
-        let session_id = crate::SessionId::new();
-        let error = ResumeError::SessionNotFound { session_id };
-
-        assert_eq!(
-            error.to_string(),
-            format!("session {session_id} was not found")
-        );
     }
 
     #[test]

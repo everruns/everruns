@@ -58,6 +58,7 @@ impl DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
+                    localizations: row.localizations.clone(),
                     avatar: row
                         .avatar_id
                         .map(crate::domains::agents::record::AgentAvatar::from_uuid),
@@ -80,6 +81,7 @@ impl DbAgentStore {
                     harness_id: row.harness_id,
                     forked_from_agent_id: row.forked_from_agent_id,
                     root_agent_id: row.root_agent_id,
+                    owner_agent_id: row.owner_agent_id,
                     tags: row.tags,
                     capabilities,
                     sandbox_policy: row
@@ -99,6 +101,9 @@ impl DbAgentStore {
                         &row.communication,
                     )
                     .unwrap_or_default(),
+                    completion_check: everruns_core::completion_check::CompletionCheck::from_wire(
+                        Some(&row.completion_check),
+                    ),
                     tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
                     // Execution-side load: exposure state is a control-plane concern.

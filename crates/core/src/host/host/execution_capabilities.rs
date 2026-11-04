@@ -29,6 +29,7 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             tool_call_hooks: Vec::new(),
             subagent_nesting_policy: crate::delegation_services::SubagentNestingPolicy::default(),
             resolved_capabilities: Vec::new(),
+            tool_surface_plan: Default::default(),
         });
     }
 
@@ -77,8 +78,11 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         )),
         model: None,
         session_storage: None,
+        tool_surface_plan: Default::default(),
     };
-    let collected = collect_capabilities_with_configs(
+    // Tools only: this path never builds a prompt, so skip the AGENTS.md and
+    // skills reads the prompt contributions make on every call.
+    let collected = collect_capability_tools_with_configs(
         &resolved.resolved_capability_configs,
         &capability_registry,
         &prompt_ctx,
@@ -91,9 +95,10 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     for tool in collected.tools {
         registry.register_boxed(tool);
     }
+    registry.set_capability_contexts(&collected.tool_definitions);
 
     // Only `Available` capabilities contribute hooks, matching
-    // `collect_capabilities_with_configs` (which skips non-available
+    // `collect_capability_tools_with_configs` (which skips non-available
     // capabilities). This keeps a `ComingSoon`/unavailable capability from
     // affecting execution via any of its hook seams.
     let mut post_tool_hooks: Vec<Arc<dyn crate::tool_hooks::PostToolExecHook>> = resolved
@@ -160,7 +165,7 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         ));
     }
 
-    // Use the hook list assembled by `collect_capabilities_with_configs` as the
+    // Use the hook list assembled by `collect_capability_tools_with_configs` as the
     // single source of truth. It already contains every explicit capability
     // `tool_call_hooks()` followed by the generated `CapabilityNarrationHook`
     // adapters — one per collected capability plus any auto-activated
@@ -181,5 +186,6 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             &resolved.resolved_capability_configs,
         ),
         resolved_capabilities: resolved.resolved_capability_configs,
+        tool_surface_plan: collected.tool_surface_plan,
     })
 }

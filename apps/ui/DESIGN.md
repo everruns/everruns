@@ -17,7 +17,7 @@ colors:
   secondary: "hsl(0 0% 96%)"
   secondary-foreground: "hsl(0 0% 10%)"
   muted: "hsl(0 0% 96%)"
-  muted-foreground: "hsl(0 0% 45%)"
+  muted-foreground: "hsl(0 0% 42%)"
   accent: "hsl(43 60% 53%)"
   accent-foreground: "hsl(43 60% 30%)"
   success: "hsl(163 94% 24%)"
@@ -30,7 +30,7 @@ colors:
   destructive-foreground: "hsl(0 0% 98%)"
   border: "hsl(0 0% 88%)"
   input: "hsl(0 0% 85%)"
-  ring: "hsl(43 60% 53%)"
+  ring: "hsl(43 60% 38%)"
 typography:
   # Font families come from CSS variables: --font-sans (Geist Sans) and
   # --font-mono (Geist Mono). Body copy carries -0.01em global tracking.
@@ -126,14 +126,13 @@ truth); the prose below explains how to apply them.
 
 ## Reference and authority
 
-Use the [Everruns design project](https://claude.ai/design/p/019e0a57-7d4b-70aa-a3c2-8c3d3746126e)
-as a visual reference for Slate's page archetypes, density, and component anatomy. Exported design
-project archives are snapshots for review; they are not copied into the application and do not
-override repository sources.
-
-The reviewed ZIP export is pinned by filename, SHA-256 checksum, and review date in
-`design-reference.json`. Update that manifest whenever a newer export is adopted, then reconcile
-intent here and verify both `/dev/design-reference` and `/dev/ui-components`.
+The public [Slate design system pages](https://everruns.com/docs/design-system/) (source:
+`docs/design-system/` and `apps/docs/src/components/design-system/`) show the foundations,
+components, page layouts, icons, and writing rules as live examples. They read their tokens,
+dot grid, motion, and Facet icons from this app at build time, so those cannot drift; the
+example markup reproduces production components by hand. A redesign starts there, and the
+pull request that ships it updates the matching page. Intent and the maintenance contract:
+`knowledge/ui/design-system.md`.
 
 When references disagree, use this order:
 
@@ -141,10 +140,10 @@ When references disagree, use this order:
 2. This file for visual intent, hierarchy, and composition rules.
 3. Production components in `src/components/` for exact behavior and component APIs.
 4. `/dev/ui-components` for an interactive rendering of those production components.
-5. The external design project for visual comparison and page-level examples.
+5. The design system pages for page-level examples and the starting point of new designs.
 
-The external project should stay recognizably close to the product, but application code remains
-canonical. Reconcile meaningful drift here rather than introducing parallel CSS or mock components.
+Reconcile meaningful drift in the code and this file, then update the design system page,
+rather than introducing parallel CSS or mock components in the app.
 
 ## Overview
 
@@ -163,15 +162,18 @@ gold accent. Descriptive brand names map to systematic tokens as follows:
 - **Navy (`primary`, light `hsl(220 62% 13%)` ≈ `#0A1636`):** The brand color,
   used for primary buttons, key actions, and the loading-wave ramp. In dark mode
   `primary` inverts to near-white (`hsl(0 0% 95%)`) so actions stay prominent.
-- **Gold (`accent` / `ring`, `hsl(43 60% 53%)` ≈ `#D4A43A`):** The sole accent,
+- **Gold (`accent`, `hsl(43 60% 53%)` ≈ `#D4A43A`):** The sole accent,
   reserved for active states, focus rings, highlights, and the dark-mode dot
-  grid. Use it sparingly, never as a large text surface.
+  grid. Use it sparingly, never as a large text surface. The light-mode focus
+  `ring` is a deeper gold (`hsl(43 60% 38%)`) so it keeps 3:1 against the page;
+  dark mode uses the accent gold.
 - **Ink (`foreground`, `hsl(0 0% 10%)`):** Core text on light surfaces.
 - **Surfaces (`background` `hsl(0 0% 98%)`, `card` white):** A near-white page
   with pure-white cards. Dark mode shifts to a navy-tinted charcoal
   (`background hsl(220 15% 8%)`, `card hsl(220 15% 10%)`).
 - **Muted (`muted` / `muted-foreground`):** Quiet grays for secondary text,
-  metadata, and disabled states.
+  metadata, and disabled states. Light `muted-foreground` (`hsl(0 0% 42%)`)
+  stays at 4.5:1 on the `muted` surface too.
 - **Success (`success` / `success-foreground`):** Positive outcomes and healthy
   states. Use `success` for indicators and translucent surfaces, and
   `success-foreground` on a solid success fill.
@@ -320,10 +322,26 @@ primary marker and a faint primary tint, with section spacing instead of repeate
   navy-to-gold sequence remains stable in each theme.
 - **Do** keep white text on saturated destructive fills, black scrims, and the
   white document canvas used for file previews.
-- **Don't** place dark text on a gold surface or use gold for body text, its
-  contrast is too low for WCAG AA.
+- **Don't** use gold for body text or as a text surface. The one solid gold fill is
+  the create button, whose label is navy (`primary`); other gold uses are tints.
 - **Don't** add decorative shadows to content cards or exceed `shadow-md` on overlays.
 - **Do** edit `src/app/design-system.css` and this file together, they must
   stay in sync.
 - **Don't** create lookalike domain examples from lower-level primitives; render
   the real domain component.
+
+
+## Shared interaction patterns
+
+Use `Combobox` for searchable resource selection and `Select` for short fixed lists.
+Domain pickers own eligibility and fetching, not popup mechanics. Use `ResourceMultiSelect`
+for multiple resource bindings, `TagInput` for tags, `Slider` for ranges and `SegmentedControl`
+for local view choices. Name every control and preserve unavailable saved selections.
+
+Standard pages compose `page-layout.tsx`; the older page-shell API is retired. Use `Field`
+for labels/hints/errors, `Pagination` for numbered lists, `ConfirmDialog` for destructive
+requests and `Button loading` for pending operations. Confirmation hosts live inside the page
+Chat context so dialogs continue to mask manual-only interactions. Public guidance and examples
+live in [Components](../../docs/design-system/components.mdx) and
+[Page layouts](../../docs/design-system/layouts.mdx); interactive production examples live at
+`/dev/ui-components`.

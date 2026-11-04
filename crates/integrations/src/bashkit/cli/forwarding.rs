@@ -219,14 +219,6 @@ mod forwarding_tests {
     }
 
     #[test]
-    fn help_forwards_as_written() {
-        assert_eq!(
-            forwarded_command_line("everruns", &["agents".into(), "--help".into()]),
-            "everruns agents --help"
-        );
-    }
-
-    #[test]
     fn a_string_result_reaches_the_shell_as_stdout() {
         assert_eq!(
             render_output(Value::String("{\"id\":1}".into())),

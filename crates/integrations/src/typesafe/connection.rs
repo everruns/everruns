@@ -111,26 +111,6 @@ mod tests {
         server
     }
 
-    #[test]
-    fn connector_metadata_matches_the_capability() {
-        let connector = TypeSafeAIConnector;
-        assert_eq!(
-            connector.provider_id(),
-            crate::typesafe::TYPESAFE_CONNECTION_PROVIDER
-        );
-        assert_eq!(connector.display_name(), "TypeSafe");
-        assert_eq!(connector.connection_type(), ConnectorType::ApiKey);
-    }
-
-    #[test]
-    fn form_asks_for_one_required_secret_field() {
-        let schema = TypeSafeAIConnector.form_schema().expect("form schema");
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert!(schema.instructions_markdown.contains("typesafe.ai"));
-    }
-
     // --- validation round trip ---
 
     /// The probe spends the cheapest request the API accepts, and it must carry

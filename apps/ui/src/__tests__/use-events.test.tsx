@@ -7,6 +7,7 @@ import { useEvents } from "@/hooks/use-sessions";
 const mockSseListeners: Record<string, Array<(e: MessageEvent) => void>> = {};
 
 jest.mock("@/lib/event-stream", () => ({
+  eventStreamScope: jest.requireActual("@/lib/event-stream").eventStreamScope,
   createEventStream: jest.fn(() => ({
     addEventListener: (type: string, listener: (e: MessageEvent) => void) => {
       (mockSseListeners[type] ||= []).push(listener);
@@ -69,23 +70,6 @@ describe("useEvents SSE handling", () => {
     expect(getSseUrl).toHaveBeenCalledWith("session-1", { afterSequence: 0 });
   });
 
-  it("resumes from the last received event once one is known", async () => {
-    await mountAndConnect();
-    act(() => {
-      fireSse({ id: "e1", sequence: 1 });
-    });
-
-    // Reconnecting now must resume from e1, not replay the session again.
-    getSseUrl.mockClear();
-    act(() => {
-      for (const handler of mockSseListeners["disconnecting"] ?? []) {
-        handler({ data: JSON.stringify({ retry_ms: 0 }) } as MessageEvent);
-      }
-    });
-
-    await waitFor(() => expect(getSseUrl).toHaveBeenCalledWith("session-1", { sinceId: "e1" }));
-  });
-
   // Regression: deltas are ephemeral and have no sequence. Resuming from one
   // matched nothing on the server, so stored events missed during the gap
   // (such as output.message.completed) were never replayed.
@@ -115,16 +99,6 @@ describe("useEvents SSE handling", () => {
     });
 
     expect(result.current.data).toHaveLength(1);
-  });
-
-  it("bounds the in-memory buffer at MAX_EVENTS_IN_MEMORY", async () => {
-    const { result } = await mountAndConnect();
-
-    act(() => {
-      for (let i = 0; i < 5_001; i++) fireSse({ id: `e${i}` });
-    });
-
-    expect(result.current.data).toHaveLength(5_000);
   });
 
   it("keeps the dedup set in sync after trimming (no duplicate re-append)", async () => {

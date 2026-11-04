@@ -30,7 +30,7 @@ Verify that users without MCP catalog permissions do not see the catalog in navi
 ## Expected Result
 
 - No MCP entry in the main navigation and no MCP catalog entry under Settings > Organization
-- `/mcp-servers` redirects to `/settings/mcp-catalog`, which says the catalog is not available and links to My agent experience
+- `/mcp-servers` redirects to `/settings/mcp-catalog`, which says the catalog is not available and links to Settings > MCP servers
 - No catalog request is sent
 - Add, edit, archive, and delete controls are not shown
 - My MCP servers lists only the current user's servers and grants

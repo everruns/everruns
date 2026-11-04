@@ -74,7 +74,8 @@ Measured against current `main`:
   optional agent mark stays available as a surface prop for multi-agent sessions, where the
   speaker must be named.
 - **User turns are a tinted block.** Right aligned, `max-width: min(78%, 42rem)`, accent wash
-  (`hsl(var(--accent) / 0.12)`) with a right accent rule, 14 px. "Gold wash" is the default
+  (`hsl(var(--accent) / 0.12)`), 14 px, no edge rule: the wash and the alignment already mark
+  the speaker, and a one-sided stripe is a decoration Slate avoids. "Gold wash" is the default
   tone of the three the handoff offered.
 - **Day separators.** A centered muted timestamp ("Wednesday 7:53 PM", "Today 7:40 PM")
   before a user turn when the gap to the previous turn is over one hour or crosses midnight.
@@ -121,6 +122,9 @@ instead, the row moves straight to Starting.
 
 ### Client state model
 
+Tab-local persistence, recovery and shared subscription rules extend this model;
+see [Chat Recovery and Live Transport](chat-recovery.md).
+
 - **Pending sends are client state, keyed by a client message id.** On Enter the UI mints a
   `client_message_id` (UUID v7), appends a pending entry
   `{clientId, content, attachments, phase, sentAt, ackAt?, messageId?, error?}`, clears the
@@ -135,7 +139,9 @@ instead, the row moves straight to Starting.
   (`turnPhaseFor(message, events, now)`) maps a user message plus the event stream to the
   table above, and is unit tested state by state.
 - **Retry resends the same `client_message_id`.** A send that reached the server but lost its
-  response must not create a second message (see server changes).
+  response must not create a second message. Console sends use the atomic command
+  endpoint and a matching `Idempotency-Key`, with retries limited to 23 hours from
+  the original attempt (see [recovery](chat-recovery.md)).
 - **Stop before ack** aborts the request and restores the draft when the send never reached
   the server; when the ack arrives anyway, the UI cancels the turn as soon as it starts.
 
@@ -146,9 +152,10 @@ All additive; no migration.
 1. **`client_message_id` on `POST /v1/sessions/{id}/messages`.** Optional UUID. The server
    stores it in reserved message metadata (`everruns_client_message_id`, stripped from client
    metadata like other reserved keys) so the `input.message` event echoes it, and treats it as
-   an idempotency key: a repeat within the session returns the stored message instead of
-   creating a new turn. No new table: the lookup uses the same `data @>` containment the Slack
-   `slack_ts` dedup uses, over the session's newest input messages.
+   a sequential retry hint: a repeat among the newest 200 input messages returns the stored
+   message. This pre-insert lookup is not atomic under concurrent requests. Console sends
+   instead invoke the existing command endpoint, whose retained idempotency key atomically
+   admits one request. No server schema or public API change is needed for UI recovery.
 2. **Delivery in the response.** The `Message` response gains `delivery`:
    `"started"` (new turn), `"steered"` (joined a running turn), `"resumed"` (resolved a
    parked turn) or `"duplicate"` (a retry of a stored send). The server already knows this at

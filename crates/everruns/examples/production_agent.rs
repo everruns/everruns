@@ -35,7 +35,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_and_wait("What is the status of order A-42?")
         .await?;
     println!("assistant: {}", first.response);
+    // A failed turn (bad key, exhausted quota) still returns `Ok`; report it
+    // so the live example run fails instead of printing an empty answer.
+    if !first.success {
+        return Err(format!("turn failed: {}", first.error.unwrap_or_default()).into());
+    }
     let second = session.send_and_wait("What can you do next?").await?;
     println!("assistant: {}", second.response);
+    if !second.success {
+        return Err(format!("turn failed: {}", second.error.unwrap_or_default()).into());
+    }
     Ok(())
 }

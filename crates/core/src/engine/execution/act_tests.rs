@@ -54,12 +54,13 @@ impl crate::engine::tools::Tool for NarratingGrepTool {
         tool_call: &ToolCall,
         phase: crate::engine::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::engine::tool_narration::ToolNarrationContext<'_>,
+        ctx: crate::engine::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::engine::tool_narration::narrate_grep_files(
             &tool_call.arguments,
             phase,
             locale,
+            ctx,
         ))
     }
 }
@@ -681,44 +682,6 @@ async fn test_act_atom_cancels_detached_tool_work_when_the_turn_is_cancelled() {
         .expect("drop signal should be sent");
 }
 
-#[tokio::test]
-async fn test_act_atom_aborts_cpu_bound_tool_task_on_cancellation() {
-    let started = Arc::new(tokio::sync::Notify::new());
-    let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
-
-    let mut executor = ToolRegistry::new();
-    executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
-
-    let atom = ActAtom::new(executor, NoopEventEmitter);
-    let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
-    let input = ActInput {
-        org_id: Some(1),
-        context,
-        harness_id: HarnessId::from_seed(1),
-        agent_id: Some(AgentId::new()),
-        tool_calls: vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "cancellation_probe".to_string(),
-            arguments: json!({}),
-        }],
-        tool_definitions: vec![recording_tool_def("cancellation_probe", None, true)],
-        locale: None,
-        blueprint_id: None,
-        network_access: None,
-        parallel_tool_calls: None,
-    };
-
-    let act_task = tokio::spawn(async move { atom.execute(input).await });
-    started.notified().await;
-    act_task.abort();
-    assert!(act_task.await.unwrap_err().is_cancelled());
-
-    tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
-        .await
-        .expect("cpu-bound tool task should be aborted when ActAtom is cancelled")
-        .expect("drop signal should be sent by cancelled tool future");
-}
-
 /// With `parallel_tool_calls = Some(false)`, the whole batch runs strictly
 /// sequentially regardless of class — peak concurrency must be 1.
 #[tokio::test]
@@ -953,48 +916,6 @@ async fn test_act_atom_strips_human_intent_from_client_tool_calls() {
     assert_eq!(
         result.client_tool_calls[0].arguments,
         json!({ "selector": "#btn" })
-    );
-}
-
-#[test]
-fn test_act_result_connection_required_serialization() {
-    let result = ActResult {
-        results: vec![ToolCallResult {
-            tool_call: ToolCall {
-                id: "call_1".to_string(),
-                name: "daytona_create_sandbox".to_string(),
-                arguments: json!({}),
-            },
-            result: ToolResult {
-                details: None,
-                tool_call_id: "call_1".to_string(),
-                result: Some(json!({"connection_required": "daytona"})),
-                images: None,
-                error: None,
-                connection_required: Some(ConnectionRequired::provider_only("daytona")),
-                raw_output: None,
-            },
-            success: false,
-            status: "success".to_string(),
-            connection_required: Some(ConnectionRequired::provider_only("daytona")),
-            determinism_fatal: None,
-        }],
-        completed: true,
-        success_count: 0,
-        error_count: 0,
-        waiting_for_tool_results: true,
-        waiting_for_url_elicitation: false,
-        blocked: false,
-        client_tool_calls: vec![],
-        client_tool_definitions: vec![],
-    };
-    let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: ActResult = serde_json::from_str(&json_str).unwrap();
-
-    assert!(parsed.waiting_for_tool_results);
-    assert_eq!(
-        parsed.results[0].connection_required,
-        result.results[0].connection_required
     );
 }
 

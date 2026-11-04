@@ -1,5 +1,8 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useAgents, useCapabilities } from "@/hooks";
@@ -20,24 +23,28 @@ import {
 } from "@/components/layout";
 
 export default function AgentsAllPageClient() {
+  const ui = useUiTranslations();
   const [showArchived, setShowArchived] = useState(false);
+  useChatPageFilters({ show_archived: showArchived });
   const { data: agents, isLoading, error } = useAgents({ includeArchived: showArchived });
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: "All agents" }]} />
+      <PageBreadcrumb
+        items={[{ label: ui("Agents"), href: "/agents" }, { label: ui("All agents") }]}
+      />
 
       <PageMasthead
         icon={<AgentIcon />}
-        title="All agents"
-        description="Every agent definition in this organization."
+        title={ui("All agents")}
+        description={ui("Every agent definition in this organization.")}
         actions={
           <>
             <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
             <LinkButton variant="accent" href="/agents/new">
               <Plus className="size-4" />
-              New agent
+              {ui("New agent")}
             </LinkButton>
           </>
         }
@@ -53,11 +60,11 @@ export default function AgentsAllPageClient() {
             emptyState={
               <EmptyState
                 icon={<AgentIcon />}
-                title="No agents yet"
+                title={ui("No agents yet")}
                 action={
                   <LinkButton variant="accent" href="/agents/new">
                     <Plus className="size-4" />
-                    Create your first agent
+                    {ui("Create your first agent")}
                   </LinkButton>
                 }
               />
@@ -80,7 +87,7 @@ export default function AgentsAllPageClient() {
       </PageColumns>
 
       <PageFooter>
-        <BackLink href="/agents">Back to Agents</BackLink>
+        <BackLink href="/agents">{ui("Back to Agents")}</BackLink>
       </PageFooter>
     </PageContainer>
   );

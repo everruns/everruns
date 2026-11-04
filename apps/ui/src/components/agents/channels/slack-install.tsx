@@ -3,6 +3,7 @@
 // One-click Slack install for a channel: the install hook and the workspace
 // picker. Split out of channel-form.tsx, which is near the file-size limit.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Label } from "@/components/ui/label";
@@ -16,7 +17,11 @@ import {
 import { beginSlackInstall } from "@/lib/api/agent-channels";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
 import { ApiError } from "@/lib/api/client";
-import { useInvalidateSlackWorkspaces, useSlackWorkspaces } from "@/hooks/use-agent-channels";
+import {
+  useInvalidateSlackWorkspaces,
+  useSlackWorkspaceName,
+  useSlackWorkspaces,
+} from "@/hooks/use-agent-channels";
 import {
   ConnectSlackWorkspaceChoice,
   slackWorkspaceLabel,
@@ -60,6 +65,11 @@ export function useSlackInstall(channelId?: string, teamId?: string, onUnavailab
   return { begin, pending, unavailable, error } as const;
 }
 
+/** A workspace by name, falling back to its ID when the org has not connected it. */
+export function SlackWorkspaceName({ teamId }: { teamId?: string | null }) {
+  return <>{useSlackWorkspaceName(teamId)}</>;
+}
+
 /**
  * Where the agent's Slack app will be created (EVE-1148).
  *
@@ -78,6 +88,7 @@ export function SlackWorkspaceChoice({
   onSelect: (teamId: string) => void;
   onChanged?: () => void | Promise<unknown>;
 }) {
+  const ui = useUiTranslations();
   const workspaces = useSlackWorkspaces(capability.supported);
   const invalidateWorkspaces = useInvalidateSlackWorkspaces();
   const connected = async () => {
@@ -98,7 +109,7 @@ export function SlackWorkspaceChoice({
   }, [onlyTeam, selected, onSelect]);
 
   if (workspaces.isLoading) {
-    return <p className="text-xs text-muted-foreground">Loading Slack workspaces…</p>;
+    return <p className="text-xs text-muted-foreground">{ui("Loading Slack workspaces…")}</p>;
   }
 
   if (usable.length === 0) {
@@ -106,12 +117,18 @@ export function SlackWorkspaceChoice({
       <div className="space-y-4 border p-4">
         <div className="space-y-1">
           <p className="text-sm font-medium">
-            {stale.length > 0 ? "Reconnect your Slack workspace" : "Connect a Slack workspace"}
+            {stale.length > 0
+              ? ui("Reconnect your Slack workspace")
+              : ui("Connect a Slack workspace")}
           </p>
           <p className="text-xs text-muted-foreground">
             {stale.length > 0
-              ? "Slack stopped accepting the saved credential. Reconnect once for the organization, then add agents with one click."
-              : "Once per organization. Afterwards, each agent gets its own Slack app with one click."}
+              ? ui(
+                  "Slack stopped accepting the saved credential. Reconnect once for the organization, then add agents with one click.",
+                )
+              : ui(
+                  "Once per organization. Afterwards, each agent gets its own Slack app with one click.",
+                )}
           </p>
         </div>
         {capability.can_manage ? (
@@ -122,11 +139,11 @@ export function SlackWorkspaceChoice({
           />
         ) : (
           <p className="text-xs text-muted-foreground">
-            Ask an organization administrator to connect a workspace in{" "}
+            {ui("Ask an organization administrator to connect a workspace in")}{" "}
             <Link className="underline" href="/settings/slack">
-              Settings → Slack workspaces
+              {ui("Settings → Slack workspaces")}
             </Link>
-            . You can still configure this channel manually below.
+            {ui(". You can still configure this channel manually below.")}
           </p>
         )}
       </div>
@@ -137,14 +154,14 @@ export function SlackWorkspaceChoice({
     <div className="space-y-2">
       {usable.length === 1 ? (
         <p className="text-sm">
-          Slack workspace: <strong>{slackWorkspaceLabel(usable[0])}</strong>
+          {ui("Slack workspace:")} <strong>{slackWorkspaceLabel(usable[0])}</strong>
         </p>
       ) : (
         <div className="space-y-2">
-          <Label htmlFor="slack_install_workspace">Slack workspace</Label>
+          <Label htmlFor="slack_install_workspace">{ui("Slack workspace")}</Label>
           <Select value={selected} onValueChange={(value) => onSelect(String(value ?? ""))}>
             <SelectTrigger id="slack_install_workspace" className="w-full sm:w-80">
-              <SelectValue placeholder="Choose a workspace" />
+              <SelectValue placeholder={ui("Choose a workspace")} />
             </SelectTrigger>
             <SelectContent>
               {usable.map((workspace) => (
@@ -157,10 +174,11 @@ export function SlackWorkspaceChoice({
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        If this workspace requires admins to approve apps, Slack sends an approval request instead
-        of installing straight away.{" "}
+        {ui(
+          "If this workspace requires admins to approve apps, Slack sends an approval request instead of installing straight away.",
+        )}{" "}
         <Link className="underline" href="/settings/slack">
-          Manage workspaces
+          {ui("Manage workspaces")}
         </Link>
       </p>
     </div>

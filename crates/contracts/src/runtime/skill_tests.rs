@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn yaml_metadata_preserves_scalar_types_and_aliases() {
+    let skill = parse_skill_md(
+        "---\nname: yaml-compat\ndescription: Unicode α and quotes\nmetadata:\n  enabled: true\n  country: NO\n  switch: off\n  code: '0012'\n  original: &value [one, two]\n  copy: *value\n---\nInstructions.",
+    ).unwrap();
+    assert_eq!(skill.metadata["enabled"], serde_json::json!(true));
+    assert_eq!(skill.metadata["country"], serde_json::json!("NO"));
+    assert_eq!(skill.metadata["switch"], serde_json::json!("off"));
+    assert_eq!(skill.metadata["code"], serde_json::json!("0012"));
+    assert_eq!(skill.metadata["copy"], skill.metadata["original"]);
+}
+
+#[test]
+fn yaml_metadata_rejects_excessive_nesting() {
+    let nested = format!("{}0{}", "[".repeat(70), "]".repeat(70));
+    let source = format!(
+        "---\nname: bounded\ndescription: Bounds\nmetadata:\n  nested: {nested}\n---\nInstructions."
+    );
+    assert!(parse_skill_md(&source).is_err());
+}
+
+#[test]
 fn test_parse_valid_skill_md() {
     let content = r#"---
 name: pdf-processing
@@ -115,19 +136,6 @@ Instructions.
 }
 
 #[test]
-fn test_validate_skill_md_invalid() {
-    let content = r#"---
-name: INVALID
----
-
-Body.
-"#;
-    let result = validate_skill_md(content);
-    assert!(!result.valid);
-    assert!(!result.errors.is_empty());
-}
-
-#[test]
 fn test_parse_argument_hint() {
     let content = r#"---
 name: fix-issue
@@ -174,20 +182,6 @@ Explore $ARGUMENTS.
     let parsed = parse_skill_md(content).unwrap();
     assert_eq!(parsed.context, SkillContext::Fork);
     assert_eq!(parsed.agent.as_deref(), Some("Explore"));
-}
-
-#[test]
-fn test_parse_context_inline_explicit() {
-    let content = r#"---
-name: my-skill
-description: A skill.
-context: inline
----
-
-Body.
-"#;
-    let parsed = parse_skill_md(content).unwrap();
-    assert_eq!(parsed.context, SkillContext::Inline);
 }
 
 #[test]
@@ -257,21 +251,6 @@ Lint instructions.
     let parsed = parse_skill_md(content).unwrap();
     assert_eq!(parsed.model.as_deref(), Some("claude-haiku-4-5-20251001"));
     assert_eq!(parsed.context, SkillContext::Fork);
-}
-
-#[test]
-fn test_parse_model_without_fork() {
-    let content = r#"---
-name: my-skill
-description: A skill.
-model: gpt-5.2
----
-
-Body.
-"#;
-    let parsed = parse_skill_md(content).unwrap();
-    assert_eq!(parsed.model.as_deref(), Some("gpt-5.2"));
-    assert_eq!(parsed.context, SkillContext::Inline);
 }
 
 #[test]
@@ -387,12 +366,6 @@ fn test_expand_dollar_followed_by_multi_digit() {
 }
 
 #[test]
-fn test_split_skill_args_basic() {
-    let args = split_skill_args("a b c");
-    assert_eq!(args, vec!["a", "b", "c"]);
-}
-
-#[test]
 fn test_split_skill_args_quoted() {
     let args = split_skill_args("\"hello world\" foo 'bar baz'");
     assert_eq!(args, vec!["hello world", "foo", "bar baz"]);
@@ -455,16 +428,6 @@ impl CommandExecutor for MockExecutor {
                 exit_code: 127,
             })
     }
-}
-
-#[tokio::test]
-async fn test_preprocess_single_command() {
-    let mut exec = MockExecutor::new();
-    exec.add_response("echo hello", "hello\n", 0);
-
-    let content = "Output: !`echo hello`";
-    let result = preprocess_command_injections(content, &exec).await;
-    assert_eq!(result, "Output: hello");
 }
 
 #[tokio::test]

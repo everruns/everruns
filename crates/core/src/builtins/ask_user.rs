@@ -88,6 +88,10 @@ pub enum AskUserQuestionKind {
 #[serde(deny_unknown_fields)]
 pub struct AskUserOption {
     pub label: String,
+    /// Optional: a plain confirmation ("Create it" / "Not yet") reads fine
+    /// without one, and models routinely omit it there. Rejecting the call for
+    /// that cost users the confirmation card and dropped them to a typed reply.
+    #[serde(default)]
     pub description: String,
     #[serde(default, rename = "default")]
     pub is_default: bool,
@@ -438,11 +442,6 @@ pub fn validate_ask_user_request(request: &AskUserRequest) -> Result<(), String>
                     "question {position} option labels must not be empty"
                 ));
             }
-            if option.description.trim().is_empty() {
-                return Err(format!(
-                    "question {position} option descriptions must not be empty"
-                ));
-            }
             if !labels.insert(option.label.as_str()) {
                 return Err(format!(
                     "question {position} option labels must be unique; duplicate {:?}",
@@ -597,7 +596,7 @@ impl Capability for AskUserCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "`ask_user` is for decisions/preferences. Ask only when blocked; batch, and never ask what code or context answers. Invoke the `ask_user` tool; do not print its JSON arguments. Include `header` and `question`; wait for the tool result. `kind: \"text\"` has no options and never auto-resolves. Order likely choices first; timeout takes default/first; `answered_by` identifies the source. Do not re-ask a declined question. Never use `ask_user` as a consent gate: destructive, irreversible or external actions need non-auto-resolving `request_approval`. For A2A `input_required`, ask and relay via `message_task`; never answer for them. Credentials: `kind: \"secret\"` with `secret_name`/`purpose`, alone; never ask for one in prose or an option. Returns `secret_ref`, never the value; never auto-resolves.",
+            "`ask_user`: decisions/preferences. Ask only when blocked; batch; never ask what code or context answers. Invoke the `ask_user` tool; do not print its JSON arguments. Include `header` and `question`; wait for the tool result. `kind: \"text\"`: no options or auto-answer. Choices: likely first; timeout uses default/first. `answered_by`: timeout/unattended defaults are never human choice/confirmation. Do not re-ask a declined question. Never use `ask_user` as a consent gate; destructive/irreversible/external actions need non-auto-resolving `request_approval`. A2A `input_required`: ask, relay via `message_task`; never answer for them. Credentials: `kind: \"secret\"`, `secret_name`/`purpose`, alone; never ask for one in prose or an option. Returns `secret_ref`, never the value; never auto-resolves.",
         )
     }
 
@@ -870,10 +869,10 @@ fn ask_user_parameters_schema() -> Value {
                                 "type": "object",
                                 "properties": {
                                     "label": {"type": "string", "minLength": 1},
-                                    "description": {"type": "string", "minLength": 1},
+                                    "description": {"type": "string"},
                                     "default": {"type": "boolean", "default": false}
                                 },
-                                "required": ["label", "description"],
+                                "required": ["label"],
                                 "additionalProperties": false
                             }
                         }

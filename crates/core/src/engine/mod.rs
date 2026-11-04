@@ -29,6 +29,10 @@
 //! # let _ = accepts_plan;
 //! ```
 
+/// What the engine does when a provider refuses a request for lack of credits.
+pub mod credit_shortfall;
+/// Bounded background consolidation over host-owned Memory and durable stores.
+pub mod dreaming;
 mod execution;
 pub use execution::configured_max_tool_concurrency;
 mod machine;
@@ -69,11 +73,12 @@ pub(crate) mod tool_call_integrity {
 
 pub use execution::capability_usage_records;
 pub use execution::model_wait;
+pub use execution::tool_detach;
 pub use execution::{
     ActAtom, ActInput, ActResult, ClientSideToolHook, ConnectionSetupHook, ExecutionContext,
     InputAtom, InputAtomInput, InputAtomResult, NativeExecutionCounts, OutputHardLimitHook,
-    PostActAction, PostActHook, ReasonAtom, ReasonInput, ReasonResult, ToolApprovalPauseHook,
-    ToolCallResult, has_pending_tool_approval,
+    PostActAction, PostActHook, ReasonAtom, ReasonInput, ReasonResult, ThreadCpuClock,
+    ToolApprovalPauseHook, ToolCallResult, has_pending_tool_approval,
 };
 pub use machine::{Execution, ExecutionTransition, TurnExecution};
 pub use phase_effects::{PhaseEffect, PhaseEffectSink};

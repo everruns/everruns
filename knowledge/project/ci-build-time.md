@@ -24,13 +24,32 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+Idempotent admission and request-transaction changes also execute the real Agent API and Console cancellation/replay contracts.
+MCP adapter, shared command-catalog and MCP domain-test changes execute the endpoint protocol and tenant-isolation contracts in focused PR validation.
+History and manager-context changes exercise the real REST/command revision
+contract before merge, including the first mutation's restorable baseline.
+API and command changes also exercise the production-router scope sweep;
+declaring a command's HTTP operation in OpenAPI does not mount its handler.
+The durable isolation job provisions its own source scanner. Missing or failed
+scans are incomplete checks, never evidence of a clean architecture boundary;
+the [scanner regression](../../scripts/test-durable-isolation.sh) exercises both
+failure paths alongside matching and clean source fixtures.
+MCP credential and worker-transport changes also exercise the gRPC identity and
+connection-required contract before merge.
+Hosted capability graph validation selects both portable builtins and environment
+capabilities, matching server/worker composition; either catalog alone can omit
+dependencies supplied by the other.
 Database-backend changes also exercise production-router fixtures that configure
 their own environment outside the shared API harness.
+Changes to the pool-isolation fixture execute that domain contract in focused PR
+checks; the [offline selector regression](../../.github/scripts/ci/test_policy.py)
+proves selection through actual Rust compilation and filtered execution.
 Ordinary Rust changes do not build the server/worker/CLI binaries, full PostgreSQL
 shards, SDK cohorts, or Docker images. Public API and packaging inputs retain their
 specific consumers. Chaos functional coverage uses the existing shared CI binaries
-in broad batches and harness-specific PRs; its separate release-profile build is a
-manual benchmark. See [selection](../../.github/scripts/ci/focused.py) and
+in broad batches and PRs touching the harness or cancellation controls; its
+separate release-profile build is a manual benchmark. See
+[selection](../../.github/scripts/ci/focused.py) and
 [workflow routing](../../.github/workflows/ci.yml).
 
 Main uses push-triggered coalescing: one batch runs to completion while only the
@@ -100,6 +119,11 @@ durable 9.1m to 2-3m.
 
 ## Constraints
 
+- **Generated descriptors are outputs.** The [E2B build](../../crates/integrations/build.rs)
+  generates a descriptor before calling ConnectRPC codegen. Registering that same
+  descriptor as a Cargo input invalidated warm integration and downstream builds.
+  Track the source proto and decoder environment setting instead; cache-hit claims
+  require a second unchanged invocation, not just a successful compile.
 - **Invocation count drives build time.** Each `cargo test` invocation pays its own
   codegen and link pass, so CI keeps the count per shard to a minimum: the domain shard
   runs one invocation. The server shard builds library, contracts and repository
@@ -110,6 +134,11 @@ durable 9.1m to 2-3m.
 - **`--lib` and `--test` need different lib builds.** `--lib` compiles a test-mode lib,
   `--test` a plain one. They are distinct compilation units, so splitting them across
   invocations forces one genuine extra compilation. That cost is inherent to cargo.
+  Server test compilation bounds Cargo to one build job: the large library and
+  integration targets must not compete for hosted runner memory. This preserves
+  the selected targets, cached profiles and test execution concurrency. The shared
+  [compiler helper](../../.github/scripts/ci/libtest.py) applies the limit after
+  cache selection for both focused PR and broad main runs.
 - Measured on `everruns-server`: `--lib` cold 6m00, the first `--test` after it 3m41,
   each further `--test` ~29s. The residue is linking that test binary, which is
   unavoidable — the crate has 51 of them. CI shows the same shape (4m25 then 3m00 for
@@ -148,11 +177,45 @@ durable 9.1m to 2-3m.
 - **Keep large CI Rust cache writes on main.** PRs restore the canonical
   dependency caches but do not retain their own Rust copies. Immutable generations
   already compete under a fixed repository budget; branch copies can evict the
-  useful main baseline. The trusted [closed-PR cleanup](../../.github/workflows/ci-cache-cleanup.yml)
+  useful main baseline. The offline eval workflows follow the same writer rule;
+  their independent Cargo workspaces still share the repository's cache budget.
+  Source policy changes apply when a workflow adopts them, not retroactively to
+  older PR heads. The trusted [closed-PR cleanup](../../.github/workflows/ci-cache-cleanup.yml)
   also removes remaining Node and tool caches after closure, rechecking current PR
   state and accepting only exact PR merge refs. It never deletes branch caches or
   executes PR code. Manual cleanup sweeps existing closed PRs; no periodic tick or
   paid cache-capacity increase is required.
+- **Retire secret-bearing build outputs, not just vulnerable versions.** After a
+  dependency build-script disclosure, invalidate affected compiled-target caches
+  and remove contaminated local build output. A new lockfile hash alone is not
+  containment: prefix restores can carry the old files into a new generation.
+  Registry-only and binary-only caches have a different content boundary. The
+  [libz-sys advisory](https://rustsec.org/advisories/RUSTSEC-2026-0418.html) is the
+  concrete case; dependency selection remains owned by `Cargo.lock`.
+- **A cache miss must still fit the job.** A focused server run with no Rust
+  cache spent 33m48s compiling; all 3,706 unit, 65 persistence, one router and
+  85 selected domain tests passed before the forty-minute job timed out
+  ([run](https://github.com/everruns/everruns/actions/runs/40613751449/attempts/1)).
+  Its unchanged retry spent 35m16s compiling and was interrupted during units.
+  The focused server matrix leg therefore retains bounded cold-build headroom.
+  The main PostgreSQL server shard needs the same protection: a 33m35s compile
+  plus 3,812 passing unit tests and 66 passing contracts exhausted its forty-minute
+  budget before persistence validation completed
+  ([run](https://github.com/everruns/everruns/actions/runs/40816428430)).
+  The domain shard also exhausted forty minutes after a 4m33s release build and
+  27m35s test compilation left too little time for serial execution
+  ([full run](https://github.com/everruns/everruns/actions/runs/41169505295/attempts/1)).
+  Both server and domain therefore have bounded sixty-minute budgets; durable
+  keeps forty minutes. The domain run also reported a failing MCP test before
+  cancellation; more compilation headroom does not resolve or waive that failure.
+  Test selection, cache keys, compile memory limits, profiles and execution
+  concurrency are unchanged. This margin is not evidence
+  of a warm-cache latency improvement or a guarantee that a cache remains resident.
+- **Docs notebooks share the site job's budget.** In the same full run, notebook
+  execution took 15m40s and the site finished building and checking links just
+  as the twenty-minute job expired. Release-card checks never ran. The docs job
+  allows thirty minutes for notebook compilation, the site and those final checks;
+  successful site output alone is not complete validation.
 - **Benchmark optimization and concurrency separately.** The manual
   [pilot](../../.github/workflows/ci-test-archive.yml) compares CI binary optimization
   on a pinned runner image using empty targets followed by dependency-only warm
@@ -184,7 +247,8 @@ SDK cleanup plus linker package setup exhausted its five-minute startup budget i
 [main run 38663303410](https://github.com/everruns/everruns/actions/runs/38663303410).
 Rust jobs now reuse the image's existing linker, exposing its versioned executable
 under the standard command name in runner-local temporary storage when needed.
-Package installation remains a bounded fallback, and shared Cargo linker flags
+Any installed LLVM major qualifies (the newest wins), so a runner-image LLVM bump does
+not route every job through apt. Package installation remains a bounded fallback, and shared Cargo linker flags
 stay identical. See [linker preparation](../../scripts/ci-prepare-linker.sh).
 
 ## CI-only optimization measurements

@@ -4,6 +4,7 @@
 // group, so it renders without login. It fetches the sanitized public endpoint
 // (no auth) and reuses the same matrix/transcript components as the authed view.
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicEvalRun } from "@/lib/api/evals";
@@ -45,6 +46,7 @@ function toMatrixResults(pub: PublicEvalRun): EvalCaseResult[] {
 }
 
 function PublicResultRow({ result, index }: { result: PublicEvalCaseResult; index: number }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   const scores = normalizeScores(result.scores);
   const hasDetail = !!(result.transcript || result.metrics);
@@ -56,13 +58,15 @@ function PublicResultRow({ result, index }: { result: PublicEvalCaseResult; inde
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            aria-label={open ? "Hide transcript" : "Show transcript"}
+            aria-label={open ? ui("Hide transcript") : ui("Show transcript")}
             className="text-muted-foreground hover:text-foreground"
           >
             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
         )}
-        <span className="text-sm font-medium">{result.case_name ?? `case ${index + 1}`}</span>
+        <span className="text-sm font-medium">
+          {result.case_name ?? ui("case {value0}", { value0: index + 1 })}
+        </span>
         <Badge variant={resultStatusVariant(result.status)}>{result.status}</Badge>
         {result.target && (
           <Badge variant="outline" className="text-xs">
@@ -92,6 +96,9 @@ function PublicResultRow({ result, index }: { result: PublicEvalCaseResult; inde
 }
 
 export default function SharedEvalRunPage({ params }: { params: Promise<{ token: string }> }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { token } = use(params);
   const { data, isLoading, isError } = useQuery({
     queryKey: ["public-eval-run", token],
@@ -111,8 +118,10 @@ export default function SharedEvalRunPage({ params }: { params: Promise<{ token:
   if (isError || !data) {
     return (
       <div className="container mx-auto max-w-4xl p-6 text-center">
-        <h1 className="text-xl font-semibold mb-2">Shared run not found</h1>
-        <p className="text-muted-foreground">This share link is invalid, revoked, or expired.</p>
+        <h1 className="text-xl font-semibold mb-2">{ui("Shared run not found")}</h1>
+        <p className="text-muted-foreground">
+          {ui("This share link is invalid, revoked, or expired.")}
+        </p>
       </div>
     );
   }
@@ -124,19 +133,19 @@ export default function SharedEvalRunPage({ params }: { params: Promise<{ token:
     <div className="container mx-auto max-w-4xl p-6">
       <div className="mb-6">
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold">Eval run</h1>
+          <h1 className="text-2xl font-bold">{ui("Eval run")}</h1>
           <Badge variant={data.status === "completed" ? "default" : "secondary"}>
             {data.status}
           </Badge>
           {data.source === "external" && attribution && (
             <Badge variant="secondary" className="text-xs">
-              via {attribution.system ?? "external"}
-              {attribution.version ? ` ${attribution.version}` : ""}
+              {ui("via")} {attribution.system ?? ui("external")}
+              {attribution.version ? ui(" {value0}", { value0: attribution.version }) : ""}
             </Badge>
           )}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Read-only shared view · {new Date(data.created_at).toLocaleString()}
+          {ui("Read-only shared view ·")} {new Date(data.created_at).toLocaleString(displayLocale)}
         </p>
       </div>
 
@@ -144,28 +153,28 @@ export default function SharedEvalRunPage({ params }: { params: Promise<{ token:
         <div className="grid gap-4 md:grid-cols-3 mb-6">
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Pass Rate</p>
+              <p className="text-xs text-muted-foreground">{ui("Pass Rate")}</p>
               <p className="text-2xl font-bold">{(data.summary.pass_rate * 100).toFixed(1)}%</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Results</p>
+              <p className="text-xs text-muted-foreground">{ui("Results")}</p>
               <p className="text-2xl font-bold">
                 {data.summary.passed}/{data.summary.total}
               </p>
               <p className="text-xs text-muted-foreground">
-                {data.summary.failed} failed, {data.summary.errored} errored
+                {data.summary.failed} {ui("failed,")} {data.summary.errored} {ui("errored")}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Total Tokens</p>
+              <p className="text-xs text-muted-foreground">{ui("Total Tokens")}</p>
               <p className="text-2xl font-bold">
                 {(
                   data.summary.total_input_tokens + data.summary.total_output_tokens
-                ).toLocaleString()}
+                ).toLocaleString(displayLocale)}
               </p>
             </CardContent>
           </Card>
@@ -175,7 +184,7 @@ export default function SharedEvalRunPage({ params }: { params: Promise<{ token:
       {targetCount > 1 && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Matrix</CardTitle>
+            <CardTitle>{ui("Matrix")}</CardTitle>
           </CardHeader>
           <CardContent>
             <RunResultsMatrix results={toMatrixResults(data)} />
@@ -185,11 +194,14 @@ export default function SharedEvalRunPage({ params }: { params: Promise<{ token:
 
       <Card>
         <CardHeader>
-          <CardTitle>Results ({data.results.length})</CardTitle>
+          <CardTitle>
+            {ui("Results (")}
+            {data.results.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {data.results.length === 0 ? (
-            <p className="text-center py-8 text-muted-foreground">No results</p>
+            <p className="text-center py-8 text-muted-foreground">{ui("No results")}</p>
           ) : (
             data.results.map((r, i) => <PublicResultRow key={i} result={r} index={i} />)
           )}

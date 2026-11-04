@@ -73,6 +73,15 @@ impl McpServer {
         self
     }
 
+    /// Searchable server context, shared by native and CLI discovery.
+    ///
+    /// Descriptions may contain at most 4096 UTF-8 bytes. They do not alter
+    /// operation schemas or grant execution authority.
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.inner.description = Some(description.into());
+        self
+    }
+
     /// Disable live tool discovery for this server.
     pub fn tool_discovery(mut self, enabled: bool) -> Self {
         self.inner.tool_discovery = enabled;
@@ -110,6 +119,14 @@ pub(crate) fn into_scoped(
     let mut scoped = everruns_core::ScopedMcpServers::new();
     let mut sanitized_names = HashSet::new();
     for server in servers {
+        if server
+            .inner
+            .description
+            .as_ref()
+            .is_some_and(|description| description.len() > 4096)
+        {
+            return Err("MCP server description exceeds 4096 UTF-8 bytes".into());
+        }
         let name = server.name.trim();
         if name.is_empty() {
             return Err("MCP server name must not be blank".to_string());
@@ -148,6 +165,30 @@ pub(crate) fn into_scoped(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn searchable_description_preserves_context_and_enforces_utf8_byte_bound() {
+        let scoped = into_scoped(vec![
+            McpServer::http("atlas", "https://example.com/mcp").description("Warehouse inventory"),
+        ])
+        .unwrap();
+        assert_eq!(
+            scoped["atlas"].description.as_deref(),
+            Some("Warehouse inventory")
+        );
+        assert!(
+            into_scoped(vec![
+                McpServer::http("atlas", "https://example.com/mcp").description("é".repeat(2048))
+            ])
+            .is_ok()
+        );
+        assert!(
+            into_scoped(vec![
+                McpServer::http("atlas", "https://example.com/mcp").description("é".repeat(2049))
+            ])
+            .is_err()
+        );
+    }
 
     #[test]
     fn debug_redacts_http_credentials_and_endpoint() {

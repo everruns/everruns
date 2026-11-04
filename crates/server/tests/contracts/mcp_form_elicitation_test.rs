@@ -157,14 +157,9 @@ async fn mcp_call(server: &TestServer, params: Value) -> Value {
     mcp_request(server, "tools/call", params, LATEST).await
 }
 
-async fn task_request(
-    server: &TestServer,
-    method: &str,
-    session_id: SessionId,
-    input: Value,
-) -> Value {
+async fn task_request(server: &TestServer, method: &str, task_id: &str, input: Value) -> Value {
     let mut params = json!({
-        "taskId": session_id.to_string(),
+        "taskId": task_id,
         "_meta": tasks_meta(),
     });
     if let (Some(params), Some(input)) = (params.as_object_mut(), input.as_object()) {
@@ -278,6 +273,35 @@ async fn another_users_platform_chat_session(server: &TestServer) -> SessionId {
     session_id
 }
 
+/// Store the input message whose turn is the task, and return the task id.
+/// Seeded before the `ask_user` call, as a real turn orders them.
+async fn seed_task_input(server: &TestServer, session_id: SessionId) -> String {
+    let message_id = everruns_contracts::typed_id::MessageId::new();
+    server
+        .db
+        .create_event(everruns_server::storage::CreateEventRow {
+            session_id,
+            event_type: "input.message".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({
+                "message": {
+                    "id": message_id.to_string(),
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "Deploy it" }]
+                }
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit input.message");
+    format!(
+        "{}.{session_id}.{message_id}",
+        everruns_core::DEFAULT_ORG_PUBLIC_ID
+    )
+}
+
 /// Emit the `ask_user` call the engine emits, with whatever questions the test
 /// needs. Ids are always present because normalization fills them in before the
 /// call is emitted.
@@ -366,34 +390,6 @@ async fn recorded_outcome(server: &TestServer, session_id: SessionId) -> Value {
         .as_str()
         .unwrap_or_else(|| panic!("tool result text: {}", results[0]));
     serde_json::from_str(text).expect("the ask_user result is JSON")
-}
-
-async fn input_message_texts(server: &TestServer, session_id: SessionId) -> Vec<String> {
-    server
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["input.message".to_string()],
-            &[],
-            None,
-            Some(50),
-        )
-        .await
-        .expect("list input messages")
-        .into_iter()
-        .filter_map(|event| {
-            event
-                .data
-                .get("message")?
-                .get("content")?
-                .as_array()?
-                .iter()
-                .find_map(|part| part.get("text").and_then(Value::as_str))
-                .map(str::to_string)
-        })
-        .collect()
 }
 
 #[tokio::test]
@@ -674,13 +670,14 @@ async fn an_option_that_was_never_offered_is_refused_and_the_turn_stays_parked()
 async fn tasks_get_surfaces_the_pending_question_as_an_input_request() {
     let (server, _) = test_server().await;
     let session_id = parked_session(&server).await;
+    let task_id = seed_task_input(&server, session_id).await;
     emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
 
-    let response = task_request(&server, "tasks/get", session_id, json!({})).await;
+    let response = task_request(&server, "tasks/get", &task_id, json!({})).await;
 
     let task = &response["result"];
     assert_eq!(task["status"], "input_required", "{response}");
-    let request = &task["inputRequests"]["ask_user"];
+    let request = &task["inputRequests"]["ask_user:call_1"];
     assert_eq!(request["method"], "elicitation/create");
     assert_eq!(request["params"]["mode"], "form");
     assert_eq!(
@@ -691,25 +688,24 @@ async fn tasks_get_surfaces_the_pending_question_as_an_input_request() {
         request["params"]["requestedSchema"]["properties"]["areas__0"]["type"],
         "boolean"
     );
-    assert!(
-        task["result"]["events"].is_array(),
-        "the existing status snapshot must remain available: {response}"
-    );
+    assert_eq!(task["resultType"], "complete");
+    assert!(task.get("result").is_none(), "{response}");
 }
 
 #[tokio::test]
 async fn tasks_update_resolves_a_structured_answer_through_the_shared_operation() {
     let (server, resumes) = test_server().await;
     let session_id = parked_session(&server).await;
+    let task_id = seed_task_input(&server, session_id).await;
     emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
 
     let response = task_request(
         &server,
         "tasks/update",
-        session_id,
+        &task_id,
         json!({
             "inputResponses": {
-                "ask_user": {
+                "ask_user:call_1": {
                     "action": "accept",
                     "content": {
                         "target": "Production",
@@ -722,7 +718,11 @@ async fn tasks_update_resolves_a_structured_answer_through_the_shared_operation(
     )
     .await;
 
-    assert!(response["error"].is_null(), "{response}");
+    assert_eq!(
+        response["result"],
+        json!({ "resultType": "complete" }),
+        "{response}"
+    );
     let outcome = recorded_outcome(&server, session_id).await;
     assert_eq!(outcome["status"], "answered");
     assert_eq!(outcome["answered_by"], "user");
@@ -735,15 +735,16 @@ async fn tasks_update_resolves_a_structured_answer_through_the_shared_operation(
 async fn tasks_update_rejects_an_unoffered_option_without_resuming() {
     let (server, resumes) = test_server().await;
     let session_id = parked_session(&server).await;
+    let task_id = seed_task_input(&server, session_id).await;
     emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
 
     let response = task_request(
         &server,
         "tasks/update",
-        session_id,
+        &task_id,
         json!({
             "inputResponses": {
-                "ask_user": {
+                "ask_user:call_1": {
                     "action": "accept",
                     "content": {
                         "target": "Wherever",
@@ -759,10 +760,10 @@ async fn tasks_update_rejects_an_unoffered_option_without_resuming() {
     assert_eq!(response["error"]["code"], -32602, "{response}");
     assert_eq!(resumes.load(Ordering::SeqCst), 0);
     assert!(completed_results(&server, session_id).await.is_empty());
-    let still_pending = task_request(&server, "tasks/get", session_id, json!({})).await;
+    let still_pending = task_request(&server, "tasks/get", &task_id, json!({})).await;
     assert_eq!(still_pending["result"]["status"], "input_required");
     assert!(
-        still_pending["result"]["inputRequests"]["ask_user"].is_object(),
+        still_pending["result"]["inputRequests"]["ask_user:call_1"].is_object(),
         "{still_pending}"
     );
 }
@@ -779,45 +780,21 @@ async fn tasks_update_rejects_non_owner_platform_chat_question_responses() {
     ] {
         let (server, resumes) = test_server().await;
         let session_id = another_users_platform_chat_session(&server).await;
+        let task_id = seed_task_input(&server, session_id).await;
         emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
 
         let result = task_request(
             &server,
             "tasks/update",
-            session_id,
-            json!({ "inputResponses": { "ask_user": response } }),
+            &task_id,
+            json!({ "inputResponses": { "ask_user:call_1": response } }),
         )
         .await;
 
-        assert_eq!(result["result"]["isError"], true, "got {result}");
+        assert_eq!(result["error"]["code"], -32602, "got {result}");
         assert_eq!(resumes.load(Ordering::SeqCst), 0);
         assert!(completed_results(&server, session_id).await.is_empty());
     }
-}
-
-#[tokio::test]
-async fn free_text_tasks_update_cancels_the_question_then_delivers_the_message() {
-    let (server, resumes) = test_server().await;
-    let session_id = parked_session(&server).await;
-    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
-
-    let response = task_request(
-        &server,
-        "tasks/update",
-        session_id,
-        json!({ "message": "Use staging and skip the UI." }),
-    )
-    .await;
-
-    assert!(response["error"].is_null(), "{response}");
-    let outcome = recorded_outcome(&server, session_id).await;
-    assert_eq!(outcome["status"], "cancelled");
-    assert_eq!(outcome["answered_by"], "unattended");
-    assert_eq!(
-        input_message_texts(&server, session_id).await,
-        vec!["Use staging and skip the UI.".to_string()]
-    );
-    assert_eq!(resumes.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -863,17 +840,21 @@ async fn agent_run_declares_the_ask_user_hint_only_for_a_capable_client() {
             }
         }
         let response = mcp_call(&server, params).await;
-        let content: Value = serde_json::from_str(
-            response["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap_or_else(|| panic!("agent_run content: {response}")),
-        )
-        .unwrap();
+        // A Tasks client gets the turn as a task, whose id names the session.
+        let session_id = match response["result"]["taskId"].as_str() {
+            Some(task_id) => task_id.split('.').nth(1).unwrap().to_string(),
+            None => {
+                let content: Value = serde_json::from_str(
+                    response["result"]["content"][0]["text"]
+                        .as_str()
+                        .unwrap_or_else(|| panic!("agent_run content: {response}")),
+                )
+                .unwrap();
+                content["session_id"].as_str().unwrap().to_string()
+            }
+        };
         let session: Value = server
-            .get(&format!(
-                "/v1/sessions/{}",
-                content["session_id"].as_str().unwrap()
-            ))
+            .get(&format!("/v1/sessions/{session_id}"))
             .await
             .assert_success()
             .json_value();

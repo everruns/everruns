@@ -9,8 +9,8 @@ appliesTo: [platform, cloud]
 | **ID** | `platform` |
 | **Category** | Platform |
 | **Risk** | High |
-| **Tools** | `discover`, `query`, `execute` |
-| **Dependencies** | `session_file_system` when embedded docs are enabled |
+| **Tools** | `discover`, `query`, `execute` by default; `platform_<wire_name>` functions with `surface: native`; `everruns` in the session shell with `surface: shell` |
+| **Dependencies** | `skills`; `session_file_system` when embedded docs are enabled |
 | **Mounts** | `/workspace/docs`, the Everruns documentation, read-only, when embedded docs are enabled |
 
 The Platform capability gives an agent the same catalog-backed command surface
@@ -21,6 +21,66 @@ guessing them or relying on a separate handwritten API.
 Platform Chat includes this capability by default. Other agents and harnesses
 must be assigned it explicitly. Because `execute` can mutate platform resources,
 the capability is high-risk and follows the normal admin-only assignment rule.
+
+## Interfaces and built-in skills
+
+Platform Chat uses `{"ref":"platform","config":{"surface":"native"}}`.
+This registers all 350 public, nondurable, noninternal inventory operations as
+individual `platform_<wire_name>` functions. The schema wraps the canonical
+typed payload in `params`; `reason` and `context_revision` remain separate
+metadata for change history. Names use the `platform_` prefix to avoid clashes
+with other tools. An omitted `surface` keeps the legacy `discover`, `query`,
+and `execute` tools; `{"surface":"shell"}` exposes the existing `everruns`
+command interface instead.
+
+Native calls use the same authorized platform dispatch as the CLI. The static
+`operations.json` catalog is generated from the server inventory, and workers
+do not link the server crate. Feature flags and permissions are checked again
+when a call runs. Like the local CLI grammar, this catalog spans public operations
+across feature flags; disabled operations remain discoverable but cannot execute.
+Platform Chat also uses bounded `tool_search` with a threshold of 1, so only selected
+operation schemas join the active tool list. Search results contain operation
+summaries; the complete schemas arrive as native functions on the next step
+without a duplicate copy in search history. Search can match native operation
+names and descriptions, plus declared capability names and descriptions. Its
+defaults are 32 optional
+schemas, 64 KiB of active schemas, and 32 KiB of search results. Bashkit Worker
+and the `everruns` shell remain available for loops, filtering, and aggregation across many operations;
+use native functions for individual operations and the shell for composition.
+
+For example, search for `platform_list_agents`, then call that function on the
+next step with:
+
+```json
+{
+  "params": {
+    "limit": 5
+  }
+}
+```
+
+For a change, put `reason` and the manager-context `context_revision` beside
+`params`, rather than inside the entity payload.
+
+Workspace builds also ship three read-only skills with this capability:
+
+| Skill | Purpose |
+|---|---|
+| `everruns` | Product concepts, Cloud and self-hosted entry points, and documentation links |
+| `everruns-cli` | Command usage, scripting examples, and differences between installed CLI, session shell, and MCP |
+| `everruns-agent-authoring` | Agent design, configuration, dependencies, and behavioral verification |
+
+The capability enables [Agent Skills](/capabilities/agent-skills/) for discovery
+and activation. Use `list_skills` and `activate_skill`; full instructions load
+on demand from `/workspace/.agents/skills/<name>/SKILL.md`. Follow the current
+session interface when a skill shows an external MCP example. Adding skills
+grants no additional command permissions. Like embedded docs, these product
+files are included from the repository at build time; standalone crate builds
+without the repository skills tree omit them.
+
+The external [MCP endpoint](/features/mcp/#skills-for-mcp-clients) serves these
+three skills plus `everruns-mcp`. Rust development guidance is maintained
+separately in the installable `everruns-framework` skill.
 
 ## Tools
 
@@ -47,8 +107,9 @@ Once you find a command, discover its exact name before invoking it:
 { "query": "create_agent" }
 ```
 
-Platform builtins do not implement `--help`. Use `bash_usage` and the returned
-schema instead of probing with `--help` or guessing flag names. Pass array and
+For commands with a `cli` spelling, use command-tree `--help` as directed by
+discovery. Flat-only builtins have no `--help`; use their `bash_usage` and returned
+schema. Pass array and
 object values as JSON text, for example
 `--capabilities '[{"ref":"mcp:..."}]'`.
 

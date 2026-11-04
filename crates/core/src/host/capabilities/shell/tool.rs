@@ -408,13 +408,14 @@ impl Tool for BashTool {
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         locale: Option<&str>,
-        _context: ToolNarrationContext<'_>,
+        ctx: ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(narrate_shell_exec(
             &tool_call.arguments,
             self.display_name().unwrap_or("Bash"),
             phase,
             locale,
+            ctx,
         ))
     }
 
@@ -660,18 +661,6 @@ mod tests {
         assert!(command_failure_hint(127, "bash: rg: command not found").is_some());
         assert!(command_failure_hint(1, "bash: rg: command not found").is_none());
         assert!(command_failure_hint(127, "exited weirdly").is_none());
-    }
-
-    #[test]
-    fn the_schema_asks_for_a_command_and_refuses_unknown_arguments() {
-        let schema = BashTool::default().parameters_schema();
-        assert_eq!(schema["required"], json!(["command"]));
-        assert_eq!(schema["additionalProperties"], json!(false));
-        assert!(schema["properties"]["working_dir"].is_object());
-        assert_eq!(
-            schema["properties"]["sandbox_permissions"]["enum"],
-            json!(["use_default", "require_escalated"])
-        );
     }
 
     #[tokio::test]

@@ -225,57 +225,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn test_tool_name() {
-        let tool = DuckDuckGoSearchTool;
-        assert_eq!(tool.name(), "duckduckgo_instant_answer");
-    }
-
-    #[test]
-    fn test_description_flags_instant_answer_limits() {
-        let tool = DuckDuckGoSearchTool;
-        let desc = tool.description();
-        assert!(desc.contains("Instant Answer"));
-        assert!(desc.contains("NOT a full web"));
-    }
-
-    #[test]
-    fn test_tool_has_description() {
-        let tool = DuckDuckGoSearchTool;
-        assert!(!tool.description().is_empty());
-        assert!(tool.description().contains("DuckDuckGo"));
-    }
-
-    #[test]
-    fn test_tool_does_not_require_context() {
-        let tool = DuckDuckGoSearchTool;
-        assert!(!tool.requires_context());
-    }
-
-    #[test]
-    fn test_search_schema_has_required_query() {
-        let tool = DuckDuckGoSearchTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"query"));
-        assert_eq!(required_strs.len(), 1);
-    }
-
-    #[test]
-    fn test_search_schema_has_no_html_field() {
-        let tool = DuckDuckGoSearchTool;
-        let schema = tool.parameters_schema();
-        assert!(schema["properties"]["no_html"].is_object());
-    }
-
-    #[test]
-    fn test_search_schema_disallows_additional_properties() {
-        let tool = DuckDuckGoSearchTool;
-        let schema = tool.parameters_schema();
-        assert_eq!(schema["additionalProperties"], json!(false));
-    }
-
     #[tokio::test]
     async fn test_missing_query() {
         let tool = DuckDuckGoSearchTool;

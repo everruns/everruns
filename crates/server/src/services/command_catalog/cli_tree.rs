@@ -30,7 +30,7 @@ pub fn contracts() -> &'static [ContractCommand] {
             .filter_map(|desc| {
                 let meta = (desc.meta)();
                 // Internal worker plumbing is nobody's command line.
-                if meta.is_internal() {
+                if meta.is_internal() || meta.is_retired() || meta.is_interactive_secret_setup() {
                     return None;
                 }
                 // Every command is part of the command line. A declared route
@@ -124,7 +124,10 @@ mod tests {
             let mut entries: Vec<serde_json::Value> = inventory::iter::<CommandDescriptor>
                 .into_iter()
                 // `discover` never shows internal worker commands.
-                .filter(|desc| !(desc.meta)().is_internal())
+                .filter(|desc| {
+                    let meta = (desc.meta)();
+                    !meta.is_internal() && !meta.is_retired() && !meta.is_interactive_secret_setup()
+                })
                 .map(|desc| {
                     let meta = (desc.meta)();
                     serde_json::json!({
@@ -249,46 +252,32 @@ mod tests {
         );
     }
 
-    /// The canonical harness the offline eval subject reproduces: its system prompt
-    /// and its one tool.
-    ///
-    /// The harness contract is that the platform is a command in the session's shell, so
-    /// what the eval must reproduce is a `bash` tool and nothing else. Reading
-    /// the schema off `BashTool` rather than restating it is what keeps the two
-    /// arms of the A/B differing only in the surface under test.
+    /// The CLI comparison keeps its captured operator prompt. Native Platform
+    /// Chat now has additional tools and different interface instructions; do
+    /// not silently replace this historical CLI arm's prompt with native prose.
+    /// Its shell schema still follows the real Bash tool.
     #[test]
-    fn the_eval_harness_matches_the_shipped_one() {
+    fn the_eval_cli_snapshot_uses_the_current_shell_schema() {
         use everruns_core::Tool;
         use everruns_integrations::bashkit::BashTool;
 
+        let harness: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../evals/platform-capability/harness.json"
+        ))
+        .expect("captured CLI harness");
         let bash = BashTool::default();
-        let harness = serde_json::json!({
-            "system_prompt": crate::platform_chat_agent::system_prompt(),
-            "tools": [
-                {
-                    "name": bash.name(),
-                    "description": bash.description(),
-                    "schema": bash.parameters_schema(),
-                },
-            ]
-        });
-        let generated = serde_json::to_string_pretty(&harness).expect("harness serializes") + "\n";
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../evals/platform-capability/harness.json"
-        );
-
-        if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
-            std::fs::write(path, &generated).expect("write harness.json");
-            return;
-        }
-
-        let checked_in = std::fs::read_to_string(path).expect("read harness.json");
         assert_eq!(
-            checked_in.trim(),
-            generated.trim(),
-            "evals/platform-capability/harness.json is stale. Run \
-             `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server the_eval_`."
+            harness["tools"],
+            serde_json::json!([{
+                "name": bash.name(), "description": bash.description(),
+                "schema": bash.parameters_schema()
+            }])
+        );
+        assert!(
+            harness["system_prompt"]
+                .as_str()
+                .unwrap()
+                .contains("Platform operations are a command")
         );
     }
 
@@ -318,6 +307,19 @@ mod tests {
              the_checked_in_contract_matches_inventory`, then check what moved: \
              everruns-cli mounts this file, so a change here changes what people type."
         );
+    }
+
+    #[test]
+    fn retired_knowledge_commands_are_absent_from_cli_and_scripted_catalogs() {
+        for desc in inventory::iter::<CommandDescriptor> {
+            let meta = (desc.meta)();
+            if meta.is_retired() {
+                assert!(contract(meta.name).is_none(), "{}", meta.name);
+                assert!(!super::super::catalog::is_exposed(&meta), "{}", meta.name);
+            }
+        }
+        assert!(contract("list_knowledge").is_some());
+        assert!(contract("search_knowledge_collections").is_some());
     }
 
     /// No command's spelling is also a group of other commands.
@@ -429,8 +431,10 @@ mod tests {
             // A fixture is deliberately not part of anyone's command line, so
             // its absence is the design rather than an omission.
             .filter(|meta| !meta.path.starts_with("/test/"))
-            // Internal worker plumbing is kept off the command line on purpose.
-            .filter(|meta| !meta.is_internal())
+            // Worker plumbing and interactive credential entry have no shell surface.
+            .filter(|meta| {
+                !meta.is_internal() && !meta.is_retired() && !meta.is_interactive_secret_setup()
+            })
             .map(|meta| meta.name)
             .filter(|name| !contracts().iter().any(|c| c.wire_name == *name))
             .collect();
@@ -630,19 +634,9 @@ mod tests {
     fn node_help_lists_direct_children_only() {
         let listed = listed_commands(&tree().render_help("agents", None).unwrap());
         assert!(listed.contains(&"list".to_string()), "{listed:?}");
-        assert!(listed.contains(&"exposures".to_string()), "{listed:?}");
-        // A grandchild verb belongs to `agents exposures`, not to `agents`.
-        assert!(!listed.contains(&"suspend".to_string()), "{listed:?}");
-    }
-
-    #[test]
-    fn leaf_help_carries_flags_examples_and_the_wire_name() {
-        let text = tree().render_help("agents list", None).expect("leaf help");
-        // The usage line reads back what the caller typed, not the alias.
-        assert!(text.contains("Usage: everruns agents list"), "{text}");
-        assert!(text.contains("Examples:"), "{text}");
-        assert!(text.contains("everruns agents list --search"), "{text}");
-        assert!(text.contains("Wire name: list_agents"), "{text}");
+        assert!(listed.contains(&"triggers".to_string()), "{listed:?}");
+        // A grandchild verb belongs to `agents triggers`, not to `agents`.
+        assert!(!listed.contains(&"trigger".to_string()), "{listed:?}");
     }
 
     #[test]
@@ -673,7 +667,10 @@ mod tests {
     #[test]
     fn every_declared_route_is_unique_and_reachable() {
         let mut seen = std::collections::BTreeSet::new();
-        for desc in inventory::iter::<CommandDescriptor> {
+        for desc in inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter(|desc| !(desc.meta)().is_retired())
+        {
             let Some(route) = (desc.cli)() else { continue };
             let spelling = route.spelling();
             assert!(
@@ -787,6 +784,9 @@ mod read_only_tests {
             .filter_map(|desc| {
                 let route = (desc.cli)()?;
                 let meta = (desc.meta)();
+                if meta.is_retired() {
+                    return None;
+                }
                 // The resolved name must be the command's own wire name...
                 let leaf = tree().leaf(&route.spelling()).expect("declared leaf");
                 assert_eq!(leaf.wire_name, meta.name);

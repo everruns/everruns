@@ -3,6 +3,8 @@
 // Queries and mutations behind the History and Manager notes sheets.
 // Keyed by entity ref, so one set of hooks serves every entity kind.
 
+import { useContext } from "react";
+import { HistoryResourceKind } from "./history-resource-kind";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   diffEntityRevisions,
@@ -25,11 +27,12 @@ export const changeHistoryKeys = {
 };
 
 export function useEntityHistory(entityRef: string, enabled = true) {
+  const kind = useContext(HistoryResourceKind);
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
   return useInfiniteQuery({
-    queryKey: changeHistoryKeys.list(entityRef, org),
-    queryFn: ({ pageParam }) => listEntityHistory(entityRef, pageParam),
+    queryKey: [...changeHistoryKeys.list(entityRef, org), kind],
+    queryFn: ({ pageParam }) => listEntityHistory(entityRef, pageParam, kind),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.before,
     enabled: enabled && !!org,
@@ -37,31 +40,34 @@ export function useEntityHistory(entityRef: string, enabled = true) {
 }
 
 export function useEntityRevision(entityRef: string, revision: number | null) {
+  const kind = useContext(HistoryResourceKind);
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
   return useQuery({
-    queryKey: changeHistoryKeys.revision(entityRef, revision ?? -1, org),
-    queryFn: () => getEntityRevision(entityRef, revision!),
+    queryKey: [...changeHistoryKeys.revision(entityRef, revision ?? -1, org), kind],
+    queryFn: () => getEntityRevision(entityRef, revision!, kind),
     enabled: !!org && revision !== null,
   });
 }
 
 /** Diff of one revision against the entity's current state. */
 export function useEntityRevisionDiff(entityRef: string, revision: number | null) {
+  const kind = useContext(HistoryResourceKind);
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
   return useQuery({
-    queryKey: changeHistoryKeys.diff(entityRef, revision ?? -1, org),
-    queryFn: () => diffEntityRevisions(entityRef, revision!),
+    queryKey: [...changeHistoryKeys.diff(entityRef, revision ?? -1, org), kind],
+    queryFn: () => diffEntityRevisions(entityRef, revision!, undefined, kind),
     enabled: !!org && revision !== null,
   });
 }
 
 export function useRestoreEntityRevision(entityRef: string) {
+  const kind = useContext(HistoryResourceKind);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ revision, reason }: { revision: number; reason: string }) =>
-      restoreEntityRevision(entityRef, revision, reason),
+      restoreEntityRevision(entityRef, revision, reason, kind ? { kind } : undefined),
     // A restore rewrites the entity itself, and its detail lives under a key
     // only its page knows; refetch everything active rather than guess.
     onSuccess: () => queryClient.invalidateQueries(),

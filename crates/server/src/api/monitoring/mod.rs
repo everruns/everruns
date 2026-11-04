@@ -524,12 +524,28 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/monitoring/config", get(monitoring_config))
         .route("/v1/monitoring", get(get_monitoring))
+        .route(
+            "/v1/monitoring/timeline",
+            get(timeline::get_monitoring_timeline),
+        )
+        .route(
+            "/v1/monitoring/timeline/window",
+            get(timeline::get_monitoring_timeline_window),
+        )
         .route("/v1/monitoring/actors", get(list_monitoring_actors))
         .route(
             "/v1/monitoring/actors/{session_id}",
             get(get_monitoring_actor),
         )
         .route("/v1/durable/monitoring", get(get_fleet_monitoring))
+        .route(
+            "/v1/durable/monitoring/timeline",
+            get(timeline::get_fleet_monitoring_timeline),
+        )
+        .route(
+            "/v1/durable/monitoring/timeline/window",
+            get(timeline::get_fleet_monitoring_timeline_window),
+        )
         .route(
             "/v1/durable/monitoring/actors",
             get(list_fleet_monitoring_actors),
@@ -687,7 +703,15 @@ async fn actor_detail(
         .ok_or_else(|| {
             ErrorResponse::new("Actor not found").into_response(StatusCode::NOT_FOUND)
         })?;
-    // Authorization is complete before the unscoped trace index is read.
+    // Authorization is complete before the unscoped trace index is read. The
+    // write path projects a turn only when it ends, so bring the open turn's
+    // steps in first.
+    state
+        .db
+        .database()
+        .catch_up_session_trace_fully(session.uuid())
+        .await
+        .log_internal_error_json("project monitoring actor steps")?;
     let (history, steps) = tokio::try_join!(
         state.db.monitoring_lease_events(org, session.uuid()),
         state.db.monitoring_steps(session.uuid()),
@@ -746,6 +770,9 @@ pub async fn get_fleet_monitoring_actor(
 ) -> ApiResult<MonitoringActorDetail> {
     actor_detail(&state, None, session).await
 }
+
+pub mod timeline;
+pub use timeline::*;
 
 #[cfg(test)]
 mod tests;

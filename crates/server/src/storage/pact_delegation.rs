@@ -99,7 +99,7 @@ impl StorageBackend {
         device_code_hash: &[u8],
     ) -> Result<Option<PactDeviceAuthorizationRow>> {
         let db = self.database();
-        let mut tx = db.pool().begin().await?;
+        let mut tx = everruns_durable::begin_transaction(db.pool()).await?;
         let row = sqlx::query_as::<_, PactDeviceAuthorizationRow>("SELECT device_code_hash,client_id,user_code,requested_scope,status,grant_id,interval_secs,last_polled_at,expires_at FROM pact_device_authorizations WHERE device_code_hash=$1 AND channel_id=$2 FOR UPDATE")
         .bind(device_code_hash)
         .bind(channel_id)
@@ -111,7 +111,7 @@ impl StorageBackend {
                 .execute(&mut *tx)
                 .await?;
         }
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(row)
     }
 
@@ -168,7 +168,7 @@ impl StorageBackend {
         grant: &PactGrantRow,
     ) -> Result<bool> {
         let db = self.database();
-        let mut tx = db.pool().begin().await?;
+        let mut tx = everruns_durable::begin_transaction(db.pool()).await?;
         sqlx::query("INSERT INTO pact_grants(id,channel_id,client_id,brand_user_id,scope,expires_at) VALUES($1,$2,$3,$4,$5,$6)")
             .bind(&grant.id).bind(grant.channel_id).bind(&grant.client_id).bind(&grant.brand_user_id)
             .bind(&grant.scope).bind(grant.expires_at)
@@ -180,7 +180,7 @@ impl StorageBackend {
             tx.rollback().await?;
             return Ok(false);
         }
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(true)
     }
 

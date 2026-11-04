@@ -1,0 +1,27 @@
+# Standalone evaluation binary. It remains outside the main Cargo workspace
+# while path-depending on the current Framework checkout.
+[workspace]
+
+[package]
+name = "everruns-mcp-scale-runtime"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.0"
+publish = false
+
+[[bin]]
+name = "mcp-scale-runtime"
+path = "src/main.rs"
+
+[dependencies]
+everruns = { path = "../../../crates/everruns", features = ["bashkit", "mcp-stdio"] }
+everruns-drivers = { path = "../../../crates/drivers/drivers", features = ["openai", "openrouter"] }
+everruns-contracts = { path = "../../../crates/contracts", features = ["http"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["system-proxy"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+async-trait = "0.1"
+
+[profile.dev]
+debug = "line-tables-only"

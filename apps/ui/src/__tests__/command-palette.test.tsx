@@ -7,6 +7,8 @@ import { CommandPalette } from "@/components/command-palette";
 const mockSetOpen = jest.fn();
 const mockPush = jest.fn();
 const mockOnSelect = jest.fn();
+let mockChatMode: { setOpen: (open: boolean) => void } | null = null;
+jest.mock("@/components/chat-mode/chat-mode-context", () => ({ useChatMode: () => mockChatMode }));
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
@@ -58,6 +60,7 @@ jest.mock("@/hooks/use-global-search", () => ({
 
 describe("CommandPalette", () => {
   beforeEach(() => {
+    mockChatMode = null;
     window.HTMLElement.prototype.scrollIntoView = jest.fn();
     mockOpen = true;
     mockSetOpen.mockClear();
@@ -86,11 +89,14 @@ describe("CommandPalette", () => {
     expect(screen.queryByRole("option", { name: /Second Org/i })).toBeNull();
   });
 
-  it("runs global search once the palette is open", () => {
+  it("opens Chat beside the current page when Chat mode is enabled", () => {
+    const openChat = jest.fn();
+    mockChatMode = { setOpen: openChat };
+    mockUseGlobalSearch.mockReturnValueOnce([{ ...page("Chat", "Chat"), href: "/chats" }]);
     render(<CommandPalette />);
-
-    expect(mockUseGlobalSearch).toHaveBeenCalled();
-    expect(screen.getByRole("option", { name: /Second Org/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Chat" }));
+    expect(openChat).toHaveBeenCalledWith(true);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 
@@ -107,6 +113,7 @@ function page(title: string, navigationGroup: string): SearchResult {
 
 describe("navigation results", () => {
   beforeEach(() => {
+    mockChatMode = null;
     window.HTMLElement.prototype.scrollIntoView = jest.fn();
     mockOpen = true;
     mockPush.mockClear();

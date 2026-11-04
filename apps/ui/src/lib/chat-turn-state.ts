@@ -21,12 +21,30 @@ import { getEventData } from "@/lib/api/types";
 export const CLIENT_MESSAGE_ID_METADATA_KEY = "everruns_client_message_id";
 /** No ack after this long: the row reads "Still connecting…". */
 export const STILL_CONNECTING_MS = 3_000;
+/**
+ * A turn still "starting" after this long has not been picked up by a worker
+ * (all busy, or none running). The row says so instead of looking like work.
+ */
+export const STILL_STARTING_MS = 15_000;
 /** No ack after this long: the send is reported as not delivered. */
 export const NOT_DELIVERED_MS = 10_000;
+
+/** Conservative margin inside the server command's 24-hour idempotency retention. */
+export const CHAT_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
+export function isChatRetryExpired(send: PendingSend, now = Date.now()): boolean {
+  const created = send.createdAtMs ?? send.sentAtMs;
+  return created > now || now - created >= CHAT_RETRY_WINDOW_MS;
+}
 
 export type MessageDelivery = "started" | "steered" | "resumed" | "duplicate";
 
 export interface PendingSend {
+  /** Only a live, connectivity-failed send may resume on network return. */
+  retryWhenOnline?: boolean;
+  retryExpired?: boolean;
+  /** Original admission time; retries never extend the idempotency window. */
+  createdAtMs?: number;
+  metadata?: Record<string, unknown>;
   clientId: string;
   text: string;
   images: Array<{ imageId: string; filename?: string }>;

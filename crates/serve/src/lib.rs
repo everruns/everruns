@@ -78,7 +78,10 @@ mod cli;
 mod config;
 mod connection;
 mod cx;
+mod doctor;
 mod eval;
+#[cfg(test)]
+mod execution_host_tests;
 mod files;
 mod gateway;
 mod host;

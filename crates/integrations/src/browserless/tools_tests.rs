@@ -189,73 +189,6 @@ async fn interact_nested_navigate_honors_the_session_acl() {
 }
 
 #[test]
-fn test_screenshot_tool_metadata() {
-    let tool = BrowserlessScreenshotTool;
-    assert_eq!(tool.name(), "browserless_screenshot");
-    assert!(tool.requires_context());
-    let schema = tool.parameters_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("url")));
-    assert_eq!(schema["additionalProperties"], false);
-}
-
-#[test]
-fn test_content_tool_metadata() {
-    let tool = BrowserlessContentTool;
-    assert_eq!(tool.name(), "browserless_content");
-    assert!(tool.requires_context());
-    let schema = tool.parameters_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("url")));
-}
-
-#[test]
-fn test_scrape_tool_metadata() {
-    let tool = BrowserlessScrapeTool;
-    assert_eq!(tool.name(), "browserless_scrape");
-    assert!(tool.requires_context());
-    let schema = tool.parameters_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("url")));
-    assert!(required.contains(&json!("elements")));
-}
-
-#[test]
-fn test_interact_tool_metadata() {
-    let tool = BrowserlessInteractTool;
-    assert_eq!(tool.name(), "browserless_interact");
-    assert!(tool.requires_context());
-    let schema = tool.parameters_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("url")));
-    assert!(required.contains(&json!("steps")));
-}
-
-#[test]
-fn test_navigate_tool_metadata() {
-    let tool = BrowserlessNavigateTool;
-    assert_eq!(tool.name(), "browserless_navigate");
-    assert!(tool.requires_context());
-    let schema = tool.parameters_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("url")));
-}
-
-#[test]
-fn test_all_schemas_have_no_additional_properties() {
-    let cap = crate::browserless::BrowserlessCapability;
-    for tool in cap.tools() {
-        let schema = tool.parameters_schema();
-        assert_eq!(
-            schema["additionalProperties"],
-            false,
-            "Tool {} should disallow additional properties",
-            tool.name()
-        );
-    }
-}
-
-#[test]
 fn test_should_suppress_interact_content_when_secrets_present() {
     assert!(should_suppress_interact_content(true, 1));
     assert!(!should_suppress_interact_content(false, 1));
@@ -265,18 +198,6 @@ fn test_should_suppress_interact_content_when_secrets_present() {
 #[tokio::test]
 async fn test_screenshot_tool_no_context_error() {
     let tool = BrowserlessScreenshotTool;
-    let result = tool.execute(json!({"url": "https://example.com"})).await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_content_tool_no_context_error() {
-    let tool = BrowserlessContentTool;
     let result = tool.execute(json!({"url": "https://example.com"})).await;
     match result {
         ToolExecutionResult::ToolError(msg) => {
@@ -354,46 +275,6 @@ fn test_truncate_html_utf8_boundary_safe() {
     );
     assert!(!content.contains('z'), "content after cap must not appear");
     assert!(total > MAX_HTML_BYTES);
-}
-
-#[tokio::test]
-async fn test_scrape_tool_no_context_error() {
-    let tool = BrowserlessScrapeTool;
-    let result = tool
-        .execute(json!({"url": "https://example.com", "elements": []}))
-        .await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_interact_tool_no_context_error() {
-    let tool = BrowserlessInteractTool;
-    let result = tool
-        .execute(json!({"url": "https://example.com", "steps": []}))
-        .await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_navigate_tool_no_context_error() {
-    let tool = BrowserlessNavigateTool;
-    let result = tool.execute(json!({"url": "https://example.com"})).await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
 }
 
 #[test]

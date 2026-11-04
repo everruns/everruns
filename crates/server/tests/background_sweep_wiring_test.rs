@@ -106,6 +106,7 @@ async fn create_test_session(
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("{label}-{}", Uuid::now_v7()),
                 display_name: Some("Background sweep wiring".to_string()),
                 icon: None,
@@ -248,6 +249,9 @@ async fn run_background_sweep_regression(database_url: &str) {
             scheduled_at: Some(Utc::now() - chrono::Duration::minutes(1)),
             timezone: "UTC".to_string(),
             next_trigger_at: Some(Utc::now() - chrono::Duration::days(3650)),
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .expect("create overdue schedule");

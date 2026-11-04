@@ -4,6 +4,44 @@
  * footer) in docs-layout.css, per the everruns.com/docs design handoff.
  */
 
+/* Mermaid diagrams share the white, square-cornered documentation diagram style.
+   Scroll on narrow screens so labels retain a useful reading size. */
+.sl-markdown-content .er-mermaid {
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  background: #ffffff;
+}
+
+.sl-markdown-content .er-mermaid > svg {
+  display: block;
+  max-width: none;
+  height: auto;
+  margin-inline: auto;
+}
+
+.sl-markdown-content .er-mermaid-source {
+  margin: 0;
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid #a0a0a0;
+  border-radius: 0;
+  background: #f5f5f5;
+  color: #0a0a0a;
+  font: 12px/1.5 var(--font-mono);
+}
+
+/* Authored diagrams can supply a compact mobile layout through <picture>. */
+.sl-markdown-content .er-responsive-diagram {
+  display: block;
+  margin: 1.5rem 0;
+}
+
+.sl-markdown-content .er-responsive-diagram img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* Table styling - clean minimal look with proper specificity */
 .sl-markdown-content table:not(:where(.not-content *)) {
   display: table;

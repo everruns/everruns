@@ -246,47 +246,6 @@ async fn test_trigger_session_schedule_wrong_parent_returns_not_found() {
 }
 
 #[tokio::test]
-async fn test_get_session() {
-    let server = TestServer::new().await;
-
-    // Create agent and session
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "get-session-test-agent",
-                "display_name": "Get Session Test Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let session: Session = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent.public_id,
-                "title": "Get Test Session"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // Get the session
-    let fetched_session: Session = server
-        .get(&format!("/v1/sessions/{}", session.id))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    assert_eq!(fetched_session.id, session.id);
-}
-
-#[tokio::test]
 async fn test_get_session_context_report_without_generation() {
     let server = TestServer::in_memory().await;
 

@@ -306,14 +306,18 @@ impl ToolExecutionResult {
                     subject,
                     setup_url,
                 };
+                // A blocked call is a failure, not an empty success: the model
+                // and every surface that reads `error` see that it did not run.
+                let message = required.blocked_message();
                 ToolResult {
                     details: None,
                     tool_call_id: tool_call_id.to_string(),
                     result: Some(serde_json::json!({
                         "connection_required": &required,
+                        "error": &message,
                     })),
                     images: None,
-                    error: None,
+                    error: Some(message),
                     connection_required: Some(required),
                     raw_output: None,
                 }
