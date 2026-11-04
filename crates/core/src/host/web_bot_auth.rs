@@ -11,7 +11,7 @@
 //!   Bashkit, two copies that drifted apart and both encoded signatures as
 //!   base64url, which RFC 8941 byte sequences do not allow. Callers now ask
 //!   for signing with `EgressSigning::PlatformDefault` and the egress
-//!   service signs (knowledge/operations/egress.md, "Signing").
+//!   service signs.
 //! Decision: `Signature-Agent` is sent as the legacy sf-string form
 //!   (`"https://app.example.com"`), the deployment's origin. The working-group
 //!   draft asks signers for the dictionary form (`sig1="https://…"`), but
