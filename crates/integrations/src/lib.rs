@@ -3,6 +3,8 @@
 
 #[cfg(feature = "bashkit")]
 pub mod bashkit;
+#[cfg(feature = "boxd")]
+pub mod boxd;
 #[cfg(feature = "brave-search")]
 pub mod brave_search;
 #[cfg(feature = "browserless")]
@@ -43,6 +45,9 @@ pub mod web_fetch;
 pub mod web_search;
 #[cfg(feature = "webhook-channel")]
 pub mod webhook_channel;
+
+#[cfg(any(feature = "modal", feature = "boxd"))]
+mod grpc_transport;
 
 #[cfg(all(test, any(feature = "bashkit", feature = "web-fetch")))]
 mod credential_test_support;

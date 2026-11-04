@@ -4,6 +4,8 @@
 fn main() {
     #[cfg(feature = "modal")]
     modal();
+    #[cfg(feature = "boxd")]
+    boxd();
     #[cfg(feature = "e2b")]
     e2b();
     #[cfg(feature = "daytona")]
@@ -24,6 +26,73 @@ fn modal() {
         .build_server(true)
         .compile_fds(fds)
         .expect("failed to generate Modal gRPC code");
+}
+
+/// boxd's public gRPC API, vendored verbatim from
+/// <https://docs.boxd.sh/reference/grpc-proto.md> (`proto/boxd/api.proto`).
+///
+/// Decision: shipped builds get the client only. The in-process mock the
+/// tests run against needs a server, but the service has 135 methods and a
+/// tonic server must implement every one, so under `boxd-test-util` a second
+/// copy is generated with the service cut down to the methods the client
+/// calls. Paths and messages are unchanged, so the wire format is the same.
+#[cfg(feature = "boxd")]
+fn boxd() {
+    println!("cargo:rerun-if-changed=proto/boxd/api.proto");
+    let fds = protox::compile(["boxd/api.proto"], ["proto"]).expect("failed to compile boxd proto");
+    #[cfg(feature = "boxd-test-util")]
+    boxd_mock_server(fds.clone());
+    tonic_prost_build::configure()
+        .build_client(true)
+        .build_server(false)
+        .compile_fds(fds)
+        .expect("failed to generate boxd gRPC code");
+}
+
+#[cfg(feature = "boxd-test-util")]
+fn boxd_mock_server(mut fds: prost_types::FileDescriptorSet) {
+    const MOCKED: &[&str] = &[
+        "Whoami",
+        "ListRegions",
+        "GetOrgMachineDefaults",
+        "CreateVm",
+        "CreateVmFromSnapshot",
+        "GetVm",
+        "ListVms",
+        "DestroyVm",
+        "HibernateVm",
+        "WakeVm",
+        "StartVm",
+        "SetVmEgressAllow",
+        "SetAutoHibernateTimeout",
+        "CreateSnapshot",
+        "GetSnapshot",
+        "Exec",
+        "FsRead",
+        "FsWrite",
+        "FsMkdir",
+    ];
+    for file in &mut fds.file {
+        for service in &mut file.service {
+            service
+                .method
+                .retain(|method| MOCKED.contains(&method.name()));
+            assert_eq!(
+                service.method.len(),
+                MOCKED.len(),
+                "a mocked boxd method is missing from the proto"
+            );
+        }
+    }
+    let out =
+        std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("boxd_mock");
+    std::fs::create_dir_all(&out).expect("create boxd mock dir");
+    tonic_prost_build::configure()
+        .build_client(false)
+        .build_server(true)
+        .out_dir(out)
+        .compile_fds(fds)
+        .expect("failed to generate the boxd mock server");
 }
 
 #[cfg(feature = "e2b")]

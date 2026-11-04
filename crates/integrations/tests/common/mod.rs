@@ -1,5 +1,6 @@
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
-//! Session-service doubles and helpers shared by the Modal test binaries.
+//! Session-service doubles and helpers shared by the Modal and boxd test
+//! binaries.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,6 +21,7 @@ use everruns_contracts::session_sandbox::{
     SessionSandboxCredential, SessionSandboxCredentialSource,
 };
 use everruns_contracts::typed_id::{LeasedResourceId, SessionId};
+#[cfg(feature = "modal")]
 use everruns_integrations::modal::ModalCapability;
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -273,16 +275,25 @@ pub fn context(
     (context, storage, leases)
 }
 
+/// A Modal tool by name.
+#[cfg(feature = "modal")]
 pub fn tool(name: &str) -> Box<dyn Tool> {
-    ModalCapability
+    tool_of(&ModalCapability, name)
+}
+
+/// Call a Modal tool.
+#[cfg(feature = "modal")]
+pub async fn call(context: &ToolContext, name: &str, args: Value) -> ToolExecutionResult {
+    tool(name).execute_with_context(args, context).await
+}
+
+/// A tool of `capability` by name.
+pub fn tool_of(capability: &dyn Capability, name: &str) -> Box<dyn Tool> {
+    capability
         .tools()
         .into_iter()
         .find(|t| t.name() == name)
         .unwrap_or_else(|| panic!("tool {name} not found"))
-}
-
-pub async fn call(context: &ToolContext, name: &str, args: Value) -> ToolExecutionResult {
-    tool(name).execute_with_context(args, context).await
 }
 
 pub fn ok(result: ToolExecutionResult) -> Value {

@@ -80,6 +80,7 @@ const INTERNAL_SECRET_PREFIXES: &[&str] = &[
     "e2b_sandbox:",
     "sprites_sprite:",
     "modal_sandbox:",
+    "boxd_sandbox:",
 ];
 // Exact reserved secret names. Unlike the prefixes above, this one cannot
 // reference its canonical constant: SESSION_SANDBOX_SECRET_NAME is defined in

@@ -25,6 +25,9 @@ pub(super) fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(
         SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("modal") => {
             validate_modal_options(profile, options)?;
         }
+        SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("boxd") => {
+            validate_boxd_options(profile, options)?;
+        }
         SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("e2b") => {
             validate_e2b_options(profile, options)?;
         }
@@ -179,6 +182,39 @@ fn validate_desktop_option(provider: &str, options: &Map<String, Value>) -> Resu
             "{provider} target.options.desktop must be true, false, or an object of display settings"
         )),
     }
+}
+
+/// boxd options mirror what the provider reads; the provider's own parser
+/// checks the values so the two cannot drift.
+fn validate_boxd_options(
+    profile: &SandboxTemplateSpec,
+    options: &Map<String, Value>,
+) -> Result<(), String> {
+    const ALLOWED: &[&str] = &["region", "size", "snapshot", "workspace_path", "title"];
+    // boxd pauses by hibernating the VM; there is no Everruns recovery volume
+    // to checkpoint into.
+    if profile.durability == Some(SandboxDurability::Checkpointed) {
+        return Err("boxd durability must be provider_snapshot".to_string());
+    }
+    if let Some(key) = options.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
+        return Err(format!(
+            "boxd target.options.{key} is not caller-configurable"
+        ));
+    }
+    for key in ["snapshot", "title"] {
+        if let Some(value) = options.get(key)
+            && value
+                .as_str()
+                .filter(|value| !value.trim().is_empty() && value.len() <= 256)
+                .is_none()
+        {
+            return Err(format!(
+                "boxd target.options.{key} must be a non-empty string no longer than 256 bytes"
+            ));
+        }
+    }
+    everruns_integrations::boxd::validate_options(&Value::Object(options.clone()))
+        .map_err(|error| format!("boxd target.options: {error}"))
 }
 
 /// Modal options mirror what the provider reads; it validates them again.

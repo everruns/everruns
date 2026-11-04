@@ -44,6 +44,7 @@ web-fetch = ["dep:chrono", "dep:async-trait", "dep:url", "dep:base64", "dep:byte
 webhook-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
 slack-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:hmac", "dep:sha2", "dep:hex", "dep:everruns-contracts", "everruns-contracts/runtime"]
 modal = ["dep:inventory", "dep:async-trait", "dep:base64", "dep:chrono", "dep:futures", "dep:hyper-util", "dep:prost", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime", "dep:protox", "dep:tonic-prost-build"]
+boxd = ["dep:inventory", "dep:async-trait", "dep:chrono", "dep:futures", "dep:hyper-util", "dep:prost", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime", "everruns-contracts/session-sandbox", "dep:protox", "dep:tonic-prost-build"]
 brave-search-hosted = ["brave-search"]
 brave-search-integration = ["brave-search"]
 duckduckgo-integration = ["duckduckgo"]
@@ -61,6 +62,8 @@ openai-decisions-live-tests = ["openai-decisions"]
 foundry-decisions-live-tests = ["typesafe"]
 modal-live-tests = ["modal"]
 modal-test-util = ["modal"]
+boxd-live-tests = ["boxd"]
+boxd-test-util = ["boxd", "dep:prost-types"]
 
 
 [dependencies]
@@ -118,10 +121,12 @@ openapiv3 = { version = "2.2", optional = true }
 progenitor = { version = "0.15", optional = true, default-features = false }
 connectrpc-build = { version = "0.9.0", optional = true }
 prost = { workspace = true, optional = true }
+prost-types = { workspace = true, optional = true }
 protox = { version = "0.10", optional = true }
 tonic-prost-build = { workspace = true, optional = true }
 
 [dev-dependencies]
+axum = { workspace = true, features = ["http2", "json"] }
 anyhow.workspace = true
 uuid.workspace = true
 async-trait.workspace = true
@@ -364,3 +369,18 @@ required-features = ["typesafe"]
 [[example]]
 name = "openai_decisions_triage"
 required-features = ["openai-decisions"]
+
+[[test]]
+name = "boxd_session_sandbox"
+path = "tests/boxd_session_sandbox.rs"
+required-features = ["boxd", "boxd-test-util"]
+
+[[test]]
+name = "boxd_tools"
+path = "tests/boxd_tools.rs"
+required-features = ["boxd", "boxd-test-util"]
+
+[[test]]
+name = "boxd_live"
+path = "tests/boxd_live.rs"
+required-features = ["boxd-live-tests"]

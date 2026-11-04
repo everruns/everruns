@@ -45,6 +45,7 @@ lua = ["everruns-integrations/lua"]
 hosted-integration-catalog = [
     "dep:everruns-integrations",
     "everruns-integrations/bashkit",
+    "everruns-integrations/boxd",
     "everruns-integrations/brave-search",
     "everruns-integrations/brave-search-hosted",
     "everruns-integrations/browserless",

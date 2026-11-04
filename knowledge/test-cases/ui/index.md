@@ -23,6 +23,7 @@
 * [Cursor connection](cursor_connection/) - Manual UI cases.
 * [TypeSafe connection](typesafe_connection/) - Manual UI cases.
 * [Daytona connection](daytona_connection/) - Manual UI cases.
+* [boxd sandbox](boxd_sandbox/) - Manual UI cases.
 * [Modal connection](modal_connection/) - Manual UI cases.
 * [Durable operations](durable_operations/) - Manual UI cases.
 * [Entity identity](entity_identity/) - Manual UI cases.

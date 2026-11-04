@@ -57,7 +57,7 @@ pub const SANDBOX_ORPHAN_SCAN_SCHEDULE: &str = "sandbox-orphan-scan";
 pub const SANDBOX_ORPHAN_SCAN_ACTIVITY: &str = "sandbox_orphan_scan";
 
 /// Providers asked for their managed sandboxes.
-pub const SCAN_PROVIDERS: &[&str] = &["daytona", "e2b", "modal"];
+pub const SCAN_PROVIDERS: &[&str] = &["boxd", "daytona", "e2b", "modal"];
 /// Candidates younger than this may be a create whose state save is in flight.
 pub const MIN_AGE: chrono::Duration = chrono::Duration::minutes(30);
 /// A stopped orphan seen again this long after its first sighting is deleted.

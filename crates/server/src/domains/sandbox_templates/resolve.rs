@@ -284,6 +284,7 @@ fn sandbox_targets_for_grade(
     let e2b_registered = registered("e2b");
     let modal_registered = registered("modal");
     let modal_offered = super::resolution::managed_provider_offered("modal", grade);
+    let boxd_registered = registered("boxd");
 
     vec![
         SandboxTargetDescriptor {
@@ -356,6 +357,29 @@ fn sandbox_targets_for_grade(
                 None
             },
             // Modal enforces deny and allowlists outside the sandbox.
+            capabilities: SandboxCapabilities {
+                network_enforced: true,
+                ..managed_capabilities(false)
+            },
+            containment_levels: vec!["isolated".to_string()],
+            durability: "provider_snapshot".to_string(),
+            credential_sources: vec![
+                "session_user".to_string(),
+                "agent".to_string(),
+                "organization".to_string(),
+            ],
+        },
+        // boxd pauses by hibernating the VM: disk and memory stay with boxd,
+        // and running processes come back on resume.
+        SandboxTargetDescriptor {
+            display_name: "boxd".to_string(),
+            icon: "cloud".to_string(),
+            kind: "managed".to_string(),
+            provider: Some("boxd".to_string()),
+            available: boxd_registered,
+            reason: (!boxd_registered)
+                .then(|| "the boxd provider is not registered in this deployment".to_string()),
+            // boxd enforces the egress allowlist on its hosts, DNS included.
             capabilities: SandboxCapabilities {
                 network_enforced: true,
                 ..managed_capabilities(false)
@@ -549,6 +573,24 @@ mod tests {
         let prod = modal(everruns_core::DeploymentGrade::Prod);
         assert!(!prod.available);
         assert!(prod.reason.unwrap().contains("development grade"));
+    }
+
+    #[test]
+    fn boxd_is_offered_at_every_grade_with_enforced_network() {
+        for grade in [
+            everruns_core::DeploymentGrade::Dev,
+            everruns_core::DeploymentGrade::Prod,
+        ] {
+            let boxd = sandbox_targets_for_grade(grade)
+                .into_iter()
+                .find(|target| target.provider.as_deref() == Some("boxd"))
+                .expect("boxd is listed");
+            assert!(boxd.available, "{:?}", boxd.reason);
+            assert_eq!(boxd.kind, "managed");
+            assert_eq!(boxd.durability, "provider_snapshot");
+            assert!(boxd.capabilities.network_enforced);
+            assert!(!boxd.capabilities.portable_checkpoint);
+        }
     }
 
     #[test]
