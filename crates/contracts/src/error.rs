@@ -421,6 +421,7 @@ impl AgentLoopError {
                 | LlmErrorKind::QuotaExhausted
                 | LlmErrorKind::BillingPressure { .. }
                 | LlmErrorKind::AttestationRequired
+                | LlmErrorKind::Refusal
                 | LlmErrorKind::MalformedResponse
                 | LlmErrorKind::InvalidRequest => false,
                 LlmErrorKind::Other => crate::llm_retry::is_transient_error_message(&err.message),
@@ -453,6 +454,8 @@ impl AgentLoopError {
 
             // MessageStore "not found" errors (deleted messages).
             AgentLoopError::MessageStore(msg) => msg.to_ascii_lowercase().contains("not found"),
+
+            AgentLoopError::Llm(error) if error.kind == LlmErrorKind::Refusal => true,
 
             // Everything else is potentially transient.
             _ => false,
@@ -513,6 +516,7 @@ impl AgentLoopError {
                     LlmErrorKind::AttestationRequired => {
                         Some(user_facing_error_codes::PROVIDER_ATTESTATION_REQUIRED)
                     }
+                    LlmErrorKind::Refusal => Some(user_facing_error_codes::MODEL_REFUSAL),
                     LlmErrorKind::InvalidRequest
                     | LlmErrorKind::MalformedResponse
                     | LlmErrorKind::Other => None,

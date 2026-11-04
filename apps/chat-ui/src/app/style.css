@@ -707,3 +707,53 @@ h1 {
   background: var(--bg);
   color: var(--text);
 }
+/* Emoji reactions under a message: chips with counts, the consumer's own
+   outlined in the accent color, and one quick row of emoji. */
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: -14px 0 18px;
+}
+.message.user + .reactions {
+  justify-content: flex-end;
+}
+.reactions .reaction.add {
+  opacity: 0;
+}
+.reactions.shown .reaction.add,
+div:hover > .reactions .reaction.add,
+.reactions .reaction.add:focus-visible {
+  opacity: 1;
+}
+.reaction {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 12px;
+  line-height: 20px;
+}
+.reaction.mine {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.reaction-picker {
+  display: inline-flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 2px;
+}
+.reaction-picker button {
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  padding: 2px 5px;
+}
+.reaction-picker button:hover {
+  background: var(--hover);
+}

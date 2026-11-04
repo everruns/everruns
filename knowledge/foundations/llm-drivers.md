@@ -205,11 +205,26 @@ Current provider mappings:
 - **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. The key goes out even when `prompt_cache` is unset (only `enabled: false` drops it): implicit-caching vendors behind the protocol need it, Muse Spark misses every prompt above ~100k tokens without one (probed 2026-11-01). On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/contracts/src/openresponses_protocol/mod.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
 - **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Trailing content the caller marks volatile (`volatile_suffix_len`) and mid-conversation system messages are skipped. The explicit strategy drops the two message breakpoints, so only the stable prefix (tools, system) is written. Retention `1h` adds `ttl: "1h"` to every breakpoint in one pass after the request is built (`driver_cache.rs`); a uniform TTL keeps Anthropic's longer-before-shorter ordering rule trivially satisfied. The 1 hour share of cache writes (`usage.cache_creation.ephemeral_1h_input_tokens`) is reported as `cache_creation_1h_tokens` and priced at 2x input instead of the profile's 5 minute `cache_write` rate
 - **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
-- **Bedrock Converse**: caches nothing without `cachePoint` blocks and rejects them on models that cannot cache, so only Claude and Nova get them ([`bedrock/cache.rs`](../../crates/drivers/drivers/src/bedrock/cache.rs)). Placement mirrors Anthropic: system, tools (Claude only, Nova does not cache tools), and the two latest messages, dropped under explicit. Retention `1h` sets the point TTL on Claude only. Usage reports cache reads and writes, with the 1 hour share from `cacheDetails`
+- **Bedrock Converse**: caches nothing without `cachePoint` blocks and rejects them on models that cannot cache, so only Claude and Nova get them ([`bedrock/cache.rs`](../../crates/drivers/drivers/src/bedrock/cache.rs)). Placement mirrors Anthropic: system, tools (Claude only, Nova does not cache tools), and the two latest messages, dropped under explicit. Extended retention sets the point TTL only on the Claude models AWS documents as supporting one hour; unknown or older models keep the default. Usage reports cache reads and writes, with the 1 hour share from `cacheDetails`
 - **OpenRouter**: Claude models get a top-level `cache_control` (Anthropic automatic caching, TTL from retention) under the auto strategy; explicit sends nothing because automatic caching cannot leave the conversation out. Other vendors keep their implicit caching
 - **Mistral**: the shared Chat Completions driver sends a `prompt_cache_key` hashed from the cache family and model when caching is on (`with_prompt_cache_key`); off for other OpenAI-compatible hosts, which may reject unknown fields
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
+
+Qualified native OpenAI Responses calls default to twelve-hour implicit caching,
+including when no capability configured cache intent. This favors reuse across
+long pauses but raises write cost: explicit `30m` preserves the cheaper tier and
+`enabled: false` removes managed controls. Other provider defaults are unchanged.
+This affects the minimum cache reuse lifetime, not the maximum data-retention
+policy, response storage, or organizational data controls.
+The [retention mapping](../../crates/contracts/src/driver_registry/configuration.rs)
+is constrained again at the Responses endpoint: only the official OpenAI API
+receives twelve-hour requests; Azure and gateways retain their existing tier.
+Completed-call metadata uses captured wire retention where available. The
+[wire regression](../../crates/contracts/tests/prompt_cache_retention.rs) exercises
+both transport modes without paid calls. Price estimates consume provider-reported
+lifetime subsets, never infer billable writes from requested retention, and apply
+the served service tier. These subsets do not add to the total write-token bucket.
 
 Provider caches match an exact request prefix, so a driver that reorders tools or rewrites an earlier message turns every call into a silent miss. [`prompt_prefix_wire.rs`](../../crates/drivers/drivers/tests/prompt_prefix_wire.rs) pins, per driver, that two consecutive calls of one conversation differ only by entries appended to the conversation array (cache markers aside).
 
@@ -1049,6 +1064,31 @@ When a request to the OpenAI Responses API sets `previous_response_id`, the prov
 Invariant: **a request with `previous_response_id` only carries delta items in `input`**: typically tool results (`function_call_output`) for the prior assistant turn plus any fresh user messages. Prior assistant messages, reasoning items, and the assistant's own function calls are dropped because they live in server-side state. `instructions` (system message) is sent separately and is exempt. Empty `input` is allowed.
 
 `OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/contracts/src/openresponses_protocol/mod.rs`).
+
+### Anthropic message threads
+
+Message threads are an explicitly enabled transport optimization, independent of
+prompt caching. They do not make the runtime's history delta-only: the Anthropic
+driver still receives the complete transcript, so worker loss or provider state
+expiry cannot lose conversation history. The driver must not advertise the
+Responses-style statefulness contract for this feature.
+
+A reusable continuation belongs to one session, credential/endpoint and request
+configuration, and must match the caller's exact conversation prefix. Claiming it
+is exclusive; only a completed response can replace it. Edits, branches, changed
+configuration, compaction and incomplete responses cannot silently reuse stale
+state. Provider thread-specific failures have bounded full-history recovery;
+unrelated failures retain their classification. No thread cache is durable.
+
+See the [implementation](../../crates/drivers/drivers/src/anthropic/message_threads.rs),
+[wire tests](../../crates/drivers/drivers/tests/anthropic_message_threads_wire.rs),
+and [Framework session test](../../crates/everruns/tests/anthropic_message_threads.rs).
+The [live acceptance suite](../../crates/llm-tests/tests/provider_live/anthropic_message_threads.rs)
+must prove real provider state across delta-only text and tool turns, and recovery
+after a response ID is consumed. Missing credentials or silent unthreaded fallback
+must fail these tests; nightly/full provider CI owns their execution.
+The [provider guide](../../docs/providers/anthropic.md#message-threads-beta) owns
+opt-in instructions, retention exclusions and compatibility limits.
 
 ### Provider-declared statefulness
 

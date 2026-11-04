@@ -177,6 +177,8 @@ impl ModelSyncService {
         self.db
             .update_provider_last_synced(provider_row.org_id, provider_row.id.uuid(), now)
             .await?;
+        // A sync decides which models are still listed.
+        crate::domains::health_issues::model_health::check_org(&self.db, provider_row.org_id).await;
         Ok(sync_result)
     }
 

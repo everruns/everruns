@@ -10,6 +10,7 @@ import {
   mergeTurns,
   parseStepKey,
   parseTraceError,
+  reactionsByTurn,
   retrySummary,
   rowIndexOfStep,
   searchSnippet,
@@ -326,8 +327,9 @@ describe("parseTraceError", () => {
 
 describe("error classification", () => {
   it("labels known failure codes and leaves the generic one unlabeled", () => {
-    expect(errorCodeLabel("provider_quota_exhausted")).toBe("Out of credits");
+    expect(errorCodeLabel("provider_quota_exhausted")).toBe("Provider account out of funds");
     expect(errorCodeLabel("provider_unavailable")).toBe("Provider down");
+    expect(errorCodeLabel("model_refusal")).toBe("Model declined request");
     expect(errorCodeLabel("processing_error")).toBeNull();
     expect(errorCodeLabel(undefined)).toBeNull();
   });
@@ -338,5 +340,47 @@ describe("error classification", () => {
     );
     expect(retrySummary({ retry_attempts: 0, retry_wait_ms: 0 })).toBeNull();
     expect(retrySummary({})).toBeNull();
+  });
+});
+
+describe("reactionsByTurn", () => {
+  const thumbs = (count = 1) => ({ emoji: "👍", count, me: false, agent: false, actors: [] });
+  const turns = [
+    { ...turn(1, []), start_sequence: 2, end_sequence: 10 },
+    { ...turn(2, []), start_sequence: 12, end_sequence: 20 },
+  ];
+
+  it("puts a reply's reactions on the turn it was written in", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_a", author: "agent", sequence: 15, reactions: [thumbs()] },
+    ]);
+    expect(map.get(2)?.reply.map((r) => r.emoji)).toEqual(["👍"]);
+    expect(map.get(2)?.prompt).toEqual([]);
+    expect(map.has(1)).toBe(false);
+  });
+
+  it("puts a user message's reactions on the turn it starts", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_u", author: "user", sequence: 11, reactions: [thumbs()] },
+    ]);
+    expect(map.get(2)?.prompt.map((r) => r.emoji)).toEqual(["👍"]);
+  });
+
+  it("skips messages it cannot place", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_x", author: "agent", sequence: 11, reactions: [thumbs()] },
+      { message_id: "message_y", author: "user", sequence: 30, reactions: [thumbs()] },
+      { message_id: "message_z", reactions: [thumbs()] },
+    ]);
+    expect(map.size).toBe(0);
+  });
+
+  it("adds up the same emoji on two replies of one turn", () => {
+    const map = reactionsByTurn(turns, [
+      { message_id: "message_a", author: "agent", sequence: 4, reactions: [thumbs()] },
+      { message_id: "message_b", author: "agent", sequence: 8, reactions: [thumbs(2)] },
+    ]);
+    expect(map.get(1)?.reply).toHaveLength(1);
+    expect(map.get(1)?.reply[0].count).toBe(3);
   });
 });

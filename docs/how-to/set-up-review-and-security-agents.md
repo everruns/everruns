@@ -66,7 +66,7 @@ The PR Reviewer gets a GitHub trigger for pull requests opened, reopened,
 pushed to, or marked ready for review, skipping drafts, with one session per
 pull request. The Security Scanner gets a schedule trigger every Monday at
 06:00 UTC. Both triggers can be edited afterwards from the agent's
-**Integrations** tab, like any other trigger.
+**Channels and triggers** tab, like any other trigger.
 
 ## Verify
 
@@ -80,7 +80,7 @@ PR Reviewer:
 
 Security Scanner:
 
-1. On the agent's **Integrations** tab, select **Run now** on the trigger instead of waiting
+1. On the agent's **Channels and triggers** tab, select **Run now** on the trigger instead of waiting
    for Monday.
 2. The session clones the repository, scans it, and ends with a report.
    Findings appear as issues labelled `security`. Run it again: existing

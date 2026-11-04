@@ -40,6 +40,20 @@ depend on, wire it into the runtime's discovery + execution path, add an
 builds), and make **credential acquisition pluggable** so non-web (CLI) hosts
 can authenticate. Acceptance is MCP working in the example coding CLI.
 
+## HTTP response bounds
+
+Every response from an MCP server is untrusted, including initialization,
+continuations, task polls, resources, and error bodies. The [HTTP reader](../../crates/core/src/mcp/http/body.rs)
+counts streamed bytes before retaining them and drops oversized bodies. A single
+request deadline covers response headers and body reading; HTTP failures retain
+their status and a bounded excerpt even if the body fails or stalls. This keeps
+credential refresh and cache invalidation independent of error-body quality.
+
+Operators can raise the ordinary response bound for legitimate large results;
+see [MCP HTTP response limits](../../docs/sre/environment-variables.md#mcp-http-response-limits).
+Discovery keeps its existing aggregate catalog budgets. DNS pinning, egress
+policy, sessions, and multi-round-trip negotiation use the same request path.
+
 ## Motivation and constraints
 
 The end goals for this work, and how the design meets each:

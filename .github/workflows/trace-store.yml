@@ -1,0 +1,71 @@
+name: DataFusion trace store
+
+on:
+  pull_request:
+    paths:
+      - 'crates/trace-store/**'
+      - 'crates/server/migrations/*trace_store*'
+      - '.github/workflows/trace-store.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/trace-store/**'
+      - 'crates/server/migrations/*trace_store*'
+      - '.github/workflows/trace-store.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trace-store-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trace-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: '-C link-arg=-fuse-ld=lld'
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+      - name: Install fast linker
+        run: bash scripts/ci-prepare-linker.sh
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: trace-store-v1
+      - run: cargo fmt -p everruns-trace-store --check
+      - run: cargo clippy --locked -p everruns-trace-store --all-targets --features postgres-tests -- -D warnings
+      - name: Start local S3 protocol fixture
+        run: |
+          docker run -d --name trace-store-s3 -p 127.0.0.1:18333:8333 chrislusf/seaweedfs:4.24 server -s3 -dir=/data -master.volumeSizeLimitMB=64 -volume.max=32
+          for attempt in $(seq 1 30); do
+            if curl -fsSI http://127.0.0.1:18333/traces || curl -fsS -X PUT http://127.0.0.1:18333/traces; then break; fi
+            sleep 1
+          done
+          curl -fsSI http://127.0.0.1:18333/traces
+      - run: cargo test --locked -p everruns-trace-store --features postgres-tests,s3-tests
+        env:
+          TEST_TRACE_S3_ENDPOINT: http://127.0.0.1:18333
+      - name: Stop S3 fixture
+        if: always()
+        run: docker rm -f trace-store-s3 || true

@@ -46,7 +46,9 @@ import {
   stepHoldingSequence,
   stepKey,
   type TraceView as View,
+  reactionsByTurn,
 } from "./trace-model";
+import { useMessageReactionList } from "@/hooks/use-message-reactions";
 import { TraceSearch } from "./trace-search";
 import { TurnRail } from "./turn-rail";
 import { DreamingTrace } from "./dreaming-trace";
@@ -133,6 +135,11 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     [data.turns, collapsed],
   );
   const lifecycle = useTraceLifecycle(sessionId, openTurns, showLifecycle);
+  const reactionList = useMessageReactionList(sessionId);
+  const turnReactions = useMemo(
+    () => reactionsByTurn(data.turns, reactionList.data),
+    [data.turns, reactionList.data],
+  );
 
   const rows = useMemo(
     () =>
@@ -524,6 +531,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                     {row.type === "turn" && (
                       <TurnHeader
                         turn={row.turn}
+                        reactions={turnReactions.get(row.turn.turn)?.prompt}
                         collapsed={row.collapsed}
                         showScale
                         onToggle={() =>
@@ -633,7 +641,12 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                       />
                     )}
                     {row.type === "empty" && <EmptyTurnRow />}
-                    {row.type === "footer" && <TurnFooter turn={row.turn} />}
+                    {row.type === "footer" && (
+                      <TurnFooter
+                        turn={row.turn}
+                        reactions={turnReactions.get(row.turn.turn)?.reply}
+                      />
+                    )}
                   </div>
                 );
               })}

@@ -277,11 +277,15 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
-    /// Agent called named tool at least `min` times.
+    /// Agent called named tool at least `min` times. With
+    /// `arguments_contain`, only calls whose argument JSON contains that text
+    /// count, so a case can check what the agent asked a tool to do.
     ToolCalled {
         tool: String,
         #[serde(default = "default_min_one")]
         min: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        arguments_contain: Option<String>,
         #[serde(default = "default_weight")]
         weight: f64,
     },
@@ -484,6 +488,12 @@ impl Scorer {
             Scorer::Regex { pattern, .. } => regex::Regex::new(pattern)
                 .map(|_| ())
                 .map_err(|error| format!("regex pattern does not compile: {error}")),
+            Scorer::ToolCalled {
+                arguments_contain: Some(text),
+                ..
+            } if text.is_empty() => {
+                Err("tool_called arguments_contain must not be empty".to_string())
+            }
             Scorer::JsonSchema { schema, .. } => jsonschema::validator_for(schema)
                 .map(|_| ())
                 .map_err(|error| format!("json_schema schema is invalid: {error}")),
@@ -702,6 +712,11 @@ pub struct Eval {
     #[serde(default)]
     #[schema(example = 12)]
     pub case_count: i64,
+    /// Version of the cases (the eval's dataset). Every case change bumps it;
+    /// runs and experiments record the version they ran.
+    #[serde(default = "default_one_trial")]
+    #[schema(example = 7)]
+    pub version: u32,
     /// Last run summary (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_run: Option<EvalRunSummaryView>,
@@ -787,6 +802,12 @@ pub struct EvalCase {
     /// Display order.
     #[schema(example = 0)]
     pub position: i32,
+    /// A model that plays the user after the scripted messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulated_user: Option<crate::domains::evals::multistep::SimulatedUser>,
+    /// Tools the case gives the agent, answered with canned responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_fixtures: Option<Vec<crate::domains::evals::multistep::ToolFixture>>,
     /// When the case was created.
     #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
@@ -841,6 +862,18 @@ pub struct EvalRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 5.0)]
     pub max_cost_usd: Option<f64>,
+    /// Dataset version (the eval's `version`) the run was created from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 7)]
+    pub dataset_version: Option<u32>,
+    /// The experiment this run is a variant of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "evalexp_01933b5a000070008000000000000001")]
+    pub experiment_id: Option<String>,
+    /// The variant's label within its experiment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "candidate")]
+    pub variant_label: Option<String>,
     /// When the run started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "2026-01-15T10:30:00Z")]
@@ -1103,6 +1136,7 @@ mod tests {
             tags: vec![],
             status: EvalStatus::Active,
             case_count: 0,
+            version: 1,
             last_run: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

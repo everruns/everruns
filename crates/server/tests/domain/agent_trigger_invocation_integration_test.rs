@@ -380,10 +380,7 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
     }));
 
     server
-        .post(
-            &format!("/v1/agents/{agent_id}/exposures/suspend"),
-            json!({}),
-        )
+        .post(&format!("/v1/agents/{agent_id}/pause"), json!({}))
         .await
         .assert_status(StatusCode::OK);
     for path in [
@@ -781,4 +778,57 @@ async fn agent_trigger_session_per_invocation_creates_distinct_sessions() {
         first.session_id, second.session_id,
         "session_per_invocation creates a fresh session each fire"
     );
+}
+
+/// Pause agent stops schedules too, not only channels and event triggers.
+#[tokio::test]
+async fn paused_agent_schedule_does_not_run_until_resumed() {
+    let server = TestServer::in_memory().await;
+    let agent = create_agent(&server, "paused-schedule-agent").await;
+    let agent_id = agent["id"].as_str().unwrap();
+    let trigger = create_trigger(&server, agent_id, "shared_session").await;
+    let trigger_id = trigger["id"].as_str().unwrap();
+
+    let session_service = SessionService::new(server.db.clone());
+    let message_service = MessageService::new(
+        server.db.clone(),
+        server.runner.clone(),
+        EventDelivery::in_memory(),
+    );
+
+    server
+        .post(&format!("/v1/agents/{agent_id}/pause"), json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+
+    let error = invoke_agent_trigger(
+        &server.db,
+        &session_service,
+        &message_service,
+        None,
+        None,
+        DEFAULT_ORG_ID,
+        agent_id,
+        trigger_id,
+    )
+    .await
+    .expect_err("a paused agent's schedule must not run");
+    assert!(error.to_string().contains("paused"), "{error}");
+
+    server
+        .post(&format!("/v1/agents/{agent_id}/resume"), json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+    invoke_agent_trigger(
+        &server.db,
+        &session_service,
+        &message_service,
+        None,
+        None,
+        DEFAULT_ORG_ID,
+        agent_id,
+        trigger_id,
+    )
+    .await
+    .expect("a resumed agent's schedule runs");
 }

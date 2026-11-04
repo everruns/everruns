@@ -9,7 +9,6 @@
 //!   session is reachable only under the agent that runs it, and any other
 //!   agent's base URL answers 404, the same answer as for a session that does
 //!   not exist.
-//! - A subagent has no base URL; it only runs inside its parent's turns.
 //! - `POST /v1/channels/{agent}` stays the channel webhook; `GET` is the card.
 
 use std::sync::Arc;
@@ -75,7 +74,6 @@ pub(crate) fn routes(router: Router<Arc<Host>>) -> Router<Arc<Host>> {
 fn top_level<'a>(host: &'a Host, name: &str) -> ApiResult<&'a AgentEntry> {
     host.app
         .agent(name)
-        .filter(|entry| !entry.sub)
         .ok_or_else(|| ApiError::NotFound(format!("agent {name}")).into())
 }
 

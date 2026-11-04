@@ -22,7 +22,6 @@ pub type ToolFuture = BoxFuture<'static, Result<ToolResponse, String>>;
 pub struct AgentRegistration {
     pub name: &'static str,
     pub doc: &'static str,
-    pub sub: bool,
     pub default: bool,
     pub source: &'static str,
     pub build: fn() -> crate::Agent,

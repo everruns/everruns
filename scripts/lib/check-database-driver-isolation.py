@@ -10,6 +10,7 @@ import sys
 # The `everruns` facade owns embedded SQLite construction (`everruns::sqlite`)
 # for its `local` feature and the serve hosts.
 OWNERS = {"everruns-server", "everruns-durable", "everruns"}
+TRACE_STORE_ROOT = Path(__file__).resolve().parents[2] / "crates/trace-store"
 CUSTOM_DATA_EXAMPLE_ROOT = Path(__file__).resolve().parents[2] / "examples/custom-data-agent"
 
 
@@ -20,6 +21,16 @@ def custom_data_example(package):
         package["name"] == "everruns-custom-data-agent"
         and Path(package.get("manifest_path", "")).resolve()
         == (CUSTOM_DATA_EXAMPLE_ROOT / "Cargo.toml").resolve()
+    )
+
+
+def trace_companion(package):
+    # Unpublished operator companion owns its metastore and canonical log reads;
+    # this grants no persistence edge to runtime/library or worker crates.
+    return (
+        package["name"] == "everruns-trace-store"
+        and Path(package.get("manifest_path", "")).resolve()
+        == (TRACE_STORE_ROOT / "Cargo.toml").resolve()
     )
 
 
@@ -84,6 +95,14 @@ def dependency_violations(packages):
                 and dependency.get("rename") in (None, "rusqlite")
             ):
                 continue
+            if (
+                trace_companion(package)
+                and dependency["name"] == "sqlx"
+                and dependency["kind"] is None
+                and not dependency["optional"]
+                and dependency.get("rename") in (None, "sqlx")
+            ):
+                continue
             # TypedId owns its optional PostgreSQL codecs (the orphan rule).
             # This exception grants no connection ownership; source is checked below.
             if (
@@ -104,7 +123,7 @@ def dependency_violations(packages):
 def constructor_violations(packages):
     violations = []
     for package in packages:
-        if package["name"] in OWNERS or custom_data_example(package):
+        if package["name"] in OWNERS or custom_data_example(package) or trace_companion(package):
             continue
         root = Path(package["manifest_path"]).parent / "src"
         for source in root.rglob("*.rs"):
@@ -139,7 +158,7 @@ def main():
     violations = dependency_violations(packages) + constructor_violations(packages)
     if violations:
         print("\n".join(violations), file=sys.stderr)
-        print("Database drivers and connection construction belong to server, durable or the everruns facade; the private data-agent example owns only its tool database.", file=sys.stderr)
+        print("Database drivers and connections belong to platform owners; the trace companion owns its SQLx metastore/log reader and the private data-agent example owns only its tool database.", file=sys.stderr)
         return 1
     print("Database driver isolation guard passed: platform owners and the private tool example are scoped; contracts codecs remain optional.")
     return 0

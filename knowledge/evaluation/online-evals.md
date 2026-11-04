@@ -1,22 +1,37 @@
 ---
 type: Specification
 title: "Online Evals (Observers)"
-description: "Online evals (Observers) over production sessions (proposed)."
+description: "Online evals (Observers): scoring production sessions by turn, conversation and tool call, with alerts."
 tags:
   - everruns
   - evaluation
 ---
 # Online Evals (Observers)
 
-Status: **Phase 1 implemented** (behind the `observers` feature flag), turn-scope rule **and LLM-judge** scoring of production sessions, with the design options below recording the broader direction. Session/tool scopes, aggregation/alerting, judge usage metering into budgets, and the Phase 2 improvement loop remain proposed.
+Status: **Observers v2 implemented** (behind the `observers` feature flag; Evals rebuild step 6). Turn, session and tool scopes, rule / LLM-judge / decision graders, pass-rate alerts as health issues, a review queue, backfill, a live-quality summary, and judge spend metered into budgets. The Phase 2 improvement loop (clustering, proposals) is the rest of the [Evals rebuild](evals.md).
 
-Phase 1 surface: `Observer` entity (org-scoped, embedded match rules + scorers), `trace_scores` queue, an `ObserverMatchListener` on `turn.completed` that samples and enqueues, and a dual-mode `spawn_observer_worker` that drains the queue (durable `FOR UPDATE SKIP LOCKED` in full mode, in-process in dev mode). Code: `crates/server/src/domains/observers/record.rs`, `crates/server/src/domains/observers/`, `crates/server/src/api/observers.rs`, migrations `059_observers.sql` + `070_observer_llm_judge.sql`. API under `/v1/observers`.
+Surface: `Observer` entity (org-scoped, embedded match rules, scorers and an optional `alert`), the `trace_scores` queue, an `ObserverMatchListener` on `turn.completed` / `tool.completed` / `session.idled`, and a `spawn_observer_worker` that drains the queue (`FOR UPDATE SKIP LOCKED`). Code: [`domains/observers/`](../../crates/server/src/domains/observers/) (`matching.rs` decides what a slice gets, shared by the listener and backfill; `evidence.rs` reads what a scorer sees per scope), [`api/observers.rs`](../../crates/server/src/api/observers.rs), migration `20261102000316_observers_v2.sql`. API under `/v1/observers`.
 
-Each scorer has a `method`: `rule` (the eval scorer vocabulary) or `llm_judge`. An `llm_judge` scorer carries a `rubric`, an optional `model_id` (defaults to the org's default model), and a `pass_threshold`. The judge call (`crates/server/src/domains/observers/judge.rs`) goes through the **org's own configured model/provider** (resolved via `ProviderResolverService`), returns structured `{value, label, reasoning}`, and stores token/cost accounting on the score. Judge usage is recorded on the `trace_score` row; metering into `usage_journal`/budgets is a follow-up. Both methods grade through the shared [`graders`](../../crates/server/src/domains/evals/graders/mod.rs) that eval runs use, so every eval scorer, including the decision-model `decision` scorer and the rubric `judge` scorer, works as an observer `rule`; a grader that cannot run (no model configured) skips the score instead of retrying.
+Each scorer has a `method`: `rule` (the eval scorer vocabulary) or `llm_judge` (a `rubric`, an optional `model_id` defaulting to the org's default model, and a `pass_threshold`). Both grade through the shared [`graders`](../../crates/server/src/domains/evals/graders/mod.rs) that eval runs use, so every eval scorer, including `decision` and `judge`, works as an observer `rule`; a grader that cannot run (no model configured) skips the score instead of retrying. A scorer's `model_id` is validated on create/update (`ObserverService::validate_model_access`), mirroring runtime resolution, so an observer cannot be saved against an inaccessible model and then silently skip every score.
 
-A scorer's `model_id` is validated on observer create/update (`ObserverService::validate_model_access`): the model must exist for the org and be enabled, mirroring runtime resolution (`get_model` is org-scoped + enabled-only). Without this an observer could be saved against an inaccessible model and then silently `skip` every score at scoring time. A judge with no `model_id` is always accepted, it resolves the org default at scoring time.
+Scopes, as built:
 
-UI: the `observers` feature flag also gates a UI surface (`apps/ui/src/app/(main)/observers/`), observer list, a create/edit form with a starter scorer catalog and a judge model picker, an "Observe this agent" entry on the agent page, and a per-observer **Quality tab**. The Quality tab aggregates the `/scores` endpoint **client-side** (recent sampled scores → per-scorer pass rate / avg value / daily trend); the durable `fact_trace_score` projection below remains the path to real cross-observer aggregation. Scope is presented as tabs (Answers / Conversations / Tools), but only **Answers (turn)** is wired, `session`/`tool` scopes are shown disabled until the backend implements them.
+| Scope | Key (`turn_id` column) | Scored | Evidence |
+|-------|------------------------|--------|----------|
+| `turn` | the turn id | on `turn.completed` | the turn's input, last thing the agent said, its tool calls and arguments, iterations, tokens |
+| `session` | the literal `session` (one score per session) | `SESSION_SETTLE_SECONDS` (10 min) after `session.idled`; each new idle re-arms the same row (`not_before`) unless it is being scored | the conversation as a "User: / Agent:" transcript (the shape multistep cases give graders), last exchange, every tool call, turn count, tokens; at most the newest 2,000 events |
+| `tool` | the tool call id | on `tool.completed`, filtered by the scorer's optional `tools` list | `Call to <tool> with arguments: ...` as input, the result text (or `Error: ...`) as the answer |
+
+Decisions:
+
+- Session-scope sampling is a stable hash of (session, observer), so a session that idles many times is either always scored or never; turn and tool scopes draw per slice.
+- Judge spend is metered with source `observer_grading` (`BudgetService::meter_observer_grading`), journaled against the session it read but debiting only the org and agent budgets (`BudgetScope::monitoring`). Monitoring must never use up a person's, channel's, schedule's or the session's own limit. Keyed to the score, so a retried grade is charged once.
+- Alerts are the observer's own (`alert: {min_pass_rate, window_hours, min_scored}`); there is no global threshold because pass rates mean different things per rubric. The 15-minute health sweep ([`health_issues/quality.rs`](../../crates/server/src/domains/health_issues/quality.rs)) opens `observer.pass_rate_low` on the observer, notifies the authors of the agents it watches (org owners for all-traffic observers), carries no judge text, and resolves when the rate recovers.
+- Reviews (`review` on a score: agrees, note, who, when) calibrate graders; the review queue is completed unreviewed scores, failures first, then a random sample of passes. A disagreed score is the input for Eval Builder cases (step 8).
+- Backfill reads the newest turn, tool and idle events of the last `since_hours` (max 720, max 5,000 events), plans them with the same matcher and enqueues; turns and tool calls already scored are not re-queued, a conversation's score is refreshed. Forward-only scoring plus explicit backfill answers the versioning question.
+- Live quality (`GET /v1/observers/summary`) is computed from `trace_scores` directly (indexed by org and completion time), not the reporting outbox: totals and groups by agent (with a daily trend), observer and day.
+
+UI: the Evals overview shows **Live quality · 7 days** and a per-agent Live quality column ("Not observed · Observe" when nothing scored the agent); the agent Evals tab shows its live quality and an **Observing** list; the observer edit page has working **Answers / Conversations / Tools** tabs. Review queue, alerts and backfill are API/CLI only until a mockup is approved. The per-observer Quality tab still aggregates recent scores client-side.
 
 <!-- Design Decisions (proposed, not yet ratified):
   - Observer is the single user-facing abstraction: create an Observer, configure match rules
@@ -191,13 +206,9 @@ Match rules × three scopes × per-scope scorers is genuinely a lot of surface. 
 4. **Score-first navigation.** The product surface users actually visit is the agent's **Quality tab** (trends, drill-down to traces); observer config is something they touch once. Optimize the reading surface over the authoring surface.
 5. **Later (Phase 2 adjacent):** natural-language setup, "watch my support agent for answers without sources" → generated observer config, once the structured model is proven. LangSmith's Insights configuration works this way (guided questions → generated attributes).
 
-## Aggregation and alerting (Phase 1.5)
+## Aggregation and alerting
 
-Per-score rows are necessary but the product value is trends:
-
-- Project `trace_scores` into the reporting layer (`fact_trace_score`) via the existing outbox pattern, avg score / pass rate / label distribution by agent, agent revision, harness, observer, scorer key, scope, model, day.
-- Agent detail page gets a **Quality tab**: score time series, pass-rate trend, label breakdown, per-tool score breakdown, drill-down from any data point to the underlying sessions/tool calls.
-- Threshold alerts: per-observer rule "pass rate < X over window W → notification" via the existing notifications system (new kind, e.g. `observer.threshold_breached`). Webhook delivery can ride Apps/channels later.
+Built in v2 as described in the status section: live-quality summary from `trace_scores`, per-observer pass-rate alerts as health issues. A reporting-layer projection (`fact_trace_score`) for label and per-tool breakdowns remains open.
 
 ## Phase 2 sketch: the improvement loop (own name, own spec)
 

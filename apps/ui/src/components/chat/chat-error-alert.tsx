@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/providers/locale-provider";
@@ -10,6 +11,8 @@ interface ChatErrorAlertProps {
   details?: string | null;
   /** False when resending cannot help (quota, keys, budgets); the card then says so. */
   retryable?: boolean;
+  /** Shown under the message, e.g. "Continue this turn" for a usage policy's ask step. */
+  action?: ReactNode;
   className?: string;
 }
 
@@ -18,6 +21,7 @@ export function ChatErrorAlert({
   description,
   details,
   retryable = true,
+  action,
   className,
 }: ChatErrorAlertProps) {
   const { t } = useLocale();
@@ -43,6 +47,7 @@ export function ChatErrorAlert({
       <div className="mt-3 rounded-md bg-muted/70 px-3 py-2 font-mono text-sm leading-5 text-foreground">
         {displayMessage}
       </div>
+      {action}
       {trimmedDetails ? (
         <details className="group mt-2">
           <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground marker:hidden">

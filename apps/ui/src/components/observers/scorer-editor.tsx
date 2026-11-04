@@ -3,9 +3,9 @@
 // Scorers editor for the observer form.
 //
 // Scope is organized as tabs labelled "Answers" (turn), "Conversations" (session),
-// and "Tools" (tool). The backend only supports the `turn` scope today, so the
-// other two tabs are rendered disabled with a "Coming soon" note. All editable
-// scorers therefore live under the `turn` scope.
+// and "Tools" (tool). Each tab lists and adds the scorers of its scope. A
+// conversation scorer grades the whole session once it has been idle a while;
+// a tool scorer grades single calls, optionally only to the tools it names.
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 import { ModelPicker } from "@/components/models/model-picker";
 import {
   Select,
@@ -95,14 +94,16 @@ function defaultRule(type: RuleType): ScorerRule {
   }
 }
 
-function defaultScorer(): ObserverScorerConfig {
+function defaultScorer(scope: ObserverScorerScope): ObserverScorerConfig {
   return {
     key: "",
-    scope: "turn",
+    scope,
     method: "rule",
-    rule: defaultRule("contains"),
+    rule: defaultRule(scope === "tool" ? "not_contains" : "contains"),
   };
 }
+
+const SCOPES: ObserverScorerScope[] = ["turn", "session", "tool"];
 
 interface ScorerEditorProps {
   scorers: ObserverScorerConfig[];
@@ -122,8 +123,8 @@ export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
     onChange(scorers.filter((_, i) => i !== index));
   };
 
-  const addScorer = () => {
-    onChange([...scorers, defaultScorer()]);
+  const addScorer = (scope: ObserverScorerScope) => {
+    onChange([...scorers, defaultScorer(scope)]);
   };
 
   const addFromTemplate = (templateKey: string) => {
@@ -139,86 +140,94 @@ export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
     onChange([...scorers, next]);
   };
 
+  const scopeLabel: Record<ObserverScorerScope, string> = {
+    turn: ui("Answers"),
+    session: ui("Conversations"),
+    tool: ui("Tools"),
+  };
+  const scopeHint: Record<ObserverScorerScope, string> = {
+    turn: ui("Grades each answer the agent gives."),
+    session: ui(
+      "Grades the whole conversation, once the session has been idle for 10 minutes. Judges see the full transcript.",
+    ),
+    tool: ui(
+      "Grades single tool calls: the call's arguments as the input and its result as the answer.",
+    ),
+  };
+
   return (
     <div className="space-y-4">
       <Tabs value={scopeTab} onValueChange={(v) => setScopeTab(v as ObserverScorerScope)}>
         <TabsList>
-          <TabsTrigger value="turn">{ui("Answers")}</TabsTrigger>
-          <TabsTrigger value="session" disabled>
-            {ui("Conversations")}
-          </TabsTrigger>
-          <TabsTrigger value="tool" disabled>
-            {ui("Tools")}
-          </TabsTrigger>
+          {SCOPES.map((scope) => {
+            const count = scorers.filter((s) => (s.scope ?? "turn") === scope).length;
+            return (
+              <TabsTrigger key={scope} value={scope}>
+                {scopeLabel[scope]}
+                {count > 0 ? <span className="ml-1.5 tabular-nums">{count}</span> : null}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
-        <TabsContent value="turn" className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">{ui("Starter templates")}</Label>
-            <div className="flex flex-wrap gap-2">
-              {SCORER_CATALOG.map((template) => (
-                <Button
-                  key={template.key}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addFromTemplate(template.key)}
-                  title={template.description}
-                >
-                  <Plus className="size-3.5" />
-                  {template.label}
-                </Button>
-              ))}
-            </div>
-          </div>
+        {SCOPES.map((scope) => {
+          const entries = scorers
+            .map((scorer, index) => ({ scorer, index }))
+            .filter(({ scorer }) => (scorer.scope ?? "turn") === scope);
+          return (
+            <TabsContent key={scope} value={scope} className="space-y-4">
+              <p className="text-sm text-muted-foreground">{scopeHint[scope]}</p>
+              {scope === "turn" && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">{ui("Starter templates")}</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {SCORER_CATALOG.map((template) => (
+                      <Button
+                        key={template.key}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addFromTemplate(template.key)}
+                        title={template.description}
+                      >
+                        <Plus className="size-3.5" />
+                        {template.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {scorers.length === 0 ? (
-            <div className="border border-dashed p-6 text-center text-sm text-muted-foreground">
-              {ui("No scorers yet. Add one from a template above or start from scratch.")}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {scorers.map((scorer, index) => (
-                <ScorerRow
-                  key={index}
-                  scorer={scorer}
-                  index={index}
-                  error={errors?.[index]}
-                  onChange={(next) => updateScorer(index, next)}
-                  onRemove={() => removeScorer(index)}
-                />
-              ))}
-            </div>
-          )}
+              {entries.length === 0 ? (
+                <div className="border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  {scope === "turn"
+                    ? ui("No scorers yet. Add one from a template above or start from scratch.")
+                    : ui("No scorers for this scope yet.")}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {entries.map(({ scorer, index }) => (
+                    <ScorerRow
+                      key={index}
+                      scorer={scorer}
+                      index={index}
+                      error={errors?.[index]}
+                      onChange={(next) => updateScorer(index, next)}
+                      onRemove={() => removeScorer(index)}
+                    />
+                  ))}
+                </div>
+              )}
 
-          <Button type="button" variant="outline" size="sm" onClick={addScorer}>
-            <Plus className="size-4" />
-            {ui("Add scorer")}
-          </Button>
-        </TabsContent>
-
-        <TabsContent value="session">
-          <ComingSoonNotice scope="conversation" />
-        </TabsContent>
-
-        <TabsContent value="tool">
-          <ComingSoonNotice scope="tool" />
-        </TabsContent>
+              <Button type="button" variant="outline" size="sm" onClick={() => addScorer(scope)}>
+                <Plus className="size-4" />
+                {ui("Add scorer")}
+              </Button>
+            </TabsContent>
+          );
+        })}
       </Tabs>
     </div>
-  );
-}
-
-function ComingSoonNotice({ scope }: { scope: string }) {
-  const ui = useUiTranslations();
-  return (
-    <Notice variant="info">
-      <NoticeTitle>{ui("Coming soon")}</NoticeTitle>
-      <NoticeDescription>
-        {scope === "tool" ? ui("Tool-level scoring") : ui("Conversation-level scoring")}{" "}
-        {ui("is not available yet. Observers currently score individual answers (turns).")}
-      </NoticeDescription>
-    </Notice>
   );
 }
 
@@ -237,14 +246,16 @@ function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps)
     if (method === "rule") {
       onChange({
         key: scorer.key,
-        scope: "turn",
+        scope: scorer.scope,
+        tools: scorer.tools,
         method: "rule",
         rule: defaultRule("contains"),
       });
     } else {
       onChange({
         key: scorer.key,
-        scope: "turn",
+        scope: scorer.scope,
+        tools: scorer.tools,
         method: "llm_judge",
         rubric: "",
         pass_threshold: 0.5,
@@ -276,6 +287,14 @@ function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps)
         </Button>
       </div>
 
+      {scorer.scope === "tool" && (
+        <ToolsField
+          index={index}
+          tools={scorer.tools}
+          onChange={(tools) => onChange({ ...scorer, tools })}
+        />
+      )}
+
       <div className="space-y-2">
         <Label>{ui("Method")}</Label>
         <div className="flex gap-2">
@@ -300,6 +319,41 @@ function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps)
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/** Tool names as typed text, so commas survive while typing. */
+function ToolsField({
+  index,
+  tools,
+  onChange,
+}: {
+  index: number;
+  tools?: string[];
+  onChange: (tools: string[] | undefined) => void;
+}) {
+  const ui = useUiTranslations();
+  const [text, setText] = useState((tools ?? []).join(", "));
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={`scorer-tools-${index}`}>{ui("Tools (optional)")}</Label>
+      <Input
+        id={`scorer-tools-${index}`}
+        placeholder={ui("e.g. create_ticket, refund_order")}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          const parsed = e.target.value
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+          onChange(parsed.length > 0 ? parsed : undefined);
+        }}
+      />
+      <p className="text-xs text-muted-foreground">
+        {ui("Comma-separated. Leave empty to grade every tool call.")}
+      </p>
     </div>
   );
 }

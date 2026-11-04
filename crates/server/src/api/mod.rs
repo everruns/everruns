@@ -81,6 +81,7 @@ pub mod public;
 pub mod question_answers;
 pub mod reporting;
 pub mod resolver;
+pub mod run_requests;
 pub mod sandbox_templates;
 pub mod schedules;
 pub mod search_providers;

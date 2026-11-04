@@ -10,7 +10,7 @@ use everruns_core::host::{
     InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
     InMemoryProviderStore, InMemorySessionStore,
 };
-use everruns_core::session::{ExecutionSession, SessionExecutionState};
+use everruns_core::session::ExecutionSession;
 use everruns_core::{
     AgentDefinition, CompactionCheckpointStore, Controls, ExecutionContext, MessageRetriever,
     RuntimeMessage,
@@ -2902,7 +2902,7 @@ async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
             vec![
                 RuntimeMessage::user("Create agents for me"),
                 RuntimeMessage::assistant(
-                    "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue.",
+                    "Usage limit reached. 100.00 tokens spent reached the 100.00 tokens limit. A usage policy stopped this work; raise its limit to continue.",
                 ),
                 RuntimeMessage::assistant(
                     "The model `gpt-99` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
@@ -2943,7 +2943,7 @@ async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
         .expect("ReasonAtom should succeed");
 
     assert!(result.success);
-    assert!(!result.text.contains("Budget exhausted."));
+    assert!(!result.text.contains("Usage limit reached."));
     assert!(!result.text.contains("The model `gpt-99` is not available."));
 }
 
@@ -3124,33 +3124,13 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
     {
         session_store
             .add_session(ExecutionSession {
-                id: session_id.into(),
-                workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
-                harness_id,
                 agent_id: Some(agent_id.into()),
                 title: Some("Test ExecutionSession".to_string()),
-                goal: None,
-                locale: None,
-                tags: vec![],
-                status: SessionExecutionState::Started,
-                model_id: None,
-                capabilities: vec![],
-                tools: vec![],
-                mcp_servers: Default::default(),
                 system_prompt: Some(
                     "SESSION PREFIX: You must always respond in French.".to_string(),
                 ),
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                usage: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                blueprint_id: None,
-                blueprint_config: None,
+                ..ExecutionSession::with_own_workspace(session_id.into(), harness_id)
             })
             .await;
     }
@@ -3233,31 +3213,11 @@ async fn test_empty_session_system_prompt_is_ignored() {
     {
         session_store
             .add_session(ExecutionSession {
-                id: session_id.into(),
-                workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
-                harness_id,
                 agent_id: Some(agent_id.into()),
                 title: Some("Test ExecutionSession".to_string()),
-                goal: None,
-                locale: None,
-                tags: vec![],
-                status: SessionExecutionState::Started,
-                model_id: None,
-                capabilities: vec![],
-                tools: vec![],
-                mcp_servers: Default::default(),
                 system_prompt: Some(String::new()),
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                usage: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                blueprint_id: None,
-                blueprint_config: None,
+                ..ExecutionSession::with_own_workspace(session_id.into(), harness_id)
             })
             .await;
     }

@@ -737,6 +737,16 @@ impl ChatDriver for ProviderBoundDriver {
         self.0.list_models().await
     }
 
+    async fn credit_status(
+        &self,
+        _endpoint: &ProviderEndpoint,
+    ) -> Result<Option<crate::provider_limit::CreditStatus>> {
+        match &self.0.driver {
+            Some(driver) => driver.credit_status(self.0.endpoint()).await,
+            None => Ok(None),
+        }
+    }
+
     fn supports_native_non_streaming(&self) -> bool {
         self.0.supports_native_non_streaming()
     }

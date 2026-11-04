@@ -105,7 +105,7 @@ credential chain whenever `AWS_REGION` is set.
 |---|---|
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
 | [`examples/serve/bashkit-workspace`](https://github.com/everruns/everruns/tree/main/examples/serve/bashkit-workspace) | Bashkit shell commands, resulting files, persistence across turns and a server restart, and session isolation. Real model; includes an automated walkthrough. |
-| [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
+| [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, an agent that hands work to another, evals, and the bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | The `ag-ui` feature: an agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 | [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | The `a2a` feature: a served `researcher`, and an `everruns` agent that delegates to it over A2A. |
 | [`examples/serve/voice`](https://github.com/everruns/everruns/tree/main/examples/serve/voice) | The `voice` feature: a hotel front desk people call from the browser. |
@@ -122,12 +122,12 @@ revenue-analyst/
     skills/sql-style/SKILL.md
   src/
     main.rs                # serve::assets!() + serve::start(...)
-    agent.rs               # #[agent]
+    agent.rs               # #[agent(default)], .member("reviewer")
+    reviewer.rs            # #[agent]
     tools/run_sql.rs       # #[tool]          (fn name = tool name)
     channels/slack.rs      # #[channel]
     schedules/weekly.rs    # #[schedule]
     connections/linear.rs  # #[connection]
-    subagents/reviewer.rs  # #[agent(sub)]
   evals/revenue.rs         # #[eval]
 ```
 
@@ -146,7 +146,7 @@ cron, a filter naming an unknown tool.
 
 | Macro | On | Becomes |
 |---|---|---|
-| `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. `/v1/sessions` serves the default one; a subagent becomes an `ask_<name>` tool on the others. |
+| `#[agent]`, `#[agent(default)]` | `fn() -> Agent` | An agent. `/v1/sessions` serves the default one; `Agent::builder().member("name")` lets one agent hand work to another through `spawn_agent`. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool. The name is the fn name and the doc comment is the description. It also generates an `Args` struct (`run_sql` → `RunSql`) with a JSON Schema. |
 | `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. It also generates `name::channel(target)`. |
 | `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |
@@ -225,7 +225,7 @@ what it registered.
 This PoC works end to end offline: discovery, the manifest, the
 server-compatible wire API (driven by the everruns Rust SDK in tests) with
 resumable SSE, approvals, `ask_user` answers, cancel, restart and resume,
-Slack and webhook channels, the AG-UI and A2A channels, schedules, subagents, skills, sandbox selection,
+Slack and webhook channels, the AG-UI and A2A channels, schedules, member agents, skills, sandbox selection,
 and evals both in-process and remote.
 
 It does not have:
@@ -235,8 +235,10 @@ It does not have:
 - Postgres or NATS adapters;
 - `#[memoize]` on `Cx`;
 - per-build routing (the manifest defines the contract, but nothing routes on it yet);
-- a deny note that reaches the model, or "always" approvals and subagent
-  requests that survive a restart;
+- a deny note that reaches the model, or "always" approvals that survive a
+  restart;
+- a member agent's approvals and questions on the run's first session (they
+  wait on the member's own session);
 - auth, organizations, or the server's agent, harness and workspace routes;
 
 ## License

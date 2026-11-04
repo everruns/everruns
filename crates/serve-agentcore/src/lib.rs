@@ -340,12 +340,12 @@ fn agent(server: &Server, requested: Option<String>) -> serve::Result<String> {
                 .manifest()
                 .agents
                 .iter()
-                .any(|agent| agent.name == name && !agent.sub);
+                .any(|agent| agent.name == name);
             if known {
                 Ok(name)
             } else {
                 Err(anyhow!(
-                    "SERVE_AGENTCORE_AGENT `{name}` is not a top-level agent of this app"
+                    "SERVE_AGENTCORE_AGENT `{name}` is not an agent of this app"
                 ))
             }
         }

@@ -162,6 +162,7 @@ async fn upgrade_pins_inherited_agents_without_changing_legacy_tools() {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    completion_check: Default::default(),
                     localizations: Default::default(),
                     public_id: id.to_string(),
                     name: name.into(),
@@ -466,6 +467,7 @@ async fn legacy_worker_bindings_move_to_the_worker_matching_their_compute() {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    completion_check: Default::default(),
                     localizations: Default::default(),
                     public_id: id.to_string(),
                     name: name.into(),

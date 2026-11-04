@@ -926,9 +926,14 @@ impl Command for DeleteAgentTrigger {
 
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct TriggerAgentTriggerOutput {
-    /// Session's prefixed public identifier.
-    pub session_id: SessionId,
+    /// `filtered` and `duplicate` happen only for a fire with an event.
+    pub status: super::manual::ManualFireStatus,
+    /// Session's prefixed public identifier; absent when nothing ran.
+    pub session_id: Option<SessionId>,
     pub created_session: bool,
+    /// Why a filtered or duplicate event did not run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// Manually fire a trigger once (does not expose the durable schedule id).
@@ -938,16 +943,21 @@ pub struct TriggerAgentTriggerNow {
     pub agent_id: String,
     /// Agent trigger's prefixed public identifier.
     pub trigger_id: String,
+    /// Fire with this event, through the same filter, message, session
+    /// routing and delivery log a real one takes. Required for webhook,
+    /// GitHub and MCP event triggers; optional for schedules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<super::manual::ManualTriggerEvent>,
 }
 
 #[command(
     name = "trigger_agent_trigger",
     category = "agent_triggers",
-    description = "Manually fire an agent trigger once.",
+    description = "Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.",
     method = "POST",
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
     policy = AGENT_MANAGE,
-    cli = CliRoute::new(&["agents", "triggers"], "trigger").with_examples(&[CliExample::new("Fire a trigger once now to test it without waiting for its schedule", "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'")]),
+    cli = CliRoute::new(&["agents", "triggers"], "trigger").with_examples(&[CliExample::new("Fire a trigger once now to test it without waiting for its schedule", "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'"), CliExample::new("Run a GitHub trigger on an existing pull request, in that pull request's own session", "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{\"repository\":\"acme/api\",\"pull_request\":12}' --reason 'Review this pull request'")]),
 )]
 impl Command for TriggerAgentTriggerNow {
     type Output = TriggerAgentTriggerOutput;
@@ -955,6 +965,20 @@ impl Command for TriggerAgentTriggerNow {
     async fn execute(self, ctx: &Ctx) -> Result<TriggerAgentTriggerOutput, CommandError> {
         let (agent, trigger) =
             resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
+        if let Some(event) = self.event {
+            let result = super::manual::fire(ctx, &agent, &trigger, event).await?;
+            return Ok(TriggerAgentTriggerOutput {
+                status: result.status,
+                session_id: result.session_id,
+                created_session: result.created_session,
+                reason: result.reason,
+            });
+        }
+        if trigger.trigger_type != AgentTriggerType::Schedule.to_string() {
+            return Err(CommandError::bad_request(
+                "This trigger runs on events: pass the event to fire it with",
+            ));
+        }
         let session_service = ctx.session_service.as_ref().ok_or_else(|| {
             CommandError::internal(anyhow::anyhow!("Session service not available"))
         })?;
@@ -1004,8 +1028,10 @@ impl Command for TriggerAgentTriggerNow {
             }
         };
         Ok(TriggerAgentTriggerOutput {
-            session_id: result.session_id,
+            status: super::manual::ManualFireStatus::Dispatched,
+            session_id: Some(result.session_id),
             created_session: result.created_session,
+            reason: None,
         })
     }
 }
@@ -1058,6 +1084,12 @@ pub async fn invoke_agent_trigger(
     if agent.status != "active" {
         return Err(CommandError::forbidden("Agent is not active".to_string()));
     }
+    // Pause agent covers schedules too (it used to stop only channels and event
+    // triggers). The tick is recorded as a failed run, so a paused agent's run
+    // history says why nothing happened.
+    if agent.exposures_suspended {
+        return Err(CommandError::forbidden("Agent is paused".to_string()));
+    }
     // Defense-in-depth: the requested agent (from the route/durable target) must
     // match the trigger's owner.
     if let Ok(requested) = agent_id.parse::<AgentId>()
@@ -1066,60 +1098,25 @@ pub async fn invoke_agent_trigger(
         return Err(CommandError::not_found("Agent trigger"));
     }
 
-    let trigger = q::row_to_trigger(trigger_row.clone(), parse_agent_id(&agent.public_id)?, None);
-    let config = trigger
-        .schedule_config()
-        .map_err(|_| CommandError::bad_request("Invalid schedule trigger configuration"))?;
-
-    let context = json!({
-        "agent": {
-            "id": agent.public_id,
-            "name": agent.name.clone(),
-        },
-        "trigger": {
-            "id": trigger_id.to_string(),
-            "type": trigger.trigger_type.to_string(),
-        },
-        "invocation": {
-            "source": "agent_trigger",
-            "triggered_at": Utc::now().to_rfc3339(),
-        },
-    });
-    let outcome = events::dispatch_trigger_event(
+    let outcome = super::schedule_invocation::dispatch_schedule(
         db,
         session_service,
         message_service,
-        events::TriggerEventRoute {
-            trigger: &trigger_row,
-            agent: &agent,
-            message_template: &config.message,
-            session_mode: config.session_mode,
-            filter: None,
-            session_source: crate::domains::sessions::record::SessionSource::Schedule,
-            webhook_compat: None,
-            script: config.script.as_ref(),
-            channel: config.target.as_ref().map(|target| events::ChannelRun {
-                target,
-                channels,
-                encryption,
-            }),
-        },
-        events::TriggerEvent {
-            source: "schedule",
-            event_id: None,
-            event_type: None,
-            subject: None,
-            context,
-        },
+        channels,
+        encryption,
+        &trigger_row,
+        &agent,
         None,
     )
     .await?;
     match outcome {
         events::TriggerEventOutcome::Dispatched(result) => Ok(result),
         // A schedule event has no filter and no event id, so neither can occur.
-        events::TriggerEventOutcome::Filtered | events::TriggerEventOutcome::Duplicate => Err(
-            CommandError::internal(anyhow::anyhow!("schedule event was not dispatched")),
-        ),
+        events::TriggerEventOutcome::Filtered { .. } | events::TriggerEventOutcome::Duplicate => {
+            Err(CommandError::internal(anyhow::anyhow!(
+                "schedule event was not dispatched"
+            )))
+        }
     }
 }
 

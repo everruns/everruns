@@ -7,6 +7,30 @@ use super::*;
 
 pub(crate) use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
 
+/// The Slack user a bot token acts as, via `auth.test`, cached per channel.
+/// `None` when Slack cannot say; nothing is cached then.
+pub(crate) async fn resolve_slack_bot_user(
+    cache: &SlackBotUserCache,
+    bot_token: &str,
+    channel: &str,
+) -> Option<String> {
+    if let Some(Some(user)) = cache.get(channel) {
+        return Some(user);
+    }
+    let body = everruns_integrations::slack_channel::web_api::slack_api_call(
+        SLACK_API_BASE,
+        bot_token,
+        "auth.test",
+        serde_json::json!({}),
+    )
+    .await
+    .inspect_err(|error| tracing::warn!(%error, "Slack auth.test failed"))
+    .ok()?;
+    let user = body.get("user_id")?.as_str()?.to_string();
+    cache.insert(channel.to_string(), Some(user.clone()));
+    Some(user)
+}
+
 /// Resolve a Slack user ID to a display name via `users.info` API.
 ///
 /// Returns the display name (or real_name fallback) on success, or `None` if

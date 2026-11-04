@@ -66,6 +66,7 @@ pub(crate) async fn setup_test_environment() -> TestEnvironment {
     // Create a test session
     let session_id = Uuid::now_v7();
     let session = ExecutionSession {
+        unattended: Default::default(),
         id: session_id.into(),
         workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),

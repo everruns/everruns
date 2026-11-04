@@ -8,11 +8,18 @@ use super::models::ReportingOutboxRow;
 use super::projection_timing::{FACT_SESSION_UPSERT, maybe_warn_slow_projection};
 use crate::domains::reporting::types::{ProjectorRunResult, ReportingBackfillResult};
 
-/// Event types `project_event` turns into facts. Every other event type is a
-/// no-op for reporting, so the event write skips the outbox row for it: an
-/// outbox row per event cost an insert, a claim, an update and a lookup for
-/// ~7 of a plain chat turn's ~11 events (load test, 2026-10-06). Keep in step
-/// with the `match` in `project_event` and the repair query's `CASE`.
+/// Event types `project_event` turns into facts, and the types the
+/// reporting listener asks the listener feed for. Every other event type is
+/// a no-op for reporting. Keep in step with the `match` in
+/// `project_stored_event` and the repair query's `CASE`.
+///
+/// Decision: events reach the projector through the listener feed's later
+/// tier (`domains::reporting::listener`), not an outbox row written beside
+/// each event. The outbox row cost an insert, a claim, an update and a
+/// lookup per projected event (about 9 per turn); the feed already delivers
+/// every committed event at least once. The outbox stays for the other
+/// sources (sessions, generations, ledger postings), for the repair job and
+/// for a projection the listener could not finish.
 pub(crate) const PROJECTED_EVENT_TYPES: &[&str] = &[
     "tool.completed",
     "capability.usage",
@@ -21,11 +28,6 @@ pub(crate) const PROJECTED_EVENT_TYPES: &[&str] = &[
     "turn.failed",
     "turn.cancelled",
 ];
-
-/// Whether an event of `event_type` needs a reporting outbox row.
-pub(crate) fn event_needs_projection(event_type: &str) -> bool {
-    PROJECTED_EVENT_TYPES.contains(&event_type)
-}
 
 const STALE_PROCESSING_MINUTES: i32 = 15;
 const GLOBAL_BACKFILL_LOCK_KEY: i64 = 0x6576_6572_7270_7471;
@@ -230,7 +232,7 @@ impl PostgresReportingProjector {
                 SELECT sliced.*
                   FROM (
                       (
-                          SELECT e.id, e.session_id, e.event_type, e.data, e.created_at
+                          SELECT e.id, e.session_id, e.event_type, e.data, e.context, e.created_at
                             FROM events e
                            WHERE $2::TIMESTAMPTZ IS NULL
                              AND e.event_type IN (
@@ -246,7 +248,7 @@ impl PostgresReportingProjector {
                       )
                       UNION ALL
                       (
-                          SELECT e.id, e.session_id, e.event_type, e.data, e.created_at
+                          SELECT e.id, e.session_id, e.event_type, e.data, e.context, e.created_at
                             FROM events e
                            WHERE $2::TIMESTAMPTZ IS NOT NULL
                              AND (e.created_at, e.id) > ($2::TIMESTAMPTZ, $3::UUID)
@@ -304,9 +306,10 @@ impl PostgresReportingProjector {
                                   SELECT 1
                                     FROM fact_capability_usage fact
                                    WHERE fact.org_id = scoped.org_id
-                                     AND fact.source_key =
-                                         'event:' || scoped.id::TEXT
-                                         || ':capability_usage:' || usage.ordinality::TEXT
+                                     AND fact.source_key = reporting_capability_usage_key(
+                                         scoped.id, scoped.context, scoped.data,
+                                         usage.record, usage.ordinality
+                                     )
                               )
                        )
                        WHEN scoped.event_type = 'output.message.replaced' THEN
@@ -428,9 +431,9 @@ impl PostgresReportingProjector {
                               AND NOT EXISTS (
                                   SELECT 1 FROM fact_capability_usage fact
                                    WHERE fact.org_id = s.org_id
-                                     AND fact.source_key =
-                                         'event:' || e.id::TEXT
-                                         || ':capability_usage:' || usage.ordinality::TEXT
+                                     AND fact.source_key = reporting_capability_usage_key(
+                                         e.id, e.context, e.data, usage.record, usage.ordinality
+                                     )
                               )
                        )
                        WHEN e.event_type = 'output.message.replaced' THEN
@@ -791,13 +794,25 @@ impl PostgresReportingProjector {
         .bind(org_id)
         .fetch_optional(&self.pool)
         .await?;
-        match event_type.as_ref().map(|row| row.0.as_str()) {
-            Some("tool.completed") => self.project_tool_event(org_id, id).await,
-            Some("capability.usage") => self.project_capability_usage_event(org_id, id).await,
-            Some("output.message.replaced") => {
-                self.project_guardrail_effect_event(org_id, id).await
-            }
-            Some("turn.completed" | "turn.failed" | "turn.cancelled") => {
+        match event_type {
+            Some((event_type,)) => self.project_stored_event(org_id, id, &event_type).await,
+            None => Ok(()),
+        }
+    }
+
+    /// Project one stored event whose type the caller already knows (the
+    /// listener feed delivers it with the event).
+    pub async fn project_stored_event(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        event_type: &str,
+    ) -> Result<()> {
+        match event_type {
+            "tool.completed" => self.project_tool_event(org_id, id).await,
+            "capability.usage" => self.project_capability_usage_event(org_id, id).await,
+            "output.message.replaced" => self.project_guardrail_effect_event(org_id, id).await,
+            "turn.completed" | "turn.failed" | "turn.cancelled" => {
                 self.project_turn_event(org_id, id).await
             }
             _ => Ok(()),
@@ -962,7 +977,7 @@ impl PostgresReportingProjector {
             )
             SELECT
                 s.org_id,
-                'event:' || e.id::TEXT || ':capability_usage:' || usage.ordinality::TEXT,
+                reporting_capability_usage_key(e.id, e.context, e.data, usage.record, usage.ordinality),
                 e.session_id,
                 COALESCE(e.context->>'turn_id', e.data->>'turn_id'),
                 s.resolved_owner_user_id,
@@ -1003,25 +1018,9 @@ impl PostgresReportingProjector {
               AND s.org_id = $2
               AND usage.record ? 'capability_id'
               AND usage.record ? 'usage_kind'
-            ON CONFLICT (org_id, source_key) DO UPDATE SET
-                turn_id = EXCLUDED.turn_id,
-                user_id = EXCLUDED.user_id,
-                principal_id = EXCLUDED.principal_id,
-                agent_id = EXCLUDED.agent_id,
-                agent_name_snapshot = EXCLUDED.agent_name_snapshot,
-                harness_id = EXCLUDED.harness_id,
-                harness_name_snapshot = EXCLUDED.harness_name_snapshot,
-                app_id = EXCLUDED.app_id,
-                blueprint_id = EXCLUDED.blueprint_id,
-                created_at = EXCLUDED.created_at,
-                time_bucket_day = EXCLUDED.time_bucket_day,
-                capability_id = EXCLUDED.capability_id,
-                capability_name_snapshot = EXCLUDED.capability_name_snapshot,
-                capability_usage_kind = EXCLUDED.capability_usage_kind,
-                tool_name = EXCLUDED.tool_name,
-                usage_count = EXCLUDED.usage_count,
-                duration_ms = EXCLUDED.duration_ms,
-                projected_at = NOW()
+            -- Keyed per turn (migration 20261103210255): the turn's first
+            -- model call writes the snapshot, later calls write nothing.
+            ON CONFLICT (org_id, source_key) DO NOTHING
             "#,
         )
         .bind(id)

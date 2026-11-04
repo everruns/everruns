@@ -41,6 +41,14 @@ function originOf(metadata: unknown): MessageOrigin | undefined {
   return { kind, name: typeof name === "string" && name.trim() ? name : undefined, count: 1 };
 }
 
+function isReactionNote(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== "object") return false;
+  const origin = (metadata as { everruns_origin?: unknown }).everruns_origin;
+  return (
+    !!origin && typeof origin === "object" && (origin as { kind?: unknown }).kind === "reaction"
+  );
+}
+
 // Live reconnects append a replay at the end. Sequence order is what separates
 // one turn's work from the next.
 export function orderedEvents(events: ChatEvent[]): ChatEvent[] {
@@ -78,6 +86,9 @@ function messageOf(event: ChatEvent): Message | null {
     content?: Array<{ type: string; text?: string }>;
     metadata?: unknown;
   } = data.message ?? data;
+  // A reaction note told to the agent: the chip under the reacted message is
+  // the record, so it is not a row.
+  if (event.type === "input.message" && isReactionNote(message.metadata)) return null;
   const text = (message.content ?? [])
     .filter((part) => part.type === "text")
     .map((part) => part.text ?? "")

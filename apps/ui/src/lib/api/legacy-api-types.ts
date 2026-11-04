@@ -1,3 +1,15 @@
+import type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
+export type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
+export type {
+  ArtifactSpec,
+  CreateEvalCaseRequest,
+  CreateEvalRunRequest,
+  EvalCase,
+  EvalInputMessage,
+  Scorer,
+  SimulatedUser,
+  ToolFixture,
+} from "./eval-case-types";
 export type {
   Organization,
   UpdateOrganizationRequest,
@@ -1464,107 +1476,12 @@ export interface Eval {
   tags: string[];
   status: "active" | "archived" | "deleted";
   case_count: number;
+  /** Counts changes to the cases (the dataset); runs record the one they ran. */
+  version?: number;
   last_run?: EvalRunSummaryView;
   created_at: string;
   updated_at: string;
 }
-
-export interface EvalRunSummaryView {
-  id: string;
-  status: EvalRunStatus;
-  summary?: RunSummary;
-  created_at: string;
-}
-
-export type EvalRunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
-
-export interface RunSummary {
-  total: number;
-  passed: number;
-  failed: number;
-  errored: number;
-  pass_rate: number;
-  avg_score: number;
-  avg_turns: number;
-  avg_latency_ms: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-}
-
-export interface EvalCase {
-  id: string;
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface EvalInputMessage {
-  content: string;
-}
-
-export interface ArtifactSpec {
-  name: string;
-  path: string;
-}
-
-export type Scorer =
-  | {
-      type: "contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "not_contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "regex";
-      pattern: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_called";
-      tool: string;
-      min?: number;
-      weight?: number;
-    }
-  | {
-      type: "tool_not_called";
-      tool: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_call_count";
-      min?: number;
-      max?: number;
-      weight?: number;
-    }
-  | {
-      type: "turns_within";
-      max: number;
-      weight?: number;
-    }
-  | {
-      type: "file_contains";
-      path: string;
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "json_schema";
-      schema: object;
-      weight?: number;
-    };
 
 // Provenance for an externally-executed (imported) run. Open-vocab; the
 // producing system (e.g. Mira) fills what it has.
@@ -1585,6 +1502,9 @@ export interface EvalRun {
   target?: EvalTarget;
   model_override?: string;
   filter_tags?: string[];
+  /** The experiment this run is a variant of. */
+  experiment_id?: string | null;
+  variant_label?: string | null;
   status: EvalRunStatus;
   triggered_by: string;
   started_at?: string;
@@ -1707,132 +1627,6 @@ export interface UpdateEvalRequest {
   target?: EvalTarget;
   model_override?: string;
   tags?: string[];
-}
-
-export interface CreateEvalCaseRequest {
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags?: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position?: number;
-}
-
-export interface CreateEvalRunRequest {
-  target?: EvalTarget;
-  model_override?: string;
-}
-
-// ============================================
-// Observer types (online scoring of production sessions)
-// ============================================
-// Hand-written (not generated): the backend exposes a flattened tagged union for
-// scorer configs and a snake_case tagged union for rule scorers. See the
-// `/v1/observers` API contract.
-
-export type ObserverStatus = "active" | "paused" | "archived";
-
-/** Match rules deciding which production turns an observer samples. */
-export interface ObserverMatch {
-  agent_ids?: string[];
-  harness_ids?: string[];
-  session_tags?: string[];
-}
-
-/**
- * Deterministic rule scorer variants (snake_case, discriminated by `type`).
- * Mirrors the eval Scorer union, minus `file_contains` (rejected by the server
- * for observers). `weight` defaults to 1.0 server-side.
- */
-export type ScorerRule =
-  | { type: "contains"; text: string; weight?: number }
-  | { type: "not_contains"; text: string; weight?: number }
-  | { type: "regex"; pattern: string; weight?: number }
-  | { type: "tool_called"; tool: string; min?: number; weight?: number }
-  | { type: "tool_not_called"; tool: string; weight?: number }
-  | { type: "tool_call_count"; min?: number; max?: number; weight?: number }
-  | { type: "turns_within"; max: number; weight?: number }
-  | { type: "json_schema"; schema: object; weight?: number };
-
-/** Scope a scorer evaluates against. Only `turn` is currently supported. */
-export type ObserverScorerScope = "turn" | "session" | "tool";
-
-/**
- * Per-scorer configuration. FLATTENED tagged union discriminated by `method`:
- * the method-specific fields sit alongside `key`/`scope`, not nested.
- */
-export type ObserverScorerConfig =
-  | {
-      key: string;
-      scope: ObserverScorerScope;
-      method: "rule";
-      rule: ScorerRule;
-    }
-  | {
-      key: string;
-      scope: ObserverScorerScope;
-      method: "llm_judge";
-      rubric: string;
-      model_id?: string;
-      pass_threshold: number;
-    };
-
-export interface Observer {
-  id: string;
-  name: string;
-  description?: string;
-  match: ObserverMatch;
-  sampling_rate: number;
-  scorers: ObserverScorerConfig[];
-  status: ObserverStatus;
-  created_at: string;
-  updated_at: string;
-  archived_at?: string;
-}
-
-export interface CreateObserverRequest {
-  name: string;
-  description?: string;
-  match?: ObserverMatch;
-  sampling_rate?: number;
-  scorers: ObserverScorerConfig[];
-}
-
-export interface UpdateObserverRequest {
-  name?: string;
-  description?: string;
-  match?: ObserverMatch;
-  sampling_rate?: number;
-  scorers?: ObserverScorerConfig[];
-  status?: ObserverStatus;
-}
-
-export type TraceScoreStatus = "pending" | "scoring" | "completed" | "errored" | "skipped";
-
-/** A single scored production turn produced by an observer. */
-export interface TraceScore {
-  id: string;
-  observer_id: string;
-  scorer_key: string;
-  session_id: string;
-  turn_id: string;
-  agent_id?: string;
-  harness_id?: string;
-  status: TraceScoreStatus;
-  pass?: boolean;
-  value?: number;
-  label?: string;
-  reason?: string;
-  judge_input_tokens?: number;
-  judge_output_tokens?: number;
-  judge_cost_usd?: number;
-  error_message?: string;
-  created_at: string;
-  updated_at: string;
 }
 
 // From legacy event-types.ts; retained as UI compatibility over generated OpenAPI schemas.

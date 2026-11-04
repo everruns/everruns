@@ -1,6 +1,7 @@
 export type {} from "./resource-localization-types";
 export * from "./schema-types";
 export * from "./legacy-api-types";
+export * from "./observer-types";
 export * from "./provider-driver-types";
 export * from "./mcp-server-types";
 export * from "./agent-mcp-types";

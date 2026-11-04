@@ -636,6 +636,30 @@ pub async fn submit_question_answers(
         event_service: &state.event_service,
         runner: state.runner.clone(),
     };
+    // A run's first session answers the other agents' questions too. The
+    // asking session is checked again, owner included, when it resolves.
+    let session_id = match req.tool_call_id.as_deref() {
+        Some(tool_call_id) => {
+            let session = state
+                .session_service
+                .get(&caller, session_id.uuid(), None)
+                .await
+                .map_err(|error| resolve_error_response(ResolveError::Internal(error.to_string())))?
+                .ok_or_else(|| resolve_error_response(ResolveError::NoPendingQuestions))?;
+            // THREAT[TM-AGENT-017]: another user's Platform Chat routes nothing.
+            if !crate::domains::sessions::platform_chat_owner_matches_session(
+                &state.db, &caller, &session,
+            )
+            .await
+            .map_err(|error| resolve_error_response(ResolveError::Internal(error.to_string())))?
+            {
+                return Err(resolve_error_response(ResolveError::NoPendingQuestions));
+            }
+            super::run_requests::route_answer(&state.db, org.org_id, &session, &[tool_call_id])
+                .await?
+        }
+        None => session_id,
+    };
     let result = resolve_question_answers(
         &resolver,
         &caller,

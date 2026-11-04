@@ -3,7 +3,7 @@ use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
 use crate::domains::budgets::record::{Budget, LedgerEntry};
 use crate::domains::common::*;
 use crate::storage::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
-use everruns_core::budget::BudgetCheckResult;
+use everruns_core::budget::{BudgetCheckResult, UsagePolicy};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -35,6 +35,27 @@ fn validate_limit(limit: f64, soft_limit: Option<f64>) -> Result<(), CommandErro
         ));
     }
     Ok(())
+}
+
+/// New policies measure cost (`usd`) or `tokens`. `credits` is retired: the
+/// word belongs to a hosted platform's balance, not to a limit.
+fn validate_currency(currency: &str) -> Result<(), CommandError> {
+    match currency {
+        "usd" | "tokens" => Ok(()),
+        _ => Err(CommandError::bad_request(
+            "currency must be \"usd\" (cost) or \"tokens\"",
+        )),
+    }
+}
+
+fn policy_value(policy: Option<&UsagePolicy>) -> Result<Option<serde_json::Value>, CommandError> {
+    let Some(policy) = policy else {
+        return Ok(None);
+    };
+    policy.validate().map_err(CommandError::bad_request)?;
+    Ok(Some(
+        serde_json::to_value(policy).map_err(|e| CommandError::internal(e.into()))?,
+    ))
 }
 
 fn require_budget_manage(ctx: &Ctx) -> Result<(), CommandError> {
@@ -87,6 +108,8 @@ impl Command for CreateBudget {
         }
         validate_subject_type(&req.subject_type)?;
         validate_limit(req.limit, req.soft_limit)?;
+        validate_currency(&req.currency)?;
+        let policy = policy_value(req.policy.as_ref())?;
 
         let input = CreateBudgetRow {
             org_id: ctx.org_id(),
@@ -100,7 +123,21 @@ impl Command for CreateBudget {
                 .map(|period| serde_json::to_value(period).unwrap_or_default()),
             metadata: req.metadata,
         };
-        let row = ctx.db.create_budget(input).await?;
+        let mut row = ctx.db.create_budget(input).await?;
+        if policy.is_some() {
+            row = ctx
+                .db
+                .update_budget(
+                    ctx.org_id(),
+                    row.id,
+                    UpdateBudgetRow {
+                        policy,
+                        ..Default::default()
+                    },
+                )
+                .await?
+                .ok_or_else(|| CommandError::not_found("Budget"))?;
+        }
         Ok(Budget::from(&row))
     }
 }
@@ -191,6 +228,9 @@ pub struct UpdateBudgetCmd {
     pub status: Option<String>,
     /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
+    /// Replacement name, steps and filter.
+    #[serde(default)]
+    pub policy: Option<UsagePolicy>,
 }
 
 #[command(
@@ -221,6 +261,7 @@ impl Command for UpdateBudgetCmd {
             .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         validate_subject_type(&existing.subject_type)?;
+        let policy = policy_value(self.policy.as_ref())?;
         let row = ctx
             .db
             .update_budget(
@@ -231,6 +272,7 @@ impl Command for UpdateBudgetCmd {
                     soft_limit: self.soft_limit,
                     status: self.status,
                     metadata: self.metadata,
+                    policy,
                 },
             )
             .await?
@@ -490,33 +532,29 @@ pub struct ResumeSessionBudgets {
 #[command(
     name = "resume_session_budgets",
     category = "budgets",
-    description = "Resume all paused session budgets for a session.",
+    description = "Continue a session past a usage policy's ask step.",
     method = "POST",
     path = "/v1/sessions/{session_id}/resume",
-    policy = BUDGET_MANAGE,
+    policy = BUDGET_VIEW,
     positional = "session_id",
     http = plain,
-    cli = CliRoute::new(&["sessions"], "resume").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Restart a session that paused when a budget ran out", "everruns sessions resume session_01h9 --reason 'Budget topped up'",)]),
+    cli = CliRoute::new(&["sessions"], "resume").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Let a session continue after a usage policy asked before going further", "everruns sessions resume session_01h9 --reason 'Finish the report'",)]),
 )]
 impl Command for ResumeSessionBudgets {
     type Output = ResumeSessionBudgetsResult;
-
     async fn execute(self, ctx: &Ctx) -> Result<ResumeSessionBudgetsResult, CommandError> {
-        require_budget_manage(ctx)?;
-        let budgets = ctx
-            .db
-            .list_budgets(ctx.org_id(), Some("session"), Some(&self.session_id))
+        // Answering "ask to continue" belongs to the person using the agent,
+        // not only to admins: any member who can see the session may let it
+        // go on. Stop steps still stop.
+        let session_id = everruns_contracts::typed_id::SessionId::parse(&self.session_id)
+            .map_err(|_| CommandError::bad_request("Invalid session_id"))?;
+        ctx.db
+            .get_session(ctx.org_id(), session_id)
+            .await?
+            .ok_or_else(|| CommandError::not_found("Session"))?;
+        let resumed_budgets = crate::domains::budgets::BudgetService::new(ctx.db.clone())
+            .approve_session(ctx.org_id(), session_id, ctx.caller.user_id)
             .await?;
-
-        let mut resumed_budgets = 0;
-        for budget in &budgets {
-            if budget.status == "paused"
-                && let Ok(Some(_)) = ctx.db.set_budget_status(budget.id, "active").await
-            {
-                resumed_budgets += 1;
-            }
-        }
-
         Ok(ResumeSessionBudgetsResult {
             resumed_budgets,
             session_id: self.session_id,
@@ -568,6 +606,7 @@ mod tests {
             soft_limit: None,
             period: None,
             metadata: None,
+            policy: None,
         })
         .execute(&ctx)
         .await
@@ -592,6 +631,7 @@ mod tests {
             soft_limit: None,
             period: None,
             metadata: None,
+            policy: None,
         })
         .execute(&ctx)
         .await
@@ -617,6 +657,7 @@ mod tests {
                 soft_limit: None,
                 period: None,
                 metadata: None,
+                policy: None,
             })
             .execute(&ctx)
             .await
@@ -636,6 +677,7 @@ mod tests {
             soft_limit: None,
             period: None,
             metadata: None,
+            policy: None,
         })
         .execute(&ctx)
         .await
@@ -647,6 +689,7 @@ mod tests {
             soft_limit: None,
             status: None,
             metadata: None,
+            policy: None,
         }
         .execute(&ctx)
         .await
@@ -668,6 +711,7 @@ mod tests {
             soft_limit: None,
             period: None,
             metadata: None,
+            policy: None,
         })
         .execute(&ctx)
         .await
@@ -679,6 +723,7 @@ mod tests {
             soft_limit: None,
             status: None,
             metadata: None,
+            policy: None,
         }
         .execute(&ctx)
         .await

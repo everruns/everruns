@@ -1,4 +1,5 @@
 mod list_by_tags;
+mod run;
 // PostgreSQL repository: Sessions (instance of agentic loop), Pinned Sessions
 
 mod automatic_titles;

@@ -233,7 +233,6 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "clap",
- "ed25519-dalek",
  "fancy-regex",
  "flate2",
  "foldhash",
@@ -249,7 +248,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "os_display",
- "rand 0.10.3",
  "regex",
  "regex-automata",
  "reqwest",
@@ -267,7 +265,6 @@ dependencies = [
  "unit-prefix",
  "url",
  "wasmtime",
- "zeroize",
 ]
 
 [[package]]
@@ -828,7 +825,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
 dependencies = [
  "hybrid-array",
- "rand_core 0.10.1",
 ]
 
 [[package]]
@@ -851,7 +847,6 @@ dependencies = [
  "curve25519-dalek-derive",
  "digest 0.11.3",
  "fiat-crypto",
- "rand_core 0.10.1",
  "rustc_version",
  "subtle",
  "zeroize",
@@ -967,9 +962,7 @@ checksum = "6ebaa1a2bf1290ab3bfe5a7b771d050ebffab2711c19a81691c683a5144a25de"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
- "rand_core 0.10.1",
  "sha2 0.11.1",
- "signature",
  "subtle",
  "zeroize",
 ]
@@ -1136,6 +1129,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "cron",
+ "ed25519-dalek",
  "everruns-contracts",
  "fs2",
  "futures",
@@ -1176,6 +1170,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
@@ -3317,9 +3312,6 @@ name = "signature"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d567dcbaf0049cb8ac2608a76cd95ff9e4412e1899d389ee400918ca7537f5"
-dependencies = [
- "rand_core 0.10.1",
-]
 
 [[package]]
 name = "simd-adler32"

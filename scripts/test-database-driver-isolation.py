@@ -22,6 +22,19 @@ def package(name, dependency="sqlx", kind=None, optional=False, rename=None):
 
 
 class DatabaseOwnership(unittest.TestCase):
+    def test_trace_companion_requires_exact_identity_location_and_sqlx(self):
+        entry = package("everruns-trace-store")
+        entry["manifest_path"] = str(guard.TRACE_STORE_ROOT / "Cargo.toml")
+        self.assertFalse(guard.dependency_violations([entry]))
+        self.assertFalse(guard.constructor_violations([entry]))
+        for change in [
+            {"name": "everruns-worker"},
+            {"manifest_path": "/tmp/borrowed/Cargo.toml"},
+            {"dependencies": package(entry["name"], "rusqlite")["dependencies"]},
+            {"dependencies": package(entry["name"], kind="build")["dependencies"]},
+        ]:
+            self.assertTrue(guard.dependency_violations([{**entry, **change}]))
+
     def test_private_data_example_root_alias_keeps_the_exact_boundary(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

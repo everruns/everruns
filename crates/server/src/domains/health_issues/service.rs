@@ -242,9 +242,10 @@ pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
     if row.missing_scopes == ["reactions:write"] {
         (
             "Slack reactions need an additional permission".into(),
-            "This bot cannot add emoji reactions. Reconnect Slack to grant permission.".into(),
+            "This bot cannot add emoji reactions until the permission is added to its Slack app."
+                .into(),
         )
     } else {
-        ("Slack needs additional permissions".into(),"Some Slack features are unavailable. Review the missing permissions and reconnect this installation.".into())
+        ("Slack needs additional permissions".into(),"Some Slack features are unavailable until the missing permissions are added to this app.".into())
     }
 }

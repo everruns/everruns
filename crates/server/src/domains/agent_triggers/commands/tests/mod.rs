@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 
 mod changes_only_tests;
 mod github_everruns_app_tests;
+mod manual_fire_tests;
 mod script_target_tests;
 
 // Serializes the env-mutating cap tests.
@@ -93,6 +94,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            completion_check: Default::default(),
             localizations: Default::default(),
             public_id: public_id.clone(),
             name: "trigger-agent".to_string(),
@@ -270,6 +272,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
     let agent = crate::storage::AgentRow {
+        completion_check: Default::default(),
         localizations: Default::default(),
         avatar_id: None,
         id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
@@ -288,6 +291,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         virtual_user_id: None,
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec![],
         status: "active".to_string(),
         exposures_suspended: false,
@@ -1168,7 +1172,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
     ));
     assert!(matches!(
         fire(pr_event("d3", "acme/api", 7, "labeled")).await,
-        events::TriggerEventOutcome::Filtered
+        events::TriggerEventOutcome::Filtered { .. }
     ));
 
     let events::TriggerEventOutcome::Dispatched(other) =
@@ -1467,7 +1471,7 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
     .await;
     assert!(matches!(
         other_repo.as_slice(),
-        [events::TriggerEventOutcome::Filtered]
+        [events::TriggerEventOutcome::Filtered { .. }]
     ));
     // Unsubscribed actions and the App's own activity are not routed at all.
     assert!(

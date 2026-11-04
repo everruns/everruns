@@ -26,7 +26,7 @@ async fn roll_dice(sides: u32) -> Result<u32> {
 
 ## What It Provides
 
-- `#[agent]`, `#[agent(default)]` and `#[agent(sub)]` for agents and subagents
+- `#[agent]` and `#[agent(default)]` for agents
 - `#[tool]`, with optional `needs_approval` predicates over a generated arguments struct
 - `#[channel]`, `#[schedule]`, `#[connection]` and `#[eval]`
 - Link-time registration that `App::builder().discover()` collects

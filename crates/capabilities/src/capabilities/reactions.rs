@@ -108,7 +108,12 @@ impl Capability for ReactionsCapability {
             "properties": {
                 "when_someone_reacts": {
                     "type": "string",
-                    "enum": ["next_turn", "start_turn", "off"],
+                    // Values must stay in sync with ReactionDelivery (enforced by test).
+                    "oneOf": [
+                        { "const": "next_turn", "title": "Tell it at the next turn" },
+                        { "const": "start_turn", "title": "Start a turn" },
+                        { "const": "off", "title": "Don't tell it" }
+                    ],
                     "default": "next_turn",
                     "title": "When someone reacts to the agent",
                     "description": "Tell it at the next turn (no model call per emoji), start a turn right away, or don't tell it. Reactions made while a turn runs join that turn."
@@ -279,5 +284,22 @@ mod tests {
             ReactionDelivery::Off
         );
         assert_eq!(cap.tools().len(), 1);
+    }
+
+    #[test]
+    fn every_setting_choice_is_a_value_the_config_accepts() {
+        let schema = ReactionsCapability.config_schema().unwrap();
+        let choices = schema["properties"]["when_someone_reacts"]["oneOf"]
+            .as_array()
+            .unwrap();
+        assert_eq!(choices.len(), 3);
+        for choice in choices {
+            let config = json!({"when_someone_reacts": choice["const"]});
+            assert!(
+                ReactionsCapability.validate_config(&config).is_ok(),
+                "{config}"
+            );
+            assert!(choice["title"].is_string());
+        }
     }
 }

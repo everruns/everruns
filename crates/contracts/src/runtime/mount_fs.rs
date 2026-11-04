@@ -685,6 +685,24 @@ impl SessionFileSystem for MountFs {
             .collect())
     }
 
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        let resolved = self.resolve(path)?;
+        // A tree that contains another mount spans two backends; let the caller walk.
+        let virtual_path = normalize_virtual(path, &self.cwd());
+        let nested = self.mounts.iter().any(|mount| {
+            mount.mount_point != resolved.mount_point
+                && mount_suffix(&virtual_path, &mount.mount_point).is_some()
+        });
+        if nested {
+            return Ok(None);
+        }
+        // Entries are relative to the requested directory: nothing to map.
+        resolved
+            .backend
+            .list_tree(session_id, &resolved.backend_path)
+            .await
+    }
+
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         let resolved = self.resolve(path)?;
         Ok(resolved

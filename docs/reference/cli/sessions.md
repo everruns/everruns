@@ -25,7 +25,7 @@ Running and archived sessions, their state and participants.
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
-| [`sessions resume`](#sessions-resume) | Resume all paused session budgets for a session. |
+| [`sessions resume`](#sessions-resume) | Continue a session past a usage policy's ask step. |
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
@@ -63,6 +63,7 @@ Running and archived sessions, their state and participants.
 | [`sessions participants list`](#sessions-participants-list) | List the participant history for a session. |
 | [`sessions platform-chat ensure`](#sessions-platform-chat-ensure) | Open the current user's permanent platform conversation. |
 | [`sessions resources list`](#sessions-resources-list) | List all resources registered in a session. |
+| [`sessions run get`](#sessions-run-get) | Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend. |
 | [`sessions sandbox get`](#sessions-sandbox-get) | Inspect a Session's primary Sandbox and what it may touch. |
 | [`sessions sandbox manage`](#sessions-sandbox-manage) | Pause, resume, or delete the managed sandbox for a session. |
 | [`sessions sse stream`](#sessions-sse-stream) | Stream events via SSE. |
@@ -356,7 +357,7 @@ everruns sessions pin session_01h9 --reason 'Active incident'
 
 ## sessions resume
 
-Resume all paused session budgets for a session.
+Continue a session past a usage policy's ask step.
 
 ```bash
 everruns sessions resume [OPTIONS] [SESSION_ID]
@@ -369,8 +370,8 @@ everruns sessions resume [OPTIONS] [SESSION_ID]
 Example:
 
 ```bash
-# Restart a session that paused when a budget ran out
-everruns sessions resume session_01h9 --reason 'Budget topped up'
+# Let a session continue after a usage policy asked before going further
+everruns sessions resume session_01h9 --reason 'Finish the report'
 ```
 
 ## sessions unarchive
@@ -1155,6 +1156,25 @@ Example:
 ```bash
 # List the files and other resources registered in a session
 everruns sessions resources list session_01h9
+```
+
+## sessions run get
+
+Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.
+
+```bash
+everruns sessions run get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# See every agent in a session's run
+everruns sessions run get session_01h9
 ```
 
 ## sessions sandbox get

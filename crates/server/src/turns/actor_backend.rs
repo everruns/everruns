@@ -29,6 +29,11 @@
 //!   The in-process DEV_MODE worker has no channel; this backend wakes it
 //!   directly ([`ActorWakeups`]), also after the commit, so a lease never
 //!   races the transaction that made the actor runnable.
+//! - A wake-up for a session whose last worker is ready names that worker
+//!   (sticky sessions; the mark returns it, the PostgreSQL trigger reads the
+//!   same column), and only its subscriptions hear it. The other workers
+//!   would only find it held back for the grace; their poll covers a lost
+//!   wake-up.
 //! - Every server caller drops the ticket. It still resolves sensibly: once
 //!   the actor has nothing left to run, it maps the session's latest terminal
 //!   turn event.
@@ -98,9 +103,10 @@ impl ActorTurnBackend {
         self
     }
 
-    /// Publish `payload` to workers once the current transaction commits.
+    /// Publish `payload` to workers once the current transaction commits,
+    /// to `target` alone when one is named (sticky sessions).
     /// PostgreSQL LISTEN needs nothing: the actor table's trigger notifies.
-    fn notify(&self, payload: &'static str) {
+    fn notify(&self, payload: &'static str, target: Option<String>) {
         if self.broadcaster.is_none() && self.local.is_none() {
             return;
         }
@@ -114,7 +120,7 @@ impl ActorTurnBackend {
                 }
             }
             if let Some(broadcaster) = broadcaster {
-                broadcaster.notify_task_available(payload).await;
+                broadcaster.notify_worker(payload, target.as_deref()).await;
             }
         });
     }
@@ -184,7 +190,7 @@ impl TurnBackend for ActorTurnBackend {
         } = request;
         // Mid-turn input reaches an actor only as persisted messages.
         steering.close();
-        match input {
+        let target = match input {
             TurnInput::StoredMessage { message_id } => {
                 let scope = scope.ok_or_else(|| {
                     AgentLoopError::config(
@@ -209,17 +215,17 @@ impl TurnBackend for ActorTurnBackend {
                         i64::from(input.sequence),
                     )
                     .await
-                    .map_err(|e| store_error("Failed to mark the session runnable", e))?;
+                    .map_err(|e| store_error("Failed to mark the session runnable", e))?
             }
-            TurnInput::RecordedToolResults { .. } => {
-                self.db
-                    .mark_session_actor_resumable(session_id)
-                    .await
-                    .map_err(|e| store_error("Failed to mark the session runnable", e))?;
-            }
+            TurnInput::RecordedToolResults { .. } => self
+                .db
+                .mark_session_actor_resumable(session_id)
+                .await
+                .map_err(|e| store_error("Failed to mark the session runnable", e))?,
             other => return Err(unsupported_input(&other)),
-        }
-        self.notify(SESSION_ACTOR_NOTIFICATION);
+        };
+        let target = target.filter(|_| !crate::storage::sticky_grace().is_zero());
+        self.notify(SESSION_ACTOR_NOTIFICATION, target);
         Ok(self.ticket(session_id, turn_id))
     }
 
@@ -234,7 +240,7 @@ impl TurnBackend for ActorTurnBackend {
             .map_err(|e| store_error("Failed to cancel the session's turn", e))?
         {
             ActorCancel::Requested => {
-                self.notify(SESSION_ACTOR_CANCEL_NOTIFICATION);
+                self.notify(SESSION_ACTOR_CANCEL_NOTIFICATION, None);
                 // The trait's contract: once the cancel is answered, the turn
                 // took its last step. Inside a command transaction the
                 // request is not visible to the holder until commit, so the

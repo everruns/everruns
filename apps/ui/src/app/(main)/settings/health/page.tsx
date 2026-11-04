@@ -13,6 +13,7 @@ import { usePolicies } from "@/hooks/use-policies";
 import { useHealthIssues, useHealthIssue } from "@/hooks/use-health-issues";
 import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
 import { HealthIssueDetails } from "@/components/health/health-issue-details";
+import { HealthFixQueue } from "@/components/health/health-fix-queue";
 import { Button } from "@/components/ui/button";
 
 export default function HealthPage() {
@@ -35,7 +36,11 @@ export default function HealthPage() {
     { enabled: canView, loading: issues.isLoading, error: !!issues.error },
   );
 
-  const id = useSearchParams().get("issue");
+  const search = useSearchParams();
+  const id = search.get("issue");
+  // Set by the Slack callback when a fixer's approval returns here; the
+  // callback has already checked the app again.
+  const slackInstall = search.get("slack_install");
   const selected = useHealthIssue(canView ? id : null);
   const notifications = useOptionalNotificationsContext();
   const markViewed = notifications?.markViewed;
@@ -59,6 +64,19 @@ export default function HealthPage() {
         <p>{ui("Ask an administrator to review integration health.")}</p>
       ) : (
         <>
+          {slackInstall === "ok" && (
+            <p role="status" className="text-sm text-success">
+              {ui("Slack approved the change. Everruns checked the app again.")}
+            </p>
+          )}
+          {slackInstall === "failed" && (
+            <p role="alert" className="text-sm text-destructive">
+              {ui("Slack did not finish the approval. Try the fix again.")}
+            </p>
+          )}
+          {policies.can("agent.manage") && issues.data && (
+            <HealthFixQueue issues={issues.data.data} />
+          )}
           {selected.isError && (
             <p role="alert" className="text-sm text-destructive">
               {ui("Could not load this health issue. It may no longer be available.")}

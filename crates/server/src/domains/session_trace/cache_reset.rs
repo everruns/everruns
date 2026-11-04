@@ -117,9 +117,11 @@ fn leading_system(messages: &[Value]) -> &[Value] {
 /// Providers without a reported retention keep the common 5 minute default.
 fn retention_seconds(data: &Value) -> i64 {
     let retention = data
-        .pointer("/metadata/request_options/prompt_cache/retention")
+        .pointer("/request_body/prompt_cache_options/ttl")
+        .or_else(|| data.pointer("/metadata/request_options/prompt_cache/retention"))
         .and_then(Value::as_str);
     match retention {
+        Some("12h") => 12 * 3600,
         Some("1h") => 3600,
         Some("30m") => 1800,
         _ => 300,
@@ -195,6 +197,14 @@ mod tests {
             data: current.1,
         };
         detect(&prev, &usage(8000, 2000), &cur, &usage(read_after, 500))
+    }
+
+    #[test]
+    fn twelve_hour_retention_and_wire_override() {
+        let mut data = json!({"metadata":{"request_options":{"prompt_cache":{"retention":"12h"}}}});
+        assert_eq!(retention_seconds(&data), 43_200);
+        data["request_body"] = json!({"prompt_cache_options":{"ttl":"30m"}});
+        assert_eq!(retention_seconds(&data), 1_800);
     }
 
     #[test]

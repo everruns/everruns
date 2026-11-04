@@ -28,6 +28,7 @@ struct PortState {
     seeded: Vec<(String, Vec<InputMessage>)>,
     controls: Vec<(String, ControlAction)>,
     decisions: Vec<(String, String, bool)>,
+    reactions: Vec<(LinkedMessage, String, bool)>,
 }
 
 impl FakePort {
@@ -141,6 +142,18 @@ impl ChannelSessionPort for FakePort {
         self.state()
             .controls
             .push((session_id.to_string(), action.clone()));
+        Ok(())
+    }
+
+    async fn react(
+        &self,
+        _: &ChannelConfig,
+        message: &LinkedMessage,
+        reaction: &InboundReaction,
+    ) -> Result<(), ChannelError> {
+        self.state()
+            .reactions
+            .push((message.clone(), reaction.emoji.clone(), reaction.added));
         Ok(())
     }
 
@@ -272,8 +285,20 @@ impl ChannelDriver for TestDriver {
                 reply_to: DeliveryTarget::new("C1", thread.clone()),
             })));
         }
+        if !field("react").is_empty() {
+            return Ok(Inbound::Reaction(Box::new(InboundReaction {
+                message_key: field("key"),
+                emoji: field("react"),
+                added: body["added"].as_bool().unwrap_or(true),
+                actor: actor("u2"),
+            })));
+        }
         let mut message_metadata = serde_json::Map::new();
         message_metadata.insert("test_ts".into(), json!(field("id")));
+        message_metadata.insert(
+            CHANNEL_MESSAGE_KEY.into(),
+            json!(format!("C1:{}", field("id"))),
+        );
         Ok(Inbound::Message(Box::new(InboundMessage {
             event: InboundChannelEvent {
                 actor: crate::channel::ExternalActor {
@@ -1336,4 +1361,34 @@ async fn deferred_stream_steering_follows_the_assigned_turn_and_skips_other_term
             .all(|event| event.turn_id.as_deref() == Some("logical-assigned-turn"))
     );
     assert_eq!(events.last().unwrap().event_type, TURN_COMPLETED);
+}
+
+#[tokio::test]
+async fn a_reaction_on_a_linked_message_reaches_its_session() {
+    let f = fixture(SessionBinding::Thread);
+    let react = |key: &str, emoji: &str, added: bool| {
+        ChannelRequest::json(&json!({"react": emoji, "key": key, "added": added}))
+    };
+    let unknown = f.host.handle("support", &react("C1:m1", "👍", true)).await;
+    assert_eq!(unknown.body, json!({"ok": true}));
+
+    f.host
+        .handle("support", &message("hello", "t1", "m1"))
+        .await;
+    let response = f.host.handle("support", &react("C1:m1", "👍", true)).await;
+    assert_eq!(response.body["session_id"], "session_1");
+    f.host.handle("support", &react("C1:m1", "👍", false)).await;
+    f.host.handle("support", &react("C1:m9", "🎉", true)).await;
+
+    let linked = LinkedMessage {
+        session_id: "session_1".into(),
+        message_id: "turn_1".into(),
+    };
+    assert_eq!(
+        f.port.state().reactions,
+        [
+            (linked.clone(), "👍".to_string(), true),
+            (linked, "👍".to_string(), false),
+        ]
+    );
 }

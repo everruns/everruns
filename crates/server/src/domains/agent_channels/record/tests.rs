@@ -163,6 +163,7 @@ fn test_channel(channel_type: ChannelType, config: serde_json::Value) -> AgentCh
     AgentChannel {
         public_id: AgentChannelId::from_uuid(Uuid::nil()),
         internal_id: Uuid::nil(),
+        agent_id: None,
         channel_type,
         channel_config: config,
         auth: None,

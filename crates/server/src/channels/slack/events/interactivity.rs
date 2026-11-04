@@ -96,6 +96,8 @@ impl InteractionPayload {
             assistant_thread: None,
             files: vec![],
             attachments: vec![],
+            reaction: None,
+            item: None,
         })
     }
 }

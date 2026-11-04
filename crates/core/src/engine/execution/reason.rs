@@ -908,7 +908,7 @@ impl ReasonAtom {
                                 last_failure.as_deref(),
                             );
                             failed_generation
-                                .emit(&error.to_string(), None, &stream_retry_metadata)
+                                .emit(&error, None, &stream_retry_metadata)
                                 .await;
                             return Err(error);
                         }
@@ -1034,7 +1034,7 @@ impl ReasonAtom {
                         )
                         .with_retry_metadata(&stream_retry_metadata);
                         failed_generation
-                            .emit(&error.to_string(), None, &stream_retry_metadata)
+                            .emit(&error, None, &stream_retry_metadata)
                             .await;
                         return Err(error);
                     };
@@ -1548,7 +1548,9 @@ impl ReasonAtom {
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);
                             reserve_retry_wait(&retry_config, &mut retry_started_at, proposed)
                         });
-                        let has_partial_output = compaction_started_at.is_none()
+                        let has_partial_output = err.kind()
+                            != crate::engine::error::LlmErrorKind::Refusal
+                            && compaction_started_at.is_none()
                             && (!tool_calls.is_empty()
                                 || !text.is_empty() && !matches!(retry_wait, Some(Some(_))));
 
@@ -1602,17 +1604,14 @@ impl ReasonAtom {
                             continue 'stream_attempt;
                         }
 
+                        let error = err.into_agent_error();
                         failed_generation
-                            .emit(
-                                &err.to_string(),
-                                time_to_first_token_ms,
-                                &stream_retry_metadata,
-                            )
+                            .emit(&error, time_to_first_token_ms, &stream_retry_metadata)
                             .await;
                         if compaction_started_at.is_some() {
                             compaction_lifecycle.fail().await;
                         }
-                        return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
+                        return Err(error);
                     }
                     // `LlmStreamEvent` is `#[non_exhaustive]`: ignore kinds this build does
                     // not know so the turn keeps streaming (unreachable in-workspace).
@@ -1891,7 +1890,6 @@ impl ReasonAtom {
             meta,
             !finalized_tool_calls.is_empty(),
         );
-        let served = meta.and_then(|m| m.response_model.clone());
         let truncation = truncation_gate.decide(&outcome);
         let mut generation_data = outcome
             .apply(LlmGenerationData::success_with_retry(
@@ -1908,7 +1906,7 @@ impl ReasonAtom {
                 response_id.clone(),
                 generation_outcome::retry_info(meta),
             ))
-            .with_response_model(served)
+            .with_response_model(meta.and_then(|m| m.response_model.clone()))
             .with_provider_id(Some(model_with_provider.provider.to_string()))
             .with_truncation_gate(truncation.label())
             .with_tool_changes(tool_changes.record.clone());
@@ -1916,11 +1914,12 @@ impl ReasonAtom {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }
 
-        if let Some(request_options) =
-            build_request_options(&llm_config, &model_with_provider.provider_type.to_string())
-        {
-            generation_data = generation_data.with_request_options(request_options);
-        }
+        generation_data = observability::with_completed_request_options(
+            generation_data,
+            &llm_config,
+            model_with_provider.provider_type.as_str(),
+            meta,
+        );
 
         if let Err(e) = self
             .event_emitter

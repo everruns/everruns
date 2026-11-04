@@ -501,8 +501,8 @@ pub fn declared(name: &str) -> Change {
         }
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
-        "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
-        "resume_agent_exposures" => on(K::Agent, Resumed, ID),
+        "pause_agent" => on(K::Agent, Suspended, ID),
+        "resume_agent" => on(K::Agent, Resumed, ID),
         "set_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
@@ -672,12 +672,24 @@ pub fn declared(name: &str) -> Change {
         "create_observer" => on(K::Observer, Created, ID),
         "update_observer" => on(K::Observer, Updated, ID),
         "delete_observer" => on(K::Observer, Deleted, Param("observer_id")),
+        "review_observer_score" => {
+            Change::Exempt("a review annotates one derived score, not the observer")
+        }
+        "backfill_observer" => {
+            Change::Exempt("a backfill queues scores, the observer is unchanged")
+        }
 
         "create_budget" => on(K::Budget, Created, ID),
         "update_budget" => on(K::Budget, Updated, ID),
         "delete_budget" => on(K::Budget, Deleted, Param("budget_id")),
         "top_up_budget" => Change::Exempt("a balance movement, recorded in the budget ledger"),
         "resume_session_budgets" => Change::Exempt("resumes sessions a budget paused"),
+        "create_cost_rate" | "retire_cost_rate" => Change::Exempt(
+            "the price list is append-only; each row keeps its own reason and author",
+        ),
+        "update_cost_settings" => {
+            Change::Exempt("an organization setting with no entity history of its own")
+        }
 
         "create_payment_account" => on(K::PaymentAccount, Created, ID),
         "update_payment_account" => on(K::PaymentAccount, Updated, ID),
@@ -690,13 +702,26 @@ pub fn declared(name: &str) -> Change {
         "create_eval" => on(K::Eval, Created, ID),
         "update_eval" => on(K::Eval, Updated, ID),
         "delete_eval" => on(K::Eval, Deleted, Param("eval_id")),
-        "import_atif_trajectories" => on(K::Eval, Imported, Param("eval_id")),
-        "create_eval_case" => on(K::EvalCase, Created, ID),
+        "import_atif_trajectories" | "import_eval_samples" => {
+            on(K::Eval, Imported, Param("eval_id"))
+        }
+        "create_eval_case" | "accept_eval_proposal" => on(K::EvalCase, Created, ID),
+        "propose_eval_cases" | "dismiss_eval_proposal" => Change::Exempt(
+            "Eval Builder suggestions are not configuration until accepted as a case",
+        ),
+        "update_finding_fix" | "reject_finding_fix" => {
+            Change::Exempt("a suggested fix is not configuration until it is applied")
+        }
+        "apply_finding_fix" => {
+            Change::Exempt("applies through update_agent, which records the agent's new revision")
+        }
         "update_eval_case" => on(K::EvalCase, Updated, ID),
         "delete_eval_case" => on(K::EvalCase, Deleted, Param("case_id")),
-        "create_eval_run" | "cancel_eval_run" | "import_eval_run" => {
-            Change::Exempt("eval runs are results, not configuration")
-        }
+        "create_eval_run"
+        | "cancel_eval_run"
+        | "import_eval_run"
+        | "create_eval_experiment"
+        | "check_finding_fix" => Change::Exempt("eval runs are results, not configuration"),
         "bulk_update_eval_run_scores" | "update_eval_result_scores" => {
             Change::Exempt("scores are results, not configuration")
         }
@@ -811,9 +836,15 @@ pub fn declared(name: &str) -> Change {
             "runtime credential operations are write-only and use payload-free resource audit",
         ),
         "mark_notification_viewed" => Change::Exempt("read state of the caller's own inbox"),
-        "check_health_issue" | "snooze_health_issue" => {
+        "check_health_issue" | "snooze_health_issue" | "dismiss_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
         }
+        "take_finding_action" | "undo_finding_action" => Change::Exempt(
+            "pauses or resumes a schedule; recorded on the finding as a finding action",
+        ),
+        "run_health_issue_fixer" => Change::Exempt(
+            "repairs an integration or pauses a schedule; recorded on the issue as a finding action",
+        ),
 
         _ => Change::Undeclared,
     }

@@ -20,7 +20,7 @@
 //! - The sweep reports; only the runaway stop pauses anything.
 
 use crate::storage::StorageBackend;
-use crate::storage::background_work::{ScheduleWatchRow, SubjectHealthIssue};
+use crate::storage::background_work::{ObservedIssue, ScheduleWatchRow, SubjectHealthIssue};
 use crate::storage::{HealthIssueRow, SessionScheduleRow};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::SessionId;
@@ -65,6 +65,8 @@ pub fn owns(code: &str) -> bool {
         SCHEDULE_RUNAWAY | SCHEDULE_BUDGET | ORG_UNATTENDED_BUDGET | SPEND_SPIKE | CONTEXT_BLOAT
     ) || super::behavior::owns(code)
         || super::classifiers::owns(code)
+        || super::quality::owns(code)
+        || super::model_health::owns(code)
 }
 
 /// The final answer's text, normalized and hashed: equal for answers that
@@ -177,6 +179,25 @@ pub async fn observe_runaway(
     report_schedule(db, &watch, SCHEDULE_RUNAWAY, "open", evidence, stopped).await;
 }
 
+/// Open the runaway issue for a schedule the org's self-healing policy paused
+/// at the warning count, before the hard stop. Returns the issue the pause is
+/// recorded on.
+pub async fn observe_runaway_paused(
+    db: &StorageBackend,
+    schedule: &SessionScheduleRow,
+    runs: i32,
+) -> Option<ObservedIssue> {
+    let watch = watch(db, &schedule.public_id).await?;
+    let evidence = serde_json::json!({
+        "runs": runs,
+        "stop_runs": RUNAWAY_STOP_RUNS,
+        "stopped": true,
+        "paused_by_policy": true,
+        "trigger_count": watch.trigger_count,
+    });
+    report_schedule(db, &watch, SCHEDULE_RUNAWAY, "open", evidence, true).await
+}
+
 /// Open the issue for a schedule its budget stopped.
 pub async fn observe_schedule_budget_stop(db: &StorageBackend, schedule: &SessionScheduleRow) {
     let Some(watch) = watch(db, &schedule.public_id).await else {
@@ -229,7 +250,7 @@ async fn report_schedule(
     status: &str,
     mut evidence: serde_json::Value,
     resurface: bool,
-) {
+) -> Option<ObservedIssue> {
     evidence["schedule_id"] = watch.public_id.clone().into();
     evidence["description"] = excerpt(&watch.description, 120).into();
     let issue = SubjectHealthIssue {
@@ -248,7 +269,7 @@ async fn report_schedule(
         Vec::new()
     };
     let agent = watch.agent_public_id.clone().zip(watch.agent_name.clone());
-    record(db, issue, recipients, agent, resurface).await;
+    record(db, issue, recipients, agent, resurface).await
 }
 
 /// Record an observation and tell `recipients` when it opened an issue (or,
@@ -259,20 +280,20 @@ pub(super) async fn record(
     recipients: Vec<Uuid>,
     agent: Option<(String, String)>,
     resurface: bool,
-) {
+) -> Option<ObservedIssue> {
     let org_id = issue.org_id;
     let code = issue.code.to_string();
     let evidence = issue.evidence.clone();
     let observed = match db.observe_subject_health_issue(issue).await {
         Ok(Some(observed)) => observed,
-        Ok(None) => return,
+        Ok(None) => return None,
         Err(error) => {
             tracing::warn!(%error, code, org_id, "Could not record a background-work health issue");
-            return;
+            return None;
         }
     };
     if observed.status != "open" || !(observed.opened || resurface) || recipients.is_empty() {
-        return;
+        return Some(observed);
     }
     let (title, body) = copy_for(
         &code,
@@ -298,6 +319,7 @@ pub(super) async fn record(
     {
         tracing::warn!(%error, code, org_id, "Could not announce a background-work health issue");
     }
+    Some(observed)
 }
 
 /// The schedule's owner and the agent's authors; the org's owners when
@@ -370,6 +392,12 @@ fn copy_for(
     if super::classifiers::owns(code) {
         return super::classifiers::copy_for(code, status, evidence, agent);
     }
+    if super::quality::owns(code) {
+        return super::quality::copy_for(status, evidence);
+    }
+    if super::model_health::owns(code) {
+        return super::model_health::copy_for(code, status, evidence, agent);
+    }
     let agent = agent.unwrap_or("An agent");
     let task = evidence["description"]
         .as_str()
@@ -387,6 +415,15 @@ fn copy_for(
         return (title.into(), "Nothing needs doing.".into());
     }
     match code {
+        SCHEDULE_RUNAWAY if evidence["paused_by_policy"].as_bool() == Some(true) => (
+            "Schedule paused: it kept repeating".into(),
+            format!(
+                "{agent}'s schedule{task} ended the same way {} runs in a row. Your organization pauses repeating schedules automatically, so it was paused. Resume it from the finding if it should keep going.",
+                evidence["runs"]
+                    .as_i64()
+                    .unwrap_or(RUNAWAY_WARN_RUNS as i64)
+            ),
+        ),
         SCHEDULE_RUNAWAY if evidence["stopped"].as_bool() == Some(true) => (
             "Schedule stopped: it kept repeating".into(),
             format!(
@@ -453,6 +490,11 @@ pub async fn recheck(db: &StorageBackend, row: &HealthIssueRow) -> anyhow::Resul
         SPEND_SPIKE => sweep_spend_spikes(db).await,
         CONTEXT_BLOAT => sweep_context_bloat(db).await,
         code if super::behavior::owns(code) => super::behavior::sweep(db).await,
+        code if super::quality::owns(code) => super::quality::sweep(db).await,
+        code if super::model_health::owns(code) => {
+            super::model_health::check_org(db, row.org_id).await;
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -619,6 +661,12 @@ pub async fn sweep(db: &StorageBackend) {
     }
     if let Err(error) = sweep_context_bloat(db).await {
         tracing::warn!(%error, "Context size health sweep failed");
+    }
+    if let Err(error) = super::quality::sweep(db).await {
+        tracing::warn!(%error, "Live quality health sweep failed");
+    }
+    if let Err(error) = super::model_health::sweep(db).await {
+        tracing::warn!(%error, "Model health sweep failed");
     }
     let behavior = super::behavior::sweep(db).await;
     if let Err(error) = &behavior {

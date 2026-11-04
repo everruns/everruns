@@ -12,12 +12,37 @@ Online scoring of live traces.
 
 | Command | What it does |
 |---|---|
+| [`observers backfill`](#observers-backfill) | Score past production traffic with an observer. |
 | [`observers create`](#observers-create) | Create an observer (online scoring). |
 | [`observers delete`](#observers-delete) | Archive an observer. |
 | [`observers get`](#observers-get) | Get a single observer. |
+| [`observers summary`](#observers-summary) | Live quality by agent, observer and day. |
 | [`observers list`](#observers-list) | List observers. |
 | [`observers update`](#observers-update) | Update an observer. |
 | [`observers scores list`](#observers-scores-list) | List trace scores produced by an observer. |
+| [`observers scores review`](#observers-scores-review) | Record whether an observer's score was right. |
+
+## observers backfill
+
+Score past production traffic with an observer.
+
+```bash
+everruns observers backfill [OPTIONS] --observer-id <observer_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--limit <LIMIT>` | Most past events to read, newest first (1–5000). |
+| `--observer-id <OBSERVER_ID>` | Required. Observer's prefixed public identifier. |
+| `--sample` | Apply the observer's sampling rate. |
+| `--since-hours <SINCE_HOURS>` | How far back to read, in hours (1–720). |
+
+Example:
+
+```bash
+# Score the last day of traffic with a new observer
+everruns observers backfill --observer-id observer_01h9 --since-hours 24 --reason 'Baseline the new rubric'
+```
 
 ## observers create
 
@@ -29,6 +54,7 @@ everruns observers create [OPTIONS] --name <name> --scorers <scorers>
 
 | Flag | Description |
 |---|---|
+| `--alert <ALERT>` |  |
 | `--description <DESCRIPTION>` | Human-readable description. |
 | `--match <MATCH>` |  |
 | `--name <NAME>` | Required. Human-readable name. |
@@ -80,6 +106,27 @@ Example:
 everruns observers get observer_01h9
 ```
 
+## observers summary
+
+Live quality by agent, observer and day.
+
+```bash
+everruns observers summary [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Only scores of this agent. |
+| `--days <DAYS>` | Window in days (1–90). |
+| `--observer-id <OBSERVER_ID>` | Only scores of this observer. |
+
+Example:
+
+```bash
+# See how one agent's production answers scored this week
+everruns observers summary --agent-id agent_01h9 --days 7
+```
+
 ## observers list
 
 List observers.
@@ -109,6 +156,7 @@ everruns observers update [OPTIONS] --observer-id <observer_id>
 
 | Flag | Description |
 |---|---|
+| `--alert <ALERT>` |  |
 | `--description <DESCRIPTION>` | Human-readable description. |
 | `--match <MATCH>` |  |
 | `--name <NAME>` | Human-readable name. |
@@ -137,6 +185,7 @@ everruns observers scores list [OPTIONS] --observer-id <observer_id>
 | `--limit <LIMIT>` |  |
 | `--observer-id <OBSERVER_ID>` | Required. Observer's prefixed public identifier. |
 | `--offset <OFFSET>` |  |
+| `--review-queue` | Only unreviewed completed scores, failures first (the review queue). |
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 
 Example:
@@ -144,4 +193,26 @@ Example:
 ```bash
 # Look at the scores an observer gave one session
 everruns observers scores list --observer-id observer_01h9 --session-id session_01h9
+```
+
+## observers scores review
+
+Record whether an observer's score was right.
+
+```bash
+everruns observers scores review [OPTIONS] --agrees [<agrees>] --observer-id <observer_id> --score-id <score_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agrees` | Required. True when the grader got it right. |
+| `--note <NOTE>` | Optional note on why (at most 2000 characters). |
+| `--observer-id <OBSERVER_ID>` | Required. Observer's prefixed public identifier. |
+| `--score-id <SCORE_ID>` | Required. Score's prefixed public identifier. |
+
+Example:
+
+```bash
+# Mark a failing score as a grader mistake
+everruns observers scores review --observer-id observer_01h9 --score-id score_01h9 --agrees false --note 'The answer cited the refund policy' --reason 'Calibrate the grounded judge'
 ```

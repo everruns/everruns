@@ -106,6 +106,80 @@ async fn actor_rpcs_lease_renew_read_and_release() {
 }
 
 #[tokio::test]
+async fn renew_actor_leases_answers_each_lease() {
+    let svc = test_worker_service().await;
+    let db = svc.db.clone();
+    let held = db.create_test_session().await;
+    let deleted = db.create_test_session().await;
+    for id in [held, deleted] {
+        db.mark_session_actor_runnable(id, everruns_core::DEFAULT_ORG_ID, 3)
+            .await
+            .unwrap();
+    }
+    let leased = svc
+        .lease_actors(trusted_request(proto::LeaseActorsRequest {
+            holder: "worker-a".to_string(),
+            limit: 10,
+            ttl_ms: 0,
+            max_leased_per_org: 0,
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .actors;
+    let fence = |id| {
+        leased
+            .iter()
+            .find(|actor| actor.session_id == Some(proto_uuid(id)))
+            .unwrap()
+            .fence
+    };
+    db.request_session_actor_cancel(held).await.unwrap();
+    sqlx::query("DELETE FROM sessions WHERE id = $1")
+        .bind(deleted)
+        .execute(db.database().pool())
+        .await
+        .unwrap();
+
+    let lease = |id, fence| proto::ActorLeaseRenewal {
+        session_id: Some(proto_uuid(id)),
+        fence,
+        consumed_seq: 3,
+    };
+    let renewed = svc
+        .renew_actor_leases(trusted_request(proto::RenewActorLeasesRequest {
+            holder: "worker-a".to_string(),
+            ttl_ms: 5_000,
+            leases: vec![
+                lease(held, fence(held)),
+                lease(held, fence(held) + 1),
+                lease(deleted, fence(deleted)),
+            ],
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .leases;
+    assert_eq!(renewed.len(), 3, "one answer per lease, in order");
+    let first = renewed[0].renewal.as_ref().unwrap();
+    assert!(first.held && first.cancel_requested);
+    assert_eq!(first.cancel_inbox_seq, Some(3));
+    assert!(!renewed[1].renewal.as_ref().unwrap().held, "a stale fence");
+    assert!(!renewed[1].session_not_found);
+    assert!(renewed[2].session_not_found, "the deleted session");
+
+    let status = svc
+        .renew_actor_leases(trusted_request(proto::RenewActorLeasesRequest {
+            holder: " ".to_string(),
+            ttl_ms: 0,
+            leases: vec![],
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+}
+
+#[tokio::test]
 async fn actor_rpcs_reject_a_missing_holder() {
     let svc = test_worker_service().await;
     let status = svc

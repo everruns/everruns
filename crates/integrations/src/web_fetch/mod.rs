@@ -2,8 +2,8 @@
 //! FetchKit-backed web fetch capability for Everruns agents.
 //!
 //! Requests cross the host egress contract, downloads use the session
-//! filesystem, and optional bot-auth signs requests with Ed25519 HTTP message
-//! signatures. Inline binary responses are rejected.
+//! filesystem, and the egress boundary signs requests with Web Bot Auth when
+//! the host configures it. Inline binary responses are rejected.
 //!
 //! It is part of the [Everruns](https://everruns.com) ecosystem and is an
 //! opt-in network integration for `everruns-host`.
@@ -14,7 +14,7 @@
 //! use everruns_contracts::runtime::Capability;
 //! use everruns_integrations::web_fetch::WebFetchCapability;
 //!
-//! assert_eq!(WebFetchCapability::new(None).id(), "web_fetch");
+//! assert_eq!(WebFetchCapability::new().id(), "web_fetch");
 //! ```
 
 use self::tool_types::ToolHints;
@@ -31,8 +31,8 @@ use everruns_contracts::runtime::session_files::SessionFileSystem;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::*;
 use everruns_contracts::{tool_types, typed_id};
+use fetchkit::FetchRequest;
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
-use fetchkit::{BotAuthConfig, FetchRequest};
 use serde_json::Value;
 use std::result::Result;
 use std::sync::Arc;
@@ -74,117 +74,20 @@ impl everruns_contracts::IntoCapability for WebFetch {
     }
 }
 
-/// Ed25519 public key JWK derived from a signing key seed.
-///
-/// Used to register the public key in the HTTP message signatures directory
-/// so target servers can verify request signatures.
-#[derive(Debug, Clone)]
-pub struct BotAuthPublicKey {
-    /// JWK Thumbprint (RFC 7638) — matches `BotAuthConfig::keyid()`
-    pub key_id: String,
-    /// Full JWK object: `{"kty":"OKP","crv":"Ed25519","x":"<base64url>"}`
-    pub jwk: serde_json::Value,
-}
-
-/// Derive the Ed25519 public key JWK and key ID from a base64url-encoded seed.
-///
-/// Returns `None` if the seed is invalid. The key_id is the JWK Thumbprint
-/// (base64url-encoded SHA-256 of the canonical JWK representation), matching
-/// the keyid that fetchkit's `BotAuthConfig` puts in `Signature-Input`.
-pub fn derive_bot_auth_public_key(base64_seed: &str) -> Option<BotAuthPublicKey> {
-    use base64::Engine as _;
-    use ed25519_dalek::SigningKey;
-    use sha2::{Digest, Sha256};
-
-    // Decode seed (base64url, no padding)
-    let seed_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(base64_seed)
-        .ok()?;
-    if seed_bytes.len() != 32 {
-        return None;
-    }
-    let mut seed = [0u8; 32];
-    seed.copy_from_slice(&seed_bytes);
-
-    // Derive public key
-    let signing_key = SigningKey::from_bytes(&seed);
-    let public_key = signing_key.verifying_key();
-    let public_key_b64 =
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public_key.as_bytes());
-
-    // Build canonical JWK (RFC 7638 member ordering for OKP: crv, kty, x)
-    let canonical_jwk = format!(
-        r#"{{"crv":"Ed25519","kty":"OKP","x":"{}"}}"#,
-        public_key_b64
-    );
-
-    // JWK Thumbprint = base64url(SHA-256(canonical_jwk))
-    let thumbprint = Sha256::digest(canonical_jwk.as_bytes());
-    let key_id = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(thumbprint);
-
-    let jwk = serde_json::json!({
-        "kty": "OKP",
-        "crv": "Ed25519",
-        "x": public_key_b64,
-    });
-
-    Some(BotAuthPublicKey { key_id, jwk })
-}
-
 /// WebFetch capability — fetches web content, optionally saves to session filesystem.
 ///
 /// File download is enabled via per-capability config: `{"enable_file_download": true}`.
-/// Bot-auth signing is server-wide: set `BOT_AUTH_SIGNING_KEY_SEED` env var.
+/// Requests ask the egress boundary for platform signing; the host decides
+/// whether to sign (`everruns_core::host::web_bot_auth`).
 /// Description, schema, and system prompt all come from fetchkit's ToolBuilder,
 /// adapting to whether file download is on.
-pub struct WebFetchCapability {
-    /// Server-wide bot-auth config (from env vars). When set, all outbound
-    /// HTTP requests are signed with Ed25519 per RFC 9421.
-    bot_auth: Option<BotAuthConfig>,
-}
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WebFetchCapability;
 
 impl WebFetchCapability {
-    /// Create with optional server-wide bot-auth signing config.
-    pub fn new(bot_auth: Option<BotAuthConfig>) -> Self {
-        Self { bot_auth }
+    pub fn new() -> Self {
+        Self
     }
-
-    /// Create from environment variables.
-    ///
-    /// - `BOT_AUTH_SIGNING_KEY_SEED`: base64url-encoded 32-byte Ed25519 seed (required to enable)
-    /// - `BOT_AUTH_AGENT_FQDN`: FQDN for Signature-Agent header (optional)
-    /// - `BOT_AUTH_VALIDITY_SECS`: signature validity in seconds (optional, default 300)
-    pub fn from_env() -> Self {
-        Self {
-            bot_auth: bot_auth_config_from_env(),
-        }
-    }
-}
-
-/// Read bot-auth config from environment variables.
-fn bot_auth_config_from_env() -> Option<BotAuthConfig> {
-    let seed = std::env::var("BOT_AUTH_SIGNING_KEY_SEED").ok()?;
-
-    let mut config = match BotAuthConfig::from_base64_seed(&seed) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!(error = %e, "invalid BOT_AUTH_SIGNING_KEY_SEED, bot-auth disabled");
-            return None;
-        }
-    };
-
-    if let Ok(fqdn) = std::env::var("BOT_AUTH_AGENT_FQDN") {
-        config = config.with_agent_fqdn(&fqdn);
-    }
-
-    if let Ok(secs) = std::env::var("BOT_AUTH_VALIDITY_SECS")
-        && let Ok(secs) = secs.parse::<u64>()
-    {
-        config = config.with_validity_secs(secs);
-    }
-
-    tracing::info!("bot-auth request signing enabled");
-    Some(config)
 }
 
 #[async_trait]
@@ -259,7 +162,7 @@ impl Capability for WebFetchCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(WebFetchTool::new(false, self.bot_auth.clone()))]
+        vec![Box::new(WebFetchTool::new(false))]
     }
 
     fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
@@ -267,10 +170,7 @@ impl Capability for WebFetchCapability {
             .get("enable_file_download")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        vec![Box::new(WebFetchTool::new(
-            enable_file_download,
-            self.bot_auth.clone(),
-        ))]
+        vec![Box::new(WebFetchTool::new(enable_file_download))]
     }
 
     fn config_schema(&self) -> Option<serde_json::Value> {
@@ -454,16 +354,13 @@ pub struct WebFetchTool {
 }
 
 impl WebFetchTool {
-    /// Create a new WebFetchTool with file download and optional bot-auth signing.
-    pub fn new(enable_save_to_file: bool, bot_auth: Option<BotAuthConfig>) -> Self {
+    /// Create a new WebFetchTool, optionally able to save to the session filesystem.
+    pub fn new(enable_save_to_file: bool) -> Self {
         // Decision: in-process JavaScript rendering (fetchkit's `render-rakers`)
         // is not enabled. It linked a JS engine and an HTML/CSS selector stack
         // into every binary for an opt-in fetch mode; JS-rendered pages are
         // served by the browserless integration instead.
-        let mut builder = fetchkit::Tool::builder().enable_save_to_file(enable_save_to_file);
-        if let Some(config) = bot_auth {
-            builder = builder.bot_auth(config);
-        }
+        let builder = fetchkit::Tool::builder().enable_save_to_file(enable_save_to_file);
         let fetchkit_tool = builder.build();
         let description = format!(
             "{}{}",
@@ -504,7 +401,7 @@ impl WebFetchTool {
 
 impl Default for WebFetchTool {
     fn default() -> Self {
-        Self::new(false, None)
+        Self::new(false)
     }
 }
 

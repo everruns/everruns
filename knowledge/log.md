@@ -1,6 +1,24 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-03
+
+- Add bounded immutable trace index caching, planner-free session/locator reads,
+  shared DataFusion execution and equivalent-window cold/warm/stage measurements.
+  Preserve per-read source visibility and deletion guards. See
+  [Trace Storage](operations/trace-storage.md).
+
+- Adopt the patched spreadsheet parser for [Knowledge extraction](runtime-resources/knowledge.md), retain stable warning codes and resource limits, and version subsequent text views without rewriting originals.
+
+- Add credit shortfall handling: a provider refusal for lack of credits retries once with fewer max output tokens, or waits up to an hour on durable schedule checks that read the balance without spending tokens. See [Credit Shortfall](execution/credit-shortfall.md).
+
+## 2026-11-02
+
+- Add agents that hand work to other agents: the Agents capability lists linked or created-here members by agent, packages bundle agents in `.agents/agents/`, and runs, approvals, costs and traces are planned. See [Agents That Use Other Agents](runtime-resources/agents-using-agents.md).
+- Add optional DataFusion trace storage with object-backed segments, resumable retained-history backfill, shared-boundary shadow comparisons, private metrics and guarded publication/deletion. See [DataFusion Trace Storage](operations/trace-storage.md).
+
 ## 2026-11-01
+
+- Add the `completion_check` agent setting: a finishing unattended turn is reviewed on its own model and an announced but unfinished one continues within a durable budget. See [Turn Completion Check](execution/turn-completion-check.md).
 
 - Reveal bidi/control characters in tool approval displays without changing approval authority or arguments. See [Tool Approval](execution/tool-approval.md#approval-display).
 - Stage a weekly/manual Rust CodeQL migration while preserving default scans; document activation prerequisites and native/WASM evidence limits. See [CodeQL](security/codeql.md).

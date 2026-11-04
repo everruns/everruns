@@ -1068,6 +1068,11 @@ pub trait Schedules: Send + Sync + 'static {
     /// Count running executions for a schedule (for max_concurrent check)
     async fn count_running_executions(&self, schedule_id: Uuid) -> Result<u32, StoreError>;
 
+    /// Whether the task this schedule last enqueued is still waiting to be
+    /// claimed. The scheduler skips a trigger while it is, so a schedule
+    /// nothing claims holds one pending task instead of one per trigger.
+    async fn last_scheduled_task_pending(&self, schedule_id: Uuid) -> Result<bool, StoreError>;
+
     /// Get schedule statistics
     async fn get_schedule_stats(&self, schedule_id: Uuid) -> Result<ScheduleStats, StoreError>;
 

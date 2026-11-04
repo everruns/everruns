@@ -17,6 +17,7 @@ export function SessionForkButton({
   className,
   agentId,
   platformChat = false,
+  onForked,
 }: {
   sessionId: string;
   sessionTitle: string | null;
@@ -24,6 +25,7 @@ export function SessionForkButton({
   className?: string;
   agentId?: string;
   platformChat?: boolean;
+  onForked?: (sessionId: string) => void;
 }) {
   const ui = useUiTranslations();
   const router = useRouter();
@@ -49,7 +51,8 @@ export function SessionForkButton({
         },
       },
       {
-        onSuccess: (session) => router.push(`/chats/${session.id}`),
+        onSuccess: (session) =>
+          onForked ? onForked(session.id) : router.push(`/chats/${session.id}`),
         onError: (error) =>
           setForkError(error instanceof Error ? error.message : t("fork_session_error")),
       },

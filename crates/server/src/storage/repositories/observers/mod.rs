@@ -25,8 +25,8 @@ impl Database {
     ) -> Result<ObserverRow> {
         let row = sqlx::query_as::<_, ObserverRow>(
             sql!(r#"
-            INSERT INTO observers (org_id, public_id, name, description, match_config, sampling_rate, scorers)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO observers (org_id, public_id, name, description, match_config, sampling_rate, scorers, alert)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING {ObserverRow}
             "#),
         )
@@ -37,6 +37,7 @@ impl Database {
         .bind(&input.match_config)
         .bind(input.sampling_rate)
         .bind(&input.scorers)
+        .bind(&input.alert)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -87,7 +88,7 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT id, org_id, public_id, name, description, match_config,
-                      sampling_rate, scorers, status, created_at, updated_at, archived_at
+                      sampling_rate, scorers, status, created_at, updated_at, archived_at, alert
                FROM observers
                WHERE org_id = $1{status_sql}
                ORDER BY created_at DESC"#
@@ -140,6 +141,7 @@ impl Database {
                 sampling_rate = COALESCE($6, sampling_rate),
                 scorers = COALESCE($7, scorers),
                 status = COALESCE($8, status),
+                alert = CASE WHEN $9 THEN $10 ELSE alert END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
             RETURNING {ObserverRow}
@@ -153,6 +155,8 @@ impl Database {
         .bind(input.sampling_rate)
         .bind(&input.scorers)
         .bind(&input.status)
+        .bind(input.alert.is_some())
+        .bind(input.alert.clone().flatten())
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
@@ -186,12 +190,19 @@ impl Database {
     ) -> Result<u64> {
         let mut inserted = 0u64;
         for input in inputs {
+            // A session score is one row per session: a later idle re-arms
+            // it (pending again, after the new settle time) so the score
+            // covers the whole conversation. Turn and tool scores are once.
             let result = sqlx::query(
                 r#"
                 INSERT INTO trace_scores (org_id, public_id, observer_id, scorer_key, session_id,
-                                          turn_id, agent_id, harness_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                ON CONFLICT (observer_id, scorer_key, session_id, turn_id) DO NOTHING
+                                          turn_id, agent_id, harness_id, scope, not_before)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (observer_id, scorer_key, session_id, turn_id) DO UPDATE SET
+                    status = 'pending', attempts = 0, not_before = EXCLUDED.not_before,
+                    error_message = NULL, updated_at = NOW()
+                WHERE trace_scores.scope = 'session' AND EXCLUDED.scope = 'session'
+                  AND trace_scores.status <> 'scoring'
                 "#,
             )
             .bind(org_id)
@@ -202,6 +213,8 @@ impl Database {
             .bind(&input.turn_id)
             .bind(input.agent_id)
             .bind(input.harness_id)
+            .bind(&input.scope)
+            .bind(input.not_before)
             .execute(&self.pool)
             .await?;
             inserted += result.rows_affected();
@@ -239,7 +252,7 @@ impl Database {
             SET status = 'scoring', attempts = attempts + 1, updated_at = NOW()
             WHERE id IN (
                 SELECT id FROM trace_scores
-                WHERE (status = 'pending'
+                WHERE ((status = 'pending' AND (not_before IS NULL OR not_before <= NOW()))
                        OR (status = 'scoring' AND updated_at < NOW() - make_interval(secs => $1)))
                   AND attempts < $2
                 ORDER BY created_at
@@ -296,14 +309,24 @@ impl Database {
         } else {
             ""
         };
+        // The review queue: completed and unreviewed, failing scores first,
+        // then the rest in random order so passes get a sampled look too.
+        let (queue_sql, order_sql) = if params.review_queue {
+            (
+                " AND status = 'completed' AND review IS NULL",
+                "pass ASC NULLS FIRST, random()",
+            )
+        } else {
+            ("", "created_at DESC")
+        };
         let sql = format!(
             r#"SELECT id, org_id, public_id, observer_id, scorer_key, session_id,
                       turn_id, agent_id, harness_id, status, attempts,
                       pass, value, label, reason, judge_input_tokens, judge_output_tokens,
-                      judge_cost_usd, error_message, created_at, updated_at
+                      judge_cost_usd, error_message, created_at, updated_at, scope, review
                FROM trace_scores
-               WHERE org_id = $1 AND observer_id = $2{session_sql}
-               ORDER BY created_at DESC
+               WHERE org_id = $1 AND observer_id = $2{session_sql}{queue_sql}
+               ORDER BY {order_sql}
                LIMIT $3 OFFSET $4"#
         );
         let mut query = sqlx::query_as::<_, TraceScoreRow>(sqlx::AssertSqlSafe(sql.as_str()))
@@ -315,5 +338,114 @@ impl Database {
             query = query.bind(session_id);
         }
         Ok(query.fetch_all(&self.pool).await?)
+    }
+
+    /// Record a person's review of a completed score.
+    pub async fn review_trace_score(
+        &self,
+        org_id: i64,
+        observer_id: Uuid,
+        public_id: &str,
+        review: &serde_json::Value,
+    ) -> Result<Option<TraceScoreRow>> {
+        let row = sqlx::query_as::<_, TraceScoreRow>(sql!(
+            r#"
+            UPDATE trace_scores SET review = $4, updated_at = NOW()
+            WHERE org_id = $1 AND observer_id = $2 AND public_id = $3 AND status = 'completed'
+            RETURNING {TraceScoreRow}
+            "#
+        ))
+        .bind(org_id)
+        .bind(observer_id)
+        .bind(public_id)
+        .bind(review)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Completed scores since `since`, grouped by `group` (`agent`,
+    /// `observer` or `day`), optionally for one observer or one agent.
+    pub async fn summarize_trace_scores(
+        &self,
+        org_id: i64,
+        since: chrono::DateTime<chrono::Utc>,
+        group: ScoreGroup,
+        observer_id: Option<Uuid>,
+        agent_id: Option<Uuid>,
+    ) -> Result<Vec<ScoreSummaryRow>> {
+        let key_sql = match group {
+            ScoreGroup::Total => "NULL::text",
+            ScoreGroup::Agent => "t.agent_id::text",
+            ScoreGroup::Observer => "o.public_id",
+            ScoreGroup::Day => "to_char(date_trunc('day', t.updated_at), 'YYYY-MM-DD')",
+            ScoreGroup::AgentDay => {
+                "t.agent_id::text || '|' || to_char(date_trunc('day', t.updated_at), 'YYYY-MM-DD')"
+            }
+        };
+        let group_sql = if matches!(group, ScoreGroup::Total) {
+            ""
+        } else {
+            " GROUP BY 1"
+        };
+        let sql = format!(
+            r#"SELECT {key_sql} AS key,
+                      COUNT(*) AS scored,
+                      COUNT(*) FILTER (WHERE t.pass) AS passed,
+                      COUNT(DISTINCT t.session_id) AS sessions
+               FROM trace_scores t JOIN observers o ON o.id = t.observer_id
+               WHERE t.org_id = $1 AND t.status = 'completed' AND t.updated_at >= $2
+                 AND ($3::uuid IS NULL OR t.observer_id = $3)
+                 AND ($4::uuid IS NULL OR t.agent_id = $4){group_sql}"#
+        );
+        let rows = sqlx::query_as::<_, ScoreSummaryRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(org_id)
+            .bind(since)
+            .bind(observer_id)
+            .bind(agent_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Active observers with an alert, across orgs (the alert sweep).
+    pub async fn list_alerting_observers(&self) -> Result<Vec<ObserverRow>> {
+        let rows = sqlx::query_as::<_, ObserverRow>(sql!(
+            r#"
+            SELECT {ObserverRow}
+            FROM observers
+            WHERE status = 'active' AND alert IS NOT NULL
+            "#
+        ))
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Past events an observer can score, newest first: turn ends, tool
+    /// results and session idles of the org's non-eval sessions since `since`.
+    pub async fn observer_backfill_events(
+        &self,
+        org_id: i64,
+        since: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<BackfillEventRow>> {
+        let rows = sqlx::query_as::<_, BackfillEventRow>(
+            r#"
+            SELECT e.session_id, e.event_type, e.data, s.agent_id, s.harness_id, s.tags
+            FROM events e JOIN sessions s ON s.id = e.session_id
+            WHERE s.org_id = $1 AND e.created_at >= $2
+              AND e.event_type IN ('turn.completed', 'tool.completed', 'session.idled')
+              AND NOT ('eval' = ANY(COALESCE(s.tags, ARRAY[]::text[])))
+            ORDER BY e.created_at DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(since)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 }

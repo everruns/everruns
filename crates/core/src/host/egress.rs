@@ -56,6 +56,9 @@ pub struct DirectEgressService {
     /// leaves this unset and uses the system resolver; tests install a
     /// controlled resolver to prove private answers are denied before connect.
     dns_resolver: Option<DnsResolver>,
+    /// Platform Web Bot Auth signer for requests that ask for
+    /// `EgressSigning::PlatformDefault` or `Required`. `None` = not configured.
+    web_bot_auth: Option<Arc<super::web_bot_auth::WebBotAuth>>,
 }
 
 impl std::fmt::Debug for DirectEgressService {
@@ -107,6 +110,7 @@ impl DirectEgressService {
             proxy: ProxyRoute::Direct,
             sandbox_proxy: SandboxProxyRoute::Off,
             dns_resolver: None,
+            web_bot_auth: None,
         }
     }
 
@@ -121,6 +125,7 @@ impl DirectEgressService {
             proxy: ProxyRoute::Direct,
             sandbox_proxy: SandboxProxyRoute::Off,
             dns_resolver: None,
+            web_bot_auth: None,
         }
     }
 
@@ -164,7 +169,17 @@ impl DirectEgressService {
         service.org_allowlist = OrgAllowlistSource::Runtime;
         service.proxy = ProxyRoute::from_env();
         service.sandbox_proxy = SandboxProxyRoute::from_env();
+        service.web_bot_auth = super::web_bot_auth::WebBotAuth::from_env();
         service
+    }
+
+    /// Sign requests that opt into platform signing with `signer`.
+    pub fn with_web_bot_auth(
+        mut self,
+        signer: Option<Arc<super::web_bot_auth::WebBotAuth>>,
+    ) -> Self {
+        self.web_bot_auth = signer;
+        self
     }
 
     /// Send tenant requests through `proxy` (or directly with `None`).
@@ -373,9 +388,7 @@ impl DirectEgressService {
         decision: PolicyDecision,
     ) -> EgressResult<EgressRequest> {
         self.validate_request(&request, decision)?;
-        if request.signing == EgressSigning::Required {
-            return Err(EgressError::SigningUnavailable);
-        }
+        self.sign(&mut request)?;
         // The reputation lookup and the DNS-pinning resolution are independent
         // network round trips, so a first read of an unknown host pays for one,
         // not both. The reputation verdict still decides first.
@@ -406,6 +419,47 @@ impl DirectEgressService {
             request = request.pinned_addrs(pin_host, resolved_addrs);
         }
         Ok(request)
+    }
+
+    /// Add Web Bot Auth headers when the caller asked for platform signing.
+    ///
+    /// Runs after policy validation, so a refused request is never signed.
+    /// `PlatformDefault` sends unsigned when signing is not configured or the
+    /// URL cannot be signed (plain http); `Required` fails instead. A request
+    /// that already carries its own RFC 9421 signature keeps it.
+    fn sign(&self, request: &mut EgressRequest) -> EgressResult<()> {
+        if request.signing == EgressSigning::Disabled {
+            return Ok(());
+        }
+        let has_own_signature = request.headers.keys().any(|name| {
+            name.eq_ignore_ascii_case("signature") || name.eq_ignore_ascii_case("signature-input")
+        });
+        if has_own_signature {
+            return Ok(());
+        }
+        let signed = self
+            .web_bot_auth
+            .as_ref()
+            .map(|signer| signer.sign_request(&request.method, &request.url));
+        match signed {
+            Some(Ok(headers)) => {
+                request
+                    .headers
+                    .retain(|name, _| !name.eq_ignore_ascii_case("signature-agent"));
+                for (name, value) in headers {
+                    request.headers.insert(name.to_string(), value);
+                }
+                Ok(())
+            }
+            Some(Err(error)) if request.signing == EgressSigning::Required => {
+                tracing::debug!(%error, "required request signing failed");
+                Err(EgressError::SigningUnavailable)
+            }
+            None if request.signing == EgressSigning::Required => {
+                Err(EgressError::SigningUnavailable)
+            }
+            Some(Err(_)) | None => Ok(()),
+        }
     }
 
     /// Open reads and open-org requests reach hosts nobody curated, so ask the

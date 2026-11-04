@@ -20,6 +20,8 @@
 * [Ask User](ask-user.md) - Structured choice questions that pause through the client-side tool-results lifecycle.
 * [Soft Approval](soft-approval.md) - Spoken-consent confirmation before critical actions, as prompt guidance rather than a permission gate.
 * [Tool Approval](tool-approval.md) - The hard per-call approval gate, and how hosted sessions park a turn on it durably until a person answers.
+* [Turn Completion Check](turn-completion-check.md) - Review of a finishing unattended turn and bounded, durable automatic continuation.
+* [Credit Shortfall](credit-shortfall.md) - Smaller retry or a durable, bounded wait for credits when a provider refuses a request it cannot bill.
 * [Browser Use](browser-use.md) - Provider-neutral `browser` tool: accessibility tree with element refs, form filling and tabs on a Browserless browser.
 * [Computer Use](computer-use.md) - Provider-neutral computer use: screenshots plus pointer and keyboard actions on a display.
 * [Guardrails Specification](guardrails.md) - Guardrails (capability-based output/tool-call checks).
@@ -41,4 +43,7 @@
 * [OpenAI Agents API Runtime Backend](openai-agents-api-runtime.md) - Mapping, control boundaries, durability, and recommendation for a managed OpenAI loop.
 * [Detached tool calls](detached-tool-calls.md) - Long server-side tool calls leave their turn, so the turn parks and frees its worker slot, lease and memory while the tool works.
 * [Worker history cache](worker-history-cache.md) - A gRPC worker keeps each session's message history and reads only the messages after the last sequence it holds.
+* [Sticky sessions](sticky-sessions.md) - A session's next turn goes back to the worker that ran its last one, whose history cache is warm, unless that worker cannot take it.
 * [Native asynchronous tool calls](native-async-tools.md) - Custom-host pending-call coordination and recovery boundaries.
+* [Event log group commit](event-log-group-commit.md) - Fenced event appends from many workers share one PostgreSQL transaction and one WAL flush, answered only after it commits.
+* [Event listener delivery](event-listeners.md) - How stored session events reach the server's listeners (usage, budgets, traces, notifications, titles and others), in order per session and off the worker's critical path.

@@ -5,8 +5,8 @@ import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { evalCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
 
 import { TagInput } from "@/components/ui/tag-input";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCreateEval, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +22,7 @@ import type { EvalTarget, CreateEvalRequest } from "@/lib/api/types";
 
 type TargetType = "session" | "app";
 
-export default function NewEvalPage() {
+function NewEvalForm() {
   const ui = useUiTranslations();
   usePageTitle(ui("New Eval"), ui("Evals"));
   const router = useRouter();
@@ -34,7 +34,9 @@ export default function NewEvalPage() {
   });
   const [targetType, setTargetType] = useState<TargetType>("session");
   const [harnessId, setHarnessId] = useState("");
-  const [agentId, setAgentId] = useState("");
+  // `?agent=` preselects the agent, from an agent's Evals tab.
+  const searchParams = useSearchParams();
+  const [agentId, setAgentId] = useState(searchParams.get("agent") ?? "");
   const [appId, setAppId] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [modelId, setModelId] = useState("");
@@ -288,5 +290,13 @@ export default function NewEvalPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function NewEvalPage() {
+  return (
+    <Suspense>
+      <NewEvalForm />
+    </Suspense>
   );
 }

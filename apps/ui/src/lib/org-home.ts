@@ -50,7 +50,7 @@ interface HomeInputs {
   /** Items from the Agents page model (`attentionItems`). */
   agentItems: AttentionItem[];
   healthIssues: HealthIssue[];
-  /** Sessions paused at their budget limit. */
+  /** Sessions paused at their usage limit. */
   pausedSessions: Session[];
   pausedTotal: number;
   activity: AgentActivity[];
@@ -163,8 +163,8 @@ export function homeAttentionItems(inputs: HomeInputs): HomeAttentionItem[] {
       severity: "error",
       title:
         inputs.pausedTotal === 1
-          ? "1 session paused at its budget limit"
-          : "{count} sessions paused at their budget limit",
+          ? "1 session paused at its usage limit"
+          : "{count} sessions paused at their usage limit",
       body: "{sessions}. A paused run resumes when its limit is raised.",
       values: { count: inputs.pausedTotal, sessions: `${named}${more}` },
       href: "/sessions?status=paused",

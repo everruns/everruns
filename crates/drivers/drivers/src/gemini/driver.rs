@@ -744,6 +744,24 @@ impl std::fmt::Debug for GeminiChatDriver {
 /// Register the Gemini driver with the driver registry
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const GEMINI_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "gemini",
+        recommended_models: &[
+            "gemini-4-argon",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+        ],
+        coding_model: "gemini-4-argon",
+        research_model: "gemini-4-argon",
+        chat_model: "gemini-3.8-flash",
+        small_model: "gemini-3.5-flash-lite",
+        decision_model: "gemini-3.5-flash-lite",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Google Gemini".into(),
@@ -758,6 +776,7 @@ pub fn descriptor() -> DriverDescriptor {
         // GEMINI_BASE_URL was recognized before these names moved onto the
         // drivers; declaring it keeps existing dev setups working.
         base_url_env: Some("GEMINI_BASE_URL".into()),
+        recommended_models: Some(GEMINI_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
             let provider =
                 everruns_contracts::Provider::new(config.provider.clone(), GeminiChatDriver::new())
@@ -813,14 +832,20 @@ struct GeminiGroundingHop {
     supports: Vec<GroundingSupport>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct GeminiHopUsage {
+    input_tokens: u32,
+    tool_use_tokens: u32,
+    output_tokens: u32,
+    cached_tokens: Option<u32>,
+    thought_tokens: Option<u32>,
+}
+
 #[derive(Default)]
 struct GeminiStreamState {
     model: String,
     response_model: Option<String>,
-    input_tokens: u32,
-    output_tokens: u32,
-    cached_tokens: Option<u32>,
-    thought_tokens: Option<u32>,
+    usage: GeminiHopUsage,
     billed_input: u32,
     billed_output: u32,
     billed_cache: Option<u32>,
@@ -828,7 +853,7 @@ struct GeminiStreamState {
     continuation_token: Option<String>,
     can_continue: bool,
     output_since_checkpoint: bool,
-    checkpoint_usage: Option<(u32, u32, Option<u32>, Option<u32>)>,
+    checkpoint_usage: Option<GeminiHopUsage>,
     calls: StreamToolCallAccumulator,
     call_counter: u32,
     finish_reason: Option<String>,
@@ -852,16 +877,19 @@ impl GeminiStreamState {
         }
         if let Some(usage) = response.usage_metadata {
             if let Some(tokens) = usage.prompt_token_count {
-                self.input_tokens = tokens;
+                self.usage.input_tokens = tokens;
+            }
+            if let Some(tokens) = usage.tool_use_prompt_token_count {
+                self.usage.tool_use_tokens = tokens;
             }
             if let Some(tokens) = usage.candidates_token_count {
-                self.output_tokens = tokens;
+                self.usage.output_tokens = tokens;
             }
             if let Some(tokens) = usage.cached_content_token_count {
-                self.cached_tokens = Some(tokens);
+                self.usage.cached_tokens = Some(tokens);
             }
             if let Some(tokens) = usage.thoughts_token_count {
-                self.thought_tokens = Some(tokens);
+                self.usage.thought_tokens = Some(tokens);
             }
         }
         // Grounding metadata may trail the terminal candidate; read it first.
@@ -933,12 +961,7 @@ impl GeminiStreamState {
             if let Some(token) = checkpoint {
                 self.continuation_token = Some(token);
                 self.output_since_checkpoint = false;
-                self.checkpoint_usage = Some((
-                    self.input_tokens,
-                    self.output_tokens,
-                    self.cached_tokens,
-                    self.thought_tokens,
-                ));
+                self.checkpoint_usage = Some(self.usage);
             }
             if let Some(reason) = candidate
                 .finish_reason
@@ -1082,14 +1105,19 @@ impl GeminiStreamState {
     }
 
     fn add_hop_usage(&mut self) {
-        self.billed_input = self.billed_input.saturating_add(self.input_tokens);
+        // Tool-use prompts are additional input, outside the cached prompt subset.
+        // Keep their cumulative per-hop count separate until the hop is committed.
+        self.billed_input = self
+            .billed_input
+            .saturating_add(self.usage.input_tokens)
+            .saturating_add(self.usage.tool_use_tokens);
         self.billed_output = self
             .billed_output
-            .saturating_add(self.output_tokens)
-            .saturating_add(self.thought_tokens.unwrap_or(0));
+            .saturating_add(self.usage.output_tokens)
+            .saturating_add(self.usage.thought_tokens.unwrap_or(0));
         for (total, hop) in [
-            (&mut self.billed_cache, self.cached_tokens),
-            (&mut self.billed_thoughts, self.thought_tokens),
+            (&mut self.billed_cache, self.usage.cached_tokens),
+            (&mut self.billed_thoughts, self.usage.thought_tokens),
         ] {
             if let Some(tokens) = hop {
                 *total = Some(total.unwrap_or(0).saturating_add(tokens));
@@ -1103,10 +1131,7 @@ impl GeminiStreamState {
             .push(std::mem::take(&mut self.grounding));
         self.grounding.answer_range = self.answer.len()..self.answer.len();
         self.add_hop_usage();
-        self.input_tokens = 0;
-        self.output_tokens = 0;
-        self.cached_tokens = None;
-        self.thought_tokens = None;
+        self.usage = GeminiHopUsage::default();
         self.finish_reason = None;
         self.provider_finish_reason = None;
         self.output_since_checkpoint = false;
@@ -1373,6 +1398,8 @@ struct GeminiUsageMetadata {
     thoughts_token_count: Option<u32>,
     #[serde(default)]
     prompt_token_count: Option<u32>,
+    #[serde(default)]
+    tool_use_prompt_token_count: Option<u32>,
     #[serde(default)]
     candidates_token_count: Option<u32>,
     #[serde(default)]

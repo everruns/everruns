@@ -44,12 +44,18 @@ import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
 import { messageOrigin, ORIGIN_LABEL_KEY } from "@/lib/message-origin";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageReplyActions } from "@/components/chat/message-reply-actions";
+import {
+  MessageReactionButton,
+  MessageReactionChips,
+  UserMessageReactions,
+} from "@/components/chat/message-reactions";
 import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
 import { TraceLink } from "@/components/chat/trace-link";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
 import { WorkLogNarration } from "@/components/chat/work-log-narration";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import { ContinueTurnButton } from "@/components/costs/continue-turn-button";
 import { ToolErrorDisclosureProvider } from "@/components/chat/tool-error-disclosure";
 import {
   getReasoningMultiIterationTurnIds,
@@ -307,6 +313,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   sessionActive = false,
   messageActions = false,
 }: ChatMessageListProps) {
+  const askAction = (error?: { code?: string | null }) =>
+    error?.code === "budget_paused" ? <ContinueTurnButton sessionId={sessionId} /> : undefined;
   const { locale, displayLocale, t } = useLocale();
   const ui = useUiTranslations();
   const { data: providers } = useProviders();
@@ -1136,6 +1144,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     retryable={isRetryableRuntimeError(
                       getRuntimeErrorFromTurnFailed(turnFailedData),
                     )}
+                    action={askAction(getRuntimeErrorFromTurnFailed(turnFailedData))}
                   />
                 );
               }
@@ -1241,6 +1250,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     key={event.id}
                     message={textContent}
                     retryable={isRetryableRuntimeError(outputError)}
+                    action={askAction(outputError)}
                   />
                 );
               }
@@ -1263,6 +1273,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               // Words the platform wrote, not the person: a schedule run, a
               // trigger, a thread update, a notice (knowledge/execution/message-origin.md).
               const origin = isUser ? messageOrigin(data.message?.metadata) : null;
+              if (origin?.kind === "reaction") return null; // shown as chips instead
               const isTaskWake = origin?.kind === "task_wake";
               const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
               // What a coordinator sent this thread, shown without the worker's instructions.
@@ -1327,7 +1338,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               return (
                 <div
                   key={isUser ? `user-${getClientMessageId(event) ?? event.id}` : event.id}
-                  className={`chat-transcript-row space-y-2 ${isUser ? "scroll-mt-4" : ""}`}
+                  className={`chat-transcript-row space-y-2 ${isUser ? "group/user-row scroll-mt-4" : ""}`}
                   data-message-anchor={isUser ? event.id : undefined}
                   id={isUser ? `message-${data.message?.id}` : undefined}
                 >
@@ -1392,6 +1403,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                               </div>
                             )}
                           </div>
+                          <MessageReactionChips messageId={data.message?.id} />
                           <div
                             className={cn(
                               chatSurfaceStyles.agentActions,
@@ -1409,6 +1421,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                                 sessionActive={sessionActive}
                               />
                             )}
+                            <MessageReactionButton messageId={data.message?.id} />
                             <MessageInfoIcon event={event} />
                             {genTraceUrl && (
                               <TraceLink href={genTraceUrl} label={t("trace_view_message")} />
@@ -1418,6 +1431,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                       )}
                     </div>
                   )}
+                  {isUser && <UserMessageReactions messageId={data.message?.id} />}
 
                   {toolCalls.length > 0 && (
                     <div className="space-y-1">

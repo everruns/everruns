@@ -80,6 +80,7 @@ pub async fn row_to_app(
             vec![AgentChannel {
                 public_id: AgentChannelId::from_uuid(row.id),
                 internal_id: row.id,
+                agent_id: None,
                 channel_type: ct,
                 channel_config: config,
                 auth,

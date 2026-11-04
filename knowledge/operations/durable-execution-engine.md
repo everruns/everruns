@@ -159,7 +159,7 @@ behind green unit tests.
 
 Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. The standalone worker subscribes at startup (`crates/worker/src/task_wakeup.rs`) and every notification cuts its poll backoff short. Polling stays as the fallback, so a lost notification or a dropped stream costs at most one backoff interval (`WORKER_POLL_BACKOFF_MAX_MS`), and the worker resubscribes with a 1s to 30s backoff.
 
-Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits. The in-process DEV_MODE worker has no channel: the turn backend wakes its lease loop and its running leases directly, also after the commit (`ActorWakeups`). A release that leaves the actor runnable wakes the releasing worker's own loop once the turn's slot is free. A lease that expires sends nothing, so the actor loop's poll backoff is capped at 1 s (`ACTOR_POLL_BACKOFF_MAX`), which bounds how long past its TTL a dead holder's turn waits.
+Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits. The in-process DEV_MODE worker has no channel: the turn backend wakes its lease loop and its running leases directly, also after the commit (`ActorWakeups`). A release that leaves the actor runnable wakes the releasing worker's own loop once the turn's slot is free. A wake-up for a session whose last worker is ready names that worker, and only it hears the wake-up ([Sticky sessions](../execution/sticky-sessions.md)). A lease that expires sends nothing, so the actor loop's poll backoff is capped at 1 s (`ACTOR_POLL_BACKOFF_MAX`), which bounds how long past its TTL a dead holder's turn waits.
 
 Subagent completion waits execute at the authorized server command edge through
 `wait_session_idle`, shared by direct and gRPC platform adapters. After checking
@@ -299,8 +299,8 @@ log. The control plane keeps the `session_actors` runnable index
 ([migrations 215](../../crates/server/migrations/legacy/215_session_actors.sql) and
 [20261012014120](../../crates/server/migrations/20261012014120_session_actor_inbox_cursor.sql),
 [repository](../../crates/server/src/storage/repositories/session_actors/mod.rs))
-and serves five worker-link calls, `LeaseActors`, `RenewActorLease`,
-`ReleaseActor`, `HandOffActor` and `ReadActorJournal`, over gRPC and, in DEV_MODE, through
+and serves six worker-link calls, `LeaseActors`, `RenewActorLease`,
+`RenewActorLeases`, `ReleaseActor`, `HandOffActor` and `ReadActorJournal`, over gRPC and, in DEV_MODE, through
 `DirectWorkerAdapters` on the same repository. Workers still never touch the
 database. The server's turn backend is
 [`ActorTurnBackend`](../../crates/server/src/turns/actor_backend.rs) in
@@ -358,6 +358,21 @@ production and DEV_MODE alike; the worker side is
   timeout loading the compaction checkpoint): the reason step returns it
   instead of reporting it as a model failure, so it never becomes a
   `turn.failed` with a provider-error message.
+- **Batched lease renewal.** A worker's renewals go out together
+  ([`renewals.rs`](../../crates/core/src/host/session_actor/renewals.rs)):
+  one renewal goes out at once when none is in flight, and the renewals that
+  arrive while one is in flight share the next call (group commit, no timer,
+  so an idle worker adds no latency). The worker's actor runtime holds one
+  batcher for all its turns (it runs a driver per lease, so a batcher per
+  driver would batch nothing), and the periodic renewals of its turns tick on
+  one clock, the runtime's start plus whole thirds of the TTL, so they land in
+  the same call. `RenewActorLeases` renews a batch in one
+  statement and one relaxed commit; each lease keeps its own fence, expiry and
+  cursor, and comes back held, lost or deleted exactly as a single renewal
+  reports it. A failed call fails each of its renewals, which their renewers
+  retry as before. A server without the call answers UNIMPLEMENTED and the
+  worker renews one lease per call. Before batching, a turn cost about 14
+  renewal statements and commits at 100 agents (2026-11-03 stress bench).
   Expiry is database time.
 - **A stalled holder lets its lease go.** The renewer extends the lease
   whatever the turn does, so a holder stuck where it writes nothing (setup

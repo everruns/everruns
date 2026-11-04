@@ -575,18 +575,16 @@ impl ServerAppBuilder {
                 .transpose()
         };
 
-        let event_service = Arc::new(services::EventService::with_listeners(
-            db.clone(),
-            event_delivery.clone(),
-            event_listeners.clone(),
-        ));
-        thread_turns.bind_registry(&db, &event_service, &runner);
-        automatic_titles.bind_events(&event_service);
+        // The listener feed reads on the background pool, off the requests'
+        // connections; the request-path service shares it.
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
             event_listeners,
         ));
+        let event_service = Arc::new(background_event_service.with_database(db.clone()));
+        thread_turns.bind_registry(&db, &event_service, &runner);
+        automatic_titles.bind_events(&event_service);
 
         let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
 
@@ -963,6 +961,12 @@ impl ServerAppBuilder {
         .with_mcp_event_triggers(mcp_event_triggers.clone())
         .with_channels(channel_recovery.clone());
         agent_triggers_state.external_egress = Some(host_composition.egress_service());
+        agent_triggers_state.connection_resolver = optional_connection_resolver(
+            &db,
+            &encryption,
+            &auth_config,
+            host_composition.egress_service(),
+        );
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1245,6 +1249,9 @@ impl ServerAppBuilder {
             &self.config.api_prefix,
             self.pat_route_classes,
         );
+        // Internal app calls keep route authorization, but are already throttled
+        // at the outer MCP boundary. Do not charge a second, peerless localhost bucket.
+        let app_router = api_routes.clone();
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
         let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
@@ -1264,7 +1271,9 @@ impl ServerAppBuilder {
             auth_config.base_url.clone(),
         );
         let mut root_routes = Router::new()
-            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(api::mcp_endpoint::routes(
+                mcp_endpoint_state.with_app_router(app_router),
+            ))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(channel_root_routes);
 

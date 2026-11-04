@@ -77,6 +77,20 @@ impl Modify for SdkMetadata {
                 operation.deprecated = Some(Deprecated::True);
             }
         }
+        // Pause agent replaced "suspend exposures"; the old routes stay as aliases.
+        for path in [
+            "/v1/agents/{agent_id}/exposures/suspend",
+            "/v1/agents/{agent_id}/exposures/resume",
+        ] {
+            if let Some(operation) = openapi
+                .paths
+                .paths
+                .get_mut(path)
+                .and_then(|item| item.post.as_mut())
+            {
+                operation.deprecated = Some(Deprecated::True);
+            }
+        }
         let Some(components) = openapi.components.as_mut() else {
             return;
         };
@@ -205,6 +219,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::health_issues::get_health_issue,
         api::health_issues::check_health_issue,
         api::health_issues::snooze_health_issue,
+        api::health_issues::dismiss_health_issue,
         api::agent_channels::get_agent_chat_features,
         api::agent_api::work_chat::get_work_chat_config,
         api::agent_api::work_chat::get_work_chat_by_host,
@@ -409,6 +424,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::durable::force_close_circuit_breaker,
         api::durable::delete_circuit_breaker,
         api::system::run_system_doctor,
+        api::system::list_platform_detections,
         api::schedules::create_schedule,
         api::schedules::list_schedules,
         api::schedules::get_schedule,
@@ -444,6 +460,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::get_latest_health_check,
         api::agents::upsert_agent,
         api::agents::copy_agent,
+        api::agents::pause_agent,
+        api::agents::resume_agent,
         api::agents::suspend_agent_exposures,
         api::agents::resume_agent_exposures,
         // LLM Providers - additional
@@ -549,6 +567,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::mcp_url_consent::submit_elicitation_consent,
         api::question_answers::submit_question_answers,
         api::tool_approvals::submit_tool_approvals,
+        api::run_requests::get_run_requests,
         api::credentials::list,
         api::credentials::create,
         api::credentials::set_value,
@@ -691,6 +710,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             crate::domains::agent_triggers::record::TriggerEventFilter,
             crate::domains::agent_triggers::record::TriggerFilterCondition,
             domains::agent_triggers::TriggerAgentTriggerOutput,
+            domains::agent_triggers::ManualTriggerEvent,
+            domains::agent_triggers::ManualFireStatus,
+            api::agent_triggers::FireAgentTriggerRequest,
             ListResponse<Agent>,
             PaginatedResponse<Session>,
             ListResponse<api::messages::Message>,
@@ -821,6 +843,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::tool_approvals::ToolApprovalAnswer,
             api::tool_approvals::ToolApprovalDecision,
             api::tool_approvals::ToolApprovalResolution,
+            crate::domains::sessions::run_requests::RunRequestsResponse,
+            crate::domains::sessions::run_requests::RunRequest,
+            crate::domains::sessions::run_requests::RunRequestToolCall,
+            crate::domains::sessions::run_requests::RequestingAgent,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,

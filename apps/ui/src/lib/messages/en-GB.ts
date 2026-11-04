@@ -1,5 +1,9 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "The model declined this request.": "The model declined this request.",
+  "Model declined request": "Model declined request",
+  "Open in Everruns": "Open in Everruns",
+  Expand: "Expand",
   "Loading page": "Loading page",
   "Changes affect only this estimate.": "Changes affect only this estimate.",
   "This content could not be displayed.": "This content could not be displayed.",
@@ -229,20 +233,6 @@ export const messages: Readonly<Record<string, string>> = {
     "Retry window expired. Review this conversation before sending again.",
   "Select and save a named Organization provider account before building.":
     "Select and save a named Organisation provider account before building.",
-  "External worker setup failed": "External worker setup failed",
-  Execution: "Execution",
-  "External worker": "External worker",
-  "Built-in runtime": "Built-in runtime",
-  "Configure execution": "Configure execution",
-  "Unable to load execution settings": "Unable to load execution settings",
-  "This endpoint owns the model, prompt and tools. Agent editor settings are not applied to external execution.":
-    "This endpoint owns the model, prompt and tools. Agent editor settings are not applied to external execution.",
-  "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership. Messages and session history for this Agent are sent to the endpoint.":
-    "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership. Messages and session history for this Agent are sent to the endpoint.",
-  "Worker HTTPS endpoint": "Worker HTTPS endpoint",
-  "Endpoint secret": "Endpoint secret",
-  "Verify and connect": "Verify and connect",
-  "Disable external worker": "Disable external worker",
   "Organization users": "Organisation users",
   "Members of this organization can sign in.": "Members of this organisation can sign in.",
 };

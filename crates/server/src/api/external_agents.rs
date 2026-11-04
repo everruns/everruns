@@ -22,12 +22,12 @@ pub fn routes(state: AppState) -> Router {
 }
 
 /// Read an Agent's external execution status.
-#[utoipa::path(get, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200, body = Option<ExternalAgent>)), tag = "agents")]
+#[utoipa::path(get, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200, body = ExternalAgentStatus)), tag = "agents")]
 pub async fn get_external_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
-) -> ApiResult<Option<ExternalAgent>> {
+) -> ApiResult<ExternalAgentStatus> {
     Ok(Json(
         GetExternalAgent { agent_id }.run(&state.ctx(&org)).await?,
     ))

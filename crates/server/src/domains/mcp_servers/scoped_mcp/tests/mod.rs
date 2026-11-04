@@ -408,6 +408,7 @@ pub(crate) fn test_harness() -> Harness {
 pub(crate) fn test_agent() -> Agent {
     let public_id = generate_agent_public_id();
     Agent {
+        completion_check: Default::default(),
         localizations: Default::default(),
         is_built_in: false,
         avatar: None,
@@ -426,6 +427,7 @@ pub(crate) fn test_agent() -> Agent {
         harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec![],
         capabilities: vec![],
         sandbox_policy: None,

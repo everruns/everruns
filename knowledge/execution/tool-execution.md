@@ -323,6 +323,10 @@ expensive one exhausts tokens, one stalled on slow calls exhausts neither.
 Distinct from the `usage_limit_auto_continue` capability, which resumes after a
 *provider* limit resets. This gate asks whether the work is finished.
 
+The hosted runtime wires the gate into the turn loop behind the
+`completion_check` agent setting; see
+[Turn Completion Check](turn-completion-check.md).
+
 ### Tool-Call Cancellation
 
 Dropping the act future is how a cancelled turn stops tool work, and for a tool

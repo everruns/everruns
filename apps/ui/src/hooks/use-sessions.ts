@@ -11,6 +11,7 @@ import {
   getSessionResolvedModel,
   getSessionContextReport,
   getSessionCost,
+  getSessionRun,
   getSessionFacets,
   getSessionStats,
   listSessions,
@@ -185,6 +186,24 @@ export function useSessionCost(sessionId: string | undefined, live = false) {
   const query = useQuery({
     queryKey: queryKeys.sessions.cost(org, sessionId),
     queryFn: () => getSessionCost(sessionId!),
+    enabled: !!org && !!sessionId,
+    refetchInterval: live ? 15_000 : false,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
+
+/** The session's whole run: every agent session in it, with turns and spend. */
+export function useSessionRun(sessionId: string | undefined, live = false) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.run(org, sessionId),
+    queryFn: () => getSessionRun(sessionId!),
     enabled: !!org && !!sessionId,
     refetchInterval: live ? 15_000 : false,
   });
@@ -436,6 +455,8 @@ const SSE_EVENT_TYPES = [
   "session.model.changed",
   "task.created",
   "task.updated",
+  "message.reaction.added",
+  "message.reaction.removed",
 ];
 
 /** Default page size for paginated event loading */
@@ -451,7 +472,15 @@ const MAX_EVENTS_IN_MEMORY = 5_000;
 function isSettledTail(events: Event[], settled = false): boolean {
   for (const event of events) {
     if (event.type === "session.idled" || event.type === "session.started") settled = true;
-    else if (!["task.created", "task.updated", "session.model.changed"].includes(event.type)) {
+    else if (
+      ![
+        "task.created",
+        "task.updated",
+        "session.model.changed",
+        "message.reaction.added",
+        "message.reaction.removed",
+      ].includes(event.type)
+    ) {
       settled = false;
     }
   }

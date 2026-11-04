@@ -1,7 +1,7 @@
 // uk product copy for Home (knowledge/ui/org-home.md).
 export const messages: Readonly<Record<string, string>> = {
   "1 sandbox needs attention": "1 пісочниця потребує уваги",
-  "1 session paused at its budget limit": "1 сесію призупинено на ліміті бюджету",
+  "1 session paused at its usage limit": "1 сесію призупинено на ліміті використання",
   "Add provider": "Додати провайдера",
   "Agents need at least one enabled model.": "Агентам потрібна щонайменше одна ввімкнена модель.",
   "Agents, channels, sessions, sandboxes and limits all look fine.":
@@ -58,7 +58,8 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} running": "працює: {count}",
   "{count} sandboxes need attention": "Пісочниць, що потребують уваги: {count}",
   "{count} sessions": "Сесій: {count}",
-  "{count} sessions paused at their budget limit": "Сесій, призупинених на ліміті бюджету: {count}",
+  "{count} sessions paused at their usage limit":
+    "Сесій, призупинених на ліміті використання: {count}",
   "{done} of {total} done": "Виконано {done} з {total}",
   "{failed} of {runs} turns failed in the last {hours} hours":
     "{failed} з {runs} ходів завершилися невдачею за останні {hours} год",

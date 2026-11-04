@@ -235,6 +235,7 @@ fn make_budget_row(limit: f64, balance: f64, soft_limit: Option<f64>, currency: 
         period: None,
         period_started_at: None,
         metadata: None,
+        policy: serde_json::json!({}),
         status: "active".into(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -349,14 +350,14 @@ fn test_compute_debit_usd_prefers_provider_cost() {
         Some("openai"),
         Some(0.0123),
     );
-    assert_eq!(debit, 0.0123);
+    assert_eq!(debit, Some(0.0123));
 }
 
 #[test]
 fn test_compute_debit_usd_provider_cost_covers_unknown_model() {
     let (svc, _) = make_service();
-    // Without a profile we would fall back to raw token count; the provider's
-    // cost rescues USD metering for the long tail of models.
+    // Without a profile the cost would be unknown; the provider's cost
+    // rescues USD metering for the long tail of models.
     let debit = svc.compute_debit(
         "usd",
         1500,
@@ -368,13 +369,14 @@ fn test_compute_debit_usd_provider_cost_covers_unknown_model() {
         Some("openai"),
         Some(0.0042),
     );
-    assert_eq!(debit, 0.0042);
+    assert_eq!(debit, Some(0.0042));
 }
 
 #[test]
 fn test_compute_debit_usd_zero_provider_cost_falls_back() {
     let (svc, _) = make_service();
-    // A zero/absent cost must not short-circuit metering; fall back as before.
+    // A zero cost must not short-circuit metering. With no list price either,
+    // the cost is unknown: never the token count read as dollars.
     let debit = svc.compute_debit(
         "usd",
         1500,
@@ -386,7 +388,7 @@ fn test_compute_debit_usd_zero_provider_cost_falls_back() {
         Some("openai"),
         Some(0.0),
     );
-    assert_eq!(debit, 1500.0);
+    assert_eq!(debit, None);
 }
 
 #[test]
@@ -406,21 +408,7 @@ fn test_compute_debit_raw_token_quotas_include_cached_prompt_tokens() {
             None,
             None
         ),
-        1_000_000.0
-    );
-    assert_eq!(
-        svc.compute_debit(
-            "credits",
-            total_tokens,
-            200_000,
-            0,
-            800_000,
-            0,
-            None,
-            None,
-            None
-        ),
-        1_000.0
+        Some(1_000_000.0)
     );
     assert_eq!(
         svc.compute_debit(
@@ -434,12 +422,13 @@ fn test_compute_debit_raw_token_quotas_include_cached_prompt_tokens() {
             None,
             None,
         ),
-        1_000_000.0
+        None,
+        "currencies other than usd and tokens are not debited"
     );
 }
 
 #[test]
-fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
+fn test_compute_debit_usd_with_unknown_model_is_unpriced() {
     let (svc, _) = make_service();
     let debit = svc.compute_debit(
         "usd",
@@ -452,7 +441,8 @@ fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
         Some("openai"),
         None,
     );
-    assert_eq!(debit, 1500.0);
+    // Regression: this used to debit 1500 "dollars" (the token count).
+    assert_eq!(debit, None);
 }
 
 #[test]
@@ -470,14 +460,14 @@ fn test_compute_debit_usd_estimates_openai_embedding_cost() {
         None,
     );
 
-    assert_eq!(debit, 0.000_03);
+    assert_eq!(debit, Some(0.000_03));
 }
 
 #[test]
 fn test_compute_debit_zero_tokens() {
     let (svc, _) = make_service();
     let debit = svc.compute_debit("tokens", 0, 0, 0, 0, 0, None, None, None);
-    assert_eq!(debit, 0.0);
+    assert_eq!(debit, Some(0.0));
 }
 
 #[test]
@@ -486,29 +476,33 @@ fn test_compute_debit_usd_discounts_cached_tokens() {
     // Disjoint buckets: `input_tokens` is non-cached, `cache_read_tokens`
     // additive. gpt-5.2: input $1.75/M, cache_read $0.175/M. A 1M-token prompt
     // split as 200K non-cached + 800K cache reads.
-    let cached = svc.compute_debit(
-        "usd",
-        1_000_000,
-        200_000,
-        0,
-        800_000,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
+    let cached = svc
+        .compute_debit(
+            "usd",
+            1_000_000,
+            200_000,
+            0,
+            800_000,
+            0,
+            Some("gpt-5.2"),
+            Some("openai"),
+            None,
+        )
+        .unwrap();
     // The same prompt billed cache-blind (all 1M at the full input rate).
-    let naive = svc.compute_debit(
-        "usd",
-        1_000_000,
-        1_000_000,
-        0,
-        0,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
+    let naive = svc
+        .compute_debit(
+            "usd",
+            1_000_000,
+            1_000_000,
+            0,
+            0,
+            0,
+            Some("gpt-5.2"),
+            Some("openai"),
+            None,
+        )
+        .unwrap();
     // 200K * 1.75 + 800K * 0.175 = 0.35 + 0.14 = 0.49, well below the cache-blind 1.75.
     assert!((cached - 0.49).abs() < 1e-9, "cached debit {cached}");
     assert!((naive - 1.75).abs() < 1e-9, "naive debit {naive}");
@@ -946,7 +940,7 @@ async fn test_check_budgets_paused_budget_returns_pause() {
     assert_eq!(
         result.message.as_deref(),
         Some(
-            "Budget paused. 8.00 usd spent reached the 8.00 usd soft limit. Increase or resume the budget to continue."
+            "Usage policy asks before continuing. 8.00 usd spent reached the 8.00 usd ask point. Continue this turn or raise the limit."
         )
     );
     assert_eq!(result.error_code.as_deref(), Some("budget_paused"));
@@ -982,7 +976,9 @@ async fn test_check_budgets_manually_paused_budget_uses_neutral_message() {
     assert!(result.should_pause());
     assert_eq!(
         result.message.as_deref(),
-        Some("Budget paused with 0.00 usd spent. Increase or resume the budget to continue.")
+        Some(
+            "Usage policy asks before continuing, with 0.00 usd spent. Continue this turn or raise the limit."
+        )
     );
 }
 
@@ -1021,7 +1017,7 @@ async fn test_check_budgets_paused_budget_above_soft_limit_uses_exceeded_message
     assert_eq!(
         result.message.as_deref(),
         Some(
-            "Budget paused. 9.00 usd spent exceeded the 8.00 usd soft limit. Increase or resume the budget to continue."
+            "Usage policy asks before continuing. 9.00 usd spent exceeded the 8.00 usd ask point. Continue this turn or raise the limit."
         )
     );
 }

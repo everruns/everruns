@@ -55,7 +55,7 @@ it("does not advertise suspended or archived agents as live", () => {
   const { rerender } = render(
     <AgentCardChannels agent={{ ...agent, channels, exposures_suspended: true }} />,
   );
-  expect(screen.getByRole("link", { name: "Slack: Suspended" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Slack: Paused" })).toBeInTheDocument();
   rerender(<AgentCardChannels agent={{ ...agent, channels, status: "archived" }} />);
   expect(screen.getByRole("link", { name: "Slack: Agent unavailable" })).toBeInTheDocument();
 });

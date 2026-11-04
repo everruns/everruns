@@ -169,8 +169,6 @@ pub(super) fn recorded_mutation(name: &str) -> bool {
         || matches!(
             name,
             "create_agent_credential_binding"
-                | "suspend_agent_exposures"
-                | "resume_agent_exposures"
                 | "restore_entity_revision"
                 | "set_manager_context"
                 | "append_manager_context"
