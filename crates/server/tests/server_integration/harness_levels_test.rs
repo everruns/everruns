@@ -97,6 +97,7 @@ async fn test_harness_levels_upgrade_pins_legacy_agents_atomically() {
         .create_agent(
             org.org_id,
             CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "legacy-inherited".into(),

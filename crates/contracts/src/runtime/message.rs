@@ -813,13 +813,10 @@ impl InputContentPart {
     }
 }
 
-/// Message metadata key naming where a user-role message came from when no
-/// person wrote it. Reserved: client-supplied metadata loses this key, so only
-/// the platform can set it.
-pub const MESSAGE_ORIGIN_METADATA_KEY: &str = "everruns_origin";
-/// Origin of a message the platform injects to wake a session about its tasks
-/// (a thread finished, asked a question, or sent an update).
-pub const MESSAGE_ORIGIN_TASK_WAKE: &str = "task_wake";
+pub use super::message_origin::{
+    MESSAGE_ORIGIN_METADATA_KEY, MESSAGE_ORIGIN_TASK_WAKE, MessageOrigin, MessageOriginKind,
+    MessageOriginRun,
+};
 
 /// Message metadata key holding the id a client minted for a message it sent.
 /// The platform sets it from the create request (never from client metadata)
@@ -829,11 +826,11 @@ pub const CLIENT_MESSAGE_ID_METADATA_KEY: &str = "everruns_client_message_id";
 
 /// Metadata for a platform-injected task wake-up message.
 pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_json::Value> {
-    std::collections::HashMap::from([(
-        MESSAGE_ORIGIN_METADATA_KEY.to_string(),
-        serde_json::Value::String(MESSAGE_ORIGIN_TASK_WAKE.to_string()),
-    )])
+    MessageOrigin::new(MessageOriginKind::TaskWake).into_metadata()
 }
+
+/// Runtime-owned snapshot for replaying changed capability reference data.
+pub const CONVERSATION_CONTEXT_UPDATE_METADATA_KEY: &str = "capability_context_update";
 
 /// Remove reserved platform keys from caller-supplied message metadata, so a
 /// client cannot make its own text look like a platform notice or start a
@@ -843,7 +840,9 @@ pub fn strip_reserved_message_metadata(
 ) {
     super::causal::sanitize_input_metadata(metadata);
     if let Some(map) = metadata.as_mut() {
+        map.remove(CONVERSATION_CONTEXT_UPDATE_METADATA_KEY);
         map.remove(MESSAGE_ORIGIN_METADATA_KEY);
+        map.remove(crate::message_reactions::MESSAGE_REACTIONS_METADATA_KEY);
         map.remove(CLIENT_MESSAGE_ID_METADATA_KEY);
         map.remove(super::saved_scripts::SCRIPT_RUN_METADATA_KEY);
         if map.is_empty() {
@@ -853,17 +852,25 @@ pub fn strip_reserved_message_metadata(
 }
 
 impl RuntimeMessage {
-    /// Platform origin of a user-role message no person wrote, if any.
-    pub fn origin(&self) -> Option<&str> {
-        self.metadata
-            .as_ref()?
-            .get(MESSAGE_ORIGIN_METADATA_KEY)?
-            .as_str()
+    /// Who wrote this user-role message when no person did, if anyone.
+    pub fn origin(&self) -> Option<MessageOrigin> {
+        if self.role != RuntimeMessageRole::User {
+            return None;
+        }
+        MessageOrigin::from_message_metadata(self.metadata.as_ref())
     }
 
     /// Whether the platform injected this message to report task activity.
     pub fn is_task_wake(&self) -> bool {
-        self.origin() == Some(MESSAGE_ORIGIN_TASK_WAKE)
+        self.origin()
+            .is_some_and(|origin| origin.kind == MessageOriginKind::TaskWake)
+    }
+
+    /// Whether the platform added this message to continue a turn its
+    /// completion check found unfinished.
+    pub fn is_turn_continuation(&self) -> bool {
+        self.origin()
+            .is_some_and(|origin| origin.kind == MessageOriginKind::TurnContinuation)
     }
 
     /// Reasoning artifacts carried by this message, in emission order.

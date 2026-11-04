@@ -158,18 +158,20 @@ export const messages: Readonly<Record<string, string>> = {
     "语音服务无法发起实时通话。检查提供商配置，然后重试。",
   "Voice service is unavailable.": "语音服务不可用。",
   "Error: {value}": "错误：{value}",
-  "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.":
-    "预算用尽。 {spent} {currency} 花费达到了 {limit} {currency} 限制。增加预算以继续。",
-  "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.":
-    "预算用尽。 {spent} {currency} 花费超出了 {limit} {currency} 限制。增加预算以继续。",
-  "Budget exhausted. Increase the budget to continue.": "预算用尽。增加预算以继续。",
-  "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "预算暂停。 {spent} {currency} 用达到了 {soft_limit} {currency} 软限制。增加或恢复预算以继续。",
-  "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "预算暂停。 {spent} {currency} 花费超出了 {soft_limit} {currency} 软限制。增加或恢复预算以继续。",
-  "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.":
-    "预算已暂停，已支出 {spent} {currency}。增加或恢复预算以继续。",
-  "Budget paused. Increase or resume the budget to continue.": "预算暂停。增加或恢复预算以继续。",
+  "Usage limit reached. {spent} {currency} spent reached the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "已达到使用限额。已花费 {spent} {currency}，达到了 {limit} {currency} 的限额。使用策略已停止此工作；提高其限额以继续。",
+  "Usage limit reached. {spent} {currency} spent exceeded the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "已达到使用限额。已花费 {spent} {currency}，超过了 {limit} {currency} 的限额。使用策略已停止此工作；提高其限额以继续。",
+  "Usage limit reached. A usage policy stopped this work; raise its limit to continue.":
+    "已达到使用限额。使用策略已停止此工作；提高其限额以继续。",
+  "Usage policy asks before continuing. {spent} {currency} spent reached the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续。已花费 {spent} {currency}，达到了 {soft_limit} {currency} 的确认点。继续本轮或提高限额。",
+  "Usage policy asks before continuing. {spent} {currency} spent exceeded the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续。已花费 {spent} {currency}，超过了 {soft_limit} {currency} 的确认点。继续本轮或提高限额。",
+  "Usage policy asks before continuing, with {spent} {currency} spent. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续，已花费 {spent} {currency}。继续本轮或提高限额。",
+  "Usage policy asks before continuing. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续。继续本轮或提高限额。",
   "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.":
     "模型 `{value}` 不可用。它可能已被删除、重命名，或者您的 API 密钥可能无法访问它。请选择不同的模型。",
   "The selected model is not available. Please select a different model.":
@@ -195,6 +197,8 @@ export const messages: Readonly<Record<string, string>> = {
     "AI 提供商帐户积分或配额不足。添加积分或提高提供商帐户限额以继续。",
   "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.":
     "AI 提供者帐户对于此请求没有积分：它要求最多 {requested_max_tokens} 输出代币，但余额涵盖 {affordable_tokens}。添加积分或降低最大输出令牌以继续。",
+  "The work continues automatically once credits are back (checked every minute for up to an hour).":
+    "额度恢复后，工作将自动继续（每分钟检查一次，最多持续一小时）。",
   "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.":
     "AI 提供商帐户尚未完成此模型所需的确认。在 {confirm_url} 完成，然后重试。",
   "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.":
@@ -227,6 +231,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Expand write output": "扩展写输出",
   "{count} edit": "{count} 编辑",
   "{count} edits": "{count} 编辑",
+  "Saved {count} change": "已保存 {count} 处更改",
+  "Saved {count} changes": "已保存 {count} 处更改",
+  "Undid {count} change": "已撤销 {count} 处更改",
+  "Undid {count} changes": "已撤销 {count} 处更改",
   "line {value}": "线{value}",
   "No tasks": "没有任务",
   "{completed} of {total} todos completed": "{completed} 的 {total} 待办事项已完成",
@@ -304,4 +312,8 @@ export const messages: Readonly<Record<string, string>> = {
   "ATIF export stopped after {count} parts": "{count} 零件后 ATIF 导出停止",
   "{count} image was omitted from the ATIF export": "{count} 图像",
   "{count} images were omitted from the ATIF export": "{count} 图像",
+  "Add reaction": "添加回应",
+  "{names} reacted {emoji}": "{names} 回应了 {emoji}",
+  "Remove your {emoji}": "移除你的 {emoji}",
+  Reaction: "回应",
 };

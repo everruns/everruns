@@ -39,7 +39,19 @@ pub(crate) fn session_not_found_status(
 }
 
 pub(crate) fn internal_status(context: &'static str, error: impl std::fmt::Display) -> Status {
-    tracing::error!(%error, "{}", context);
+    // Every worker RPC fails at once when the datastore saturates, so the
+    // report is bounded per context; repeats are still logged (EVE-1328).
+    let throttle = &everruns_core::report_throttle::REPEATED_FAILURES;
+    match throttle.admit("server.worker_link.rpc", context) {
+        Some(suppressed) => tracing::error!(
+            %error,
+            suppressed_since_last_report = suppressed,
+            report_interval_seconds = throttle.interval().as_secs(),
+            "{}",
+            context
+        ),
+        None => tracing::info!(%error, report_suppressed = true, "{}", context),
+    }
     Status::internal(context)
 }
 
@@ -372,6 +384,72 @@ mod tests {
 
     const RAW_STORAGE_ERROR: &str = "error returned from database: relation \"agents\" does not \
                                      exist at sqlx-postgres/src/connection.rs:666";
+
+    /// Levels of every event `emit` produced, under a capturing subscriber.
+    fn captured_levels(emit: impl FnOnce()) -> Vec<tracing::Level> {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::Layer;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        struct Levels(Arc<Mutex<Vec<tracing::Level>>>);
+        impl<S: tracing::Subscriber> Layer<S> for Levels {
+            fn on_event(
+                &self,
+                event: &tracing::Event<'_>,
+                _ctx: tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                self.0.lock().unwrap().push(*event.metadata().level());
+            }
+        }
+
+        let levels = Arc::new(Mutex::new(Vec::new()));
+        let subscriber =
+            tracing_subscriber::registry::Registry::default().with(Levels(Arc::clone(&levels)));
+        tracing::subscriber::with_default(subscriber, emit);
+        levels.lock().unwrap().clone()
+    }
+
+    /// EVE-1328: a saturated datastore fails every worker RPC. The first is
+    /// reported at once; the rest stay in the logs below `warn`, which the
+    /// embedder's error reporter would otherwise turn into one event each.
+    #[test]
+    fn internal_status_reports_a_sustained_outage_a_bounded_number_of_times() {
+        let levels = captured_levels(|| {
+            for _ in 0..100 {
+                internal_status("EVE-1328 sustained outage fixture", RAW_STORAGE_ERROR);
+            }
+        });
+        assert_eq!(levels.len(), 100, "every occurrence is still logged");
+        assert_eq!(levels[0], tracing::Level::ERROR);
+        assert!(
+            levels[1..]
+                .iter()
+                .all(|level| *level == tracing::Level::INFO),
+            "{levels:?}"
+        );
+    }
+
+    /// The same bound through the call-site macro the other sites use.
+    #[test]
+    fn repeated_failure_macro_bounds_reports_at_the_requested_level() {
+        let levels = captured_levels(|| {
+            for _ in 0..50 {
+                everruns_core::report_repeated_failure!(
+                    warn,
+                    error = "pool timed out",
+                    "repeating failure fixture"
+                );
+            }
+        });
+        assert_eq!(levels.len(), 50);
+        assert_eq!(levels[0], tracing::Level::WARN);
+        assert!(
+            levels[1..]
+                .iter()
+                .all(|level| *level == tracing::Level::INFO),
+            "{levels:?}"
+        );
+    }
 
     #[test]
     fn internal_status_keeps_the_source_error_server_side() {

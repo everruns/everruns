@@ -361,3 +361,32 @@ fn harness_transport_projection_enforces_lifecycle_before_execution() {
         );
     }
 }
+
+#[test]
+fn session_client_tools_reach_the_worker() {
+    // A worker-run turn offers the session's client-side tools to the model
+    // only if they survive the session read.
+    let tool = serde_json::json!({
+        "type": "client_side",
+        "name": "create_ticket",
+        "description": "Open a helpdesk ticket.",
+        "parameters": {"type": "object", "properties": {}},
+    });
+    let proto_session = proto::Session {
+        id: Some(uuid_to_proto(Uuid::new_v4())),
+        harness_id: Some(uuid_to_proto(Uuid::new_v4())),
+        status: "idle".into(),
+        tools: vec![tool.to_string()],
+        ..Default::default()
+    };
+    let session = proto_session_to_session(proto_session).unwrap();
+    assert_eq!(session.tools.len(), 1);
+    assert_eq!(session.tools[0].name(), "create_ticket");
+
+    let invalid = proto::Session {
+        id: Some(uuid_to_proto(Uuid::new_v4())),
+        tools: vec!["not json".into()],
+        ..Default::default()
+    };
+    assert!(proto_session_to_session(invalid).is_err());
+}

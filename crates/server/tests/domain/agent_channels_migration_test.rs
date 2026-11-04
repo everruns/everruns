@@ -143,7 +143,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let grants = format!(
         "GRANT USAGE ON SCHEMA public TO {role};
          GRANT SELECT ON
-             organizations, agents, agent_channels, agent_triggers,
+             organizations, agents, agent_channels, agent_triggers, durable_workers,
              harnesses, harness_capabilities, agent_capabilities,
              principals, users, sessions, workspaces, session_participants,
              events, event_sequences, images, memories, models,

@@ -40,6 +40,14 @@ both variants. Durable Execution is intentionally included alongside the primary
 charts make the runtime dimension of the product visible instead of presenting Everruns as only a
 configuration UI.
 
+## Illustrative scene
+
+`agents-home-dark.png` is the one exception to the real-stack rule. It is a 2x capture (same
+1440 by 900 composition) of a hand-composed static mock of the Agents home, with illustrative
+agents, channels and activity, used on the everruns.com home page. It exists only in dark because
+the mock has no light theme. Replace it from a real-stack capture once the Agents home shows that
+state live; do not add more mocked scenes.
+
 ## Demo state
 
 Start the canonical local stack:

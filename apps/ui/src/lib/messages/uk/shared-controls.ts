@@ -1,4 +1,6 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Open in Everruns": "Відкрити в Everruns",
+  Expand: "Розгорнути",
   "This content could not be displayed.": "Не вдалося відобразити цей вміст.",
   "The message could not be sent.": "Не вдалося надіслати повідомлення.",
 
@@ -15,4 +17,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Не вдалося виконати запит. Спробуйте ще раз.",
   "Clear {value0}": "Очистити {value0}",
   "Filter by agent": "Фільтр за агентом",
+  "Changed again since your save": "Змінено знову після вашого збереження",
+  "Show values": "Показати значення",
+  "Hide values": "Сховати значення",
+  Empty: "Порожньо",
 };

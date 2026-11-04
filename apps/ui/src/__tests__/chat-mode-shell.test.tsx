@@ -23,6 +23,7 @@ function render(ui: ReactNode) {
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
   useSearchParams: () => mockQuery,
+  useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
 }));
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -62,6 +63,7 @@ jest.mock("next/dynamic", () => ({
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: () => mockEnabled,
   useFeatureFlags: () => ({}),
+  useFeatureFlagsState: () => ({ flags: {}, isLoading: false }),
 }));
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: mockOrg }, hasRole: () => mockHasRole }),
@@ -158,6 +160,22 @@ it("opens and closes without remounting the current page or losing the chat draf
   fireEvent.keyDown(window, { key: "j", ctrlKey: true });
   expect(screen.getByLabelText("Chat draft")).toHaveValue("Keep my draft");
   expect(screen.getByText("Page edits 1")).toBeInTheDocument();
+});
+
+it("opens Chat beside the page on arrival with ?chat=open", () => {
+  mockEnabled = true;
+  mockQuery.set("chat", "open");
+  try {
+    render(
+      <ChatModeShell>
+        <Page />
+      </ChatModeShell>,
+    );
+    expect(screen.getByText("Showing this page to the chat")).toBeInTheDocument();
+    expect(screen.getByLabelText("Chat draft")).toBeInTheDocument();
+  } finally {
+    mockQuery.delete("chat");
+  }
 });
 
 it("resets the chat shell on organization switch", () => {

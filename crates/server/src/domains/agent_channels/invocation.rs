@@ -386,36 +386,57 @@ async fn dispatch_invocation_message(
         ingress, channel, source,
     ));
 
-    message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: None,
-                org_id: ingress.org_id,
-                user_id: None,
-                harness_id: ingress.harness_id.uuid(),
-                agent_id: Some(ingress.agent_internal_id),
-                session_id: session_id.uuid(),
-                event_metadata: Some(execution_metadata::channel_message_metadata(
-                    ingress.public_id,
-                    ingress.owner_principal_id,
-                    ingress.virtual_user_id,
-                )),
-                request_id,
-            },
-            CreateMessageRequest {
-                message: InputMessage {
-                    role: MessageRole::User,
-                    content: vec![InputContentPart::text(rendered_message)],
-                },
-                addressed_participant_id: None,
-                controls: None,
-                metadata,
-                tags: None,
-                external_actor: None,
-                client_message_id: None,
-            },
-        )
-        .await?;
+    // Who wrote this message (knowledge/execution/message-origin.md): a channel
+    // schedule or webhook firing, named by the channel's agent. A2A messages
+    // come from a client acting for someone, so they carry no origin.
+    let origin = match source {
+        ChannelInvocationSource::Schedule => {
+            Some(everruns_core::message::MessageOriginKind::ChannelSchedule)
+        }
+        ChannelInvocationSource::Webhook => {
+            Some(everruns_core::message::MessageOriginKind::Webhook)
+        }
+        ChannelInvocationSource::A2a => None,
+    }
+    .map(|kind| {
+        everruns_core::message::MessageOrigin::new(kind)
+            .with_source_id(channel.public_id.to_string())
+            .with_name(&ingress.name)
+    });
+    let ctx = CreateMessageContext {
+        runtime_subject_principal_id: None,
+        org_id: ingress.org_id,
+        user_id: None,
+        harness_id: ingress.harness_id.uuid(),
+        agent_id: Some(ingress.agent_internal_id),
+        session_id: session_id.uuid(),
+        event_metadata: Some(execution_metadata::channel_message_metadata(
+            ingress.public_id,
+            ingress.owner_principal_id,
+            ingress.virtual_user_id,
+        )),
+        request_id,
+    };
+    let req = CreateMessageRequest {
+        message: InputMessage {
+            role: MessageRole::User,
+            content: vec![InputContentPart::text(rendered_message)],
+        },
+        addressed_participant_id: None,
+        controls: None,
+        metadata,
+        tags: None,
+        external_actor: None,
+        client_message_id: None,
+    };
+    match origin {
+        Some(origin) => {
+            message_service
+                .create_with_origin(ctx, req, origin, None)
+                .await?
+        }
+        None => message_service.create(ctx, req).await?,
+    };
 
     Ok(())
 }

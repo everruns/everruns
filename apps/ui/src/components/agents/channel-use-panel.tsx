@@ -6,7 +6,6 @@ import { CodeBlock, type CodeBlockSample } from "@/components/ui/code-block";
 import type { AgentChannel, ChannelType, PublicChatChannelConfig } from "@/lib/api/types";
 import { CopyButton } from "@/components/ui/copy-button";
 import { publicChatUrl } from "@/components/agents/channels/channel-summary";
-import { WorkChatAddress } from "@/components/agents/channels/work-chat-link";
 
 /// The channel-scoped ingress path for each transport (EVE-1000). These are
 /// addressed by the channel's own public id, which is why the snippet here can
@@ -109,7 +108,8 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
     ];
   }, [channel.channel_type, path, ui]);
 
-  if (channel.channel_type === "work_chat") return <WorkChatAddress channel={channel} />;
+  // Work Chat's address is the channel page itself, not a second Connect surface.
+  if (channel.channel_type === "work_chat") return null;
   if (channel.channel_type === "public_chat") return <PublicChatUsePanel channel={channel} />;
   if (!path) {
     return (

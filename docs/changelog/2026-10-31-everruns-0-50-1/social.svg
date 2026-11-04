@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="560" viewBox="0 0 520 560">
+<rect x="20" y="214" width="170" height="132" fill="#0A1636" stroke="#D4A43A" stroke-width="3"/>
+<text x="40" y="250" font-family="Geist Mono" font-size="13" font-weight="500" fill="#D4A43A" text-anchor="start">RELEASE</text>
+<text x="40" y="300" font-family="Geist" font-size="40" font-weight="600" fill="#FFFFFF" text-anchor="start">0.50.1</text>
+<text x="40" y="328" font-family="Geist Mono" font-size="13" font-weight="400" fill="#A8B0BE" text-anchor="start">Oct 31</text>
+<path d="M190 280 H222 V50 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="46" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="26" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
+<text x="274" y="56" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF" text-anchor="start">Customer-hosted workers</text>
+<path d="M190 280 H222 V116 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="112" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="92" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
+<text x="274" y="122" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF" text-anchor="start">System health doctor</text>
+<path d="M190 280 H222 V182 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="178" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="158" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
+<text x="274" y="188" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF" text-anchor="start">Sandbox snapshot builder</text>
+<path d="M190 280 H222 V248 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="244" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="224" width="250" height="48" fill="#0F1D45" stroke="#3A4766" stroke-width="2"/>
+<text x="274" y="254" font-family="Geist" font-size="15" font-weight="400" fill="#A8B0BE" text-anchor="start">Agent cost estimates</text>
+<path d="M190 280 H222 V314 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="310" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="290" width="250" height="48" fill="#0F1D45" stroke="#3A4766" stroke-width="2"/>
+<text x="274" y="320" font-family="Geist" font-size="15" font-weight="400" fill="#A8B0BE" text-anchor="start">Framework batch completions</text>
+<path d="M190 280 H222 V380 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="376" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="356" width="250" height="48" fill="#0F1D45" stroke="#3A4766" stroke-width="2"/>
+<text x="274" y="386" font-family="Geist" font-size="15" font-weight="400" fill="#A8B0BE" text-anchor="start">Rolling deploys keep work</text>
+<path d="M190 280 H222 V446 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="442" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="422" width="250" height="48" fill="#0F1D45" stroke="#3A4766" stroke-width="2"/>
+<text x="274" y="452" font-family="Geist" font-size="15" font-weight="400" fill="#A8B0BE" text-anchor="start">Interface languages</text>
+<path d="M190 280 H222 V512 H250" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="246" y="508" width="8" height="8" fill="#D4A43A"/>
+<rect x="258" y="488" width="250" height="48" fill="#0F1D45" stroke="#3A4766" stroke-width="2"/>
+<text x="274" y="518" font-family="Geist" font-size="15" font-weight="400" fill="#A8B0BE" text-anchor="start">Tracing destinations</text>
+</svg>

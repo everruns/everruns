@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AgentCostLine } from "@/components/costs/agent-cost-line";
 import { createBudget, deleteBudget, listBudgets, updateBudget } from "@/lib/api/budgets";
 import type {
   Budget,
@@ -66,8 +67,6 @@ function formatCurrency(currency: string): string {
       return "USD";
     case "tokens":
       return "Tokens";
-    case "credits":
-      return "Credits";
     default:
       return currency.toUpperCase();
   }
@@ -229,21 +228,27 @@ export function BudgetPanel({
         {canManage && !adding && (
           <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
             <Plus className="size-3" />
-            {ui("Add budget")}
+            {ui("Add usage policy")}
           </Button>
         )}
       </div>
 
+      {subjectType === "agent" ? <AgentCostLine agentId={subjectId} /> : null}
       {budgetsQuery.isLoading && (
-        <p className="text-sm text-muted-foreground">{ui("Loading budgets…")}</p>
+        <p className="text-sm text-muted-foreground">{ui("Loading usage policies…")}</p>
       )}
       {budgetsQuery.error instanceof Error && (
         <p className="text-sm text-destructive">{budgetsQuery.error.message}</p>
       )}
       {!budgetsQuery.isLoading && budgets.length === 0 && !adding && (
         <p className="text-sm text-muted-foreground">
-          {ui("No budget is attached to this")}{" "}
-          {subjectType === "agent" ? ui("agent") : ui("channel")}.
+          {subjectType === "agent"
+            ? ui(
+                "No usage policy covers this agent alone. Organization and person policies still apply.",
+              )
+            : ui(
+                "No usage policy covers this channel alone. Agent and organization policies still apply.",
+              )}
         </p>
       )}
 
@@ -276,7 +281,7 @@ export function BudgetPanel({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={ui("Edit budget {value0}", { value0: budget.id })}
+                    aria-label={ui("Edit usage policy {value0}", { value0: budget.id })}
                     onClick={() => setEditingId(budget.id)}
                   >
                     <Pencil className="size-3.5" />
@@ -284,7 +289,7 @@ export function BudgetPanel({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={ui("Delete budget {value0}", { value0: budget.id })}
+                    aria-label={ui("Delete usage policy {value0}", { value0: budget.id })}
                     onClick={() => deleteMutation.mutate(budget.id)}
                     disabled={deleteMutation.isPending}
                   >
@@ -299,7 +304,7 @@ export function BudgetPanel({
             </p>
             {budget.soft_limit != null && (
               <p className="text-xs text-muted-foreground">
-                {ui("Soft limit at")} {budget.soft_limit.toFixed(2)} {budget.currency}
+                {ui("Asks to continue at")} {budget.soft_limit.toFixed(2)} {budget.currency}
               </p>
             )}
             <p className="text-xs text-muted-foreground">
@@ -410,7 +415,6 @@ function NewBudgetForm({
             <SelectContent>
               <SelectItem value="usd">{ui("USD")}</SelectItem>
               <SelectItem value="tokens">{ui("Tokens")}</SelectItem>
-              <SelectItem value="credits">{ui("Credits")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -427,7 +431,9 @@ function NewBudgetForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${subjectId}-budget-soft-limit`}>{ui("Soft limit (optional)")}</Label>
+          <Label htmlFor={`${subjectId}-budget-soft-limit`}>
+            {ui("Ask to continue at (optional)")}
+          </Label>
           <Input
             id={`${subjectId}-budget-soft-limit`}
             type="number"
@@ -472,7 +478,7 @@ function NewBudgetForm({
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={submitting}>
-          {submitting ? ui("Creating…") : ui("Create budget")}
+          {submitting ? ui("Creating…") : ui("Create usage policy")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
           {ui("Cancel")}
@@ -532,7 +538,9 @@ function EditBudgetForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${budget.id}-edit-soft-limit`}>{ui("Soft limit (optional)")}</Label>
+          <Label htmlFor={`${budget.id}-edit-soft-limit`}>
+            {ui("Ask to continue at (optional)")}
+          </Label>
           <Input
             id={`${budget.id}-edit-soft-limit`}
             type="number"
@@ -558,12 +566,12 @@ function EditBudgetForm({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        {ui("Currency and rollover period stay fixed. Replace the budget to change them.")}
+        {ui("What it measures and its window stay fixed. Replace the policy to change them.")}
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={submitting}>
-          {submitting ? ui("Saving…") : ui("Save budget")}
+          {submitting ? ui("Saving…") : ui("Save usage policy")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
           {ui("Cancel")}

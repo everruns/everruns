@@ -6,6 +6,9 @@
 //! running out. Another worker on the same index then resumes from the log.
 
 mod cancels;
+mod completion_check;
+mod completion_recovery;
+mod credit_shortfall;
 mod detached;
 mod resolutions;
 mod stalls;
@@ -148,6 +151,14 @@ struct ModelGate {
     /// When set, every model call answers that the session is gone, as the
     /// control plane does once the session was deleted (EVE-1235).
     deleted_session: Mutex<Option<SessionId>>,
+    /// Provider refusals the next model calls answer with, in order.
+    refusals: Mutex<std::collections::VecDeque<everruns_contracts::error::AgentLoopError>>,
+    /// Every model call's max output tokens.
+    max_tokens: Mutex<Vec<Option<u32>>>,
+    /// What the next balance reads answer; `None` once empty (no balance API).
+    balances:
+        Mutex<std::collections::VecDeque<Option<everruns_contracts::provider_limit::CreditStatus>>>,
+    balance_reads: AtomicUsize,
 }
 
 impl Default for ModelGate {
@@ -158,6 +169,10 @@ impl Default for ModelGate {
             entered: Notify::new(),
             seen: Mutex::default(),
             deleted_session: Mutex::default(),
+            refusals: Mutex::default(),
+            max_tokens: Mutex::default(),
+            balances: Mutex::default(),
+            balance_reads: AtomicUsize::new(0),
         }
     }
 }
@@ -198,9 +213,22 @@ impl ChatDriver for GatedModel {
             self.gate.entered.notify_one();
             std::future::pending::<()>().await;
         }
+        self.gate.max_tokens.lock().unwrap().push(config.max_tokens);
+        if let Some(refusal) = self.gate.refusals.lock().unwrap().pop_front() {
+            return Err(refusal);
+        }
         self.inner
             .chat_completion_stream(endpoint, messages, config)
             .await
+    }
+
+    async fn credit_status(
+        &self,
+        _endpoint: &ProviderEndpoint,
+    ) -> everruns_contracts::error::Result<Option<everruns_contracts::provider_limit::CreditStatus>>
+    {
+        self.gate.balance_reads.fetch_add(1, Ordering::SeqCst);
+        Ok(self.gate.balances.lock().unwrap().pop_front().flatten())
     }
 }
 
@@ -352,8 +380,33 @@ fn model(answer: &str, calls: Vec<Vec<ToolCall>>) -> LlmSimConfig {
     LlmSimConfig::fixed(answer).with_tool_call_sequence(sequence)
 }
 
+/// How a [`Fixture`]'s agent and session are set up.
+struct Setup {
+    completion_check: crate::core::completion_check::CompletionCheck,
+    /// The session was started by a trigger or schedule.
+    unattended: bool,
+    max_iterations: usize,
+    /// The session's schedule store, when the test needs one.
+    schedules: Option<crate::host::ScheduleStoreFactory>,
+}
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self {
+            completion_check: Default::default(),
+            unattended: false,
+            max_iterations: 8,
+            schedules: None,
+        }
+    }
+}
+
 impl Fixture {
     async fn new(model: LlmSimConfig) -> Self {
+        Self::with_setup(model, Setup::default()).await
+    }
+
+    async fn with_setup(model: LlmSimConfig, setup: Setup) -> Self {
         let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
         let session_id = SessionId::new();
@@ -373,10 +426,15 @@ impl Fixture {
             .tool(client_tool(
                 everruns_contracts::tool_approval_types::APPROVE_TOOL_CALL_TOOL,
             ))
+            .unattended(setup.unattended)
             .build();
         // A client is connected to answer a pause.
         session.hints = Some([("setup_connection".to_string(), json!(true))].into());
-        let runtime = InProcessRuntime::builder()
+        let mut builder = InProcessRuntime::builder();
+        if let Some(schedules) = setup.schedules {
+            builder = builder.with_schedule_store_factory(schedules);
+        }
+        let runtime = builder
             .capability(GatedTools(gate.clone()))
             .harness(
                 HarnessBuilder::new("actors", "You are a test assistant.")
@@ -387,7 +445,8 @@ impl Fixture {
             .agent(
                 AgentBuilder::new("actor-agent", "Use the tools when asked.")
                     .id(agent_id)
-                    .max_iterations(8)
+                    .max_iterations(setup.max_iterations)
+                    .completion_check(setup.completion_check)
                     .build(),
             )
             .session(session)

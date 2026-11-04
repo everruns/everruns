@@ -1,8 +1,9 @@
 # hello (serve, experimental)
 
 The smallest [serve](../../../crates/serve) app: one agent, one tool, one
-eval. The agent runs on `openai/gpt-6.1-sol`: set `OPENAI_API_KEY` (or a
-host's `SERVE_GATEWAY_URL` / `OPENROUTER_API_KEY`).
+eval. The agent runs on `openai/gpt-6.1-sol`: set `OPENAI_API_KEY` or
+`OPENROUTER_API_KEY`. Optional `OPENAI_BASE_URL` selects a compatible Responses
+API endpoint when used with `OPENAI_API_KEY`.
 
 ```sh
 cargo run -p serve-example-hello              # dev server on :3000

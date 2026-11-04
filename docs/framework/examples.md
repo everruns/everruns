@@ -58,6 +58,13 @@ These run agents as HTTP services with [Serve](/framework/serve/).
 | [`serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over [A2A](/framework/a2a/): a researcher served by serve, and a writer that delegates to it. Offline by default | `cargo run -p serve-example-a2a --bin researcher`, then `--bin writer -- "tide pools"` |
 | [`serve/voice`](https://github.com/everruns/everruns/tree/main/examples/serve/voice) | A hotel front desk people [call from the browser](/framework/voice/), with a greeting and a speaking style | `OPENAI_API_KEY=… cargo run -p serve-example-voice` |
 
+## Durable hosts
+
+[Durable multiplayer chat on Cloudflare](/framework/examples/durable-chat/) runs
+the portable kernel inside a SQLite-backed Durable Object, with shared rooms,
+forks, scheduled follow-ups, and a recoverable history-search child. This is
+an experimental advanced host example.
+
 ## Core crate catalog
 
 | Example | Demonstrates | Command |

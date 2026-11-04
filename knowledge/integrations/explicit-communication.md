@@ -172,6 +172,12 @@ Source of truth: [`conversation.rs`](../../crates/contracts/src/runtime/conversa
   [`204_agent_communication.sql`](../../crates/server/migrations/legacy/204_agent_communication.sql)
   moved tool-only Slack endpoints onto their agents as `explicit`, and the
   endpoint `reply_mode` and the automatic "On it." acknowledgement are gone.
+- **A message-only step ends the turn.** `send_message(final: true)` is still
+  not a parameter. The follow-up generation after a step whose only successful
+  calls are `send_message` or `no_reply` is skipped, the same way `no_reply`
+  already was. That generation was repeating the message and holding the chat
+  open. Work that should continue has to share the step with the message, or
+  come before it.
 - **Not built yet.** The turn-end reminder when nothing was sent,
   `send_message(final: true)`, the inbound sender envelope, and all of phase 3
   (`update_status`, `ask_decision`, `edit_message`, `react`, streamed

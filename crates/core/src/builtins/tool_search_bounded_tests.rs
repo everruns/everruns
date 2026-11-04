@@ -928,3 +928,37 @@ async fn count_dependent_restriction_runs_once_over_the_complete_scope() {
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(runtime.execution_tools().len(), 2);
 }
+
+#[tokio::test]
+async fn multilingual_search_discloses_authorized_canonical_schema() {
+    for (description, query) in [
+        ("搜索仓库问题", "仓库"),
+        ("文書を検索", "検索"),
+        ("Café records", "cafe\u{301}"),
+    ] {
+        let definitions = vec![
+            builtin(
+                "allowed_record",
+                description,
+                json!({"type":"object","properties":{"id":{"type":"integer"}}}),
+            ),
+            builtin("forbidden_record", description, json!({"type":"object"})),
+        ];
+        let mut context = context(&definitions);
+        context.visible_tool_names = Some(Arc::new(HashSet::from(["allowed_record".to_owned()])));
+        let ToolExecutionResult::Success(result) = bounded_tool(32768)
+            .execute_with_context(json!({"query":query}), &context)
+            .await
+        else {
+            panic!("multilingual search failed");
+        };
+        assert_eq!(result["loaded"], json!(["allowed_record"]), "{query}");
+        assert_eq!(result["tools"].as_array().unwrap().len(), 1);
+        let projected = project_search_result(query, result, definitions);
+        let tool = projected
+            .iter()
+            .find(|tool| tool.name() == "allowed_record")
+            .unwrap();
+        assert_eq!(tool.parameters()["properties"]["id"]["type"], "integer");
+    }
+}

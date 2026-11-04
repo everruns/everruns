@@ -27,8 +27,16 @@ pub mod sandbox_orphan_scan;
 // Projects sessions whose trace index is behind their events
 pub mod session_trace_backfill;
 
+// Resumes sessions left active with no actor leased or runnable
+pub mod monitoring_timeline;
+pub mod sandbox_time_meter;
+pub mod stranded_actor_sweep;
+
 // Session schedule poller
 pub mod session_scheduler;
+
+// Probes a scheduled monitor runs itself, waking the agent only on its condition
+pub mod monitor_probe;
 
 // Retained background-task supervision for server-owned control-plane loops
 pub mod supervised_task;

@@ -53,7 +53,7 @@ use tokio::sync::{Notify, watch};
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
-use crate::actor_lease_store::{ActorLeaseStore, LeasedActor};
+use crate::actor_lease_store::{ActorLeaseStore, LeasedActor, SessionActorStore};
 use crate::engine::model_wait::{self, ModelWaitSlots};
 use crate::engine::tool_detach;
 use crate::host::{DEFAULT_SESSION_LEASE_TTL, TurnDrive, WaitsOnPerson};
@@ -65,7 +65,7 @@ use crate::worker_adapters::WorkerAdapters;
 pub use crate::host::session_actor::{
     ActorHosts, HostTurn, NO_PROGRESS_SEAL_REASON, Phase, TurnSignals,
 };
-use crate::host::session_actor::{SessionActorConfig, SessionActorDriver};
+use crate::host::session_actor::{BatchedRenewals, SessionActorConfig, SessionActorDriver};
 
 /// Wake-up payload for a newly leasable actor (the server's
 /// `SESSION_ACTOR_NOTIFICATION`).
@@ -176,6 +176,12 @@ pub struct ActorRuntime<H: ActorHosts> {
     detached: Option<Arc<DetachedCalls>>,
     /// Set on shutdown: running turns hand off at their next step boundary.
     hand_off: Arc<AtomicBool>,
+    /// `store` with this worker's lease renewals batched. Decision: one per
+    /// worker, shared by every turn's driver, so the renewals of all running
+    /// turns go out together (a driver per lease would batch nothing).
+    renewals: Arc<dyn SessionActorStore>,
+    /// The clock every turn's periodic renewals tick on, for the same reason.
+    renew_epoch: everruns_contracts::rt::Instant,
 }
 
 impl<H: ActorHosts> Clone for ActorRuntime<H> {
@@ -188,12 +194,15 @@ impl<H: ActorHosts> Clone for ActorRuntime<H> {
             wake: self.wake.clone(),
             detached: self.detached.clone(),
             hand_off: self.hand_off.clone(),
+            renewals: self.renewals.clone(),
+            renew_epoch: self.renew_epoch,
         }
     }
 }
 
 impl<H: ActorHosts> ActorRuntime<H> {
     pub fn new(hosts: H, store: Arc<dyn ActorLeaseStore>, config: ActorRuntimeConfig) -> Self {
+        let renewals: Arc<dyn SessionActorStore> = Arc::new(BatchedRenewals::new(store.clone()));
         Self {
             hosts: Arc::new(hosts),
             store,
@@ -202,6 +211,8 @@ impl<H: ActorHosts> ActorRuntime<H> {
             wake: Arc::new(Notify::new()),
             detached: None,
             hand_off: Arc::new(AtomicBool::new(false)),
+            renewals,
+            renew_epoch: everruns_contracts::rt::Instant::now(),
         }
     }
 
@@ -232,7 +243,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
     pub async fn run_actor(&self, actor: LeasedActor) {
         SessionActorDriver::new(
             self.hosts.clone(),
-            self.store.clone(),
+            self.renewals.clone(),
             SessionActorConfig {
                 holder: self.config.holder.clone(),
                 lease_ttl: self.config.lease_ttl,
@@ -244,6 +255,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
             },
         )
         .with_renew_poke(self.renew_poke.clone())
+        .with_renew_epoch(self.renew_epoch)
         .with_hand_off(self.hand_off.clone())
         .run_actor(actor)
         .await;

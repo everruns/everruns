@@ -4,7 +4,7 @@
 // kind, batches, gaps and the unloaded-turns bars. Layout follows the design
 // handoff: gutter, spine with an icon tile, content, waterfall.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import {
   Bot,
@@ -26,12 +26,18 @@ import { Button } from "@/components/ui/button";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
+import { ReactionChips } from "@/components/chat/message-reactions";
+import type { ReactionSummary } from "@/lib/api/message-reactions";
+import { readOrigin, ORIGIN_LABEL_KEY, type MessageOrigin } from "@/lib/message-origin";
 import {
+  errorCodeLabel,
   formatClock,
   formatCount,
   formatDuration,
   formatOffset,
   isSimulatedResult,
+  retrySummary,
   turnSpanMs,
   turnSummary,
   waterfallBar,
@@ -114,29 +120,47 @@ export function TurnHeader({
   collapsed,
   onToggle,
   showScale,
+  reactions,
 }: {
   turn: TraceTurn;
   collapsed: boolean;
   onToggle: () => void;
   showScale: boolean;
+  /** Reactions on the message that started the turn. */
+  reactions?: ReactionSummary[];
 }) {
   const ui = useUiTranslations();
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const duration = turn.duration_ms ?? null;
+  const origin = readOrigin(turn.origin);
   return (
     <div className="mt-5 border border-b-0 bg-card first:mt-0">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={!collapsed}
-        className="flex w-full items-start gap-3 border-b bg-accent/9 px-4 py-3.5 text-left hover:bg-accent/14"
+        // Gold wash: a person started the turn. Gray surface with a gray edge:
+        // the platform did (schedule run, trigger, update, notice). Every turn
+        // stays a turn; nothing is folded (knowledge/execution/message-origin.md).
+        className={cn(
+          "flex w-full items-start gap-3 border-b px-4 py-3.5 text-left",
+          origin
+            ? "border-l-[3px] border-l-muted-foreground/40 bg-muted/70 hover:bg-muted"
+            : "bg-accent/9 hover:bg-accent/14",
+        )}
       >
         <Chevron className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="font-mono text-[11px] tracking-[0.04em] text-muted-foreground">
-            {ui("TURN")} {formatCount(turn.turn)} · {formatClock(turn.started_at)} {ui("· user")}
+            {ui("TURN")} {formatCount(turn.turn)} · {formatClock(turn.started_at)}{" "}
+            {origin ? <TurnOrigin origin={origin} /> : ui("· user")}
           </div>
-          <div className="mt-1 line-clamp-3 text-sm font-medium leading-normal break-words">
+          <div
+            className={cn(
+              "mt-1 line-clamp-3 text-sm leading-normal break-words",
+              origin ? "text-muted-foreground" : "font-medium",
+            )}
+          >
             {turn.prompt || <span className="italic text-muted-foreground">{ui("No prompt")}</span>}
           </div>
         </div>
@@ -149,7 +173,13 @@ export function TurnHeader({
             )
           )}
           <span>{turnSummary(turn)}</span>
-          {turn.error_count > 0 && (
+          {errorCodeLabel(turn.error_code) && (
+            <span className="inline-flex items-center gap-1 border border-destructive/35 bg-destructive/8 px-1.5 text-[11px] leading-5 font-medium text-destructive">
+              <CircleAlert className="size-3" aria-hidden />
+              {errorCodeLabel(turn.error_code)}
+            </span>
+          )}
+          {turn.error_count > (errorCodeLabel(turn.error_code) ? 1 : 0) && (
             <span className="inline-flex items-center gap-1 text-destructive">
               <CircleAlert className="size-3.5" aria-hidden />
               {formatCount(turn.error_count)} {ui("error")}
@@ -158,10 +188,17 @@ export function TurnHeader({
           )}
         </div>
       </button>
+      {reactions && reactions.length > 0 && (
+        // Outside the toggle: the chips are buttons of their own.
+        <ReactionChips reactions={reactions} className="border-b px-4 py-2 pl-11" />
+      )}
       {!collapsed && showScale && (
-        <div className="hidden justify-end px-0 pt-1 min-[1100px]:flex">
-          <div className="flex w-40 justify-between pr-4 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
+        <div className="relative hidden items-center justify-end pt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground min-[1100px]:flex">
+          <span className="absolute inset-y-0 left-[67px] w-px bg-border" aria-hidden />
+          <span className="mr-3 uppercase">{ui("Timeline")}</span>
+          <div className="flex w-40 justify-between pr-4">
             <span>{ui("0s")}</span>
+            <span>{formatDuration(turnSpanMs(turn) / 2)}</span>
             <span>{formatDuration(turnSpanMs(turn))}</span>
           </div>
         </div>
@@ -170,7 +207,41 @@ export function TurnHeader({
   );
 }
 
-export function TurnFooter({ turn }: { turn: TraceTurn }) {
+/** Who started an automatic turn: icon, kind, name, run counter and id. */
+function TurnOrigin({ origin }: { origin: MessageOrigin }) {
+  const { t } = useLocale();
+  const Icon = ORIGIN_ICON[origin.kind];
+  const run = origin.run;
+  const counter =
+    run?.number === undefined
+      ? null
+      : run.limit === undefined
+        ? t("origin_run_number", { number: run.number })
+        : t("origin_run", { number: run.number, limit: run.limit });
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
+      <span>·</span>
+      <Icon className="size-3.5 text-foreground" aria-hidden />
+      <span className="font-medium text-foreground">{t(ORIGIN_LABEL_KEY[origin.kind])}</span>
+      {origin.name && <span>· {origin.name}</span>}
+      {counter && <span className="border px-1 leading-4">{counter}</span>}
+      {origin.source_id && (
+        <span className="border px-1 leading-4" title={origin.source_id}>
+          {origin.source_id.length > 14 ? `${origin.source_id.slice(0, 13)}…` : origin.source_id}
+        </span>
+      )}
+    </span>
+  );
+}
+
+export function TurnFooter({
+  turn,
+  reactions,
+}: {
+  turn: TraceTurn;
+  /** Reactions on the agent's reply in this turn. */
+  reactions?: ReactionSummary[];
+}) {
   const ui = useUiTranslations();
   const tokens = turn.input_tokens + turn.output_tokens;
   const label =
@@ -179,15 +250,21 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
       : turn.status === "completed"
         ? "Turn completed"
         : `Turn ${turn.status}`;
+  const failed = turn.status === "failed";
+  // Step errors in a turn that still completed; a failed turn's header already counts them.
+  const stepErrors = failed ? 0 : turn.error_count;
   return (
     <div className="border border-t-0 bg-card">
-      <div
-        className={cn(
-          "flex flex-wrap gap-x-2 border-t border-border/60 py-2.5 pr-4 pl-[84px] text-xs text-muted-foreground",
-          turn.status === "failed" && "text-destructive",
-        )}
-      >
-        <span className="font-medium">{label}</span>
+      <div className="relative flex flex-wrap gap-x-2 pt-3 pr-4 pb-2.5 pl-[84px] text-xs text-muted-foreground">
+        <span className="absolute top-0 left-[67px] h-[18px] w-px bg-border" aria-hidden />
+        <span
+          className={cn(
+            "absolute top-[16px] left-[63px] size-[9px] rounded-full border",
+            failed ? "border-destructive bg-destructive" : "border-muted-foreground/60 bg-card",
+          )}
+          aria-hidden
+        />
+        <span className={cn("font-medium", failed && "text-destructive")}>{label}</span>
         <span>
           {formatCount(turn.step_count)} {ui("step")}
           {turn.step_count === 1 ? "" : "s"}
@@ -196,7 +273,23 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
             ? ui(" · {value0}", { value0: formatDuration(turn.duration_ms) })
             : ""}
         </span>
-        {turn.error && <span className="w-full truncate text-destructive">{turn.error}</span>}
+        {stepErrors > 0 && (
+          <span className="text-destructive">
+            {formatCount(stepErrors)} {ui("error")}
+            {stepErrors === 1 ? "" : "s"}
+          </span>
+        )}
+        {turn.error && (
+          <span className="mt-0.5 line-clamp-2 w-full break-words text-foreground/80">
+            {turn.error}
+          </span>
+        )}
+        {reactions && reactions.length > 0 && (
+          <div className="mt-1 flex w-full flex-wrap items-center gap-2">
+            <span>{ui("Reactions on the reply")}</span>
+            <ReactionChips reactions={reactions} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -228,6 +321,7 @@ function Waterfall({
   return (
     <div className="hidden w-40 shrink-0 pt-4 pr-4 min-[1100px]:block" aria-hidden>
       <div className="relative h-1.5 bg-muted">
+        <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
         <div
           className={cn("absolute inset-y-0", color, running && "animate-tool-progress-active")}
           style={{ left: `${left * 100}%`, width: `max(2px, ${width * 100}%)` }}
@@ -280,7 +374,6 @@ function RowShell({
       className={cn(
         "relative flex border-x bg-card",
         onSelect && "cursor-pointer hover:bg-muted/70",
-        error && "bg-destructive/4",
         selected && "bg-primary/5",
         nested && "pl-6",
       )}
@@ -370,7 +463,7 @@ export function StepRow({
   const ui = useUiTranslations();
   const error = step.status === "error";
   const running = step.status === "running";
-  const Icon = error ? CircleAlert : (KIND_ICON[step.kind] ?? Wrench);
+  const Icon = KIND_ICON[step.kind] ?? Wrench;
   return (
     <RowShell
       label={ui("#{value0}", { value0: step.step })}
@@ -392,7 +485,7 @@ export function StepRow({
         />
       }
     >
-      <StepContent step={step} view={view} plainText={plainText} />
+      <StepContent step={step} view={view} plainText={plainText} onShowError={onSelect} />
     </RowShell>
   );
 }
@@ -401,13 +494,18 @@ function StepContent({
   step,
   view,
   plainText,
+  onShowError,
 }: {
   step: TraceStep;
   view: "all" | "messages" | "tools";
   plainText: boolean;
+  onShowError: () => void;
 }) {
   const ui = useUiTranslations();
   const error = step.status === "error";
+  const errorQuote = error && step.result && (
+    <ErrorQuote text={step.result} onShowFull={onShowError} />
+  );
   switch (step.kind) {
     case "model":
     case "answer": {
@@ -433,9 +531,11 @@ function StepContent({
                   {requested === 1 ? "" : "s"}
                 </span>
               )}
-              {error && step.result && <span className="text-destructive">{step.result}</span>}
+              {retrySummary(step) && <span className="text-warning">{retrySummary(step)}</span>}
+              {error && <FailedBadge />}
             </div>
           )}
+          {errorQuote}
           {step.narration && (
             <div
               className={cn(
@@ -463,6 +563,7 @@ function StepContent({
             {step.target && (
               <span className="truncate text-[13px] font-semibold">{step.target}</span>
             )}
+            {error && <FailedBadge />}
             {step.child_session_id && (
               <Link
                 href={`/sessions/${step.child_session_id}/trace`}
@@ -476,11 +577,13 @@ function StepContent({
               {formatDuration(step.duration_ms)}
             </span>
           </div>
-          {step.result && (
-            <ResultLine error={error}>
-              <span className="break-words">{step.result}</span>
-            </ResultLine>
-          )}
+          {error
+            ? errorQuote
+            : step.result && (
+                <ResultLine error={false}>
+                  <span className="break-words">{step.result}</span>
+                </ResultLine>
+              )}
         </>
       );
     case "approval":
@@ -502,6 +605,7 @@ function StepContent({
             <span className="shrink-0 font-mono text-[13px] font-semibold whitespace-nowrap">
               {step.name ?? step.kind}
             </span>
+            {error && <FailedBadge />}
             {step.target && (
               <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
                 {step.target}
@@ -516,14 +620,51 @@ function StepContent({
               {step.status === "running" ? ui("running") : formatDuration(step.duration_ms)}
             </span>
           </div>
-          {step.result && (
-            <ResultLine error={error}>
-              <span className="truncate">{step.result}</span>
-            </ResultLine>
-          )}
+          {error
+            ? errorQuote
+            : step.result && (
+                <ResultLine error={false}>
+                  <span className="truncate">{step.result}</span>
+                </ResultLine>
+              )}
         </>
       );
   }
+}
+
+function FailedBadge() {
+  const ui = useUiTranslations();
+  return (
+    <span className="shrink-0 self-center border border-destructive/35 bg-destructive/8 px-1.5 font-sans text-[11px] leading-4 font-medium text-destructive">
+      {ui("Failed")}
+    </span>
+  );
+}
+
+/**
+ * A step's error, set off like the final answer's quote but with a red edge, so it
+ * reads as the step's outcome rather than a banner. Three lines here; the inspector
+ * holds the full error.
+ */
+function ErrorQuote({ text, onShowFull }: { text: string; onShowFull: () => void }) {
+  const ui = useUiTranslations();
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <p className="line-clamp-3 border-l-2 border-destructive/70 pl-3 font-mono text-xs leading-normal break-words text-foreground/85">
+        {text}
+      </p>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onShowFull();
+        }}
+        className="pl-3.5 text-xs font-medium text-primary underline underline-offset-2 hover:no-underline"
+      >
+        {ui("Show full error")}
+      </button>
+    </div>
+  );
 }
 
 function ResultLine({ error, children }: { error: boolean; children: React.ReactNode }) {

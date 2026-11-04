@@ -142,7 +142,7 @@ person's rights and by which tools the agent has.
 | `github` capability tools | Configured per agent: `service` for bots, `user` for personal agents | Derived from the enabled tools: read tools ask read, `submit_github_pull_request_review` asks `pull_requests: write`, `create_github_pull_request` asks `contents: write` |
 | GitHub MCP server | The attachment's `acts as`, unchanged | Read-only toolsets ask read permissions; others the App's full set |
 | Sandbox repositories | `service` for triggered runs, `user` for chats started by a person | `contents: read` for listed repositories, `contents: write` only when the template allows pushing |
-| Repository sync (memory, knowledge, agents) | `service`, on the org's service virtual user | `contents: read`; writes go through a pull request with `contents: write, pull_requests: write` |
+| Repository sync (memory, knowledge, agents) | `service`, on the org's service virtual user; an Agent source may instead use the configuring person's own sign-in ([agent sources](../runtime-resources/agent-sources.md)), never the Agent's runtime identity | `contents: read`; Agent source two-way sync writes `contents: write` directly to the branch |
 | Triggers and channel replies | `service` | Inbound needs no token; replies use the channel's write permissions |
 
 ### 4. Inbound: listening and talking
@@ -270,6 +270,13 @@ GitHub channel. Triggers and the channel need the identity and link to it
 instead of hosting its setup. Settings > Connections shows the
 person's `person` connection; Settings > Organization shows the shared App.
 
+Revised 2026-11-03: the section is a page of its own, `/agents/{id}/github`,
+opened from a GitHub row in the Agent tab's settings list next to Service
+account, rather than a section of the Channels and triggers tab. GitHub is an
+identity, like the service account, not a way to reach the agent, and a page
+gives it an address that API, CLI and MCP output can link to (`view_url` on the
+agent's GitHub status).
+
 ### D8. Talking is a channel, listening is a trigger
 
 A mention is a conversation with a sender, a thread and replies, which is what
@@ -312,10 +319,19 @@ Each step is one PR unless noted, and leaves everything working.
    refused. See [admission](../../crates/contracts/src/runtime/github_credential.rs)
    and [checkout](../../crates/integrations/src/github/checkout.rs).
    Pushing from the sandbox stays with step 6.
+   Without `SandboxWorkspace` but with session files (Bashkit Worker), the
+   tool downloads the head tarball host-side and writes its text files into
+   the session files ([checkout_files](../../crates/integrations/src/github/checkout_files.rs)),
+   so a Bashkit reviewer can read the code around a change. The token never
+   leaves the host, so ordinary token resolution applies and no installation
+   evidence is needed.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
-   Done: the agent's Integrations tab has a **GitHub** section between Channels
-   and Triggers (`agent-github-card.tsx`), showing the bot login, the kind,
+   Done: the agent's GitHub identity has its own page, `/agents/{id}/github`,
+   reached from a GitHub row in the Agent tab's settings list (it was a section
+   of the Integrations tab between Channels and Triggers until 2026-11-03; an
+   identity is not a way to reach the agent, so it left that tab). The page
+   (`agent-github-card.tsx`) shows the bot login, the kind,
    the installation, missing permissions, a "Set the avatar" step (download
    the agent's avatar, open the App's settings page) and links to add and list
    GitHub triggers. `AgentGitHubStatus` gained `kind`, `bot_login` and

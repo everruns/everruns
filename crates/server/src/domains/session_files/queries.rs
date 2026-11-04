@@ -214,9 +214,16 @@ pub fn normalize_path(path: &str) -> String {
     everruns_core::session_path::to_session_path(path)
 }
 
+/// Only a first segment of exactly `_` is reserved: the action routes live
+/// under `fs/_/` (`_/move`, `_/grep`, `_/download/...`). Every other name is
+/// an ordinary file, so repositories keep `__init__.py`, `__tests__/` and
+/// `_config.yml` when an agent writes or checks them out.
 pub fn is_reserved_path(path: &str) -> bool {
-    let path = path.trim_start_matches('/');
-    path.starts_with('_') || path.split('/').any(|segment| segment.starts_with('_'))
+    normalize_path(path)
+        .trim_start_matches('/')
+        .split('/')
+        .next()
+        == Some("_")
 }
 
 pub fn is_user_memory_path(path: &str) -> bool {
@@ -283,5 +290,25 @@ mod tests {
         assert!(is_user_memory_path_or_ancestor("/memory"));
         assert!(is_user_memory_path_or_ancestor("/memory/user/notes.md"));
         assert!(!is_user_memory_path_or_ancestor("/notes.md"));
+    }
+}
+
+#[cfg(test)]
+mod reserved_path_tests {
+    use super::is_reserved_path;
+
+    #[test]
+    fn only_the_action_segment_is_reserved() {
+        for reserved in ["_", "/_", "_/move", "/workspace/_/grep"] {
+            assert!(is_reserved_path(reserved), "{reserved}");
+        }
+        for ordinary in [
+            "pkg/__init__.py",
+            "/workspace/bashkit/crates/js/__test__/basic.spec.ts",
+            "_config.yml",
+            "docs/_index.md",
+        ] {
+            assert!(!is_reserved_path(ordinary), "{ordinary}");
+        }
     }
 }

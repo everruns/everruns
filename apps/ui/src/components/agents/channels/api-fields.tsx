@@ -24,18 +24,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FoldedSettings } from "./form-section";
 
 export type ApiSessionBinding = "per_user" | "session_per_invocation";
 export type ApiVisibility = "messages" | "activity" | "full";
 export type ApiErrorDetail = "public" | "detailed";
-export type ApiToolApprovals = "operator" | "caller";
 
 export interface ApiChannelConfig {
   session_binding?: ApiSessionBinding;
   visibility?: ApiVisibility;
   errors?: ApiErrorDetail;
   tool_activity_text?: string;
-  tool_approvals?: ApiToolApprovals;
   rate_limit_per_minute?: number;
   auth_methods?: unknown[];
   cors_origins?: string[];
@@ -48,7 +47,6 @@ export interface ApiFormState {
   visibility: ApiVisibility;
   errors: ApiErrorDetail;
   toolActivityText: string;
-  toolApprovals: ApiToolApprovals;
   /** Kept as text so the input can be edited freely; parsed on save. */
   rateLimitPerMinute: string;
   /** One origin per line. */
@@ -70,7 +68,6 @@ export function apiFormStateFromConfig(config?: ApiChannelConfig): ApiFormState 
     visibility: config?.visibility ?? "activity",
     errors: config?.errors ?? "public",
     toolActivityText: config?.tool_activity_text ?? "",
-    toolApprovals: config?.tool_approvals ?? "operator",
     rateLimitPerMinute:
       config?.rate_limit_per_minute != null ? String(config.rate_limit_per_minute) : "",
     corsOrigins: (config?.cors_origins ?? []).join("\n"),
@@ -131,7 +128,6 @@ export function buildApiChannelConfig(state: ApiFormState): ApiChannelConfig {
     session_binding: state.sessionBinding,
     visibility: state.visibility,
     errors: state.errors,
-    tool_approvals: state.toolApprovals,
     ...(activityText ? { tool_activity_text: activityText } : {}),
     ...(rateLimit ? { rate_limit_per_minute: rateLimit } : {}),
     ...(spendLimit ? { daily_spend_limit_usd: spendLimit } : {}),
@@ -152,6 +148,43 @@ export function isApiFormValid(state: ApiFormState): boolean {
   );
 }
 
+/// The per-person daily cap. It belongs next to the channel budget: the budget
+/// is the shared pool, and this stops one person until the next UTC day.
+export function CallerDailyLimitField({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const ui = useUiTranslations();
+  const id = useId();
+  const valid = parseSpendLimit(value) !== null;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{ui("Each person, per day (USD)")}</Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        inputMode="decimal"
+        placeholder={ui("No daily cap")}
+        aria-invalid={!valid}
+        disabled={disabled}
+      />
+      {valid ? (
+        <p className="text-xs text-muted-foreground">
+          {ui("A person who reaches this cannot start new work until the next UTC day.")}
+        </p>
+      ) : (
+        <p className="text-xs text-destructive">{ui("Use an amount above 0, up to 1,000,000.")}</p>
+      )}
+    </div>
+  );
+}
+
 export function ApiFields({
   value,
   onChange,
@@ -167,7 +200,22 @@ export function ApiFields({
     onChange({ ...value, [key]: next });
   const rateLimitValid = parseRateLimit(value.rateLimitPerMinute) !== null;
   const originsValid = corsOriginsValid(value.corsOrigins);
-  const spendLimitValid = parseSpendLimit(value.dailySpendLimitUsd) !== null;
+  const rateLimitField = (
+    <div className="space-y-2">
+      <Label htmlFor={`${id}_rate_limit`}>{ui("Rate limit / minute")}</Label>
+      <Input
+        id={`${id}_rate_limit`}
+        value={value.rateLimitPerMinute}
+        onChange={(event) => set("rateLimitPerMinute", event.target.value)}
+        inputMode="numeric"
+        placeholder={ui("No per-channel cap")}
+        aria-invalid={!rateLimitValid}
+      />
+      {!rateLimitValid && (
+        <p className="text-xs text-destructive">{ui("Use a whole number up to 1,000,000.")}</p>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -202,24 +250,6 @@ export function ApiFields({
             </p>
           </div>
         )}
-        <div className="space-y-2">
-          <Label htmlFor={`${id}_tool_approvals`}>{ui("Who allows held-back tool calls")}</Label>
-          <Select
-            value={value.toolApprovals}
-            onValueChange={(next) => set("toolApprovals", next as ApiToolApprovals)}
-          >
-            <SelectTrigger id={`${id}_tool_approvals`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="operator">{ui("People with access to this agent")}</SelectItem>
-              <SelectItem value="caller">{ui("The caller")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            {ui("The caller then sees the tool and its arguments, which it needs to decide.")}
-          </p>
-        </div>
         {!hosted && (
           <div className="space-y-2">
             <Label htmlFor={`${id}_session_binding`}>{ui("Sessions")}</Label>
@@ -256,38 +286,7 @@ export function ApiFields({
             </Select>
           </div>
         )}
-        <div className="space-y-2">
-          <Label htmlFor={`${id}_rate_limit`}>{ui("Rate limit / minute")}</Label>
-          <Input
-            id={`${id}_rate_limit`}
-            value={value.rateLimitPerMinute}
-            onChange={(event) => set("rateLimitPerMinute", event.target.value)}
-            inputMode="numeric"
-            placeholder={ui("No per-channel cap")}
-            aria-invalid={!rateLimitValid}
-          />
-          {!rateLimitValid && (
-            <p className="text-xs text-destructive">{ui("Use a whole number up to 1,000,000.")}</p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor={`${id}_daily_spend_limit`}>
-            {ui("Daily spending limit per caller (USD)")}
-          </Label>
-          <Input
-            id={`${id}_daily_spend_limit`}
-            value={value.dailySpendLimitUsd}
-            onChange={(event) => set("dailySpendLimitUsd", event.target.value)}
-            inputMode="decimal"
-            placeholder={ui("No limit")}
-            aria-invalid={!spendLimitValid}
-          />
-          {!spendLimitValid && (
-            <p className="text-xs text-destructive">
-              {ui("Use an amount above 0, up to 1,000,000.")}
-            </p>
-          )}
-        </div>
+        {!hosted && rateLimitField}
         {value.visibility === "activity" && (
           <div className="space-y-2">
             <Label htmlFor={`${id}_tool_activity_text`}>{ui("Tool activity text")}</Label>
@@ -301,21 +300,28 @@ export function ApiFields({
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Label htmlFor={`${id}_org_members`}>{ui("Organization members")}</Label>
-          <p className="text-xs text-muted-foreground">
-            {ui(
-              "Members may call this agent with their own personal access token, using their own connections.",
-            )}
-          </p>
+      {!hosted && (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label htmlFor={`${id}_org_members`}>{ui("Organization members")}</Label>
+            <p className="text-xs text-muted-foreground">
+              {ui(
+                "Members may call this agent with their own personal access token, using their own connections.",
+              )}
+            </p>
+          </div>
+          <Switch
+            id={`${id}_org_members`}
+            checked={value.orgMembers}
+            onCheckedChange={(checked) => set("orgMembers", checked)}
+          />
         </div>
-        <Switch
-          id={`${id}_org_members`}
-          checked={value.orgMembers}
-          onCheckedChange={(checked) => set("orgMembers", checked)}
-        />
-      </div>
+      )}
+      {hosted && (
+        <FoldedSettings summary={ui("Advanced")}>
+          <div className="grid gap-4 md:grid-cols-2">{rateLimitField}</div>
+        </FoldedSettings>
+      )}
       {!hosted && (
         <div className="space-y-2">
           <Label htmlFor={`${id}_cors_origins`}>{ui("Browser origins")}</Label>

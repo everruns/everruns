@@ -25,8 +25,8 @@ import { undoModelSelection } from "@/lib/api/model-selection";
 import { observeModelSelection, observeResourceWrites } from "@/lib/api/write-observer";
 import { useChatMode } from "./chat-mode-context";
 import { PageChangeReviewController } from "./page-change-review-controller";
-import { formResource, resourceWrite } from "./page-resource-history";
-import { PageChangeDiff } from "./page-change-diff";
+import { formResource, resourceKey, resourceWrite } from "./page-resource-history";
+import { SavedChangesBar, UndoneBar } from "./saved-changes-bar";
 
 export const PageChangeReviewContext = createContext<PageChangeReviewController | null>(null);
 
@@ -160,6 +160,7 @@ export function usePageSavedChangeGuard(options: {
     : { loading: false, conflict: false };
 }
 
+/** Floats over the bottom of the page; renders nothing until a save produces a receipt. */
 export function SavedPageChanges() {
   const ui = useUiTranslations();
   const controller = useContext(PageChangeReviewContext);
@@ -169,21 +170,16 @@ export function SavedPageChanges() {
     controller?.snapshot ?? noSnapshot,
     noSnapshot,
   );
+  const receipts = controller?.receipts() ?? [],
+    errors = controller?.errors() ?? [];
   if (!controller) return null;
-  const receipts = controller.receipts(),
-    errors = controller.errors();
-  const active = controller.activeResource;
-  if (!receipts.length && !errors.length && !active) return null;
+  const undone = controller.undoneNotices();
+  if (!receipts.length && !errors.length && !undone.length && !history) return null;
   return (
-    <aside
+    <div
       aria-label={ui("Saved page changes")}
-      className="shrink-0 max-h-[45vh] overflow-auto border-t border-accent bg-card px-4 py-3"
+      className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex flex-col items-center gap-2 px-4"
     >
-      {active && (
-        <button type="button" className="text-sm underline" onClick={() => setHistory(active)}>
-          {ui("History ·")} {active.label}
-        </button>
-      )}
       {history && (
         <HistorySheet
           key={`${history.kind}:${history.id}`}
@@ -198,79 +194,45 @@ export function SavedPageChanges() {
         />
       )}
       {errors.map(({ resource, error }) => (
-        <div key={`error:${resource.kind}:${resource.id}`} role="alert" className="mb-2 text-sm">
-          <p>{error}</p>
+        <div
+          key={`error:${resource.kind}:${resource.id}`}
+          role="alert"
+          className="pointer-events-auto flex max-w-full items-center gap-3 border bg-card px-3 py-1.5 text-sm shadow-lg"
+        >
+          <span className="truncate text-destructive">{error}</span>
           <button
             type="button"
-            className="underline"
+            className="whitespace-nowrap underline underline-offset-2"
             onClick={() => void controller.retry(resource)}
           >
             {ui("Reload history")}
           </button>
         </div>
       ))}
-      {receipts.map((receipt) => {
-        const dirty = controller.hasDirtyDraft(receipt.resource);
-        return (
-          <section key={`${receipt.resource.kind}:${receipt.resource.id}`} className="py-2">
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <strong className="flex-1">
-                {ui("Saved changes ·")} {receipt.resource.label}
-              </strong>
-              <button
-                type="button"
-                className="underline disabled:opacity-50"
-                disabled={receipt.pending || receipt.stale || dirty}
-                onClick={() => void controller.undo(receipt.resource)}
-              >
-                {receipt.pending ? ui("Undoing…") : ui("Undo all")}
-              </button>
-              {receipt.resource.kind !== "model_selection" && (
-                <button
-                  type="button"
-                  className="underline"
-                  onClick={() => setHistory(receipt.resource)}
-                >
-                  {ui("History")}
-                </button>
-              )}
-              <button
-                type="button"
-                className="underline"
-                onClick={() => controller.dismiss(receipt.resource)}
-              >
-                {ui("Dismiss")}
-              </button>
-            </div>
-            {receipt.stale && (
-              <p className="text-sm text-muted-foreground">
-                {ui("This resource changed again. Review its history before undoing.")}
-              </p>
-            )}
-            {dirty && (
-              <p className="text-sm text-muted-foreground">
-                {ui("Your draft is kept. Save or discard it before undoing saved changes.")}
-              </p>
-            )}
-            <PageChangeDiff
-              fields={receipt.fields}
-              fieldLabels={
-                receipt.members
-                  ? Object.fromEntries(receipt.members.map((item) => [item.id, item.label]))
-                  : undefined
-              }
-              pending={receipt.pending}
-              canUndo={!receipt.stale && !dirty}
-              undo={(field) => void controller.undo(receipt.resource, field)}
-            />
-            {receipt.error && (
-              <p role="alert" className="text-sm text-destructive">
-                {receipt.error}
-              </p>
-            )}
-          </section>
-        );
-      })}
-    </aside>
+      {receipts.map((receipt) => (
+        <SavedChangesBar
+          key={`${receipt.resource.kind}:${receipt.resource.id}`}
+          receipt={receipt}
+          dirty={controller.hasDirtyDraft(receipt.resource)}
+          fieldLabels={
+            receipt.members
+              ? Object.fromEntries(receipt.members.map((item) => [item.id, item.label]))
+              : undefined
+          }
+          onHistory={setHistory}
+          onDismiss={() => controller.dismiss(receipt.resource)}
+          onUndo={(field) => void controller.undo(receipt.resource, field)}
+        />
+      ))}
+      {undone.map(({ resource, count }) => (
+        <UndoneBar
+          key={`undone:${resourceKey(resource)}`}
+          count={count}
+          resource={resource}
+          onHistory={setHistory}
+          onDone={() => controller.clearUndone(resource)}
+        />
+      ))}
+    </div>
   );
 }

@@ -23,6 +23,18 @@ OpenAI Responses, Anthropic, Gemini, Bedrock) attach a kind; `other` falls
 back to the legacy string decisions (`classify_runtime_error_message`), so
 untyped error paths keep working.
 
+Explicit model refusals use the same non-transient classification in Responses
+streaming, native JSON, and batch decoding. Streaming buffers a bounded reason
+until a complete refusal arrives; terminal snapshots and interrupted fragments
+retain the classification. Refusal text stays diagnostic content under the
+existing disclosure policy, never ordinary assistant output. Standard disclosure
+says the model declined; detailed disclosure can include the bounded provider
+reason. A refusal after partial output still fails the turn, and neither text
+suggesting a timeout nor partial output authorizes an automatic retry. The reason
+phase and generation trace retain the refusal finish reason. See the
+[wire regressions](../../crates/contracts/tests/model_refusal_wire.rs) and
+[runtime regressions](../../crates/test-support/tests/integration/model_refusal_test.rs).
+
 Provider rejections that identify an invalid model-facing tool schema are
 classified separately as `invalid_tool_schema`. Standard disclosure gives the
 viewer an actionable integration/provider message and bounded schema path,

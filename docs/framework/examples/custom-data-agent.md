@@ -22,7 +22,7 @@ to create a conversation and send a message. The Agent is listed in **Agents**;
 operator provisioning binds that identity to the worker. Starting this executable
 does not register an Agent automatically.
 
-For Slack, use the same Agent's **Integrations** page and Direct communication.
+For Slack, use the same Agent's **Channels and triggers** tab and Direct communication.
 Read the [channel support and limitations](/how-to/custom-agent-workers/#connect-the-same-agent-to-slack)
 before deployment: basic CP reply routing does not install native Slack tools,
 approvals or delegated-task behavior into this implementation, and live

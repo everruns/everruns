@@ -106,6 +106,24 @@ pub enum Inbound {
     /// A person answered an approval the agent asked for, from a platform
     /// button.
     Decision(Box<InboundDecision>),
+    /// A person reacted to a message on the platform.
+    Reaction(Box<InboundReaction>),
+}
+
+/// An emoji reaction a person added to or removed from a platform message.
+/// The host finds the session and message through the key it linked when the
+/// message passed through it; a message it never saw is ignored.
+#[derive(Debug, Clone)]
+pub struct InboundReaction {
+    /// The platform's key for the message, as
+    /// [`ChannelReactionSurface`](super::channel::ChannelReactionSurface)
+    /// names it.
+    pub message_key: String,
+    /// One Unicode emoji, or `:name:` for one the host does not know.
+    pub emoji: String,
+    /// `true` when added, `false` when removed.
+    pub added: bool,
+    pub actor: ExternalActor,
 }
 
 /// Where a conversation is on the platform: what a session binding is derived

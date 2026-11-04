@@ -54,6 +54,9 @@ pub struct SessionActorRow {
     pub next_input_seq: i64,
     /// Leases since the last release (poison guard).
     pub attempts: i32,
+    /// The worker that last released the actor; it gets the next turn first
+    /// (sticky sessions). Cleared by a hand-off.
+    pub preferred_worker: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -105,6 +108,33 @@ impl ActorRenewalRow {
     pub fn cancel_requested(&self) -> bool {
         self.cancel_inbox_seq.is_some()
     }
+}
+
+/// One lease of a batched renewal, as the holder sends it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActorLeaseRenewalItem {
+    pub session_id: SessionId,
+    pub fence: i64,
+    pub consumed_seq: i64,
+}
+
+/// One lease's outcome in a batched renewal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActorLeaseRenewalOutcome {
+    Renewed(ActorRenewalRow),
+    /// Another holder took it, it was released, or a cancel withdrew it.
+    Lost,
+    /// No actor row: the session was deleted (the row goes with it).
+    SessionGone,
+}
+
+#[derive(FromRow)]
+pub(super) struct BatchRenewalRow {
+    pub session_id: SessionId,
+    pub fence: i64,
+    pub inbox_seq: Option<i64>,
+    pub cancel_inbox_seq: Option<i64>,
+    pub actor_exists: bool,
 }
 
 /// A bounded slice of a session's event log for an actor to fold.

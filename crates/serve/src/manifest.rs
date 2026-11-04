@@ -55,7 +55,9 @@ pub struct AgentInfo {
     pub model: String,
     pub description: Option<String>,
     pub default: bool,
-    pub sub: bool,
+    /// Other agents of this app this one hands work to (`spawn_agent`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub members: Vec<String>,
     pub tools: Vec<String>,
     pub source: String,
     /// Portable file declaration, including channel intent.
@@ -143,14 +145,8 @@ impl Manifest {
                 if !inner.skills.is_empty() {
                     tools.extend(["list_skills".into(), "activate_skill".into()]);
                 }
-                if !agent.sub {
-                    tools.extend(
-                        inner
-                            .agents
-                            .iter()
-                            .filter(|a| a.sub)
-                            .map(|a| format!("ask_{}", a.name)),
-                    );
+                if !agent.spec.members.is_empty() {
+                    tools.push("spawn_agent".into());
                 }
                 AgentInfo {
                     name: agent.name.clone(),
@@ -161,7 +157,7 @@ impl Manifest {
                         .clone()
                         .or_else(|| (!agent.doc.is_empty()).then(|| agent.doc.to_string())),
                     default: app.default_agent().is_some_and(|d| d.name == agent.name),
-                    sub: agent.sub,
+                    members: agent.spec.members.clone(),
                     tools,
                     source: agent.source.clone(),
                     package: agent.spec.package.as_ref().map(|p| {
@@ -221,18 +217,17 @@ impl Manifest {
             inner
                 .agents
                 .iter()
-                .filter(|agent| !agent.sub)
                 .map(|agent| format!("POST {}", crate::ag_ui::route(&agent.name))),
         );
         #[cfg(feature = "a2a")]
-        for agent in inner.agents.iter().filter(|agent| !agent.sub) {
+        for agent in inner.agents.iter() {
             let route = crate::a2a::route(&agent.name);
             routes.push(format!("POST {route}"));
             routes.push(format!("GET {route}/.well-known/agent-card.json"));
         }
 
         #[cfg(feature = "voice")]
-        for agent in inner.agents.iter().filter(|agent| !agent.sub) {
+        for agent in inner.agents.iter() {
             let route = crate::voice::route(&agent.name);
             routes.push(format!("GET {route}"));
             routes.push(format!("POST {route}/calls"));

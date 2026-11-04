@@ -256,7 +256,7 @@ async fn crawl_with_network_policy_requires_egress_service() {
 
 #[tokio::test]
 async fn test_blank_save_to_file_fetches_inline_without_file_store() {
-    let tool = WebFetchTool::new(false, None);
+    let tool = WebFetchTool::new(false);
     let mut context = ToolContext::new(SessionId::new());
     context.egress_service = Some(Arc::new(CannedEgress::default()));
 
@@ -592,7 +592,7 @@ async fn test_egress_path_blocks_private_address_before_sending() {
 
 #[tokio::test]
 async fn test_egress_path_save_to_file_writes_session_file() {
-    let tool = WebFetchTool::new(true, None);
+    let tool = WebFetchTool::new(true);
     let file_store = Arc::new(MockFileStore::new());
     let session_id = SessionId::new();
     let mut context = ToolContext::with_file_store(session_id, file_store.clone());
@@ -1086,34 +1086,9 @@ async fn download_gates_reject_before_network_or_file_writes() {
     assert!(server.received_requests().await.unwrap().is_empty());
     assert!(store.files.lock().await.is_empty());
 }
-#[test]
-fn bot_auth_jwk_matches_the_known_ed25519_vector_and_fetchkit_identity() {
-    // RFC 8032 section 7.1, test 1; thumbprint uses RFC 7638 canonical JWK.
-    let seed = "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A";
-    let key = derive_bot_auth_public_key(seed).unwrap();
-    assert_eq!(
-        key.jwk,
-        serde_json::json!({"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"})
-    );
-    assert_eq!(key.key_id, "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k");
-    assert_eq!(
-        key.key_id,
-        BotAuthConfig::from_base64_seed(seed).unwrap().keyid()
-    );
-    for invalid in [
-        "!!!invalid!!!".to_string(),
-        "tooshort".to_string(),
-        format!("{seed}="),
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 31]),
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 33]),
-    ] {
-        assert!(derive_bot_auth_public_key(&invalid).is_none(), "{invalid}");
-    }
-}
-
 #[tokio::test]
 async fn capability_configuration_aligns_schema_prompt_and_download_behavior() {
-    let capability = WebFetchCapability::new(None);
+    let capability = WebFetchCapability::new();
     assert_eq!(capability.id(), "web_fetch");
     assert_eq!(capability.risk_level(), RiskLevel::High);
     assert!(capability.system_prompt_addition().is_none());

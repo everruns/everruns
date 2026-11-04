@@ -10,6 +10,14 @@ Requires an Everruns installation with `EXTERNAL_AGENTS_ENABLED=true`, encryptio
 configured, and an outbound network policy that permits your HTTPS endpoint. This is opt-in experimental functionality;
 verify that your Cloud installation has enabled it before deploying.
 
+| File | What it owns |
+| --- | --- |
+| `src/tool.js` | The `sales_summary` tool definition and its bound D1 query. |
+| `src/model.js` | One OpenAI Responses call and its `llm.generation` trace event. |
+| `src/agent.js` | Conversation rebuild from the journal and the model/tool loop. |
+| `src/index.js` | Worker entry point: authentication, ownership challenge, event stream. |
+| `src/protocol.js` | The `everruns-worker/v1` request contract and event writer. |
+
 ## Deploy
 
 ```bash
@@ -34,8 +42,9 @@ CP database URL, fleet token, or Slack bot token in this Worker.
 
 ## Register and invoke
 
-Create a normal Agent in Everruns. On its Agent page choose **Configure execution**,
-enter your deployed HTTPS URL and endpoint secret, then **Verify and connect**.
+Create a normal Agent in Everruns. On its Agent page open **External agent** in
+the **More** list, enter your deployed HTTPS URL and the endpoint secret (the
+**Generate** button makes one to install first), then **Verify and connect**.
 The endpoint must pass an authenticated challenge before the CP saves a binding.
 Changing a binding requires no active turns. The account needs permission to
 manage dangerous Agent settings.

@@ -17,7 +17,11 @@ import {
 import { beginSlackInstall } from "@/lib/api/agent-channels";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
 import { ApiError } from "@/lib/api/client";
-import { useInvalidateSlackWorkspaces, useSlackWorkspaces } from "@/hooks/use-agent-channels";
+import {
+  useInvalidateSlackWorkspaces,
+  useSlackWorkspaceName,
+  useSlackWorkspaces,
+} from "@/hooks/use-agent-channels";
 import {
   ConnectSlackWorkspaceChoice,
   slackWorkspaceLabel,
@@ -59,6 +63,11 @@ export function useSlackInstall(channelId?: string, teamId?: string, onUnavailab
   }, [channelId, teamId, onUnavailable]);
 
   return { begin, pending, unavailable, error } as const;
+}
+
+/** A workspace by name, falling back to its ID when the org has not connected it. */
+export function SlackWorkspaceName({ teamId }: { teamId?: string | null }) {
+  return <>{useSlackWorkspaceName(teamId)}</>;
 }
 
 /**

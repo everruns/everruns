@@ -1,5 +1,33 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "Erweitert",
+  Spending: "Ausgaben",
+  "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.":
+    "Der gemeinsame Pool gilt für alle Personen in diesem Kanal. Das Tageslimit begrenzt jede Person bis Mitternacht UTC.",
+  "Caps what this channel can spend, separately from the agent's budget.":
+    "Begrenzt, was dieser Kanal ausgeben kann, getrennt vom Budget des Agenten.",
+  "Shared pool": "Gemeinsamer Pool",
+  "Each person, per day (USD)": "Jede Person, pro Tag (USD)",
+  "No daily cap": "Kein Tageslimit",
+  "A person who reaches this cannot start new work until the next UTC day.":
+    "Eine Person, die diesen Betrag erreicht, kann bis zum nächsten UTC-Tag keine neue Arbeit starten.",
+  "Who can use this chat": "Wer diesen Chat nutzen kann",
+  "Open access": "Offener Zugang",
+  "Anyone can register and sign in.": "Jede Person kann sich registrieren und anmelden.",
+  "Single user + invites": "Eine Person und Einladungen",
+  "Only one person, plus the people they invite.":
+    "Nur eine Person und die Personen, die sie einlädt.",
+  "Organization users": "Benutzer der Organisation",
+  "Members of this organization can sign in.":
+    "Mitglieder dieser Organisation können sich anmelden.",
+  "This person": "Diese Person",
+  "They sign in with this email.": "Diese Person meldet sich mit dieser E-Mail an.",
+  Invites: "Einladungen",
+  "One email per line. Each person signs in with their own account.":
+    "Eine E-Mail pro Zeile. Jede Person meldet sich mit dem eigenen Konto an.",
+  "Enter this person's email.": "Geben Sie die E-Mail dieser Person ein.",
+  "Use email addresses, one per line, up to 50.":
+    "Geben Sie E-Mail-Adressen ein, eine pro Zeile, höchstens 50.",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Besucher müssen sich bei Google anmelden. Wenn diese Option aktiviert ist, muss bei jeder Anfrage ein gültiges Google-Konto angegeben werden. Angemeldete Besucher überspringen die Turnstile-Herausforderung.",
   Required: "Erforderlich",
@@ -161,9 +189,6 @@ export const messages: Readonly<Record<string, string>> = {
     "Der Agent fungiert nicht mehr als Everruns-App. Die Installation bleibt mit der Organisation verknüpft. GitHub-Trigger werden nicht mehr ausgelöst.",
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "Die GitHub-App des Agenten existiert, ist aber noch nicht installiert. Schließen Sie die Installation ab und wählen Sie die Repositorys aus, die der Agent verwenden darf.",
-  "The caller": "Der Anrufer",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "Der Anrufer sieht dann das Tool und seine Argumente, die er zur Entscheidung benötigt.",
   "The channel was saved.": "Der Kanal wurde gespeichert.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "Die Client-ID Ihrer App in der AgentID-Konsole. Dafür müssen Wertmarken ausgegeben werden, die zehn Minuten gültig sind; Bei der AgentID handelt es sich um eine Anmeldung, nicht um einen langlebigen API-Schlüssel.",
@@ -311,7 +336,6 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Wenn der Anbieter nicht antworten kann",
   "When this agent wakes up on its own": "Wenn dieser Agent von selbst aufwacht",
   "Where it works": "Wo es funktioniert",
-  "Who allows held-back tool calls": "Wer erlaubt zurückgehaltene Werkzeugaufrufe?",
   "Who should this server act as?": "Als wen soll dieser Server fungieren?",
   "with a JSON-RPC 2.0 envelope. Only the": "mit einem JSON-RPC 2.0-Umschlag. Nur die",
   "With failed turns": "Mit fehlgeschlagenen Wendungen",

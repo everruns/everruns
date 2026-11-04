@@ -1,5 +1,7 @@
 // Ukrainian product copy for customer tracing.
 export const messages: Readonly<Record<string, string>> = {
+  "The model declined this request.": "Модель відмовилася виконати цей запит.",
+  "Model declined request": "Модель відхилила запит",
   Tracing: "Трасування",
   "Add destination": "Додати призначення",
   "Edit tracing destination": "Змінити призначення трасування",

@@ -6,9 +6,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
-everruns = { path = "../../crates/everruns" }
+everruns = { path = "../../crates/everruns", features = ["anthropic"] }
 everruns-example-demo = { path = "../demo-support" }
-everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process", "time"] }
 tempfile.workspace = true
 

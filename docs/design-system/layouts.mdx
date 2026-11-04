@@ -123,7 +123,11 @@ is the reference implementation.
 - **One tab row**, attached to the workspace with no gap. Its selection is part of the address
   (`?tab=`). Non-primary tabs drop the config column and use the full width.
 - **Set-once settings are More rows**, each showing its current value ("None", "Inherited",
-  "Not run") and opening a side sheet. They never become extra tabs.
+  "Not run") and opening a side sheet. They never become extra tabs, and never become cards
+  above the tab row.
+- **Settings that do not apply are hidden, not greyed out.** When something outside Everruns
+  owns part of the record (an external agent's endpoint owns its prompt, model and tools),
+  that part leaves the page and the primary pane shows what replaced it.
 - **Controls are live in view mode.** Changing one enters edit mode with that change pending.
   Nothing saves until Save changes.
 - The `#` after the name copies the record's id. History, Manager notes, Archive, and Delete

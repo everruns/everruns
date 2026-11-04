@@ -31,6 +31,7 @@ fn turn_log(calls: &[&str], settled: &[&str], cancelled: bool) -> (TurnId, Vec<E
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         ),
         Event::new(

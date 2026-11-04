@@ -46,6 +46,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../scenarios/broken-stream.json"),
     include_str!("../scenarios/chat-short.json"),
     include_str!("../scenarios/file-research.json"),
+    include_str!("../scenarios/console-file-research.json"),
     include_str!("../scenarios/flaky-429.json"),
     include_str!("../scenarios/long-answer.json"),
     include_str!("../scenarios/long-tool.json"),
@@ -228,7 +229,16 @@ fn play_plan(
 }
 
 fn conversation(message: &Message) -> ConversationMessage {
+    let text = message.content_as_text();
+    // Runtime facts use a user-role fallback on providers without scoped system
+    // messages. They are context, not a new human turn: otherwise a current-time
+    // block hides the scenario marker and resets tool-round progress. Only the
+    // simulator's resolver sees this normalization; provider input is unchanged.
+    let facts = message.role == MessageRole::User
+        && text.trim().starts_with("<facts>\n")
+        && text.trim().ends_with("\n</facts>");
     let role = match message.role {
+        MessageRole::User if facts => scenario::MessageRole::System,
         MessageRole::System => scenario::MessageRole::System,
         MessageRole::User => scenario::MessageRole::User,
         MessageRole::Assistant => scenario::MessageRole::Assistant,
@@ -240,7 +250,7 @@ fn conversation(message: &Message) -> ConversationMessage {
         .flatten()
         .map(|call| call.id.clone())
         .chain(message.tool_call_id.clone());
-    ConversationMessage::new(role, message.content_as_text()).with_tool_call_ids(ids)
+    ConversationMessage::new(role, text).with_tool_call_ids(ids)
 }
 
 fn reasoning_item(text: &str) -> LlmStreamEvent {
@@ -425,6 +435,49 @@ mod tests {
             .unwrap();
         assert!(tool_calls(&answer).is_empty());
         assert_eq!(text(&answer).split_whitespace().count(), 600);
+    }
+
+    #[tokio::test]
+    async fn runtime_facts_preserve_scenario_selection_and_tool_progress() {
+        let attempts = Attempts::default();
+        let facts = Message::text(
+            MessageRole::User,
+            "<facts>\n- current_time: 2026-10-29T00:00:00Z\n</facts>",
+        );
+        let tools = [read_tool()];
+        let mut messages = vec![
+            Message::text(
+                MessageRole::User,
+                "Research [[llmsim:console-file-research speed=0.001]]",
+            ),
+            facts.clone(),
+        ];
+        for expected in [1, 1, 2] {
+            let events = call(&messages, &tools, &attempts)
+                .await
+                .expect("runtime facts must not hide the human scenario marker")
+                .unwrap();
+            let calls = tool_calls(&events);
+            assert_eq!(calls.len(), expected);
+            for tool in calls {
+                assert_eq!(tool.name, "read_file");
+                assert_eq!(tool.arguments["path"], "/load-test/research.md");
+                assert!(
+                    tool.arguments["human_intent"]
+                        .as_str()
+                        .is_some_and(|s| !s.is_empty())
+                );
+            }
+            record(&mut messages, &events);
+            messages.push(facts.clone());
+        }
+        let answer = call(&messages, &tools, &attempts).await.unwrap().unwrap();
+        assert!(tool_calls(&answer).is_empty());
+        assert_eq!(text(&answer).split_whitespace().count(), 600);
+        record(&mut messages, &answer);
+        messages.push(Message::text(MessageRole::User, "A new unmarked user turn"));
+        messages.push(facts);
+        assert!(call(&messages, &tools, &attempts).await.is_none());
     }
 
     #[tokio::test]

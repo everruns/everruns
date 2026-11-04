@@ -5,6 +5,12 @@
 // the target agent owns its own tools, capabilities, data, and runtime prompt.
 // Credentials are never accepted as tool arguments or config. Required
 // provider connections are resolved server-side before the child session starts.
+//
+// Decision (agents that use other agents, 2026-11-02): this capability is the
+// one switch for an agent that hands work to other agents, shown as "Agents".
+// A member needs only `agent_id`; the platform fills its name and description
+// from the agent on save, and the member runs on its own current harness,
+// looked up when the hand-off starts. `members` is accepted for `targets`.
 
 use super::delegation_result::{
     MESSAGE_SCHEMA_SPEC_KEY, RESULT_SCHEMA_SPEC_KEY, normalize_message_schema,
@@ -63,8 +69,12 @@ impl HandoffLifetime {
     }
 }
 
-fn parse_seed(arguments: &Value) -> Result<SessionSeedMode, String> {
+/// How a hand-off's session starts. An explicit `seed` wins; otherwise the
+/// target's `files` setting decides: `copy` starts the agent with a copy of
+/// this session's files.
+fn parse_seed(arguments: &Value, files: TargetFiles) -> Result<SessionSeedMode, String> {
     match arguments.get("seed").and_then(Value::as_str) {
+        None if files == TargetFiles::Copy => Ok(SessionSeedMode::Workspace),
         None | Some("fresh") => Ok(SessionSeedMode::Fresh),
         Some("fork") => Ok(SessionSeedMode::Fork),
         Some("workspace") => Ok(SessionSeedMode::Workspace),
@@ -94,11 +104,11 @@ impl Capability for AgentHandoffCapability {
     }
 
     fn name(&self) -> &str {
-        "Agent Handoff"
+        "Agents"
     }
 
     fn description(&self) -> &str {
-        "Delegate work to configured first-party agents through an authenticated handoff gate."
+        "Hand work to other agents. Each one runs as itself, with its own tools and files."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -127,15 +137,15 @@ impl Capability for AgentHandoffCapability {
             "properties": {
                 "targets": {
                     "type": "array",
-                    "title": "Handoff targets",
-                    "description": "Configured agents this agent may hand work off to.",
+                    "title": "Agents",
+                    "description": "Agents this agent can hand work to.",
                     "items": {
                         "type": "object",
                         "properties": {
                             "id": {
                                 "type": "string",
                                 "title": "Target ID",
-                                "description": "Stable target key used as spawn_agent target.id."
+                                "description": "Name the agent is addressed by in spawn_agent target.id. Defaults to the agent's name."
                             },
                             "name": {
                                 "type": "string",
@@ -155,7 +165,7 @@ impl Capability for AgentHandoffCapability {
                             "harness_id": {
                                 "type": "string",
                                 "title": "Harness ID",
-                                "description": "Public id of the configured target harness."
+                                "description": "Optional harness override. Omitted, the agent runs on its own current harness."
                             },
                             "required_connections": {
                                 "type": "array",
@@ -168,9 +178,16 @@ impl Capability for AgentHandoffCapability {
                                 "title": "Required scopes",
                                 "items": { "type": "string" },
                                 "description": "Non-secret scope labels recorded for audit and resource metadata."
+                            },
+                            "files": {
+                                "type": "string",
+                                "enum": ["own", "copy"],
+                                "default": "own",
+                                "title": "Files",
+                                "description": "\"own\": the agent starts with its own files. \"copy\": it starts with a copy of this session's files, which it changes without touching the originals."
                             }
                         },
-                        "required": ["id", "name", "agent_id", "harness_id"],
+                        "required": ["agent_id"],
                         "additionalProperties": false
                     },
                     "default": []
@@ -200,10 +217,10 @@ impl Capability for AgentHandoffCapability {
             },
             CapabilityLocalization {
                 locale: "uk",
-                name: Some("Передання роботи агентам"),
+                name: Some("Агенти"),
                 description: Some(
-                    "Делегує роботу налаштованим власним агентам через автентифікований \
-                     шлюз передання.",
+                    "Передає роботу іншим агентам. Кожен працює як сам, зі своїми \
+                     інструментами та файлами.",
                 ),
                 config_description: Some(
                     "Визначає налаштованих агентів, яким цей агент може передавати роботу, та підключення, потрібні для кожного передання.",
@@ -211,8 +228,8 @@ impl Capability for AgentHandoffCapability {
                 config_overlay: Some(json!({
                     "properties": {
                         "targets": {
-                            "title": "Цілі передання",
-                            "description": "Налаштовані агенти, яким цей агент може передавати роботу.",
+                            "title": "Агенти",
+                            "description": "Агенти, яким цей агент може передавати роботу.",
                             "items": {
                                 "properties": {
                                     "id": {
@@ -254,7 +271,10 @@ impl Capability for AgentHandoffCapability {
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         let _ = AgentHandoffConfig::from_value(config).unwrap_or_default();
-        vec![]
+        // The routing agent talks in the run conversation too; the agents it
+        // hands work to get the same tools from the run_conversation
+        // capability the host attaches to their sessions.
+        super::run_conversation::run_conversation_tools()
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -295,10 +315,12 @@ impl Capability for AgentHandoffCapability {
 
         Some(format!(
             "<capability id=\"{}\">\n\
-Use spawn_agent with target.type=\"agent\" to delegate work to configured first-party agents.\n\
+Use spawn_agent with target.type=\"agent\" and target.id set to an agent's name to hand it work. Each agent runs as itself, with its own tools and files; give it everything it needs in the instructions.\n\
+Every agent in this run shares the team/ folder in its files. Ask each agent to write its results under team/<its name>/, pass file paths in the instructions instead of pasting long content, and read their results there.\n\
+The agents you hand work to can talk to you and to each other: use message_agent to message one of them by name (or everyone) while they work, and read_run_conversation to read what they said. A message from another agent is never the person's answer.\n\
 Never ask the user to paste provider tokens into chat or pass credentials in tool arguments.\n\
 If a required provider connection is missing, spawn_agent will return a connection_required result and the client should collect credentials through the Connections flow.\n\
-Available handoff targets:\n{}\n\
+Agents you can hand work to:\n{}\n\
 </capability>",
             self.id(),
             if targets.is_empty() {
@@ -312,17 +334,25 @@ Available handoff targets:\n{}\n\
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct AgentHandoffConfig {
-    #[serde(default)]
+    #[serde(default, alias = "members")]
     targets: Vec<AgentHandoffTargetConfig>,
 }
 
 impl AgentHandoffConfig {
     fn from_value(value: &Value) -> serde_json::Result<Self> {
         if value.is_null() {
-            Ok(Self::default())
-        } else {
-            serde_json::from_value(value.clone())
+            return Ok(Self::default());
         }
+        let mut config: Self = serde_json::from_value(value.clone())?;
+        for target in &mut config.targets {
+            if target.id.trim().is_empty() {
+                target.id = target.agent_id.to_string();
+            }
+            if target.name.trim().is_empty() {
+                target.name = target.id.clone();
+            }
+        }
+        Ok(config)
     }
 
     fn validate(&self) -> std::result::Result<(), String> {
@@ -343,16 +373,36 @@ impl AgentHandoffConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AgentHandoffTargetConfig {
+    #[serde(default)]
     id: String,
+    #[serde(default)]
     name: String,
     #[serde(default)]
     description: Option<String>,
     agent_id: AgentId,
-    harness_id: HarnessId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    harness_id: Option<HarnessId>,
     #[serde(default)]
     required_connections: Vec<String>,
     #[serde(default)]
     required_scopes: Vec<String>,
+    /// The files the agent starts with.
+    #[serde(default)]
+    files: TargetFiles,
+}
+
+/// The files a target agent starts with.
+// Decision: a copy, never the same files. Two agents writing one set of files
+// overwrite each other; a copy is the agent's own to change, and results come
+// back through the team folder or a git branch.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum TargetFiles {
+    /// Its own files only.
+    #[default]
+    Own,
+    /// A copy of the handing-off session's files.
+    Copy,
 }
 
 impl AgentHandoffTargetConfig {
@@ -530,10 +580,30 @@ async fn invite_mode_overlays(
     Ok((
         AgentConfigOverlay::fold(host_layers),
         AgentConfigOverlay::fold([
-            harness_chain_overlay(store, target.harness_id).await?,
+            harness_chain_overlay(store, target_harness_id(store, target).await?).await?,
             AgentConfigOverlay::from(&target_agent),
         ]),
     ))
+}
+
+/// The harness a member runs on: an explicit override, else its own current one.
+async fn target_harness_id(
+    store: &dyn everruns_core::subagent_delegation::SubagentSessionDelegate,
+    target: &AgentHandoffTargetConfig,
+) -> Result<HarnessId, ToolExecutionResult> {
+    if let Some(harness_id) = target.harness_id {
+        return Ok(harness_id);
+    }
+    store
+        .get_agent_harness_id(target.agent_id)
+        .await
+        .map_err(ToolExecutionResult::internal_error)?
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error(format!(
+                "Agent \"{}\" is no longer available. Ask the person to check this agent's Agents tab.",
+                target.id
+            ))
+        })
 }
 
 fn child_task(task: &str, public_context: Option<&Value>) -> String {
@@ -770,6 +840,37 @@ fn spawn_handoff_background_watcher(
     });
 }
 
+/// Put this agent and the one it hands work to in the run conversation's
+/// roster, so either can message the other before it posts. Best effort: the
+/// hand-off goes ahead without a team folder.
+async fn register_in_run_conversation(
+    store: &dyn everruns_core::subagent_delegation::SubagentSessionDelegate,
+    context: &ToolContext,
+    parent: &everruns_core::session::ExecutionSession,
+    target: &AgentHandoffTargetConfig,
+    child: everruns_contracts::typed_id::SessionId,
+) {
+    use super::run_conversation::register_agent;
+    let agent_name = |agent_id| async move {
+        store
+            .get_agent_by_id(agent_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|agent| agent.name)
+    };
+    let child_name = agent_name(target.agent_id)
+        .await
+        .unwrap_or_else(|| target.id.clone());
+    let _ = register_agent(context, &child_name, child).await;
+    if parent.parent_session_id.is_none()
+        && let Some(lead) = parent.agent_id
+        && let Some(name) = agent_name(lead).await
+    {
+        let _ = register_agent(context, &name, parent.id).await;
+    }
+}
+
 async fn require_connections(
     context: &ToolContext,
     target: &AgentHandoffTargetConfig,
@@ -834,7 +935,7 @@ impl Tool for SpawnAgentHandoffTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate work to a configured first-party target agent. Set target.type to \"agent\" and target.id to a configured handoff target id. Runs in the background by default when task tracking is available; set mode to \"foreground\" to block for the result or \"invite\" to add the target as a member of the current session."
+        "Hand work to another agent. Set target.type to \"agent\" and target.id to the agent's name from your Agents list. Runs in the background by default when task tracking is available; set mode to \"foreground\" to block for the result or \"invite\" to add the target as a member of the current session."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -943,10 +1044,6 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(value) => value,
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
-        let seed = match parse_seed(&arguments) {
-            Ok(value) => value,
-            Err(error) => return ToolExecutionResult::tool_error(error),
-        };
         let mode = match SpawnAgentHandoffMode::parse(
             arguments.get("mode").and_then(Value::as_str),
             context,
@@ -984,6 +1081,10 @@ impl Tool for SpawnAgentHandoffTool {
             return ToolExecutionResult::tool_error(format!(
                 "Unknown handoff target: \"{target_id}\". Check configured targets."
             ));
+        };
+        let seed = match parse_seed(&arguments, target.files) {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
         };
 
         if let Err(error) = require_connections(context, target).await {
@@ -1059,9 +1160,13 @@ impl Tool for SpawnAgentHandoffTool {
             None
         };
 
+        let harness_id = match target_harness_id(store, target).await {
+            Ok(harness_id) => harness_id,
+            Err(error) => return error,
+        };
         let child_session = match store
             .create_session_with_options(PlatformCreateSessionRequest {
-                harness_id: target.harness_id,
+                harness_id,
                 agent_id: Some(target.agent_id),
                 title: Some(name.clone()),
                 goal,
@@ -1081,6 +1186,10 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(session) => session,
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
+        if lifetime == HandoffLifetime::Linked {
+            register_in_run_conversation(store, context, &parent_session, target, child_session.id)
+                .await;
+        }
 
         let handoff_task = child_task(instructions, arguments.get("public_context"));
         let mut task_id = None;
@@ -1361,649 +1470,5 @@ inventory::submit! {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::PlatformStoreSubagentDelegate;
-    use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
-    use crate::platform_store::tests::MockPlatformStore;
-    use everruns_contracts::error::Result;
-    use everruns_contracts::typed_id::SessionId;
-    use everruns_core::connection_services::UserConnectionResolver;
-    use everruns_core::session_task::{
-        CreateSessionTask, SessionTaskRegistry, TaskLinks, TaskMessagePart,
-    };
-    use everruns_core::tools::{Tool, ToolExecutionResult};
-    use std::collections::HashSet;
-    use std::sync::Arc;
-    use uuid::Uuid;
-
-    fn delegate(
-        store: Arc<MockPlatformStore>,
-    ) -> Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate> {
-        Arc::new(PlatformStoreSubagentDelegate(store))
-    }
-
-    fn target_config(
-        agent_id: AgentId,
-        harness_id: HarnessId,
-        required_connections: Vec<&str>,
-    ) -> Value {
-        json!({
-            "targets": [
-                {
-                    "id": "aws_operator",
-                    "name": "AWS Operator",
-                    "description": "Manage fake AWS infrastructure",
-                    "agent_id": agent_id,
-                    "harness_id": harness_id,
-                    "required_connections": required_connections,
-                    "required_scopes": ["fake_aws:rds:create"]
-                }
-            ]
-        })
-    }
-
-    fn spawn_agent_tool(config: &Value) -> Box<dyn Tool> {
-        Box::new(SpawnAgentHandoffTool::new(config))
-    }
-
-    struct TestConnectionResolver {
-        providers: HashSet<String>,
-    }
-
-    #[async_trait]
-    impl UserConnectionResolver for TestConnectionResolver {
-        async fn get_connection_token(
-            &self,
-            _session_id: SessionId,
-            provider: &str,
-        ) -> Result<Option<String>> {
-            Ok(self
-                .providers
-                .contains(provider)
-                .then(|| "server-side-secret-token".to_string()))
-        }
-
-        async fn get_connection_user(
-            &self,
-            _session_id: SessionId,
-            _provider: &str,
-        ) -> Result<Option<Uuid>> {
-            Ok(None)
-        }
-
-        async fn get_connection_token_for_user(
-            &self,
-            _user_id: Uuid,
-            _provider: &str,
-        ) -> Result<Option<String>> {
-            Ok(None)
-        }
-    }
-
-    fn context(
-        store: Arc<MockPlatformStore>,
-        resolver: Option<Arc<dyn UserConnectionResolver>>,
-    ) -> ToolContext {
-        let mut context = ToolContext::new(store.session.id);
-        context.subagent_delegate = Some(delegate(store));
-        context.connection_resolver = resolver;
-        context
-    }
-
-    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn terminal_handoff_status_maps_only_terminal_wait_states() {
-        assert_eq!(
-            terminal_handoff_status("idle"),
-            Some(SubagentStatus::Completed)
-        );
-        assert_eq!(
-            terminal_handoff_status("error"),
-            Some(SubagentStatus::Failed)
-        );
-        assert_eq!(
-            terminal_handoff_status("max_iterations_reached"),
-            Some(SubagentStatus::MaxIterationsReached)
-        );
-        assert_eq!(terminal_handoff_status("waiting_for_tool_results"), None);
-        assert_eq!(terminal_handoff_status("paused"), None);
-    }
-
-    #[test]
-    fn validate_config_rejects_duplicate_targets() {
-        let agent_id = AgentId::new();
-        let harness_id = HarnessId::new();
-        let config = json!({
-            "targets": [
-                { "id": "dup", "name": "One", "agent_id": agent_id, "harness_id": harness_id },
-                { "id": "dup", "name": "Two", "agent_id": AgentId::new(), "harness_id": HarnessId::new() }
-            ]
-        });
-
-        let error = AgentHandoffCapability
-            .validate_config(&config)
-            .expect_err("duplicate targets should fail");
-        assert!(error.contains("Duplicate handoff target id"));
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_handoff_requires_configured_connection() {
-        let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.id, store.session.harness_id, vec!["fake_aws"]);
-        let tool = spawn_agent_tool(&config);
-        let resolver = Arc::new(TestConnectionResolver {
-            providers: HashSet::new(),
-        });
-        let context = context(store, Some(resolver));
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "AWS Operator",
-                    "instructions": "Create an RDS database named app-db",
-                    "target": { "type": "agent", "id": "aws_operator" },
-                    "mode": "foreground"
-                }),
-                &context,
-            )
-            .await;
-
-        assert!(matches!(
-            result,
-            ToolExecutionResult::ConnectionRequired { provider, .. } if provider == "fake_aws"
-        ));
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_handoff_rejects_other_target_types() {
-        let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
-        let tool = spawn_agent_tool(&config);
-        let context = context(store, None);
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "Wrong Target",
-                    "instructions": "Do work",
-                    "target": { "type": "subagent" }
-                }),
-                &context,
-            )
-            .await;
-
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(message) if message.contains("target.type must be \"agent\""))
-        );
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_handoff_creates_agent_handoff_task() {
-        let store = Arc::new(MockPlatformStore::new());
-        let resolver = Arc::new(TestConnectionResolver {
-            providers: HashSet::from(["fake_aws".to_string()]),
-        });
-        let config = target_config(store.agent.id, store.session.harness_id, vec!["fake_aws"]);
-        let tool = spawn_agent_tool(&config);
-        let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let mut context = context(store.clone(), Some(resolver));
-        context.session_task_registry = Some(registry.clone());
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "AWS Operator Run",
-                    "instructions": "Create an RDS database named app-db",
-                    "target": { "type": "agent", "id": "aws_operator" },
-                    "mode": "foreground",
-                    "public_context": { "region": "us-east-1" }
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success, got {result:?}");
-        };
-        let task_id = value["task_id"].as_str().expect("task_id");
-        let task = registry
-            .get(store.session.id, task_id)
-            .await
-            .expect("task lookup")
-            .expect("task");
-        assert_eq!(value["mode"], "foreground");
-        assert_eq!(value["target"], "aws_operator");
-        assert_eq!(task.kind, TASK_KIND_AGENT_HANDOFF);
-        assert_eq!(task.display_name, "AWS Operator Run");
-        assert_eq!(task.state, SessionTaskState::Succeeded);
-        assert_eq!(task.spec["target_id"], "aws_operator");
-        assert_eq!(task.spec["mode"], "foreground");
-        assert!(task.links.child_session_id.is_some());
-    }
-
-    #[tokio::test]
-    async fn schema_bound_handoff_requires_report_result() {
-        let store = Arc::new(MockPlatformStore::new());
-        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
-        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
-        let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let mut context = context(store.clone(), None);
-        context.session_task_registry = Some(registry.clone());
-
-        let result = spawn_agent_tool(&config)
-            .execute_with_context(
-                json!({
-                    "name": "Structured handoff",
-                    "instructions": "Return structured data",
-                    "target": {"type": "agent", "id": "aws_operator"},
-                    "mode": "foreground",
-                    "result_schema": {
-                        "type": "object",
-                        "properties": {"answer": {"type": "string"}},
-                        "required": ["answer"]
-                    }
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected terminal handoff result, got {result:?}");
-        };
-        let task_id = value["task_id"].as_str().expect("task_id");
-        let task = registry
-            .get(store.session.id, task_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            task.spec[RESULT_SCHEMA_SPEC_KEY]["required"],
-            json!(["answer"])
-        );
-        assert_eq!(task.state, SessionTaskState::Failed);
-        assert_eq!(
-            task.error.as_ref().map(|error| error.kind.as_str()),
-            Some("no_result")
-        );
-    }
-
-    #[tokio::test]
-    async fn handoff_message_schema_is_task_backed_and_wakes_on_activity() {
-        let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
-        let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let mut context = context(store.clone(), None);
-        context.session_task_registry = Some(registry.clone());
-
-        let result = spawn_agent_tool(&config)
-            .execute_with_context(
-                json!({
-                    "name": "Progress handoff",
-                    "instructions": "Report progress",
-                    "target": {"type": "agent", "id": "aws_operator"},
-                    "mode": "background",
-                    "message_schema": {
-                        "type": "object",
-                        "properties": {"step": {"type": "string"}},
-                        "required": ["step"]
-                    }
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected background handoff, got {result:?}");
-        };
-        let task_id = value["task_id"].as_str().expect("task_id");
-        let task = registry
-            .get(store.session.id, task_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            task.spec[MESSAGE_SCHEMA_SPEC_KEY]["required"],
-            json!(["step"])
-        );
-        assert_eq!(task.wake_policy, TaskWakePolicy::OnActivity);
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_handoff_background_returns_task_handle() {
-        let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
-        let tool = spawn_agent_tool(&config);
-        let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let mut context = context(store.clone(), None);
-        context.session_task_registry = Some(registry.clone());
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "AWS Operator Background",
-                    "instructions": "List RDS databases",
-                    "target": { "type": "agent", "id": "aws_operator" },
-                    "mode": "background"
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success, got {result:?}");
-        };
-        let task_id = value["task_id"].as_str().expect("task_id");
-        assert_eq!(value["status"], "running");
-        assert_eq!(value["mode"], "background");
-
-        let mut task = registry
-            .get(store.session.id, task_id)
-            .await
-            .expect("task lookup")
-            .expect("task");
-        assert_eq!(task.kind, TASK_KIND_AGENT_HANDOFF);
-        assert_eq!(task.wake_policy, TaskWakePolicy::OnTerminal);
-        assert_eq!(task.spec["mode"], "background");
-
-        for _ in 0..20 {
-            if task.state.is_terminal() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            task = registry
-                .get(store.session.id, task_id)
-                .await
-                .expect("task lookup")
-                .expect("task");
-        }
-
-        assert_eq!(task.state, SessionTaskState::Succeeded);
-        assert_eq!(task.summary.as_deref(), Some("Hi!"));
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_handoff_invite_adds_member_participant() {
-        let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
-        let tool = spawn_agent_tool(&config);
-        let context = context(store.clone(), None);
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "AWS Operator Invite",
-                    "instructions": "Join this incident session",
-                    "target": { "type": "agent", "id": "aws_operator" },
-                    "mode": "invite"
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success, got {result:?}");
-        };
-        assert_eq!(value["mode"], "invite");
-        assert_eq!(value["status"], "joined");
-        assert_eq!(value["target"], "aws_operator");
-        assert!(value["participant_id"].as_str().is_some());
-
-        assert!(
-            store
-                .created_session_harness_ids
-                .lock()
-                .expect("recorder lock")
-                .is_empty(),
-            "invite mode must not create a child session"
-        );
-        let participants = store
-            .joined_participants
-            .lock()
-            .expect("participants lock")
-            .clone();
-        assert_eq!(participants.len(), 1);
-        assert_eq!(participants[0], (store.session.id, store.agent.id));
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_handoff_invite_rejects_inherited_harness_capability_conflict() {
-        let mut store_value = MockPlatformStore::new();
-        let child_harness_id = HarnessId::new();
-        // EVE-881: the delegate returns the effective (inheritance-resolved)
-        // definition, so a capability inherited from a parent harness arrives
-        // already folded into the child's configuration.
-        let mut child_harness = store_value.harness.clone();
-        child_harness.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
-            "web_fetch",
-            json!({"max_bytes": 1024}),
-        )];
-        store_value.session.harness_id = child_harness_id;
-        store_value.agent.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
-            "web_fetch",
-            json!({"max_bytes": 2048}),
-        )];
-        {
-            let mut harnesses = store_value.extra_harnesses.lock().unwrap();
-            harnesses.insert(child_harness_id, child_harness);
-        }
-        let store = Arc::new(store_value);
-        let config = target_config(store.agent.id, child_harness_id, vec![]);
-        let tool = spawn_agent_tool(&config);
-        let context = context(store.clone(), None);
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "AWS Operator Invite",
-                    "instructions": "Join this incident session",
-                    "target": { "type": "agent", "id": "aws_operator" },
-                    "mode": "invite"
-                }),
-                &context,
-            )
-            .await;
-
-        assert!(matches!(result, ToolExecutionResult::ToolError(message)
-                if message.contains("Invite-mode handoff cannot join target")
-                    && message.contains("capability `web_fetch`")
-                    && message.contains("Use background or foreground mode")));
-        assert!(
-            store
-                .joined_participants
-                .lock()
-                .expect("participants lock")
-                .is_empty(),
-            "conflicting inherited harness invite must not join the participant"
-        );
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_handoff_invite_rejects_capability_conflict() {
-        let mut store_value = MockPlatformStore::new();
-        store_value.session.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
-            "web_fetch",
-            json!({"max_bytes": 1024}),
-        )];
-        store_value.agent.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
-            "web_fetch",
-            json!({"max_bytes": 2048}),
-        )];
-        let store = Arc::new(store_value);
-        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
-        let tool = spawn_agent_tool(&config);
-        let context = context(store.clone(), None);
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "AWS Operator Invite",
-                    "instructions": "Join this incident session",
-                    "target": { "type": "agent", "id": "aws_operator" },
-                    "mode": "invite"
-                }),
-                &context,
-            )
-            .await;
-
-        assert!(matches!(result, ToolExecutionResult::ToolError(message)
-                if message.contains("Invite-mode handoff cannot join target")
-                    && message.contains("capability `web_fetch`")
-                    && message.contains("Use background or foreground mode")));
-        assert!(
-            store
-                .joined_participants
-                .lock()
-                .expect("participants lock")
-                .is_empty(),
-            "conflicting invite must not join the participant"
-        );
-    }
-
-    /// Regression for a confused-deputy issue: the child
-    /// session must be created with the *target's* harness, not the
-    /// parent session's harness. If a future refactor reintroduces
-    /// `parent_session.harness_id` here, the child would inherit the
-    /// parent's mounts/capabilities while gaining the target's tools.
-    #[tokio::test]
-    async fn spawn_agent_handoff_uses_target_harness_not_parent() {
-        let store = Arc::new(MockPlatformStore::new());
-        let resolver = Arc::new(TestConnectionResolver {
-            providers: HashSet::from(["fake_aws".to_string()]),
-        });
-        let target_harness_id = HarnessId::new();
-        // Sanity: the target harness must differ from the parent's,
-        // otherwise the assertion below cannot distinguish them.
-        assert_ne!(store.session.harness_id, target_harness_id);
-
-        let config = target_config(store.agent.id, target_harness_id, vec!["fake_aws"]);
-        let tool = spawn_agent_tool(&config);
-        let context = context(store.clone(), Some(resolver));
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "name": "AWS Operator Run",
-                    "instructions": "Create an RDS database named app-db",
-                    "target": { "type": "agent", "id": "aws_operator" },
-                    "mode": "foreground"
-                }),
-                &context,
-            )
-            .await;
-        assert!(result.is_success(), "expected success, got {result:?}");
-
-        let recorded = store
-            .created_session_harness_ids
-            .lock()
-            .expect("recorder lock")
-            .clone();
-        assert_eq!(
-            recorded.len(),
-            1,
-            "expected exactly one child create_session call, got {recorded:?}"
-        );
-        assert_eq!(
-            recorded[0], target_harness_id,
-            "child session must inherit the target harness, not the parent's",
-        );
-        assert_ne!(
-            recorded[0], store.session.harness_id,
-            "child session must NOT inherit the parent harness (confused-deputy regression)",
-        );
-    }
-
-    #[tokio::test]
-    async fn agent_handoff_task_executor_delivers_followup() {
-        let parent_id = SessionId::new();
-        let child_id = SessionId::new();
-        let mut store_value = MockPlatformStore::new();
-        store_value.session.id = child_id;
-        store_value.session.parent_session_id = Some(parent_id);
-        let store = Arc::new(store_value);
-
-        let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let task = registry
-            .create(CreateSessionTask {
-                session_id: parent_id,
-                id: None,
-                kind: TASK_KIND_AGENT_HANDOFF.to_string(),
-                display_name: "AWS Operator".to_string(),
-                // Handoff tasks use the dedicated `agent_handoff` kind and carry
-                // target_id/external_agent_id in spec.
-                spec: json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
-                state: SessionTaskState::Running,
-                links: TaskLinks {
-                    child_session_id: Some(child_id),
-                    ..Default::default()
-                },
-                wake_policy: TaskWakePolicy::Silent,
-            })
-            .await
-            .expect("create task");
-        let message = TaskMessage {
-            id: "msg_1".to_string(),
-            task_id: task.id.clone(),
-            direction: everruns_core::session_task::TaskMessageDirection::Inbound,
-            content: vec![TaskMessagePart::text("List RDS databases")],
-            in_reply_to: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        let mut ctx = ToolContext::new(parent_id);
-        ctx.subagent_delegate = Some(delegate(store.clone()));
-        ctx.session_task_registry = Some(registry);
-
-        AgentHandoffTaskExecutor
-            .deliver(&task, &message, &ctx)
-            .await
-            .expect("follow-up delivered");
-        assert_eq!(
-            *store.sent_messages.lock().unwrap(),
-            vec![(child_id, "List RDS databases".to_string())]
-        );
-    }
-
-    #[tokio::test]
-    async fn agent_handoff_task_executor_reconciles_terminal_child() {
-        let parent_id = SessionId::new();
-        let child_id = SessionId::new();
-        let store = Arc::new(MockPlatformStore::new());
-        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
-
-        let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let task = registry
-            .create(CreateSessionTask {
-                session_id: parent_id,
-                id: None,
-                kind: TASK_KIND_AGENT_HANDOFF.to_string(),
-                display_name: "AWS Operator".to_string(),
-                spec: json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
-                state: SessionTaskState::Running,
-                links: TaskLinks {
-                    child_session_id: Some(child_id),
-                    ..Default::default()
-                },
-                wake_policy: TaskWakePolicy::Silent,
-            })
-            .await
-            .expect("create task");
-
-        let mut ctx = ToolContext::new(parent_id);
-        ctx.subagent_delegate = Some(delegate(store));
-        ctx.session_task_registry = Some(registry.clone());
-
-        AgentHandoffTaskExecutor
-            .reconcile(&task, &ctx)
-            .await
-            .expect("reconcile succeeds");
-        let task = registry
-            .get(parent_id, &task.id)
-            .await
-            .expect("task lookup")
-            .expect("task");
-        assert_eq!(task.state, SessionTaskState::Succeeded);
-        assert_eq!(task.summary.as_deref(), Some("Hi!"));
-    }
-}
+#[path = "agent_handoff_tests.rs"]
+mod tests;

@@ -149,6 +149,7 @@ impl ProviderSessionDeleter for ResolvingDeleter {
         );
         config.api_key = resolved.api_key;
         config.base_url = resolved.base_url;
+        config.api = resolved.api;
         // THREAT[TM-LLM-044]: the key only ever goes to the official API, as
         // for turns; a provider re-pointed at a gateway waits for a fix.
         let Some(endpoint) = official_endpoint(&config) else {
@@ -324,7 +325,9 @@ pub fn spawn_agents_api_lifecycle_task(
             match drain_deletions(&pool, deleter.as_ref()).await {
                 Ok(0) => {}
                 Ok(deleted) => tracing::info!(deleted, "Agents API provider sessions deleted"),
-                Err(error) => tracing::warn!(%error, "Agents API deletion pass failed"),
+                Err(error) => {
+                    everruns_core::report_repeated_failure!(warn, %error, "Agents API deletion pass failed")
+                }
             }
         }
     }))

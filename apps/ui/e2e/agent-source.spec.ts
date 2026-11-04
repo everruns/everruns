@@ -63,6 +63,7 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
         expect(body.path).toBe("agents/support");
         expect(body.agent_digest).toBe("reviewed-base");
         expect(body.mode).toBe("pull");
+        expect(body.github_account).toBe("personal");
         enabled = true;
         source = {
           mode: "pull",
@@ -118,21 +119,18 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
           },
         ],
       };
-    else if (p === `/agents/${agentId}/github`)
+    else if (p === `/agents/${agentId}/source/accounts`)
       json = {
-        identity_id: "identity_1",
-        connected: true,
-        app_created: true,
-        app_slug: "support",
-        kind: "agent_app",
-        missing_permissions: [],
-        suggested_owners: [],
-        everruns_app_installations: [],
+        available: true,
+        install_url: null,
+        personal: {
+          connected: true,
+          login: "dev",
+          repositories: [{ full_name: "acme/agents", account: "acme", private: true }],
+          error: null,
+        },
+        organization: { can_connect: true, accounts: [], repositories: [], error: null },
       };
-    else if (p.endsWith("/connections/github/repositories"))
-      json = [
-        { full_name: "acme/agents", private: true, html_url: "https://github.com/acme/agents" },
-      ];
     else if (
       p === `/agents/${agentId}/channels` ||
       p === `/agents/${agentId}/triggers` ||

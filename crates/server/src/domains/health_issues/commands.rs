@@ -1,7 +1,7 @@
 use super::{
-    active_turns,
+    active_turns, background_work,
     service::{SlackHealthService, issue_copy},
-    types::{HealthIssue, HealthIssueList},
+    types::{FindingInvestigation, HealthIssue, HealthIssueList},
 };
 use crate::domains::sessions::limits::OrgCaps;
 use crate::domains::{
@@ -89,6 +89,27 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     let stale = revision_changed
         || Utc::now() - row.last_checked_at > chrono::Duration::minutes(15)
         || row.error_code.as_deref() == Some("verification_unavailable");
+    let fixers = super::fixers::fixers_for(ctx, &row).await?;
+    let investigation = match row.subject_id {
+        Some(_) => ctx
+            .db
+            .finding_investigation(row.id, row.episode_id)
+            .await?
+            .map(|i| FindingInvestigation {
+                status: i.status,
+                what_happened: i.what_happened,
+                severity: i.severity,
+                suggested_action: i.suggested_action,
+                cluster_id: i.cluster_id,
+                cluster_title: i.cluster_title,
+                cluster_open: i.cluster_open,
+                model: i.model,
+                completed_at: i.completed_at,
+                dismissed_at: i.dismissed_at,
+                dismiss_reason: i.dismiss_reason,
+            }),
+        None => None,
+    };
     Ok(HealthIssue {
         id: row.id,
         code: row.code,
@@ -106,6 +127,13 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
         notification_id,
         snoozed_until,
         href,
+        subject_id: row.subject_id,
+        session_id: row
+            .session_id
+            .map(|id| everruns_contracts::typed_id::SessionId::from_uuid(id).to_string()),
+        evidence: row.evidence,
+        investigation,
+        fixers,
     })
 }
 
@@ -117,7 +145,7 @@ async fn require_access(ctx: &Ctx) -> Result<(), CommandError> {
     }
     Ok(())
 }
-async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
+pub(super) async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
     require_access(ctx).await?;
     let mut row = ctx
         .db
@@ -238,6 +266,10 @@ impl Command for CheckHealthIssue {
                 crate::domains::trace_exports::health::refresh(&ctx.db, ctx.org_id()).await?;
                 true
             }
+            None if background_work::owns(&row.code) => {
+                background_work::recheck(&ctx.db, &row).await?;
+                true
+            }
             None if row.code == active_turns::ACTIVE_TURN_LIMIT => {
                 active_turns::recheck(&ctx.db, ctx.org_id(), OrgCaps::from_env()).await?;
                 true
@@ -288,6 +320,77 @@ impl Command for SnoozeHealthIssue {
         present(ctx, row).await
     }
 }
+/// Longest dismissal reason kept.
+const DISMISS_REASON_CHARS: usize = 500;
+
+/// Why a finding needs nothing.
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct DismissHealthIssueRequest {
+    /// A false alarm, expected work, or already handled. Kept so detectors
+    /// can be calibrated against it.
+    /// (Named `note` because `reason` is the change-intent flag every
+    /// command takes.)
+    #[schema(example = "Expected: this is our nightly load test")]
+    pub note: String,
+}
+
+/// Close a finding that needs nothing, saying why.
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct DismissHealthIssue {
+    /// Stable identifier of the issue in the current organization.
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
+    pub issue_id: Uuid,
+    #[serde(flatten)]
+    pub req: DismissHealthIssueRequest,
+}
+#[command(
+    name = "dismiss_health_issue",
+    category = "health_issues",
+    description = "Dismiss a detector finding with a reason.",
+    method = "POST",
+    cli = CliRoute::new(&["health-issues"], "dismiss").with_examples(&[CliExample::new("Close a false alarm and say why", "everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 --note 'Expected: nightly load test'")]),
+    path = "/v1/health-issues/{issue_id}/dismiss",
+    policy = AGENT_MANAGE,
+)]
+impl Command for DismissHealthIssue {
+    type Output = HealthIssue;
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let reason = self.req.note.trim();
+        if reason.is_empty() {
+            return Err(CommandError::unprocessable(
+                "Say why the finding needs nothing",
+            ));
+        }
+        if reason.chars().count() > DISMISS_REASON_CHARS {
+            return Err(CommandError::unprocessable(format!(
+                "Keep the reason under {DISMISS_REASON_CHARS} characters"
+            )));
+        }
+        let row = issue(ctx, self.issue_id).await?;
+        // Only detector findings (about a session, schedule or agent) can be
+        // dismissed; a broken channel or a missing setting needs fixing.
+        if row.subject_id.is_none() {
+            return Err(CommandError::unprocessable(
+                "Only detector findings can be dismissed; fix this issue instead",
+            ));
+        }
+        if !matches!(row.status.as_str(), "open" | "needs_check") {
+            return Err(CommandError::conflict("The finding is already closed"));
+        }
+        ctx.db
+            .dismiss_finding(
+                row.id,
+                row.episode_id,
+                ctx.org_id(),
+                ctx.caller.user_id,
+                reason,
+            )
+            .await?;
+        background_work::resolve(&ctx.db, &row).await?;
+        present(ctx, issue(ctx, self.issue_id).await?).await
+    }
+}
+
 pub async fn filter_notifications(
     ctx: &Ctx,
     rows: Vec<crate::storage::NotificationRow>,

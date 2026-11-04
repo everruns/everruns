@@ -275,3 +275,22 @@ impl BatchDriver for GeminiChatDriver {
         Ok(BatchStatus::Cancelling)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn batch_decode_counts_tool_use_input_outside_cache() {
+        let response = decode(json!({
+            "candidates": [{"content": {"parts": [{"text": "answer"}]}, "finishReason": "STOP"}],
+            "usageMetadata": {"promptTokenCount": 100, "toolUsePromptTokenCount": 7,
+                "cachedContentTokenCount": 30, "candidatesTokenCount": 20, "thoughtsTokenCount": 5}
+        }), "gemini-2.5-flash").await.unwrap();
+        assert_eq!(response.text, "answer");
+        assert_eq!(response.metadata.prompt_tokens, Some(77));
+        assert_eq!(response.metadata.cache_read_tokens, Some(30));
+        assert_eq!(response.metadata.completion_tokens, Some(25));
+        assert_eq!(response.metadata.total_tokens, Some(132));
+    }
+}

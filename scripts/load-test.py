@@ -256,4 +256,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if "--capacity" in sys.argv:
+        from capacity.run import main as capacity_main
+        capacity_main([arg for arg in sys.argv[1:] if arg != "--capacity"])
+    else:
+        main()

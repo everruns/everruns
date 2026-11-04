@@ -108,10 +108,12 @@ function TargetBadge({ target }: { target?: EvalTarget }) {
 }
 
 function CaseCard({
+  evalId,
   evalCase,
   onDelete,
   deleting,
 }: {
+  evalId: string;
   evalCase: EvalCase;
   onDelete: (id: string) => void;
   deleting: boolean;
@@ -121,7 +123,16 @@ function CaseCard({
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{evalCase.name}</CardTitle>
+          <CardTitle className="text-base">
+            <Link href={`/evals/${evalId}/cases/${evalCase.id}`} className="hover:underline">
+              {evalCase.name}
+            </Link>
+            {evalCase.simulated_user && (
+              <Badge variant="outline" className="ml-2 align-middle font-normal">
+                {ui("Simulated user")}
+              </Badge>
+            )}
+          </CardTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -587,6 +598,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
                 {cases.map((c) => (
                   <CaseCard
                     key={c.id}
+                    evalId={evalId}
                     evalCase={c}
                     onDelete={handleDeleteCase}
                     deleting={deleteCase.isPending}

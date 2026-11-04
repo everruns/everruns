@@ -9,6 +9,14 @@
 //! `Auto`/stateful servers it runs the `initialize` handshake and echoes the
 //! `Mcp-Session-Id`. See [`crate::mcp::protocol`] for the pure pieces.
 
+mod body;
+mod mrtr;
+
+#[cfg(test)]
+mod body_tests;
+
+use mrtr::{MrtrRequest, request_with_inputs, resolve_input_required, validate_tool_consent_scope};
+
 use crate::mcp::auth::McpCredential;
 use crate::mcp::discovery::{DiscoveryAccumulator, McpDiscoveryError, check_page_bytes};
 use crate::mcp::elicitation::{
@@ -30,7 +38,6 @@ use crate::{
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_contracts::url_validation::validate_url_dns_pinned;
-use futures::StreamExt;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
@@ -47,7 +54,7 @@ const CALL_TIMEOUT: Duration =
     Duration::from_millis(crate::mcp_server::MCP_TOOL_TIMEOUT_DEFAULT_MS);
 /// How long a per-transport negotiation verdict stays valid before re-probing.
 const NEGOTIATION_TTL: Duration = Duration::from_secs(300);
-/// How many `input_required` rounds one `tools/call` may take before the client
+/// How many `input_required` rounds one request may take before the client
 /// gives up. A server is allowed to keep asking, but each round costs a human
 /// interaction and holds the turn open, so two is the practical ceiling: one to
 /// gather input, one for the server to ask again after the out-of-band
@@ -60,7 +67,7 @@ const MAX_INPUT_REQUIRED_ROUNDS: usize = 2;
 pub struct McpHttpStatusError {
     /// HTTP status returned by the MCP resource server.
     pub status: u16,
-    /// Response body returned by the MCP resource server.
+    /// Bounded excerpt of the response body returned by the MCP resource server.
     pub body: String,
 }
 
@@ -72,7 +79,8 @@ impl McpHttpStatusError {
 }
 
 /// Raw MCP HTTP response: status, headers, and the (possibly SSE-framed) body
-/// text — without the 2xx check, so negotiation can inspect failures.
+/// text (a bounded excerpt for HTTP failures) — without the 2xx check, so
+/// negotiation can inspect failures.
 pub struct RawMcpResponse {
     pub status: u16,
     pub headers: BTreeMap<String, String>,
@@ -144,64 +152,21 @@ async fn send_raw_bounded(
         }
     }
 
-    let (status, response_headers, response_body) = if let Some(limit) = max_response_bytes {
-        let response = egress
-            .send_stream(request)
-            .await
-            .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
-        let mut body = Vec::with_capacity(limit.min(16 * 1024));
-        let mut chunks = response.body;
-        let mut oversized_auth_error = false;
-        while let Some(chunk) = chunks.next().await {
-            let chunk = match chunk {
-                Ok(chunk) => chunk,
-                Err(error) if matches!(response.status, 401 | 403) => {
-                    oversized_auth_error = true;
-                    tracing::debug!(%error, status = response.status, "MCP auth rejection body ended during streaming");
-                    break;
-                }
-                Err(error) => {
-                    return Err(anyhow!("Failed to read MCP response body: {}", error));
-                }
-            };
-            if body.len().saturating_add(chunk.len()) > limit {
-                if matches!(response.status, 401 | 403) {
-                    // Preserve authentication classification even when a
-                    // server attaches an oversized error body; the auth
-                    // response clears stale definitions in the host cache.
-                    oversized_auth_error = true;
-                    continue;
-                } else {
-                    return Err(crate::mcp::McpDiscoveryError::LimitExceeded {
-                        resource: "page bytes",
-                        limit,
-                    }
-                    .into());
-                }
-            }
-            if !oversized_auth_error {
-                body.extend_from_slice(&chunk);
-            }
-        }
-        if oversized_auth_error {
-            body.clear();
-        }
-        (response.status, response.headers, body)
-    } else {
-        let response = egress
-            .send(request)
-            .await
-            .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
-        (response.status, response.headers, response.body)
+    let limit = match max_response_bytes {
+        Some(limit) => limit,
+        None => body::configured_limit(
+            std::env::var("EVERRUNS_MCP_MAX_RESPONSE_BYTES")
+                .ok()
+                .as_deref(),
+        )?,
     };
-
-    let body = String::from_utf8(response_body)
-        .map_err(|e| anyhow!("Failed to read MCP response body: {}", e))?;
-    Ok(RawMcpResponse {
-        status,
-        headers: response_headers,
-        body,
-    })
+    // One deadline covers headers and the body, including custom egress services.
+    let deadline = tokio::time::Instant::now() + timeout;
+    let response = tokio::time::timeout_at(deadline, egress.send_stream(request))
+        .await
+        .map_err(|_| anyhow!("MCP response timed out"))?
+        .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
+    body::read(response, limit, max_response_bytes.is_some(), deadline).await
 }
 
 /// Send one MCP JSON-RPC request over HTTP and return the (possibly SSE-framed)
@@ -675,18 +640,20 @@ pub async fn http_request(
     method: &str,
     params: &Value,
 ) -> Result<Value> {
-    let capabilities = ClientCapabilities::none();
-    let (text, _negotiated) = negotiate_and_send(
+    let (text, _) = request_with_inputs(
         egress,
         url,
         headers,
         credential,
         McpProtocolMode::Auto,
+        url,
         method,
+        params,
         None,
-        &|version| protocol::request_body(1, method, params, version, capabilities),
-        None,
-        CALL_TIMEOUT,
+        InputHandlers {
+            url: None,
+            form: None,
+        },
     )
     .await?;
     parse_rpc_result(&text)
@@ -731,6 +698,7 @@ pub async fn http_call_tool(
     credential: Option<&McpCredential>,
     elicitation: Option<&dyn UrlElicitationHandler>,
 ) -> Result<McpToolCallResult> {
+    validate_tool_consent_scope(tool_name)?;
     let capabilities = ClientCapabilities {
         url_elicitation: elicitation.is_some(),
         form_elicitation: false,
@@ -758,9 +726,13 @@ pub async fn http_call_tool(
         &negotiated,
         capabilities,
         server_name,
-        tool_name,
-        &arguments,
-        None,
+        MrtrRequest {
+            method: "tools/call",
+            name: Some(tool_name),
+            input_target: tool_name,
+            params: &serde_json::json!({ "name": tool_name, "arguments": arguments }),
+            idempotency_key: None,
+        },
         InputHandlers {
             url: elicitation,
             form: None,
@@ -779,117 +751,6 @@ pub async fn http_call_tool(
 pub(super) struct InputHandlers<'a> {
     url: Option<&'a dyn UrlElicitationHandler>,
     form: Option<&'a dyn FormElicitationHandler>,
-}
-
-/// Complete a multi round-trip `tools/call` (MRTR).
-///
-/// A `2026-07-28` server may answer `tools/call` with
-/// `resultType: "input_required"` instead of a result. Three cases:
-///
-/// - **No `inputRequests`** — the server just needs the round trip (it stashed
-///   context in `requestState`). Retry, echoing `requestState` under a new
-///   JSON-RPC id, as the spec requires for an independent request.
-/// - **A URL mode `elicitation/create`** — the server wants a human to complete
-///   something out of band (third-party OAuth, a credential form, a payment).
-///   Ask the host's handler for consent, then retry with the `accept` response
-///   so the server can check whether the interaction completed. A decline or a
-///   cancel ends the call: the client has nothing to send that would let the
-///   server proceed, and retrying would only ask the same human again.
-/// - **A form mode `elicitation/create`**, to a server whose policy opted in —
-///   the server wants structured answers. The host's handler sends a recorded
-///   answer, or stands the call down so a person can be asked
-///   ([`crate::mcp::form_elicitation`]).
-/// - **Anything else** — undeclared elicitation modes, sampling, or roots. A
-///   server MUST NOT request an input type the client did not declare. Fail
-///   naming the culprit rather than handing back an empty result the caller
-///   would read as success.
-///
-/// Bounded by [`MAX_INPUT_REQUIRED_ROUNDS`]; a server that keeps asking gets a
-/// clear error instead of an unbounded loop against the call timeout.
-#[allow(clippy::too_many_arguments)]
-async fn resolve_input_required(
-    egress: &dyn EgressService,
-    url: &str,
-    headers: &HashMap<String, String>,
-    credential: Option<&McpCredential>,
-    negotiated: &Negotiated,
-    capabilities: ClientCapabilities,
-    server_name: &str,
-    tool_name: &str,
-    arguments: &Value,
-    idempotency_key: Option<&str>,
-    handlers: InputHandlers<'_>,
-    call_timeout: Duration,
-    text: String,
-) -> Result<String> {
-    let mut text = text;
-    for round in 0..MAX_INPUT_REQUIRED_ROUNDS {
-        let Some(json) = extract_json_from_response(&text) else {
-            return Ok(text);
-        };
-        let Some(input_required) = protocol::input_required_from_result(json) else {
-            return Ok(text);
-        };
-
-        let input_responses =
-            gather_input_responses(&input_required, server_name, tool_name, handlers, url).await?;
-
-        tracing::debug!(
-            url = %url,
-            tool = %tool_name,
-            round = round,
-            inputs = input_responses.len(),
-            "MCP tools/call returned input_required; retrying"
-        );
-        // A distinct id per attempt: MRTR treats every retry as an independent
-        // request.
-        // The retry is the same call, so it carries the same key.
-        let body = serde_json::to_vec(&protocol::with_idempotency_key(
-            protocol::tools_call_retry_body(
-                round as i64 + 2,
-                tool_name,
-                arguments,
-                &negotiated.version,
-                capabilities,
-                input_required.request_state.as_deref(),
-                &input_responses,
-            ),
-            idempotency_key,
-        ))?;
-        let response = send_op(
-            egress,
-            url,
-            headers,
-            credential,
-            negotiated,
-            "tools/call",
-            Some(tool_name),
-            body,
-            call_timeout,
-            None,
-        )
-        .await?;
-        if !(200..300).contains(&response.status) {
-            return Err(McpHttpStatusError {
-                status: response.status,
-                body: response.body,
-            }
-            .into());
-        }
-        text = response.body;
-    }
-
-    if extract_json_from_response(&text)
-        .and_then(protocol::input_required_from_result)
-        .is_some()
-    {
-        return Err(anyhow!(
-            "MCP tool '{tool_name}' still requires input after {MAX_INPUT_REQUIRED_ROUNDS} \
-             rounds; if you were asked to complete something in your browser, finish it and \
-             run the tool again"
-        ));
-    }
-    Ok(text)
 }
 
 /// Build the `inputResponses` map for one `input_required` round.
@@ -1376,6 +1237,7 @@ impl McpTransport for HttpTransport {
         credential: Option<&McpCredential>,
         idempotency_key: Option<&str>,
     ) -> Result<McpToolCallResult> {
+        validate_tool_consent_scope(tool_name)?;
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
         // This transport can keep polling, so `tools/call` may become a task.
@@ -1410,9 +1272,13 @@ impl McpTransport for HttpTransport {
             &negotiated,
             capabilities,
             &connection.name,
-            tool_name,
-            &arguments,
-            idempotency_key,
+            MrtrRequest {
+                method: "tools/call",
+                name: Some(tool_name),
+                input_target: tool_name,
+                params: &serde_json::json!({ "name": tool_name, "arguments": arguments }),
+                idempotency_key,
+            },
             self.handlers(connection),
             connection.tool_timeout(),
             text,
@@ -1451,21 +1317,18 @@ impl McpTransport for HttpTransport {
     ) -> Result<Value> {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
-        // Only `tools/call` may be answered with `input_required`, so other
-        // methods declare no input capabilities.
-        let capabilities = ClientCapabilities::none();
         let cached = self.cached_negotiation(&cache_key);
-        let (text, negotiated) = negotiate_and_send(
+        let (text, negotiated) = request_with_inputs(
             self.egress.as_ref(),
             url,
             headers,
             credential,
             connection.protocol_mode,
+            &connection.name,
             method,
-            None,
-            &|version| protocol::request_body(1, method, &params, version, capabilities),
+            &params,
             cached,
-            CALL_TIMEOUT,
+            self.handlers(connection),
         )
         .await?;
         self.store_negotiation(cache_key, negotiated);

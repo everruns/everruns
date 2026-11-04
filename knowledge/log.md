@@ -1,5 +1,94 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-03
+
+- Add bounded immutable trace index caching, planner-free session/locator reads,
+  shared DataFusion execution and equivalent-window cold/warm/stage measurements.
+  Preserve per-read source visibility and deletion guards. See
+  [Trace Storage](operations/trace-storage.md).
+
+- Adopt the patched spreadsheet parser for [Knowledge extraction](runtime-resources/knowledge.md), retain stable warning codes and resource limits, and version subsequent text views without rewriting originals.
+
+- Add credit shortfall handling: a provider refusal for lack of credits retries once with fewer max output tokens, or waits up to an hour on durable schedule checks that read the balance without spending tokens. See [Credit Shortfall](execution/credit-shortfall.md).
+
+## 2026-11-02
+
+- Add agents that hand work to other agents: the Agents capability lists linked or created-here members by agent, packages bundle agents in `.agents/agents/`, and runs, approvals, costs and traces are planned. See [Agents That Use Other Agents](runtime-resources/agents-using-agents.md).
+- Add optional DataFusion trace storage with object-backed segments, resumable retained-history backfill, shared-boundary shadow comparisons, private metrics and guarded publication/deletion. See [DataFusion Trace Storage](operations/trace-storage.md).
+
+## 2026-11-01
+
+- Add the `completion_check` agent setting: a finishing unattended turn is reviewed on its own model and an announced but unfinished one continues within a durable budget. See [Turn Completion Check](execution/turn-completion-check.md).
+
+- Reveal bidi/control characters in tool approval displays without changing approval authority or arguments. See [Tool Approval](execution/tool-approval.md#approval-display).
+
+- Require hosted and embedded session cron triggers to advance in UTC through
+  repeated daylight-saving hours. See [Runtime](foundations/runtime.md).
+
+## 2026-10-31
+
+- Preserve cached prompt prefixes during skill installation with recorded inventory updates, bounded stable discovery, explicit removals and transcript-based replay. See [Skills Registry](project/skills-registry.md#cache-stable-inventory-disclosure).
+
+- Add bounded exact-edit recovery hints from the authorized read snapshot, with conservative per-hunk already-applied evidence and unchanged atomic editing. See [Session Filesystem](runtime-resources/file-store.md#exact-edit-recovery-diagnostics).
+- Normalize canonical Unicode and segment multilingual words in the shared scoped discovery index. See [Tool Search](execution/tool-search.md).
+
+- Added opt-in local skill inspection with content- and origin-bound reports, revalidated activation receipts, and explicit heuristic limits. See [Skills Registry](project/skills-registry.md#opt-in-persistent-instruction-inspection).
+- Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
+- Added Jev 1.14 to the decision catalog with explicit provider wire aliases and text-only default limits.
+
+- Close the admission/idempotency crash gap with one transaction for the claim, operation and replay response; preserve legacy in-flight claims during upgrades. See [Agent API admission retries](integrations/agent-execution-api.md#admission-retries) and [Load Testing](operations/load-testing.md).
+
+- Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
+
+- Resolve MCP tenant-isolation test commands by exact name and execute the MCP endpoint contracts in focused PR validation. See [CI Build Time](project/ci-build-time.md).
+
+- Add the captioned Cloudflare chat recording to its walkthrough and example README. See [Product Video Knowledge](docs/product-videos.md).
+
+## 2026-10-30
+
+* **Chat pre-merge security pins.** Carry the latest ZIP and Undici fixes into
+  the example's independent lockfiles while retaining its qualified Worker
+  toolchain. See [The isolate host](framework/wasm-kernel.md).
+
+* **Chat dependency advisory coverage.** Refresh the example's separately pinned
+  TLS verifier/root data and record that standalone lockfiles need their own
+  RustSec pass, independently of the workspace lock. See
+  [The isolate host](framework/wasm-kernel.md).
+
+* **Navigation loading**: Keep the displayed page during route transitions and
+  show pending sidebar feedback instead of replacing static page chrome with
+  generic skeletons. See [Navigation Information Architecture](ui/information-architecture.md).
+
+- Separate configured forward proxies from provider destinations in the shared
+  HTTP transport, retaining destination validation and assigning outbound DNS
+  enforcement to the trusted proxy. See [LLM Drivers](foundations/llm-drivers.md#host-owned-transport).
+
+- Use standard OpenAI endpoint settings in [Serve](framework/serve.md), with
+  provider-scoped routing and endpoint-visible model IDs; simplify the Bashkit
+  example's first-run instructions.
+* **Chat tutorial visuals.** Add real Cloudflare demo screenshots for shared
+  conversation, forks and cited history search, plus desktop/mobile architecture
+  diagrams and the reminder wakeup flow. Share the curated assets between
+  the walkthrough and example README. See [The isolate host](framework/wasm-kernel.md).
+
+* **Chat rebase qualification.** Adopt Framework 0.50 dependencies and the
+  maintained isolate build's minification/debug-section stripping. Add an
+  optional workerd upgrade mode that creates old-Engine journals and switches
+  artifacts during interrupted child recovery. See
+  [The isolate host](framework/wasm-kernel.md).
+
+- Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
+
+* **MCP resource continuations.** HTTP resource reads share tool-call input
+  handling, preserve method/URI and connection identity, isolate consent scope,
+  and bound negotiation and all continuation rounds by one deadline. See
+  [MCP Server Specification](integrations/mcp-servers.md).
+
+- Add outbound MCP client metadata-document negotiation with existing-client precedence and capability-based DCR fallback. See [Runtime MCP](integrations/runtime-mcp.md).
+
+- Added the [Serve Bashkit workspace walkthrough](framework/serve.md), checking
+  shell output, files across turns and a graceful restart, and session isolation.
+
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
@@ -26,6 +115,10 @@
 - Added a public searchable component gallery with production-renderer captures in both themes and A2UI source examples. See [A2UI](ui/a2ui.md).
 
 - Excluded permanently redirected announcements from the canonical docs sitemap while preserving their inbound links. See [Documentation Site](ui/documentation.md#sitemap-requirements).
+
+- Bounded Work Chat upstream setup without aborting an established SSE response at 30 seconds. See [Work Chat](integrations/work-chat.md).
+
+- Added first-class authenticated Console, Agent API and Work Chat capacity qualification with simulated models, durable delivery oracles and independent resource sampling. See [load testing](operations/load-testing.md).
 
 - Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
 
@@ -101,6 +194,12 @@
 
 ## 2026-10-26
 
+* **Binding-only chat internals.** Remove the example-only internal bearer
+  secret and trust native DO bindings, with workerd coverage that the public
+  gateway rejects internal tool/session routes and forged credentials. Shared
+  HTTP authority authentication stays enabled. See
+  [The isolate host](framework/wasm-kernel.md).
+
 - Added persistent Ukrainian interface selection and generic agent/harness display
   localization, including the portable agent-file contract and revision restore.
 
@@ -122,6 +221,11 @@
   [Change history](execution/change-reasons-and-manager-context.md). Shared review commands also carry worked CLI examples and synchronized terminal/evaluation catalogs.
 
 ## 2026-10-25
+
+* **Public chat demo access.** Remove the shared browser key and cookie gate;
+  keep internal authority authentication and clarify that its secret is
+  application-generated, not a Cloudflare API credential. See
+  [The isolate host](framework/wasm-kernel.md).
 
 - Added opt-in two-way Agent source synchronization with durable conditional GitHub commits, conflict retention, source-path preservation and explicit direction changes. See [Agent sources](runtime-resources/agent-sources.md).
 
@@ -209,6 +313,15 @@
 
 ## 2026-10-23
 
+* **Chat adopts retained Engine registrations.** Rebase the Cloudflare demo on
+  current Framework, keep immutable Agent identity across compatible runtime
+  upgrades, retain the verified earlier live/review keys, and show compatibility
+  suspensions. Preserve the historical model for pre-pinning memberships when
+  the new-session default changes. Reuse command exports from one Engine Wasm
+  instead of uploading
+  a second reducer. Correct the obsolete Workers compressed-size restriction.
+  See [The isolate host](framework/wasm-kernel.md).
+
 * **Chat mode trust boundaries:** Record browser-owned draft bindings, guarded
   inverses, and bounded untrusted page context in the [threat model](security/threat-model.md).
 * **Knowledge shipping qualification.** Session-scoped mounts preserve attachment
@@ -279,6 +392,13 @@
   unsaved Agent drafts, with atomic version-checked patches, separate draft
   markers, guarded local Undo, and retry-safe result delivery. Save and Discard
   retain their existing persistence contract. See [Chat mode](ui/chat-mode.md).
+
+* **Chat adopts the public hosting SPI and transactional commands.** Build the
+  authority-side Rust reducer alongside the Engine module and exercise the full
+  chat bundle in dedicated CI. Pin each session's model across host configuration
+  changes and restart. Clarify that the single-build demo cannot upgrade
+  existing Framework sessions without retained-build routing or migration. See
+  [The isolate host](framework/wasm-kernel.md).
 
 * **Large MCP catalogs implemented.** Everruns now paginates and bounds
   per-server plus aggregate session discovery, caches complete catalogs within
@@ -457,6 +577,8 @@
   callback chains after approval and require a browser check with a second
   callback hop. See [MCP](integrations/mcp.md).
 
+* **Framework-hosted multiplayer chat.** Replace the demo's custom runner and protocol driver with Engine/ObjectHosting and shared OpenRouter execution. Room services retain durable delivery intents, stable tool ownership and a legacy-history migration. See [The isolate host](framework/wasm-kernel.md). The durable architecture publication hold remains in force.
+
 ## 2026-10-17
 
 * **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).
@@ -490,6 +612,8 @@
   The announcement publication hold remains in force.
 
 ## 2026-10-16
+
+- Added a standalone Cloudflare multiplayer chat host with no celld runtime or sibling-example dependency; recorded its atomic room state, execution-keyed search children, and alarm delivery boundary, explicit OpenRouter credentials, and deployer access responsibilities in [the isolate decision](framework/wasm-kernel.md) and [threat model](security/threat-model.md).
 
 * **Platform operating skills.** Share product, CLI, and agent-authoring skills
   through the Platform capability; publish the general and CLI guides alongside

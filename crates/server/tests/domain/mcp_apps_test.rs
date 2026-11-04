@@ -262,6 +262,10 @@ async fn tools_list_links_tools_to_views() {
         tool("agent_run")["_meta"]["ui"]["resourceUri"],
         SESSION_VIEW_URI
     );
+    assert_eq!(
+        tool("agent_get_card")["_meta"]["ui"]["resourceUri"],
+        "ui://everruns/app/agent"
+    );
     let home = tool("everruns_home");
     assert_eq!(home["_meta"]["ui"]["resourceUri"], HOME_VIEW_URI);
     assert_eq!(
@@ -275,12 +279,19 @@ async fn tools_list_links_tools_to_views() {
             .starts_with("data:image/svg+xml")
     );
     for app_only in [
+        "app_read",
+        "app_write",
+        "app_bootstrap",
         "session_view",
         "session_answer_question",
         "session_decide_approval",
     ] {
         assert_eq!(tool(app_only)["_meta"]["ui"]["visibility"], json!(["app"]));
     }
+
+    assert_eq!(tool("app_write")["annotations"]["idempotentHint"], false);
+    assert_eq!(tool("app_write")["annotations"]["openWorldHint"], true);
+    assert_eq!(tool("app_read")["annotations"]["idempotentHint"], true);
 
     // The fallback protocol keeps its old shape: no views, no `_meta`.
     let old = rpc(&server, "tools/list", json!({}), "2025-03-26", vec![]).await;
@@ -300,25 +311,33 @@ async fn templates_are_served_as_mcp_app_resources() {
         .iter()
         .filter_map(|r| r["uri"].as_str())
         .collect();
-    assert!(uris.contains(&SESSION_VIEW_URI) && uris.contains(&HOME_VIEW_URI));
-
-    let read = rpc(
-        &server,
-        "resources/read",
-        json!({ "uri": SESSION_VIEW_URI }),
-        LATEST,
-        vec![],
-    )
-    .await;
-    let content = &read["result"]["contents"][0];
-    assert_eq!(content["mimeType"], APP_MIME);
-    assert!(
-        content["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("<!doctype html>")
-    );
-    assert_eq!(content["_meta"]["ui"]["prefersBorder"], true);
+    for uri in [
+        SESSION_VIEW_URI,
+        HOME_VIEW_URI,
+        "ui://everruns/app/agent",
+        "ui://everruns/app/harness",
+        "ui://everruns/app/capability",
+        "ui://everruns/app/knowledge",
+    ] {
+        assert!(uris.contains(&uri));
+        let read = rpc(
+            &server,
+            "resources/read",
+            json!({ "uri": uri }),
+            LATEST,
+            vec![],
+        )
+        .await;
+        let content = &read["result"]["contents"][0];
+        assert_eq!(content["mimeType"], APP_MIME);
+        assert!(
+            content["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("<!doctype html>")
+        );
+        assert_eq!(content["_meta"]["ui"]["prefersBorder"], true);
+    }
 }
 
 // ============================================================================
@@ -332,13 +351,12 @@ async fn home_and_session_view_show_the_run() {
     let session_id = start_session(&server, &agent_id, "hello from the app").await;
 
     let home = structured(&call(&server, "everruns_home", json!({})).await);
+    assert_eq!(home["view"]["kind"], "home");
     assert!(
-        home["agents"]
-            .as_array()
+        home["organization_id"]
+            .as_str()
             .unwrap()
-            .iter()
-            .any(|a| a["id"] == agent_id.as_str()),
-        "home lists the agent: {home}"
+            .starts_with("org_")
     );
 
     let view =
@@ -363,13 +381,7 @@ async fn approval_is_decided_from_the_view_and_stale_clicks_are_refused() {
     assert_eq!(view["pending"]["action"], "Deploy build 42 to production");
 
     let home = structured(&call(&server, "everruns_home", json!({})).await);
-    let listed = home["sessions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|s| s["session_id"] == session_id.as_str())
-        .expect("session on home");
-    assert_eq!(listed["pending"]["kind"], "approval");
+    assert_eq!(home["view"]["kind"], "home");
 
     // A click on a card for a different pause must not approve this one.
     let stale = call(
@@ -524,3 +536,6 @@ async fn view_tools_cannot_reach_another_org() {
     let home = structured(&call(&server, "everruns_home", json!({})).await);
     assert!(!home.to_string().contains(org2_session.as_str()));
 }
+
+#[path = "mcp_apps_test/workspace.rs"]
+mod workspace;

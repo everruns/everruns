@@ -410,7 +410,12 @@ impl LocalSessionRunner for HostedSessionRunner {
             AgentLoopError::tool("a hosted session only creates child sessions of its own")
         })?;
         let engine = self.engine()?;
-        let build = engine.session_binding(parent).await?.behavior;
+        let lead = engine.session_binding(parent).await?.behavior;
+        // A member of the parent's agent runs its own build; any other agent
+        // id runs the parent's, as threads and subagents always have.
+        let build = agent_id
+            .and_then(|agent_id| engine.member_build(&lead, agent_id))
+            .unwrap_or(lead);
         let child = SessionId::new();
         // The child runs the parent's retained build; its link is part of the
         // immutable binding, so it survives every rebuild and restart.

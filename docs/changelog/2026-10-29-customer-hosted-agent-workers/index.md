@@ -5,6 +5,7 @@ date: 2026-10-29
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.50.1"
 surfaces: [ui, api, operations]
 links:
   docs: [/how-to/cloudflare-agent/]
@@ -12,11 +13,13 @@ links:
 
 ![Everruns plus Cloudflare Workers](./integration@2x.png)
 
-![External worker execution settings on an ordinary Agent](./execution@2x.png)
+![An agent connected to its own HTTPS endpoint: the Endpoint pane replaces the system prompt, and settings the endpoint owns are hidden](./external-agent@2x.png)
 
-Connect an agent running in your own infrastructure through **Configure execution**
-on its ordinary Agent page. Verify an HTTPS endpoint with a shared secret, then
-use the same Playground, sessions and Trace views. Disabling the endpoint keeps
+Connect an agent running in your own infrastructure through the **External agent**
+row in its ordinary Agent page's **More** list. Verify an HTTPS endpoint with a
+shared secret, then use the same Playground, sessions and Trace views. While the
+endpoint is connected, the page shows its status in place of the system prompt and
+hides the settings your endpoint owns: harness, capabilities, model and tools. Disabling the endpoint keeps
 queued work bound to it.
 
 The [Cloudflare Agent guide](/how-to/cloudflare-agent/) includes a complete

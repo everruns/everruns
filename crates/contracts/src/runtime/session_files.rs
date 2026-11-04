@@ -166,6 +166,22 @@ pub trait SessionFileSystem: Send + Sync {
     /// List files in a directory
     async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>>;
 
+    /// Every file and directory below `path`, at any depth, in one call.
+    /// Each entry's `path` is relative to `path`, without a leading slash
+    /// (`src/lib.rs`), so mount layers need not translate it.
+    ///
+    /// `Ok(None)` means the backend has no cheaper way than walking
+    /// `list_directory`; callers then walk. Remote stores implement it so a
+    /// shell `find` over thousands of files is one round trip, not one per
+    /// directory.
+    async fn list_tree(
+        &self,
+        _session_id: SessionId,
+        _path: &str,
+    ) -> Result<Option<Vec<FileInfo>>> {
+        Ok(None)
+    }
+
     /// Get file metadata
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>>;
 
@@ -375,6 +391,11 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
             .list_directory(self.scope(session_id, path), path)
             .await
     }
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        self.inner
+            .list_tree(self.scope(session_id, path), path)
+            .await
+    }
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         self.inner
             .stat_file(self.scope(session_id, path), path)
@@ -535,6 +556,10 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
 
     async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
         (**self).list_directory(session_id, path).await
+    }
+
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        (**self).list_tree(session_id, path).await
     }
 
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {

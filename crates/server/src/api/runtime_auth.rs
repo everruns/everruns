@@ -68,6 +68,7 @@ async fn exchange(
             provider: principal.provider,
             realm: principal.identity_realm,
             subject: principal.subject,
+            email: principal.email,
         }
     };
     // An api channel's tokens name the channel's own id, which is what its
@@ -80,6 +81,29 @@ async fn exchange(
     } else {
         endpoint
     };
+    // An agent key is the application's credential, not a browser member.
+    if channel.channel_type == ChannelType::WorkChat
+        && principal.provider != crate::domains::agent_channels::record::api::AGENT_KEY_PROVIDER
+    {
+        let chat: crate::domains::agent_channels::record::work_chat::WorkChatConfig =
+            serde_json::from_value(channel.channel_config.clone())
+                .map_err(|_| StatusCode::FORBIDDEN)?;
+        // THREAT[TM-WEB-025]: the browser exchanges its identity token on every
+        // request, so a membership change applies before the next call.
+        match crate::domains::agent_channels::work_chat::identity_admitted(
+            &state.db,
+            context.org_id,
+            &chat,
+            &principal.subject,
+            principal.email.as_deref(),
+        )
+        .await
+        {
+            Ok(true) => {}
+            Ok(false) => return Err(StatusCode::FORBIDDEN),
+            Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        }
+    }
     let user = state
         .db
         .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {
@@ -122,6 +146,7 @@ struct Principal {
     provider: String,
     realm: String,
     subject: String,
+    email: Option<String>,
 }
 
 /// On an `api` channel the exchange takes what the channel's routes take,
@@ -148,11 +173,12 @@ async fn api_channel_principal(
             provider: identity.provider,
             realm: identity.realm,
             subject: identity.subject,
+            email: identity.email,
         }),
         Ok(None) => Err(StatusCode::BAD_REQUEST),
-        Err(ApiAuthError::Forbidden | ApiAuthError::InsufficientScope) => {
-            Err(StatusCode::FORBIDDEN)
-        }
+        Err(
+            ApiAuthError::Forbidden | ApiAuthError::InsufficientScope | ApiAuthError::NotAdmitted,
+        ) => Err(StatusCode::FORBIDDEN),
         Err(ApiAuthError::Misconfigured) => Err(StatusCode::FORBIDDEN),
         Err(ApiAuthError::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
     }

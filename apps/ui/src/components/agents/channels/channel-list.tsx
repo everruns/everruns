@@ -31,7 +31,7 @@ const STATUS_TONE: Record<ChannelStatus, EntityStatusTone> = {
   needs_setup: "warning",
 };
 
-/// The channels on the agent's Integrations tab: one row each, the whole row
+/// The channels on the agent's Channels and triggers tab: one row each, the whole row
 /// opens the channel page. Configuration, how to connect, and budget live on
 /// that page, not in an expanding row.
 export function ChannelList({

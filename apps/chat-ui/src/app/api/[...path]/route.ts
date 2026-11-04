@@ -1,15 +1,17 @@
 import { channelOf, settings, safeMutation, bootstrap } from "../../../server/config";
 import { tokenFor, recoveryScope } from "../../../server/auth";
+import { liveStream, proxyHeaders } from "../../../server/proxy";
+import { fetchUpstream } from "../../../server/upstream";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share))?)?|chat\/(?:main|config|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
+  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages(?:\/[a-zA-Z0-9_-]+\/reactions\/(?!\.)[^/\s?#]{1,64})?|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share|reactions))?)?|chat\/(?:main|config|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   try {
     const path = (await params).path.join("/");
     if (path !== "chat/recovery" && !allowed.test(path))
       return new Response("Not found", { status: 404 });
-    const channel = channelOf(request);
+    const channel = await channelOf(request);
     if (path === "chat/config") {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
       return Response.json(await bootstrap(channel), { headers: { "Cache-Control": "no-store" } });
@@ -48,7 +50,8 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
     const search = new URL(request.url).search;
     const route = path.startsWith("virtual-users/")
       ? `/v1/${path}`
-      : `/v1/channels/${channel}/${path}`;
+      : // Segments arrive decoded; an emoji reaction segment must be re-encoded.
+        `/v1/channels/${channel}/${path.split("/").map(encodeURIComponent).join("/")}`;
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     const contentType = request.headers.get("content-type");
     if (contentType) headers["Content-Type"] = contentType;
@@ -79,24 +82,24 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
       }
       body = bytes.buffer;
     }
-    const upstream = await fetch(`${settings().upstream}${route}${search}`, {
-      method: request.method,
-      headers,
-      body,
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(30000)]),
-      redirect: "error",
-      cache: "no-store",
-    });
+    const upstream = await fetchUpstream(
+      `${settings().upstream}${route}${search}`,
+      {
+        method: request.method,
+        headers,
+        body,
+        signal: request.signal,
+        redirect: "error",
+        cache: "no-store",
+      },
+      request.method === "GET" && liveStream(path),
+    );
     return new Response(upstream.body, {
       status: upstream.status,
-      headers: {
-        "Content-Type": upstream.headers.get("content-type") ?? "application/json",
-        "Cache-Control": "no-store",
-        "X-Accel-Buffering": "no",
-      },
+      headers: proxyHeaders(path, upstream.headers.get("content-type")),
     });
   } catch {
     return new Response("Chat temporarily unavailable", { status: 503 });
   }
 }
-export { proxy as GET, proxy as POST, proxy as DELETE };
+export { proxy as GET, proxy as POST, proxy as PUT, proxy as DELETE };

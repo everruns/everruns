@@ -22,6 +22,17 @@ pub struct ExternalAgent {
     pub last_invoked_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// An Agent's external-agent state, plus whether this installation lets it connect one.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ExternalAgentStatus {
+    /// Whether a new endpoint can be connected here: the installation sets
+    /// `EXTERNAL_AGENTS_ENABLED=true` and protected worker ingress is off.
+    /// The UI hides the setup when this is false and no endpoint exists.
+    pub available: bool,
+    /// The connected (or disconnected) endpoint, if one was ever registered.
+    pub endpoint: Option<ExternalAgent>,
+}
+
 /// Identify the Agent whose external execution status should be read.
 #[derive(Deserialize, Serialize, ToSchema)]
 pub struct GetExternalAgent {
@@ -32,13 +43,20 @@ pub struct GetExternalAgent {
 #[command(name = "get_external_agent", category = "agents", description = "Get an Agent's external execution endpoint.", method = "GET", path = "/v1/agents/{agent_id}/external-worker", policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "external-worker"], "get").with_examples(&[CliExample::new("Inspect an Agent's external runtime without credentials", "everruns agents external-worker get --agent-id agent_01h9")]))]
 impl Command for GetExternalAgent {
-    type Output = Option<ExternalAgent>;
+    type Output = ExternalAgentStatus;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = super::agents::queries::resolve(&ctx.db, ctx.org_id(), &self.agent_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
-        Ok(sqlx::query_as("SELECT endpoint_url, enabled, last_error, last_invoked_at FROM custom_workers WHERE org_id = $1 AND agent_id = $2 AND endpoint_url IS NOT NULL")
-            .bind(ctx.org_id()).bind(agent.internal_id).fetch_optional(ctx.db.pool()).await.map_err(anyhow::Error::from)?)
+        let endpoint = sqlx::query_as("SELECT endpoint_url, enabled, last_error, last_invoked_at FROM custom_workers WHERE org_id = $1 AND agent_id = $2 AND endpoint_url IS NOT NULL")
+            .bind(ctx.org_id()).bind(agent.internal_id).fetch_optional(ctx.db.pool()).await.map_err(anyhow::Error::from)?;
+        let available = enabled()
+            && !agent.is_built_in
+            && ctx.db.worker_ingress_minimum_version().await?.is_none();
+        Ok(ExternalAgentStatus {
+            available,
+            endpoint,
+        })
     }
 }
 

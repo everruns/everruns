@@ -55,7 +55,10 @@ The exact target variants and fields live in `crates/server/src/domains/evals/re
 
 An eval is a named, tagged collection of cases with lifecycle state and optional
 default target/model behavior. It is isolated to one organization and follows
-the normal archive/delete conventions for building blocks.
+the normal archive/delete conventions for building blocks. Its cases are its
+dataset: the eval's `version` counts changes to them, and every run records
+the version it ran. Comparing variants on one version is an
+[experiment](experiments.md).
 
 ### Case
 
@@ -76,6 +79,22 @@ test harness.
 
 A run executes all selected cases under one resolved configuration. It records
 source, trigger, lifecycle, aggregate metrics, and results.
+
+A run repeats every case `trials` times (1 by default, at most 20). Each
+repetition is its own result, numbered by `trial`. The summary reports the
+per-trial pass rate plus, grouped back by case, how many cases passed in every
+trial (pass^k) and in at least one (pass@k). pass^k is the bar for an agent
+that must work every time; a single trial cannot tell a flaky case from a
+broken one.
+
+A run may carry a spending cap (`max_cost_usd`). The cap is an ordinary
+[budget](../security/budgeting.md) with the `eval_run` subject, created with
+the run, and every case session (with the sessions it delegates to) spends
+from it, so the cases share one pool. Grading spends from the same budgets as
+the agent. Once the pool is spent the loop gate ends running turns, cases that
+have not started are skipped, and a stopped case is recorded as skipped with
+the reason rather than as an agent failure. What each result spent (agent and
+grading) is in its metadata and the run summary totals it.
 
 Internal runs create sessions and score them. External runs are imported
 observations and are never re-executed or silently rescored by Everruns.
@@ -110,8 +129,27 @@ enum in `crates/server/src/domains/evals/record.rs`. Adding a scorer requires:
 - UI authoring/rendering support where applicable.
 
 Do not keep an exhaustive scorer list here. The source currently includes
-output, tool-use, filesystem, schema, and citation-oriented scoring families;
-the enum and tests are authoritative as that set evolves.
+output, tool-use, budget (turns, tokens), filesystem, schema, citation, and
+model-graded families; the enum and tests are authoritative as that set
+evolves.
+
+Eval cases and observers grade through one entry point,
+[`graders`](../../crates/server/src/domains/evals/graders/mod.rs), so a scorer
+works the same in an offline run and on production traffic. Model-graded
+scorers come in two forms:
+
+- `decision` asks a decision model one yes/no question about the exchange and
+  scores the probability of yes. It is the default for any check with a yes/no
+  shape: typed, cheaper than a chat model, and honest about calibration.
+- `judge` asks the org's chat model to grade against a free-form rubric, for
+  checks that need a graded judgment.
+
+Which decision model answers follows the org's `system_decisions` setting, the
+same rule other platform checks follow; an org that selects its own model is
+never graded by the deployment's service instead. A model-graded scorer that
+cannot run says why: an eval case records a failing score with that reason,
+an observer skips the score. What grading cost is recorded with each result
+(`grader_usage` in result metadata, judge columns on trace scores).
 
 External score write-back is allowed only through the explicit result/run
 commands. Provenance belongs in result metadata so a score can be audited
@@ -121,23 +159,39 @@ without pretending Everruns computed it.
 
 Triggering an internal run:
 
-1. validates org scope, limits, target overrides, and selected cases;
-2. creates the run and pending results with frozen resolved targets;
-3. schedules durable bounded-concurrency case work;
-4. creates one session per case;
-5. sends conversation and verification messages in order, waiting for idle
-   between messages;
+1. validates org scope, limits (every trial counts), target overrides, and
+   selected cases;
+2. creates the run and one pending result per case and trial, with frozen
+   resolved targets;
+3. enqueues one durable task per result on the server's eval pool;
+4. creates one session per result;
+5. sends conversation and verification messages in order, waiting for each
+   turn to settle;
 6. reads canonical session outcomes and configured artifacts;
 7. evaluates scorers and records result metrics;
-8. aggregates the terminal run summary.
+8. lets the last result to settle complete the run, with a summary rebuilt
+   from the stored results.
+
+Case work survives restarts and deploys. A replica that stops mid-case leaves
+a stale claim that the reaper hands to another replica; that task resumes the
+same session from the messages already delivered instead of starting over.
+Cancelling a run marks unfinished results skipped and running cases stop
+within seconds. Deployments without a durable store run the same case code on
+local tasks, without that recovery. Source:
+[`runner.rs`](../../crates/server/src/domains/evals/runner.rs),
+[`summary.rs`](../../crates/server/src/domains/evals/summary.rs).
 
 Eval sessions use ordinary session capabilities, events, authorization, and
 resource limits. Eval execution must not call storage or tools through a
-special privileged path.
+special privileged path: each case runs with the authority of whoever started
+the run. A person's run resolves their current membership for every case, so
+removing them from the org stops their run; a run started by a credential
+without a person keeps that credential's role. The case session is owned by
+that person, which keeps it inside their usage and visibility.
 
-The runner owns exact concurrency, timeout, tag-filter behavior, and error
-decision. Operator configuration and defaults live in the eval limits
-source rather than this spec.
+The runner owns exact concurrency (`EVAL_MAX_CONCURRENT_CASES` per replica),
+timeout, tag-filter behavior, and error decision. Operator configuration and
+defaults live in the eval limits source rather than this spec.
 
 ## Limits
 
@@ -169,6 +223,27 @@ OpenAPI.
 
 ATIF case import is a separate operation for turning trajectories into
 executable eval cases. See [`atif-adoption.md`](atif-adoption.md).
+
+## Eval Builder
+
+The Eval Builder proposes cases for one agent's datasets: what the agent is for,
+edge cases from its instructions, failures seen in its sessions, and adversarial
+attempts. Design intent, recorded at the top of `crates/server/src/domains/evals/builder/mod.rs`:
+
+- It is a built-in job on the org's default model, not a chat agent session. Its
+  answer is structured cases and it needs no tools, so a job is cheaper and its
+  output is checked before it is stored (supported scorers only, a scripted
+  message or a simulated user, at most six per run).
+- It reads only the agent's own production sessions in the org (never eval-run
+  sessions), sessions with findings or failing observer scores first, plus the
+  existing case names and earlier proposals so it does not repeat them.
+- Nothing lands without a person: a proposal becomes a case only when accepted
+  into a dataset that targets the same agent, recorded in change history.
+  Dismissal keeps an optional note.
+- One run per agent at a time; a run left `running` by a lost server reads as
+  interrupted after 15 minutes. Cost is monitoring spend (org and agent budgets),
+  journaled against the first session read.
+- Scheduled weekly runs are not built yet; runs start on request.
 
 ## Artifacts and datasets
 

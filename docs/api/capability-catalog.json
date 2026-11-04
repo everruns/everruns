@@ -69,9 +69,12 @@
         "dev"
       ],
       "id": "agent_handoff",
-      "name": "Agent Handoff",
+      "name": "Agents",
       "status": "available",
-      "tools": []
+      "tools": [
+        "message_agent",
+        "read_run_conversation"
+      ]
     },
     {
       "category": "Core",
@@ -352,6 +355,21 @@
       ],
       "id": "citation_web",
       "name": "Web citations",
+      "status": "available",
+      "tools": []
+    },
+    {
+      "category": "Optimization",
+      "dependencies": [],
+      "docs_slug": "claude-message-threads",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "claude_message_threads",
+      "name": "Claude Message Threads",
       "status": "available",
       "tools": []
     },
@@ -1177,6 +1195,23 @@
       "tools": []
     },
     {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "reactions",
+      "name": "Reactions",
+      "status": "available",
+      "tools": [
+        "react"
+      ]
+    },
+    {
       "category": "AI",
       "dependencies": [],
       "docs_slug": null,
@@ -1208,6 +1243,24 @@
         "attach_resource",
         "discover_resources",
         "list_attached_resources"
+      ]
+    },
+    {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "run_conversation",
+      "name": "Run conversation",
+      "status": "available",
+      "tools": [
+        "message_agent",
+        "read_run_conversation"
       ]
     },
     {

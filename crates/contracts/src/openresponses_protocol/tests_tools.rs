@@ -653,8 +653,16 @@ fn cache_key_tracks_family_and_model_but_not_prompt_tools_or_input() {
     let mut disabled = base.clone();
     disabled.prompt_cache.as_mut().unwrap().enabled = false;
     assert_eq!(key(&disabled, &instructions, &None, &[]), None);
-    disabled.prompt_cache = None;
-    assert_eq!(key(&disabled, &instructions, &None, &[]), None);
+    // No Prompt Caching capability still routes: implicit-caching providers
+    // (Muse) only hit on long prompts when the request carries a key.
+    let mut implicit = base.clone();
+    implicit.prompt_cache = None;
+    let implicit_key = key(&implicit, &instructions, &None, &[]).unwrap();
+    assert_eq!(implicit_key.len(), 64);
+    assert_eq!(
+        key(&implicit, &instructions, &None, &changed_input),
+        Some(implicit_key)
+    );
     for field in ["session_id", "model", "instructions", "tools"] {
         // Prompt and tool changes keep the session on one cache route.
         let routes = matches!(field, "session_id" | "model");

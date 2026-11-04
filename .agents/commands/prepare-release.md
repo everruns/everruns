@@ -213,6 +213,15 @@ git commit -m "chore(release): prepare vX.Y.Z"   # this message triggers auto-ta
 git push -u origin <current-branch>
 ```
 
+Before the PR merges, run full CI on its head (`ci.yml` `workflow_dispatch` with `full=true`,
+`revision=<head sha>`) and merge only when it is green. Merging creates every crate tag before the
+full-CI gate runs, so a failure found after merge burns the version.
+
+If the release fails after merge, stop. Creating, deleting or re-creating tags, or cutting another
+version, to repair a release is a hard blocker: report the failure, the tags or version it would
+cost, and the options, and wait for the user's explicit decision. A pre-approval to release does
+not cover it. See `knowledge/project/release-process.md`.
+
 Open the PR with `.github/pull_request_template.md`, and tell the user to review CHANGELOG.md, add
 any highlights or screenshots, and merge once CI is green — the tag, GitHub Release, Docker images,
 and product binaries follow automatically. Crates.io publishing follows the same tag: every

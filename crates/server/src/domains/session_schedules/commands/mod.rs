@@ -59,6 +59,10 @@ pub struct WorkerCreateSessionSchedule {
     pub scheduled_at: Option<DateTime<Utc>>,
     /// IANA timezone the cron expression is read in.
     pub timezone: String,
+    /// Lifetime, stop condition and budget the agent asked for; resolved
+    /// against the org's Settings → Limits.
+    #[serde(flatten)]
+    pub bounds: everruns_core::session_schedule::ScheduleBounds,
 }
 
 #[command(
@@ -84,6 +88,7 @@ impl Command for WorkerCreateSessionSchedule {
                 self.cron_expression,
                 self.scheduled_at,
                 self.timezone,
+                self.bounds,
             )
             .await
             .map_err(|error| match error {

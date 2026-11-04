@@ -1,5 +1,6 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  "Loading page": "Seite wird geladen",
   "Step {current} of {total}": "Schritt {current} von {total}",
   "Step {current} / {total}": "Schritt {current} / {total}",
   "Every step persisted: agents that survive restarts, deploys, and outages.":

@@ -336,6 +336,19 @@ shape uniform; implementations are free to log or assert on it, but they
 MUST NOT use it as a path component without an explicit decision (see
 "Multi-tenant `RealDiskFileStore`" below).
 
+### Exact-edit recovery diagnostics
+
+Missing exact targets can return bounded, quoted similar-line hints from the
+already-authorized read snapshot. Hints never select replacement locations or
+relax exact matching. A possible already-applied hint is scoped to the failed
+hunk, requires substantial unique whole-line replacement evidence, and remains
+uncertain: matching replacement text elsewhere does not prove intent. Diagnostics
+must never describe a partially edited intermediate buffer or claim that a failed
+batch succeeded. Failed planning leaves every hunk unapplied; successful planning
+still uses the existing CAS boundary. Implementation and regression cases live in
+[`filesystem`](../../crates/integrations/src/filesystem/mod.rs) and
+[`edit_diagnostics`](../../crates/integrations/src/filesystem/edit_diagnostics.rs).
+
 ### Compare-and-Set
 
 `write_file_if_content_matches` is a CAS primitive used by `edit_file` and

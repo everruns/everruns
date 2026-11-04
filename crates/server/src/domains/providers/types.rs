@@ -12,6 +12,9 @@ use utoipa::ToSchema;
 /// Request to create a new LLM provider
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateProviderRequest {
+    /// Chat API declared by the provider driver; "default" restores its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
     /// Display name for the provider.
     #[schema(example = "OpenAI Production")]
     pub name: String,
@@ -64,6 +67,9 @@ pub enum SyncModelsResponse {
 /// Request to update an LLM provider. Only provided fields will be updated.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateProviderRequest {
+    /// Chat API declared by the provider driver; "default" restores its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
     /// Display name for the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "OpenAI Development")]

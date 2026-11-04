@@ -17,7 +17,7 @@ import { JsonView, formatBytes } from "./json-view";
 import { CacheBar } from "./cache-bar";
 import { ROLE_COLOR, ROLE_HINT, RequestSheet } from "./request-sheet";
 import { ToolChanges } from "./tool-changes";
-import { formatClock, formatCount, formatDuration } from "./trace-model";
+import { formatClock, formatCount, formatDuration, parseTraceError } from "./trace-model";
 import { WebSearchTraceSection } from "./web-search-trace";
 
 export type InspectorTarget =
@@ -116,6 +116,73 @@ function Payload({
         value={payload.value ?? undefined}
         text={payload.truncated ? (payload.preview ?? "") : undefined}
         error={error}
+      />
+      {payload.truncated && onLoadFull && (
+        <Button variant="link" size="sm" className="mt-1 h-auto p-0 text-xs" onClick={onLoadFull}>
+          {ui("Cut at 50 KB · Load full")}
+        </Button>
+      )}
+    </Section>
+  );
+}
+
+/**
+ * A failed step's error, read first: the provider's own message, where it came from
+ * (with a link to the provider account that served a model call), then the raw error.
+ */
+function ErrorSection({ payload, onLoadFull }: { payload: TracePayload; onLoadFull?: () => void }) {
+  const ui = useUiTranslations();
+  const value = payload.value as Record<string, unknown> | string | null | undefined;
+  const parsed = parseTraceError(value ?? payload.preview);
+  const record = value && typeof value === "object" ? value : undefined;
+  const providerId = typeof record?.provider_id === "string" ? record.provider_id : undefined;
+  const providerType = typeof record?.provider === "string" ? record.provider : undefined;
+  const raw =
+    typeof value === "string"
+      ? value
+      : value !== undefined && value !== null
+        ? JSON.stringify(value, null, 2)
+        : (payload.preview ?? "");
+  const facts: [string, React.ReactNode][] = [];
+  if (providerId) {
+    facts.push([
+      ui("Provider"),
+      <Link
+        key="provider"
+        href={`/models/providers/${providerId}`}
+        className="text-primary hover:underline"
+      >
+        {providerType ?? providerId}
+      </Link>,
+    ]);
+  }
+  if (parsed?.source) facts.push([ui("Reported by"), parsed.source]);
+  if (parsed?.status) facts.push([ui("Status"), parsed.status]);
+  return (
+    <Section
+      title={ui("Error")}
+      meta={formatBytes(payload.size_bytes)}
+      action={<CopyButton value={raw} label={ui("Copy error")} />}
+    >
+      {parsed && (
+        <p className="mb-3 border-l-2 border-destructive/70 pl-3 text-sm leading-[1.55] break-words">
+          {parsed.message}
+        </p>
+      )}
+      {facts.length > 0 && (
+        <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2">
+          {facts.map(([label, node]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+              <dd className="truncate text-[13px]">{node}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <JsonView
+        value={parsed?.body ?? payload.value ?? undefined}
+        text={payload.truncated ? (payload.preview ?? "") : undefined}
+        error
       />
       {payload.truncated && onLoadFull && (
         <Button variant="link" size="sm" className="mt-1 h-auto p-0 text-xs" onClick={onLoadFull}>
@@ -313,6 +380,9 @@ function StepDetail({
         step.status,
       )}
       <Facts items={facts} />
+      {step.status === "error" && detail.output && (
+        <ErrorSection payload={detail.output} onLoadFull={onLoadFull} />
+      )}
       {step.narration && (
         <Section title={step.kind === "answer" ? ui("Answer") : ui("Narration")}>
           <p className="text-sm leading-[1.55] break-words whitespace-pre-wrap">{step.narration}</p>
@@ -365,7 +435,7 @@ function StepDetail({
       {detail.input && (
         <Payload title={ui("Input")} payload={detail.input} onLoadFull={onLoadFull} />
       )}
-      {detail.output && (
+      {detail.output && step.status !== "error" && (
         <Payload
           title={step.status === "error" ? ui("Error") : isModel ? ui("Response") : ui("Output")}
           payload={detail.output}

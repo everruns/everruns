@@ -69,6 +69,7 @@ fn turn(
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         )),
         row(Event::new(

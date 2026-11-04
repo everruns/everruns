@@ -11,7 +11,7 @@
 // a cache point finds an earlier entry only within about 20 content blocks, so
 // the point behind the newest one sits where the previous request wrote. The
 // explicit strategy drops the conversation points. A 1 hour retention goes
-// only to Claude; Nova has the 5 minute default only.
+// only to qualified Claude models; other models keep the 5 minute default.
 
 use aws_sdk_bedrockruntime::types::{
     CachePointBlock, CachePointType, CacheTtl, ContentBlock, Message as BedrockMessage,
@@ -46,7 +46,7 @@ impl CachePlan {
             } else {
                 MESSAGE_CACHE_POINTS
             },
-            ttl: (claude && cache.retention.anthropic_ttl() == Some("1h"))
+            ttl: (supports_one_hour(&model) && cache.retention.anthropic_ttl() == Some("1h"))
                 .then_some(CacheTtl::OneHour),
         })
     }
@@ -81,6 +81,35 @@ impl CachePlan {
     }
 }
 
+// AWS grants the extended TTL per model, not to the whole Claude family.
+// Unknown models keep the default rather than risking a ValidationException.
+// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
+fn supports_one_hour(model: &str) -> bool {
+    let model = model.rsplit('/').next().unwrap_or(model);
+    let model = ["us.", "eu.", "apac.", "global."]
+        .iter()
+        .find_map(|prefix| model.strip_prefix(prefix))
+        .unwrap_or(model);
+    matches!(
+        model,
+        "anthropic.claude-haiku-5-5"
+            | "anthropic.claude-sonnet-5-5"
+            | "anthropic.claude-opus-5-5"
+            | "anthropic.claude-fable-5-1"
+            | "anthropic.claude-mythos-5-1"
+            | "anthropic.claude-fable-5"
+            | "anthropic.claude-mythos-5"
+            | "anthropic.claude-opus-5"
+            | "anthropic.claude-opus-4-8"
+            | "anthropic.claude-opus-4-7"
+            | "anthropic.claude-opus-4-6-v1"
+            | "anthropic.claude-opus-4-5-20251101-v1:0"
+            | "anthropic.claude-sonnet-5"
+            | "anthropic.claude-sonnet-4-6"
+            | "anthropic.claude-haiku-4-5-20251001-v1:0"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +129,35 @@ mod tests {
             ..Default::default()
         });
         config
+    }
+
+    #[test]
+    fn extended_retention_falls_back_for_unqualified_models() {
+        for retention in [
+            PromptCacheRetention::OneHour,
+            PromptCacheRetention::TwelveHours,
+        ] {
+            for (model, expected) in [
+                ("anthropic.claude-sonnet-4-6", Some(&CacheTtl::OneHour)),
+                (
+                    "us.anthropic.claude-opus-4-5-20251101-v1:0",
+                    Some(&CacheTtl::OneHour),
+                ),
+                (
+                    "global.anthropic.claude-sonnet-5-5",
+                    Some(&CacheTtl::OneHour),
+                ),
+                ("anthropic.claude-3-5-sonnet-20241022-v2:0", None),
+                ("anthropic.claude-sonnet-4-5-20250929-v1:0", None),
+                ("anthropic.claude-unknown", None),
+                ("amazon.nova-pro-v1:0", None),
+            ] {
+                let plan =
+                    CachePlan::for_call(&config(model, PromptCacheStrategy::Auto, retention))
+                        .unwrap();
+                assert_eq!(plan.point().unwrap().ttl(), expected, "{model}");
+            }
+        }
     }
 
     #[test]
@@ -127,9 +185,9 @@ mod tests {
     }
 
     #[test]
-    fn explicit_drops_conversation_points_and_one_hour_is_claude_only() {
+    fn explicit_drops_conversation_points_and_one_hour_is_model_gated() {
         let explicit = CachePlan::for_call(&config(
-            "anthropic.claude-sonnet",
+            "anthropic.claude-sonnet-4-6",
             PromptCacheStrategy::Explicit,
             PromptCacheRetention::OneHour,
         ))

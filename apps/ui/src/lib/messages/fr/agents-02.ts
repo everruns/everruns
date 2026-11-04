@@ -294,7 +294,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Pause-based answers after a short silence. Waits for a finished thought rides through mid-sentence pauses.":
     "Réponses basées sur une pause après un court silence. Attend qu'une pensée terminée traverse des pauses au milieu d'une phrase.",
   "People reached": "Personnes atteintes",
-  "People with access to this agent": "Personnes ayant accès à cet agent",
   "Permanently delete the archived agent “{value0}”? Existing references will render as deleted tombstones.":
     "Supprimer définitivement l'agent archivé « {value0} » ? Les références existantes seront affichées sous forme de pierres tombales supprimées.",
   "Personal account": "Compte personnel",
@@ -362,7 +361,4 @@ export const messages: Readonly<Record<string, string>> = {
   Repositories: "Dépôts",
   "Request URL": "URL de la demande",
   "Require sign-in": "Nécessite une connexion",
-  "Models consumers may select": "Modèles que les utilisateurs peuvent choisir",
-  "Leave all unchecked to use the Agent default.":
-    "Ne cochez aucun modèle pour utiliser le modèle par défaut de l’Agent.",
 };

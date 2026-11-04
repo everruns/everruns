@@ -1,3 +1,4 @@
+# THREAT[TM-CI-013]: environment trust and short-lived credentials bound publishing.
 name: Publish Crate
 run-name: Publish ${{ github.event.client_payload.package || github.event.inputs.package }} ${{ github.event.client_payload.tag || github.event.inputs.tag }} @ ${{ github.event.client_payload.sha || github.event.inputs.sha }} [${{ github.event.client_payload.correlation || github.event.inputs.correlation || 'external' }}]
 
@@ -43,6 +44,12 @@ env:
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
+    environment: release
+    permissions:
+      contents: read
+      actions: write
+      id-token: write
     name: Publish ${{ github.event.client_payload.package || github.event.inputs.package }}
     runs-on: ubuntu-latest
     steps:
@@ -174,8 +181,14 @@ jobs:
           PACKAGE: ${{ steps.release.outputs.package }}
         run: cargo package --locked --package "$PACKAGE"
 
+      # Exchange after package verification so the 30-minute token stays fresh.
+      - name: Authenticate to crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+
       - name: Publish package
         env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           PACKAGE: ${{ steps.release.outputs.package }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
@@ -204,8 +217,7 @@ jobs:
 
           current="$(status)"
           if [ "$current" = "missing" ]; then
-            CARGO_REGISTRY_TOKEN="${{ secrets.CARGO_REGISTRY_TOKEN }}" \
-              cargo publish --locked --no-verify --package "$PACKAGE"
+            cargo publish --locked --no-verify --package "$PACKAGE"
           elif [ "$current" != "published" ]; then
             echo "::error::Could not determine crates.io state for $PACKAGE $VERSION"
             exit 1

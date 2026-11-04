@@ -31,7 +31,9 @@ pub mod platform_management;
 pub mod platform_native;
 mod platform_skills;
 pub mod poppy_client;
+pub mod reactions;
 pub mod research;
+pub mod run_conversation;
 pub mod sandbox_desktop;
 mod sandbox_workspace;
 pub mod session_sandbox;
@@ -158,7 +160,7 @@ pub fn register_environment_capabilities(
 ) {
     registry.register(everruns_integrations::filesystem::FileSystemCapability);
     registry.register(everruns_integrations::bashkit::BashkitShellCapability);
-    registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    registry.register(everruns_integrations::web_fetch::WebFetchCapability::new());
     // Hosted search reads Brave keys from the session only, never the
     // process environment.
     registry.register(everruns_integrations::web_search::WebSearchCapability::default());
@@ -195,6 +197,7 @@ pub fn register_agent_delegation_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
 ) {
     registry.register(AgentHandoffCapability);
+    registry.register(run_conversation::RunConversationCapability);
     #[cfg(feature = "a2a")]
     registry.register(A2aAgentDelegationCapability);
     #[cfg(feature = "ag-ui")]
@@ -213,6 +216,8 @@ pub fn register_hosted_capabilities(
     // kernel.
     registry.register(SessionCapability);
     registry.register(automatic_session_titles::AutomaticSessionTitlesCapability);
+    // No flag: adding the capability is the opt-in (react tool + setting).
+    registry.register(reactions::ReactionsCapability);
     registry.register(SessionStorageCapability);
     registry.register(SessionSqlDatabaseCapability);
     // The provider-neutral Environment profile selects this capability. Keep

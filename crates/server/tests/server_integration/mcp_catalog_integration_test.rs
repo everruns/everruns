@@ -96,6 +96,7 @@ async fn create_catalog_usage_agent(
         .create_agent(
             org_id,
             CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("{name}-{}", &Uuid::now_v7().to_string()[..8]),

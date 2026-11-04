@@ -1,8 +1,12 @@
-import { api } from "./client";
+import { api, getBackendUrl } from "./client";
 import type { AgentPackagePreview } from "./agents";
 
+/** Development GitHub account a source reads through, never the Agent's runtime identity. */
+export type SourceGitHubAccount = "personal" | "organization";
 export interface AgentSource {
   mode: "pull" | "two_way";
+  /** `agent` marks a binding made before sync stopped using the Agent's identity. */
+  github_account: SourceGitHubAccount | "agent";
   local_dirty: boolean;
   generation: string;
   repository: string;
@@ -34,19 +38,55 @@ export interface SourceOptions {
   branches: string[];
   paths: string[];
 }
+export interface SourceRepository {
+  full_name: string;
+  account: string;
+  private: boolean;
+}
+export interface AgentSourceAccounts {
+  available: boolean;
+  install_url: string | null;
+  personal: {
+    connected: boolean;
+    login: string | null;
+    repositories: SourceRepository[];
+    error: string | null;
+  };
+  organization: {
+    can_connect: boolean;
+    accounts: string[];
+    repositories: SourceRepository[];
+    error: string | null;
+  };
+}
 const route = (id: string) => `/v1/agents/${encodeURIComponent(id)}/source`;
 export async function getAgentSource(id: string): Promise<AgentSource | null> {
   return (await api.get<AgentSource | null>(route(id))).data;
 }
+export async function listAgentSourceAccounts(id: string): Promise<AgentSourceAccounts> {
+  return (await api.get<AgentSourceAccounts>(`${route(id)}/accounts`)).data;
+}
+/** Browser targets that connect a development account in a popup. */
+export function personalGitHubSignInUrl(returnTo: string): string {
+  return `${getBackendUrl()}/v1/user/connections/github/authorize?popup=true&return_to=${encodeURIComponent(returnTo)}`;
+}
+export function organizationGitHubLinkUrl(org: string, returnTo: string): string {
+  return `${getBackendUrl()}/v1/orgs/${encodeURIComponent(org)}/github/everruns-app/authorize?popup=true&return_to=${encodeURIComponent(returnTo)}`;
+}
 export async function getAgentSourceOptions(
   id: string,
-  location: { repository: string; branch?: string; path?: string },
+  location: {
+    repository: string;
+    branch?: string;
+    path?: string;
+    github_account?: SourceGitHubAccount;
+  },
 ): Promise<SourceOptions> {
   return (await api.post<SourceOptions>(`${route(id)}/options`, location)).data;
 }
 export async function previewAgentSource(
   id: string,
-  location: SourceLocation,
+  location: SourceLocation & { github_account?: SourceGitHubAccount },
 ): Promise<SourcePreview> {
   return (await api.post<SourcePreview>(`${route(id)}/preview`, location)).data;
 }
@@ -54,6 +94,7 @@ export async function connectAgentSource(
   id: string,
   body: SourceLocation & {
     mode?: "pull" | "two_way";
+    github_account?: SourceGitHubAccount;
     commit: string;
     agent_digest: string;
     expected_generation?: string;

@@ -79,6 +79,8 @@ pub enum LlmErrorKind {
     /// classification is certain — the failure was decided on Everruns' side
     /// of the wire, not guessed from provider prose.
     MalformedResponse,
+    /// The model explicitly declined the request. Never automatically retried.
+    Refusal,
     /// Unclassified; downstream falls back to string classification.
     Other,
 }
@@ -115,6 +117,7 @@ impl LlmErrorKind {
             | "invalid_request_error"
             | "model_not_found" => Some(Self::InvalidRequest),
             "malformed_response" => Some(Self::MalformedResponse),
+            "refusal" => Some(Self::Refusal),
             _ => None,
         }
     }

@@ -138,6 +138,16 @@ including calls on an existing channel and after reconnect. Unknown floors and
 storage/schema errors do not restore access. The customer protocol has no
 protected-mode compatibility, even for an unrelated custom deployment.
 
+Rechecking reads a replica-local copy of the floor, absence included, only
+while its change notifications are live, the same contract as the
+[feature flag cache](feature-flags.md). A [trigger](../../crates/server/migrations/20261031161900_worker_ingress_floor_notify.sql)
+notifies every server when the floor commits, and the
+[cache](../../crates/server/src/storage/backend/config_row_cache.rs) is off
+and empty whenever its listener is not connected. A call that lands between
+the floor's commit and its notification (normally milliseconds) is admitted
+under the previous floor, the same window an uncached read had against a
+concurrent commit. Reads bound to a scoped snapshot stay uncached.
+
 The floor is database-wide because global claims, provider credentials and
 object links do not carry trustworthy assignment scope. Per-assignment mixed
 legacy compatibility is deliberately unsupported. Verified journal reads remain
