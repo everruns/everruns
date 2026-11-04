@@ -34,8 +34,11 @@ explicitly configured and requires TLS outside loopback. See
 ## UI identity and channel boundary
 
 A binding selects an existing Agent; connecting a replica does not create one.
-The ordinary Agents, Playground, session and trace surfaces remain in use. Pull workers have no registration/status UI. HTTPS endpoints have an Execution
-panel on the Agent page for verified registration, status, rotation and disable. Platform
+The ordinary Agents, Playground, session and trace surfaces remain in use. Pull workers have no registration/status UI. HTTPS endpoints have an External agent
+More row and side sheet on the Agent page for verified registration, status,
+rotation and disconnect. While an endpoint is bound, the page hides the settings
+the endpoint owns (prompt, harness, capabilities, model, execution More rows,
+Preview, cost estimate); see [agent page](../ui/agent-page.md). Platform
 Agent configuration is not automatically executed by the customer binary.
 Endpoint registration and secret rotation use the dedicated UI/API, outside the
 agent-facing command, shell and native-platform catalogs, so setup credentials

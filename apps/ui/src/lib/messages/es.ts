@@ -31,7 +31,7 @@ import { messages as catalog17 } from "./es/operations-03";
 import { messages as catalog18 } from "./es/settings-01";
 import { messages as catalog19 } from "./es/settings-02";
 import { messages as catalog20 } from "./es/semantic";
-import { messages as externalWorker } from "./es/external-worker";
+import { messages as externalWorker } from "./es/external-agent";
 export const messages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null),
   sandboxBuilds,

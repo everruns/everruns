@@ -3343,14 +3343,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/ExternalAgent"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/ExternalAgentStatus"
                 }
               }
             }
@@ -49746,6 +49739,30 @@
             ],
             "format": "date-time",
             "description": "Time of the latest invocation attempt, if any."
+          }
+        }
+      },
+      "ExternalAgentStatus": {
+        "type": "object",
+        "description": "An Agent's external-agent state, plus whether this installation lets it connect one.",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether a new endpoint can be connected here: the installation sets\n`EXTERNAL_AGENTS_ENABLED=true` and protected worker ingress is off.\nThe UI hides the setup when this is false and no endpoint exists."
+          },
+          "endpoint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExternalAgent",
+                "description": "The connected (or disconnected) endpoint, if one was ever registered."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
