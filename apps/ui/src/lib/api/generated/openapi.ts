@@ -4411,6 +4411,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/health-issues/{issue_id}/fix": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Fix a health issue
+     * @description Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.
+     */
+    post: operations["run_health_issue_fixer"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/health-issues/{issue_id}/snooze": {
     parameters: {
       query?: never;
@@ -18282,6 +18302,11 @@ export interface components {
        */
       first_detected_at: string;
       /**
+       * @description Repairs Everruns can make for the issue now, in the order to offer
+       *     them. Empty when it has none, or the issue is resolved.
+       */
+      fixers: components["schemas"]["IssueFixer"][];
+      /**
        * @description Application-relative link to the issue details.
        * @example /settings/health?issue=550e8400-e29b-41d4-a716-446655440000
        */
@@ -18841,6 +18866,54 @@ export interface components {
        * @example microsoft-docs
        */
       plugin_name: string;
+    };
+    /** @description The result of running a fixer. */
+    IssueFixOutcome: {
+      /**
+       * @description The provider page that approves the change. Built by the server on the
+       *     provider's own origin.
+       */
+      consent_url?: string | null;
+      /** @description The issue after the fix. */
+      issue: components["schemas"]["HealthIssue"];
+      /**
+       * @description Whether approving returns the browser to the issue by itself. When
+       *     false the person comes back on their own and the page checks again.
+       */
+      returns_automatically: boolean;
+      /**
+       * @description `done` (the change is made and the issue was checked again) or
+       *     `consent` (approve the change at `consent_url`, then come back).
+       * @example consent
+       */
+      status: string;
+    };
+    /** @description A repair Everruns can make for an issue. */
+    IssueFixer: {
+      /**
+       * @description `in_place` when running it is the whole fix; `consent` when the person
+       *     then approves the change in the provider.
+       * @example consent
+       */
+      effect: string;
+      /**
+       * @description What it does: `slack.add_permissions`, `slack.reconnect` or `schedule.pause`.
+       * @example slack.add_permissions
+       */
+      kind: string;
+      /**
+       * @description Button text.
+       * @example Fix in Slack
+       */
+      label: string;
+      /** @description Whether the provider may ask a workspace administrator to approve. */
+      needs_provider_admin: boolean;
+      /** @description What happens when it runs, step by step, in plain words. */
+      steps: string[];
+      /** @description Why it cannot run now, and what unlocks it. Absent when it can run. */
+      unavailable_reason?: string | null;
+      /** @description Whether the fix can be undone from the finding. */
+      undoable: boolean;
     };
     /** @description Key-value entry info (key and timestamps, no value) */
     KeyValueInfo: {
@@ -27089,6 +27162,14 @@ export interface components {
       failed: number;
       /** Format: int64 */
       runs: number;
+    };
+    /** @description Run one of the fixers an issue offers. */
+    RunIssueFixerRequest: {
+      /**
+       * @description The fixer to run, as the issue's `fixers` list names it.
+       * @example slack.add_permissions
+       */
+      kind: string;
     };
     /** @description One request from another agent in the run. */
     RunRequest: {
@@ -47468,6 +47549,33 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  run_health_issue_fixer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RunIssueFixerRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IssueFixOutcome"];
         };
       };
     };

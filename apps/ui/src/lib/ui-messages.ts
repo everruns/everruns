@@ -4,6 +4,7 @@ import { messages as externalWorker } from "./messages/uk/external-worker";
 import { messages as agentCost } from "./messages/uk/agent-cost";
 import { messages as sharedControls } from "./messages/uk/shared-controls";
 import { messages as tracing } from "./messages/uk/tracing";
+import { messages as healthFixers } from "./messages/uk/health-fixers";
 import { messages as backgroundLimits } from "./messages/uk/background-limits";
 import { messages as monitoringTimeline } from "./messages/uk/monitoring-timeline";
 import { messages as orgHome } from "./messages/uk/org-home";
@@ -62,6 +63,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   catalog18,
   catalog19,
   tracing,
+  healthFixers,
   sharedControls,
   agentCost,
   externalWorker,

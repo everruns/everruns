@@ -3,6 +3,7 @@ import { messages as sandboxBuilds } from "./fr/sandbox-builds";
 import { messages as agentCost } from "./fr/agent-cost";
 import { messages as sharedControls } from "./fr/shared-controls";
 import { messages as tracing } from "./fr/tracing";
+import { messages as healthFixers } from "./fr/health-fixers";
 import { messages as backgroundLimits } from "./fr/background-limits";
 import { messages as monitoringTimeline } from "./fr/monitoring-timeline";
 import { messages as orgHome } from "./fr/org-home";
@@ -58,6 +59,7 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   catalog19,
   catalog20,
   tracing,
+  healthFixers,
   sharedControls,
   agentCost,
   backgroundLimits,

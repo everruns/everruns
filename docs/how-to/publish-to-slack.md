@@ -120,11 +120,22 @@ Open **Settings** > **Health** to review pending Slack permission or credential 
 The same warning appears beside the endpoint and under **Action required** in notifications.
 Reading or snoozing an announcement leaves the issue open.
 
-For an app Everruns created, select **Reconnect Slack** and approve the additional permissions.
-For a manually configured app, add the listed bot scopes in Slack, reinstall the existing app,
-and save the refreshed bot token in the endpoint editor. Your Slack administrator may need
-to approve the change. Use **Check again** to verify the installation; unavailable or stale
-permission evidence keeps the issue open until a current check succeeds.
+Select **Fix in Slack** on the issue. Everruns adds the missing bot scopes to the app's
+manifest, keeping its other settings, and opens Slack so you can approve them:
+
+- For an app Everruns created, Slack's approval screen opens and returns you to the
+  issue, which is checked again.
+- For an app you configured by hand, Everruns updates it through the organization's
+  connected Slack workspace and opens the app's **Install App** page. Reinstall it there;
+  the bot token stays the same. Come back to the Health page and it checks again. This
+  works when the person who connected the workspace can edit the app in Slack. If not,
+  the issue says why and lists the manual steps: add the listed bot scopes in Slack,
+  reinstall the existing app, and save the refreshed bot token in the endpoint editor.
+
+When several apps need the same fix, **Fix N Slack apps** goes through them one at a
+time. Your Slack administrator may need to approve the change. Use **Check again** to
+verify the installation; unavailable or stale permission evidence keeps the issue open
+until a current check succeeds.
 
 ## See also
 

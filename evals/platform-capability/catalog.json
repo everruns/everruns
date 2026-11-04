@@ -20680,6 +20680,54 @@
     "read_only": false
   },
   {
+    "category": "health_issues",
+    "cli": "health-issues fix",
+    "description": "Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.",
+    "input_schema": {
+      "$defs": {
+        "RunIssueFixerRequest": {
+          "description": "Run one of the fixers an issue offers.",
+          "properties": {
+            "kind": {
+              "description": "The fixer to run, as the issue's `fixers` list names it.",
+              "example": "slack.add_permissions",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/RunIssueFixerRequest"
+        },
+        {
+          "properties": {
+            "issue_id": {
+              "description": "The issue.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "issue_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Run a fixer on a health issue."
+    },
+    "method": "POST",
+    "name": "run_health_issue_fixer",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/fix",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "reporting",
     "cli": "reports query run",
     "description": "Run an org-scoped semantic reporting query.",

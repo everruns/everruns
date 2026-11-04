@@ -16,6 +16,7 @@ Operational problems detected in this installation.
 | [`health-issues dismiss`](#health-issues-dismiss) | Dismiss a detector finding with a reason. |
 | [`health-issues get`](#health-issues-get) | Get an operational health issue. |
 | [`health-issues list`](#health-issues-list) | List pending operational health issues. |
+| [`health-issues fix`](#health-issues-fix) | Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. |
 | [`health-issues snooze`](#health-issues-snooze) | Snooze health reminders for the current user for one day. |
 | [`health-issues actions list`](#health-issues-actions-list) | List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now. |
 | [`health-issues actions take`](#health-issues-actions-take) | Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. |
@@ -98,6 +99,26 @@ Example:
 ```bash
 # See what operational problems need attention
 everruns health-issues list --limit 10
+```
+
+## health-issues fix
+
+Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.
+
+```bash
+everruns health-issues fix [OPTIONS] --issue-id <issue_id> --kind <kind>
+```
+
+| Flag | Description |
+|---|---|
+| `--issue-id <ISSUE_ID>` | Required. The issue. |
+| `--kind <KIND>` | Required. The fixer to run, as the issue's `fixers` list names it. |
+
+Example:
+
+```bash
+# Add missing Slack permissions to an agent's app
+everruns health-issues fix --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind slack.add_permissions
 ```
 
 ## health-issues snooze
