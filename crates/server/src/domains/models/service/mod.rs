@@ -770,7 +770,7 @@ impl ModelService {
 
     /// Mirrors the UI rule: an embedding
     /// model is the one kind a chat cannot use.
-    fn row_is_chat_model(
+    pub(crate) fn row_is_chat_model(
         capabilities: &sqlx::types::JsonValue,
         metadata: Option<&serde_json::Value>,
     ) -> bool {

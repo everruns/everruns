@@ -41,7 +41,16 @@ stopped by their budget, the org's daily unattended budget, unattended spend spi
 and large uncached session contexts. They are keyed on a subject (schedule, agent,
 session or org) rather than a channel, and unlike the detectors above they announce
 an opened issue to specific people right away. See
-[Background Work Limits](background-limits.md). Custom
+[Background Work Limits](background-limits.md). Model detectors report a model that chats cannot rely on. These are an agent's model
+(`agent.model_unavailable`) and the organization default (`org.default_model_unavailable`).
+"Usable" follows the rule the model pickers apply: the model is enabled, still listed by its
+provider, a chat model, and on an active provider. An issue appears exactly when a picker
+flags the setting. An agent without its own model is covered by the default's single issue,
+so a broken default opens one issue rather than one per agent. The 15-minute sweep
+judges every configured model. A provider sync, a model change or an agent's model or
+archive change rechecks that organization at once, so fixing the cause resolves the
+issue without waiting. The issue goes to the agent's authors, or to the org's owners.
+Custom
 detectors, automatic repairs, background LLM analysis and external delivery are outside
 this delivery's scope.
 
