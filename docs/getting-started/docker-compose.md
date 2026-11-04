@@ -115,9 +115,10 @@ VICTORIAMETRICS_PORT=18428 \
 docker compose up -d
 ```
 
-This isolates Compose networks and volumes. Override **both** published ports:
-VictoriaMetrics also binds a host port. To restrict a local test to this machine,
-use `EXAMPLE_PROXY_PORT=127.0.0.1:10300` and
+This isolates Compose networks and volumes. With the `metrics` profile enabled,
+override **both** published ports: VictoriaMetrics also binds a host port.
+To restrict a local test to this machine, use `EXAMPLE_PROXY_BIND=127.0.0.1`,
+`EXAMPLE_PROXY_PORT=10300`, and
 `VICTORIAMETRICS_PORT=127.0.0.1:18428`.
 
 The downloaded file follows `main`, while its application images default to the
@@ -153,16 +154,19 @@ keep that key stable while retaining the database volume.
 You can also create an agent through **Chat**. Ask, for example:
 "Create an agent named `math-tutor` with the system prompt `You are a concise math
 tutor. Explain arithmetic in one sentence.` Use my configured default model."
-Open the returned agent link to verify it was saved. To run it, open **Playground**,
-choose the agent, leave **Dry run** unchecked, start a chat, and ask
+If Chat asks for confirmation before creating the reusable agent, confirm that
+specific creation in Chat. Open the returned agent link to verify it was saved.
+To run it, open **Playground**, choose the agent, leave **Dry run** unchecked,
+start a chat, and ask
 "What is 7 multiplied by 8?" A successful response should explain that the result
 is 56.
 
 ### Repeatable real-provider E2E (repository checkout)
 
-The opt-in test downloads the same Compose file, starts a unique project with
-loopback ports and disposable volumes, opts in to application startup encrypting
-an existing OpenRouter environment key into the disposable database, signs in through the UI,
+The opt-in test downloads the same Compose file, starts all ten services with the
+`scale,metrics` profiles in a unique project with loopback ports and disposable
+volumes, opts in to application startup encrypting an existing OpenRouter
+environment key into the disposable database, signs in through the UI,
 verifies the configured provider, creates an agent through Chat, and runs the
 persisted agent in Playground. It checks durable events and the saved answer,
 records the real browser journey, and removes its project and volumes on exit.
