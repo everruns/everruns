@@ -9,7 +9,11 @@
 //! `Auto`/stateful servers it runs the `initialize` handshake and echoes the
 //! `Mcp-Session-Id`. See [`crate::mcp::protocol`] for the pure pieces.
 
+mod body;
 mod mrtr;
+
+#[cfg(test)]
+mod body_tests;
 
 use mrtr::{MrtrRequest, request_with_inputs, resolve_input_required, validate_tool_consent_scope};
 
@@ -34,7 +38,6 @@ use crate::{
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_contracts::url_validation::validate_url_dns_pinned;
-use futures::StreamExt;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
@@ -64,7 +67,7 @@ const MAX_INPUT_REQUIRED_ROUNDS: usize = 2;
 pub struct McpHttpStatusError {
     /// HTTP status returned by the MCP resource server.
     pub status: u16,
-    /// Response body returned by the MCP resource server.
+    /// Bounded excerpt of the response body returned by the MCP resource server.
     pub body: String,
 }
 
@@ -76,7 +79,8 @@ impl McpHttpStatusError {
 }
 
 /// Raw MCP HTTP response: status, headers, and the (possibly SSE-framed) body
-/// text — without the 2xx check, so negotiation can inspect failures.
+/// text (a bounded excerpt for HTTP failures) — without the 2xx check, so
+/// negotiation can inspect failures.
 pub struct RawMcpResponse {
     pub status: u16,
     pub headers: BTreeMap<String, String>,
@@ -148,64 +152,21 @@ async fn send_raw_bounded(
         }
     }
 
-    let (status, response_headers, response_body) = if let Some(limit) = max_response_bytes {
-        let response = egress
-            .send_stream(request)
-            .await
-            .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
-        let mut body = Vec::with_capacity(limit.min(16 * 1024));
-        let mut chunks = response.body;
-        let mut oversized_auth_error = false;
-        while let Some(chunk) = chunks.next().await {
-            let chunk = match chunk {
-                Ok(chunk) => chunk,
-                Err(error) if matches!(response.status, 401 | 403) => {
-                    oversized_auth_error = true;
-                    tracing::debug!(%error, status = response.status, "MCP auth rejection body ended during streaming");
-                    break;
-                }
-                Err(error) => {
-                    return Err(anyhow!("Failed to read MCP response body: {}", error));
-                }
-            };
-            if body.len().saturating_add(chunk.len()) > limit {
-                if matches!(response.status, 401 | 403) {
-                    // Preserve authentication classification even when a
-                    // server attaches an oversized error body; the auth
-                    // response clears stale definitions in the host cache.
-                    oversized_auth_error = true;
-                    continue;
-                } else {
-                    return Err(crate::mcp::McpDiscoveryError::LimitExceeded {
-                        resource: "page bytes",
-                        limit,
-                    }
-                    .into());
-                }
-            }
-            if !oversized_auth_error {
-                body.extend_from_slice(&chunk);
-            }
-        }
-        if oversized_auth_error {
-            body.clear();
-        }
-        (response.status, response.headers, body)
-    } else {
-        let response = egress
-            .send(request)
-            .await
-            .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
-        (response.status, response.headers, response.body)
+    let limit = match max_response_bytes {
+        Some(limit) => limit,
+        None => body::configured_limit(
+            std::env::var("EVERRUNS_MCP_MAX_RESPONSE_BYTES")
+                .ok()
+                .as_deref(),
+        )?,
     };
-
-    let body = String::from_utf8(response_body)
-        .map_err(|e| anyhow!("Failed to read MCP response body: {}", e))?;
-    Ok(RawMcpResponse {
-        status,
-        headers: response_headers,
-        body,
-    })
+    // One deadline covers headers and the body, including custom egress services.
+    let deadline = tokio::time::Instant::now() + timeout;
+    let response = tokio::time::timeout_at(deadline, egress.send_stream(request))
+        .await
+        .map_err(|_| anyhow!("MCP response timed out"))?
+        .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
+    body::read(response, limit, max_response_bytes.is_some(), deadline).await
 }
 
 /// Send one MCP JSON-RPC request over HTTP and return the (possibly SSE-framed)
