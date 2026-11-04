@@ -23,6 +23,9 @@ struct Cli {
     /// Uses AWS_* SDK environment configuration, including AWS_ENDPOINT.
     #[arg(long, env = "TRACE_STORE_BUCKET")]
     bucket: Option<String>,
+    /// Decoded immutable index cache budget; zero enables cold-only probes.
+    #[arg(long, env = "TRACE_STORE_INDEX_CACHE_BYTES", default_value_t = 64 * 1024 * 1024)]
+    index_cache_bytes: usize,
     #[command(subcommand)]
     command: Command,
 }
@@ -264,7 +267,10 @@ async fn main() -> Result<()> {
         objects,
         cli.store_name,
         Path::parse(cli.prefix)?,
-        Limits::default(),
+        Limits {
+            index_cache_bytes: cli.index_cache_bytes,
+            ..Default::default()
+        },
     )?;
     let output = match cli.command {
         Command::MigrateCatalog => unreachable!("handled before object initialization"),
@@ -439,6 +445,7 @@ async fn run_companion(store: TraceStore, args: RunArgs) -> Result<serde_json::V
             if args.all_orgs && store.refresh_all_org_progress(&mut report).await.is_err() {
                 report.errors += 1;
             }
+            report.cache = store.cache_stats();
             monitor.record(&report);
             println!("{}", serde_json::to_string(&report)?);
             tokio::time::sleep(Duration::from_secs(args.poll_seconds)).await;

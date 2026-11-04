@@ -1,4 +1,7 @@
-use crate::{EventQuery, EventRecord, Limits, QueryPage, Scope, catalog, query, segment};
+use crate::{
+    CacheStats, EventQuery, EventRecord, Limits, QueryPage, ReadProfile, Scope, catalog, query,
+    segment,
+};
 use anyhow::{Context, Result, ensure};
 use futures::TryStreamExt;
 use object_store::{ObjectStore, ObjectStoreExt, path::Path};
@@ -15,6 +18,7 @@ pub struct TraceStore {
     prefix: Path,
     pub(crate) name: String,
     pub(crate) limits: Limits,
+    engine: Arc<query::QueryEngine>,
 }
 
 impl TraceStore {
@@ -39,13 +43,19 @@ impl TraceStore {
             !prefix.as_ref().is_empty(),
             "object prefix must not be empty"
         );
+        let engine = Arc::new(query::QueryEngine::new(&limits)?);
         Ok(Self {
             pool,
             objects,
             prefix,
             name,
             limits,
+            engine,
         })
+    }
+
+    pub fn cache_stats(&self) -> CacheStats {
+        self.engine.cache_stats()
     }
 
     pub(crate) async fn begin(
@@ -56,17 +66,14 @@ impl TraceStore {
         // GC must not race objects uploaded before manifest publication. All
         // readers/writers share this lock; GC alone takes it exclusively.
         let sql = if exclusive {
-            "SELECT pg_advisory_xact_lock(hashtextextended($1, 37021))"
+            "WITH guard AS MATERIALIZED (SELECT pg_advisory_xact_lock(hashtextextended($1,37021))) SELECT l.object_prefix FROM guard LEFT JOIN trace_store_locations l ON l.store_name=$1"
         } else {
-            "SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 37021))"
+            "WITH guard AS MATERIALIZED (SELECT pg_advisory_xact_lock_shared(hashtextextended($1,37021))) SELECT l.object_prefix FROM guard LEFT JOIN trace_store_locations l ON l.store_name=$1"
         };
-        sqlx::query(sql).bind(&self.name).execute(&mut *tx).await?;
-        let mut prefix: Option<String> = sqlx::query_scalar(
-            "SELECT object_prefix FROM trace_store_locations WHERE store_name=$1",
-        )
-        .bind(&self.name)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let mut prefix: Option<String> = sqlx::query_scalar(sql)
+            .bind(&self.name)
+            .fetch_one(&mut *tx)
+            .await?;
         if prefix.is_none() {
             // Registration is rare. Serialize it across stores so overlapping
             // prefixes cannot make one store's collector delete another's data.
@@ -173,8 +180,28 @@ impl TraceStore {
     /// Queries the exported snapshot only. A budget overflow is an explicit error,
     /// never a silently partial result. No bucket listing or raw SQL is accepted.
     pub async fn query(&self, scope: Scope, query: &EventQuery) -> Result<QueryPage> {
+        self.query_mode(scope, query, false).await
+    }
+
+    /// Equivalent-query analytical probe; it cannot skip catalog admission.
+    pub(crate) async fn query_datafusion(
+        &self,
+        scope: Scope,
+        query: &EventQuery,
+    ) -> Result<QueryPage> {
+        self.query_mode(scope, query, true).await
+    }
+
+    async fn query_mode(
+        &self,
+        scope: Scope,
+        query: &EventQuery,
+        force_datafusion: bool,
+    ) -> Result<QueryPage> {
         query.validate()?;
         tokio::time::timeout(self.limits.query_timeout, async {
+            let started = std::time::Instant::now();
+            let mut profile = ReadProfile::default();
             let mut tx = self.begin(false).await?;
             let segments = catalog::select_segments(
                 &mut tx,
@@ -184,23 +211,32 @@ impl TraceStore {
                 self.limits.max_query_segments,
             )
             .await?;
-            let mut hits = query::execute(
-                self.objects.clone(),
-                &self.prefix,
-                scope,
-                &segments,
-                query,
-                &self.limits,
-                None,
-            )
-            .await?;
+            profile.catalog_seconds = started.elapsed().as_secs_f64();
+            let mut hits = self
+                .engine
+                .execute(
+                    self.objects.clone(),
+                    &self.prefix,
+                    scope,
+                    &segments,
+                    query,
+                    &self.limits,
+                    None,
+                    force_datafusion,
+                    &mut profile,
+                )
+                .await?;
             let has_more = hits.len() > query.limit;
             hits.truncate(query.limit);
+            let commit = std::time::Instant::now();
             everruns_durable::commit_transaction(tx).await?;
+            profile.catalog_seconds += commit.elapsed().as_secs_f64();
+            profile.total_seconds = started.elapsed().as_secs_f64();
             Ok(QueryPage {
                 events: hits.into_iter().map(|h| h.summary).collect(),
                 has_more,
-                segments_scanned: segments.len(),
+                segments_scanned: profile.segments_scanned,
+                profile,
             })
         })
         .await
@@ -237,7 +273,21 @@ impl TraceStore {
         id: Uuid,
         sequence: Option<i32>,
     ) -> Result<Option<EventRecord>> {
+        self.read_event_profiled(scope, session, id, sequence)
+            .await
+            .map(|(record, _)| record)
+    }
+
+    pub(crate) async fn read_event_profiled(
+        &self,
+        scope: Scope,
+        session: Uuid,
+        id: Uuid,
+        sequence: Option<i32>,
+    ) -> Result<(Option<EventRecord>, ReadProfile)> {
         tokio::time::timeout(self.limits.query_timeout, async {
+            let started = std::time::Instant::now();
+            let mut profile = ReadProfile::default();
             let query = EventQuery {
                 session_id: Some(session),
                 after_sequence: sequence.map(|s| s - 1),
@@ -254,23 +304,26 @@ impl TraceStore {
                 self.limits.max_query_segments,
             )
             .await?;
-            let hits = query::execute(
-                self.objects.clone(),
-                &self.prefix,
-                scope,
-                &segments,
-                &query,
-                &self.limits,
-                Some(id),
-            )
-            .await?;
-            ensure!(
-                hits.len() <= 1,
-                "duplicate canonical event in trace catalog"
-            );
-            let Some(hit) = hits.first() else {
+            profile.catalog_seconds = started.elapsed().as_secs_f64();
+            let hit = self
+                .engine
+                .lookup(
+                    self.objects.clone(),
+                    &self.prefix,
+                    scope,
+                    &segments,
+                    id,
+                    sequence,
+                    &self.limits,
+                    &mut profile,
+                )
+                .await?;
+            let Some(hit) = hit else {
+                let commit = std::time::Instant::now();
                 everruns_durable::commit_transaction(tx).await?;
-                return Ok(None);
+                profile.catalog_seconds += commit.elapsed().as_secs_f64();
+                profile.total_seconds = started.elapsed().as_secs_f64();
+                return Ok((None, profile));
             };
             ensure!(
                 hit.length <= self.limits.max_event_bytes as u64,
@@ -288,10 +341,13 @@ impl TraceStore {
                 end <= u64::try_from(segment.payload_bytes)?,
                 "payload outside segment bounds"
             );
+            let payload_start = std::time::Instant::now();
             let bytes = self
                 .objects
                 .get_range(&Path::from(hit.payload_key.as_str()), hit.offset..end)
                 .await?;
+            profile.payload_io_seconds = payload_start.elapsed().as_secs_f64();
+            let decode = std::time::Instant::now();
             ensure!(
                 segment::sha256(&bytes) == hit.sha256,
                 "event payload checksum mismatch"
@@ -303,8 +359,12 @@ impl TraceStore {
                     && record.sequence == hit.summary.sequence,
                 "payload identity mismatch"
             );
+            profile.payload_decode_seconds = decode.elapsed().as_secs_f64();
+            let commit = std::time::Instant::now();
             everruns_durable::commit_transaction(tx).await?;
-            Ok(Some(record))
+            profile.catalog_seconds += commit.elapsed().as_secs_f64();
+            profile.total_seconds = started.elapsed().as_secs_f64();
+            Ok((Some(record), profile))
         })
         .await
         .context("payload read deadline exceeded")?
@@ -421,6 +481,7 @@ impl TraceStore {
         sqlx::query("UPDATE trace_store_segments SET retired=TRUE WHERE store_name=$1 AND org_id=$2 AND session_id=$3")
             .bind(&self.name).bind(scope.org_id()).bind(session).execute(&mut *tx).await?;
         everruns_durable::commit_transaction(tx).await?;
+        self.engine.evict_session(scope, session);
         Ok(())
     }
 

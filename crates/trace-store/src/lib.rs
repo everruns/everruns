@@ -7,7 +7,7 @@
 mod backfill;
 mod catalog;
 mod companion;
-mod datafusion_store;
+mod index_cache;
 mod model;
 mod monitor;
 mod query;
@@ -18,7 +18,10 @@ mod store;
 
 pub use backfill::BackfillStatus;
 pub use companion::{CycleReport, Progress};
-pub use model::{EventQuery, EventRecord, EventSummary, Limits, QueryPage, Scope};
+pub use model::{
+    CacheStats, EventQuery, EventRecord, EventSummary, Limits, QueryPage, ReadEngine, ReadProfile,
+    Scope,
+};
 pub use monitor::Monitor;
 pub use schema::migrate_catalog;
 pub use shadow::{ShadowOutcome, ShadowReport};
