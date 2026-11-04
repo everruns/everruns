@@ -311,6 +311,46 @@ async fn a_message_the_sender_already_delivered_is_not_posted_again() {
 }
 
 #[tokio::test]
+async fn a_misconfigured_agent_says_so_without_detail() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery
+        .observe(&event(
+            TURN_FAILED,
+            json!({"error": "Model meta/muse-spark is disabled", "error_code": "model_unavailable"}),
+        ))
+        .await;
+
+    let calls = recorder.calls();
+    assert_eq!(
+        calls,
+        vec![Call::Post(
+            "This agent is not set up correctly, so it cannot answer right now. Someone who manages it needs to check its model and provider settings.".into()
+        )]
+    );
+}
+
+#[tokio::test]
+async fn other_failure_codes_keep_the_plain_notice() {
+    for code in ["processing_error", "provider_rate_limited"] {
+        let recorder = Arc::new(Recorder::default());
+        let mut delivery = delivery(&recorder, DeliveryOptions::default());
+        delivery
+            .observe(&event(TURN_FAILED, json!({"error_code": code})))
+            .await;
+        assert_eq!(
+            recorder.calls(),
+            vec![Call::Post(
+                "The agent could not finish this request.".into()
+            )],
+            "{code}"
+        );
+    }
+    assert!(is_setup_error_code("provider_misconfigured"));
+    assert!(!is_setup_error_code("budget_exhausted"));
+}
+
+#[tokio::test]
 async fn no_reply_keeps_the_conversation_silent() {
     let recorder = Arc::new(Recorder::default());
     let mut delivery = delivery(&recorder, DeliveryOptions::default());

@@ -28,6 +28,11 @@
 //!   count as delivered.
 //! - A turn that ends having delivered nothing posts exactly one short notice
 //!   with no error detail (channels are often public), plus an optional link.
+//!   A failure whose code says the agent's model or provider is set up wrong
+//!   says so instead, so the person writing knows retrying will not help and
+//!   who has to act. Only the category shows, never the model, provider or
+//!   message, and the error-disclosure mode applies: in `generic` mode the
+//!   code is already `processing_error`, so the plain notice is posted.
 //! - No I/O happens outside the adapter, so the same object runs in a
 //!   Framework task, serve, and the server's Postgres-driven dispatcher.
 
@@ -172,6 +177,8 @@ pub struct TurnDelivery {
     notes: HashSet<String>,
     /// The agent sent a message with `send_message` this turn.
     sent_explicitly: bool,
+    /// The `error_code` of this turn's `turn.failed`, if it failed.
+    failure_code: Option<String>,
     /// Platform keys of the messages this delivery knows, by message id.
     keys: HashMap<String, String>,
     /// Links made since the host last took them, for it to persist.
@@ -203,6 +210,7 @@ impl TurnDelivery {
             unstreamable: HashSet::new(),
             notes: HashSet::new(),
             sent_explicitly: false,
+            failure_code: None,
             keys: HashMap::new(),
             new_links: Vec::new(),
         }
@@ -322,6 +330,13 @@ impl TurnDelivery {
             _ => {}
         }
 
+        if event.event_type == TURN_FAILED {
+            self.failure_code = event
+                .data
+                .get("error_code")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+        }
         if event.is_terminal() {
             self.finish(&event.event_type).await;
             return DeliveryStep::Finished(event.event_type.clone());
@@ -750,7 +765,15 @@ impl TurnDelivery {
     }
 
     fn notice(&self, event_type: &str) -> String {
+        let misconfigured = event_type == TURN_FAILED
+            && self
+                .failure_code
+                .as_deref()
+                .is_some_and(is_setup_error_code);
         let headline = match event_type {
+            _ if misconfigured => {
+                "This agent is not set up correctly, so it cannot answer right now. Someone who manages it needs to check its model and provider settings."
+            }
             TURN_FAILED | TURN_SEALED => "The agent could not finish this request.",
             TURN_CANCELLED => "This request was cancelled.",
             _ => "The agent finished without a reply.",
@@ -760,6 +783,20 @@ impl TurnDelivery {
             None => headline.to_string(),
         }
     }
+}
+
+/// Whether a turn failure's code means the agent's model or provider is set
+/// up wrong: retrying will not help until someone who manages it acts.
+pub fn is_setup_error_code(code: &str) -> bool {
+    use everruns_contracts::user_facing_error::codes;
+    matches!(
+        code,
+        codes::MODEL_UNAVAILABLE
+            | codes::MODEL_NOT_CONFIGURED
+            | codes::PROVIDER_MISCONFIGURED
+            | codes::PROVIDER_QUOTA_EXHAUSTED
+            | codes::PROVIDER_ATTESTATION_REQUIRED
+    )
 }
 
 /// The text of a completed assistant message. Blank parts are not reply text:
