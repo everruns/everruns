@@ -11,6 +11,20 @@ use wiremock::{
 
 const REASON: &str = "I cannot help with that request, even after a timeout or rate limit.";
 
+fn fixture_driver() -> OpenResponsesProtocolChatDriver {
+    // Wiremock reuses server addresses across tests, but each #[tokio::test]
+    // owns a separate runtime. A process-wide client can reuse a connection
+    // whose I/O task is aborted when another test finishes, provoking a valid
+    // pre-response transport retry. Keep this fixture's pool on its own runtime
+    // without disabling retries or weakening the one-request expectations.
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    OpenResponsesProtocolChatDriver::new().with_transport(std::sync::Arc::new(client))
+}
+
 fn resource() -> Value {
     json!({"id":"resp_refused", "object":"response", "created_at":1, "model":"test-model", "status":"completed",
         "output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed",
@@ -45,7 +59,7 @@ async fn streaming_and_json_refusals_have_the_same_non_retryable_classification(
             .expect(1)
             .mount(&server)
             .await;
-        let provider = Provider::new("test", OpenResponsesProtocolChatDriver::new())
+        let provider = Provider::new("test", fixture_driver())
             .base_url(format!("{}/responses", server.uri()))
             .auth(BearerAuth::new("test"));
         let mut config = LlmCallConfig::new("test-model");
@@ -100,8 +114,8 @@ async fn refusal_terminal_shapes_do_not_leak_text_or_success() {
             .expect(1)
             .mount(&server)
             .await;
-        let provider = Provider::new("test", OpenResponsesProtocolChatDriver::new())
-            .base_url(format!("{}/responses", server.uri()));
+        let provider =
+            Provider::new("test", fixture_driver()).base_url(format!("{}/responses", server.uri()));
         let mut stream = provider
             .chat_completion_stream(vec![], &LlmCallConfig::new("test-model"))
             .await
@@ -119,6 +133,7 @@ async fn refusal_terminal_shapes_do_not_leak_text_or_success() {
         assert!(!everruns_contracts::llm_retry::is_transient_stream_error(
             &errors[0]
         ));
+        server.verify().await;
     }
 }
 
@@ -147,7 +162,7 @@ async fn unicode_refusal_buffer_is_bounded() {
         )
         .mount(&server)
         .await;
-    let error = Provider::new("test", OpenResponsesProtocolChatDriver::new())
+    let error = Provider::new("test", fixture_driver())
         .base_url(format!("{}/responses", server.uri()))
         .chat_completion(vec![], &LlmCallConfig::new("test-model"))
         .await
@@ -180,7 +195,7 @@ async fn interrupted_refusal_does_not_turn_into_a_provider_outage() {
         .expect(1)
         .mount(&server)
         .await;
-    let error = Provider::new("test", OpenResponsesProtocolChatDriver::new())
+    let error = Provider::new("test", fixture_driver())
         .base_url(format!("{}/responses", server.uri()))
         .chat_completion(vec![], &LlmCallConfig::new("test-model"))
         .await
@@ -190,4 +205,140 @@ async fn interrupted_refusal_does_not_turn_into_a_provider_outage() {
         json!("refusal")
     );
     assert!(error.to_string().contains(REASON));
+}
+
+// A pooled mock address can be reused by a second #[tokio::test] while the
+// runtime that owns its old HTTP connection shuts down. Reproduce that ordering
+// deliberately instead of relying on concurrent test completion timing.
+#[test]
+fn refusal_fixture_survives_another_test_runtime_shutting_down() {
+    let old_runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    let (request_seen_tx, request_seen_rx) = std::sync::mpsc::sync_channel(1);
+    let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+    let release_rx = std::sync::Mutex::new(Some(release_rx));
+    let server = old_runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/responses"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                format!(
+                    "data: {}\n\n",
+                    json!({"type":"response.refusal.done","refusal":REASON})
+                ),
+                "text/event-stream",
+            ))
+            .mount(&server)
+            .await;
+        let error = Provider::new("warmup", fixture_driver())
+            .base_url(format!("{}/responses", server.uri()))
+            .chat_completion(vec![], &LlmCallConfig::new("test-model"))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.llm_error_kind(),
+            Some(everruns_contracts::LlmErrorKind::Refusal)
+        );
+        server.reset().await;
+        let response = ResponseTemplate::new(200).set_body_raw(
+            format!(
+                "data: {}\n\n",
+                json!({"type":"response.refusal.done","refusal":REASON})
+            ),
+            "text/event-stream",
+        );
+        Mock::given(method("POST"))
+            .and(path("/responses"))
+            .respond_with(move |_: &wiremock::Request| {
+                if let Some(release) = release_rx.lock().unwrap().take() {
+                    request_seen_tx.send(()).unwrap();
+                    release
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .unwrap();
+                }
+                response.clone()
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let url = format!("{}/responses", server.uri());
+    let caller = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                Provider::new("next-test", fixture_driver())
+                    .base_url(url)
+                    .chat_completion(vec![], &LlmCallConfig::new("test-model"))
+                    .await
+                    .unwrap_err()
+            })
+    });
+    request_seen_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    // The next request reached the server, but it cannot receive the refusal
+    // until after all connection tasks owned by the old runtime are aborted.
+    drop(old_runtime);
+    release_tx.send(()).unwrap();
+    let error = caller.join().unwrap();
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(everruns_contracts::LlmErrorKind::Refusal)
+    );
+    assert!(!error.is_transient_llm_error());
+    futures::executor::block_on(server.verify());
+}
+
+#[tokio::test]
+async fn observed_refusal_is_not_reconnected_after_a_body_transport_failure() {
+    use everruns_contracts::http_transport::{
+        HeaderMap, HttpError, HttpRequest, HttpResponse, HttpTransport, StatusCode,
+    };
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct BrokenBody(AtomicUsize);
+    #[async_trait::async_trait]
+    impl HttpTransport for BrokenBody {
+        async fn execute(&self, _: HttpRequest) -> Result<HttpResponse, HttpError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            let frame = format!(
+                "data: {}\n\n",
+                json!({"type":"response.refusal.delta","delta":REASON})
+            );
+            Ok(HttpResponse::new(
+                StatusCode::OK,
+                HeaderMap::new(),
+                Box::pin(futures::stream::iter([
+                    Ok(frame.into_bytes().into()),
+                    Err(HttpError::new("connection reset after refusal", true)),
+                ])),
+            ))
+        }
+    }
+    let transport = Arc::new(BrokenBody(AtomicUsize::new(0)));
+    let error = Provider::new(
+        "test",
+        OpenResponsesProtocolChatDriver::new().with_transport(transport.clone()),
+    )
+    .base_url("https://refusal-fixture.invalid/responses")
+    .chat_completion(vec![], &LlmCallConfig::new("test-model"))
+    .await
+    .unwrap_err();
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(everruns_contracts::LlmErrorKind::Refusal)
+    );
+    assert!(error.to_string().contains(REASON));
+    assert!(!error.is_transient_llm_error());
+    assert_eq!(transport.0.load(Ordering::SeqCst), 1);
 }
