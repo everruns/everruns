@@ -153,6 +153,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_contracts::ty
     let owner_principal_id = create_test_principal(backend, TEST_ORG_ID).await;
     backend
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: everruns_server::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

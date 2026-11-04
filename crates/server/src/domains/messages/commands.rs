@@ -509,6 +509,7 @@ mod tests {
         let guest_agent = seed_agent(&db, harness.id, "routing-guest").await;
         let session = db
             .create_session(CreateSessionRow {
+                mcp_creator: None,
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
@@ -677,6 +678,7 @@ mod tests {
             .await;
         let row = db
             .create_session(CreateSessionRow {
+                mcp_creator: None,
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,

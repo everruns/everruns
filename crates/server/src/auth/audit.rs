@@ -36,6 +36,15 @@ pub fn client_ip_from_connect_info(
     client_ip(peer, headers)
 }
 
+fn attribute_mcp(actor: Option<Uuid>, metadata: &mut serde_json::Value) {
+    if let Some(client) = super::mcp_attribution::for_user(actor) {
+        if !metadata.is_object() {
+            *metadata = serde_json::json!({"data": metadata.take()});
+        }
+        metadata["mcp_client"] = serde_json::json!(client);
+    }
+}
+
 /// Emit a legacy audit log entry (event_type string format). Non-blocking.
 ///
 /// For new code, prefer `emit_event()` with typed `AuditEvent`.
@@ -45,8 +54,9 @@ pub fn emit(
     actor_id: Option<Uuid>,
     event_type: &str,
     ip_address: Option<String>,
-    metadata: serde_json::Value,
+    mut metadata: serde_json::Value,
 ) {
+    attribute_mcp(actor_id, &mut metadata);
     let event_type = event_type.to_string();
     // Infer domain from event_type prefix
     let domain = if event_type.starts_with("agent.") {
@@ -77,7 +87,8 @@ pub fn emit(
 }
 
 /// Emit a typed audit event. Non-blocking (fire-and-forget).
-pub fn emit_event(db: Arc<StorageBackend>, event: AuditEvent) {
+pub fn emit_event(db: Arc<StorageBackend>, mut event: AuditEvent) {
+    attribute_mcp(event.actor_user_id, &mut event.details);
     tokio::spawn(async move {
         if let Err(e) = db
             .create_audit_log(CreateAuditLogRow {
@@ -114,7 +125,8 @@ impl StorageAuditLogger {
 
 #[async_trait::async_trait]
 impl AuditLogger for StorageAuditLogger {
-    async fn log_event(&self, event: AuditEvent) -> anyhow::Result<()> {
+    async fn log_event(&self, mut event: AuditEvent) -> anyhow::Result<()> {
+        attribute_mcp(event.actor_user_id, &mut event.details);
         self.db
             .create_audit_log(CreateAuditLogRow {
                 org_id: event.org_id,
@@ -130,12 +142,71 @@ impl AuditLogger for StorageAuditLogger {
             .await?;
         Ok(())
     }
+
+    fn emit(&self, event: AuditEvent) {
+        // Capture the request provenance before the background task boundary.
+        emit_event(self.db.clone(), event);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::net::SocketAddr;
+
+    #[tokio::test]
+    async fn mcp_audit_captures_the_actor_before_spawning_and_preserves_details() {
+        use crate::domains::audit_logs::record::ManagementAction;
+        let db = Arc::new(StorageBackend::test_database());
+        let logger = StorageAuditLogger::new(db.clone());
+        let mut user = crate::auth::AuthUser::anonymous();
+        db.create_test_user(user.id).await;
+        user.mcp_client = Some(crate::auth::mcp_attribution::McpClientAttribution {
+            client_id: "client_a".into(),
+            grant_id: Uuid::now_v7(),
+            client_name: "Self-declared".into(),
+        });
+        crate::auth::mcp_attribution::scope(&user, async {
+            let event = AuditEvent::management(ManagementAction::AgentCreated, 1, Some(user.id))
+                .detail("name", "agent")
+                .build();
+            logger.log_event(event.clone()).await.unwrap();
+            logger.emit(event);
+            emit(
+                db.clone(),
+                1,
+                Some(user.id),
+                "agent.created",
+                None,
+                serde_json::json!("legacy"),
+            );
+        })
+        .await;
+        let rows = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let rows = db
+                    .list_audit_logs(crate::storage::AuditLogQuery {
+                        org_id: 1,
+                        limit: 10,
+                        ..Default::default()
+                    })
+                    .await
+                    .unwrap();
+                if rows.len() == 3 {
+                    break rows;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        for row in &rows {
+            assert_eq!(row.metadata["mcp_client"]["client_id"], "client_a");
+            assert_eq!(row.actor_id, Some(user.id));
+        }
+        assert!(rows.iter().any(|r| r.metadata["data"] == "legacy"));
+        assert!(rows.iter().any(|r| r.metadata["name"] == "agent"));
+    }
 
     #[test]
     fn test_client_ip_uses_rightmost_forwarded_hop_from_trusted_proxy() {

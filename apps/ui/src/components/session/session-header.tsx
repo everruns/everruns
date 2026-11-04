@@ -15,6 +15,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SessionForkButton } from "@/components/session/session-fork-button";
+import { SessionInfoIcon } from "@/components/session/session-card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -435,6 +436,7 @@ export function SessionHeader({
               <EntityIdentity value={sessionId}>
                 {session.title || ui("Session {value0}", { value0: shortenId(session.id) })}
               </EntityIdentity>
+              <SessionInfoIcon session={session} />
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               {agentReferenceLabel &&

@@ -32,6 +32,9 @@ const MAX_LIMIT: i64 = 200;
 /// One recorded change to an entity.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EntityChange {
+    /// Registered MCP client of this action; its name is self-declared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_client: Option<crate::auth::mcp_attribution::McpClientAttribution>,
     /// Id of this history entry.
     pub id: Uuid,
     /// Kind of entity changed, e.g. `agent`.
@@ -88,6 +91,7 @@ impl From<EntityChangeRow> for EntityChange {
             via_session_id: row
                 .via_session_id
                 .map(|id| everruns_contracts::typed_id::SessionId::from_uuid(id).to_string()),
+            mcp_client: row.mcp_client.and_then(|v| serde_json::from_value(v).ok()),
             via_agent_id: row.via_agent_id,
             surface: row.surface,
             request_id: row.request_id,

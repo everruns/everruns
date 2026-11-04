@@ -569,6 +569,7 @@ fn every_restorable_kind_names_an_update_command_that_takes_its_id() {
 async fn only_the_newest_snapshots_are_kept() {
     let db = StorageBackend::test_database();
     let change = |n: i64| NewEntityChange {
+        mcp_client: None,
         org_id: DEFAULT_ORG_ID,
         entity_kind: "workspace".into(),
         entity_ref: "workspace_x".into(),

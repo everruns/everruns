@@ -21,6 +21,7 @@
 - Add the `completion_check` agent setting: a finishing unattended turn is reviewed on its own model and an announced but unfinished one continues within a durable budget. See [Turn Completion Check](execution/turn-completion-check.md).
 
 - Reveal bidi/control characters in tool approval displays without changing approval authority or arguments. See [Tool Approval](execution/tool-approval.md#approval-display).
+- Stage a weekly/manual Rust CodeQL migration while preserving default scans; document activation prerequisites and native/WASM evidence limits. See [CodeQL](security/codeql.md).
 
 - Require hosted and embedded session cron triggers to advance in UTC through
   repeated daylight-saving hours. See [Runtime](foundations/runtime.md).
@@ -91,6 +92,7 @@
 
 ## 2026-10-29
 
+- Add an unmounted [bounded managed host-dispatch component](foundations/managed-dispatch.md): host admission and preallocated identity, immutable supplier requests, canonical receipt review and explicit transactional journaling. Preserve worker/isolation boundaries and require supplier/host qualification before activation.
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
 
 - Made the public generative UI gallery interactive using the shared chat renderer, with local action previews, reset, theme sync, and opt-in external media.
@@ -194,6 +196,7 @@
 
 ## 2026-10-26
 
+- Recorded that HTTP credential bindings inject on `web_fetch` and Bashkit only. Daytona, E2B, and Modal commands stay outside that contract. See [Bound Secrets](security/bound-secrets.md).
 * **Binding-only chat internals.** Remove the example-only internal bearer
   secret and trust native DO bindings, with workerd coverage that the public
   gateway rejects internal tool/session routes and forged credentials. Shared

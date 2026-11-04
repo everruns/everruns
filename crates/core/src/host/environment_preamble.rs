@@ -99,8 +99,8 @@ fn where_commands_run(kind: ComputeKind) -> &'static str {
 
 /// What the target can do, stated as capabilities rather than as tools.
 ///
-/// Absences are stated as plainly as presences. A target that cannot run native
-/// binaries is the load-bearing case: a model that assumes it can reads every
+/// State unsupported capabilities explicitly. If a target cannot run native
+/// binaries, a model that assumes otherwise reads every
 /// failure as a broken environment rather than a limited one, and keeps
 /// retrying.
 fn what_it_can_do(capabilities: &ComputeCapabilities) -> Option<String> {
@@ -269,7 +269,7 @@ mod tests {
         assert_ne!(container, vfs);
     }
 
-    /// The load-bearing absence. A model that assumes it can run binaries reads
+    /// Explicitly report missing native-process support. Otherwise, a model reads
     /// every failure as a broken environment and keeps retrying.
     #[test]
     fn a_target_without_native_processes_says_so() {

@@ -260,6 +260,7 @@ async fn create_agent_and_session(
     .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,

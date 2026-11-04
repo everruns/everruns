@@ -112,6 +112,13 @@ management permissions. Private execution excludes other runtime participants
 and shared workspaces; transcript/export governance remains owned by session
 policies.
 
+`web_fetch` and Bashkit HTTP are the injection boundaries. A Daytona, E2B, or
+Modal command runs inside the provider VM, so it does not receive `$NAME` and
+its outbound HTTPS is not rewritten from a binding. Modal can inject the GitHub
+connection at the domain, outside the VM; that grant is not a credential
+binding and cannot express a path prefix. Copying a bound value into the VM
+would make it readable there, so sandbox execution stays outside this contract.
+
 Revocation blocks subsequent authorized sends; it cannot recall requests already
 sent or data already disclosed. Redaction covers declared captured values and
 known injected literals/JSON/form encodings. Arbitrary reversible transforms

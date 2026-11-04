@@ -1,4 +1,10 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Via MCP: {name} (self-declared)": "Mediante MCP: {name} (nombre autodeclarado)",
+  "Client ID": "ID del cliente",
+  "Grant ID": "ID de autorización",
+  "Session created via MCP": "Sesión creada mediante MCP",
+  "Sent via MCP": "Enviado mediante MCP",
+
   "Open in Everruns": "Abrir en Everruns",
   Expand: "Ampliar",
   "This content could not be displayed.": "No se pudo mostrar este contenido.",

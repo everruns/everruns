@@ -7,6 +7,7 @@ import {
 } from "@/providers/locale-provider";
 
 import { SessionIcon } from "@/components/icons/facet-icons";
+import { McpClientDetails } from "@/components/mcp/mcp-client-attribution";
 import { Info, Loader2, Zap, Pin, PinOff, CalendarClock, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EntityCard } from "@/components/ui/entity-card";
@@ -112,6 +113,12 @@ function SessionInfoIcon({ session }: { session: Session }) {
             <div className="flex gap-2">
               <span className="text-muted-foreground">{ui("Started:")}</span>
               <span>{formattedStartedAt}</span>
+            </div>
+          )}
+          {session.mcp_creator && (
+            <div>
+              <div>{ui("Session created via MCP")}</div>
+              <McpClientDetails client={session.mcp_creator} />
             </div>
           )}
           {tagList && (

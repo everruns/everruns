@@ -6,9 +6,9 @@
 // `resolve_question_answers` and this file is the only place those three live.
 //
 // The sibling of `tool_results` (raw results, no typed validation) and
-// `mcp_url_consent` (a pause Everruns itself raised). One difference from that
-// last one is load-bearing: `ask_user` is called by the *model*, so the
-// transcript claims the call and the tool result alone carries the answer back.
+// `mcp_url_consent` (a pause Everruns itself raised). Unlike URL consent,
+// `ask_user` is called by the model, so the transcript records the call and
+// the tool result alone carries the answer back.
 // URL elicitation needs an extra synthetic user message precisely because its
 // call is engine-authored; adding one here would put words in the user's mouth
 // that they never said.

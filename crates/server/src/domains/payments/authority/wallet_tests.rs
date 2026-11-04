@@ -44,6 +44,7 @@ async fn fixture() -> Fixture {
         .expect("membership");
     let session_id = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             trigger_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,

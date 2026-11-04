@@ -58,6 +58,7 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         .unwrap()
         .unwrap();
     let starter = CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
 
         source: everruns_server::domains::sessions::record::SessionSource::Chat,

@@ -23,6 +23,7 @@ struct MockAuthBackend {
 impl AuthBackend for MockAuthBackend {
     async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
         Ok(AuthUser {
+            mcp_client: None,
             id: self.user_id,
             email: "test@example.com".to_string(),
             name: "Test User".to_string(),

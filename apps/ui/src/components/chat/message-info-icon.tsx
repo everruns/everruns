@@ -1,6 +1,8 @@
 "use client";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { McpClientDetails } from "@/components/mcp/mcp-client-attribution";
+import { mcpClientAttribution } from "@/lib/mcp-attribution";
 import { Info } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -37,6 +39,8 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
       ? messageMetadata.reasoning_effort
       : undefined;
   const phase = agentData?.message?.phase;
+  const mcpClient =
+    event.type === "input.message" ? mcpClientAttribution(event.metadata?.mcp_client) : undefined;
 
   // Token usage from OutputMessageCompletedData (if populated)
   const usage: TokenUsage | undefined = agentData?.usage;
@@ -49,7 +53,7 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
     <Tooltip>
       <TooltipTrigger
         className={cn(
-          "flex-shrink-0 rounded p-0.5 transition-colors",
+          "inline-flex flex-shrink-0 items-center gap-1 rounded p-0.5 transition-colors",
           variant === "light"
             ? "text-white/55 hover:bg-white/12 hover:text-white"
             : "text-muted-foreground/55 hover:bg-muted hover:text-foreground",
@@ -57,6 +61,7 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
         aria-label={t("message_info")}
       >
         <Info className="w-3 h-3" />
+        {mcpClient && <span className="max-w-32 truncate text-xs">{mcpClient.client_name}</span>}
       </TooltipTrigger>
       <TooltipContent className="max-w-sm border-border bg-popover px-3 py-2">
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -68,6 +73,14 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
               kind="id"
             />
           </dd>
+          {mcpClient && (
+            <>
+              <dt className="text-muted-foreground">{ui("Sent via MCP")}</dt>
+              <dd>
+                <McpClientDetails client={mcpClient} />
+              </dd>
+            </>
+          )}
           {model && (
             <>
               <dt className="text-muted-foreground">{t("message_info_model")}</dt>

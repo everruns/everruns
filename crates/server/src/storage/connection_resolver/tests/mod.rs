@@ -56,6 +56,7 @@ fn encryption() -> EncryptionService {
 
 fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
     CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: crate::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
