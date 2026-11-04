@@ -544,7 +544,7 @@ impl Lease {
 /// is aborted.
 ///
 /// Decision: the periodic renewals land on multiples of the period counted
-/// from `epoch`, the driver's clock, not from when each lease was taken. A
+/// from `epoch`, the holder's clock, not from when each lease was taken. A
 /// holder's running turns then renew together and share one batched store
 /// call (`renewals`). The first renewal comes at most a period after the
 /// lease was taken, as before, and sometimes sooner.

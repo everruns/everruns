@@ -362,9 +362,11 @@ production and DEV_MODE alike; the worker side is
   ([`renewals.rs`](../../crates/core/src/host/session_actor/renewals.rs)):
   one renewal goes out at once when none is in flight, and the renewals that
   arrive while one is in flight share the next call (group commit, no timer,
-  so an idle worker adds no latency). The periodic renewals of a worker's
-  turns tick on one clock, the driver's start plus whole thirds of the TTL, so
-  they land in the same call. `RenewActorLeases` renews a batch in one
+  so an idle worker adds no latency). The worker's actor runtime holds one
+  batcher for all its turns (it runs a driver per lease, so a batcher per
+  driver would batch nothing), and the periodic renewals of its turns tick on
+  one clock, the runtime's start plus whole thirds of the TTL, so they land in
+  the same call. `RenewActorLeases` renews a batch in one
   statement and one relaxed commit; each lease keeps its own fence, expiry and
   cursor, and comes back held, lost or deleted exactly as a single renewal
   reports it. A failed call fails each of its renewals, which their renewers
