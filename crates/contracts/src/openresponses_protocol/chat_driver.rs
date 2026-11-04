@@ -476,14 +476,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 match result {
                     Ok(event) => {
                         let event_data = &event.data;
-                        if let Ok(frame) = serde_json::from_str::<Value>(event_data)
-                            && let Some(event) = refusal.lock().unwrap().observe(&frame)
+                        let parsed_frame = serde_json::from_str::<Value>(event_data);
+                        if let Ok(frame) = &parsed_frame
+                            && let Some(event) = refusal.lock().unwrap().observe(frame)
                         {
                             observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
                             return Ok(event);
                         }
-                        if required_completion && let Ok(frame) = serde_json::from_str::<Value>(event_data) {
-                                if let Some(event) = super::completion_contract::terminal(&frame) {
+                        if required_completion && let Ok(frame) = &parsed_frame {
+                                if let Some(event) = super::completion_contract::terminal(frame) {
                                     observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
                                     return Ok(event);
                                 }
@@ -504,7 +505,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         // A custom tool call is not represented by the typed
                         // Responses event enum. Decode completed calls before
                         // that enum so its native metadata reaches the runtime.
-                        if let Ok(json) = serde_json::from_str::<Value>(event_data)
+                        if let Ok(json) = &parsed_frame
                             && json.get("type").and_then(Value::as_str)
                                 == Some("response.output_item.done")
                             && let Some(item) = json.get("item")
@@ -556,10 +557,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         }
 
                         // Fallback: parse as generic JSON for backwards compatibility
-                        let parsed: std::result::Result<Value, _> =
-                            serde_json::from_str(event_data);
-
-                        match parsed {
+                        match parsed_frame {
                             Ok(json) => {
                                 let event_type = json.get("type").and_then(|t| t.as_str());
 
