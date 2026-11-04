@@ -21,7 +21,14 @@ reads accept event identity, never caller-chosen object paths. Tombstones hide
 deleted traces and block re-export before physical GC. Shared/exclusive advisory
 locks protect active reads and unpublished uploads from collection. Typed
 predicates, admission budgets, deadlines and disabled spill files constrain
-queries; the DataFusion pool is not a whole-process RSS limit. Raw payload reads
+queries; the DataFusion pool is not a whole-process RSS limit. Immutable decoded
+index caching retains no authorization/manifests/payload bodies; live manifest and
+source/tombstone checks remain mandatory before every cache lookup. Cache keys
+bind immutable segment metadata and checksum; row scope/locator validation precedes
+insertion. Byte/entry limits, bounded decoded inputs/results and cancellation-safe
+decoder admission constrain cache amplification. Per-query Arrow providers keep
+tenant data out of the shared DataFusion registry; direct locators retain the same
+manifest and payload integrity checks. Raw payload reads
 include internal JSON and require the same privileged access as the source DB;
 future public APIs must retain their own disclosure/authorization boundaries.
 

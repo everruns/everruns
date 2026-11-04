@@ -16,6 +16,7 @@ pub struct CycleReport {
     pub backfill_failed: i64,
     pub unhealthy_checks: i64,
     pub comparisons: Vec<ShadowReport>,
+    pub cache: crate::CacheStats,
 }
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct Progress {
@@ -175,6 +176,7 @@ impl TraceStore {
                 Err(_) => report.errors += 1,
             }
         }
+        report.cache = self.cache_stats();
         Ok(report)
     }
 }

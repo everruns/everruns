@@ -8,9 +8,9 @@ SSE, Trace UI, billing and reporting retain their PostgreSQL paths.
 
 The [architecture](../../knowledge/operations/trace-storage.md) owns the design,
 consistency boundaries and promotion criteria. This guide owns exact commands.
-Cloud I/O uses the platform's patched object-store backend. DataFusion's older
-API is connected through a read-only, manifest-scoped bridge with its cloud
-features disabled, so its old S3/XML stack is absent.
+Cloud I/O uses the platform's patched object-store backend. DataFusion receives
+validated in-memory Arrow tables and has no cloud client. Its older transitive
+object-store generation keeps cloud features disabled; its S3/XML stack is absent.
 
 ## Off by default
 
@@ -106,6 +106,7 @@ placement and org.
 | `TRACE_STORE_METRICS_ADDR` | `127.0.0.1:9465` | Private observer endpoint |
 | `TRACE_STORE_POLL_SECONDS` | `5` | Delay between cycles; 1..3600 |
 | `TRACE_STORE_MAX_SESSIONS` | `5` | Per-org session batch; 1..100 |
+| `TRACE_STORE_INDEX_CACHE_BYTES` | `67108864` | Decoded immutable index cache budget; zero disables caching |
 
 A placement name identifies the same physical bucket/root for its lifetime.
 Registration rejects overlapping prefixes and name/prefix changes; it cannot
@@ -131,6 +132,53 @@ service configuration. Ctrl+C interrupts the standalone process; checkpoints and
 publication use the platform's cancellation-safe transaction helpers.
 
 ## Inspect and compare
+
+Ordinary session/sequence pages use an ordered index fast path, stopping at the
+requested page plus one continuation row. Event detail uses an index locator
+directly. Filtered and cross-session queries use a shared DataFusion execution
+context over query-local Arrow tables. There are no shared per-query table/store
+registrations. Cold indexes require one bounded range GET and checksum-verified
+decode. Warm reads reuse immutable decoded indexes; payloads are never cached.
+
+Every read still locks/selects current live manifests and checks tenant scope.
+Cache keys include immutable manifest identity, object sizes and checksum;
+new exports and compaction cannot reuse stale entries. Tombstones/deleted source
+sessions are checked before cache access. Explicit trace deletion also evicts the
+instance's cached indexes for that session. Other readers still revalidate live
+manifests. The cache uses a byte budget and an entry ceiling, LRU
+eviction and a serialized decoder that remains bounded after cancellation.
+Decoded query inputs and results have admission budgets in addition to the
+DataFusion operator pool. These are not whole-process RSS guarantees.
+
+Each shadow window now compares PostgreSQL with the initial serving read, a
+repeat of that identical read, a forced DataFusion read of the identical window,
+and a sampled payload lookup. All variants must match. `ReadProfile` records the
+actual engine, cold/warm/mixed/empty cache state and fixed stages; a second call
+is not assumed warm if eviction/compaction or an oversized index caused misses.
+
+Prometheus `read_seconds` histograms label `kind`, `engine` and `cache`;
+`stage_seconds` label `kind`, `engine` and `stage`. Names have the usual
+`everruns_trace_store_` prefix. Stages separate catalog, index I/O, decoding,
+planning, execution, payload I/O and payload checksum/decoding. Unexecuted stages
+do not add zero samples.
+Cache bytes/entries/evictions/hits/misses, index bytes read and observed Linux
+resident/peak-resident memory and aggregate process CPU seconds are also exported
+without tenant/object labels. CPU time uses the kernel's clock-tick frequency;
+resource metrics are omitted when unavailable rather than fabricated as zero.
+The legacy end-to-end summary kind is `trace_summary`; it includes whichever
+serving engine the query actually used. Use the new engine-labelled histograms
+for analytical versus serving comparisons and histogram quantile estimates.
+
+The local latency sample prints exact sample p50/p95/p99 without payloads:
+
+```bash
+DATABASE_URL=postgres://... cargo test -p everruns-trace-store \
+  --features postgres-tests serving_latency_sample -- --nocapture
+```
+
+That fixture is not a production benchmark. Production comparisons must retain
+identical predicates/sequence boundaries and distinguish cold from warm reads,
+source load, cache pressure, resource limits and ongoing backfill.
 
 ```bash
 target/debug/everruns-trace-store status --org-id 1

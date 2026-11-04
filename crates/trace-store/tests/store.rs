@@ -112,6 +112,251 @@ async fn object_count(objects: &InMemory) -> usize {
 }
 
 #[sqlx::test(migrations = false)]
+async fn warm_indexes_are_reused_by_clones_and_detail_reads(pool: PgPool) {
+    let (objects, session) = setup(&pool).await;
+    let events = seed(&pool, session, &[1, 2, 3]).await;
+    let store = store(&pool, objects.clone(), Limits::default());
+    let scope = Scope::new(1).unwrap();
+    store.export_session(scope, session).await.unwrap();
+    let first = store.query(scope, &query(session)).await.unwrap();
+    assert_eq!(first.profile.cache_state(), "cold");
+    assert_eq!(first.profile.cache_misses, 1);
+    assert!(first.profile.index_bytes_read > 0);
+    let keys = objects.list(None).try_collect::<Vec<_>>().await.unwrap();
+    for key in keys
+        .into_iter()
+        .filter(|k| k.location.as_ref().ends_with("index.parquet"))
+    {
+        objects.delete(&key.location).await.unwrap();
+    }
+    // Removing the test index proves warm reads do not perform object I/O.
+    let warm = store.clone().query(scope, &query(session)).await.unwrap();
+    assert_eq!(warm.profile.cache_state(), "warm");
+    assert_eq!(warm.profile.index_bytes_read, 0);
+    assert_eq!(warm.profile.index_io_seconds, 0.0);
+    assert_eq!(warm.profile.index_decode_seconds, 0.0);
+    assert_eq!(first.events, warm.events);
+    assert_eq!(
+        store
+            .read_event_at(scope, session, events[1].id, 2)
+            .await
+            .unwrap(),
+        Some(events[1].clone())
+    );
+    sqlx::query("UPDATE trace_store_sessions SET deleted=true WHERE session_id=$1")
+        .bind(session)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .query(scope, &query(session))
+            .await
+            .unwrap()
+            .events
+            .is_empty()
+    );
+    assert!(
+        store
+            .read_event_at(scope, session, events[1].id, 2)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    store.delete_session(scope, session).await.unwrap();
+    assert_eq!(store.cache_stats().entries, 0);
+}
+
+#[sqlx::test(migrations = false)]
+async fn cache_budget_eviction_checksum_and_new_export_visibility(pool: PgPool) {
+    let (objects, session) = setup(&pool).await;
+    seed(&pool, session, &[1]).await;
+    let scope = Scope::new(1).unwrap();
+    let first = store(&pool, objects.clone(), Limits::default());
+    first.export_session(scope, session).await.unwrap();
+    first.query(scope, &query(session)).await.unwrap();
+    let budget = first.cache_stats().bytes;
+    seed(&pool, session, &[2]).await;
+    first.export_session(scope, session).await.unwrap();
+    assert_eq!(
+        first
+            .query(scope, &query(session))
+            .await
+            .unwrap()
+            .events
+            .len(),
+        2
+    );
+    let bounded = store(
+        &pool,
+        objects.clone(),
+        Limits {
+            index_cache_bytes: budget,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        bounded
+            .query(scope, &query(session))
+            .await
+            .unwrap()
+            .events
+            .len(),
+        2
+    );
+    assert!(bounded.cache_stats().bytes <= budget);
+    assert!(bounded.cache_stats().evictions > 0);
+    let uncached = store(
+        &pool,
+        objects.clone(),
+        Limits {
+            index_cache_bytes: 0,
+            ..Default::default()
+        },
+    );
+    for _ in 0..2 {
+        let page = uncached.query(scope, &query(session)).await.unwrap();
+        assert_eq!(page.profile.cache_hits, 0);
+        assert_eq!(page.profile.cache_misses, 2);
+    }
+    assert_eq!(uncached.cache_stats().bytes, 0);
+    let key = objects
+        .list(None)
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|o| o.location.as_ref().ends_with("index.parquet"))
+        .unwrap()
+        .location;
+    let mut bytes = objects
+        .get(&key)
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap()
+        .to_vec();
+    bytes[4] ^= 1;
+    objects.put(&key, bytes.into()).await.unwrap();
+    assert!(
+        uncached
+            .query(scope, &query(session))
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("checksum")
+    );
+}
+
+#[sqlx::test(migrations = false)]
+async fn cached_read_profiles_are_scoped_and_do_not_plan_payload_lookups(pool: PgPool) {
+    let (objects, session) = setup(&pool).await;
+    seed(&pool, session, &[1, 2, 3]).await;
+    let first = store(&pool, objects, Limits::default());
+    let scope = Scope::new(1).unwrap();
+    first.export_session(scope, session).await.unwrap();
+    let report = first.shadow_session(scope, session, 100).await.unwrap();
+    assert_eq!(report.outcome, everruns_trace_store::ShadowOutcome::Match);
+    assert_eq!(report.trace_profile.as_ref().unwrap().cache_state(), "cold");
+    assert_eq!(
+        report.warm_trace_profile.as_ref().unwrap().cache_state(),
+        "warm"
+    );
+    let payload = report.payload_profile.as_ref().unwrap();
+    assert_eq!(payload.cache_state(), "warm");
+    assert_eq!(payload.index_bytes_read, 0);
+    assert_eq!(payload.planning_seconds, 0.0);
+    assert!(payload.payload_io_seconds > 0.0);
+    assert!(payload.payload_decode_seconds > 0.0);
+    let monitor = everruns_trace_store::Monitor::default();
+    monitor.record(&everruns_trace_store::CycleReport {
+        comparisons: vec![report],
+        cache: first.cache_stats(),
+        ..Default::default()
+    });
+    let metrics = monitor.render();
+    assert!(metrics.contains(
+        "read_seconds_count{kind=\"summary\",engine=\"session_index\",cache=\"cold\"} 1"
+    ));
+    assert!(metrics.contains(
+        "read_seconds_count{kind=\"summary\",engine=\"session_index\",cache=\"warm\"} 1"
+    ));
+    assert!(
+        metrics.contains(
+            "read_seconds_count{kind=\"summary\",engine=\"datafusion\",cache=\"warm\"} 1"
+        )
+    );
+    assert!(metrics.lines().any(|line| line.contains(
+        "stage_seconds_count{kind=\"summary\",engine=\"datafusion\",stage=\"planning\"}"
+    )));
+    assert!(
+        !metrics
+            .lines()
+            .any(|line| line.contains("stage_seconds_count{kind=\"payload\"")
+                && line.contains("stage=\"planning\""))
+    );
+    assert!(!metrics.contains(&session.to_string()));
+    assert!(!metrics.contains("traces/org-"));
+    #[cfg(target_os = "linux")]
+    {
+        assert!(metrics.contains("process_cpu_seconds_total "));
+        assert!(metrics.contains("process_resident_memory_bytes "));
+    }
+    let window = query(session);
+    let (own, foreign) = tokio::join!(
+        first.query(scope, &window),
+        first.query(Scope::new(2).unwrap(), &window)
+    );
+    assert_eq!(own.unwrap().events.len(), 3);
+    assert!(foreign.unwrap().events.is_empty());
+    sqlx::query("DELETE FROM sessions WHERE id=$1")
+        .bind(session)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        first
+            .query(scope, &query(session))
+            .await
+            .unwrap()
+            .events
+            .is_empty()
+    );
+}
+
+/// Repeatable local PG/object fixture sample. No production payloads or timing
+/// thresholds; correctness and zero warm index I/O are asserted separately.
+#[sqlx::test(migrations = false)]
+async fn serving_latency_sample(pool: PgPool) {
+    let (objects, session) = setup(&pool).await;
+    seed(&pool, session, &(1..=300).collect::<Vec<_>>()).await;
+    let scope = Scope::new(1).unwrap();
+    let first = store(&pool, objects, Limits::default());
+    first.export_session(scope, session).await.unwrap();
+    let mut values = [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+    for _ in 0..50 {
+        let report = first.shadow_session(scope, session, 100).await.unwrap();
+        assert_eq!(report.outcome, everruns_trace_store::ShadowOutcome::Match);
+        for (samples, seconds) in values.iter_mut().zip([
+            report.source_seconds,
+            report.warm_trace_profile.as_ref().unwrap().total_seconds,
+            report.source_payload_seconds,
+            report.trace_payload_seconds,
+            report.datafusion_profile.as_ref().unwrap().total_seconds,
+        ]) {
+            samples.push(seconds * 1000.0);
+        }
+    }
+    let result: serde_json::Map<String, serde_json::Value> = ["postgres_summary", "warm_summary", "postgres_payload", "object_payload", "warm_datafusion"]
+        .into_iter().zip(values).map(|(name, mut samples)| {
+            samples.sort_by(f64::total_cmp);
+            (name.into(), json!({"samples": samples.len(), "p50_ms": samples[24], "p95_ms": samples[47], "p99_ms": samples[49]}))
+        }).collect();
+    println!("{}", serde_json::to_string(&result).unwrap());
+}
+
+#[sqlx::test(migrations = false)]
 async fn export_resume_filters_roundtrip_and_compaction(pool: PgPool) {
     let (objects, session) = setup(&pool).await;
     let records = seed(&pool, session, &[1, 3, 4, 9, 10]).await;
