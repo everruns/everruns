@@ -11,7 +11,7 @@ these steps for you. On a cluster, use the [Helm chart](/getting-started/kuberne
 ## Prerequisites
 
 - Docker Engine 20.10+
-- Docker Compose v2.20+
+- Docker Compose v2.23.1+ (the file uses inline `configs.content`)
 - 4GB available RAM
 
 ## Quick Start
@@ -52,17 +52,20 @@ AUTH_ADMIN_PASSWORD=<choose-a-password>
 # Optional: two extra workers and VictoriaMetrics (see Profiles below)
 COMPOSE_PROFILES=scale,metrics
 
-# Optional: Add API keys here to skip UI configuration
+# Optional, single-tenant admin mode: encrypt these keys into the default org.
+# The explicit seeding opt-in is required to skip UI credential configuration.
+SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 DEFAULT_GEMINI_API_KEY=AIza...
-SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true
+DEFAULT_OPENROUTER_API_KEY=sk-or-...
 ```
 
-`SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true` copies the keys into the default
-organization's providers at startup; without it they are ignored. The server
-refuses it when people can sign themselves up (`AUTH_MODE=full` with signup or
-Google/GitHub sign-in), because anyone who joins could spend the keys.
+The optional environment-key path stores keys encrypted in the default
+organization's database. Production startup otherwise ignores `DEFAULT_*` keys
+for tenant execution. Enable seeding only for a single-tenant deployment with
+admin auth; built-in signup or OAuth self-provisioning prevents this opt-in from
+sharing host credentials. Leave it unset and use the UI for other deployments.
 
 ### 4. Start Services
 
@@ -74,7 +77,7 @@ docker compose up -d
 The published compose file defaults to app entry point on `9300`. If that port is busy, override before startup:
 
 ```bash
-EXAMPLE_PROXY_PORT=10300 docker compose up -d
+EXAMPLE_PROXY_PORT=10300 VICTORIAMETRICS_PORT=18428 docker compose up -d
 ```
 
 This starts:
@@ -108,17 +111,37 @@ If you want multiple Everruns compose stacks on the same machine, set both a Com
 ```bash
 COMPOSE_PROJECT_NAME=everruns-demo-2 \
 EXAMPLE_PROXY_PORT=10300 \
+VICTORIAMETRICS_PORT=18428 \
 docker compose up -d
 ```
 
+This isolates Compose networks and volumes. With the `metrics` profile enabled,
+override **both** published ports: VictoriaMetrics also binds a host port.
+To restrict a local test to this machine, use `EXAMPLE_PROXY_BIND=127.0.0.1`,
+`EXAMPLE_PROXY_PORT=10300`, and
+`VICTORIAMETRICS_PORT=127.0.0.1:18428`.
+
+The downloaded file follows `main`, while its application images default to the
+published `latest` tag. These can be different revisions. Use `EVERRUNS_TAG=vX.Y.Z`
+to select a published release; `docker compose config --images` shows the selected
+images. Run `docker compose pull` before recreating services after a tag change.
+
 ### Configure LLM Provider
 
-If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`, or `DEFAULT_GEMINI_API_KEY`) in your `.env` file, configure via UI:
+If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`, `DEFAULT_GEMINI_API_KEY`, or `DEFAULT_OPENROUTER_API_KEY`) in your `.env` file, configure via UI:
 
 1. Open http://localhost:9300
-2. Navigate to **Settings** > **Providers**
-3. Add your OpenAI or Anthropic API key
-4. Save and verify connection
+2. Open **Models** > **Providers** (also available from Settings)
+3. Click **Set key** on your provider, such as OpenRouter, and enter an inference
+   API key. Use an existing limited key, never an OpenRouter management key.
+4. Wait for the key verification result, then click **Save Credentials**
+5. Sync the provider's models if needed, enable a model that supports chat and tools,
+   and select it under **Defaults**. For OpenRouter, `openai/gpt-6-luna` is a
+   suitable lightweight choice.
+
+A fresh **Chat** shows **No intelligence available** until a usable model is
+configured. Provider credentials are encrypted using `SECRETS_ENCRYPTION_KEY`;
+keep that key stable while retaining the database volume.
 
 ### Create Your First Agent
 
@@ -127,6 +150,50 @@ If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API
 3. Set a name and system prompt
 4. Select your configured LLM provider
 5. Save the agent
+
+You can also create an agent through **Chat**. Ask, for example:
+"Create an agent named `math-tutor` with the system prompt `You are a concise math
+tutor. Explain arithmetic in one sentence.` Use my configured default model."
+If Chat asks for confirmation before creating the reusable agent, confirm that
+specific creation in Chat. Open the returned agent link to verify it was saved.
+To run it, open **Playground**, choose the agent, leave **Dry run** unchecked,
+start a chat, and ask
+"What is 7 multiplied by 8?" A successful response should explain that the result
+is 56.
+
+### Repeatable real-provider E2E (repository checkout)
+
+The opt-in test downloads the same Compose file, starts all ten services with the
+`scale,metrics` profiles in a unique project with loopback ports and disposable
+volumes, opts in to application startup encrypting an existing OpenRouter
+environment key into the disposable database, signs in through the UI,
+verifies the configured provider, creates an agent through Chat, and runs the
+persisted agent in Playground. It checks durable events and the saved answer,
+records the real browser journey, and removes its project and volumes on exit.
+It makes paid requests; use a limited inference key and a low-cost model. No
+simulated responses satisfy this test.
+
+```bash
+cd apps/ui
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
+cd ../..
+
+# Supply OPENROUTER_API_KEY securely in the environment, without shell tracing.
+# This opt-in permits encrypted credential storage in the disposable test stack.
+EVERRUNS_E2E_ALLOW_PROVIDER_STORAGE=1 node scripts/e2e-compose-openrouter.mjs
+```
+
+The test prints its evidence directory, containing a WebM video, `report.json`, and
+`commands.log`. The raw inference key is supplied only to the server environment,
+never written to the test `.env` or entered through browser UI/API. Secret values are excluded
+from command output, and no trace, HAR, or browser authentication state is saved.
+To verify startup and UI login without a key, run
+`node scripts/e2e-compose-openrouter.mjs --setup-only`; this does **not** verify
+inference, agent creation, or agent execution. Set `EVERRUNS_TAG` to pin published
+images, or set `COMPOSE_E2E_FILE` to your local
+[Compose file](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml)
+to test a configuration change. See `node scripts/e2e-compose-openrouter.mjs --help` for options.
 
 ### Start a Session
 
