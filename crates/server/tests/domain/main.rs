@@ -98,6 +98,7 @@ mod session_git_integration_test;
 mod session_tab_counts_integration_test;
 mod session_workspace_attach_test;
 mod skills_integration_test;
+mod stale_models_repair_migration_test;
 mod subagent_spawn_handles_test;
 mod thread_binding_ambiguity_migration_test;
 mod trigger_budget_subject_test;
