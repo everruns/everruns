@@ -44,6 +44,7 @@ bytes
 chrono
 chrono-tz
 cron
+ed25519-dalek
 eventsource-stream
 everruns-contracts
 fs2
@@ -96,6 +97,7 @@ EXPECTED_OPTIONAL='a2a-client-lf
 a2a-lf
 bytes
 chrono-tz
+ed25519-dalek
 eventsource-stream
 fs2
 futures-util
