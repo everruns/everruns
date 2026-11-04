@@ -1425,11 +1425,10 @@ mod tests {
     fn code_consent_matches_the_scopes_used_to_update_an_existing_app() {
         for agent_surface_enabled in [false, true] {
             for code_channels_enabled in [false, true] {
-                let config = SlackChannelConfig {
-                    agent_surface_enabled,
-                    code_channels_enabled,
-                    ..Default::default()
-                };
+                let config = parse_config(&serde_json::json!({
+                    "agent_surface_enabled": agent_surface_enabled,
+                    "code_channels_enabled": code_channels_enabled,
+                }));
                 let url = url::Url::parse(&authorize_url(
                     "client",
                     "nonce",
