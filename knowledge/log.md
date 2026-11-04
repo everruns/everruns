@@ -92,6 +92,7 @@
 
 ## 2026-10-29
 
+- Add an unmounted [bounded managed host-dispatch component](foundations/managed-dispatch.md): host admission and preallocated identity, immutable supplier requests, canonical receipt review and explicit transactional journaling. Preserve worker/isolation boundaries and require supplier/host qualification before activation.
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
 
 - Made the public generative UI gallery interactive using the shared chat renderer, with local action previews, reset, theme sync, and opt-in external media.

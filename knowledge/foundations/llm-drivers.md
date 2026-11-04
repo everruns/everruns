@@ -21,6 +21,11 @@ drivers to concrete services. Core business logic resolves a credential-free
 model specification and runtime provider independently, then passes the
 provider-owned endpoint into the protocol driver.
 
+[Bounded managed host dispatch](managed-dispatch.md) is a separate, unmounted
+source contract for qualified host admission and supplier request controls. It
+does not turn driver metadata, worker bearers or journal-only capabilities into
+dispatch authority; existing driver calls retain their current behavior.
+
 Official vendor drivers are feature-gated modules of one crate,
 `everruns-drivers` ([`crates/drivers/drivers/`](../../crates/drivers/drivers/README.md)),
 over the neutral `everruns-contracts` SPI. They were separate crates through

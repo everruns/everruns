@@ -62,6 +62,8 @@ mod llm_call_config_builder;
 pub mod llm_error;
 pub mod llm_retry;
 pub mod llm_telemetry;
+#[cfg(feature = "http")]
+pub mod managed_dispatch;
 pub mod message;
 pub mod message_origin;
 pub mod message_reactions;
