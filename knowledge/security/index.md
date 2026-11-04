@@ -8,6 +8,7 @@
 * [Threat Model](threat-model.md) - Security threat model.
 * [Assignment-bound Worker Isolation](worker-assignment-isolation.md) - Proposed executor trust boundary and authorization contract; not implemented or qualified.
 * [Worker Isolation Qualification and Rollout](worker-isolation-qualification.md) - Proposed adversarial evidence, compatibility rules and deployment approval gates.
+* [CodeQL coverage and cadence](codeql.md) - Staged migration, extraction evidence, and native/WASM limits.
 * [Security Testing](security-testing.md) - Security testing process (threat-model tests, fail-rs, DeepSec, supply chain).
 * [Multitenancy](multitenancy.md) - Organization-based multitenancy.
 * [Assignment-scoped Journal Read Foundation](worker-assignment-read-scope.md) - Preparatory server scope and deny-by-default RPC gate; production identity integration remains blocked.

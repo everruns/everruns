@@ -1,0 +1,4 @@
+name: everruns/rust-coverage
+version: 0.0.0
+dependencies:
+  codeql/rust-all: '*'
