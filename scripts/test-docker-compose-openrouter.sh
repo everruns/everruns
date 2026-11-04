@@ -7,10 +7,18 @@ SECRETS_ENCRYPTION_KEY=compose-config-test \
 WORKER_GRPC_AUTH_TOKEN=compose-config-test \
 DEFAULT_OPENROUTER_API_KEY=compose-openrouter-fixture \
 SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true \
+COMPOSE_PROFILES=scale,metrics \
+EXAMPLE_PROXY_BIND=127.0.0.1 \
+EXAMPLE_PROXY_PORT=19300 \
+VICTORIAMETRICS_PORT=127.0.0.1:18428 \
   docker compose -f "$ROOT/examples/docker-compose-full.yaml" config --format json |
   python3 -c '
 import json, sys
 services = json.load(sys.stdin)["services"]
+assert len(services) == 10, "Full E2E profiles must include all ten services"
+assert services["caddy"]["ports"][0]["host_ip"] == "127.0.0.1", "E2E proxy must stay loopback-only"
+assert str(services["caddy"]["ports"][0]["published"]) == "19300", "E2E proxy port must be independent of its bind address"
+assert services["victoriametrics"]["ports"][0]["host_ip"] == "127.0.0.1", "E2E metrics must stay loopback-only"
 assert services["server"]["environment"].get("DEFAULT_OPENROUTER_API_KEY") == "compose-openrouter-fixture", "OpenRouter environment key never reaches the server"
 assert services["server"]["environment"].get("SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV") == "true", "Environment keys cannot be materialized for the default organization"
 for name, service in services.items():
@@ -34,6 +42,7 @@ print("Compose leaves provider-key materialization disabled without explicit opt
 
 # Guard rails must fail before opening a browser, creating containers, or saving a key.
 node --check "$ROOT/scripts/e2e-compose-openrouter.mjs"
+node --test "$ROOT/scripts/lib/compose-e2e-turn.test.mjs"
 python3 - "$ROOT" <<'PY'
 import os, pathlib, subprocess, sys
 script = pathlib.Path(sys.argv[1]) / 'scripts/e2e-compose-openrouter.mjs'

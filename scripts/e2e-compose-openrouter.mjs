@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { eventsForMessage } from "./lib/compose-e2e-turn.mjs";
 
 const setupOnly = process.argv.includes("--setup-only");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -75,6 +76,7 @@ const env = Object.fromEntries(
 );
 Object.assign(env, {
   COMPOSE_PROJECT_NAME: project,
+  COMPOSE_PROFILES: "scale,metrics",
   EVERRUNS_TAG: process.env.EVERRUNS_TAG || "latest",
 });
 
@@ -131,11 +133,12 @@ async function api(path, method = "GET", data) {
   assert(response.ok(), `${method} ${path}: HTTP ${response.status()}`);
   return response.status() === 204 ? undefined : response.json();
 }
-async function waitTurn(id) {
+async function waitTurn(id, messageId) {
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
     controller.signal.throwIfAborted();
-    const { data: events } = await api(`/sessions/${id}/events?limit=1000`);
+    const { data: history } = await api(`/sessions/${id}/events?limit=1000`);
+    const events = eventsForMessage(history, messageId);
     const types = events.map((event) => event.type);
     assert(
       !types.includes("turn.failed"),
@@ -149,6 +152,19 @@ async function waitTurn(id) {
     );
     if (types.includes("turn.completed")) {
       assert(types.includes("output.message.completed"), "Turn produced no assistant output");
+      const completed = events.find((event) => event.type === "turn.completed").data;
+      const summary = {
+        session_id: id,
+        input_message_id: messageId,
+        termination_reason: completed.termination_reason,
+        iterations: completed.iterations,
+        answer_preview: completed.final_answer_preview,
+        tools: events
+          .filter((event) => event.type === "tool.completed")
+          .map(({ data }) => ({ name: data.tool_name, success: data.success, error: data.error })),
+      };
+      (report.turns ??= []).push(summary);
+      log(`Completed test turn: ${JSON.stringify(summary)}`);
       return events;
     }
     await delay(1000);
@@ -158,17 +174,28 @@ async function waitTurn(id) {
 async function send(text) {
   const input = page.locator("textarea");
   await expect(input).toBeEditable();
-  const submitted = page.waitForResponse(
-    (r) =>
-      /\/api\/v1\/sessions\/[^/]+\/messages$/.test(new URL(r.url()).pathname) &&
-      r.request().method() === "POST",
-  );
+  const submitted = page.waitForResponse((r) => {
+    const path = new URL(r.url()).pathname;
+    return (
+      r.request().method() === "POST" &&
+      (/\/api\/v1\/sessions\/[^/]+\/messages$/.test(path) ||
+        path === "/api/v1/commands/create_message")
+    );
+  });
   await input.fill(text);
   await input.press("Enter");
   const response = await submitted;
   assert(response.ok(), `Sending chat message: HTTP ${response.status()}`);
-  sessionId = new URL(response.url()).pathname.split("/").at(-2);
-  return waitTurn(sessionId);
+  const path = new URL(response.url()).pathname;
+  sessionId =
+    path === "/api/v1/commands/create_message"
+      ? response.request().postDataJSON()?.params?.session_id
+      : path.split("/").at(-2);
+  assert(typeof sessionId === "string" && sessionId, "Chat send did not identify a session");
+  const result = await response.json();
+  const messageId = (result.output ?? result).id;
+  assert(typeof messageId === "string" && messageId, "Chat send did not identify its input");
+  return waitTurn(sessionId, messageId);
 }
 
 const abort = () => {
@@ -184,7 +211,8 @@ try {
   let metricsPort = await freePort();
   while (metricsPort === port) metricsPort = await freePort();
   report.base_url = `http://localhost:${port}`;
-  env.EXAMPLE_PROXY_PORT = `127.0.0.1:${port}`;
+  env.EXAMPLE_PROXY_BIND = "127.0.0.1";
+  env.EXAMPLE_PROXY_PORT = String(port);
   env.VICTORIAMETRICS_PORT = `127.0.0.1:${metricsPort}`;
   log(`Evidence: ${output}`);
   log(`Isolated Compose project: ${project}; UI ${report.base_url}`);
@@ -240,7 +268,7 @@ try {
     env.DEFAULT_OPENROUTER_API_KEY = key;
     env.SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV = "true";
     log(
-      "Existing inference key supplied privately to server startup; the app encrypts it into the default organization (no raw-key UI/API submission)",
+      "Prepared existing inference key for isolated server startup; the app will encrypt it into the default organization (no raw-key UI/API submission)",
     );
   }
   report.credential_mode = setupOnly ? "none" : "startup_materialization";
@@ -344,9 +372,31 @@ try {
     await api(`/sessions/${chat.id}`, "PATCH", { model_id: model.id });
     await page.reload();
     const name = `compose-math-${randomBytes(3).toString("hex")}`;
-    const events = await send(
+    let events = await send(
       `Create one active agent now using your agent management tools. Name (slug): ${name}. Display name: Compose Math. System prompt: You are a concise math tutor. Answer arithmetic questions with the result and one short explanation. Default model ID: ${model.id}. Use the generic harness and no extra capabilities or tools. Persist the agent, then give me its link. Do not only describe how to create it. No questions or extra agents.`,
     );
+    if (
+      events.some(
+        (event) => event.type === "tool.completed" && event.data?.tool_name === "request_approval",
+      )
+    ) {
+      // Consent is a visible Chat reply, scoped to this disposable test agent.
+      const requests = events.filter(
+        (event) =>
+          event.type === "tool.started" && event.data?.tool_call?.name === "request_approval",
+      );
+      assert(requests.length > 0, "Approval request details are missing");
+      for (const request of requests) {
+        const details = JSON.stringify(request.data.tool_call.arguments);
+        assert(/creat/i.test(details) && /agent/i.test(details), "Unexpected approval scope");
+      }
+      log("Confirming creation of the single disposable test agent through Chat");
+      events = events.concat(
+        await send(
+          `I approve creating exactly the requested reusable agent ${name} (Compose Math) in this disposable test organization, with the math tutor prompt and model ${model.id}. Record this approval and create it now. This approval covers only this agent creation, not any credentials, permissions, deployment, or other action.`,
+        ),
+      );
+    }
     report.creation_event_types = [...new Set(events.map((event) => event.type))];
     assert(
       report.creation_event_types.includes("tool.completed"),
@@ -357,6 +407,11 @@ try {
       "Chat never called the provider",
     );
     const agents = (await api("/agents?limit=100")).data;
+    report.created_agents = agents.map(({ id, name, display_name }) => ({
+      id,
+      name,
+      display_name,
+    }));
     const agent = agents.find((a) => a.name === name);
     assert(agent, "Chat claimed success but no persisted agent exists");
     const saved = await api(`/agents/${agent.id}`);
@@ -431,7 +486,7 @@ try {
   if (report.cleanup_error) report.retained_stack_directory = work;
   else await rm(work, { recursive: true, force: true });
   report.finished_at = new Date().toISOString();
-  await writeFile(join(output, "report.json"), JSON.stringify(report, null, 2));
+  await writeFile(join(output, "report.json"), redact(JSON.stringify(report, null, 2)));
   await writeFile(join(output, "commands.log"), commandOutput);
   console.log(`Evidence: ${output}`);
 }
