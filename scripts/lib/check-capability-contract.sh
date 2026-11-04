@@ -17,11 +17,38 @@ cd "$PROJECT_ROOT"
 
 GUARDED_TREES=(crates/core/src crates/core/src/host crates/capabilities/src)
 
+# A missing scanner/tree or read failure is an incomplete check, never a clean
+# boundary. Keep rg's status separate from its no-matches status (1).
+if ! command -v rg >/dev/null 2>&1; then
+  echo "Guard could not run: ripgrep (rg) is required for the capability source scan." >&2
+  exit 2
+fi
+for tree in "${GUARDED_TREES[@]}"; do
+  if [ ! -d "$tree" ]; then
+    echo "Guard could not run: missing capability source tree $tree." >&2
+    exit 2
+  fi
+done
+
+scan() {
+  local status
+  if matches=$(rg -n --glob '*.rs' "$@"); then
+    return 0
+  else
+    status=$?
+    if [ "$status" -ne 1 ]; then
+      echo "Guard could not run: capability source scan exited $status; the boundary was not checked." >&2
+      exit 2
+    fi
+    return 1
+  fi
+}
+
 FAILED=0
 
 # 1. No competing capability identity/config/definition type declarations.
 TYPE_PATTERN='(struct|enum|type)[[:space:]]+(CapabilityId|CapabilityRef|AgentCapabilityConfig|BuiltInCapabilityDefinition|CapabilitySpec)\b'
-if matches=$(grep -rnE "$TYPE_PATTERN" "${GUARDED_TREES[@]}" --include='*.rs'); then
+if scan "$TYPE_PATTERN" "${GUARDED_TREES[@]}"; then
   echo "Capability identity/config types must live in crates/contracts/src/capability, not core/host/platform:"
   echo "$matches"
   FAILED=1
@@ -29,7 +56,7 @@ fi
 
 # 2. No inherent impls on the neutral types (extension traits are fine).
 IMPL_PATTERN='^impl[[:space:]]+(CapabilityId|CapabilityRef)[[:space:]]*\{'
-if matches=$(grep -rnE "$IMPL_PATTERN" "${GUARDED_TREES[@]}" --include='*.rs'); then
+if scan "$IMPL_PATTERN" "${GUARDED_TREES[@]}"; then
   echo "Inherent impls on neutral capability types are not possible outside crates/contracts/src/capability; use an extension trait:"
   echo "$matches"
   FAILED=1
@@ -37,14 +64,14 @@ fi
 
 # 3. No re-implementation of the shared ID/config validation rules.
 VALIDATE_PATTERN='fn[[:space:]]+(validate_capability_id|validate_capability_config)\b'
-if matches=$(grep -rnE "$VALIDATE_PATTERN" "${GUARDED_TREES[@]}" --include='*.rs'); then
+if scan "$VALIDATE_PATTERN" "${GUARDED_TREES[@]}"; then
   echo "Capability ID/config validation is owned by crates/contracts/src/capability; re-export it instead of redefining:"
   echo "$matches"
   FAILED=1
 fi
 
 # 4. `trait IntoCapability` exists once, in the contract crate.
-if matches=$(grep -rnE 'trait[[:space:]]+IntoCapability\b' crates integrations --include='*.rs' | grep -v '^crates/contracts/src/capability/'); then
+if scan 'trait[[:space:]]+IntoCapability\b' crates --glob '!crates/contracts/src/capability/**'; then
   echo "IntoCapability is defined by crates/contracts/src/capability only:"
   echo "$matches"
   FAILED=1
