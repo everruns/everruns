@@ -76,8 +76,9 @@ below makes them restart safe.
   writes): thread coordination, A2A push, notifications, MCP events,
   sandbox lifecycle, and listeners an embedder adds. Later (polled every 2 s,
   pages of 1,000): usage, budgets, customer tracing, turn latency, titles, run
-  summaries, observer matching, approval audit. Each tier has its own cursors,
-  so a slow exporter never delays a coordination wake-up. Usage and budgets
+  summaries, observer matching, approval audit, reporting facts. Each tier
+  has its own cursors, so a slow exporter never delays a coordination
+  wake-up. Usage and budgets
   share the later tier because both read `llm.generation`, the largest event:
   reading and decoding it in one tier, not two, is a measurable share of the
   server's CPU per turn.
@@ -96,6 +97,7 @@ Effects under replay:
 | Notifications | Dedupe key per turn |
 | Observer matching | Score rows unique per observer, scorer and turn |
 | Approval audit | Audit row id is the event id |
+| Reporting facts | Fact rows unique on a source key from the event (capability snapshots: the turn) |
 | MCP events | Carry the event id for receivers to dedupe |
 | A2A push, coordination, sandbox | Apply the current state, not a delta |
 | Customer tracing, turn latency, titles, run summary | May repeat a span, a log line or a check after a crash |
@@ -117,11 +119,10 @@ pickup latency, with overhead per model call unchanged within noise.
 
 ## Reporting
 
-Reporting is its own projector with an outbox (`knowledge/evaluation/reporting.md`).
-Per-call capability facts were the largest share of a turn's rows, so
-`REPORTING_BACKGROUND_ENABLED=false` turns reporting off for a deployment,
-including the outbox enqueue on event writes, until the projector is reworked
-as a later-tier consumer that writes capability facts once per turn.
+Reporting facts are a later-tier listener (`ReportingProjection`); event
+writes no longer enqueue reporting outbox rows. Capability snapshot facts are
+keyed per turn, so a turn's later model calls write none
+(`knowledge/evaluation/reporting.md`).
 
 ## Success bar
 

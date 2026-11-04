@@ -15,7 +15,6 @@ use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::host::EventLogError;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_server_macros::sql;
-use tracing::warn;
 use uuid::Uuid;
 
 use crate::storage::message_history_timing::{
@@ -506,33 +505,6 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         if let Some(row) = inserted {
-            if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
-                return Ok((row, true));
-            }
-            if let Err(error) = sqlx::query(
-                r#"
-                INSERT INTO reporting_outbox (
-                    org_id, source_type, source_id, source_version, reason, status, next_attempt_at
-                )
-                SELECT s.org_id, 'event', $1, $1, 'event_projection', 'pending', NOW()
-                FROM sessions s
-                WHERE s.id = $2
-                ON CONFLICT (org_id, source_type, source_id, source_version, reason)
-                DO NOTHING
-                "#,
-            )
-            .bind(row.id.uuid().to_string())
-            .bind(row.session_id.uuid())
-            .execute(&self.pool)
-            .await
-            {
-                warn!(
-                    event_id = %row.id.uuid(),
-                    session_id = %row.session_id.uuid(),
-                    error = %error,
-                    "reporting outbox enqueue failed for resolution event"
-                );
-            }
             return Ok((row, true));
         }
 
