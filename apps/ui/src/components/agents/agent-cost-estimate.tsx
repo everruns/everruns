@@ -2,6 +2,12 @@
 
 import { AgentCostPlanner } from "./agent-cost-planner";
 import { useState } from "react";
+import { z } from "zod";
+import {
+  planningNumberInput,
+  useCostPlanningDraft,
+} from "@/components/chat-mode/use-cost-planning-draft";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useQuery } from "@tanstack/react-query";
 import { Calculator } from "lucide-react";
@@ -113,6 +119,14 @@ const TASK_DESCRIPTIONS: Record<string, string> = {
   deep: "Explore a topic and compare several sources",
 };
 
+const calculatorSchema = z.strictObject({
+  calls: planningNumberInput,
+  messageTokens: planningNumberInput,
+  outputTokens: planningNumberInput,
+  toolResultTokens: planningNumberInput,
+  tasksPerDay: planningNumberInput,
+});
+
 export function AgentCostCalculator({
   modelId,
   maxOutputTokens,
@@ -137,6 +151,17 @@ export function AgentCostCalculator({
   const [preset, setPreset] = useState<string>("standard");
   const [fields, setFields] = useState(() => toFields(COST_WORKLOADS[1]));
   const [tasksPerDay, setTasksPerDay] = useState("10");
+  const draft = useCostPlanningDraft(
+    "manual_calculator",
+    calculatorSchema,
+    { ...fields, tasksPerDay },
+    (next) => {
+      const { tasksPerDay: volume, ...assumptions } = next;
+      if (FIELDS.some(({ key }) => assumptions[key] !== fields[key])) setPreset("custom");
+      setFields(assumptions);
+      setTasksPerDay(volume);
+    },
+  );
   const resolution = resolveEstimateModel(modelId, previewRequest.harness_id, harnesses.data ?? []);
   const model = resolution?.modelId
     ? models.data?.find((item) => item.id === resolution.modelId)
@@ -173,6 +198,23 @@ export function AgentCostCalculator({
         )
       : null;
   const expected = estimate(1);
+  useChatPageRows(
+    "Manual cost estimate",
+    [
+      {
+        model: model?.display_name,
+        per_task_usd: expected?.totalCost,
+        input_tokens: expected?.inputTokens,
+        output_tokens: expected?.outputTokens,
+        input_usd: expected?.inputCost,
+        output_usd: expected?.outputCost,
+        definition_tokens: definitionTokens,
+        tasks_per_day: validVolume ? volume : null,
+        monthly_usd: expected && validVolume ? expected.totalCost * volume * 30 : null,
+      },
+    ],
+    { loading, error: failed },
+  );
   const low = estimate(0.5);
   const high = estimate(2);
   const usable = expected && !expected.exceedsContext;
@@ -194,6 +236,7 @@ export function AgentCostCalculator({
 
   return (
     <div className="space-y-6 pb-4">
+      {draft.notice}
       <div className="border bg-card p-5" aria-live="polite" aria-atomic="true">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span className="font-medium uppercase tracking-wide">

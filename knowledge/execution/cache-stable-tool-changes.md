@@ -482,6 +482,15 @@ Each step is one PR and leaves `main` working.
    boolean and object as a JSON string and never recovers. A per-model default
    would need a profile flag; until someone asks, agents opt in.
 
+## Mutable skill inventories
+
+Skill discovery uses a separate append-only reference-data path, independent
+of provider-specific inline tool support. Static discovery instructions stay
+in the system prompt; changed catalogs become user-role updates recorded on
+completed answers and replayed at their original positions. See
+[Skills Registry](../project/skills-registry.md#cache-stable-inventory-disclosure)
+for freshness, removal, restart and history-reduction semantics.
+
 ## Open questions
 
 - **Removal style.** Proposed: soft removal (announced, call refused). The

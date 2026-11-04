@@ -1,8 +1,8 @@
 //! A2UI catalog, prompt generator, and capability.
 //!
 //! When enabled, the capability appends the generated A2UI system prompt to the agent's
-//! system prompt. The LLM wraps JSON component trees in ```a2ui fenced code
-//! blocks, which the UI detects and renders using native shadcn/ui primitives.
+//! system prompt. The LLM wraps A2UI 1.0 operations in ```a2ui fenced code
+//! blocks, rendered by the shared browser catalog in chat and Work Chat.
 //!
 //! Runs in parallel with `openui`. Both may be enabled on the same agent, but
 //! that is rarely useful — instruct the agent to prefer one protocol.
@@ -45,7 +45,7 @@ pub fn default_prompt() -> &'static str {
 }
 
 static DEFAULT_PROMPT: LazyLock<String> =
-    LazyLock::new(|| generate_prompt(default_catalog(), &PromptOptions::default()));
+    LazyLock::new(|| include_str!("standard-catalog.md").to_owned());
 
 /// Capability ID constant for external reference.
 pub const A2UI_CAPABILITY_ID: &str = "a2ui";
@@ -63,14 +63,14 @@ impl Capability for A2UiCapability {
     }
 
     fn description(&self) -> &str {
-        "Enables the agent to emit generative UI as Google A2UI JSON component trees, rendered by the UI with native design-system components."
+        "Enables A2UI 1.0 components, interactive forms, charts and surfaces in chat and Work Chat."
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
         vec![CapabilityLocalization::text(
             "uk",
             "A2UI",
-            "Дає агенту змогу видавати генеративний UI як дерева компонентів Google A2UI у форматі JSON, які інтерфейс рендерить нативними компонентами дизайн-системи.",
+            "Дає агенту змогу створювати компоненти A2UI 1.0, інтерактивні форми, графіки й поверхні в чаті та Work Chat.",
         )]
     }
 
@@ -128,12 +128,28 @@ mod catalog_tests {
     }
 
     #[test]
-    fn default_prompt_contains_every_component_and_action_types() {
+    fn default_prompt_contains_standard_catalog_and_surface_contract() {
         let prompt = default_prompt();
-        for component in &default_catalog().components {
-            assert!(prompt.contains(component.name));
+        for name in [
+            "Column(",
+            "Chart(",
+            "Map(",
+            "Modal(",
+            "DateTimeInput(",
+            "Form(",
+        ] {
+            assert!(prompt.contains(name), "missing standard component: {name}");
         }
-        assert!(prompt.contains("\"message\""));
-        assert!(prompt.contains("\"open_url\""));
+        for operation in [
+            "createSurface",
+            "updateComponents",
+            "updateDataModel",
+            "deleteSurface",
+        ] {
+            assert!(prompt.contains(operation));
+        }
+        assert!(prompt.contains("copilotkit/standard@1"));
+        assert!(prompt.contains("v1.0"));
+        assert!(prompt.contains("Never emit callRendererFunction"));
     }
 }

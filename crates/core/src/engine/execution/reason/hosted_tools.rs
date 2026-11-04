@@ -75,6 +75,16 @@ pub(super) fn completion_usage(
         Some(surcharge) => tokens.map(|tokens| tokens + surcharge),
         None => tokens,
     };
+    let tokens = match crate::engine::model_profiles::cache_write_12h_surcharge_usd(
+        provider_type,
+        model,
+        prompt,
+        meta.cache_creation_12h_tokens.unwrap_or(0),
+        meta.service_tier.as_deref(),
+    ) {
+        Some(surcharge) => tokens.map(|tokens| tokens + surcharge),
+        None => tokens,
+    };
     let hosted = hosted_calls_cost_usd(&meta.hosted_tool_calls, model);
     let estimated = match (tokens, hosted) {
         (Some(tokens), Some(hosted)) => Some(tokens + hosted),
@@ -131,6 +141,44 @@ mod tests {
             OPENAI_HOSTED_TOOLS_OPTION.to_string(),
             json!({ "web_search": {} }),
         )])
+    }
+
+    #[test]
+    fn twelve_hour_writes_are_a_priced_subset_at_the_served_tier() {
+        let model = "gpt-6.1-sol";
+        for tier in [None, Some("priority"), Some("flex")] {
+            let mut meta = LlmCompletionMetadata::default();
+            meta.prompt_tokens = Some(1_000);
+            meta.completion_tokens = Some(0);
+            meta.cache_read_tokens = Some(4_000);
+            meta.cache_creation_tokens = Some(7_000);
+            meta.service_tier = tier.map(str::to_owned);
+            let short = completion_usage(&meta, &DriverId::OpenAI, model)
+                .unwrap()
+                .estimated_cost_usd
+                .unwrap();
+            meta.cache_creation_12h_tokens = Some(4_000);
+            let long = completion_usage(&meta, &DriverId::OpenAI, model).unwrap();
+            let input_cost = crate::engine::model_profiles::estimate_cost_usd_for_speed(
+                &DriverId::OpenAI,
+                model,
+                4_000,
+                0,
+                0,
+                0,
+                tier,
+            )
+            .unwrap();
+            assert!((long.estimated_cost_usd.unwrap() - short - input_cost * 1.25).abs() < 1e-10);
+            assert_eq!(long.cache_creation_tokens, Some(7_000));
+            meta.provider_cost_usd = Some(0.123);
+            assert_eq!(
+                completion_usage(&meta, &DriverId::OpenAI, model)
+                    .unwrap()
+                    .actual_cost_usd,
+                Some(0.123)
+            );
+        }
     }
 
     #[test]

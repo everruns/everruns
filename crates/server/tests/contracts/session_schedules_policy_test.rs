@@ -100,6 +100,9 @@ async fn seed_schedule(server: &TestServer, session: &Session) -> ScheduleId {
             scheduled_at: Some(scheduled_at),
             timezone: "UTC".to_string(),
             next_trigger_at: Some(scheduled_at),
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .expect("seed schedule")

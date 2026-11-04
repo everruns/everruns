@@ -80,7 +80,10 @@ flowchart TB
     API["Report Query API"]
     UI["UI / API clients"]
 
-    Events --> Outbox
+    Feed["listener feed (later tier)"]
+
+    Events --> Feed
+    Feed --> Projectors
     Sessions --> Outbox
     Journal --> Outbox
     Ledger --> Outbox
@@ -137,6 +140,37 @@ watermark, checks exact fact source keys, and wraps after reaching the current
 tail. It does not run a full historical backfill. Full backfill remains an
 explicit admin operation.
 
+`REPORTING_BACKGROUND_ENABLED=false` turns reporting off for a deployment: no
+projector, no repair, no reporting listener. Turned back on, the repair walk
+picks up from its watermark, so missed events are projected over the
+following runs.
+
+### Event projection
+
+Events reach the projector through the listener feed's later tier
+(`ReportingProjectionListener`, `knowledge/execution/event-listeners.md`), not
+an outbox row written beside each event. The feed delivers every committed
+event at least once, in session order, without a write on the event path; the
+outbox row it replaced cost an insert, a claim, an update and a lookup for each
+of a turn's projected events. A projection that fails in the listener is handed
+to the outbox, which retries it like any other source. Sessions, generations
+and ledger postings keep their outbox rows.
+
+### Capability rows per turn
+
+Every model call emits a `capability.usage` snapshot of the turn's resolved
+capabilities and exposed tools. Projected per event, each call rewrote the
+whole snapshot: about 57 rows per call and 220 per turn on the stress bench,
+the largest share of a turn's rows. Snapshot rows are keyed per turn
+(`reporting_capability_usage_key`, migration `20261103210255`), so the turn's
+first call writes them and later calls insert nothing. `resolved` and `exposed`
+counts therefore count turns, not model calls. An event without a turn id keeps
+per-event keys.
+
+The fact tables carry no foreign key to `organizations`. Each fact row paid a
+key check on insert, and the only hard delete of an organization is the
+rollback of a failed creation, before any fact can exist.
+
 ## Idempotency
 
 Every fact has a stable source key:
@@ -148,7 +182,9 @@ Every fact has a stable source key:
 | Turn | `session:<session_id>:turn:<turn_id>` |
 | Session snapshot | `session:<session_id>:version:<source_version>` |
 | Budget posting | `usage_ledger:<ledger_id>` |
-| Capability usage | `session:<session_id>:turn:<turn_id>:capability:<capability_id>:<usage_kind>` |
+| Capability snapshot (`resolved`, `exposed`) | `turn:<turn_id>:capability_usage:<usage_kind>:<capability_id>:<tool_name>` (`event:<event_id>:capability_usage:<n>` without a turn) |
+| Capability invoked, effect ran | `event:<event_id>:invoked`, `event:<event_id>:effect_ran` |
+| Capability configured | `session:<session_id>:configured:<scope>:<capability_id>` |
 
 Projection writes are upserts by source key. Replaying a source row must produce
 the same logical fact or supersede the earlier version. Backfills can safely
@@ -286,8 +322,8 @@ ambiguous counter.
 | Usage kind | Meaning |
 |---|---|
 | `configured` | Capability was directly configured on agent, harness, or session |
-| `resolved` | Capability was present after dependency resolution for a session or turn |
-| `exposed` | Capability contributed prompt, tools, features, mounts, or hooks to a generation |
+| `resolved` | Capability was present after dependency resolution for a turn (counted once per turn) |
+| `exposed` | Capability contributed a tool to the turn's model calls (counted once per turn and tool) |
 | `invoked` | A tool contributed by the capability was called |
 | `effect_ran` | A non-tool capability behavior ran, such as a hook, guardrail, filter, or budget check |
 

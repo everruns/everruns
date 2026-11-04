@@ -33,13 +33,24 @@ impl ReapHandler for ReapErrorReporter {
     fn reap_failed(&self, error: &StoreError) {
         // Detached so a slow vendor reporter cannot stall the reap loop during
         // an upstream outage.
+        //
+        // A datastore outage fails every pass, every 10 s; the report is
+        // bounded like the reaper's own log line (EVE-1328), carrying the
+        // count of passes it stands in for.
+        let throttle = &everruns_core::report_throttle::REPEATED_FAILURES;
+        let Some(suppressed) = throttle.admit("server.stale_task_reclaim", "") else {
+            return;
+        };
         let reporter = self.error_reporter.clone();
         let message = error.to_string();
         tokio::spawn(async move {
             reporter
                 .report(
-                    ErrorReport::error("server.stale_task_reclaim", message)
-                        .with_scope(ErrorScope::new().with_component("stale_task_reclaim")),
+                    ErrorReport::error("server.stale_task_reclaim", message).with_scope(
+                        ErrorScope::new()
+                            .with_component("stale_task_reclaim")
+                            .with_extra("suppressed_since_last_report", suppressed.to_string()),
+                    ),
                 )
                 .await;
         });

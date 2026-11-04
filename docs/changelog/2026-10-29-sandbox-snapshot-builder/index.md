@@ -5,6 +5,7 @@ date: 2026-10-29
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.50.1"
 surfaces: [ui, api, cli]
 links:
   docs: [/features/sandbox-templates/]
@@ -17,6 +18,8 @@ from runtime policy. Everruns checks a fresh launch and cleans up disposable com
 **Save new revision** becomes available. Existing Agent and Session pins stay unchanged.
 
 ![Sandbox Template builder with an install script and separate build access](./sandbox-builder@2x.png)
+
+<iframe src="https://www.youtube-nocookie.com/embed/QyjGHq6LTuw?rel=0" title="Build reusable sandbox snapshots in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 **In code:** The same lifecycle is available through the API and `everruns sandbox-templates builds`.
 Cancel running attempts or discard unused snapshots. Applied artifacts remain retained for older

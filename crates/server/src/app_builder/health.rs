@@ -144,6 +144,50 @@ pub(super) async fn start(
     );
     supervisor.track(
         "active_turn_limit_health_sweep",
-        crate::domains::health_issues::active_turns::spawn_sweep(db),
+        crate::domains::health_issues::active_turns::spawn_sweep(db.clone()),
     );
+    supervisor.track(
+        "background_work_health_sweep",
+        crate::domains::health_issues::background_work::spawn_sweep(db),
+    );
+}
+
+/// What grades sessions with the org's models: Observers scoring when
+/// Observers are on, and the built-in session classifiers, which every
+/// deployment runs (they report themselves unavailable without a decision
+/// model).
+pub(super) fn start_session_graders(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+    graders: crate::domains::evals::graders::Graders,
+    observer_wake: Option<Arc<tokio::sync::Notify>>,
+    sample_sessions: bool,
+) {
+    if let Some(decisions) = graders.decisions() {
+        supervisor.track(
+            "session_classifier_sweep",
+            crate::domains::health_issues::classifiers::spawn_sweep(
+                db.clone(),
+                decisions,
+                sample_sessions,
+            ),
+        );
+    }
+    if let Some(inspector) = graders.inspector() {
+        supervisor.track(
+            "finding_inspector_sweep",
+            crate::domains::health_issues::inspector::spawn_sweep(db.clone(), inspector),
+        );
+    }
+    if let Some(observer_wake) = observer_wake {
+        supervisor.track(
+            "observer_scoring",
+            crate::domains::observers::spawn_observer_worker(
+                crate::domains::observers::ObserverWorkerDeps { db, graders },
+                observer_wake,
+                crate::domains::observers::ObserverWorkerConfig::default(),
+            ),
+        );
+        tracing::info!("Observers enabled: scoring worker started");
+    }
 }

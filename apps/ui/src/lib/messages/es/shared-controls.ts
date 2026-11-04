@@ -1,4 +1,9 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Open in Everruns": "Abrir en Everruns",
+  Expand: "Ampliar",
+  "This content could not be displayed.": "No se pudo mostrar este contenido.",
+  "The message could not be sent.": "No se pudo enviar el mensaje.",
+
   "Search agents": "Buscar agentes",
   "Search harnesses": "Buscar arneses",
   "Could not load agents. Try again.": "No se pudieron cargar los agentes. Inténtalo de nuevo.",
@@ -12,4 +17,8 @@ export const messages: Readonly<Record<string, string>> = {
     "No se pudo completar la solicitud. Inténtalo de nuevo.",
   "Clear {value0}": "Borrar {value0}",
   "Filter by agent": "Filtrar por agente",
+  "Changed again since your save": "Cambió de nuevo después de guardar",
+  "Show values": "Mostrar valores",
+  "Hide values": "Ocultar valores",
+  Empty: "Vacío",
 };

@@ -22,27 +22,7 @@ pub(super) fn routes() -> Router<ChannelApiState> {
     }
     routes
 }
-pub(super) async fn models(
-    state: &ChannelApiState,
-    org: i64,
-    config: &WorkChatConfig,
-) -> ApiResponse<Vec<Value>> {
-    let mut models = Vec::new();
-    for id in config.allowed_model_ids.iter().take(30) {
-        if let Some(model) = state
-            .db
-            .get_model(org, id.uuid())
-            .await
-            .map_err(internal_error)?
-        {
-            models.push(json!({"id": id, "name": model.display_name}));
-        }
-    }
-    Ok(models)
-}
-
-pub(in crate::api::agent_api) async fn controls(
-    state: &ChannelApiState,
+pub(in crate::api::agent_api) fn controls(
     auth: &Authorized,
     value: Option<Value>,
 ) -> ApiResponse<Option<everruns_contracts::runtime::Controls>> {
@@ -61,28 +41,13 @@ pub(in crate::api::agent_api) async fn controls(
     };
     let controls: Controls = serde_json::from_value(value)
         .map_err(|_| error(StatusCode::BAD_REQUEST, "Invalid chat controls"))?;
-    if let Some(id) = controls.model_id {
-        let config = config(&auth.channel)?;
-        if !config
-            .allowed_model_ids
-            .iter()
-            .take(30)
-            .any(|allowed| *allowed == id)
-            || state
-                .db
-                .get_model(auth.context.org_id, id.uuid())
-                .await
-                .map_err(internal_error)?
-                .is_none()
-        {
-            return Err(error(
-                StatusCode::BAD_REQUEST,
-                "This model is not available in this chat",
-            ));
-        }
+    if controls.model_id.is_some() {
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "This chat uses the Agent's model",
+        ));
     }
     Ok(Some(everruns_contracts::runtime::Controls {
-        model_id: controls.model_id,
         reasoning: controls.reasoning,
         ..Default::default()
     }))

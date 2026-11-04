@@ -133,8 +133,7 @@ the SDK's agent client works against either host. Its wire types are
 | `GET /sessions/{id}`, `POST …/messages`, `POST …/cancel`, `GET …/sse`, `GET …/events`, `POST …/question-answers`, `POST …/tool-approvals` | as the `/v1/sessions/{id}` routes |
 
 A session is reachable only under the agent that runs it: another agent's base
-URL answers `404`, the same as for a session that does not exist. A subagent
-has no base URL. `POST /v1/channels/{agent}` stays the channel webhook route.
+URL answers `404`, the same as for a session that does not exist. `POST /v1/channels/{agent}` stays the channel webhook route.
 
 ## Approvals
 
@@ -191,7 +190,7 @@ manifest under `routes`.
   pending requests the routes above answer, so either API can resolve them.
 - **Errors.** A body that is not a `RunAgentInput`, an empty `threadId`, or
   input the run cannot use (no trailing user message, an entry that cannot be
-  applied) is `400`; an unknown agent or a subagent is `404`.
+  applied) is `400`; an unknown agent is `404`.
 
 ## A2A
 
@@ -215,7 +214,7 @@ lists the routes under `a2a`, and the manifest under `routes`.
 - **Interrupts.** A pending approval or `ask_user` question keeps the task
   `working` until the routes above answer it. `CancelTask` cancels the turn
   running on the context's session.
-- **Errors.** An unknown agent or a subagent is a `404` problem.
+- **Errors.** An unknown agent is a `404` problem.
 
 
 ## Voice
@@ -255,7 +254,7 @@ run. The agent card lists the settings and each agent's base route under
   its socket. Nothing about a call is persisted
   beyond the session's own messages.
 - **Errors.** An empty `sdp` or invalid settings are `400`; an unknown agent,
-  a subagent, an unknown session or an unknown call is `404`.
+  an unknown session or an unknown call is `404`.
 ## Differences from the server
 
 - No auth, organizations, agents CRUD, harnesses, workspaces or files routes.

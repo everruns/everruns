@@ -26,6 +26,7 @@ jest.mock("@/hooks/use-session-resources", () => ({
 
 jest.mock("@/hooks/use-session-schedules", () => ({
   useSessionSchedules: () => mockUseSessionSchedules(),
+  useUpdateSessionSchedule: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
 jest.mock("next/link", () => ({

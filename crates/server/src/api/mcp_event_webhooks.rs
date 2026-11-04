@@ -87,7 +87,7 @@ async fn receive(
                 TriggerEventOutcome::Dispatched(result) => {
                     ("dispatched", Some(result.session_id.to_string()))
                 }
-                TriggerEventOutcome::Filtered => ("filtered", None),
+                TriggerEventOutcome::Filtered { .. } => ("filtered", None),
                 TriggerEventOutcome::Duplicate => ("duplicate", None),
             };
             (

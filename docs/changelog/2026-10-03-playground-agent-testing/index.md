@@ -7,7 +7,6 @@ significance: major
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.38.0"
-visual: "Playground library with grouped conversation rows and the New Playground chat setup with an agent selected; route /playground; crop to the list and setup panel."
 links:
   docs: [/features/ui/, /built-ins/harnesses/platform-chat/]
   prs: [everruns/everruns#4060, everruns/everruns#4076, everruns/everruns#4121, everruns/everruns#4129]
@@ -19,6 +18,10 @@ active end user. Conversations are shared across the organization, can be
 searched, filtered by agent or user, and archived, and each links to its
 session. On an agent page, **Test in Playground** opens setup with that agent
 selected.
+
+![Playground list of shared conversations grouped by day with agent and user](./playground-library@2x.png)
+
+![New Playground chat setup with an agent and virtual user selected](./playground-new-chat@2x.png)
 
 **Chat** now always uses the managed Platform Chat agent. The sidebar opens your
 permanent conversation, **New chat** starts a side conversation, and

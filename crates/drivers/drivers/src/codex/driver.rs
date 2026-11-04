@@ -360,4 +360,46 @@ mod tests {
         drop(lease);
         drop(store.lock().await.unwrap());
     }
+
+    #[tokio::test]
+    async fn list_models_sends_oauth_bearer() {
+        use everruns_contracts::ChatDriver;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .and(header("authorization", "Bearer test-access-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "models": [
+                    {"slug": "gpt-6.1-sol", "display_name": "Sol", "visibility": "list"},
+                    {"slug": "hidden-model", "visibility": "unlisted"}
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        // A far-future grant never refreshes, so no traffic leaves the mock.
+        let grant = CodexAuth {
+            access_token: "test-access-token".into(),
+            refresh_token: None,
+            expires_at: Some(4_000_000_000_000),
+            account_id: None,
+            email: None,
+            client_id: None,
+            open_source: None,
+        };
+        let provider = driver(Arc::new(MemoryTokenStore::new(grant)))
+            .base_url(server.uri())
+            .build()
+            .expect("provider builds");
+        let models = crate::codex::CodexChatDriver::new()
+            .list_models(provider.endpoint())
+            .await
+            .expect("listing works")
+            .expect("codex supports listing");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model_id, "gpt-6.1-sol");
+    }
 }

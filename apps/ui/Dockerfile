@@ -16,6 +16,7 @@ RUN npm install -g pnpm@10.33.0
 # pnpm-workspace.yaml carries `overrides`/`onlyBuiltDependencies` (moved here from
 # package.json); without it a frozen install fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY generative-ui/ ./generative-ui/
 # Authenticated v3 security backport is required by postinstall before build.
 COPY scripts/patch-zod-v3.mjs scripts/zod-v3-compatibility.json scripts/
 RUN pnpm install --frozen-lockfile

@@ -24,6 +24,9 @@ macro_rules! delegate {
                     request: Request<$req>,
                 ) -> Result<Response<$resp>, Status> {
                     super::authority::check_rpc(&request, stringify!($rpc))?;
+                    super::authority::admit_ingress(
+                        &self.db, super::authority::resolve(request.extensions())?,
+                    ).await?;
                     self.$handler(request).await
                 }
             )*
@@ -129,6 +132,8 @@ delegate! {
     lease_actors => handle_lease_actors(proto::LeaseActorsRequest) -> proto::LeaseActorsResponse;
     renew_actor_lease => handle_renew_actor_lease(proto::RenewActorLeaseRequest)
         -> proto::RenewActorLeaseResponse;
+    renew_actor_leases => handle_renew_actor_leases(proto::RenewActorLeasesRequest)
+        -> proto::RenewActorLeasesResponse;
     release_actor => handle_release_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
     hand_off_actor => handle_hand_off_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
     read_actor_journal => handle_read_actor_journal(proto::ReadActorJournalRequest)

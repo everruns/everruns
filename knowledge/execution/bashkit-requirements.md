@@ -36,6 +36,11 @@ remain discoverable through their entries.
 
 See [File Store](../runtime-resources/file-store.md) for the shared store contract.
 
+Directory renames use the store's atomic directory-move operation. Shell `mv`
+and embedded Python `os.rename` must preserve nested files and empty directories
+without reading directories as file content. Stores without this operation
+reject it; the adapter never emulates it with recursive copy and deletion.
+
 ## Indexed Search
 
 Bashkit v0.13.0 restored `SearchCapable`/`SearchProvider` traits. When a `FileSystem` implements `SearchCapable`, builtins like `grep -r` use indexed search instead of reading every file individually.

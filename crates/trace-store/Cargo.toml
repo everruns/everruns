@@ -1,0 +1,49 @@
+[package]
+name = "everruns-trace-store"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Object-backed event segments and bounded DataFusion queries"
+
+[features]
+# Real PostgreSQL fixtures, selected separately from the offline unit suite.
+postgres-tests = []
+# Local S3 protocol fixture only, never production endpoints or credentials.
+s3-tests = ["postgres-tests"]
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+arrow = { version = "59.2", default-features = false }
+bytes.workspace = true
+chrono.workspace = true
+clap.workspace = true
+datafusion = { version = "55.2", default-features = false, features = ["parquet"] }
+futures.workspace = true
+# Reuse the platform's cancellation-safe SQLx transaction guards.
+everruns-durable.workspace = true
+hex.workspace = true
+# Keep the AWS/XML implementation on the platform's patched generation. The
+# DataFusion receives validated in-memory tables, never an S3 client.
+object_store.workspace = true
+parquet = { version = "59.2", default-features = false, features = ["arrow", "zstd"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx = { workspace = true, features = ["json"] }
+tokio.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Read the kernel's real clock-tick frequency for aggregate process CPU time.
+rustix = { version = "1", default-features = false, features = ["param"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+url = "2"
+
+[lints]
+workspace = true

@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { z } from "zod";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+import { useCostPlanningDraft } from "@/components/chat-mode/use-cost-planning-draft";
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles, RotateCcw } from "lucide-react";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
@@ -16,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AgentCostCalculator } from "./agent-cost-estimate";
 import { useAgentCostPricing } from "@/hooks/use-agent-cost-pricing";
+
+const plannerSchema = z.strictObject({ guidance: z.string().max(4000) });
 
 interface Props {
   modelId: string;
@@ -35,6 +40,18 @@ function Planner(props: Props) {
   const [manual, setManual] = useState(false);
   const [guidance, setGuidance] = useState("");
   const [submitted, setSubmitted] = useState("");
+  const draft = useCostPlanningDraft(
+    "planner",
+    plannerSchema,
+    { guidance },
+    (next) => {
+      setGuidance(next.guidance);
+    },
+    !manual,
+  );
+  // Switching to Smart estimate or updating it can invoke the planning model;
+  // those actions retain their ordinary buttons, outside the draft patch schema.
+  useChatPageRows("Cost planner", [{ mode: manual ? "manual" : "smart" }]);
   const models = useModels();
   const defaults = useDefaultModel();
   const harnesses = useHarnesses();
@@ -75,6 +92,7 @@ function Planner(props: Props) {
   });
   return (
     <div className="space-y-5 pb-6">
+      {draft.notice}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant={manual ? "outline" : "default"} onClick={() => setManual(false)}>
           <Sparkles className="size-4" />

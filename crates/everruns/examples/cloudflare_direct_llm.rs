@@ -16,17 +16,16 @@
 //! `CLOUDFLARE_AI_GATEWAY_ID` to pin a named gateway), then:
 //!
 //! ```text
-//! cargo run -p everruns --example cloudflare_direct_llm
+//! cargo run -p everruns --features cloudflare --example cloudflare_direct_llm
 //! ```
 //!
 //! An optional positional argument replaces the model id:
 //!
 //! ```text
-//! cargo run -p everruns --example cloudflare_direct_llm -- openai/gpt-6-luna
+//! cargo run -p everruns --features cloudflare --example cloudflare_direct_llm -- openai/gpt-6-luna
 //! ```
 
-use everruns::{LlmStreamEvent, Model};
-use everruns_drivers::cloudflare;
+use everruns::{Cloudflare, LlmStreamEvent, Model, Provider};
 use futures::StreamExt;
 
 #[tokio::main]
@@ -43,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // account id, and the optional gateway name. It is the standalone/CLI/dev
     // path; a server resolves credentials from storage instead. The endpoint is
     // derived from the account id, so there is no base URL to assemble here.
-    let provider = cloudflare::from_env("cloudflare")?;
+    let provider: Provider = Cloudflare::from_env()?.into();
 
     // Discovery covers the Workers AI half of the catalog: Cloudflare lists its
     // `@cf/` models with the context window and tool-calling support it

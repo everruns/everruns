@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import { LocaleProvider } from "@/providers/locale-provider";
@@ -30,6 +30,25 @@ jest.mock("@/hooks/use-agent-source", () => ({
     isError: !!mockSourceError,
   }),
 }));
+let mockExternal: {
+  available: boolean;
+  endpoint: {
+    endpoint_url: string;
+    enabled: boolean;
+    last_error: string | null;
+    last_invoked_at: string | null;
+  } | null;
+} = { available: false, endpoint: null };
+jest.mock("@/components/agents/external-agent", () => {
+  const actual = jest.requireActual("@/components/agents/external-agent");
+  return {
+    ...actual,
+    useExternalAgent: () => ({ data: mockExternal }),
+    ExternalAgentSheet: ({ open }: { open: boolean }) =>
+      open ? <div>external agent sheet</div> : null,
+  };
+});
+
 jest.mock("@/components/agents/agent-source", () => ({
   AgentSourcePanel: ({ open }: { open: boolean }) => (
     <div>Agent source{open && <div role="dialog">Source setup</div>}</div>
@@ -202,6 +221,8 @@ const mockUseHarnesses = jest.fn();
 const mockUpdate = jest.fn();
 const mockArchive = jest.fn();
 const mockCreateSession = jest.fn();
+const mockPause = jest.fn();
+const mockResume = jest.fn();
 const mutation = (mutateAsync = jest.fn()) => ({
   mutateAsync,
   isPending: false,
@@ -217,9 +238,13 @@ jest.mock("@/hooks", () => ({
   useModels: () => ({ data: [] }),
   useExportAgent: () => mutation(),
   useCopyAgent: () => mutation(),
+  usePauseAgent: () => ({ ...mutation(), mutate: mockPause }),
+  useResumeAgent: () => ({ ...mutation(), mutate: mockResume }),
   useHarnesses: () => mockUseHarnesses(),
   useAgentStats: () => ({ data: undefined, isLoading: false, error: null }),
-  useAgentMcpAttachments: () => ({ data: [{ name: "github" }, { name: "linear" }] }),
+  useAgentMcpAttachments: () => ({
+    data: [{ name: "github" }, { name: "linear" }],
+  }),
   useAgentCredentials: () => ({ data: [] }),
   useAgentTriggers: () => ({ data: [] }),
   useLatestHealthCheckRun: () => ({ data: { config_changed: false } }),
@@ -227,9 +252,17 @@ jest.mock("@/hooks", () => ({
   useDeleteAgent: () => mutation(mockArchive),
   useDestroyAgent: () => mutation(),
   useAgentNameAvailability: () => ({ isChecking: false, available: null }),
-  useAvatarPresets: () => ({ catalog: { data: [], isLoading: false }, current: {} }),
+  useAvatarPresets: () => ({
+    catalog: { data: [], isLoading: false },
+    current: {},
+  }),
   useAgentAvatar: () => ({
-    selectPreset: { isPending: false, error: null, reset: jest.fn(), mutateAsync: jest.fn() },
+    selectPreset: {
+      isPending: false,
+      error: null,
+      reset: jest.fn(),
+      mutateAsync: jest.fn(),
+    },
     upload: { mutate: jest.fn(), isPending: false, error: null },
     remove: { mutate: jest.fn(), isPending: false, error: null },
   }),
@@ -251,12 +284,32 @@ jest.mock("@/hooks/use-change-history", () => ({
   }),
   useEntityRevision: () => ({ data: undefined, isLoading: false, error: null }),
   useEntityRevisionDiff: () => ({ data: [], isLoading: false, error: null }),
-  useRestoreEntityRevision: () => ({ mutateAsync: jest.fn(), isPending: false, reset: jest.fn() }),
-  useManagerContext: () => ({ data: mockManagerNotes, isLoading: false, error: null }),
-  useSetManagerContext: () => ({ mutateAsync: jest.fn(), isPending: false, reset: jest.fn() }),
+  useRestoreEntityRevision: () => ({
+    mutateAsync: jest.fn(),
+    isPending: false,
+    reset: jest.fn(),
+  }),
+  useManagerContext: () => ({
+    data: mockManagerNotes,
+    isLoading: false,
+    error: null,
+  }),
+  useSetManagerContext: () => ({
+    mutateAsync: jest.fn(),
+    isPending: false,
+    reset: jest.fn(),
+  }),
 }));
 
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
+jest.mock("@/hooks/use-agent-github", () => ({
+  useAgentGitHub: () => ({
+    data: { connected: true, bot_login: "reviewer[bot]" },
+  }),
+}));
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => async () => true,
+}));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: () => false,
@@ -308,6 +361,55 @@ beforeEach(() => {
   mockUpdate.mockResolvedValue({});
   mockCreateSession.mockResolvedValue({ id: "session-chat-1" });
   mockManagerNotes = { content: "", revision: 0 };
+  mockExternal = { available: false, endpoint: null };
+});
+
+describe("External agent", () => {
+  it("hides the External agent row where the installation does not allow it", async () => {
+    await renderPage();
+    const more = within(screen.getByRole("navigation", { name: "More settings" }));
+    expect(more.queryByRole("button", { name: /External agent/ })).not.toBeInTheDocument();
+  });
+
+  it("offers setup as a More row, not a card above the tabs", async () => {
+    mockExternal = { available: true, endpoint: null };
+    await renderPage();
+    const more = within(screen.getByRole("navigation", { name: "More settings" }));
+    fireEvent.click(more.getByRole("button", { name: /External agent\s*Not connected/ }));
+    expect(screen.getByText("external agent sheet")).toBeInTheDocument();
+  });
+
+  it("replaces the prompt and execution settings with the endpoint when connected", async () => {
+    mockExternal = {
+      available: true,
+      endpoint: {
+        endpoint_url: "https://orders.example.workers.dev/",
+        enabled: true,
+        last_error: null,
+        last_invoked_at: null,
+      },
+    };
+    await renderPage();
+    expect(screen.queryByTestId("markdown")).not.toBeInTheDocument();
+    expect(screen.getByText("https://orders.example.workers.dev/")).toBeInTheDocument();
+    expect(screen.queryByText("Harness")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Default model")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Agent",
+      "Channels and triggers0",
+      "Stats",
+      "Sessions3",
+    ]);
+    const more = within(screen.getByRole("navigation", { name: "More settings" }));
+    expect(more.queryByRole("button", { name: /MCP servers/ })).not.toBeInTheDocument();
+    expect(more.queryByRole("button", { name: /Sandbox/ })).not.toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Branding/ })).toBeInTheDocument();
+    expect(
+      more.getByRole("button", {
+        name: /External agent\s*Connected/,
+      }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("AgentPage layout", () => {
@@ -329,7 +431,9 @@ describe("AgentPage layout", () => {
       expect(more.getByRole("button", { name: /Локалізація/ })).toBeInTheDocument();
       fireEvent.click(more.getByRole("button", { name: /Максимум вихідних токенів/ }));
       expect(
-        await screen.findByRole("spinbutton", { name: "Максимум вихідних токенів" }),
+        await screen.findByRole("spinbutton", {
+          name: "Максимум вихідних токенів",
+        }),
       ).toHaveAttribute("placeholder", "Типово для постачальника");
     } finally {
       cleanup();
@@ -344,7 +448,7 @@ describe("AgentPage layout", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Agent",
       "Preview",
-      "Integrations0",
+      "Channels and triggers0",
       "Stats",
       "Sessions3",
     ]);
@@ -358,18 +462,24 @@ describe("AgentPage layout", () => {
         { channel_type: "schedule", enabled: false },
       ],
     });
-    mockUseAgentTriggers.mockReturnValue({ data: [{ enabled: true }, { enabled: false }] });
+    mockUseAgentTriggers.mockReturnValue({
+      data: [{ enabled: true }, { enabled: false }],
+    });
     await renderPage();
 
-    expect(screen.getByRole("tab", { name: "Integrations 5" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Channels and triggers 5" })).toBeInTheDocument();
   });
 
   it.each(["channels", "triggers"])("hides the total until %s have loaded", async (pending) => {
-    mockUseAgentChannels.mockReturnValue({ data: pending === "channels" ? undefined : [{}] });
-    mockUseAgentTriggers.mockReturnValue({ data: pending === "triggers" ? undefined : [{}] });
+    mockUseAgentChannels.mockReturnValue({
+      data: pending === "channels" ? undefined : [{}],
+    });
+    mockUseAgentTriggers.mockReturnValue({
+      data: pending === "triggers" ? undefined : [{}],
+    });
     await renderPage();
 
-    expect(screen.getByRole("tab", { name: "Integrations" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Channels and triggers" })).toBeInTheDocument();
   });
 
   it("makes the system prompt the page and lists secondary settings with their values", async () => {
@@ -388,7 +498,9 @@ describe("AgentPage layout", () => {
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Sandbox\s*None/ })).toBeInTheDocument();
     expect(
-      more.getByRole("button", { name: /Max output tokens\s*Provider default/ }),
+      more.getByRole("button", {
+        name: /Max output tokens\s*Provider default/,
+      }),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Max output tokens")).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
@@ -425,7 +537,12 @@ describe("AgentPage layout", () => {
         ...mockAgent,
         capabilities: [],
         initial_files: [
-          { path: "/notes.txt", content: "hello", encoding: "text", is_readonly: false },
+          {
+            path: "/notes.txt",
+            content: "hello",
+            encoding: "text",
+            is_readonly: false,
+          },
         ],
       },
       isLoading: false,
@@ -514,7 +631,10 @@ describe("AgentPage layout", () => {
   });
 
   it("shows all seven counted sessions, including the six archived ones", async () => {
-    mockUseAgent.mockReturnValue({ data: { ...mockAgent, session_count: 7 }, isLoading: false });
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, session_count: 7 },
+      isLoading: false,
+    });
     mockUseSessions.mockReturnValue({
       data: {
         data: Array.from({ length: 7 }, (_, index) => ({
@@ -555,10 +675,12 @@ describe("AgentPage layout", () => {
   it("writes the selected tab into the URL so a refresh keeps it", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Integrations 0" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Channels and triggers 0" }));
 
     expect(screen.getByText("agent integrations")).toBeInTheDocument();
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", {
+      scroll: false,
+    });
   });
 
   it("restores the tab from the URL on load", async () => {
@@ -575,7 +697,9 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
 
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?mode=edit", { scroll: false });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?mode=edit", {
+      scroll: false,
+    });
   });
 
   it("keeps the open tab when leaving edit mode", async () => {
@@ -584,11 +708,16 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Discard/ }));
 
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", {
+      scroll: false,
+    });
   });
 
   it("keeps an archived agent read-only", async () => {
-    mockUseAgent.mockReturnValue({ data: { ...mockAgent, status: "archived" }, isLoading: false });
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, status: "archived" },
+      isLoading: false,
+    });
     await renderPage();
 
     expect(screen.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
@@ -607,7 +736,10 @@ describe("AgentPage layout", () => {
   });
 
   it("keeps a built-in agent read-only and offers Copy but not Archive", async () => {
-    mockUseAgent.mockReturnValue({ data: { ...mockAgent, is_built_in: true }, isLoading: false });
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, is_built_in: true },
+      isLoading: false,
+    });
     mockSearchParams = new URLSearchParams("mode=edit");
     await renderPage();
 
@@ -683,12 +815,20 @@ describe("AgentPage edit mode", () => {
       screen.queryByText("Lower this if the provider says it can only afford fewer tokens."),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Max output tokens\s*Provider default/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Max output tokens" });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Max output tokens\s*Provider default/,
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Max output tokens",
+    });
     expect(
       within(dialog).getByText("Lower this if the provider says it can only afford fewer tokens."),
     ).toBeInTheDocument();
-    const field = within(dialog).getByRole("spinbutton", { name: "Max output tokens" });
+    const field = within(dialog).getByRole("spinbutton", {
+      name: "Max output tokens",
+    });
     expect(field).toHaveAttribute("placeholder", "Provider default");
     fireEvent.change(field, { target: { value: "4096" } });
     expect(screen.getByText("Editing")).toBeInTheDocument();
@@ -713,8 +853,12 @@ describe("AgentPage edit mode", () => {
         name: new RegExp(`Max output tokens\\s*${escapeRegExp((2048).toLocaleString())}`),
       }),
     );
-    const reopened = await screen.findByRole("dialog", { name: "Max output tokens" });
-    const saved = within(reopened).getByRole("spinbutton", { name: "Max output tokens" });
+    const reopened = await screen.findByRole("dialog", {
+      name: "Max output tokens",
+    });
+    const saved = within(reopened).getByRole("spinbutton", {
+      name: "Max output tokens",
+    });
     expect(saved).toHaveValue(2048);
     fireEvent.change(saved, { target: { value: "" } });
     fireEvent.click(within(reopened).getByRole("button", { name: "Done" }));
@@ -725,7 +869,9 @@ describe("AgentPage edit mode", () => {
   it("rejects a zero max output tokens ceiling instead of saving", async () => {
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: /Max output tokens/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Max output tokens" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Max output tokens",
+    });
     fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Max output tokens" }), {
       target: { value: "0" },
     });
@@ -733,7 +879,9 @@ describe("AgentPage edit mode", () => {
     await save();
 
     expect(mockUpdate).not.toHaveBeenCalled();
-    const invalid = await screen.findByRole("dialog", { name: "Max output tokens" });
+    const invalid = await screen.findByRole("dialog", {
+      name: "Max output tokens",
+    });
     expect(within(invalid).getByRole("spinbutton", { name: "Max output tokens" })).toHaveAttribute(
       "aria-invalid",
       "true",
@@ -851,7 +999,9 @@ describe("AgentPage edit mode", () => {
 
     expect(screen.getByRole("button", { name: /Network access\s*1 allowed/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Network access/ }));
-    fireEvent.change(await screen.findByLabelText("Allowed hosts"), { target: { value: "" } });
+    fireEvent.change(await screen.findByLabelText("Allowed hosts"), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();
 
@@ -863,12 +1013,46 @@ describe("AgentPage edit mode", () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: /Branding/ }));
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Bad Name" } });
+    fireEvent.change(await screen.findByLabelText("Name"), {
+      target: { value: "Bad Name" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(await screen.findByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
+  });
+});
+
+describe("AgentPage pause and GitHub", () => {
+  it("links the GitHub row to the agent's GitHub page", async () => {
+    await renderPage();
+
+    const more = within(screen.getByRole("navigation", { name: "More settings" }));
+    const row = more.getByText("GitHub").closest("[data-href]");
+    expect(row).toHaveAttribute("data-href", "/agents/agent-1/github");
+    expect(row).toHaveTextContent("reviewer[bot]");
+  });
+
+  it("pauses from the header menu after confirming", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pause agent" }));
+    await waitFor(() => expect(mockPause).toHaveBeenCalledWith("agent-1"));
+  });
+
+  it("shows a paused agent with a Paused badge, a notice, and Resume", async () => {
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, exposures_suspended: true },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByText("This agent is paused")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(mockResume).toHaveBeenCalledWith("agent-1");
   });
 });
 
@@ -880,6 +1064,7 @@ describe("AgentPage entity actions", () => {
     const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(items).toEqual([
       "Sync with GitHub",
+      "Pause agent",
       "Copy",
       "Export package (ZIP)",
       "Export Markdown",
@@ -888,7 +1073,9 @@ describe("AgentPage entity actions", () => {
       "Archive agent",
     ]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Manager notes" }));
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=notes", { scroll: false });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=notes", {
+      scroll: false,
+    });
   });
 
   it("opens the History sheet from ?sheet=history", async () => {
@@ -902,7 +1089,9 @@ describe("AgentPage entity actions", () => {
     mockSearchParams = new URLSearchParams("tab=versions");
     await renderPage();
 
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=history", { scroll: false });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=history", {
+      scroll: false,
+    });
     expect(screen.queryByText("agent versions")).not.toBeInTheDocument();
   });
 
@@ -930,12 +1119,20 @@ describe("AgentPage entity actions", () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Archive agent" }));
     });
-    expect(mockArchive).toHaveBeenCalledWith({ id: "agent-1", reason: "replaced by v2" });
+    expect(mockArchive).toHaveBeenCalledWith({
+      id: "agent-1",
+      reason: "replaced by v2",
+    });
   });
 
   it.each(["archive", "delete"] as const)("explains Slack removal before %s", async (action) => {
     mockUseAgentChannels.mockReturnValue({
-      data: [{ channel_type: "slack", channel_config: { slack_app_provisioned: true } }],
+      data: [
+        {
+          channel_type: "slack",
+          channel_config: { slack_app_provisioned: true },
+        },
+      ],
     });
     if (action === "delete") {
       mockUseAgent.mockReturnValue({
@@ -959,7 +1156,12 @@ describe("AgentPage entity actions", () => {
 
   it("explains manual Slack removal when archiving a manually configured connection", async () => {
     mockUseAgentChannels.mockReturnValue({
-      data: [{ channel_type: "slack", channel_config: { bot_token_configured: true } }],
+      data: [
+        {
+          channel_type: "slack",
+          channel_config: { bot_token_configured: true },
+        },
+      ],
     });
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
@@ -982,7 +1184,12 @@ describe("AgentPage entity actions", () => {
   it("requires integration deletion permission before archiving managed Slack apps", async () => {
     mockCan.mockImplementation((policy: string) => policy !== "agent.dangerous");
     mockUseAgentChannels.mockReturnValue({
-      data: [{ channel_type: "slack", channel_config: { slack_app_provisioned: true } }],
+      data: [
+        {
+          channel_type: "slack",
+          channel_config: { slack_app_provisioned: true },
+        },
+      ],
     });
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
@@ -1016,7 +1223,9 @@ describe("AgentPage entity actions", () => {
     const snapshot = adapter!.read(adapter!.describe().binding);
     expect(snapshot.writable).toBe(false);
     expect(() =>
-      adapter!.patch(snapshot.binding, snapshot.revision, { system_prompt: "Chat edit" }),
+      adapter!.patch(snapshot.binding, snapshot.revision, {
+        system_prompt: "Chat edit",
+      }),
     ).toThrow(/read-only/);
     expect(screen.getByText("Agent source")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
@@ -1045,7 +1254,9 @@ describe("AgentPage entity actions", () => {
     const snapshot = adapter!.read(adapter!.describe().binding);
     expect(snapshot.writable).toBe(true);
     act(() => {
-      adapter!.patch(snapshot.binding, snapshot.revision, { system_prompt: "Chat edit" });
+      adapter!.patch(snapshot.binding, snapshot.revision, {
+        system_prompt: "Chat edit",
+      });
     });
     expect(adapter!.read(snapshot.binding).values.system_prompt).toBe("Chat edit");
 
@@ -1091,7 +1302,9 @@ describe("AgentPage entity actions", () => {
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: "agent-1",
-        request: expect.objectContaining({ system_prompt: "My manual draft, improved by Chat" }),
+        request: expect.objectContaining({
+          system_prompt: "My manual draft, improved by Chat",
+        }),
       }),
     );
     expect(

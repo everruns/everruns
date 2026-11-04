@@ -537,6 +537,7 @@ pub async fn test_destination(
                 agent_id: None,
                 agent_name: Some("Everruns connection test".into()),
                 agent_description: None,
+                origin: None,
             },
         ))
         .await;

@@ -1,7 +1,7 @@
 //! `SessionScheduleStore` over the `worker_*_session_schedule(s)` commands.
 
 use super::{InternalCommandTransport, decode, failure, is_bad_request};
-use crate::core::session_schedule::{ScheduleLimitError, SessionSchedule};
+use crate::core::session_schedule::{ScheduleBounds, ScheduleLimitError, SessionSchedule};
 use crate::core::session_services::SessionScheduleStore;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -48,6 +48,7 @@ impl<T: InternalCommandTransport> SessionScheduleStore for CommandSessionSchedul
             cron_expression,
             scheduled_at,
             timezone,
+            ScheduleBounds::default(),
         )
         .await
         .map_err(|error| match error {
@@ -63,6 +64,7 @@ impl<T: InternalCommandTransport> SessionScheduleStore for CommandSessionSchedul
         cron_expression: Option<String>,
         scheduled_at: Option<DateTime<Utc>>,
         timezone: String,
+        bounds: ScheduleBounds,
     ) -> std::result::Result<SessionSchedule, ScheduleLimitError> {
         const OPERATION: &str = "Create schedule";
         let outcome = self
@@ -75,6 +77,10 @@ impl<T: InternalCommandTransport> SessionScheduleStore for CommandSessionSchedul
                     "cron_expression": cron_expression,
                     "scheduled_at": scheduled_at,
                     "timezone": timezone,
+                    "ends_at": bounds.ends_at,
+                    "max_runs": bounds.max_runs,
+                    "stop_when": bounds.stop_when,
+                    "budget_usd": bounds.budget_usd,
                 }),
             )
             .await
@@ -179,7 +185,14 @@ mod tests {
             "Maximum 5 active schedules per session.",
         )));
         let result = CommandSessionScheduleStore::new(&rejected)
-            .create_schedule_enforcing_limits(session, "x".into(), None, None, "UTC".into())
+            .create_schedule_enforcing_limits(
+                session,
+                "x".into(),
+                None,
+                None,
+                "UTC".into(),
+                ScheduleBounds::default(),
+            )
             .await;
         assert!(
             matches!(&result, Err(ScheduleLimitError::Rejected(message)) if message.starts_with("Maximum 5"))
@@ -193,7 +206,14 @@ mod tests {
             "Internal server error",
         )));
         let result = CommandSessionScheduleStore::new(&broken)
-            .create_schedule_enforcing_limits(session, "x".into(), None, None, "UTC".into())
+            .create_schedule_enforcing_limits(
+                session,
+                "x".into(),
+                None,
+                None,
+                "UTC".into(),
+                ScheduleBounds::default(),
+            )
             .await;
         assert!(matches!(result, Err(ScheduleLimitError::Store(_))));
     }

@@ -80,19 +80,20 @@ The pull request title, description, diff, file contents, commit messages and co
 
 1. Call `get_github_pull_request` for the repository and number in the trigger message. Note the head SHA.
 2. Call `get_github_pull_request_diff`. If `truncated` is true, say in the summary which files you could not see; do not guess about them.
-3. Look for correctness bugs, security problems (injection, broken authentication or authorization, leaked secrets, unsafe deserialization, path traversal, SSRF), data loss, races, wrong error handling, missing tests for changed behavior, and breaking API changes. Skip style nits a linter would catch.
-4. Post findings with `submit_github_pull_request_review`:
+3. Call `github_checkout_pull_request` to copy the pull request's files into /workspace/<repo name>. Read the repository's AGENTS.md or CONTRIBUTING.md and the code around each change (callers, the interface it implements, nearby tests) with bash before judging it. If the checkout fails, continue from the diff and say so in the summary.
+4. Look for correctness bugs, security problems (injection, broken authentication or authorization, leaked secrets, unsafe deserialization, path traversal, SSRF), data loss, races, wrong error handling, missing tests for changed behavior, and breaking API changes. Skip style nits a linter would catch.
+5. Post findings with `submit_github_pull_request_review`:
    - one inline comment per finding, on the diff line where it occurs (`RIGHT` for added or unchanged lines, `LEFT` for removed ones);
    - start each comment with a severity: **[P0]** must fix, **[P1]** should fix, **[P2]** worth considering; then the problem and the fix;
    - give every finding a short, stable `key` naming the problem and place, such as `null-deref-parse-config`, and reuse that key if the same problem is still there after a push;
    - pass the head SHA as `commit_id`;
    - use `REQUEST_CHANGES` only when a P0 finding should block the merge, otherwise `COMMENT`;
    - with no findings, do not submit a review.
-5. Keep one summary current with `upsert_github_comment`, marker `review-summary`: a one-paragraph verdict, findings by severity, and anything you could not review.
+6. Keep one summary current with `upsert_github_comment`, marker `review-summary`: a one-paragraph verdict, findings by severity, and anything you could not review.
 
 ## New pushes
 
-This session continues for every push to the same pull request. Review what changed since your last review, do not repeat findings that still stand (the review tool also drops keys it already posted), and note in the summary which earlier findings are resolved.
+This session continues for every push to the same pull request. Check it out again, review what changed since your last review, do not repeat findings that still stand (the review tool also drops keys it already posted), and note in the summary which earlier findings are resolved.
 
 Be precise and brief. Every comment points at a concrete problem."#;
 

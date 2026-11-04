@@ -1,5 +1,31 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "Додатково",
+  Spending: "Витрати",
+  "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.":
+    "Спільний пул охоплює всіх на цьому каналі. Добовий ліміт обмежує кожну особу до півночі UTC.",
+  "Caps what this channel can spend, separately from the agent's budget.":
+    "Обмежує витрати цього каналу окремо від бюджету агента.",
+  "Shared pool": "Спільний пул",
+  "Each person, per day (USD)": "Кожна особа, на день (USD)",
+  "No daily cap": "Без добового ліміту",
+  "A person who reaches this cannot start new work until the next UTC day.":
+    "Особа, яка досягла цієї суми, не може почати нову роботу до наступного дня UTC.",
+  "Who can use this chat": "Хто може користуватися цим чатом",
+  "Open access": "Відкритий доступ",
+  "Anyone can register and sign in.": "Будь-хто може зареєструватися і ввійти.",
+  "Single user + invites": "Один користувач і запрошення",
+  "Only one person, plus the people they invite.": "Лише одна особа і люди, яких вона запрошує.",
+  "Organization users": "Користувачі організації",
+  "Members of this organization can sign in.": "Увійти можуть учасники цієї організації.",
+  "This person": "Ця особа",
+  "They sign in with this email.": "Ця особа входить із цією адресою електронної пошти.",
+  Invites: "Запрошення",
+  "One email per line. Each person signs in with their own account.":
+    "Одна адреса на рядок. Кожна особа входить зі свого облікового запису.",
+  "Enter this person's email.": "Введіть адресу електронної пошти цієї особи.",
+  "Use email addresses, one per line, up to 50.":
+    "Укажіть адреси електронної пошти, по одній на рядок, не більше ніж 50.",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Вимагати від відвідувачів входити в обліковий запис Google. Коли ввімкнено, кожен запит має містити дійсний обліковий запис Google; відвідувачі, які ввійшли в систему, пропускають завдання Турнікет.",
   Required: "Обов’язково",
@@ -159,9 +185,6 @@ export const messages: Readonly<Record<string, string>> = {
     "Агент припиняє діяти як програма Everruns. Установка залишається пов’язаною з організацією. Тригери GitHub перестануть запускатися.",
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "Додаток GitHub агента існує, але ще не встановлено. Завершіть установку та виберіть сховища, які агент може використовувати.",
-  "The caller": "Абонент",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "Потім абонент бачить інструмент і його аргументи, які він повинен вирішити.",
   "The channel was saved.": "Канал збережено.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "Ідентифікатор клієнта вашої програми в консолі AgentID. Для нього повинні бути видані токени і тривати десять хвилин; AgentID — це вхід, а не довгостроковий ключ API.",
@@ -305,7 +328,6 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Коли провайдер не може відповісти",
   "When this agent wakes up on its own": "Коли цей агент прокидається сам",
   "Where it works": "Де це працює",
-  "Who allows held-back tool calls": "Хто дозволяє утримувані виклики інструментів",
   "Who should this server act as?": "Кого повинен виконувати цей сервер?",
   "with a JSON-RPC 2.0 envelope. Only the": "з конвертом JSON-RPC 2.0. Тільки",
   "With failed turns": "З невдалими ходами",

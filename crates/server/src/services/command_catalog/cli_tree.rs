@@ -30,7 +30,7 @@ pub fn contracts() -> &'static [ContractCommand] {
             .filter_map(|desc| {
                 let meta = (desc.meta)();
                 // Internal worker plumbing is nobody's command line.
-                if meta.is_internal() || meta.is_retired() {
+                if meta.is_internal() || meta.is_retired() || meta.is_interactive_secret_setup() {
                     return None;
                 }
                 // Every command is part of the command line. A declared route
@@ -126,7 +126,7 @@ mod tests {
                 // `discover` never shows internal worker commands.
                 .filter(|desc| {
                     let meta = (desc.meta)();
-                    !meta.is_internal() && !meta.is_retired()
+                    !meta.is_internal() && !meta.is_retired() && !meta.is_interactive_secret_setup()
                 })
                 .map(|desc| {
                     let meta = (desc.meta)();
@@ -431,8 +431,10 @@ mod tests {
             // A fixture is deliberately not part of anyone's command line, so
             // its absence is the design rather than an omission.
             .filter(|meta| !meta.path.starts_with("/test/"))
-            // Internal worker plumbing is kept off the command line on purpose.
-            .filter(|meta| !meta.is_internal() && !meta.is_retired())
+            // Worker plumbing and interactive credential entry have no shell surface.
+            .filter(|meta| {
+                !meta.is_internal() && !meta.is_retired() && !meta.is_interactive_secret_setup()
+            })
             .map(|meta| meta.name)
             .filter(|name| !contracts().iter().any(|c| c.wire_name == *name))
             .collect();
@@ -632,9 +634,9 @@ mod tests {
     fn node_help_lists_direct_children_only() {
         let listed = listed_commands(&tree().render_help("agents", None).unwrap());
         assert!(listed.contains(&"list".to_string()), "{listed:?}");
-        assert!(listed.contains(&"exposures".to_string()), "{listed:?}");
-        // A grandchild verb belongs to `agents exposures`, not to `agents`.
-        assert!(!listed.contains(&"suspend".to_string()), "{listed:?}");
+        assert!(listed.contains(&"triggers".to_string()), "{listed:?}");
+        // A grandchild verb belongs to `agents triggers`, not to `agents`.
+        assert!(!listed.contains(&"trigger".to_string()), "{listed:?}");
     }
 
     #[test]

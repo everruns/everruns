@@ -2,7 +2,7 @@
 // Routes nested under /v1/sessions/{session_id}/schedules
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::session_schedules::SessionScheduleService;
+use crate::domains::session_schedules::{ScheduleChange, SessionScheduleService};
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW, SessionService};
 use crate::storage::StorageBackend;
 use axum::{
@@ -53,8 +53,27 @@ impl_auth_state!(AppState);
 
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateScheduleRequest {
-    /// Enable or disable the schedule.
+    /// Enable or disable the schedule. Re-enabling clears `stop_reason`.
     pub enabled: Option<bool>,
+    /// New end time; null removes it. A person may set any future time.
+    #[serde(default, deserialize_with = "double_option")]
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub ends_at: Option<Option<chrono::DateTime<chrono::Utc>>>,
+    /// New run cap, counted from the schedule's first run; null removes it.
+    #[serde(default, deserialize_with = "double_option")]
+    #[schema(value_type = Option<u32>, minimum = 1)]
+    pub max_runs: Option<Option<u32>>,
+    /// New spend cap for the schedule's runs, in USD.
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+}
+
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(de).map(Some)
 }
 
 // ============================================
@@ -151,7 +170,11 @@ pub async fn update_schedule(
     Json(req): Json<UpdateScheduleRequest>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
     authorize(&state, &org, &SESSION_MANAGE)?;
-    let enabled = req.enabled.unwrap_or(true);
+    // An empty body keeps its old meaning: enable the schedule.
+    let enabled = match (&req.enabled, &req.ends_at, &req.max_runs, &req.budget_usd) {
+        (None, None, None, None) => Some(true),
+        _ => req.enabled,
+    };
     get_schedule_in_session(
         &state,
         org.org_id,
@@ -162,12 +185,31 @@ pub async fn update_schedule(
     .await?;
     require_platform_chat_owner(&state, &org, session_id).await?;
 
-    let schedule = state
+    let schedule = match state
         .schedule_service
-        .update_enabled(org.org_id, schedule_id, enabled)
+        .update(
+            org.org_id,
+            schedule_id,
+            ScheduleChange {
+                enabled,
+                ends_at: req.ends_at,
+                max_runs: req.max_runs,
+                budget_usd: req.budget_usd,
+            },
+        )
         .await
-        .log_internal_error_json("update schedule")?
-        .ok_or_not_found_json("Schedule")?;
+    {
+        Ok(schedule) => schedule,
+        Err(Ok(message)) => {
+            return Err(ErrorResponse::new(message).into_response(StatusCode::BAD_REQUEST));
+        }
+        Err(Err(error)) => {
+            return Err(Err::<Option<SessionSchedule>, _>(error)
+                .log_internal_error_json("update schedule")
+                .expect_err("an error stays an error"));
+        }
+    }
+    .ok_or_not_found_json("Schedule")?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(schedule)))

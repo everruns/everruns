@@ -34,7 +34,7 @@ export interface FeatureFlagsContextValue {
   isLoading: boolean;
 }
 
-const FeatureFlagsContext = createContext<FeatureFlagsContextValue | undefined>(undefined);
+export const FeatureFlagsContext = createContext<FeatureFlagsContextValue | undefined>(undefined);
 
 function FeatureFlagsLoader({ children }: { children: ReactNode }) {
   const { currentOrg } = useOrg();

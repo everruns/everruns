@@ -83,6 +83,7 @@ pub async fn build_embeddings_driver_for_model(
     provider_config.api_key = Some(resolved.credentials.api_key);
     provider_config.base_url = resolved.credentials.base_url;
     provider_config.request_options = resolved.request_options;
+    provider_config.api = resolved.api;
     let driver = driver_registry
         .create_embeddings_driver(&provider_config)
         .map_err(|e| anyhow!("failed to build embeddings driver: {e}"))?;

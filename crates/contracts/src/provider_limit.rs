@@ -15,6 +15,16 @@ use crate::user_facing_error::{UserFacingError, codes};
 /// `reason` field value for OpenRouter's temporary in-flight spending cap.
 pub const IN_FLIGHT_BUDGET_EXHAUSTED_REASON: &str = "in_flight_budget_exhausted";
 
+/// A provider account's balance, read from the provider without spending
+/// tokens ([`crate::driver_registry::ChatDriver::credit_status`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreditStatus {
+    /// The account can pay for requests again.
+    Available,
+    /// The account is still out of credits.
+    Exhausted,
+}
+
 /// Attach limit details to an already-classified provider error.
 pub(crate) fn apply_provider_limit_fields(
     error: UserFacingError,

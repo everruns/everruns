@@ -1,4 +1,9 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Open in Everruns": "在 Everruns 中打开",
+  Expand: "展开",
+  "This content could not be displayed.": "无法显示此内容。",
+  "The message could not be sent.": "无法发送消息。",
+
   "Search agents": "搜索智能体",
   "Search harnesses": "搜索运行框架",
   "Could not load agents. Try again.": "无法加载智能体。请重试。",
@@ -11,4 +16,8 @@ export const messages: Readonly<Record<string, string>> = {
   "The request could not be completed. Please try again.": "无法完成请求。请重试。",
   "Clear {value0}": "清除{value0}",
   "Filter by agent": "按智能体筛选",
+  "Changed again since your save": "保存后又被修改",
+  "Show values": "显示值",
+  "Hide values": "隐藏值",
+  Empty: "空",
 };

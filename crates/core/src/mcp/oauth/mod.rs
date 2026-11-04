@@ -36,7 +36,7 @@ pub mod protocol;
 pub use protocol::{
     AuthorizationServerMetadata, AuthorizeParams, ClientRegistration, DEFAULT_REFRESH_SKEW_SECONDS,
     OAuthClient, OAuthError, PkcePair, ProtectedResourceMetadata, RegisteredClient, TokenSet,
-    authorize_url, random_state, validate_callback_issuer,
+    authorize_url, random_state, validate_callback_issuer, validate_client_metadata_url,
 };
 
 use crate::mcp::auth::{McpAuthProvider, McpAuthRequest, McpCredential};
@@ -123,8 +123,8 @@ pub struct PreparedLogin {
 }
 
 impl PreparedLogin {
-    /// The client this login registered or was configured with. A host that
-    /// wants to reuse the registration across logins should persist it.
+    /// The configured, registered, or metadata-document client for this login.
+    /// Hosts persisting DCR registrations must scope them to [`Self::issuer`].
     pub fn client(&self) -> &RegisteredClient {
         &self.client
     }
@@ -136,6 +136,8 @@ impl PreparedLogin {
 /// authorization servers; absent that document, the server origin is the
 /// issuer. When `client` is `None` and the authorization server offers dynamic
 /// registration, a public client is registered on the spot.
+/// Hosts with a published client metadata document can instead use
+/// [`prepare_login_with_options`] to negotiate CIMD before falling back to DCR.
 pub async fn prepare_login(
     egress: &dyn EgressService,
     server_url: &str,
@@ -144,6 +146,51 @@ pub async fn prepare_login(
     client: Option<RegisteredClient>,
     scope: Option<&str>,
 ) -> Result<PreparedLogin> {
+    prepare_login_with_options(
+        egress,
+        server_url,
+        redirect_uri,
+        LoginOptions {
+            client_name,
+            client,
+            client_metadata_url: None,
+            scope,
+        },
+    )
+    .await
+}
+
+/// Host-owned client identity and requested scope for an MCP login.
+pub struct LoginOptions<'a> {
+    /// Human-readable name used when dynamic registration is needed.
+    pub client_name: &'a str,
+    /// Configured or previously registered client. Takes precedence over CIMD.
+    /// Hosts must only supply registrations belonging to the selected issuer.
+    pub client: Option<RegisteredClient>,
+    /// URL of the host's published public-client metadata document, if available.
+    /// Its redirect URIs must cover this login's callback. It is not fetched here.
+    pub client_metadata_url: Option<&'a str>,
+    /// Requested scopes, space-delimited.
+    pub scope: Option<&'a str>,
+}
+
+/// Begin login, negotiating client identification from the issuer's metadata.
+///
+/// Prefer a supplied client, then a host-owned CIMD URL when explicitly supported,
+/// then dynamic registration. DCR fallback is capability-based: an authorization
+/// or token error must not silently restart the flow under another identity.
+pub async fn prepare_login_with_options(
+    egress: &dyn EgressService,
+    server_url: &str,
+    redirect_uri: &str,
+    options: LoginOptions<'_>,
+) -> Result<PreparedLogin> {
+    let LoginOptions {
+        client_name,
+        client,
+        client_metadata_url,
+        scope,
+    } = options;
     let oauth = OAuthClient::new(egress, EgressRequestKind::Mcp);
 
     let protected = oauth
@@ -167,13 +214,21 @@ pub async fn prepare_login(
         .await
         .context("discovering MCP authorization-server metadata")?;
 
-    let client = match client {
-        Some(client) => client,
-        None => {
+    let client = match (client, client_metadata_url) {
+        (Some(client), _) => client,
+        (None, Some(client_id)) if metadata.client_id_metadata_document_supported => {
+            validate_client_metadata_url(client_id)?;
+            RegisteredClient {
+                client_id: client_id.to_string(),
+                client_secret: None,
+            }
+        }
+        (None, _) => {
             let endpoint = metadata.registration_endpoint.clone().ok_or_else(|| {
                 anyhow!(
                     "MCP server at {server_url} needs a client_id: its authorization server \
-                     offers no dynamic registration endpoint"
+                     offers no dynamic registration endpoint and no supported client metadata \
+                     URL is configured; configure a client or host a Client ID Metadata Document"
                 )
             })?;
             oauth
@@ -440,6 +495,240 @@ mod tests {
         "token_endpoint": "https://auth.example.com/token",
         "registration_endpoint": "https://auth.example.com/register"
     }"#;
+
+    const CLIENT_METADATA_URL: &str = "https://client.example.com/oauth/client.json?version=1";
+
+    fn negotiation_egress(support: Option<bool>, dcr: bool) -> Arc<FakeEgress> {
+        let mut metadata: serde_json::Value = serde_json::from_str(AS_METADATA).unwrap();
+        if let Some(support) = support {
+            metadata["client_id_metadata_document_supported"] = support.into();
+        }
+        if !dcr {
+            metadata
+                .as_object_mut()
+                .unwrap()
+                .remove("registration_endpoint");
+        }
+        FakeEgress::with(vec![
+            (
+                "https://mcp.example.com/.well-known/oauth-protected-resource",
+                200,
+                PROTECTED_RESOURCE,
+            ),
+            (
+                "https://auth.example.com/.well-known/oauth-authorization-server",
+                200,
+                &metadata.to_string(),
+            ),
+            (
+                "https://auth.example.com/register",
+                200,
+                r#"{"client_id":"dcr-client","client_secret":"dcr-secret"}"#,
+            ),
+            (
+                "https://auth.example.com/token",
+                200,
+                r#"{"access_token":"at","refresh_token":"rt","expires_in":3600}"#,
+            ),
+        ])
+    }
+
+    async fn negotiate(
+        egress: &FakeEgress,
+        client: Option<RegisteredClient>,
+        client_metadata_url: Option<&str>,
+    ) -> Result<PreparedLogin> {
+        prepare_login_with_options(
+            egress,
+            "https://mcp.example.com/",
+            "http://127.0.0.1:1455/callback",
+            LoginOptions {
+                client_name: "test client",
+                client,
+                client_metadata_url,
+                scope: Some("mcp:read"),
+            },
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn client_negotiation_prefers_existing_clients_then_cimd_then_dcr() {
+        for support in [None, Some(false), Some(true)] {
+            for metadata_url in [None, Some(CLIENT_METADATA_URL)] {
+                for existing in [false, true] {
+                    let egress = negotiation_egress(support, true);
+                    let client = existing.then(|| RegisteredClient {
+                        client_id: "saved-client".into(),
+                        client_secret: Some("saved-secret".into()),
+                    });
+                    let prepared = negotiate(&egress, client, metadata_url).await.unwrap();
+                    let use_cimd = !existing && support == Some(true) && metadata_url.is_some();
+                    assert_eq!(
+                        prepared.client().client_id,
+                        if existing {
+                            "saved-client"
+                        } else if use_cimd {
+                            CLIENT_METADATA_URL
+                        } else {
+                            "dcr-client"
+                        }
+                    );
+                    assert_eq!(
+                        prepared.client().client_secret.as_deref(),
+                        if existing {
+                            Some("saved-secret")
+                        } else if use_cimd {
+                            None
+                        } else {
+                            Some("dcr-secret")
+                        }
+                    );
+                    let sent = egress.sent.lock().unwrap();
+                    assert_eq!(
+                        sent.iter().filter(|r| r.method == "POST").count(),
+                        usize::from(!existing && !use_cimd)
+                    );
+                    assert!(
+                        !sent.iter().any(|r| r.url == CLIENT_METADATA_URL),
+                        "the client never fetches CIMD"
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn cimd_without_dcr_preserves_pkce_state_issuer_and_refresh_identity() {
+        let egress = negotiation_egress(Some(true), false);
+        let prepared = negotiate(&egress, None, Some(CLIENT_METADATA_URL))
+            .await
+            .unwrap();
+        let url = url::Url::parse(&prepared.authorization_url).unwrap();
+        let query: HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(query["client_id"], CLIENT_METADATA_URL);
+        assert_eq!(query["code_challenge_method"], "S256");
+        assert_eq!(query["code_challenge"], prepared.pkce.challenge);
+        assert_eq!(query["state"], prepared.state);
+        assert_eq!(query["resource"], prepared.resource);
+        assert_eq!(query["scope"], "mcp:read");
+        assert_eq!(prepared.issuer, "https://auth.example.com");
+        for (state, issuer) in [
+            ("wrong-state", "https://auth.example.com"),
+            (prepared.state.as_str(), "https://wrong.example.com"),
+        ] {
+            assert!(
+                complete_login(egress.as_ref(), &prepared, "code", state, Some(issuer))
+                    .await
+                    .is_err()
+            );
+        }
+        assert_eq!(
+            egress.sent.lock().unwrap().len(),
+            2,
+            "bad callbacks must not reach token endpoint"
+        );
+        let tokens = complete_login(
+            egress.as_ref(),
+            &prepared,
+            "code",
+            &prepared.state,
+            Some(&prepared.issuer),
+        )
+        .await
+        .unwrap();
+        assert_eq!(tokens.client_id.as_deref(), Some(CLIENT_METADATA_URL));
+        assert!(tokens.client_secret.is_none());
+        OAuthClient::new(egress.as_ref(), EgressRequestKind::Mcp)
+            .refresh(&tokens)
+            .await
+            .unwrap();
+        let sent = egress.sent.lock().unwrap();
+        let exchange: HashMap<String, String> =
+            serde_urlencoded::from_bytes(&sent[2].body).unwrap();
+        assert_eq!(exchange["client_id"], CLIENT_METADATA_URL);
+        assert_eq!(exchange["code_verifier"], prepared.pkce.verifier);
+        assert_eq!(exchange["resource"], prepared.resource);
+        assert!(!exchange.contains_key("client_secret"));
+        let refresh: HashMap<String, String> = serde_urlencoded::from_bytes(&sent[3].body).unwrap();
+        assert_eq!(refresh["client_id"], CLIENT_METADATA_URL);
+        assert!(!refresh.contains_key("client_secret"));
+    }
+
+    #[tokio::test]
+    async fn unavailable_registration_and_invalid_metadata_url_fail_before_registration() {
+        for support in [None, Some(false), Some(true)] {
+            for metadata_url in [None, Some(CLIENT_METADATA_URL)] {
+                let egress = negotiation_egress(support, false);
+                let result = negotiate(&egress, None, metadata_url).await;
+                if support == Some(true) && metadata_url.is_some() {
+                    assert!(result.is_ok());
+                } else {
+                    assert!(
+                        result
+                            .err()
+                            .unwrap()
+                            .to_string()
+                            .contains("configure a client")
+                    );
+                }
+                assert_eq!(egress.sent.lock().unwrap().len(), 2);
+            }
+        }
+        let egress = negotiation_egress(Some(true), true);
+        assert!(
+            negotiate(&egress, None, Some("http://localhost/client.json"))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            egress.sent.lock().unwrap().len(),
+            2,
+            "invalid CIMD must not downgrade to DCR"
+        );
+        let existing = RegisteredClient {
+            client_id: "configured".into(),
+            client_secret: None,
+        };
+        assert_eq!(
+            negotiate(&egress, Some(existing), Some("invalid"))
+                .await
+                .unwrap()
+                .client()
+                .client_id,
+            "configured"
+        );
+    }
+
+    #[tokio::test]
+    async fn cimd_token_failure_does_not_retry_with_dcr() {
+        let mut egress = negotiation_egress(Some(true), true);
+        let token_route = Arc::get_mut(&mut egress)
+            .unwrap()
+            .routes
+            .iter_mut()
+            .find(|(url, _, _)| url.ends_with("/token"))
+            .unwrap();
+        token_route.1 = 400;
+        token_route.2 = r#"{"error":"invalid_client"}"#.into();
+        let prepared = negotiate(&egress, None, Some(CLIENT_METADATA_URL))
+            .await
+            .unwrap();
+        assert!(
+            complete_login(
+                egress.as_ref(),
+                &prepared,
+                "code",
+                &prepared.state,
+                Some(&prepared.issuer)
+            )
+            .await
+            .is_err()
+        );
+        let sent = egress.sent.lock().unwrap();
+        assert_eq!(sent.len(), 3);
+        assert!(!sent.iter().any(|r| r.url.ends_with("/register")));
+    }
 
     #[tokio::test]
     async fn login_discovers_registers_and_binds_the_token_to_the_resource() {

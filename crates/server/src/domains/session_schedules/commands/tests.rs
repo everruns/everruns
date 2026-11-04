@@ -83,12 +83,36 @@ async fn the_worker_store_round_trips_through_dispatch() {
             "description": "check the build",
             "cron_expression": "0 0 * * * *",
             "timezone": "UTC",
+            "max_runs": 3,
+            "stop_when": "the build is green",
         }),
     )
     .await
     .expect("create");
     assert_eq!(created["description"], "check the build");
     assert_eq!(created["enabled"], true);
+    // Bounded by what the agent asked for, and given the default budget.
+    assert_eq!(created["max_runs"], 3);
+    assert_eq!(created["stop_when"], "the build is green");
+    assert!(created["ends_at"].is_string(), "{created}");
+    assert_eq!(created["budget"]["limit_usd"], 2.0);
+
+    let unbounded = run(
+        &ctx,
+        "worker_create_session_schedule",
+        json!({
+            "session_id": session_id.to_string(),
+            "description": "poll forever",
+            "cron_expression": "0 0 * * * *",
+            "timezone": "UTC",
+        }),
+    )
+    .await
+    .expect_err("a recurring schedule needs an end");
+    assert!(
+        matches!(&unbounded.kind, CommandErrorKind::Unprocessable(message) if message.contains("96 runs")),
+        "{unbounded:?}"
+    );
 
     let listed = run(&ctx, "worker_list_session_schedules", session.clone())
         .await
@@ -139,6 +163,8 @@ async fn the_worker_store_accepts_a_five_field_cron_in_a_timezone() {
             "description": "Morning briefing",
             "cron_expression": "0 7 * * *",
             "timezone": "America/Chicago",
+            "max_runs": 3,
+            "stop_when": "the build is green",
         }),
     )
     .await
@@ -163,6 +189,8 @@ async fn a_limit_rejection_is_unprocessable() {
             "description": "every minute",
             "cron_expression": "* * * * *",
             "timezone": "UTC",
+            "max_runs": 3,
+            "stop_when": "the build is green",
         }),
     )
     .await
@@ -199,6 +227,8 @@ async fn an_invalid_cron_or_timezone_is_unprocessable() {
                 "description": "check the build",
                 "cron_expression": cron,
                 "timezone": timezone,
+                "max_runs": 3,
+                "stop_when": "the build is green",
             }),
         )
         .await
@@ -228,6 +258,8 @@ async fn a_unix_weekday_cron_cannot_dodge_the_minimum_interval() {
             "description": "every minute on Sundays",
             "cron_expression": "* * * * 0",
             "timezone": "UTC",
+            "max_runs": 3,
+            "stop_when": "the build is green",
         }),
     )
     .await
@@ -258,6 +290,8 @@ async fn another_orgs_session_is_not_found() {
             "description": "x",
             "cron_expression": "0 7 * * *",
             "timezone": "UTC",
+            "max_runs": 3,
+            "stop_when": "the build is green",
         });
         let error = run(&ctx, name, params).await.expect_err(name);
         assert!(

@@ -30,16 +30,15 @@ pub enum PromptCacheStrategy {
 
 /// How long the provider should keep a cached prefix after its last use.
 ///
-/// Each driver snaps the request to the nearest retention its provider
-/// supports (Anthropic: 5 minutes or 1 hour; OpenAI cache options: 30 minutes
-/// only) and ignores it where retention is not configurable. Longer retention
-/// costs more per cache write (Anthropic bills a 1 hour write at 2x input
-/// instead of 1.25x), so it pays off only when turns are often more than five
-/// minutes apart.
+/// Each driver snaps down to a supported tier, or up to its shortest tier,
+/// and ignores this where retention is not configurable. Anthropic offers
+/// 5 minutes or 1 hour; qualified OpenAI Responses endpoints offer 30 minutes
+/// or 12 hours. Longer retention costs more per write and needs repeated reuse.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum PromptCacheRetention {
-    /// The provider's default retention.
+    /// Everruns' default: 12 hours for qualified OpenAI Responses calls;
+    /// otherwise the provider's existing default.
     #[default]
     #[serde(rename = "default")]
     Default,
@@ -49,6 +48,8 @@ pub enum PromptCacheRetention {
     ThirtyMinutes,
     #[serde(rename = "1h")]
     OneHour,
+    #[serde(rename = "12h")]
+    TwelveHours,
 }
 
 impl PromptCacheRetention {
@@ -56,11 +57,20 @@ impl PromptCacheRetention {
         *self == Self::Default
     }
 
-    /// Anthropic `cache_control.ttl`. Anthropic offers 5 minutes (the default,
-    /// sent as no `ttl`) and 1 hour; 30 minutes snaps down to 5 minutes, the
-    /// nearer tier, so only `1h` changes the request.
+    /// Retention for qualified OpenAI Responses models and endpoints only.
+    pub fn openai_responses_ttl(self) -> &'static str {
+        if matches!(self, Self::Default | Self::TwelveHours) {
+            "12h"
+        } else {
+            "30m"
+        }
+    }
+
+    /// Anthropic offers 5 minutes (omitted TTL) and 1 hour. Requested values
+    /// snap down to a supported tier, so 30 minutes uses 5 minutes and 12 hours
+    /// uses 1 hour.
     pub fn anthropic_ttl(self) -> Option<&'static str> {
-        (self == Self::OneHour).then_some("1h")
+        matches!(self, Self::OneHour | Self::TwelveHours).then_some("1h")
     }
 }
 

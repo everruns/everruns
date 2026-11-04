@@ -99,6 +99,35 @@ mod tests {
         );
     }
 
+    /// A tool result keeps the time and id it was stored with, on both worker
+    /// paths. A load-time `now()` re-rendered the `<facts>` block after every
+    /// tool result on each request and cost the prompt cache.
+    #[test]
+    fn tool_results_keep_stored_time_and_id() {
+        let event: Event = serde_json::from_value(json!({
+            "id": "event_01a175cc692270d89a533ec978ac4908",
+            "type": "tool.completed",
+            "ts": "2026-10-26T01:21:32.956025Z",
+            "session_id": "session_01a175cc34c3743fb9e70396ffe6b7a6",
+            "context": {},
+            "data": {
+                "tool_call_id": "call_1", "tool_name": "test",
+                "success": true, "status": "success",
+                "result": [{"type": "text", "text": "result"}]
+            },
+            "sequence": 12
+        }))
+        .unwrap();
+
+        for message in [
+            event_to_message(event.clone()).unwrap(),
+            crate::worker_link::grpc_service::event_to_message(&event).unwrap(),
+        ] {
+            assert_eq!(message.created_at, event.ts);
+            assert_eq!(message.id.uuid(), event.id.uuid());
+        }
+    }
+
     /// A screenshot a tool returned reaches the worker as an image part, not as
     /// base64 inside the result text.
     #[test]

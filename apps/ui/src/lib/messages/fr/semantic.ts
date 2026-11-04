@@ -163,20 +163,20 @@ export const messages: Readonly<Record<string, string>> = {
     "Le service vocal n'a pas pu démarrer un appel en temps réel. Vérifiez la configuration du fournisseur, puis réessayez.",
   "Voice service is unavailable.": "Le service vocal n'est pas disponible.",
   "Error: {value}": "Erreur : {value}",
-  "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.":
-    "Budget épuisé. Les dépenses {spent} {currency} ont atteint la limite {limit} {currency}. Augmentez le budget pour continuer.",
-  "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.":
-    "Budget épuisé. Les dépenses {spent} {currency} ont dépassé la limite {limit} {currency}. Augmentez le budget pour continuer.",
-  "Budget exhausted. Increase the budget to continue.":
-    "Budget épuisé. Augmentez le budget pour continuer.",
-  "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "Budget suspendu. Les dépenses {spent} {currency} ont atteint la limite logicielle {soft_limit} {currency}. Augmentez ou reprenez le budget pour continuer.",
-  "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "Budget suspendu. Les dépenses {spent} {currency} ont dépassé la limite logicielle {soft_limit} {currency}. Augmentez ou reprenez le budget pour continuer.",
-  "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.":
-    "Budget suspendu avec {spent} {currency} dépensé. Augmentez ou reprenez le budget pour continuer.",
-  "Budget paused. Increase or resume the budget to continue.":
-    "Budget suspendu. Augmentez ou reprenez le budget pour continuer.",
+  "Usage limit reached. {spent} {currency} spent reached the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "Limite d'utilisation atteinte. Les {spent} {currency} dépensés ont atteint la limite de {limit} {currency}. Une politique d'utilisation a arrêté ce travail ; augmentez sa limite pour continuer.",
+  "Usage limit reached. {spent} {currency} spent exceeded the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "Limite d'utilisation atteinte. Les {spent} {currency} dépensés ont dépassé la limite de {limit} {currency}. Une politique d'utilisation a arrêté ce travail ; augmentez sa limite pour continuer.",
+  "Usage limit reached. A usage policy stopped this work; raise its limit to continue.":
+    "Limite d'utilisation atteinte. Une politique d'utilisation a arrêté ce travail ; augmentez sa limite pour continuer.",
+  "Usage policy asks before continuing. {spent} {currency} spent reached the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer. Les {spent} {currency} dépensés ont atteint le seuil de confirmation de {soft_limit} {currency}. Continuez ce tour ou augmentez la limite.",
+  "Usage policy asks before continuing. {spent} {currency} spent exceeded the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer. Les {spent} {currency} dépensés ont dépassé le seuil de confirmation de {soft_limit} {currency}. Continuez ce tour ou augmentez la limite.",
+  "Usage policy asks before continuing, with {spent} {currency} spent. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer, avec {spent} {currency} dépensés. Continuez ce tour ou augmentez la limite.",
+  "Usage policy asks before continuing. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer. Continuez ce tour ou augmentez la limite.",
   "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.":
     "Le modèle `{value}` n'est pas disponible. Il a peut-être été supprimé, renommé ou votre clé API n'y a peut-être pas accès. Veuillez sélectionner un autre modèle.",
   "The selected model is not available. Please select a different model.":
@@ -203,6 +203,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Le compte du fournisseur d'IA n'a plus de crédits ou de quota. Ajoutez des crédits ou augmentez les limites du compte du fournisseur pour continuer.",
   "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.":
     "Le compte du fournisseur d'IA n'a plus de crédits pour cette demande : il a demandé jusqu'à {requested_max_tokens} de jetons de sortie, mais le solde couvre {affordable_tokens}. Ajoutez des crédits ou réduisez le nombre maximum de jetons de sortie pour continuer.",
+  "The work continues automatically once credits are back (checked every minute for up to an hour).":
+    "Le travail reprendra automatiquement dès que des crédits seront disponibles (vérification chaque minute pendant une heure au maximum).",
   "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.":
     "Le ​​compte du fournisseur d'IA n'a pas complété la confirmation requise par ce modèle. Complétez-le à {confirm_url}, puis réessayez.",
   "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.":
@@ -235,6 +237,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Expand write output": "Développer la sortie d'écriture",
   "{count} edit": "{count} modifier",
   "{count} edits": "Modifications {count}",
+  "Saved {count} change": "{count} modification enregistrée",
+  "Saved {count} changes": "{count} modifications enregistrées",
+  "Undid {count} change": "{count} modification annulée",
+  "Undid {count} changes": "{count} modifications annulées",
   "line {value}": "ligne {value}",
   "No tasks": "Aucune tâche",
   "{completed} of {total} todos completed": "{completed} des tâches {total} terminées",
@@ -318,4 +324,8 @@ export const messages: Readonly<Record<string, string>> = {
     "L'image {count} a été omise de l'exportation ATIF",
   "{count} images were omitted from the ATIF export":
     "Les images {count} ont été omises de l'exportation ATIF",
+  "Add reaction": "Ajouter une réaction",
+  "{names} reacted {emoji}": "{names} a réagi avec {emoji}",
+  "Remove your {emoji}": "Retirer votre {emoji}",
+  Reaction: "Réaction",
 };

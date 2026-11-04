@@ -92,9 +92,14 @@ runtime.
   client resumes with the server's cursors: `since_id` (an event id) or
   `after_sequence` (a durable sequence). Both address the engine's canonical
   log, which survives restarts with dense sequences.
-- **Apps name models; hosts own keys.** `provider/model` strings resolve
-  through a gateway. Without one, `dev` and evals fall back to per-agent
-  simulator scripts, so examples and evals run offline and deterministically.
+- **Apps name models; hosts own keys.** Model routing uses the standard provider
+  environment settings; OpenAI endpoint overrides apply only to OpenAI-routed
+  models and preserve the provider-visible model ID after removing its routing
+  prefix. Explicit endpoints do not capture other providers' credentials or
+  silently reroute their models. See the [routing implementation](../../crates/serve/src/gateway.rs)
+  and [configuration guide](../../crates/serve/docs/guide.md).
+  Without a real route, `dev` and evals can use per-agent simulator scripts;
+  `start` fails. Examples use real models, with scripted models confined to tests.
 - **Approvals and questions are the runtime's.** Coherent Engine profiles persist
   pending calls and resolve them with exact-turn, deduplicated authority commands.
   Batch validation precedes every write; omitted approval decisions deny and
@@ -120,10 +125,16 @@ runtime.
   leases and per-agent layout, which waits for a real need. The data
   directory's absolute path must match across machines, because a session's
   workspace binding records it. See `crates/serve/src/bucket.rs`.
-- **Subagents are tools.** `#[agent(sub)]` becomes `ask_<name>` on the other
-  agents and runs a child session on the same engine. The child's tool
-  activity is reported as `tool.progress` of the parent call, and its
-  approvals and questions wait on the parent session.
+- **Members, not subagent tools.** `AgentBuilder::member("name")` names
+  another `#[agent]` of the app; serve builds it and adds it to the lead with
+  the Framework's `AgentBuilder::member`, so the lead hands work over with the
+  shared `spawn_agent` tool, as on the Platform. The former `#[agent(sub)]`
+  and its `ask_<name>` tool are gone (pre-1.0): one hand-off surface for every
+  host, background hand-offs included, and the member stays a full agent of
+  the app. Members nest one level, as in the Framework. A member's approvals
+  and questions wait on its own session; surfacing them on the run's first
+  session, as the Platform does, is not done yet. See
+  `knowledge/runtime-resources/agents-using-agents.md`.
 
 - **AG-UI is built in, not a `#[channel]`.** A channel driver answers a
   webhook and delivers the reply later; AG-UI streams the reply in the
@@ -208,6 +219,16 @@ and [DO qualification](durable-object-native.md) for tested failure domains.
 
 ## See also
 
+- [Bashkit workspace example](../../examples/serve/bashkit-workspace/README.md):
+  a real-model HTTP walkthrough checks files across turns and a graceful
+  restart with the same build and data directory, plus session isolation.
+  Shell process state is not persistent; workspace files and session stores
+  must both be retained. Selecting Bashkit does not grant workspace writes;
+  the example explicitly scopes its write policy to its disposable demo subtree.
+  The walkthrough does not claim crash-during-write
+  or remote-host durability.
+  [Serve's host tests](../../crates/serve/src/execution_host_tests.rs) cover
+  the storage contract with real Bashkit and a scripted model confined to tests.
 - [Application API Boundaries](application-api.md)
 - [Framework Harnesses](harnesses.md)
 - `crates/serve/README.md`, `crates/serve/docs/`

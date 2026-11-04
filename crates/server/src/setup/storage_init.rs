@@ -52,6 +52,8 @@ pub(crate) async fn init_storage(
             .await
             .context("Failed to connect to embedded PostgreSQL")?;
         run_migrations(&backend, migrations).await?;
+        // Direct execution shares trusted server stores, not scoped ingress.
+        backend.require_legacy_worker_hosting().await?;
 
         let pool = backend.pool().clone();
         let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool));

@@ -6,7 +6,7 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::builtins::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::builtins::message_filter::{
-    ExcludedNoticeTransform, MessageFilterProvider, MessageQuery, anchored_window,
+    ExcludedNoticeTransform, MessageFilterProvider, MessageQuery,
 };
 use crate::builtins::tool_types::ToolHints;
 use crate::builtins::tools::{Tool, ToolExecutionResult};
@@ -20,11 +20,14 @@ use std::sync::Arc;
 
 #[path = "infinity_context/config.rs"]
 mod config;
+#[path = "infinity_context/window.rs"]
+mod window;
 use config::{
     CANDIDATE_AVG_TOKENS_PER_MESSAGE, CANDIDATE_MAX_MESSAGES, CANDIDATE_OVERFETCH_FACTOR,
     InfinityContextConfig, MAX_KEEP_FIRST_MESSAGES, default_context_budget_tokens,
     default_keep_first_messages, default_min_recent_messages,
 };
+use window::trim_messages_to_token_budget;
 
 /// Capability ID for infinity context.
 pub const INFINITY_CONTEXT_CAPABILITY_ID: &str = "infinity_context";
@@ -318,7 +321,7 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
             return;
         }
 
-        let outcome = trim_messages_to_token_budget(messages, &config);
+        let outcome = trim_messages_to_token_budget(messages, &config, existing_notice_count);
         let mut total_excluded_count = existing_notice_count.saturating_add(outcome.hidden_count);
         if total_excluded_count > 0 {
             // The reduction must not leave a visible call whose result was
@@ -461,55 +464,12 @@ fn parse_excluded_notice_count(message: &RuntimeMessage) -> Option<usize> {
     count.parse().ok()
 }
 
-/// Outcome of token-budget trimming.
-#[derive(Default)]
-struct TrimOutcome {
-    /// Messages dropped from the middle.
-    hidden_count: usize,
-    /// Length of the preserved leading anchor (where the notice is inserted).
-    head_len: usize,
-}
-
 /// Insert the hidden-history notice at `position`, clamped to the message list.
 fn insert_excluded_notice(messages: &mut Vec<RuntimeMessage>, position: usize, count: usize) {
     let text = ExcludedNoticeTransform::infinity_context()
         .format
         .replace("{}", &count.to_string());
     messages.insert(position.min(messages.len()), RuntimeMessage::system(text));
-}
-
-/// Trim the live window to the token budget while always keeping the first
-/// `keep_first_messages` (the original task/goal) and the recent tail. Drops a
-/// single contiguous block from the middle and reports how many were hidden.
-fn trim_messages_to_token_budget(
-    messages: &mut Vec<RuntimeMessage>,
-    config: &InfinityContextConfig,
-) -> TrimOutcome {
-    if messages.is_empty() {
-        return TrimOutcome::default();
-    }
-
-    let costs: Vec<usize> = messages.iter().map(estimate_message_tokens).collect();
-    let window = anchored_window(
-        &costs,
-        resolve_keep_first_messages(config),
-        config.min_recent_messages,
-        config.max_recent_messages,
-        config.context_budget_tokens,
-    );
-
-    let hidden_count = window.hidden();
-    if hidden_count > 0 {
-        // Rebuild as [0, head_len) ++ [recent_start, len) without cloning.
-        let tail = messages.split_off(window.recent_start);
-        messages.truncate(window.head_len);
-        messages.extend(tail);
-    }
-
-    TrimOutcome {
-        hidden_count,
-        head_len: window.head_len,
-    }
 }
 
 /// Tool for querying earlier conversation history.

@@ -1258,28 +1258,24 @@ mod tests {
         // exhausting retries, return the send_error-built terminal error.
         let config = fast_config(1);
 
-        // Obtain a real transient reqwest::Error (connection refused).
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        drop(listener);
-        let make_err = || async {
-            reqwest::Client::new()
-                .get(format!("http://{addr}/"))
-                .send()
-                .await
-                .expect_err("closed port")
-        };
-
-        let result = retry_request::<_, _, _, _, _, reqwest::Response, reqwest::Error>(
-            &config,
-            "TestDriver",
-            move || async move { Err(SendOutcome::Send(make_err().await)) },
-            |_resp, _attempt, _can_retry| async {
-                RetryDecision::Terminal(AgentLoopError::llm("unreachable"))
-            },
-            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
-        )
-        .await;
+        // Exercise retry exhaustion without racing another test for a released
+        // TCP port (which could become a live mock server before this request).
+        let result =
+            retry_request::<_, _, _, _, _, reqwest::Response, crate::http_transport::HttpError>(
+                &config,
+                "TestDriver",
+                || async {
+                    Err(SendOutcome::Send(crate::http_transport::HttpError::new(
+                        "synthetic connection failure",
+                        true,
+                    )))
+                },
+                |_resp, _attempt, _can_retry| async {
+                    RetryDecision::Terminal(AgentLoopError::llm("unreachable"))
+                },
+                |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+            )
+            .await;
         let err = result.expect_err("send errors should exhaust to terminal");
         // After 1 retry, message notes the retry count.
         assert!(err.to_string().contains("after 1 retries"), "got: {err}");

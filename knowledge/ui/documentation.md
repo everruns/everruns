@@ -77,18 +77,19 @@ rendered as horizontal tabs below the header on desktop:
 Why these four: the first question a reader has is which Everruns they are
 using. The three ways of running it appear in the same order and with the same
 names everywhere (README, llms.txt, chooser, badges): Framework, Self-hosted,
-Everruns Cloud. "Everruns Cloud" is the only name for app.everruns.com.
+Everruns Demo. The demo uses app.everruns.com; the existing `cloud` target ID
+and quickstart URL remain stable for links and metadata.
 
 Capabilities and integrations registered only at the development deployment
 grade sit in one "Experimental (dev grade)" group rather than beside the
-supported ones, because Everruns Cloud runs at production grade and never
+supported ones, because the hosted demo runs at production grade and never
 offers them.
 
 The layout replaces Starlight's fixed frame (`PageFrame.astro`): the
 everruns.com site header scrolls away, and a 48px docs bar (`Header.astro`:
 "Docs", the topic tabs, search, a light/dark/system switch) sticks to the top.
-Once the site header is out of view the bar collapses: the logo and an Open
-Cloud button slide in, so the bar alone still says which site this is. Below
+Once the site header is out of view the bar collapses: the logo and a Try
+Demo button slide in, so the bar alone still says which site this is. Below
 it, one 1200px column holds the sidebar, the article (720px) and the "On this
 page" column, which folds into a sticky dropdown below 1200px; the sidebar
 becomes a popover menu below 960px. The sidebar topic list shows only in that
@@ -98,6 +99,18 @@ menu, since the tabs carry it on wider screens. Slate tokens and Geist live in
 
 The Reference tab must remain active for all `/api/` pages, including nested
 OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
+
+### Embedded previews
+
+The component gallery lives under Reference, with a short overview and category
+subpages rather than a single long catalog. The chat guide and AG-UI support
+link to it, and each category links back to those guides and sibling categories.
+The original gallery URL redirects to the overview.
+
+The component gallery embeds a dedicated, non-indexed control surface. This is
+an interactive asset, not a standalone documentation page: its parent gallery
+owns search indexing and agent-readable source examples. Preview styles and
+runtime dependencies load only in the frames, preserving the rest of the docs.
 
 ### API reference
 
@@ -192,7 +205,10 @@ footer rather than a look of their own: a reader moving between `/` and
 chrome and publishes it under `/site-chrome/`; `apps/docs/scripts/sync-site-chrome.mjs`
 snapshots it into `apps/docs/src/site-chrome/`, committed so a docs build never
 depends on landing being up, and the daily `docs-deploy.yml` run fails when the
-snapshot drifts. Change the chrome in landing, then resync here.
+snapshot drifts. Change the chrome in landing, then resync here. The shared
+header and compact docs bar use Try Demo; the demo is not a Products entry.
+The docs add no global demo advertisement, and describe credit conditionally
+without offering purchases or top-ups.
 
 Search is one box for the whole domain: the docs Pagefind index merges the
 landing index at `everruns.com/pagefind/` (built by landing from its

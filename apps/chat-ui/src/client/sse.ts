@@ -1,3 +1,11 @@
+// A dropped socket is a TypeError whose message is the browser's ("network
+// error", "Failed to fetch"). The stream loop retries; that text is not a
+// reason to stop the conversation.
+export function streamFailure(error: unknown): unknown {
+  if (error instanceof TypeError) return new Error("Reconnecting to your conversation…");
+  return error;
+}
+
 // Buffer framing before CRLF normalization: either byte of a delimiter can
 // arrive in the next chunk. Completion events remain authoritative after replay.
 export async function consumeSse(

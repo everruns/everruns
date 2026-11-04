@@ -8,6 +8,7 @@
 
 pub mod assignment_scope;
 pub mod authority;
+pub mod journal_capability;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
 pub(crate) use worker::support::command_error_to_proto;
@@ -166,7 +167,6 @@ use everruns_internal_protocol::{
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 
 /// Read the gRPC auth token from the environment. When set, all gRPC
@@ -670,7 +670,7 @@ impl WorkerServiceImpl {
         )
         .await
         .map_err(|error| {
-            tracing::error!(%error, org_id, "Failed to resolve gRPC command feature flags");
+            everruns_core::report_repeated_failure!(error, %error, org_id, "Failed to resolve gRPC command feature flags");
             Status::internal("Failed to resolve organization feature flags")
         })?;
 
@@ -905,9 +905,17 @@ pub(crate) fn event_to_message(
     match &event.data {
         EventData::InputMessage(d) => Some(d.message.clone()),
         EventData::OutputMessageCompleted(d) => Some(d.message.clone()),
-        EventData::ToolCompleted(d) => Some(
-            crate::storage::runtime::message::tool_completed_to_message(d.clone()),
-        ),
+        // Same identity and timestamp as the in-process projection
+        // (`direct_worker_adapters::message_projection`). A load-time `now()`
+        // re-renders the `<facts>` block after every tool result on each
+        // request, which breaks the provider prompt cache.
+        EventData::ToolCompleted(d) => {
+            let mut message =
+                crate::storage::runtime::message::tool_completed_to_message(d.clone());
+            message.id = everruns_contracts::typed_id::MessageId::from_uuid(event.id.uuid());
+            message.created_at = event.ts;
+            Some(message)
+        }
         _ => None,
     }
 }

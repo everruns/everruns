@@ -135,6 +135,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .create_agent(
             org_id,
             CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "preview-agent".to_string(),

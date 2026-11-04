@@ -5,6 +5,7 @@ date: 2026-10-28
 kind: improvement
 significance: notable
 products: [platform, cloud]
+release: "0.50.1"
 surfaces: [ui, api]
 links:
   docs: [/features/channels/]
@@ -22,3 +23,8 @@ Share a conversation through a revocable read-only link. Public viewers see
 messages and widgets; workspace files and execution controls stay private.
 
 ![Work Chat with an interactive migration report](./work-chat@2x.png)
+
+## Update 2026-10-29
+
+Console chat and Work Chat now share the full 69-component A2UI 1.0 catalog,
+including bindings and surface updates. See [shared generative UI](/changelog/2026-10-29-shared-generative-ui/).

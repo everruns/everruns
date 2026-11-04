@@ -324,14 +324,14 @@ async fn long_decode_merges_hops_and_bills_each_hops_final_usage() {
     Mock::given(method("POST"))
         .and(body_partial_json(json!({"continuationToken":"opaque-one"})))
         .respond_with(sse(&[
-            json!({"candidates":[{"content":{"parts":[{"text":"answer"}]}}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":1,"thoughtsTokenCount":2,"cachedContentTokenCount":80}}),
-            json!({"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":3,"thoughtsTokenCount":5,"cachedContentTokenCount":90}}),
+            json!({"candidates":[{"content":{"parts":[{"text":"answer"}]}}],"usageMetadata":{"promptTokenCount":100,"toolUsePromptTokenCount":2,"candidatesTokenCount":1,"thoughtsTokenCount":2,"cachedContentTokenCount":80}}),
+            json!({"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"toolUsePromptTokenCount":7,"candidatesTokenCount":3,"thoughtsTokenCount":5,"cachedContentTokenCount":90}}),
         ]))
         .with_priority(1).expect(1).mount(&server).await;
     Mock::given(method("POST"))
         .respond_with(sse(&[
             json!({"candidates":[{"content":{"parts":[{"text":"thinking","thought":true}]}}],"usageMetadata":{"promptTokenCount":10,"thoughtsTokenCount":2}}),
-            json!({"candidates":[{"finishReason":"CONTINUATION","continuationToken":"opaque-one"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":0,"thoughtsTokenCount":7}}),
+            json!({"candidates":[{"finishReason":"CONTINUATION","continuationToken":"opaque-one"}],"usageMetadata":{"promptTokenCount":10,"toolUsePromptTokenCount":4,"candidatesTokenCount":0,"thoughtsTokenCount":7}}),
         ]))
         .with_priority(2).expect(1).mount(&server).await;
     let mut cfg = config("gemini-4-argon");
@@ -349,11 +349,11 @@ async fn long_decode_merges_hops_and_bills_each_hops_final_usage() {
         .await
         .unwrap();
     assert_eq!(response.text, "answer");
-    assert_eq!(response.metadata.prompt_tokens, Some(20));
+    assert_eq!(response.metadata.prompt_tokens, Some(31));
     assert_eq!(response.metadata.cache_read_tokens, Some(90));
     assert_eq!(response.metadata.completion_tokens, Some(15));
     assert_eq!(response.metadata.reasoning_tokens, Some(12));
-    assert_eq!(response.metadata.total_tokens, Some(125));
+    assert_eq!(response.metadata.total_tokens, Some(136));
     assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
     let requests = server.received_requests().await.unwrap();
     assert_eq!(requests.len(), 2);
@@ -976,4 +976,31 @@ async fn captured_request_body_is_the_body_on_the_wire() {
         let sent: serde_json::Value = replayed_request(&server).await.body_json().unwrap();
         assert_eq!(response.metadata.request_body, capture.then_some(sent));
     }
+}
+
+#[tokio::test]
+async fn tool_use_cumulative_frames_are_counted_once_with_cached_input() {
+    use serde_json::json;
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(&[
+            json!({"candidates":[{"content":{"parts":[{"text":"answer"}]}}],"usageMetadata":{"promptTokenCount":271,"cachedContentTokenCount":100,"toolUsePromptTokenCount":200}}),
+            json!({"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"toolUsePromptTokenCount":480,"candidatesTokenCount":130,"thoughtsTokenCount":158}}),
+            json!({"usageMetadata":{"toolUsePromptTokenCount":480}}),
+            json!({"usageMetadata":{"toolUsePromptTokenCount":null}}),
+        ]))
+        .mount(&server).await;
+    let response = provider(&server)
+        .chat_completion(
+            vec![Message::text(MessageRole::User, "hi")],
+            &config("gemini-2.5-flash"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.text, "answer");
+    assert_eq!(response.metadata.prompt_tokens, Some(651));
+    assert_eq!(response.metadata.cache_read_tokens, Some(100));
+    assert_eq!(response.metadata.completion_tokens, Some(288));
+    assert_eq!(response.metadata.reasoning_tokens, Some(158));
+    assert_eq!(response.metadata.total_tokens, Some(1039));
 }

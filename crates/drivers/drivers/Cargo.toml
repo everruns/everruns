@@ -35,7 +35,7 @@ all-features = true
 # No vendor is on by default: a consumer names the ones it serves, so nothing
 # ships a driver it never constructs.
 default = []
-anthropic = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
+anthropic = ["dep:sha2", "dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 bedrock = [
     "dep:tokio",
     "dep:futures",
@@ -105,7 +105,7 @@ aws-credential-types = { version = "1", optional = true }
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-contracts (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off.
-everruns-contracts = { path = "../../contracts", version = "0.49.0", default-features = false, features = ["http"] }
+everruns-contracts = { path = "../../contracts", version = "0.50.1", default-features = false, features = ["http"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true, optional = true }
@@ -199,3 +199,11 @@ required-features = ["openai", "anthropic", "gemini"]
 name = "native_transport"
 harness = false
 required-features = ["openai"]
+
+[[test]]
+name = "mistral_responses_wire"
+required-features = ["mistral"]
+
+[[test]]
+name = "anthropic_message_threads_wire"
+required-features = ["anthropic"]

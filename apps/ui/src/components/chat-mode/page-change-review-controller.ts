@@ -36,6 +36,8 @@ interface ResourceState {
   writes: number;
   reviewPending?: { from: number; revision: number };
   receipt?: SavedPageChange;
+  /** How many changes the last completed Undo all reverted, until shown. */
+  undone?: number;
 }
 export interface ReviewTransport {
   history: (resource: PageResource) => Promise<HistoryEntry[]>;
@@ -164,6 +166,16 @@ export class PageChangeReviewController {
   receipts() {
     return [...this.resources.values()].flatMap((state) => (state.receipt ? [state.receipt] : []));
   }
+  /** Completed Undo all confirmations, shown briefly after their receipt closes. */
+  undoneNotices() {
+    return [...this.resources.values()].flatMap((state) =>
+      state.undone ? [{ resource: state.resource, count: state.undone }] : [],
+    );
+  }
+  clearUndone(resource: PageResource) {
+    this.state(resource).undone = undefined;
+    this.emit();
+  }
   errors() {
     return [...this.resources.values()]
       .filter((state) => state.error)
@@ -277,6 +289,7 @@ export class PageChangeReviewController {
       (field) => !isSecretField(field.field),
     );
     if (!this.live(epoch)) return;
+    if (fields.length) state.undone = undefined;
     state.receipt = fields.length
       ? { resource: state.resource, from: baseline, revision, fields, stale: false, pending: false }
       : undefined;
@@ -409,6 +422,7 @@ export class PageChangeReviewController {
       .filter((item) => !field || item.field === field)
       .map((item) => item.field);
     if (!fields.length) return;
+    const total = receipt.fields.length;
     if (receipt.members) {
       if (!this.transport.undoSelection) return;
       receipt.pending = true;
@@ -426,7 +440,10 @@ export class PageChangeReviewController {
         if (!this.live(epoch)) return;
         receipt.members = receipt.members.filter((item) => !fields.includes(item.id));
         receipt.fields = receipt.fields.filter((item) => !fields.includes(item.field));
-        if (!receipt.fields.length) state.receipt = undefined;
+        if (!receipt.fields.length) {
+          state.receipt = undefined;
+          state.undone = total;
+        }
         await this.transport.refresh(resource);
       } catch (error) {
         if (this.live(epoch))
@@ -468,7 +485,10 @@ export class PageChangeReviewController {
         );
       state.revision = revision;
       receipt.stale = revision !== committed;
-      if (!receipt.fields.length) state.receipt = undefined;
+      if (!receipt.fields.length) {
+        state.receipt = undefined;
+        state.undone = total;
+      }
       await this.transport.refresh(resource);
     } catch (error) {
       if (this.live(epoch)) {

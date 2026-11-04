@@ -80,6 +80,7 @@ impl WorkerServiceImpl {
                             Some(credentials.api_key),
                             credentials.base_url,
                             Default::default(),
+                            None,
                         )
                     })
                 })
@@ -101,6 +102,7 @@ impl WorkerServiceImpl {
                             provider.api_key,
                             provider.base_url,
                             provider.request_options,
+                            provider.api,
                         )
                     })
                 })
@@ -115,7 +117,7 @@ impl WorkerServiceImpl {
         })?;
 
         Ok(Response::new(match resolved {
-            Some((provider_type, api_key, base_url, request_options)) => {
+            Some((provider_type, api_key, base_url, request_options, api)) => {
                 // Empty when the connection configures nothing, so the worker
                 // applies no options rather than an empty JSON object.
                 let request_options_json = if request_options.is_empty() {
@@ -130,6 +132,7 @@ impl WorkerServiceImpl {
                     base_url: base_url.unwrap_or_default(),
                     provider_type,
                     request_options_json,
+                    api: api.unwrap_or_default(),
                 }
             }
             None => GetDefaultProviderCredentialsResponse {
@@ -139,6 +142,7 @@ impl WorkerServiceImpl {
                 base_url: String::new(),
                 provider_type: String::new(),
                 request_options_json: String::new(),
+                api: String::new(),
             },
         }))
     }

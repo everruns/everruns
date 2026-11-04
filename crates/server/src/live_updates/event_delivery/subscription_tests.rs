@@ -126,6 +126,7 @@ async fn nats_subscription_does_not_retry_an_uncertain_create_timeout() {
     let publisher = NatsEventDelivery {
         jetstream: async_nats::jetstream::new(client.clone()),
         client,
+        stream_max_bytes: DEFAULT_NATS_EVENT_STREAM_MAX_BYTES,
     };
     publisher.ensure_stream().await.unwrap();
     proxy.drop_responses.store(true, Ordering::SeqCst);

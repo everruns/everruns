@@ -635,10 +635,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(threshold)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to mark exhausted stale tasks as dead");
-            StoreError::Database(e.to_string())
-        })?;
+        .map_err(|e| store_failure("durable.tasks.mark_exhausted_dead", "Failed to mark exhausted stale tasks as dead", e))?;
 
         let dead_tasks: Vec<DeadTaskInfo> = dead_rows
             .iter()
@@ -774,10 +771,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(threshold_i64)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to reclaim stale tasks");
-            StoreError::Database(e.to_string())
-        })?;
+        .map_err(|e| store_failure("durable.tasks.reclaim_stale", "Failed to reclaim stale tasks", e))?;
 
         let mut reclaimed_ids: Vec<Uuid> = Vec::new();
         let mut sealed_tasks: Vec<SealedTaskInfo> = Vec::new();

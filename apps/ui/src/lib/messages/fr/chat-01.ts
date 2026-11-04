@@ -42,6 +42,7 @@ export const messages: Readonly<Record<string, string>> = {
   "≈ cached prefix ends here": "≈ le préfixe mis en cache se termine ici",
   "⌘G": "⌘G",
   "■ errors": "■ erreurs",
+  "in view": "visible",
   "✗": "✗",
   "0s": "0s",
   "1 cell =": "1 cellule =",
@@ -207,6 +208,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Latest generation:": "Dernière génération :",
   Left: "Gauche",
   "Lifecycle events": "Événements du cycle de vie",
+  "Reactions on the reply": "Réactions à la réponse",
   "LLM Generation Details": "Détails de la génération LLM",
   "Load 20 earlier": "Charger 20 plus tôt",
   "Load 20 later": "Charger 20 plus tard",
@@ -333,4 +335,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Response ·": "Réponse ·",
   "Response field:": "Champ de réponse :",
   "Restore split view": "Restaurer la vue fractionnée",
+  "run {number} of {limit}": "Exécution {number} sur {limit}",
+  "run {number}": "Exécution {number}",
 };

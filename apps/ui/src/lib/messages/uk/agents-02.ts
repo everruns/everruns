@@ -293,7 +293,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Pause-based answers after a short silence. Waits for a finished thought rides through mid-sentence pauses.":
     "Відповіді на основі паузи після короткого мовчання. Чекає на завершення думки, їде через паузи в середині речення.",
   "People reached": "Люди досягли",
-  "People with access to this agent": "Люди, які мають доступ до цього агента",
   "Permanently delete the archived agent “{value0}”? Existing references will render as deleted tombstones.":
     "Назавжди видалити заархівований агент “{value0}”? Існуючі посилання відображатимуться як видалені надгробки.",
   "Personal account": "Особистий кабінет",
@@ -361,7 +360,4 @@ export const messages: Readonly<Record<string, string>> = {
   Repositories: "Репозиторії",
   "Request URL": "URL запиту",
   "Require sign-in": "Вимагати входу",
-  "Models consumers may select": "Моделі, які можуть вибирати користувачі",
-  "Leave all unchecked to use the Agent default.":
-    "Не вибирайте жодної, щоб використовувати типову модель агента.",
 };

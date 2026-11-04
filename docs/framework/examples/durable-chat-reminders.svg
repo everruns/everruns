@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 640" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">A reminder continues after browsers disconnect</title>
+  <desc id="desc">Ask the agent for a reminder. The schedule tool persists an instruction, deadline and room alarm. Browsers can close. The room alarm admits the reminder with a stable message ID, then the session alarm runs Everruns Engine and commits the reply. Reconnect to read committed history.</desc>
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 15px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 12px; fill: #404040; }
+    .arrow-label { font-size: 11px; fill: #0A1636; font-weight: 500; }
+  </style>
+  <rect width="400" height="640" fill="#FFFFFF"/>
+  <rect x="20" y="20" width="360" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="200" y="51" text-anchor="middle" class="label">Ask the agent for a reminder</text>
+  <text x="200" y="77" text-anchor="middle" class="sublabel">Browser sends a normal chat message</text>
+  <line x1="200" y1="100" x2="200" y2="140" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="195,140 200,150 205,140" fill="#0A1636"/>
+  <rect x="20" y="150" width="360" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="200" y="181" text-anchor="middle" class="label">Schedule persisted</text>
+  <text x="200" y="207" text-anchor="middle" class="sublabel">Room stores instruction, deadline and alarm</text>
+  <line x1="200" y1="230" x2="200" y2="270" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="195,270 200,280 205,270" fill="#0A1636"/>
+  <text x="219" y="259" class="arrow-label">Browsers may disconnect</text>
+  <rect x="20" y="280" width="360" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="200" y="311" text-anchor="middle" class="label">Room alarm admits reminder</text>
+  <text x="200" y="337" text-anchor="middle" class="sublabel">Stable message ID deduplicates admission</text>
+  <line x1="200" y1="360" x2="200" y2="400" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="195,400 200,410 205,400" fill="#0A1636"/>
+  <rect x="20" y="410" width="360" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="200" y="441" text-anchor="middle" class="label">Session alarm runs Engine</text>
+  <text x="200" y="467" text-anchor="middle" class="sublabel">Reply commits to canonical history</text>
+  <line x1="200" y1="490" x2="200" y2="530" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="195,530 200,540 205,530" fill="#0A1636"/>
+  <rect x="20" y="540" width="360" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="200" y="571" text-anchor="middle" class="label">Browser reconnects</text>
+  <text x="200" y="597" text-anchor="middle" class="sublabel">Read reminder and committed reply</text>
+</svg>

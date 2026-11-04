@@ -787,6 +787,8 @@ impl BackgroundExecutableTool for BashTool {
 
 use installation::install_cli_tree;
 mod installation;
+mod listing_cache;
+use listing_cache::ListingCache;
 
 // Observational-only. Emits `tracing` events for each bashkit builtin
 // invocation and interpreter error, tagged with the active `session_id` for
@@ -896,11 +898,17 @@ fn collect_partial_output(mut rx: tokio::sync::mpsc::Receiver<(String, String)>)
 pub struct SessionFileSystemAdapter {
     session_id: SessionId,
     store: Arc<dyn SessionFileSystem>,
+    /// What this adapter already listed; see [`listing_cache`].
+    listings: std::sync::Mutex<ListingCache>,
 }
 
 impl SessionFileSystemAdapter {
     pub fn new(session_id: SessionId, store: Arc<dyn SessionFileSystem>) -> Self {
-        Self { session_id, store }
+        Self {
+            session_id,
+            store,
+            listings: Default::default(),
+        }
     }
 
     /// The bash VFS path as a string for the store to resolve.
@@ -914,18 +922,6 @@ impl SessionFileSystemAdapter {
     /// address files anywhere from `/`, with `/workspace` as just its cwd.
     fn store_path(path: &Path) -> String {
         path.to_string_lossy().into_owned()
-    }
-
-    /// Whether `session_path` is an implicit directory — one with children but no row
-    /// of its own (virtual mounts, unmaterialized parents).
-    ///
-    /// Stores answer `list_directory` for an unknown path with `Ok(vec![])`, so only a
-    /// non-empty listing distinguishes a real directory from an absent path.
-    async fn directory_has_entries(&self, session_path: &str) -> bool {
-        self.store
-            .list_directory(self.session_id, session_path)
-            .await
-            .is_ok_and(|entries| !entries.is_empty())
     }
 }
 
@@ -952,6 +948,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn write_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         let (encoded, encoding) = SessionFile::encode_content(content);
@@ -964,6 +961,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn append_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         // Read existing content
@@ -990,6 +988,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn mkdir(&self, path: &Path, _recursive: bool) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         self.store
@@ -1000,6 +999,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn remove(&self, path: &Path, recursive: bool) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         self.store
@@ -1020,6 +1020,10 @@ impl FileSystem for SessionFileSystemAdapter {
                 modified: now,
                 created: now,
             });
+        }
+
+        if let Some(metadata) = self.listed_metadata(path) {
+            return Ok(metadata);
         }
 
         let session_path = Self::store_path(path);
@@ -1074,42 +1078,18 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn read_dir(&self, path: &Path) -> bashkit::Result<Vec<DirEntry>> {
-        let session_path = Self::store_path(path);
-
-        let entries = self
-            .store
-            .list_directory(self.session_id, &session_path)
+        self.list_dir(&Self::store_path(path))
             .await
-            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
-
-        let now = SystemTime::now();
-
-        Ok(entries
-            .into_iter()
-            .map(|e| {
-                let file_type = if e.is_directory {
-                    FileType::Directory
-                } else {
-                    FileType::File
-                };
-
-                DirEntry {
-                    name: e.name,
-                    metadata: Metadata {
-                        file_type,
-                        size: e.size_bytes as u64,
-                        mode: 0o755,
-                        modified: now,
-                        created: now,
-                    },
-                }
-            })
-            .collect())
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
     }
 
     async fn exists(&self, path: &Path) -> bashkit::Result<bool> {
         // /workspace always exists
         if path.to_string_lossy() == "/workspace" {
+            return Ok(true);
+        }
+
+        if self.listed_metadata(path).is_some() {
             return Ok(true);
         }
 
@@ -1126,7 +1106,15 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let from_session = Self::store_path(from);
+        if self.stat(from).await?.file_type == FileType::Directory {
+            return self
+                .store
+                .rename_directory(self.session_id, &from_session, &Self::store_path(to))
+                .await
+                .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())));
+        }
 
         // Read source file
         let content = self.read_file(from).await?;
@@ -1286,6 +1274,8 @@ impl SearchProvider for SessionSearchProvider {
 
 #[cfg(test)]
 mod tests {
+    mod listing;
+    mod rename;
     use super::*;
     use crate::bashkit::session_file::FileInfo;
     use crate::bashkit::typed_id::SessionId;
@@ -1302,6 +1292,9 @@ mod tests {
     struct MockFileStore {
         files: Mutex<HashMap<(SessionId, String), (String, String)>>, // (content, encoding)
         directories: Mutex<HashMap<(SessionId, String), bool>>,
+        stat_calls: AtomicUsize,
+        list_calls: AtomicUsize,
+        tree_calls: AtomicUsize,
     }
 
     impl MockFileStore {
@@ -1309,6 +1302,9 @@ mod tests {
             Self {
                 files: Mutex::new(HashMap::new()),
                 directories: Mutex::new(HashMap::new()),
+                stat_calls: AtomicUsize::new(0),
+                list_calls: AtomicUsize::new(0),
+                tree_calls: AtomicUsize::new(0),
             }
         }
 
@@ -1326,6 +1322,14 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        async fn rename_directory(
+            &self,
+            session: SessionId,
+            from: &str,
+            to: &str,
+        ) -> everruns_contracts::error::Result<()> {
+            rename::move_directory(self, session, from, to)
+        }
         fn is_mount_resolver(&self) -> bool {
             false
         }
@@ -1400,6 +1404,7 @@ mod tests {
             session_id: SessionId,
             path: &str,
         ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
+            self.list_calls.fetch_add(1, Ordering::Relaxed);
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             let dirs = self.directories.lock().unwrap();
@@ -1482,11 +1487,20 @@ mod tests {
             Ok(entries)
         }
 
+        async fn list_tree(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> everruns_contracts::error::Result<Option<Vec<FileInfo>>> {
+            Ok(Some(listing::mock_tree(self, session_id, path)))
+        }
+
         async fn stat_file(
             &self,
             session_id: SessionId,
             path: &str,
         ) -> everruns_contracts::error::Result<Option<FileStat>> {
+            self.stat_calls.fetch_add(1, Ordering::Relaxed);
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, _)) = files.get(&(session_id, path.clone())) {
@@ -2343,39 +2357,6 @@ mod tests {
             .unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "file.txt");
-    }
-
-    #[tokio::test]
-    async fn test_adapter_rename_file() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // Write original file
-        adapter
-            .write_file(Path::new("/workspace/old.txt"), b"data")
-            .await
-            .unwrap();
-
-        // Rename it
-        adapter
-            .rename(
-                Path::new("/workspace/old.txt"),
-                Path::new("/workspace/new.txt"),
-            )
-            .await
-            .unwrap();
-
-        // Old file should not exist
-        let old_result = adapter.read_file(Path::new("/workspace/old.txt")).await;
-        assert!(old_result.is_err());
-
-        // New file should have the content
-        let new_content = adapter
-            .read_file(Path::new("/workspace/new.txt"))
-            .await
-            .unwrap();
-        assert_eq!(new_content, b"data");
     }
 
     #[tokio::test]

@@ -1,10 +1,21 @@
-jest.mock("@/components/budgets/budget-panel", () => ({ BudgetPanel: () => null }));
+jest.mock("@/components/budgets/budget-panel", () => ({
+  BudgetPanel: ({ title }: { title?: string }) => (title ? <div>{title}</div> : null),
+}));
+
+jest.mock("@/components/agents/channels/work-chat-link", () => ({
+  WorkChatHeaderLink: () => null,
+  WorkChatAddress: () => <div>Chat link</div>,
+}));
 
 jest.mock("@/hooks/use-health-issues", () => ({
   useHealthIssues: () => ({ data: { data: [], total: 0 }, isError: false }),
 }));
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Suspense } from "react";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import EditAgentChannelPage from "@/app/(main)/agents/[agentId]/channels/[channelId]/page";
 import NewAgentChannelPage from "@/app/(main)/agents/[agentId]/channels/new/page";
 import { ChannelForm, getDefaultChannelFormState } from "@/components/agents/channels/channel-form";
@@ -17,6 +28,7 @@ import type { Agent, AgentChannel } from "@/lib/api/types";
 const push = jest.fn();
 const replace = jest.fn();
 const createChannel = jest.fn();
+const updateChannel = jest.fn();
 let mockSlackCapability: SlackInstallCapability = {
   supported: true,
   connected: true,
@@ -36,7 +48,12 @@ function workspace(teamId: string, name: string, status: SlackWorkspace["status"
 
 let mockWorkspaces: SlackWorkspace[] = [workspace("T1", "Acme")];
 let mockSource: { managed_channels: string[] } | null = null;
+let mockRequestedKind = "";
+let mockCanManage = true;
+let mockPoliciesLoading = false;
+let mockSlackLoading = false;
 let mockChannelConfig: AgentChannel["channel_config"] = {};
+let mockChannelType: AgentChannel["channel_type"] = "slack";
 
 jest.mock("@/hooks/use-agent-source", () => ({
   useAgentSource: () => ({ data: mockSource, isLoading: false, isError: false }),
@@ -45,7 +62,8 @@ jest.mock("@/hooks/use-agent-source", () => ({
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/channels/new",
   useRouter: () => ({ push, replace }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(mockRequestedKind),
+  useParams: () => ({ agentId: "agent_123", channelId: "appchan_123" }),
 }));
 
 jest.mock("next/link", () => ({
@@ -76,8 +94,8 @@ jest.mock("@/hooks/use-agents", () => ({
 
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({
-    can: () => true,
-    isLoading: false,
+    can: () => mockCanManage,
+    isLoading: mockPoliciesLoading,
   }),
 }));
 
@@ -92,12 +110,14 @@ jest.mock("@/hooks/use-agent-channels", () => ({
   }),
   useSlackInstallCapability: () => ({
     data: mockSlackCapability,
-    isLoading: false,
+    isLoading: mockSlackLoading,
     refetch: jest.fn(),
   }),
   useSlackWorkspaces: () => ({ data: mockWorkspaces, isLoading: false }),
+  useSlackWorkspaceName: (teamId?: string | null) =>
+    mockWorkspaces.find((workspace) => workspace.team_id === teamId)?.team_name ?? teamId,
   useInvalidateSlackWorkspaces: () => jest.fn(),
-  useUpdateAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
+  useUpdateAgentChannel: () => ({ mutate: updateChannel, isPending: false, reset: jest.fn() }),
   useDeleteAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
   usePublishAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
   useTriggerAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
@@ -111,7 +131,7 @@ jest.mock("@/lib/api/agent-channels", () => ({
 function slackChannel(): AgentChannel {
   return {
     id: "appchan_123",
-    channel_type: "slack",
+    channel_type: mockChannelType,
     channel_config: mockChannelConfig,
     enabled: true,
     status: "draft",
@@ -120,28 +140,35 @@ function slackChannel(): AgentChannel {
   };
 }
 
-async function renderNewChannelPage() {
+async function renderNewChannelPage(mode: ChatModeState | null = null) {
   const params = Promise.resolve({ agentId: "agent_123" });
   await act(async () => {
     render(
       <Suspense fallback={<div>Loading...</div>}>
-        <NewAgentChannelPage params={params} />
+        <PageChatProvider value={mode}>
+          <NewAgentChannelPage params={params} />
+        </PageChatProvider>
       </Suspense>,
     );
     await params;
   });
 }
-async function renderEditChannelPage(reason: string) {
+async function renderEditChannelPage(reason?: string) {
   const params = Promise.resolve({
     agentId: "agent_123",
     channelId: "appchan_123",
   });
-  const searchParams = Promise.resolve({ slack_install: "failed", reason });
+  const searchParams = Promise.resolve(
+    reason === undefined ? {} : { slack_install: "failed", reason },
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     render(
-      <Suspense fallback={<div>Loading...</div>}>
-        <EditAgentChannelPage params={params} searchParams={searchParams} />
-      </Suspense>,
+      <QueryClientProvider client={client}>
+        <Suspense fallback={<div>Loading...</div>}>
+          <EditAgentChannelPage params={params} searchParams={searchParams} />
+        </Suspense>
+      </QueryClientProvider>,
     );
     await Promise.all([params, searchParams]);
   });
@@ -150,8 +177,13 @@ describe("Slack channel first run", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.history.replaceState(null, "", "/agents/agent_123/channels/new");
+    mockRequestedKind = "";
+    mockCanManage = true;
+    mockPoliciesLoading = false;
+    mockSlackLoading = false;
     mockSource = null;
     mockChannelConfig = {};
+    mockChannelType = "slack";
     mockSlackCapability = {
       supported: true,
       connected: true,
@@ -165,6 +197,76 @@ describe("Slack channel first run", () => {
         options.onSuccess(slackChannel()),
     );
   });
+
+  it("exposes only the visible channel draft and expires bindings when returning to the chooser", async () => {
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    const registered = new Set<PageDraftAdapter>();
+    const mode: ChatModeState = {
+      page: { route: "/agents/agent_123/channels/new", label: "New channel" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: (_, adapter) => {
+        if (!adapter) return () => {};
+        registered.add(adapter);
+        return () => {
+          registered.delete(adapter);
+        };
+      },
+    };
+    await renderNewChannelPage(mode);
+    expect(registered.size).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /AG-UI/ }));
+    await waitFor(() => expect(registered.size).toBe(1));
+    const original = [...registered][0];
+    const snapshot = original.read(original.describe().binding);
+    expect(snapshot.writable).toBe(true);
+    act(() => {
+      original.patch(snapshot.binding, snapshot.revision, {
+        agUiGenericToolText: "Review this request",
+      });
+    });
+    expect(screen.getByDisplayValue("Review this request")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Change type" }));
+    await waitFor(() => expect(registered.size).toBe(0));
+    expect(() => original.read(snapshot.binding)).toThrow();
+    expect(() => original.patch(snapshot.binding, snapshot.revision, { enabled: false })).toThrow();
+
+    fireEvent.click(screen.getByRole("button", { name: /AG-UI/ }));
+    await waitFor(() => expect(registered.size).toBe(1));
+    const reopened = [...registered][0];
+    const fresh = reopened.read(reopened.describe().binding);
+    expect(fresh.binding).not.toBe(snapshot.binding);
+    expect(fresh.values.agUiGenericToolText).not.toBe("Review this request");
+    expect(() => reopened.patch(snapshot.binding, snapshot.revision, { enabled: false })).toThrow();
+    expect(createChannel).not.toHaveBeenCalled();
+  });
+
+  it.each(["policy loading", "Slack loading", "permission denied"])(
+    "does not expose the preselected editor during %s",
+    async (state) => {
+      mockRequestedKind = "kind=webhook";
+      mockPoliciesLoading = state === "policy loading";
+      mockSlackLoading = state === "Slack loading";
+      mockCanManage = state !== "permission denied";
+      const registerPage = jest.fn(() => () => {});
+      await renderNewChannelPage({
+        page: { route: "/agents/agent_123/channels/new", label: "New channel" },
+        pageContainer: { current: null },
+        open: true,
+        setOpen: () => {},
+        actions: [],
+        recordAction: () => {},
+        registerPage,
+      });
+      expect(registerPage).not.toHaveBeenCalled();
+      expect(createChannel).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps source-owned channel configuration read-only", async () => {
     mockSource = { managed_channels: ["chat"] };
@@ -405,6 +507,31 @@ describe("Slack channel first run", () => {
     expect(screen.queryByRole("button", { name: "Add to Slack" })).not.toBeInTheDocument();
   });
 
+  it("offers Add to Slack again when the app was created but never approved in Slack", () => {
+    // Creating the app saves its signing secret; only Slack's approval returns the bot token
+    // and workspace. Stopping between the two must not look like a finished manual setup.
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack", {
+          ...slackChannel(),
+          channel_config: {
+            slack_app_id: "A0123",
+            slack_app_provisioned: true,
+            signing_secret_configured: true,
+            session_strategy: "per_channel",
+          },
+        })}
+        onChange={jest.fn()}
+        mode="edit"
+        channelId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    expect(screen.getByText("Acme (T1)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
+    expect(screen.queryByText("Installed in Slack")).not.toBeInTheDocument();
+  });
+
   it("starts Slack install immediately after saving a credential-free channel", async () => {
     const authorizeUrl = `${window.location.href}#slack-consent`;
     (beginSlackInstall as jest.Mock).mockResolvedValue({
@@ -464,6 +591,17 @@ describe("Slack channel first run", () => {
     expect(push).toHaveBeenCalledWith("/agents/agent_123/channels/appchan_123");
   });
 
+  it("puts Add to Slack and the settings on one page, without tabs", async () => {
+    // People reach this page from a link to set the channel up; a Connect tab without the
+    // install button sent them hunting for it under Settings.
+    await renderEditChannelPage();
+
+    expect(screen.queryByRole("tab", { name: /Settings/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
+    expect(screen.getByText("Conversations")).toBeInTheDocument();
+  });
+
   it("explains publish as the only way to open a channel", async () => {
     await renderEditChannelPage("unused");
 
@@ -513,5 +651,39 @@ describe("Slack channel first run", () => {
       "Could not reach Slack to create the app. Configure Slack manually.",
     );
     expect(screen.queryByText(/Use Add to Slack/)).not.toBeInTheDocument();
+  });
+
+  it("keeps Slack spending to the shared pool", async () => {
+    await renderEditChannelPage("ignored");
+
+    expect(screen.getByRole("heading", { name: "Spending" })).toBeInTheDocument();
+    expect(screen.getByText("Shared pool")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Each person, per day (USD)")).not.toBeInTheDocument();
+  });
+
+  it("saves the per-person daily limit from Spending on Work Chat", async () => {
+    mockChannelType = "work_chat";
+    mockChannelConfig = {
+      interface_mode: "multi_chat",
+      membership: "open",
+      execution: { visibility: "full", errors: "public" },
+    };
+    await renderEditChannelPage("ignored");
+
+    expect(screen.getByRole("heading", { name: "Spending" })).toBeInTheDocument();
+    expect(screen.queryByText("Daily spending limit per caller (USD)")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Each person, per day (USD)"), {
+      target: { value: "4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(updateChannel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel_config: expect.objectContaining({
+          execution: expect.objectContaining({ daily_spend_limit_usd: 4 }),
+        }),
+      }),
+      expect.anything(),
+    );
   });
 });

@@ -257,7 +257,7 @@ impl ReportingService {
     ) -> Result<ProjectorRunResult, CommandError> {
         {
             let db = self.db.database();
-            PostgresReportingProjector::new(db.pool().clone())
+            PostgresReportingProjector::new(db.relaxed_pool().clone())
                 .run_once(org_id, limit)
                 .await
                 .map_err(classify_anyhow)
@@ -267,7 +267,7 @@ impl ReportingService {
     pub async fn run_projector_due(&self, limit: i64) -> Result<ProjectorRunResult, CommandError> {
         {
             let db = self.db.database();
-            PostgresReportingProjector::new(db.pool().clone())
+            PostgresReportingProjector::new(db.relaxed_pool().clone())
                 .run_due(limit)
                 .await
                 .map_err(classify_anyhow)
@@ -277,7 +277,7 @@ impl ReportingService {
     pub async fn repair_missing_event_projections(&self, limit: i64) -> Result<i64, CommandError> {
         {
             let db = self.db.database();
-            PostgresReportingProjector::new(db.pool().clone())
+            PostgresReportingProjector::new(db.relaxed_pool().clone())
                 .repair_missing_event_projections(limit)
                 .await
                 .map_err(classify_anyhow)
@@ -291,7 +291,7 @@ impl ReportingService {
     ) -> Result<ReportingBackfillResult, CommandError> {
         {
             let db = self.db.database();
-            PostgresReportingProjector::new(db.pool().clone())
+            PostgresReportingProjector::new(db.relaxed_pool().clone())
                 .backfill_missing(org_id, limit)
                 .await
                 .map_err(classify_anyhow)

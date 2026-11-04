@@ -8,6 +8,7 @@ pub(super) mod models;
 pub(super) mod observability;
 pub(crate) mod replicas;
 pub(super) mod security;
+pub(super) mod slack;
 pub(super) mod storage;
 pub(super) mod worker_reports;
 pub(super) mod workers;
@@ -41,6 +42,7 @@ pub(super) async fn run_all(doctor: &SystemDoctor) -> Findings {
     let extensions = extensions.await;
     let mut all = Findings::default();
     all.extend(replicas::run(doctor, &replicas));
+    all.extend(slack::run());
     for area in [
         database,
         workers,

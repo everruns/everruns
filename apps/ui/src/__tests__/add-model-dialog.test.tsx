@@ -1,13 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as mockReact from "react";
 import { AddModelDialog } from "@/components/models/add-model-dialog";
-import type { Provider } from "@/lib/api/types";
+import type { ModelProfileResponse, Provider } from "@/lib/api/types";
 
+let mockProfiles: ModelProfileResponse[] = [];
 const mutateAsync = jest.fn().mockResolvedValue({});
 
 jest.mock("@/hooks/use-providers", () => ({
   useProvidersConfig: () => ({ data: undefined }),
-  useModelProfiles: () => ({ data: [] }),
+  useModelProfiles: () => ({ data: mockProfiles }),
   useCreateModel: () => ({ mutateAsync, isPending: false }),
 }));
 
@@ -97,7 +98,10 @@ const providers: Provider[] = [
 ];
 
 describe("AddModelDialog", () => {
-  beforeEach(() => mutateAsync.mockClear());
+  beforeEach(() => {
+    mutateAsync.mockClear();
+    mockProfiles = [];
+  });
 
   it("creates a selectable embedding model", async () => {
     render(<AddModelDialog providers={providers} open onOpenChange={jest.fn()} />);
@@ -125,6 +129,48 @@ describe("AddModelDialog", () => {
         profile_key: undefined,
         enabled: true,
       }),
+    );
+  });
+});
+
+describe("Jev profile wire IDs", () => {
+  it.each([
+    ["typesafe", "jev-1.14.0", "jev-1.14.0"],
+    ["openrouter", "jev-1.14.0", "typesafe/jev-1.14"],
+    ["openrouter", "jev-1.13.0", "typesafe/jev-1.13"],
+    ["openrouter", "jev-latest", "~typesafe/jev-latest"],
+  ])("saves %s %s as %s", async (providerType, canonical, wireId) => {
+    mutateAsync.mockClear();
+    mockProfiles = [
+      {
+        key: `typesafe/${canonical}`,
+        service: "decisions",
+        source: "curated",
+        profile: { name: "Jev", family: "jev" } as ModelProfileResponse["profile"],
+      },
+    ];
+    render(
+      <AddModelDialog
+        providers={[{ ...providers[0], provider_type: providerType as Provider["provider_type"] }]}
+        open
+        onOpenChange={jest.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "provider_openai" } });
+    fireEvent.change(screen.getByLabelText("Model type"), { target: { value: "decisions" } });
+    fireEvent.change(screen.getByLabelText("Model profile"), {
+      target: { value: `typesafe/${canonical}` },
+    });
+    expect(screen.getByLabelText("Model ID")).toHaveValue(wireId);
+    fireEvent.click(screen.getByRole("button", { name: "Create Model" }));
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model_id: wireId,
+          service: "decisions",
+          profile_key: `typesafe/${canonical}`,
+        }),
+      ),
     );
   });
 });

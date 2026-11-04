@@ -414,6 +414,16 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         id_column: "id",
     },
     EncryptedColumn {
+        table: "custom_workers",
+        column: "endpoint_secret_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "custom_workers",
+        column: "adapter_token_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
         table: "tracing_connections",
         column: "secrets_encrypted",
         id_column: "id",

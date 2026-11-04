@@ -7,8 +7,12 @@ use everruns_core::{Permission, Policy, Rule};
 #[cfg(test)]
 mod agent_subject_tests;
 pub mod commands;
+pub mod cost_commands;
 #[cfg(test)]
 mod cost_component_tests;
+#[cfg(test)]
+mod cost_policy_tests;
+pub mod costs;
 pub mod queries;
 pub mod record;
 #[cfg(test)]
@@ -21,6 +25,7 @@ mod tests;
 pub mod types;
 
 pub use commands::*;
+pub use cost_commands::*;
 pub use service::*;
 
 /// Policy: Manage budgets. Budgets control spending limits; treated as a

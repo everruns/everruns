@@ -53,7 +53,14 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
   // Without it nothing is picked: the page opens on the choice, not on a form
   // for a type nobody asked for.
   const requestedKind = useSearchParams().get("kind");
-  const preselected = CHANNEL_FORM_KINDS.find((kind) => kind === requestedKind);
+  // Webhooks are triggers now (EVE-1006); an old `?kind=webhook` link lands on
+  // the webhook trigger form instead.
+  const preselected = CHANNEL_FORM_KINDS.find(
+    (kind) => kind === requestedKind && kind !== "webhook",
+  );
+  useEffect(() => {
+    if (requestedKind === "webhook") router.replace(`/agents/${agentId}/triggers/new?type=webhook`);
+  }, [agentId, requestedKind, router]);
   const [chosen, setChosen] = useState(!!preselected);
   const [formState, setFormState] = useState(() =>
     getDefaultChannelFormState(preselected ?? "webhook"),
@@ -65,7 +72,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
     state: formState,
     setState: setFormState,
     baseline: "new",
-    available: !!agent,
+    available: !!agent && chosen && canManage && !isLoading && !slackInstallCapability.isLoading,
     writable: !!agent && canManage && !createChannel.isPending,
   });
   useEffect(() => {
@@ -164,6 +171,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
       />
       {!chosen ? (
         <ChannelTypePicker
+          agentId={agentId}
           onChange={(kind) => {
             setFormState(getDefaultChannelFormState(kind));
             setChosen(true);

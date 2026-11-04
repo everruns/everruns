@@ -44,7 +44,7 @@ This builder combines the agent instructions, tools, and model. Tools/capabiliti
 let agent = Agent::builder()
     .name("incident-commander-agent")
     .instructions(include_str!("instructions.md"))
-    .provider(everruns_drivers::meta::from_env("meta")?)
+    .provider(everruns::Meta::from_env()?)
     .model(MODEL)
     .max_iterations(12)
     .tool(tools::inspect_evidence())

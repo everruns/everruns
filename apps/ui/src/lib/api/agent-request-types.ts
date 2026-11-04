@@ -14,6 +14,8 @@ import type { Communication } from "./schema-types";
 export interface CreateAgentRequest {
   localizations?: EntityLocalizations;
   service_virtual_user_id?: string;
+  /** Create this agent as part of another agent: listed under it and exported with it. */
+  owner_agent_id?: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name: string;
   /** Human-readable display name shown in UI */

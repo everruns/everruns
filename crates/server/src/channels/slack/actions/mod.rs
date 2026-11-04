@@ -667,6 +667,7 @@ mod tests {
                     org_id,
                     id,
                     CreateAgentRow {
+                        completion_check: Default::default(),
                         localizations: Default::default(),
                         public_id: id.to_string(),
                         name: format!("a-{}", Uuid::now_v7()),

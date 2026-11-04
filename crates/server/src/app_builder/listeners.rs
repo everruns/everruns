@@ -93,6 +93,12 @@ pub(super) fn build(
         thread_turns.clone(),
         automatic_titles.clone(),
     ];
+    // Reporting facts, fed from the listener feed's later tier.
+    if domains::reporting::background::reporting_enabled() {
+        event_listeners.push(Arc::new(
+            domains::reporting::listener::ReportingProjectionListener::new(db.clone()),
+        ));
+    }
     // Run summaries (EVE-867). Registered only when a utility LLM is
     // configured, so the OSS default adds no listener at all rather than one
     // that wakes on every terminal turn to do nothing.

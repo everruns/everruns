@@ -190,6 +190,9 @@ pub fn routes(state: AppState) -> Router {
         )
         .command::<crate::domains::messages::feedback::SetMessageFeedback>()
         .command::<crate::domains::messages::feedback::ListMessageFeedback>()
+        .command::<crate::domains::messages::reactions::AddMessageReaction>()
+        .command::<crate::domains::messages::reactions::RemoveMessageReaction>()
+        .command::<crate::domains::messages::reactions::ListMessageReactions>()
         .with_state(state)
 }
 

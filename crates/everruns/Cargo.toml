@@ -157,6 +157,11 @@ gemini = ["dep:everruns-drivers", "everruns-drivers/gemini"]
 mistral = ["dep:everruns-drivers", "everruns-drivers/mistral"]
 fireworks = ["dep:everruns-drivers", "everruns-drivers/fireworks"]
 groq = ["dep:everruns-drivers", "everruns-drivers/groq"]
+meta = ["dep:everruns-drivers", "everruns-drivers/meta"]
+mai = ["dep:everruns-drivers", "everruns-drivers/mai"]
+vercel = ["dep:everruns-drivers", "everruns-drivers/vercel"]
+cloudflare = ["dep:everruns-drivers", "everruns-drivers/cloudflare"]
+
 # AWS Bedrock (`providers::bedrock::Bedrock`): static keys or the AWS default
 # credential chain (IAM roles: ECS/AgentCore container credentials, instance
 # profile, SSO/profile, env). Pulls in the AWS SDK and aws-config, so it is its
@@ -164,7 +169,7 @@ groq = ["dep:everruns-drivers", "everruns-drivers/groq"]
 bedrock = ["dep:everruns-drivers", "everruns-drivers/bedrock-default-credentials"]
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
-typesafe = ["dep:everruns-integrations", "everruns-integrations/typesafe"]
+typesafe = ["dep:everruns-integrations", "everruns-integrations/typesafe", "dep:everruns-drivers", "everruns-drivers/typesafe"]
 # Serve an AG-UI 1.0 run from any session (`everruns::ag_ui`): the protocol
 # types, the shared runtime-event projection, and an interrupt gate for
 # `ask_user` and tool approvals. Off by default; it enables core's
@@ -318,10 +323,15 @@ required-features = ["openai"]
 
 [[example]]
 name = "vercel_gateway"
-required-features = ["macros"]
+required-features = ["macros", "vercel"]
 
 [[example]]
 name = "cloudflare_direct_llm"
+required-features = ["cloudflare"]
+
+[[example]]
+name = "mistral_responses"
+required-features = ["mistral"]
 
 [[example]]
 name = "observe_and_cancel"

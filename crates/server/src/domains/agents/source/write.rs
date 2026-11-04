@@ -16,28 +16,6 @@ struct Outbox {
     channels: Vec<String>,
 }
 
-pub(super) async fn token(
-    ctx: &Ctx,
-    identity: Uuid,
-    connection: Uuid,
-    installation: i64,
-    repo: &str,
-) -> Result<String, CommandError> {
-    validate_connection(ctx, identity, connection, installation).await?;
-    let access = everruns_contracts::runtime::GitHubAccess::new(
-        everruns_core::McpServerActsAs::User,
-        &[("contents", "write")],
-    )
-    .for_repository(repo);
-    let result = ctx.connection_resolver.as_ref()
-        .ok_or_else(|| CommandError::unavailable("GitHub connection resolver is unavailable"))?
-        .get_github_token_for_owner(ctx.org_id(), identity, &access).await
-        .map_err(|_| CommandError::bad_request("Two-way sync needs Contents write permission on this repository. Update the GitHub App and accept its installation permissions"))?
-        .ok_or_else(|| CommandError::bad_request("GitHub write access is unavailable"))?;
-    validate_connection(ctx, identity, connection, installation).await?;
-    Ok(result)
-}
-
 pub(super) async fn local_package(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
     let a = agent(ctx, id).await?;
     let source = ctx.db.get_agent_source(ctx.org_id(), a.internal_id).await?;
@@ -71,7 +49,7 @@ async fn active(ctx: &Ctx, row: &AgentSourceRow) -> Result<Option<AgentSourceRow
     if a.status != "active" {
         return Ok(None);
     }
-    validate_connection(ctx, row.identity_id, row.connection_id, row.installation_id).await?;
+    validate_connection(ctx, &SourceAccess::of(row), row.configured_by).await?;
     Ok(Some(current))
 }
 
@@ -277,10 +255,10 @@ async fn publish(
 pub(super) async fn sync(ctx: &Ctx, row: &AgentSourceRow, id: &str) -> Result<(), CommandError> {
     let token = token(
         ctx,
-        row.identity_id,
-        row.connection_id,
-        row.installation_id,
+        &SourceAccess::of(row),
+        row.configured_by,
         &row.repository,
+        "write",
     )
     .await?;
     if let Some(outbox) = &row.outbox {

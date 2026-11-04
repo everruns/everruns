@@ -147,9 +147,14 @@ impl ServerBuilder {
                     "this session hosting profile requires an independent durable schedule service"
                 );
             }
-            if app.inner.agents.iter().any(|agent| agent.sub) {
+            if app
+                .inner
+                .agents
+                .iter()
+                .any(|agent| !agent.spec.members.is_empty())
+            {
                 bail!(
-                    "this session hosting profile does not yet supply Engine-owned child session activation"
+                    "this session hosting profile does not yet supply Engine-owned member session activation"
                 );
             }
         }

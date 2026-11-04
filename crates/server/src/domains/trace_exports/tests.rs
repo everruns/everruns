@@ -210,6 +210,7 @@ async fn customer_tracing_excludes_private_chat_and_uses_turn_routing() {
             agent_id: Some(agent),
             agent_name: None,
             agent_description: None,
+            origin: None,
         },
     );
     assert_eq!(
@@ -387,6 +388,7 @@ async fn customer_tracing_fans_out_with_a_fixed_per_turn_snapshot() {
             agent_id: Some(agent),
             agent_name: Some("fanout".into()),
             agent_description: None,
+            origin: None,
         },
     );
     listener.on_event(&started).await;
@@ -533,6 +535,7 @@ async fn customer_tracing_braintrust_uses_the_project_and_scoped_auth_without_co
                 agent_id: None,
                 agent_name: Some("Customer test".into()),
                 agent_description: None,
+                origin: None,
             },
         ))
         .await;

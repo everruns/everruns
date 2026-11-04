@@ -80,6 +80,8 @@ export interface Agent {
   default_model_id: string | null;
   forked_from_agent_id?: string | null;
   root_agent_id?: string | null;
+  /** Agent this one was created as part of ("Created here" on its Agents tab). */
+  owner_agent_id?: string | null;
   tags: string[];
   /**
    * Built-in agents (Platform Chat) are managed by the platform and read-only:

@@ -2,6 +2,36 @@
 use super::*;
 #[async_trait]
 impl SessionFileSystem for WorkspaceFileService {
+    async fn rename_directory(
+        &self,
+        session: SessionId,
+        from: &str,
+        to: &str,
+    ) -> everruns_contracts::error::Result<()> {
+        for path in [from, to] {
+            let path = Self::normalize_path(path);
+            if path == "/memory" || path.starts_with("/memory/") {
+                return Err(AgentLoopError::config(
+                    "directory rename cannot cross Memory mounts",
+                ));
+            }
+        }
+        let source = self.stat_file(session, from).await?;
+        if !source.is_some_and(|info| info.is_directory) {
+            return Err(AgentLoopError::store("Source directory not found"));
+        }
+        self.move_file(
+            session.uuid(),
+            MoveFileInput {
+                src_path: from.into(),
+                dst_path: to.into(),
+            },
+        )
+        .await
+        .map_err(file_system_error)?
+        .ok_or_else(|| AgentLoopError::store("Source directory not found"))?;
+        Ok(())
+    }
     fn session_scoped_path(&self, path: &str) -> bool {
         everruns_contracts::knowledge::is_mount(path)
     }

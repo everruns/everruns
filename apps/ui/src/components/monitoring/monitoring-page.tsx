@@ -12,6 +12,7 @@ import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows, useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, AlertTriangle, Pause, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ import { ExecutionDensity } from "./execution-density";
 import { WorkerGrid, groupWorkers } from "./worker-grid";
 import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
+import { MonitoringTimelineView } from "./timeline";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const ui = useUiTranslations();
@@ -103,11 +105,17 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   );
 }
 
+const MONITORING_TABS = ["execution", "timeline", "workers", "actors", "metrics"];
+
 function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
   const { displayLocale } = useLocale();
 
   const ui = useUiTranslations();
-  const [tab, setTab] = useState("execution");
+  // `?tab=timeline` lets Home link straight to the history it summarises.
+  const requestedTab = useSearchParams().get("tab");
+  const [tab, setTab] = useState(
+    requestedTab && MONITORING_TABS.includes(requestedTab) ? requestedTab : "execution",
+  );
   const [view, setView] = useState("flow");
   const [groupSize, setGroupSize] = useState(8);
   const [groupId, setGroupId] = useState<string | null>(null);
@@ -328,6 +336,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           aria-label={ui("Monitoring sections")}
           items={[
             { value: "execution", label: ui("Execution") },
+            { value: "timeline", label: ui("Timeline") },
             { value: "workers", label: ui("Workers"), disabled: !!replay },
             { value: "actors", label: ui("Actors"), disabled: !!replay },
             { value: "metrics", label: ui("Metrics") },
@@ -349,6 +358,10 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 </Button>
               ))}
             </div>
+          ) : tab === "timeline" ? (
+            <span className="text-xs text-muted-foreground">
+              {ui("Recorded history, kept permanently")}
+            </span>
           ) : tab === "workers" ? (
             <label className="text-xs text-muted-foreground">
               {ui("Group size")}{" "}
@@ -465,7 +478,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           </Button>
         </div>
       )}
-      {!data ? (
+      {tab === "timeline" ? (
+        <MonitoringTimelineView scope={scope} />
+      ) : !data ? (
         snapshot.error ? (
           <EmptyState
             icon={<AlertTriangle />}

@@ -18,6 +18,7 @@ async fn connect_write(ctx: &Ctx, id: &str) {
     let preview = PreviewAgentSource {
         agent_id: id.into(),
         req: location(),
+        github_account: None,
     }
     .run(ctx)
     .await
@@ -27,6 +28,7 @@ async fn connect_write(ctx: &Ctx, id: &str) {
         req: ConnectSourceRequest {
             mode: SourceMode::TwoWay,
             location: location(),
+            github_account: None,
             commit: preview["commit"].as_str().unwrap().into(),
             agent_digest: preview["agent_digest"].as_str().unwrap().into(),
             expected_generation: None,
@@ -150,6 +152,7 @@ async fn simultaneous_package_changes_pause_without_overwriting_either_side() {
     let preview = PreviewAgentSource {
         agent_id: id.clone(),
         req: location(),
+        github_account: None,
     }
     .run(&ctx)
     .await
@@ -159,6 +162,7 @@ async fn simultaneous_package_changes_pause_without_overwriting_either_side() {
         req: ConnectSourceRequest {
             mode: SourceMode::TwoWay,
             location: location(),
+            github_account: None,
             commit: "c".repeat(40),
             agent_digest: preview["agent_digest"].as_str().unwrap().into(),
             expected_generation: Some(row.generation),

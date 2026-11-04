@@ -1,5 +1,7 @@
 // Product-owned tracing copy. Keep credentials and authored destination names outside translation.
 export const messages: Readonly<Record<string, string>> = {
+  "The model declined this request.": "Das Modell hat diese Anfrage abgelehnt.",
+  "Model declined request": "Modell hat Anfrage abgelehnt",
   Tracing: "Tracing",
   "Add destination": "Ziel hinzufügen",
   "Edit tracing destination": "Tracing-Ziel bearbeiten",

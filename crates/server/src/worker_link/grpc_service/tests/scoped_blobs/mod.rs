@@ -2,6 +2,7 @@
 //! synthetic; no production identity or credential issuer is enabled.
 
 mod authority_context;
+mod protection_floor;
 mod tests;
 
 use super::super::assignment_scope::ActorJournalScope;
@@ -17,6 +18,7 @@ use tonic::transport::Channel;
 
 struct CombinedServer {
     channel: Channel,
+    url: String,
     shutdown: Option<tokio::sync::oneshot::Sender<()>>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -64,6 +66,7 @@ impl CombinedServer {
             .unwrap();
         Self {
             channel,
+            url: format!("http://{address}"),
             shutdown: Some(shutdown),
             task,
         }

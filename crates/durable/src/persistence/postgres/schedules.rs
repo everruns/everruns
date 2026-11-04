@@ -550,6 +550,29 @@ impl Schedules for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn last_scheduled_task_pending(&self, schedule_id: Uuid) -> Result<bool, StoreError> {
+        // Reads one execution through idx_durable_schedule_executions_schedule.
+        let pending: Option<bool> = sqlx::query_scalar(
+            r#"
+            SELECT t.status = 'pending'
+            FROM durable_schedule_executions e
+            JOIN durable_task_queue t ON t.id = e.task_id
+            WHERE e.schedule_id = $1 AND e.task_id IS NOT NULL
+            ORDER BY e.created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(schedule_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to read the last scheduled task");
+            StoreError::Database(e.to_string())
+        })?;
+        Ok(pending.unwrap_or(false))
+    }
+
+    #[instrument(skip(self))]
     async fn get_schedule_stats(&self, schedule_id: Uuid) -> Result<ScheduleStats, StoreError> {
         let row = sqlx::query(
             r#"

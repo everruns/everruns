@@ -8,7 +8,7 @@ import {
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
-import { AgentIcon } from "@/components/icons/facet-icons";
+import { CapabilityCard } from "@/components/capabilities/capability-card";
 import { useMemo, useState } from "react";
 import {
   useCapabilities,
@@ -17,7 +17,6 @@ import {
   usePageTitle,
 } from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import {
   Select,
@@ -29,12 +28,9 @@ import {
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { CircleOff, Layers, Plus, Pencil } from "lucide-react";
-import { EntityStatus } from "@/components/ui/entity-status";
-import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
+import { CircleOff, Plus, Pencil } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
-import { CapabilityIcon } from "@/lib/capability-icons";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import {
   localizedCapabilityCategory,
@@ -42,7 +38,6 @@ import {
   localizedCapabilityName,
 } from "@/lib/capability-localization";
 
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { formatCountLabel, pluralize } from "@/lib/formatting";
 import {
   PageContainer,
@@ -50,7 +45,6 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
-  IconTile,
   PageMain,
   PageFooter,
 } from "@/components/layout";
@@ -61,21 +55,6 @@ const UNCATEGORIZED = "Uncategorized";
 type StatusTab = "all" | Exclude<CapabilityStatus, "retired">;
 
 const CapabilitiesIcon = registryDomainIcons.capabilities;
-
-function getStatusLabel(status: CapabilityStatus): string {
-  switch (status) {
-    case "available":
-      return "Available";
-    case "coming_soon":
-      return "Coming soon";
-    case "deprecated":
-      return "Deprecated";
-    case "needs_identity":
-      return "Needs identity";
-    case "retired":
-      return "Removed";
-  }
-}
 
 function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapability }) {
   const ui = useUiTranslations();
@@ -111,53 +90,6 @@ function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapab
         </Button>
       </div>
     </div>
-  );
-}
-
-function CapabilityStats({ capability }: { capability: Capability }) {
-  const { displayLocale } = useFormattingLocale();
-  const agents = capability.agent_count ?? 0;
-  const harnesses = capability.harness_count ?? 0;
-  return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1">
-        <AgentIcon className="h-3.5 w-3.5" />
-        {formatCountLabel(agents, "agent", undefined, displayLocale)}
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <Layers className="h-3.5 w-3.5" />
-        {formatCountLabel(harnesses, "harness", "harnesses", displayLocale)}
-      </span>
-    </div>
-  );
-}
-
-function CapabilityCard({ capability }: { capability: Capability }) {
-  const { locale } = useLocale();
-  return (
-    <EntityCard
-      className="h-full"
-      icon={<IconTile size="md" icon={<CapabilityIcon icon={capability.icon} />} />}
-      title={localizedCapabilityName(capability, locale)}
-      href={`/capabilities/${capability.id}`}
-      headerActions={<EntityStatus status={getStatusLabel(capability.status)} />}
-    >
-      <EntityCardDescription>
-        <InlineStreamdownMessage>
-          {localizedCapabilityDescription(capability, locale)}
-        </InlineStreamdownMessage>
-      </EntityCardDescription>
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        {capability.category ? (
-          <Badge variant="outline" className="text-xs">
-            {localizedCapabilityCategory(capability.category, locale)}
-          </Badge>
-        ) : (
-          <span />
-        )}
-        <CapabilityStats capability={capability} />
-      </div>
-    </EntityCard>
   );
 }
 

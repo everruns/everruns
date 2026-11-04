@@ -212,7 +212,7 @@ pub(crate) fn models_check(agents: &[(String, String)], env: &gateway::Env, stri
                 .why("These agents answer from the offline simulator, not a real model.")
         };
         return check.fix(
-            "Set SERVE_GATEWAY_URL, OPENROUTER_API_KEY, or OPENAI_API_KEY for openai/ models.",
+            "Set OPENROUTER_API_KEY, or OPENAI_API_KEY (optionally OPENAI_BASE_URL) for openai/ models.",
         );
     }
     if !simulated.is_empty() && strict {
@@ -267,8 +267,7 @@ mod tests {
 
     fn env(openrouter: bool) -> gateway::Env {
         gateway::Env {
-            gateway_url: None,
-            gateway_key: None,
+            openai_base_url: None,
             openrouter_key: openrouter.then(|| "key".to_string()),
             openai_key: None,
             aws_region: None,

@@ -49,6 +49,9 @@ impl Fixture {
             scheduled_at: Some(Utc::now() + chrono::Duration::seconds(120)),
             timezone: "UTC".into(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         }).await.unwrap();
         Self {
             db,

@@ -72,7 +72,7 @@ pub(super) fn build_request_options(
                 "openai"
                     if everruns_contracts::openai_compat::supports_cache_options(&config.model) =>
                 {
-                    Some("30m".to_string())
+                    Some(cfg.retention.openai_responses_ttl().to_string())
                 }
                 _ => None,
             },
@@ -183,6 +183,61 @@ pub(super) fn build_request_options(
     (!request_options.is_empty()).then_some(request_options)
 }
 
+pub(super) fn with_completed_request_options(
+    mut generation: crate::engine::events::LlmGenerationData,
+    config: &crate::engine::driver_registry::LlmCallConfig,
+    provider: &str,
+    meta: Option<&crate::engine::driver_registry::LlmCompletionMetadata>,
+) -> crate::engine::events::LlmGenerationData {
+    let mut options = build_request_options(config, provider).unwrap_or_default();
+    record_wire_cache_retention(
+        &mut options,
+        meta.and_then(|m| m.request_body.as_ref()),
+        provider,
+    );
+    if !options.is_empty() {
+        generation = generation.with_request_options(options);
+    }
+    generation
+}
+
+/// Endpoint and protocol gates can shorten or omit the requested retention.
+/// Completed generations record the sent body rather than inferring it from a
+/// provider name (which can also represent Azure or Chat Completions).
+pub(super) fn record_wire_cache_retention(
+    options: &mut LlmRequestOptions,
+    body: Option<&serde_json::Value>,
+    provider: &str,
+) {
+    if provider == "openai"
+        && let Some(body) = body
+    {
+        let retention = body
+            .pointer("/prompt_cache_options/ttl")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        if let Some(cache) = &mut options.prompt_cache {
+            cache.retention = retention;
+        } else if let Some(mode @ ("implicit" | "explicit")) = body
+            .pointer("/prompt_cache_options/mode")
+            .and_then(serde_json::Value::as_str)
+        {
+            // A native driver may enable caching without a capability. Only
+            // captured wire options establish what the driver sent.
+            options.prompt_cache = Some(LlmPromptCacheInfo {
+                enabled: true,
+                strategy: if mode == "explicit" {
+                    everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
+                } else {
+                    everruns_contracts::driver_registry::PromptCacheStrategy::Auto
+                },
+                provider_mode: Some(mode.to_owned()),
+                retention,
+            });
+        }
+    }
+}
+
 fn capability_name_snapshot(registry: &CapabilityRegistry, capability_id: &str) -> Option<String> {
     registry
         .get(capability_id)
@@ -280,6 +335,44 @@ mod tests {
     use crate::engine::llm_conversions::llm_call_config_builder_from_agent;
     use crate::runtime_agent::RuntimeAgent;
     use everruns_contracts::model::ReasoningEffort;
+
+    #[test]
+    fn wire_retention_overrides_model_intent() {
+        let mut config = crate::engine::driver_registry::LlmCallConfig::new("gpt-6.1-sol");
+        config.prompt_cache = Some(crate::engine::driver_registry::PromptCacheConfig {
+            enabled: true,
+            retention: crate::engine::driver_registry::PromptCacheRetention::TwelveHours,
+            ..Default::default()
+        });
+        for (body, expected) in [
+            (json!({"prompt_cache_options":{"ttl":"12h"}}), Some("12h")),
+            (json!({"prompt_cache_options":{"ttl":"30m"}}), Some("30m")),
+            (json!({}), None),
+        ] {
+            let mut options = build_request_options(&config, "openai").unwrap();
+            record_wire_cache_retention(&mut options, Some(&body), "openai");
+            assert_eq!(options.prompt_cache.unwrap().retention.as_deref(), expected);
+        }
+    }
+
+    #[test]
+    fn wire_cache_defaults_are_recorded_without_a_capability() {
+        let config = crate::engine::driver_registry::LlmCallConfig::new("gpt-6.1-sol");
+        let mut options = build_request_options(&config, "openai").unwrap_or_default();
+        assert!(options.prompt_cache.is_none());
+        record_wire_cache_retention(&mut options, Some(&json!({})), "openai");
+        assert!(options.prompt_cache.is_none());
+        let body = json!({"prompt_cache_options":{"ttl":"12h", "mode":"implicit"}});
+        record_wire_cache_retention(&mut options, Some(&body), "openai");
+        let cache = options.prompt_cache.unwrap();
+        assert!(cache.enabled);
+        assert_eq!(cache.retention.as_deref(), Some("12h"));
+        assert_eq!(cache.provider_mode.as_deref(), Some("implicit"));
+        assert_eq!(
+            cache.strategy,
+            everruns_contracts::driver_registry::PromptCacheStrategy::Auto
+        );
+    }
 
     #[test]
     fn request_options_capture_sampling_and_streaming_intent() {

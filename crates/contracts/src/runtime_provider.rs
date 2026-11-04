@@ -567,16 +567,44 @@ impl RuntimeProvider {
         Ok(response)
     }
 
+    /// Every model the provider's catalogs list: the chat driver's, then the
+    /// decision driver's. `Ok(None)` only when neither publishes a catalog.
+    ///
+    /// Decision discovery is additive: when the chat catalog answered, a
+    /// failing decision catalog is logged and skipped, so one flaky endpoint
+    /// never hides the chat models.
     pub async fn list_models(
         &self,
     ) -> Result<Option<Vec<crate::driver_registry::DiscoveredModel>>> {
-        let Some(driver) = &self.driver else {
-            return Ok(None);
+        let chat = match &self.driver {
+            Some(driver) => driver
+                .list_models(&self.endpoint)
+                .await
+                .map_err(|error| error.with_provider(self.id.as_str()))?,
+            None => None,
         };
-        driver
-            .list_models(&self.endpoint)
-            .await
-            .map_err(|error| error.with_provider(self.id.as_str()))
+        let Some(decisions) = &self.decisions else {
+            return Ok(chat);
+        };
+        let listed = match decisions.list_models(&self.endpoint).await {
+            Ok(listed) => listed,
+            Err(error) if chat.is_some() => {
+                tracing::warn!(
+                    provider = self.id.as_str(),
+                    %error,
+                    "Decision model discovery failed; keeping the chat catalog"
+                );
+                None
+            }
+            Err(error) => return Err(error.with_provider(self.id.as_str())),
+        };
+        Ok(match (chat, listed) {
+            (Some(mut chat), Some(listed)) => {
+                chat.extend(listed);
+                Some(chat)
+            }
+            (chat, listed) => chat.or(listed),
+        })
     }
 
     /// The provider's catalog, ready for display: discovered ids sorted
@@ -707,6 +735,16 @@ impl ChatDriver for ProviderBoundDriver {
         _endpoint: &ProviderEndpoint,
     ) -> Result<Option<Vec<crate::driver_registry::DiscoveredModel>>> {
         self.0.list_models().await
+    }
+
+    async fn credit_status(
+        &self,
+        _endpoint: &ProviderEndpoint,
+    ) -> Result<Option<crate::provider_limit::CreditStatus>> {
+        match &self.0.driver {
+            Some(driver) => driver.credit_status(self.0.endpoint()).await,
+            None => Ok(None),
+        }
     }
 
     fn supports_native_non_streaming(&self) -> bool {

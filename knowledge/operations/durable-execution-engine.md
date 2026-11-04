@@ -159,7 +159,7 @@ behind green unit tests.
 
 Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. The standalone worker subscribes at startup (`crates/worker/src/task_wakeup.rs`) and every notification cuts its poll backoff short. Polling stays as the fallback, so a lost notification or a dropped stream costs at most one backoff interval (`WORKER_POLL_BACKOFF_MAX_MS`), and the worker resubscribes with a 1s to 30s backoff.
 
-Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits. The in-process DEV_MODE worker has no channel: the turn backend wakes its lease loop and its running leases directly, also after the commit (`ActorWakeups`). A release that leaves the actor runnable wakes the releasing worker's own loop once the turn's slot is free. A lease that expires sends nothing, so the actor loop's poll backoff is capped at 1 s (`ACTOR_POLL_BACKOFF_MAX`), which bounds how long past its TTL a dead holder's turn waits.
+Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits. The in-process DEV_MODE worker has no channel: the turn backend wakes its lease loop and its running leases directly, also after the commit (`ActorWakeups`). A release that leaves the actor runnable wakes the releasing worker's own loop once the turn's slot is free. A wake-up for a session whose last worker is ready names that worker, and only it hears the wake-up ([Sticky sessions](../execution/sticky-sessions.md)). A lease that expires sends nothing, so the actor loop's poll backoff is capped at 1 s (`ACTOR_POLL_BACKOFF_MAX`), which bounds how long past its TTL a dead holder's turn waits.
 
 Subagent completion waits execute at the authorized server command edge through
 `wait_session_idle`, shared by direct and gRPC platform adapters. After checking
@@ -209,7 +209,7 @@ Guidance:
 - **A slot is for work, not for waiting on the model.** A turn's reason spends most of its time on the model's stream, doing little DB or CPU work, so it hands its slot back for that wait (`crates/core/src/engine/execution/model_wait.rs`). Without this, `MAX_CONCURRENT_TASKS` capped how many turns could talk to a model at once: on prod, 3 workers x 20 slots added about 2 s of queueing at 100 concurrent sessions (load test, 2026-10-08). Waits have their own cap because each open stream still costs memory, a connection and batched delta writes; past it a wait keeps its slot.
 - **Raising concurrency does not raise claim cost:** the claim batch is bounded by `CLAIM_BATCH_SIZE` independently, so a high-concurrency worker still claims in modest batches.
 - **Pool sizing, not pool inflation, is the lever.** Size against `pg_max_connections / replicas − margin`; do not raise the pool to mask worker over-claiming. Worker-side concurrency and claim batch should be tuned down first for small instances.
-- **Size against the total, not `DATABASE_POOL_MAX` alone (EVE-1081).** A control-plane instance opens two pools: the request pool (`DATABASE_POOL_MAX`) and a smaller background pool for sweeps (`DATABASE_BACKGROUND_POOL_MAX`, default 8). The number to compare against `pg_max_connections / replicas` is their sum — `DatabasePoolConfig::total_max_connections()` in `crates/server/src/storage/repositories/mod.rs`, which is also what the startup sizing warning uses. An instance previously tuned so `DATABASE_POOL_MAX` exactly filled the budget will over-subscribe Postgres by the background pool's size per replica and start getting connection refusals, so reduce `DATABASE_POOL_MAX` by that much when upgrading. Setting `DATABASE_BACKGROUND_POOL_MAX=0` restores the single-pool budget exactly, at the cost of the isolation it buys.
+- **Size against the total, not `DATABASE_POOL_MAX` alone (EVE-1081).** A control-plane instance opens three pools: the request pool (`DATABASE_POOL_MAX`), a smaller background pool for sweeps (`DATABASE_BACKGROUND_POOL_MAX`, default 8) and a relaxed-commit pool for reporting and lease writes (`DATABASE_RELAXED_POOL_MAX`, default 4). The number to compare against `pg_max_connections / replicas` is their sum — `DatabasePoolConfig::total_max_connections()` in `crates/server/src/storage/repositories/mod.rs`, which is also what the startup sizing warning uses. An instance previously tuned so `DATABASE_POOL_MAX` exactly filled the budget will over-subscribe Postgres by the background pool's size per replica and start getting connection refusals, so reduce `DATABASE_POOL_MAX` by that much when upgrading. Setting `DATABASE_BACKGROUND_POOL_MAX=0` restores the single-pool budget exactly, at the cost of the isolation it buys.
 - Effective worker settings (id, concurrency, claim batch, poll interval/backoff) are logged at worker init for troubleshooting.
 
 ### Worker Drain and Shutdown
@@ -299,8 +299,8 @@ log. The control plane keeps the `session_actors` runnable index
 ([migrations 215](../../crates/server/migrations/legacy/215_session_actors.sql) and
 [20261012014120](../../crates/server/migrations/20261012014120_session_actor_inbox_cursor.sql),
 [repository](../../crates/server/src/storage/repositories/session_actors/mod.rs))
-and serves five worker-link calls, `LeaseActors`, `RenewActorLease`,
-`ReleaseActor`, `HandOffActor` and `ReadActorJournal`, over gRPC and, in DEV_MODE, through
+and serves six worker-link calls, `LeaseActors`, `RenewActorLease`,
+`RenewActorLeases`, `ReleaseActor`, `HandOffActor` and `ReadActorJournal`, over gRPC and, in DEV_MODE, through
 `DirectWorkerAdapters` on the same repository. Workers still never touch the
 database. The server's turn backend is
 [`ActorTurnBackend`](../../crates/server/src/turns/actor_backend.rs) in
@@ -358,6 +358,21 @@ production and DEV_MODE alike; the worker side is
   timeout loading the compaction checkpoint): the reason step returns it
   instead of reporting it as a model failure, so it never becomes a
   `turn.failed` with a provider-error message.
+- **Batched lease renewal.** A worker's renewals go out together
+  ([`renewals.rs`](../../crates/core/src/host/session_actor/renewals.rs)):
+  one renewal goes out at once when none is in flight, and the renewals that
+  arrive while one is in flight share the next call (group commit, no timer,
+  so an idle worker adds no latency). The worker's actor runtime holds one
+  batcher for all its turns (it runs a driver per lease, so a batcher per
+  driver would batch nothing), and the periodic renewals of its turns tick on
+  one clock, the runtime's start plus whole thirds of the TTL, so they land in
+  the same call. `RenewActorLeases` renews a batch in one
+  statement and one relaxed commit; each lease keeps its own fence, expiry and
+  cursor, and comes back held, lost or deleted exactly as a single renewal
+  reports it. A failed call fails each of its renewals, which their renewers
+  retry as before. A server without the call answers UNIMPLEMENTED and the
+  worker renews one lease per call. Before batching, a turn cost about 14
+  renewal statements and commits at 100 agents (2026-11-03 stress bench).
   Expiry is database time.
 - **A stalled holder lets its lease go.** The renewer extends the lease
   whatever the turn does, so a holder stuck where it writes nothing (setup
@@ -373,11 +388,20 @@ production and DEV_MODE alike; the worker side is
   this way; a long model stream or tool call is progress with its own
   timeouts. Every worker control-plane call also has a deadline
   (`WORKER_GRPC_REQUEST_TIMEOUT_SECS`, default 120 s,
-  [`connect.rs`](../../crates/worker/src/grpc_adapters/connect.rs)), so a call
+  [`connect/mod.rs`](../../crates/worker/src/grpc_adapters/connect/mod.rs)), so a call
   nobody answers fails as a retryable store error instead of hanging the turn.
-  The task subscription stream has its own channel and no deadline. Not yet
-  covered: a sweep for an `active` session whose actor is neither leased nor
-  runnable.
+  The task subscription stream has its own channel and no deadline.
+- **A stranded `active` session is resumed.** Only a leased or runnable actor
+  writes `session.idled`, so an actor released or withdrawn without it left
+  the session `active` for good: no lease would ever come. A cluster-once
+  sweep ([`stranded_actor_sweep.rs`](../../crates/server/src/background/stranded_actor_sweep.rs),
+  every minute) finds `active` sessions whose actor has no live lease, is not
+  runnable, has no detached call, and whose latest `turn.started` has no
+  `session.idled` after it, with neither row touched for 5 minutes, and marks
+  the actor resumable. It resumes rather than idles: the worker that leases it
+  folds the log, so an open turn runs on and a closed one gets its owed idle.
+  Sessions that already logged `session.idled` are left out, so a mismatch
+  the fold cannot fix is not re-marked every minute.
 - **Every log append is fenced.** Stopping on a lost renew leaves a window: a
   write already in flight when the lease ran out could land after another
   holder took the session. So every event a leased turn appends carries its
@@ -445,8 +469,13 @@ production and DEV_MODE alike; the worker side is
   failures outlast a lease's retries still lets the lease expire and counts
   an attempt, so the seal stays the bound. Releasing instead of expiring was
   rejected: release resets the count, so such a turn would never be sealed,
-  and it leaves an open turn with no pending input unrunnable. The reasoning
-  is next to the code in
+  and it leaves an open turn with no pending input unrunnable. A closed turn
+  still owed its `session.idled` gets it before the guard runs. The guard
+  used to run first, and a turn whose holders a rolling deploy killed twice
+  mid-turn and once more between `turn.completed` and the idle reached a
+  poisoned lease with no open turn and no fresh input: it sealed nothing,
+  idled nothing and released, so the session stayed `active` for days
+  (production, 2026-10-29). The reasoning is next to the code in
   [`turn.rs`](../../crates/core/src/host/session_actor/turn.rs).
 - **Per-org fairness order.** A lease call counts each org's held leases and
   takes actors of orgs under the cap (default 32) first, oldest first; an
@@ -576,5 +605,116 @@ Workers heartbeat every 5s. `WORKER_HEARTBEAT_TIMEOUT_SECS` (60s, in `crates/dur
 **Authentication**: Two layered mechanisms (see `knowledge/security/threat-model.md` TM-DURABLE-002):
 1. Bearer token (`WORKER_GRPC_AUTH_TOKEN`) -- required in production
 2. Mutual TLS (`WORKER_GRPC_TLS_*`) -- optional transport encryption
+
+Both the durable/task client and the normal turn client, including its raw blob
+fetcher, use the shared TLS configuration. TLS retains the endpoint hostname for
+certificate verification and bypasses the plaintext DNS replica balancer. The
+turn client's deadline bounds connection establishment and TLS handshake as
+well as requests; TLS failures never select a plaintext fallback. Unset or empty
+CA configuration preserves plaintext compatibility. See the
+[turn connection implementation](../../crates/worker/src/grpc_adapters/connect/mod.rs)
+and [environment variables](../../docs/sre/environment-variables.md#worker_grpc_tls_ca_cert).
+
+This verifies transport peers, not an assignment or tenant. A shared worker's
+bearer still grants cross-org authority; a per-executor application identity and
+assignment admission must be enforced separately before scoped issuance.
+
+The unactivated [journal capability verifier](../../crates/server/src/worker_link/grpc_service/journal_capability/mod.rs)
+is the next component: it binds an exact TLS-verified client leaf certificate to
+a registered executor and requires an opaque proof whose stored digest selects
+that executor's journal grant. It creates a distinct verified context, strips the
+proof header, and rechecks identity, capability, grant and lease in one database
+statement at each read admission. Caller identity headers and legacy bearers
+cannot substitute for either proof. Middleware accepts only the exact journal
+RPC wire route; the RPC and raw blob gates also refuse other operations under
+the verified context.
+
+No production listener calls the verifier and no production registration or
+capability issuer exists. The migration creates empty records. Identity and
+capability bindings cannot be retargeted, extended, un-revoked or recycled;
+parent purge leaves unusable digest tombstones. Trusted issuance still needs
+certificate enrollment/validity policy, secure proof delivery, retention and
+resource budgets, and complete underlying user/custom-policy provenance before
+activation. A qualified listener must supply actual verified mTLS connection
+evidence; a TLS-terminating proxy's headers are insufficient. Transport peers
+sharing one process's identities or proofs still share its authority.
+
+The source-only [lifecycle admission](../../crates/server/src/storage/repositories/session_actors/capability_admission.rs)
+also requires explicit supporting grants. These are revocation prerequisites,
+not permission to read a journal or use a resource. This first supported class
+is session-scoped service grants to organization-owned service resources; personal, agent-consumer and wider
+scopes cannot be enrolled without verified invocation provenance. No issuer
+selects or registers dependencies in production. A future trusted issuer must
+prove journal authority independently and register the complete dependency set;
+one arbitrary live resource grant is insufficient evidence of that authority.
+
+[Database lifecycle triggers](../../crates/server/migrations/20261028115847_worker_grant_lifecycle_revocation.sql)
+pin database-owned versions at assignment creation and dependency registration.
+Resource/grant edits or deletion, session identity or archive changes, configured
+agent identity or status changes, cancellation, lease release/reassignment, and
+renewing an expired lease revoke old grants atomically. Forward renewal of a live
+lease and session title changes preserve it. Versions remain monotonic when old
+values are restored; deleted source references become immutable tombstones, so
+recreating identifiers cannot revive a proof. An elapsed supporting-grant expiry
+is refused online; extending it requires a fresh assignment. Existing grants
+without captured origins or dependencies fail closed rather than being backfilled.
+
+Registration locks source records before the assignment. Creation serializes
+against lifecycle changes. Online admission checks current versions as well as
+revocation, so a racing uncommitted registration cannot escape by missing an
+update notification. Scoped reads use one
+[read-only snapshot](../../crates/server/src/storage/repositories/session_actors/journal_snapshot.rs)
+for the protection floor, authority, journal page and head metadata. A revocation
+committed before that snapshot is denied. An earlier snapshot may finish afterward,
+but cannot fetch later-committed journal events or head metadata. Retained contexts,
+subsequent pages and new connections all recheck. This does not retract delivered
+data or synchronously stop in-flight reads. Snapshot lifetime and transaction round
+trips still need production-scale budget qualification before activation.
+
+The source-only [worker ingress floor](../../crates/server/migrations/20261028140332_worker_ingress_protection_floor.sql)
+closes canonical legacy wire access before protected capability enrollment.
+It is empty on upgrade and has no production writer or activation API. A
+capability cannot be enrolled without the supported floor, and verified reads
+without it are refused. This is a database-wide protocol requirement: legacy
+global work claims, org-wide credential lookups and signed object URLs cannot
+be safely filtered by an assignment selector. Mixed legacy/scoped execution in
+one database is unsupported. Unprotected deployments retain legacy behavior;
+a missing schema or unavailable database never implies an absent floor.
+
+Every generated RPC and raw byte route checks the floor without caching a
+positive legacy decision. Legacy, authentication-disabled development and
+selector-only journal assertions are all refused once protection is required.
+A qualified verified journal reader retains only its existing journal operation;
+an unknown future floor version refuses it too. The floor cannot be removed or
+downgraded, including after grants expire or their parent data is deleted.
+[Wire admission](../../crates/server/src/worker_link/grpc_service/authority/mod.rs)
+does not derive scope from caller org/session identifiers or identity headers.
+
+Event streams admitted earlier recheck before publishing/storing their collected
+batch; notification streams recheck before yielding each item; uploads recheck
+after body receipt before decoding/storage. New uploads are refused before body extraction. Read links authenticate their
+signature before any database access, then check the floor before object lookup;
+journal-only contexts remain refused before parsing either byte operation. This is admission enforcement,
+not a transaction coupling every operation to floor activation. Previously
+admitted finite operations or byte downloads may finish; prior disclosures
+cannot be retracted. The legacy event-stream collector still needs bounded
+memory qualification before any scoped emit operation is supported.
+
+This floor protects the canonical RPC/HTTP wire boundary, not arbitrary server
+code with database access. Default development storage initialization refuses
+protected in-process hosting. Already captured direct stores, custom embedders,
+alternate listeners and old replicas are not made safe by that startup check.
+No production listener installs the scoped verifier and no issuer exists;
+protected execution is not a runnable production mode at this stage.
+
+Before activation: migrate empty metadata first, upgrade and independently verify
+every serving replica, drain and stop all legacy workers/streams/transfers, remove
+direct/in-process and unqualified alternate worker hosting, implement and qualify
+the required scoped operations and complete authority provenance, and compose the
+verified listener. A floor record cannot enforce itself on an old binary that
+ignores it; deployment version enforcement is still required. Do not roll back
+to pre-floor binaries or reopen legacy access after protection is required.
+Production enrollment, trust, network, credential or security-setting actions
+remain separate approved rollout work. No such action is performed here.
 
 **Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.

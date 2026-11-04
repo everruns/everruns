@@ -107,6 +107,15 @@ helm upgrade everruns oci://ghcr.io/everruns/charts/everruns --version 0.49.0 \
 The new server applies the database migrations when it starts. Migrations only
 go forward, so back up the database first.
 
+An upgrade does not interrupt running agents. The old server drains for up to
+45 seconds (`server.terminationGracePeriodSeconds`): it lets in-flight requests
+finish and ends event streams with a `disconnecting` event so clients reconnect.
+Workers roll one at a time with the replacement started first, and a stopping
+worker hands each running turn to another worker at its next step. A
+PodDisruptionBudget (`worker.podDisruptionBudget`) keeps node drains to one
+worker at a time. The server is stopped before its replacement starts, so
+requests in that gap wait for it to come back.
+
 ## No operator
 
 Everruns ships a chart, not an operator. PostgreSQL is the only stateful part,

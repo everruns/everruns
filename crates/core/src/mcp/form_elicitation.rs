@@ -696,6 +696,7 @@ pub trait FormAnswerStore: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct FormElicitation {
     pub server_name: String,
+    /// Tool name, or the reserved `resources/read:<exact URI>` consent scope.
     pub tool_name: String,
     pub key: String,
     pub message: String,

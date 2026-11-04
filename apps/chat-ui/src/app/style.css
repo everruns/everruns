@@ -7,10 +7,23 @@
   --muted: #707570;
   --border: #dedfd9;
   --accent: #244d40;
+  --on-accent: #fff;
   --hover: #e6ebe5;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
 }
+:root.dark {
+  color-scheme: dark;
+  --bg: #171c19;
+  --surface: #202823;
+  --text: #edf2ee;
+  --muted: #a6b3aa;
+  --border: #3c4940;
+  --accent: #8fc7ab;
+  --on-accent: #14261d;
+  --hover: #2c3930;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -49,7 +62,7 @@ a {
 }
 .primary {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   border: 0;
   border-radius: 8px;
   padding: 10px 15px;
@@ -83,6 +96,23 @@ a {
 .brand span {
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+.brand-mark,
+.brand-logo {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.brand-logo,
+.mark-logo {
+  object-fit: cover;
+  border-radius: 50%;
+}
+.mark-logo {
+  width: 48px;
+  height: 48px;
+  display: block;
 }
 .section-label {
   font-size: 11px;
@@ -124,6 +154,48 @@ footer {
 }
 footer button {
   border: 0;
+  flex-shrink: 0;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+}
+.account img,
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  background: var(--hover);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+}
+.account-name {
+  min-width: 0;
+}
+.account-name strong,
+.account-name small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-name strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-name small {
+  color: var(--muted);
+  font-size: 11px;
 }
 main {
   min-width: 0;
@@ -189,6 +261,22 @@ h1 {
 }
 .assistant {
   padding: 6px 0;
+}
+/* A message the platform wrote (schedule run, trigger, update): a muted
+   line with a rule, never a user bubble. */
+.automatic {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.automatic::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 .message pre {
   overflow: auto;
@@ -618,4 +706,54 @@ h1 {
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
+}
+/* Emoji reactions under a message: chips with counts, the consumer's own
+   outlined in the accent color, and one quick row of emoji. */
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: -14px 0 18px;
+}
+.message.user + .reactions {
+  justify-content: flex-end;
+}
+.reactions .reaction.add {
+  opacity: 0;
+}
+.reactions.shown .reaction.add,
+div:hover > .reactions .reaction.add,
+.reactions .reaction.add:focus-visible {
+  opacity: 1;
+}
+.reaction {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 12px;
+  line-height: 20px;
+}
+.reaction.mine {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.reaction-picker {
+  display: inline-flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 2px;
+}
+.reaction-picker button {
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  padding: 2px 5px;
+}
+.reaction-picker button:hover {
+  background: var(--hover);
 }

@@ -1,5 +1,13 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "The model declined this request.": "The model declined this request.",
+  "Model declined request": "Model declined request",
+  "Open in Everruns": "Open in Everruns",
+  Expand: "Expand",
+  "Loading page": "Loading page",
+  "Changes affect only this estimate.": "Changes affect only this estimate.",
+  "This content could not be displayed.": "This content could not be displayed.",
+  "The message could not be sent.": "The message could not be sent.",
   Discard: "Discard",
   "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.":
     "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.",
@@ -225,4 +233,6 @@ export const messages: Readonly<Record<string, string>> = {
     "Retry window expired. Review this conversation before sending again.",
   "Select and save a named Organization provider account before building.":
     "Select and save a named Organisation provider account before building.",
+  "Organization users": "Organisation users",
+  "Members of this organization can sign in.": "Members of this organisation can sign in.",
 };

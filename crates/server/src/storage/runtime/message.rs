@@ -113,7 +113,7 @@ impl MessageRetriever for DbMessageRetriever {
         let mut messages = Vec::with_capacity(events.len());
 
         for event_row in events {
-            match event_to_message(&event_row.data, &event_row.event_type) {
+            match row_to_message(&event_row) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
                     tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
@@ -156,7 +156,7 @@ impl MessageRetriever for DbMessageRetriever {
         // Convert events to messages
         let mut messages = Vec::with_capacity(events.len());
         for event_row in events {
-            match event_to_message(&event_row.data, &event_row.event_type) {
+            match row_to_message(&event_row) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
                     tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
@@ -232,6 +232,20 @@ pub(crate) async fn retrieve_message(
         }
     }
     Ok(None)
+}
+
+/// Convert a stored message event row to a RuntimeMessage.
+///
+/// Tool results carry no stored timestamp of their own, so they take the
+/// event's. A load-time `now()` would re-render every `<facts>` block that
+/// follows a tool result on each request and lose the provider prompt cache
+/// from the first tool call on.
+fn row_to_message(row: &crate::storage::EventRow) -> std::result::Result<RuntimeMessage, String> {
+    let mut message = event_to_message(&row.data, &row.event_type)?;
+    if message.role == RuntimeMessageRole::ToolResult {
+        message.created_at = row.ts;
+    }
+    Ok(message)
 }
 
 /// Convert stored event data to a RuntimeMessage
@@ -418,6 +432,44 @@ mod lookup_tests {
         .execute(db.database().pool())
         .await
         .unwrap();
+    }
+
+    /// Loading history twice must give the model the same transcript: a tool
+    /// result keeps the time it was stored, not the time it was loaded.
+    #[tokio::test]
+    async fn loaded_tool_results_keep_their_stored_time() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db.create_test_session().await;
+        let stored_at = Utc::now() - chrono::Duration::hours(1);
+        db.create_event(CreateEventRow {
+            session_id: session,
+            event_type: "tool.completed".into(),
+            ts: stored_at,
+            context: serde_json::json!({}),
+            data: serde_json::json!({
+                "tool_call_id": "call_1", "tool_name": "test",
+                "success": true, "status": "success",
+                "result": [{"type": "text", "text": "result"}]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+        let retriever = DbMessageRetriever::new(db.clone());
+        let loaded = retriever.load(session).await.unwrap();
+        let filtered = retriever
+            .load_filtered(MessageQuery::new(session))
+            .await
+            .unwrap();
+        for message in [&loaded[0], &filtered[0]] {
+            assert_eq!(message.role, RuntimeMessageRole::ToolResult);
+            // Postgres keeps microseconds.
+            assert_eq!(
+                message.created_at.timestamp_micros(),
+                stored_at.timestamp_micros()
+            );
+        }
     }
 
     #[tokio::test]

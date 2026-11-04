@@ -3,9 +3,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageContent } from "./message-content";
 import { FilePreview, downloadFile } from "./file-preview";
 import { WorkLog, workForMessages } from "./work-log";
-import { conversationMessages } from "./transcript";
+import { conversationMessages, orderedEvents, originLabel } from "./transcript";
+import { ReactionBar } from "./reaction-bar";
+import {
+  applyReaction,
+  loadReactions,
+  reactionVersion,
+  saveReaction,
+  type ReactionsByMessage,
+} from "./reactions";
 import { SharedChat } from "./shared-chat";
-import { consumeSse } from "../client/sse";
+import { consumeSse, streamFailure } from "../client/sse";
+import { presentViewer, type Viewer } from "../profile";
 import {
   recoveryKey,
   readRecovery,
@@ -16,12 +25,21 @@ import {
   type PendingMessage,
 } from "../client/recovery";
 
+// A recovered send may still name a model. Work Chat uses the Agent's model.
+function withoutModelChoice(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const record = body as { controls?: Record<string, unknown> };
+  if (!record.controls || !("model_id" in record.controls)) return body;
+  const { model_id: _model, ...controls } = record.controls;
+  return { ...record, controls };
+}
+
 type Config = {
   name: string;
   description?: string;
+  logo?: string;
   interface_mode: "single_with_threads" | "multi_chat";
   features: { threads: boolean; files: boolean };
-  models?: Array<{ id: string; name: string }>;
 };
 type Question = {
   id: string;
@@ -183,7 +201,8 @@ function WorkChat({ config }: { config: Config }) {
   };
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
-    [signedIn, setSignedIn] = useState(true);
+    [signedIn, setSignedIn] = useState(true),
+    [viewer, setViewer] = useState<Viewer | null>(null);
   const [work, setWork] = useState<Work[]>([]),
     [panel, setPanel] = useState<"work" | "files" | null>(null),
     [files, setFiles] = useState<FileInfo[]>([]),
@@ -196,20 +215,40 @@ function WorkChat({ config }: { config: Config }) {
     [archived, setArchived] = useState(false),
     [nextPage, setNextPage] = useState<string | null>(null);
   const [notice, setNotice] = useState(""),
-    [model, setModel] = useState(""),
     [effort, setEffort] = useState("");
   const [preview, setPreview] = useState(true);
+  const [reactions, setReactions] = useState<ReactionsByMessage>(new Map());
   const end = useRef<HTMLDivElement>(null),
     generation = useRef(0),
     lastSequence = useRef(0);
   const fail = useCallback((error: unknown) => {
     const text = error instanceof Error ? error.message : "Chat temporarily unavailable";
-    setError(text);
     if (text === "Sign in to continue") {
+      // The signed-out card is the sign-in prompt. An alert would stack a second one.
       accessDenied.current = true;
       setSignedIn(false);
+      setError(null);
+      return;
     }
+    setError(text);
   }, []);
+  useEffect(() => {
+    if (!signedIn) {
+      setViewer(null);
+      return;
+    }
+    let stopped = false;
+    api<unknown>("chat/profile")
+      .then((value) => {
+        if (!stopped) setViewer(presentViewer(value));
+      })
+      .catch(() => {
+        if (!stopped) setViewer(null);
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [signedIn]);
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
@@ -220,9 +259,9 @@ function WorkChat({ config }: { config: Config }) {
           next.interface_mode !== config.interface_mode ||
           next.name !== config.name ||
           next.description !== config.description ||
+          next.logo !== config.logo ||
           next.features.files !== config.features.files ||
-          next.features.threads !== config.features.threads ||
-          JSON.stringify(next.models) !== JSON.stringify(config.models)
+          next.features.threads !== config.features.threads
         )
           window.location.reload();
       } catch {
@@ -348,7 +387,7 @@ function WorkChat({ config }: { config: Config }) {
             }
           });
         } catch (error) {
-          report(error);
+          report(streamFailure(error));
         }
         if (!stopped)
           await new Promise<void>((resolve) => {
@@ -458,7 +497,6 @@ function WorkChat({ config }: { config: Config }) {
             },
             files: attachments,
             controls: {
-              ...(model ? { model_id: model } : {}),
               ...(effort ? { reasoning: { effort } } : {}),
             },
           },
@@ -476,7 +514,12 @@ function WorkChat({ config }: { config: Config }) {
           "This pending send is older than the retry window. Review the conversation before sending again.",
         );
       if (!currentIntent()) return;
-      await api(`sessions/${id}/messages`, "POST", submission.body, submission.key);
+      await api(
+        `sessions/${id}/messages`,
+        "POST",
+        withoutModelChoice(submission.body),
+        submission.key,
+      );
       const live = currentRef.current.scope === scope && currentRef.current.selected === id;
       const originalText = (
         (
@@ -568,14 +611,41 @@ function WorkChat({ config }: { config: Config }) {
     }
     setUpload(files);
   };
-  const messages = conversationMessages(events);
-  const turnWork = workForMessages(events);
-  const turnState = events.findLast((event) =>
+  const ordered = orderedEvents(events);
+  const messages = conversationMessages(ordered);
+  const reactionsSeen = reactionVersion(ordered);
+  const turnWork = workForMessages(ordered);
+  const turnState = ordered.findLast((event) =>
     ["turn.started", "turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
   );
   const running = turnState
     ? turnState.type === "turn.started"
     : ["active", "started"].includes(session?.status ?? "");
+  // Read reactions when the conversation opens and whenever anyone reacts.
+  useEffect(() => {
+    if (!selected) return;
+    let stale = false;
+    loadReactions(selected)
+      .then((value) => {
+        if (!stale) setReactions(value);
+      })
+      .catch(() => {
+        /* chips are an extra; the conversation still works without them */
+      });
+    return () => {
+      stale = true;
+    };
+  }, [selected, reactionsSeen]);
+  const react = (messageId: string, emoji: string, add: boolean) => {
+    if (!selected) return;
+    const sessionId = selected;
+    setReactions((old) => applyReaction(old, messageId, emoji, add));
+    saveReaction(sessionId, messageId, emoji, add)
+      .catch((error) => {
+        setReactions((old) => applyReaction(old, messageId, emoji, !add));
+        fail(error);
+      });
+  };
   const choose = (id: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set("session", id);
@@ -598,7 +668,8 @@ function WorkChat({ config }: { config: Config }) {
     >
       <aside className={sidebar ? "sidebar open" : "sidebar"}>
         <div className="brand">
-          ◉ <span>{config.name}</span>
+          <AgentLogo src={config.logo} variant="brand" />
+          <span>{config.name}</span>
         </div>
         {config.interface_mode === "multi_chat" ? (
           <button className="primary" onClick={create}>
@@ -687,7 +758,7 @@ function WorkChat({ config }: { config: Config }) {
           )}
         </nav>
         <footer>
-          <span>Work Chat</span>
+          {viewer ? <Account viewer={viewer} /> : <span>Work Chat</span>}
           {signedIn ? (
             <button
               onClick={async () => {
@@ -816,50 +887,84 @@ function WorkChat({ config }: { config: Config }) {
         <section className="conversation" aria-label="Conversation">
           {!messages.length && (
             <div className="welcome">
-              <div className="mark">◉</div>
+              <AgentLogo src={config.logo} variant="welcome" />
               <h1>{config.name}</h1>
               <p>
                 {config.description || "Bring a question, a task, or something you want to build."}
               </p>
             </div>
           )}
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={message.role === "user" ? "message user" : "message assistant"}
-            >
-              <span className="sr-only">{message.role}</span>
-              {message.role !== "user" && <WorkLog events={turnWork.logs.get(message.id) ?? []} />}
-              <MessageContent
-                text={message.text}
-                streaming={running && message.id === messages.at(-1)?.id}
-                onMessage={(text) => void send(text, { fromWidget: true })}
-                onFile={
-                  config.features.files
-                    ? (path) => {
-                        setPanel("files");
-                        void browse(path);
+          {messages.map((message, index) => {
+            const next = messages[index + 1];
+            const ownWork =
+              message.role === "user" && next?.role !== "assistant"
+                ? (turnWork.byUser.get(message.id) ?? [])
+                : [];
+            if (message.origin) {
+              return (
+                <div key={message.id}>
+                  <p className="automatic">
+                    <span className="sr-only">Automatic message: </span>
+                    {originLabel(message.origin)}
+                  </p>
+                  {ownWork.length > 0 && (
+                    <WorkLog events={ownWork} running={running && index === messages.length - 1} />
+                  )}
+                </div>
+              );
+            }
+            return (
+              <div key={message.id}>
+                <article className={message.role === "user" ? "message user" : "message assistant"}>
+                  <span className="sr-only">{message.role}</span>
+                  {message.role !== "user" && (
+                    <WorkLog events={turnWork.logs.get(message.id) ?? []} />
+                  )}
+                  <MessageContent
+                    text={message.text}
+                    streaming={running && message.id === messages.at(-1)?.id}
+                    onMessage={
+                      !session?.archived && !running && !busy
+                        ? (text) => send(text, { fromWidget: true })
+                        : undefined
+                    }
+                    onFile={
+                      config.features.files
+                        ? (path) => {
+                            setPanel("files");
+                            void browse(path);
+                          }
+                        : undefined
+                    }
+                  />
+                  {message.role !== "user" && (
+                    <button
+                      className="copy-message"
+                      aria-label="Copy message"
+                      onClick={() =>
+                        navigator.clipboard
+                          .writeText(message.text)
+                          .then(() => setNotice("Message copied."))
+                          .catch(fail)
                       }
-                    : undefined
-                }
-              />
-              {message.role !== "user" && (
-                <button
-                  className="copy-message"
-                  aria-label="Copy message"
-                  onClick={() =>
-                    navigator.clipboard
-                      .writeText(message.text)
-                      .then(() => setNotice("Message copied."))
-                      .catch(fail)
-                  }
-                >
-                  Copy
-                </button>
-              )}
-            </article>
-          ))}
-          {running && <WorkLog events={turnWork.pending} running />}
+                    >
+                      Copy
+                    </button>
+                  )}
+                </article>
+                {message.id.startsWith("message_") && (
+                  <ReactionBar
+                    reactions={reactions.get(message.id) ?? []}
+                    onToggle={(emoji, add) => react(message.id, emoji, add)}
+                    alwaysShowButton={message.role !== "user" && message.id === messages.at(-1)?.id}
+                  />
+                )}
+                {ownWork.length > 0 && (
+                  <WorkLog events={ownWork} running={running && index === messages.length - 1} />
+                )}
+              </div>
+            );
+          })}
           {!!work.length && (
             <div className="work-chips">
               {work.slice(0, 8).map((task) => (
@@ -972,21 +1077,6 @@ function WorkChat({ config }: { config: Config }) {
           {error && (
             <div role="alert" className="error">
               {error}
-              {!signedIn && (
-                <>
-                  {" "}
-                  ·{" "}
-                  <a
-                    href={
-                      selected
-                        ? `/auth/start?session=${encodeURIComponent(selected)}`
-                        : "/auth/start"
-                    }
-                  >
-                    Sign in
-                  </a>
-                </>
-              )}
             </div>
           )}
           {!signedIn ? (
@@ -1054,20 +1144,6 @@ function WorkChat({ config }: { config: Config }) {
                     }}
                   />
                 </label>
-                {!!config.models?.length && (
-                  <select
-                    aria-label="Model"
-                    value={model}
-                    onChange={(event) => setModel(event.target.value)}
-                  >
-                    <option value="">Agent default</option>
-                    {config.models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
                 <select
                   aria-label="Reasoning effort"
                   value={effort}
@@ -1285,5 +1361,57 @@ function QuestionForm({
       })}
       <button disabled={sending}>Continue</button>
     </form>
+  );
+}
+function AgentLogo({ src, variant }: { src?: string; variant: "brand" | "welcome" }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed)
+    return (
+      <span className={variant === "brand" ? "brand-mark" : "mark"} aria-hidden="true">
+        ◉
+      </span>
+    );
+  return (
+    <img
+      className={variant === "brand" ? "brand-logo" : "mark-logo"}
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
+function initials(name: string) {
+  const parts = name.split(/\s+/).filter(Boolean);
+  const words = parts.length > 1 ? parts.slice(0, 2) : parts.slice(0, 1);
+  return words
+    .map((part) => [...part][0] ?? "")
+    .join("")
+    .toUpperCase();
+}
+function Account({ viewer }: { viewer: Viewer }) {
+  const [picture, setPicture] = useState(viewer.picture);
+  useEffect(() => setPicture(viewer.picture), [viewer.picture]);
+  return (
+    <div className="account">
+      {picture ? (
+        <img
+          src={picture}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setPicture(undefined)}
+        />
+      ) : (
+        <span className="avatar" aria-hidden="true">
+          {initials(viewer.name)}
+        </span>
+      )}
+      <span
+        className="account-name"
+        title={viewer.email ? `${viewer.name} ${viewer.email}` : viewer.name}
+      >
+        <strong>{viewer.name}</strong>
+        {viewer.email ? <small>{viewer.email}</small> : null}
+      </span>
+    </div>
   );
 }

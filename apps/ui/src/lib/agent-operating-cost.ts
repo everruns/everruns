@@ -17,6 +17,7 @@ export interface CostRate {
   unit: string;
   usdPerUnit: number;
   billing: CostBilling;
+  period?: "task" | "month";
 }
 export interface AgentCostPricing {
   status: "ready" | "loading" | "error";

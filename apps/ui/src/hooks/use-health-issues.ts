@@ -6,6 +6,8 @@ import {
   getHealthIssue,
   checkHealthIssue,
   snoozeHealthIssue,
+  dismissHealthIssue,
+  runHealthIssueFixer,
 } from "@/lib/api/health-issues";
 import { ApiError } from "@/lib/api/client";
 import { useOrg } from "@/providers/org-provider";
@@ -49,5 +51,50 @@ export function useHealthIssueAction(action: "check" | "snooze") {
         client.invalidateQueries({ queryKey: ["notifications"] }),
       ]);
     },
+  });
+}
+
+// Run a fixer the server declared on an issue. The caller decides what to do
+// with a consent URL; the lists refresh either way, since a fix is recorded.
+export function useRunHealthFixer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, kind }: { id: string; kind: string }) => runHealthIssueFixer(id, kind),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["health-issues"] }),
+        client.invalidateQueries({ queryKey: ["health-issue"] }),
+        client.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+    },
+  });
+}
+
+// Close a finding that needs nothing, with the reason the detectors are
+// calibrated against.
+export function useDismissFinding() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => dismissHealthIssue(id, reason),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["health-issues"] }),
+        client.invalidateQueries({ queryKey: ["health-issue"] }),
+        client.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+    },
+  });
+}
+
+// Findings for the Evals section: open behavior and classifier issues. The
+// list holds pending issues only; one page of 100 covers what a person reads.
+export function useEvalFindings(enabled = true) {
+  const { currentOrg } = useOrg();
+  return useQuery({
+    queryKey: ["health-issues", currentOrg?.public_id, "findings"],
+    queryFn: () => listHealthIssues(undefined, 0, 100),
+    enabled: enabled && !!currentOrg,
+    refetchInterval: 60_000,
+    retry: false,
   });
 }

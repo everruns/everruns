@@ -1,0 +1,8 @@
+{
+  "channel_type": "slack",
+  "channel_config": {
+    "session_strategy": "per_thread",
+    "response_policy": "mentions_only"
+  },
+  "enabled": true
+}

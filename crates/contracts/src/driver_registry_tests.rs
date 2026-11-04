@@ -439,6 +439,7 @@ fn registry_distinguishes_missing_driver_from_missing_chat_service() {
         matches!(registry.create_chat_driver(&ProviderConfig::new(DriverId::Anthropic)), Err(AgentLoopError::DriverNotRegistered(id)) if id == "anthropic")
     );
     registry.register_descriptor(DriverDescriptor {
+        apis: Vec::new(),
         provider: None,
         id: DriverId::external("embeddings-only"),
         display_name: "Embeddings Only".into(),
@@ -446,6 +447,7 @@ fn registry_distinguishes_missing_driver_from_missing_chat_service() {
         credential_schema: CredentialFormSchema::empty(),
         base_url_env: None,
         oauth: None,
+        recommended_models: None,
         chat: None,
         embeddings: None,
     });

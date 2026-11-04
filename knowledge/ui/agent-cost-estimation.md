@@ -36,6 +36,19 @@ Advanced assumptions expose per-task model calls, input, output and tool-result 
 examples remain outside translation. The deployment utility model produces natural-language
 suggestions in the selected display locale. User model selection still determines prices.
 
+## Page-aware Chat
+
+With Chat workspace enabled in Adoption, the open planner owns local estimate
+drafts instead of exposing the Agent underneath. Guidance, assumptions, volume,
+cache/retry allowances and existing resource quantities/external prices support
+Before/After and guarded Undo. The selected calculator exposes only its inputs;
+closing, switching calculators or changing provenance expires captured bindings.
+These changes require no Save and create no agent revision, ledger entry or bill.
+Host-supplied prices stay read-only. Inference, adding/removing resource rows and
+preset buttons retain their existing manual actions. Explicit bounded summaries
+expose displayed totals and assumptions, excluding billing internals. See the
+[Chat mode contract](chat-mode.md#shared-forms-and-read-only-views).
+
 ## Bounded inference
 
 The purpose-specific [cost planning command](../../crates/server/src/domains/agents/cost_plan.rs)
@@ -87,6 +100,8 @@ not resource quantities. The total covers included resources, never every possib
 
 The [pricing hook](../../apps/ui/src/hooks/use-agent-cost-pricing.ts) is a host override seam.
 It classifies model spend as prepaid credits or external, and supplies current service rates.
+Host rates can declare a monthly billing period independently of their usage unit, so stored
+capacity remains a fixed monthly estimate rather than scaling with task volume.
 Self-hosted defaults to provider billing with no managed rate card. A host supplies its credit
 label and effective rates without putting host billing logic in OSS. Rates are re-resolved by
 stable identity when refreshed; a missing or failed rate cannot retain a stale zero/price.
@@ -118,4 +133,5 @@ source remains marked superseded. This announcement redirect is covered by the
 - [UI](../../apps/ui/src/components/agents/agent-cost-estimate.tsx)
 - [Calculation tests](../../apps/ui/src/__tests__/agent-cost-estimate.test.ts)
 - [Interaction tests](../../apps/ui/src/__tests__/agent-cost-calculator.test.tsx)
+- [Chat draft interaction tests](../../apps/ui/src/__tests__/cost-planner-chat-drafts.test.tsx)
 - [Manual case](../test-cases/ui/agent_cost/TC001_estimate_agent_cost.md)

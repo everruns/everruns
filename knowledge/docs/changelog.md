@@ -50,13 +50,44 @@ picture when one helps.
 - An entry per PR. Internal refactors, CI, dependency bumps and PRs that are a
   step inside a larger program get no entry of their own.
 
+## Social cards
+
+Every entry gets a 1200x630 Open Graph card, generated at docs build time by
+[`social-card.mjs`](../../apps/docs/scripts/lib/social-card.mjs): the mark, a
+gold eyebrow with the kind, the title, the date and products on the left, an
+illustration on the right. The illustration follows significance, so the work
+asked of the author follows how much the entry matters:
+
+| Entry | Card |
+|---|---|
+| `minor` | Plain: title, description and date, no illustration |
+| `notable` | Generated art from the app's [Facet icons](../ui/iconography.md), picked from the title, description and docs links; an entry about only Yolop, Mira or Bashkit shows that product's mark |
+| `major` and releases | The entry's own `social.svg`, drawn by whoever writes the entry; generated art when it is missing |
+
+`social.svg` sits in the entry folder and draws one picture of the feature on
+a 520x560 stage (`viewBox="0 0 520 560"`): the thing itself, such as the real
+avatar presets on a plane, a cost chart against its policy, or a release's
+highlights wired to its version, not decoration. It uses the card palette
+(navy, gold, the Slate grays), Geist and Geist Mono, and may reference
+repository images by relative path (presets, logos, a screenshot); the build
+inlines them. `icons: [hero, ...satellites]` in the frontmatter overrides the
+icon pick by Facet name.
+
+The changelog check rejects a `social.svg` with scripts, event handlers,
+embedded documents, remote or `data:` references, a different stage or over
+200 KB, and warns, never fails, when a major entry or release from 2026-11-03
+on has none. The blog on everruns.com uses the same renderer, with the post's
+cover photo as the background (`npm run sync:social-card` there).
+
 ## What gets an entry
 
 An entry must describe a meaningful change to what users can do, how the product
 behaves, or what users must change. Being visible is not enough. Cosmetic polish
 (such as docs badge colors), typo fixes, and routine documentation upkeep get no
 entry unless they meet one of the impact criteria below. A substantial usability
-or accessibility fix can qualify; a styling change alone does not.
+or accessibility fix can qualify; a styling change alone does not. A trivial fix
+or a follow-up to work that already has an entry gets no entry of its own: when
+it changes what that entry says, it updates that entry.
 
 | Kind | When | Example |
 |---|---|---|
@@ -217,8 +248,8 @@ Entries live in the existing Starlight `docs` collection, with the schema in
 `apps/docs/src/content.config.ts` extended by the fields above. That choice gives
 the changelog everything the docs already have, with no parallel pipeline:
 
-- **HTML** pages with the site chrome and a per-entry Open Graph card (its
-  first screenshot becomes the card's image).
+- **HTML** pages with the site chrome and a per-entry Open Graph card (see
+  [Social cards](#social-cards)).
 - **Search**: Pagefind indexes entries like any other page; results show the
   entry date and kind. Changelog pages are excluded from the sidebar, not from
   search.

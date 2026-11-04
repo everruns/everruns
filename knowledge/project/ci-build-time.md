@@ -24,6 +24,8 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+Idempotent admission and request-transaction changes also execute the real Agent API and Console cancellation/replay contracts.
+MCP adapter, shared command-catalog and MCP domain-test changes execute the endpoint protocol and tenant-isolation contracts in focused PR validation.
 History and manager-context changes exercise the real REST/command revision
 contract before merge, including the first mutation's restorable baseline.
 API and command changes also exercise the production-router scope sweep;
@@ -39,6 +41,9 @@ capabilities, matching server/worker composition; either catalog alone can omit
 dependencies supplied by the other.
 Database-backend changes also exercise production-router fixtures that configure
 their own environment outside the shared API harness.
+Changes to the pool-isolation fixture execute that domain contract in focused PR
+checks; the [offline selector regression](../../.github/scripts/ci/test_policy.py)
+proves selection through actual Rust compilation and filtered execution.
 Ordinary Rust changes do not build the server/worker/CLI binaries, full PostgreSQL
 shards, SDK cohorts, or Docker images. Public API and packaging inputs retain their
 specific consumers. Chaos functional coverage uses the existing shared CI binaries
@@ -180,6 +185,13 @@ durable 9.1m to 2-3m.
   state and accepting only exact PR merge refs. It never deletes branch caches or
   executes PR code. Manual cleanup sweeps existing closed PRs; no periodic tick or
   paid cache-capacity increase is required.
+- **Retire secret-bearing build outputs, not just vulnerable versions.** After a
+  dependency build-script disclosure, invalidate affected compiled-target caches
+  and remove contaminated local build output. A new lockfile hash alone is not
+  containment: prefix restores can carry the old files into a new generation.
+  Registry-only and binary-only caches have a different content boundary. The
+  [libz-sys advisory](https://rustsec.org/advisories/RUSTSEC-2026-0418.html) is the
+  concrete case; dependency selection remains owned by `Cargo.lock`.
 - **A cache miss must still fit the job.** A focused server run with no Rust
   cache spent 33m48s compiling; all 3,706 unit, 65 persistence, one router and
   85 selected domain tests passed before the forty-minute job timed out
@@ -190,10 +202,20 @@ durable 9.1m to 2-3m.
   plus 3,812 passing unit tests and 66 passing contracts exhausted its forty-minute
   budget before persistence validation completed
   ([run](https://github.com/everruns/everruns/actions/runs/40816428430)).
-  That shard now has a bounded sixty-minute budget; other shards keep forty minutes.
+  The domain shard also exhausted forty minutes after a 4m33s release build and
+  27m35s test compilation left too little time for serial execution
+  ([full run](https://github.com/everruns/everruns/actions/runs/41169505295/attempts/1)).
+  Both server and domain therefore have bounded sixty-minute budgets; durable
+  keeps forty minutes. The domain run also reported a failing MCP test before
+  cancellation; more compilation headroom does not resolve or waive that failure.
   Test selection, cache keys, compile memory limits, profiles and execution
   concurrency are unchanged. This margin is not evidence
   of a warm-cache latency improvement or a guarantee that a cache remains resident.
+- **Docs notebooks share the site job's budget.** In the same full run, notebook
+  execution took 15m40s and the site finished building and checking links just
+  as the twenty-minute job expired. Release-card checks never ran. The docs job
+  allows thirty minutes for notebook compilation, the site and those final checks;
+  successful site output alone is not complete validation.
 - **Benchmark optimization and concurrency separately.** The manual
   [pilot](../../.github/workflows/ci-test-archive.yml) compares CI binary optimization
   on a pinned runner image using empty targets followed by dependency-only warm

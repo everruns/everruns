@@ -10,9 +10,9 @@ import ChatPage from "@/app/(main)/chat/page";
 describe("retired routes", () => {
   beforeEach(() => redirect.mockClear());
 
-  it("sends /dashboard to the landing surface", () => {
+  it("sends /dashboard to Home, its replacement", () => {
     DashboardPage();
-    expect(redirect).toHaveBeenCalledWith("/chats");
+    expect(redirect).toHaveBeenCalledWith("/home");
   });
 
   it("sends the old singleton /chat to the Chats surface", () => {

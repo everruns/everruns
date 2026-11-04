@@ -95,7 +95,7 @@ pub async fn dispatch_text<H: DispatchHost>(
     {
         return Err(DispatchError::Uncertain);
     }
-    // THREAT[TM-LLM-057]: credential resolution follows durable host admission;
+    // THREAT[TM-LLM-058]: credential resolution follows durable host admission;
     // neither a caller header nor an alternate endpoint can change this request.
     let response = crate::rt::timeout(policy.timeout, async {
         let auth = endpoint

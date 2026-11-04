@@ -72,7 +72,8 @@ import {
   type ChannelFormState,
 } from "@/components/agents/channels/channel-form";
 import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
-import { WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
+import { CallerDailyLimitField } from "@/components/agents/channels/api-fields";
+import { WorkChatAddress, WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
   BackLink,
@@ -173,6 +174,8 @@ type ChannelTab = "connect" | "settings";
 
 /// The channel page. One layout reads and edits, like the agent page: Connect
 /// shows how to reach the agent through this channel, Settings holds the form.
+/// Work Chat has no separate connection, so it has no Connect tab. Its address
+/// is shown once, above the settings.
 /// Changing any setting turns the page into edit mode (Edit crumb, Editing
 /// badge, Save changes and Discard); nothing saves until Save changes.
 function AgentChannelForm({
@@ -249,6 +252,11 @@ function AgentChannelForm({
     : "Could not start the Slack install.";
   const schedule =
     channel.channel_type === "schedule" ? (channel.channel_config as ScheduleChannelConfig) : null;
+  const workChat = channel.channel_type === "work_chat";
+  const slack = channel.channel_type === "slack";
+  // Work Chat and Slack are one page: how to reach the channel on top, its settings below.
+  // Splitting them hid Add to Slack behind a Settings tab on a page opened to install it.
+  const onePage = workChat || slack;
   const [hostedUrl, setHostedUrl] = useState<string | null>(null);
   const chatLink =
     channel.channel_type === "public_chat"
@@ -269,7 +277,26 @@ function AgentChannelForm({
     updateEndpoint.reset();
   };
 
+  const saveChannel = () => {
+    if (chatDraft.blocked || !canManage || !isChannelFormValid(formState)) return;
+    updateEndpoint.mutate(
+      {
+        channel_config: buildChannelConfig(formState),
+        enabled: formState.enabled,
+      },
+      {
+        // Start again from what was saved: secret fields come back
+        // blank, so the page leaves edit mode.
+        onSuccess: (saved) =>
+          setFormState(getDefaultChannelFormState(saved.channel_type, saved as AgentChannel)),
+      },
+    );
+  };
   const publish = (next: boolean) => publishEndpoint.mutate({ channelId, publish: next });
+  // Work Chat and Agent API cap each person as well as the shared pool. Both
+  // sit in Spending, including on Connect, so Save writes the form state here.
+  const callerSpend =
+    !sourceOwned && (channel.channel_type === "api" || channel.channel_type === "work_chat");
   const primaryAction = editing ? null : !lifecycle.isLive ? (
     <Button
       type="button"
@@ -378,8 +405,8 @@ function AgentChannelForm({
                 </a>
               )}
               <Button
-                type="submit"
-                form="channel-edit-form"
+                type="button"
+                onClick={saveChannel}
                 disabled={
                   chatDraft.blocked ||
                   !canManage ||
@@ -466,19 +493,104 @@ function AgentChannelForm({
 
       {/* The tab row and the workspace are one surface: no gap between them. */}
       <div className="flex min-w-0 flex-col">
-        <SectionTabs
-          value={tab}
-          onValueChange={(value) => selectTab(value as ChannelTab)}
-          aria-label={ui("Channel sections")}
-          items={[
-            { value: "connect", label: ui("Connect") },
-            { value: "settings", label: editing ? ui("Settings (edited)") : ui("Settings") },
-          ]}
-          className="border-x border-t bg-background px-2"
-        />
-        <div className="grid min-w-0 border-x border-b bg-card lg:grid-cols-[minmax(0,1fr)_340px]">
+        {!onePage && (
+          <SectionTabs
+            value={tab}
+            onValueChange={(value) => selectTab(value as ChannelTab)}
+            aria-label={ui("Channel sections")}
+            items={[
+              { value: "connect", label: ui("Connect") },
+              { value: "settings", label: editing ? ui("Settings (edited)") : ui("Settings") },
+            ]}
+            className="border-x border-t bg-background px-2"
+          />
+        )}
+        <div
+          className={`grid min-w-0 border-x border-b bg-card lg:grid-cols-[minmax(0,1fr)_340px] ${onePage ? "border-t" : ""}`}
+        >
           <div className="min-w-0 lg:border-r">
-            {tab === "connect" ? (
+            {onePage ? (
+              <>
+                {slack && slackInstallFailure !== undefined && (
+                  <div className="p-5 pb-0">
+                    <Notice
+                      variant="destructive"
+                      icon={<CircleAlert className="size-4" />}
+                      role="alert"
+                    >
+                      <NoticeTitle>{ui("Slack install did not start")}</NoticeTitle>
+                      <NoticeDescription>
+                        {ui("The channel was saved.")} {slackInstallFailureMessage}{" "}
+                        {slackInstallAvailable
+                          ? ui("Use Add to Slack to try again, or configure Slack manually.")
+                          : ui("Configure Slack manually.")}
+                      </NoticeDescription>
+                    </Notice>
+                  </div>
+                )}
+                {slack && (
+                  <div className="p-5 pb-0 empty:hidden">
+                    <ChannelHealthWarning channelId={channel.id} />
+                  </div>
+                )}
+                {!lifecycle.isLive && (
+                  <div className="p-5 pb-0">
+                    <Notice icon={<CircleAlert className="size-4" />}>
+                      <NoticeTitle>{ui("Draft")}</NoticeTitle>
+                      <NoticeDescription>
+                        {ui(
+                          "Nobody can reach the agent through this channel yet. Publish when you are ready.",
+                        )}
+                      </NoticeDescription>
+                    </Notice>
+                  </div>
+                )}
+                {workChat && (
+                  <div className="p-5">
+                    <WorkChatAddress channel={channel} />
+                  </div>
+                )}
+                {slack && sourceOwned && (
+                  <div className="flex flex-col gap-6 p-5">
+                    <SlackConnectionStatus channel={channel} />
+                    <ChannelUsePanel channel={channel} agentId={agentId} />
+                  </div>
+                )}
+                {sourceOwned ? (
+                  <div className="border-t p-5">
+                    <Notice icon={<CircleAlert className="size-4" />}>
+                      <NoticeTitle>{ui("Managed in GitHub")}</NoticeTitle>
+                      <NoticeDescription>
+                        {ui(
+                          "This channel's settings come from the agent's source repository. Change them there. Publishing and keys still work here.",
+                        )}
+                      </NoticeDescription>
+                    </Notice>
+                  </div>
+                ) : (
+                  <form
+                    id="channel-edit-form"
+                    // Slack's form opens with its own Install section, so no rule above it.
+                    className={workChat ? "border-t" : undefined}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      saveChannel();
+                    }}
+                  >
+                    <ChannelForm
+                      state={formState}
+                      onChange={setFormState}
+                      mode="edit"
+                      channelId={channel.id}
+                      channel={channel}
+                      slackInstallDisabled={editing}
+                      slackInstallCapability={slackInstallCapability}
+                      onSlackCapabilityChanged={onSlackCapabilityChanged}
+                    />
+                  </form>
+                )}
+              </>
+            ) : tab === "connect" ? (
               <div className="flex flex-col gap-6 p-5">
                 {!lifecycle.isLive && (
                   <Notice icon={<CircleAlert className="size-4" />}>
@@ -530,21 +642,7 @@ function AgentChannelForm({
                 id="channel-edit-form"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (chatDraft.blocked) return;
-                  updateEndpoint.mutate(
-                    {
-                      channel_config: buildChannelConfig(formState),
-                      enabled: formState.enabled,
-                    },
-                    {
-                      // Start again from what was saved: secret fields come back
-                      // blank, so the page leaves edit mode.
-                      onSuccess: (saved) =>
-                        setFormState(
-                          getDefaultChannelFormState(saved.channel_type, saved as AgentChannel),
-                        ),
-                    },
-                  );
+                  saveChannel();
                 }}
               >
                 {slackInstallFailure !== undefined && (
@@ -596,7 +694,7 @@ function AgentChannelForm({
                 </>
               )}
             </dl>
-            {tab === "connect" && canManage && !sourceOwned && (
+            {!onePage && tab === "connect" && canManage && !sourceOwned && (
               <Button
                 type="button"
                 variant="outline"
@@ -610,17 +708,41 @@ function AgentChannelForm({
             )}
             <p className="text-xs text-muted-foreground">
               {ui(
-                "Publish opens this channel to callers and Unpublish closes it. Pausing all channels on the agent's Integrations tab overrides both.",
+                "Publish opens this channel to callers and Unpublish closes it. Pausing the agent overrides both.",
               )}
             </p>
-            {canBudget("budget.view") && (
-              <div className="border-t pt-4">
-                <BudgetPanel
-                  subjectType="agent_channel"
-                  subjectId={channelId}
-                  title={ui("Channel budget")}
-                  canManage={canBudget("budget.manage")}
-                />
+            {(canBudget("budget.view") || callerSpend) && (
+              <div className="space-y-4 border-t pt-4">
+                <div>
+                  <h3 className="text-sm font-semibold">{ui("Spending")}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {callerSpend
+                      ? ui(
+                          "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.",
+                        )
+                      : ui("Caps what this channel can spend, separately from the agent's budget.")}
+                  </p>
+                </div>
+                {canBudget("budget.view") && (
+                  <BudgetPanel
+                    subjectType="agent_channel"
+                    subjectId={channelId}
+                    title={ui("Shared pool")}
+                    canManage={canBudget("budget.manage")}
+                  />
+                )}
+                {callerSpend && (
+                  <CallerDailyLimitField
+                    value={formState.api.dailySpendLimitUsd}
+                    disabled={!canManage || updateEndpoint.isPending}
+                    onChange={(dailySpendLimitUsd) =>
+                      setFormState((current) => ({
+                        ...current,
+                        api: { ...current.api, dailySpendLimitUsd },
+                      }))
+                    }
+                  />
+                )}
               </div>
             )}
           </aside>

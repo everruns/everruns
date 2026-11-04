@@ -1,5 +1,32 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "Avanzado",
+  Spending: "Gasto",
+  "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.":
+    "El fondo compartido cubre a todas las personas de este canal. El límite diario limita a cada persona hasta la medianoche UTC.",
+  "Caps what this channel can spend, separately from the agent's budget.":
+    "Limita lo que este canal puede gastar, aparte del presupuesto del agente.",
+  "Shared pool": "Fondo compartido",
+  "Each person, per day (USD)": "Cada persona, por día (USD)",
+  "No daily cap": "Sin límite diario",
+  "A person who reaches this cannot start new work until the next UTC day.":
+    "Una persona que alcance este importe no puede iniciar trabajo nuevo hasta el siguiente día UTC.",
+  "Who can use this chat": "Quién puede usar este chat",
+  "Open access": "Acceso abierto",
+  "Anyone can register and sign in.": "Cualquier persona puede registrarse e iniciar sesión.",
+  "Single user + invites": "Una persona e invitaciones",
+  "Only one person, plus the people they invite.": "Solo una persona, más las personas que invite.",
+  "Organization users": "Usuarios de la organización",
+  "Members of this organization can sign in.":
+    "Los miembros de esta organización pueden iniciar sesión.",
+  "This person": "Esta persona",
+  "They sign in with this email.": "Inicia sesión con este correo.",
+  Invites: "Invitaciones",
+  "One email per line. Each person signs in with their own account.":
+    "Un correo por línea. Cada persona inicia sesión con su propia cuenta.",
+  "Enter this person's email.": "Introduzca el correo de esta persona.",
+  "Use email addresses, one per line, up to 50.":
+    "Use direcciones de correo, una por línea, hasta 50.",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Requerir que los visitantes inicien sesión con Google. Cuando está activado, cada solicitud debe presentar una cuenta de Google válida; los visitantes registrados se saltan el desafío Turnstile.",
   Required: "Requerido",
@@ -158,9 +185,6 @@ export const messages: Readonly<Record<string, string>> = {
     "El agente deja de actuar como la App Everruns. La instalación queda vinculada a la organización. Los activadores de GitHub dejarán de activarse.",
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "La aplicación GitHub del agente existe pero aún no está instalada. Termine de instalarlo y elija los repositorios que el agente puede usar.",
-  "The caller": "La persona que llama",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "La persona que llama ve la herramienta y sus argumentos, que debe decidir.",
   "The channel was saved.": "El canal fue guardado.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "El ID de cliente de su aplicación en la consola AgentID. Para ello se deben emitir fichas y tienen una duración de diez minutos; AgentID es una clave API de inicio de sesión, no de larga duración.",
@@ -308,7 +332,6 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Cuando el proveedor no puede contestar",
   "When this agent wakes up on its own": "Cuando este agente se despierta solo",
   "Where it works": "Dónde funciona",
-  "Who allows held-back tool calls": "¿Quién permite llamadas de herramientas retenidas?",
   "Who should this server act as?": "¿Quién debería actuar como este servidor?",
   "with a JSON-RPC 2.0 envelope. Only the": "con un sobre JSON-RPC 2.0. Sólo el",
   "With failed turns": "Con giros fallidos",

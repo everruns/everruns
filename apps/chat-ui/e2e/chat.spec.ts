@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 test.use({ deviceScaleFactor: 2 });
-const origin = "http://01933b5a000070008000000000000001.localhost:9140";
+const origin = "http://k3m9pq2r7x.localhost:9140";
 const root = { id: "session_main", title: "Launch research", status: "idle" };
 const events = [
   {
@@ -49,14 +49,16 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(route.request().url()),
       path = url.pathname;
     let data: unknown = {};
-    if (path === "/api/chat/config") {
+    if (path === "/api/chat/config" || path.startsWith("/api/chat/logo/")) {
       await route.continue();
       return;
     }
     if (path.endsWith("/sse")) {
       await route.fulfill({
         contentType: "text/event-stream",
-        body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+        body: path.includes("/session_new/")
+          ? ""
+          : events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
       });
       return;
     }
@@ -112,11 +114,30 @@ test("multi-chat renders transcript, workspace and a new conversation", async ({
   await expect(
     page.getByRole("heading", { name: "A focused launch, with room to learn" }),
   ).toBeVisible();
+  const logo = page.locator(".brand-logo");
+  await expect(logo).toHaveAttribute(
+    "src",
+    "/api/chat/logo/avatar_01933b5a000070008000000000000001",
+  );
+  await expect(logo).toHaveJSProperty("complete", true);
+  await expect(logo).not.toHaveJSProperty("naturalWidth", 0);
+  expect(
+    (
+      await request.get(`${origin}/api/chat/logo/avatar_00000000000000000000000000000000`)
+    ).status(),
+  ).toBe(404);
   await page.getByRole("button", { name: "Workspace", exact: true }).first().click();
   await expect(page.getByRole("button", { name: "▤ launch-brief.md" })).toBeVisible();
   await page.screenshot({ path: "../../work/work-chat-multi.png", fullPage: true });
   await page.getByRole("button", { name: "New conversation" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  const welcome = page.locator(".mark-logo");
+  await expect(welcome).toHaveAttribute(
+    "src",
+    "/api/chat/logo/avatar_01933b5a000070008000000000000001",
+  );
+  await expect(welcome).toHaveJSProperty("complete", true);
+  await expect(welcome).not.toHaveJSProperty("naturalWidth", 0);
 });
 test("single chat keeps a main conversation and exposes agent threads", async ({
   page,
@@ -175,6 +196,64 @@ test("untrusted assistant Markdown cannot execute HTML", async ({ page, request 
   expect(
     await page.evaluate(() => (window as Window & { __chatXss?: boolean }).__chatXss),
   ).toBeUndefined();
+});
+
+test("a sent message is the reply, not a work-log preview", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const events = [
+    {
+      id: "evt_user",
+      sequence: 1,
+      type: "input.message",
+      data: {
+        message: {
+          id: "message_user",
+          role: "user",
+          content: [{ type: "text", text: "What do we see here?" }],
+        },
+      },
+    },
+    {
+      id: "evt_send",
+      sequence: 2,
+      type: "tool.started",
+      data: {
+        tool_call: { id: "call_send", name: "send_message" },
+        display_name: "Send message",
+        narration:
+          "Sending message: It's the GitHub **About** panel for **Bashkit** (`bashkit.sh`).",
+      },
+    },
+    {
+      id: "evt_reply",
+      sequence: 3,
+      type: "conversation.message",
+      data: {
+        message_id: "message_reply",
+        text: "It's the GitHub **About** panel for **Bashkit** (`bashkit.sh`), described as a shell toolkit.",
+      },
+    },
+    {
+      id: "evt_done",
+      sequence: 4,
+      type: "tool.completed",
+      data: { tool_call_id: "call_send", tool_name: "send_message", display_name: "Send message" },
+    },
+    { id: "evt_turn", sequence: 5, type: "turn.completed", data: { turn_id: "turn_1" } },
+  ];
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    }),
+  );
+  await page.goto(origin);
+  const reply = page.locator(".message.assistant");
+  await expect(reply).toContainText("It's the GitHub About panel for Bashkit");
+  await expect(reply).toContainText("bashkit.sh");
+  await expect(reply).not.toContainText("**");
+  await expect(reply).not.toContainText("Sending message");
+  await expect(page.locator(".activity")).toHaveCount(0);
 });
 
 test("file editor preserves the revision and explains concurrent changes", async ({
@@ -426,7 +505,7 @@ test("HTML artifacts cannot execute scripts or fetch remote resources", async ({
 test("renders an OpenUI report with a chart instead of source code", async ({ page, request }) => {
   await request.get("http://127.0.0.1:9141/mode/multi_chat");
   const text =
-    '```openui\nroot = Card([header, chart])\nheader = CardHeader("Migration activity", "Pull requests per day")\nchart = BarChart(labels, [series])\nlabels = ["Oct 10", "Oct 16"]\nseries = Series("PRs", [11, 92])\n```';
+    '```openui\nroot = Card([header, chart, action])\naction = Button("Explain this chart")\nheader = CardHeader("Migration activity", "Pull requests per day")\nchart = BarChart(labels, [series])\nlabels = ["Oct 10", "Oct 16"]\nseries = Series("PRs", [11, 92])\n```';
   await page.route("**/api/sessions/*/sse**", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
@@ -448,11 +527,18 @@ test("renders an OpenUI report with a chart instead of source code", async ({ pa
       return route.fulfill({ json: { ...root, title: "UI migration timeline" } });
     return route.fallback();
   });
+  let chartAction = "";
+  await page.route("**/api/sessions/*/messages", (route) => {
+    chartAction = route.request().postDataJSON().message.content[0].text;
+    return route.fulfill({ json: { id: "chart-action" } });
+  });
   await page.goto(origin);
   await expect(page.getByText("Migration activity", { exact: true })).toBeVisible({
     timeout: 30000,
   });
   await expect(page.locator(".widget svg").first()).toBeVisible();
+  await page.getByRole("button", { name: "Explain this chart", exact: true }).click();
+  await expect.poll(() => chartAction).toBe("Explain this chart");
   await expect(page.getByText("root = Card", { exact: false })).toHaveCount(0);
   await page.screenshot({ path: "../../work/work-chat-report.png", fullPage: true });
 });
@@ -604,8 +690,32 @@ test("an authorization rejection stops stream reconnection", async ({ page, requ
   await expect(page.getByRole("link", { name: "Continue to sign in →" })).toBeVisible({
     timeout: 15000,
   });
+  await expect(page.getByText("Sign in to continue")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveCount(1);
   await page.waitForTimeout(2200);
   expect(streams).toBe(1);
+  await expect(page.getByText("Sign in to continue")).toHaveCount(0);
+});
+
+test("the sidebar shows the signed-in person", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  await page.route("**/api/chat/profile", async (route) => {
+    await route.fulfill({
+      json: {
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        picture: "javascript:alert(1)",
+      },
+    });
+  });
+  await page.goto(origin);
+  const account = page.locator("aside footer .account");
+  await expect(account.getByText("Ada Lovelace")).toBeVisible();
+  await expect(account.getByText("ada@example.com")).toBeVisible();
+  await expect(account.locator(".avatar")).toHaveText("AL");
+  await expect(account.locator("img")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await expect(page.locator("aside footer").getByText("Work Chat", { exact: true })).toHaveCount(0);
 });
 
 test("sign-out retires an attachment read before it can start a message", async ({
@@ -662,4 +772,245 @@ test("sign-out retires an attachment read before it can start a message", async 
   finishLogout();
   expect(observedMessages).toBe(0);
   expect(saved).toEqual([]);
+});
+
+test("A2UI 1.0 renders bound forms, charts, tabs and updates in both themes", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const operations = [
+    {
+      version: "v1.0",
+      createSurface: {
+        surfaceId: "review",
+        catalogId: "copilotkit/standard@1",
+        dataModel: { name: "", total: 12 },
+        components: [
+          {
+            id: "root",
+            component: "Column",
+            children: ["heading", "tabs", "form", "chart", "html"],
+          },
+          { id: "heading", component: "Title", text: "Release review" },
+          {
+            id: "tabs",
+            component: "Tabs",
+            tabs: [
+              { title: "Overview", child: "overview" },
+              { title: "Details", child: "details" },
+            ],
+          },
+          {
+            id: "overview",
+            component: "Text",
+            text: { "@call": "formatString", args: { value: "Reviewed ${/total} items" } },
+          },
+          { id: "details", component: "Text", text: "All checks complete" },
+          {
+            id: "form",
+            component: "Form",
+            label: "Release review",
+            children: ["name", "submit"],
+            onSubmit: {
+              event: {
+                name: "review",
+                userMessage: "Submit review",
+                context: { name: { "@path": "/name" } },
+              },
+            },
+          },
+          { id: "name", component: "TextField", label: "Reviewer", value: { "@path": "/name" } },
+          {
+            id: "submit",
+            component: "Button",
+            label: "Send review",
+            submit: true,
+            checks: [
+              {
+                condition: { "@call": "required", args: { value: { "@path": "/name" } } },
+                message: "Reviewer is required",
+              },
+            ],
+          },
+          {
+            id: "chart",
+            component: "Chart",
+            data: [
+              { week: "Week 1", items: 5 },
+              { week: "Week 2", items: 12 },
+            ],
+            xKey: "week",
+            series: ["items"],
+            chartType: "bar",
+          },
+          {
+            id: "html",
+            component: "HtmlView",
+            height: 100,
+            title: "Safe preview",
+            html: '<meta http-equiv="refresh" content="60;url=/widget-navigation-leak"><p>Sandboxed preview</p><a href="/widget-navigation-leak">External destination</a><script>parent.__widgetScript = true</script>',
+          },
+        ],
+      },
+    },
+  ];
+  const text =
+    "A visual release review.\n```a2ui\n" +
+    operations.map((o) => JSON.stringify(o)).join("\n") +
+    "\n```\n```a2ui\n" +
+    JSON.stringify({
+      version: "v1.0",
+      updateDataModel: { surfaceId: "review", path: "/total", value: 25 },
+    }) +
+    "\n```";
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: `data: ${JSON.stringify({ id: "a2ui", sequence: 4, type: "output.message.completed", data: { message: { id: "a2ui", role: "agent", content: [{ type: "text", text }] } } })}\n\n`,
+    }),
+  );
+  let sent = "";
+  await page.route("**/api/sessions/*/messages", (route) => {
+    sent = route.request().postDataJSON().message.content[0].text;
+    return route.fulfill({ json: { id: "sent" } });
+  });
+  await page.goto(origin);
+  await expect(page.getByRole("heading", { name: "Release review" })).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page.getByText("Reviewed 25 items")).toBeVisible();
+  await expect(page.locator(".everruns-widget .recharts-surface").first()).toBeVisible();
+  await page.getByRole("tab", { name: "Details", exact: true }).click();
+  await expect(page.getByText("All checks complete")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send review", exact: true })).toBeDisabled();
+  await page.getByRole("textbox", { name: "Reviewer", exact: true }).fill("Alex");
+  await expect(page.getByRole("button", { name: "Send review", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Send review", exact: true }).click();
+  await expect.poll(() => sent).toContain("Submit review");
+  expect(sent).toContain('"name":"Alex"');
+  expect(
+    await page.evaluate(() => (window as unknown as { __widgetScript?: boolean }).__widgetScript),
+  ).toBeUndefined();
+  await expect(page.locator('iframe[title="Safe preview"]')).toHaveAttribute("sandbox", "");
+  expect(await page.locator('iframe[title="Safe preview"]').getAttribute("srcdoc")).not.toContain(
+    "widget-navigation-leak",
+  );
+  await page.setViewportSize({ width: 1440, height: 1500 });
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: "/tmp/everruns-a2ui-light.png", fullPage: true });
+  await page
+    .locator(".message.assistant")
+    .first()
+    .screenshot({ path: "/tmp/everruns-a2ui-widget@2x.png" });
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await expect(page.getByRole("heading", { name: "Release review" })).toBeVisible();
+  await page.screenshot({ path: "/tmp/everruns-a2ui-dark.png", fullPage: true });
+});
+
+test("all 69 standard components render from the catalog fixtures", async ({ page, request }) => {
+  let mapStyleRequested = false;
+  await page.route("https://tiles.openfreemap.org/**", (route) => {
+    mapStyleRequested = true;
+    return route.fulfill({ json: { version: 8, sources: {}, layers: [] } });
+  });
+  const { default: samples } = await import("../../ui/generative-ui/tests/standard-samples.json", {
+    with: { type: "json" },
+  });
+  expect(new Set(samples.flatMap((sample) => sample.covers)).size).toBe(69);
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const text = samples
+    .map(
+      (sample, index) =>
+        "```a2ui\n" +
+        JSON.stringify({
+          version: "v1.0",
+          createSurface: {
+            surfaceId: `sample-${index}`,
+            catalogId: "copilotkit/standard@1",
+            components: sample.components,
+            dataModel: sample.data,
+          },
+        }) +
+        "\n```",
+    )
+    .join("\n");
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: `data: ${JSON.stringify({ id: "catalog", sequence: 4, type: "output.message.completed", data: { message: { id: "catalog", role: "agent", content: [{ type: "text", text }] } } })}\n\n`,
+    }),
+  );
+  const failures: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes("[generativeUI]")) failures.push(message.text());
+  });
+  page.on("pageerror", (error) => failures.push(error.message));
+  await page.goto(origin);
+  await expect(page.locator("[data-generative-ui-root]")).toHaveCount(samples.length, {
+    timeout: 30000,
+  });
+  await expect(page.getByText("Part of this UI couldn't be shown.", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect.poll(() => mapStyleRequested).toBe(true);
+  expect(failures).toEqual([]);
+});
+
+test("rejected A2UI surfaces show source and do not break later replies", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const text =
+    '```a2ui\n{"version":"v1.0","createSurface":{"surfaceId":"bad","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"UnregisteredWidget"}]}}\n```\nA readable explanation still follows.';
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: `data: ${JSON.stringify({ id: "bad", sequence: 4, type: "output.message.completed", data: { message: { id: "bad", role: "agent", content: [{ type: "text", text }] } } })}\n\n`,
+    }),
+  );
+  await page.goto(origin);
+  await expect(
+    page.getByText("This content could not be displayed.", { exact: true }),
+  ).toBeVisible();
+  await page.getByText("This content could not be displayed.", { exact: true }).click();
+  await expect(page.getByText(/UnregisteredWidget/)).toBeVisible();
+  await expect(
+    page.getByText("A readable explanation still follows.", { exact: true }),
+  ).toBeVisible();
+});
+
+test("public A2UI 1.0 shares render with execution controls disabled", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const text =
+    '```a2ui\n{"version":"v1.0","createSurface":{"surfaceId":"shared","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"Button","label":"Send private action","onClick":{"event":{"name":"private","userMessage":"Run private action"}}}]}}\n```';
+  await page.route("**/api/chat/shared/**", (route) =>
+    route.fulfill({
+      json: {
+        title: "Shared review",
+        data: [
+          {
+            id: "shared",
+            sequence: 1,
+            type: "output.message.completed",
+            data: { message: { id: "shared", role: "agent", content: [{ type: "text", text }] } },
+          },
+        ],
+        before: null,
+      },
+    }),
+  );
+  let sent = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/messages")) sent++;
+  });
+  await page.goto(origin + "?share=public-token");
+  await expect(
+    page.getByRole("button", { name: "Send private action", exact: true }),
+  ).toBeDisabled();
+  expect(sent).toBe(0);
 });

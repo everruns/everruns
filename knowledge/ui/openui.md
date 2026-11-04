@@ -112,11 +112,14 @@ Registered as a built-in capability. When enabled on an agent, appends the OpenU
 - `@openuidev/react-lang`, Parser and `<Renderer>` component
 - `@openuidev/react-ui`, Pre-built component library (~50 components)
 
-### Key UI files
+### Shared rendering and actions
 
-- `apps/ui/src/lib/openui-utils.ts`, `splitOpenUIBlocks()`, `hasOpenUIBlocks()`
-- `apps/ui/src/components/chat/openui-renderer.tsx`, `<OpenUIBlock>` wrapper
-- `apps/ui/src/components/chat/message-content.tsx`, `<MessageContent>` splits text into markdown + openui segments
+Console chat and Work Chat consume the same browser package at
+[`apps/ui/generative-ui`](../../apps/ui/generative-ui/). Both hosts load the
+renderer lazily on the client, preserve fenced code examples, and forward
+OpenUI message actions and form values through their existing message APIs.
+Busy and read-only views disable execution actions. Generated Query/Mutation
+calls receive no tool provider. See [A2UI](a2ui.md) for the shared host contract.
 
 ### Streaming
 

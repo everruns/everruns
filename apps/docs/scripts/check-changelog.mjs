@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { JSON_SCHEMA, load } from "js-yaml";
 import sharp from "sharp";
 
+import { artImageRefs, parseFacetIcons, validateArt } from "./lib/social-card.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const docsDir = path.resolve(__dirname, "../../../docs");
 const changelogDir = path.join(docsDir, "changelog");
@@ -32,6 +34,14 @@ const BANNED = [
   "supercharge", "unleash", "delightful", "blazing", "world-class",
 ];
 const PAGES = new Set(["index.mdx", "feeds.md"]);
+// Social card illustrations (knowledge/docs/changelog.md, "Social cards"): major
+// entries and releases from this date on are expected to bring a social.svg.
+const SOCIAL_ART_FROM = "2026-11-03";
+const MAX_ART_BYTES = 200 * 1024;
+const repoRoot = path.resolve(docsDir, "..");
+const FACET_ICONS = parseFacetIcons(
+  readFileSync(path.join(repoRoot, "apps/ui/src/components/icons/facet-icon-data.ts"), "utf8"),
+);
 const RASTER = /\.(png|webp)$/i;
 const VIDEO = /\.(mp4|webm)$/i;
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
@@ -187,8 +197,26 @@ async function checkEntry(folder) {
   if (/\]\((?:\.\.\/|\/)[^)]*\.(png|jpe?g|webp|gif|mp4|webm)\)/i.test(body)) {
     fail(where, "media must sit in the entry's own folder and be referenced as ./file");
   }
+  if (fm.icons !== undefined) {
+    if (!Array.isArray(fm.icons) || fm.icons.length === 0) fail(where, "icons is a list of Facet icon names, hero first");
+    else for (const name of fm.icons) if (!(name in FACET_ICONS)) fail(where, `icons: unknown Facet icon "${name}"`);
+  }
+  const artPath = path.join(dir, "social.svg");
+  if (existsSync(artPath)) {
+    const art = readFileSync(artPath, "utf8");
+    if (statSync(artPath).size > MAX_ART_BYTES) fail(where, "social.svg is over 200 KB");
+    for (const problem of validateArt(art)) fail(where, `social.svg: ${problem}`);
+    for (const ref of artImageRefs(art)) {
+      const file = path.resolve(dir, ref);
+      if (!file.startsWith(repoRoot + path.sep) || !existsSync(file)) {
+        fail(where, `social.svg: ${ref} is not a file in the repository`);
+      }
+    }
+  } else if ((fm.significance === "major" || isRelease) && String(fm.date) >= SOCIAL_ART_FROM) {
+    warnings.push(`${where}: a ${isRelease ? "release" : "major entry"} usually brings a social.svg for its social card`);
+  }
   for (const file of readdirSync(dir)) {
-    if (file === "index.md") continue;
+    if (file === "index.md" || file === "social.svg") continue;
     const full = path.join(dir, file);
     if (!referenced.has(file)) fail(where, `${file} is not referenced by index.md`);
     if (/\.(jpe?g|gif)$/i.test(file)) {

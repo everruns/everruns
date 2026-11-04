@@ -98,6 +98,7 @@ pub fn agent_routes(state: super::state::ApiState) -> Router {
     Router::new()
         .command::<crate::domains::agents::source::GetAgentSource>()
         .command::<crate::domains::agents::source::GetAgentSourceOptions>()
+        .command::<crate::domains::agents::source::ListAgentSourceAccounts>()
         .command::<crate::domains::agents::source::PreviewAgentSource>()
         .command::<crate::domains::agents::source::ConnectAgentSource>()
         .command::<crate::domains::agents::source::DisconnectAgentSource>()

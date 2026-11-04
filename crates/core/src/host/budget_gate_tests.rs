@@ -193,7 +193,7 @@ async fn exhausted_budget_stops_the_turn_before_the_model_runs() {
     assert!(messages.iter().any(|message| {
         message
             .content_to_llm_string()
-            .starts_with("Budget exhausted. 100.00 tokens spent reached")
+            .starts_with("Usage limit reached. 100.00 tokens spent reached")
     }));
 }
 

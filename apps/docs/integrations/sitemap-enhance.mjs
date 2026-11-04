@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { docsUrl } from "../site.config.mjs";
-import { changelogRedirect } from "../redirects.mjs";
+import { changelogRedirect, galleryRedirect } from "../redirects.mjs";
 
 export default function sitemapEnhance() {
   return {
@@ -30,7 +30,7 @@ export default function sitemapEnhance() {
         const enhanced = content.replace(
           /<url><loc>(.*?)<\/loc><\/url>/g,
           (_match, url) =>
-            changelogRedirect(new URL(url)) ? "" :
+            changelogRedirect(new URL(url)) || galleryRedirect(new URL(url)) || new URL(url).pathname === "/docs/previews/generative-ui/" ? "" :
               `<url><loc>${url}</loc><lastmod>${lastmod}</lastmod></url>`
         );
 

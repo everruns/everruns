@@ -30,7 +30,7 @@
 
   <!-- Key Directory box -->
   <rect x="350" y="237" width="180" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="440" y="263" text-anchor="middle" class="label">Bot's FQDN</text>
+  <text x="440" y="263" text-anchor="middle" class="label">Signature-Agent origin</text>
   <text x="440" y="280" text-anchor="middle" class="sublabel">/.well-known/http-message-</text>
   <text x="440" y="293" text-anchor="middle" class="sublabel">signatures-directory</text>
   <text x="440" y="308" text-anchor="middle" class="mono">JWKS · Ed25519 public key</text>
@@ -64,9 +64,9 @@
   <!-- Annotation box: Request headers -->
   <rect x="40" y="155" width="250" height="95" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
   <text x="165" y="177" text-anchor="middle" class="sublabel" font-weight="500">Request headers</text>
-  <text x="165" y="197" text-anchor="middle" class="mono">Signature: sig1=:base64url:</text>
+  <text x="165" y="197" text-anchor="middle" class="mono">Signature: sig1=:base64:</text>
   <text x="165" y="214" text-anchor="middle" class="mono">Signature-Input: sig1=(...)</text>
-  <text x="165" y="231" text-anchor="middle" class="mono">Signature-Agent: bot.example.com</text>
+  <text x="165" y="231" text-anchor="middle" class="mono">Signature-Agent: "https://a.example"</text>
 
   <!-- Dashed connector from annotation box to arrow 1 -->
   <line x1="165" y1="155" x2="274" y2="85" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>

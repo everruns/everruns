@@ -1,14 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Placeholder for the content area while a route's server render finishes.
- *
- * Sidebar links disable viewport prefetch, and Next does not prefetch a dynamic
- * route that has no loading boundary. The sidebar's active item follows
- * `usePathname`, which updates only when the navigation commits — so without
- * this boundary the highlight waits for the page's server fetches and paints
- * after the page. The boundary commits the shared shell first; the page streams
- * into this placeholder.
+ * Placeholder for data inside a persistent route layout (such as a session).
+ * Do not use at the main route group: that replaces static page chrome during
+ * every navigation. Let React retain the current page until the next is ready.
  */
 export function RouteLoading() {
   return (

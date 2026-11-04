@@ -27,6 +27,10 @@
 use anyhow::{Context, Result};
 use axum::Router;
 
+/// Most a stopping server waits for queued event listener work. Linger,
+/// grace, the gRPC stop and this stay under the chart's 45 s kill timeout.
+const LISTENER_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Accept connections on `bind_addr` and serve `app` until SIGTERM or Ctrl+C,
 /// then drain (see `crate::shutdown`).
 pub(super) async fn serve(bind_addr: &str, app: Router) -> Result<()> {
@@ -39,6 +43,13 @@ pub(super) async fn serve(bind_addr: &str, app: Router) -> Result<()> {
     let shutdown = crate::shutdown::server_shutdown();
     serve_on(listener, app, shutdown.draining().clone(), timing.grace).await?;
     shutdown.stop_grpc_and_wait().await;
+    // Fenced appends are answered before their in-process listeners run; let
+    // what they queued finish (crate::services::event::listener_dispatch).
+    // Listeners fed from the database need no drain: a pass cut short here is
+    // handed to the replica that takes the partition next.
+    if !crate::services::event::wait_for_queued_listeners(LISTENER_DRAIN_TIMEOUT).await {
+        tracing::warn!("event listener work still queued at shutdown; exiting anyway");
+    }
     tracing::info!("Server stopped");
     Ok(())
 }
