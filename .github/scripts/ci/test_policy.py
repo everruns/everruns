@@ -223,6 +223,30 @@ class Policy(unittest.TestCase):
                 self.assertIn('mcp_endpoint_test::', selection['risk_filters'])
                 self.assertIn('domain', next(focused.commands(selection)))
 
+    def test_mcp_client_changes_run_event_trigger_contracts(self):
+        core = dict(id='core', name='everruns-core',
+                    manifest_path='/repo/crates/core/Cargo.toml',
+                    dependencies=[], targets=[{'kind': ['lib']}])
+        server = dict(id='server', name='everruns-server',
+                      manifest_path='/repo/crates/server/Cargo.toml',
+                      dependencies=[{'name': 'everruns-core'}], targets=[{'kind': ['lib']}])
+        for path in [
+                'crates/core/src/mcp/http.rs',
+                'crates/core/src/mcp/http/body.rs',
+                'crates/server/src/domains/agent_triggers/mcp_event.rs',
+                'crates/server/tests/domain/mcp_event_triggers_test.rs',
+                'crates/server/tests/test_harness/egress_fakes.rs',
+                '.github/scripts/ci/focused.py']:
+            with self.subTest(path=path):
+                selections = focused.select(
+                    {'packages': [core, server], 'workspace_members': ['core', 'server']},
+                    [path], Path('/repo'))['include']
+                selection = next(s for s in selections if s['group'] == 'server')
+                self.assertIn('mcp_event_triggers_test::', selection['risk_filters'])
+                self.assertIn('domain', next(focused.commands(selection)))
+        self.assertNotIn('mcp_event_triggers_test::', focused.risk_filters([
+            'crates/core/src/engine.rs']))
+
     def test_history_changes_cover_rest_and_command_revision_contracts(self):
         for path in ['crates/server/src/domains/change_history/mod.rs',
                      'crates/server/src/domains/change_history/snapshot.rs',

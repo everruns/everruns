@@ -48,6 +48,14 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith('crates/core/src/mcp/')
+           or p in ('crates/server/src/domains/agent_triggers/mcp_event.rs',
+                    'crates/server/tests/domain/mcp_event_triggers_test.rs',
+                    'crates/server/tests/test_harness/egress_fakes.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        # Event subscriptions consume the shared MCP client through a routed
+        # egress fixture; transport changes must exercise that boundary in PRs.
+        filters.add('mcp_event_triggers_test::')
     if any(p.startswith(('crates/server/src/api/mcp_endpoint/',
                          'crates/server/src/services/command_catalog/',
                          'crates/server/tests/domain/mcp_endpoint_test'))
