@@ -3,6 +3,7 @@
 
 mod inbox;
 mod lease;
+mod renewals;
 pub mod store;
 #[cfg(test)]
 mod tests;
@@ -172,6 +173,9 @@ pub struct SessionActorDriver<H: ActorHosts> {
     store: Arc<dyn SessionActorStore>,
     config: SessionActorConfig,
     renew_poke: Arc<Notify>,
+    /// The clock the renewers' periodic renewals line up on, so they share
+    /// a batch (`renewals`).
+    renew_epoch: everruns_contracts::rt::Instant,
     /// Set when the holder drains: running turns stop at their next step
     /// boundary and hand the lease back (see `turn.rs`).
     hand_off: Arc<std::sync::atomic::AtomicBool>,
@@ -185,9 +189,10 @@ impl<H: ActorHosts> SessionActorDriver<H> {
     ) -> Self {
         Self {
             hosts,
-            store,
+            store: Arc::new(renewals::BatchedRenewals::new(store)),
             config,
             renew_poke: Arc::new(Notify::new()),
+            renew_epoch: everruns_contracts::rt::Instant::now(),
             hand_off: Default::default(),
         }
     }

@@ -98,6 +98,8 @@ pub(super) mod rows;
 use rows::*;
 
 #[cfg(test)]
+mod renewal_batch_tests;
+#[cfg(test)]
 mod sticky_tests;
 #[cfg(test)]
 mod tests;
@@ -114,6 +116,8 @@ use std::time::Duration;
 pub const DEFAULT_ACTOR_LEASES_PER_ORG: i64 = 32;
 /// Most actors one lease call takes.
 pub const MAX_ACTOR_LEASE_BATCH: i64 = 100;
+/// Most leases one batched renewal carries.
+pub const MAX_ACTOR_RENEWAL_BATCH: usize = 1000;
 /// Candidate rows a lease call scans per actor it may take; see the header.
 const ACTOR_LEASE_SCAN_FACTOR: i64 = 8;
 /// Upper bound on the candidate scan of one lease call.
@@ -498,6 +502,95 @@ impl Database {
         // command transaction.
         .fetch_optional(self.pool.raw())
         .await?)
+    }
+
+    /// Renew several of `holder`'s leases in one statement, each exactly as
+    /// [`Self::renew_session_actor_lease`] would: its own fence, expiry and
+    /// cursor. One outcome per lease, in order. A lease not renewed is told
+    /// apart from a deleted session in the same statement, only for the leases
+    /// it missed (EVE-1235).
+    ///
+    /// Decision (batched lease renewal, `knowledge/operations/
+    /// durable-execution-engine.md`): a worker's renewals that arrive together
+    /// cost one statement and one relaxed commit instead of one each.
+    pub async fn renew_session_actor_leases(
+        &self,
+        holder: &str,
+        ttl: Duration,
+        leases: &[ActorLeaseRenewalItem],
+    ) -> Result<Vec<ActorLeaseRenewalOutcome>> {
+        if leases.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<uuid::Uuid> = leases.iter().map(|lease| lease.session_id.uuid()).collect();
+        let fences: Vec<i64> = leases.iter().map(|lease| lease.fence).collect();
+        let consumed: Vec<i64> = leases.iter().map(|lease| lease.consumed_seq).collect();
+        let rows = sqlx::query_as::<_, BatchRenewalRow>(
+            r#"
+            WITH wanted AS (
+                -- One row per lease; a lease sent twice keeps its furthest cursor.
+                SELECT session_id, fence, MAX(consumed_seq) AS consumed_seq
+                FROM UNNEST($3::uuid[], $4::int8[], $5::int8[])
+                     AS l(session_id, fence, consumed_seq)
+                GROUP BY session_id, fence
+            ), renewed AS (
+                UPDATE session_actors a SET
+                    lease_expires_at = NOW() + $2::float8 * INTERVAL '1 millisecond',
+                    cancel_reported = (a.cancel_requested_at IS NOT NULL),
+                    consumed_seq = GREATEST(a.consumed_seq, w.consumed_seq)
+                FROM wanted w
+                WHERE a.session_id = w.session_id
+                  AND a.lease_holder = $1 AND a.lease_fence = w.fence
+                  -- As for one renewal: a renewal a crash loses only makes
+                  -- the lease look older, and the fence guards every write.
+                  AND (SELECT set_config('synchronous_commit', 'off', true)) IS NOT NULL
+                RETURNING a.session_id, a.lease_fence, a.inbox_seq,
+                          CASE WHEN a.cancel_requested_at IS NOT NULL
+                               THEN COALESCE(a.cancel_inbox_seq, a.inbox_seq)
+                          END AS cancel_inbox_seq
+            )
+            SELECT w.session_id, w.fence, r.inbox_seq, r.cancel_inbox_seq,
+                   CASE WHEN r.session_id IS NOT NULL THEN TRUE
+                        ELSE EXISTS (SELECT 1 FROM session_actors s
+                                     WHERE s.session_id = w.session_id)
+                   END AS actor_exists
+            FROM wanted w
+            LEFT JOIN renewed r
+              ON r.session_id = w.session_id AND r.lease_fence = w.fence
+            "#,
+        )
+        .bind(holder)
+        .bind(ttl_millis(ttl))
+        .bind(&ids)
+        .bind(&fences)
+        .bind(&consumed)
+        // The raw pool: the relaxed commit above must never reach a caller's
+        // command transaction.
+        .fetch_all(self.pool.raw())
+        .await?;
+        let outcomes: std::collections::HashMap<(SessionId, i64), ActorLeaseRenewalOutcome> = rows
+            .into_iter()
+            .map(|row| {
+                let outcome = match row.inbox_seq {
+                    Some(inbox_seq) => ActorLeaseRenewalOutcome::Renewed(ActorRenewalRow {
+                        inbox_seq,
+                        cancel_inbox_seq: row.cancel_inbox_seq,
+                    }),
+                    None if row.actor_exists => ActorLeaseRenewalOutcome::Lost,
+                    None => ActorLeaseRenewalOutcome::SessionGone,
+                };
+                ((row.session_id, row.fence), outcome)
+            })
+            .collect();
+        Ok(leases
+            .iter()
+            .map(|lease| {
+                outcomes
+                    .get(&(lease.session_id, lease.fence))
+                    .copied()
+                    .unwrap_or(ActorLeaseRenewalOutcome::Lost)
+            })
+            .collect())
     }
 
     /// Give up `holder`'s lease on `session_id`, having consumed input up to

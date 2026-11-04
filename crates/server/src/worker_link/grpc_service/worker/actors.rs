@@ -11,7 +11,10 @@
 
 use std::time::Duration;
 
-use crate::storage::DEFAULT_ACTOR_LEASES_PER_ORG;
+use crate::storage::{
+    ActorLeaseRenewalItem, ActorLeaseRenewalOutcome, DEFAULT_ACTOR_LEASES_PER_ORG,
+    MAX_ACTOR_RENEWAL_BATCH,
+};
 use crate::worker_link::grpc_service::worker::support::{
     internal_status, session_not_found_status,
 };
@@ -140,6 +143,63 @@ impl WorkerServiceImpl {
                 cancel_inbox_seq: renewal.cancel_inbox_seq,
             },
             None => proto::RenewActorLeaseResponse::default(),
+        }))
+    }
+
+    /// [`Self::handle_renew_actor_lease`] for several of one holder's leases
+    /// in one statement. A deleted session is reported per lease
+    /// (`session_not_found`), not as the call's status, so the other leases'
+    /// answers still arrive.
+    pub(crate) async fn handle_renew_actor_leases(
+        &self,
+        request: Request<proto::RenewActorLeasesRequest>,
+    ) -> Result<Response<proto::RenewActorLeasesResponse>, Status> {
+        let req = request.into_inner();
+        require_holder(&req.holder)?;
+        if req.leases.len() > MAX_ACTOR_RENEWAL_BATCH {
+            return Err(Status::invalid_argument(format!(
+                "at most {MAX_ACTOR_RENEWAL_BATCH} leases per renewal"
+            )));
+        }
+        let leases = req
+            .leases
+            .iter()
+            .map(|lease| {
+                Ok(ActorLeaseRenewalItem {
+                    session_id: SessionId::from_uuid(parse_uuid(lease.session_id.as_ref())?),
+                    fence: lease.fence,
+                    consumed_seq: lease.consumed_seq,
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+        let outcomes = self
+            .db
+            .renew_session_actor_leases(&req.holder, requested_actor_lease_ttl(req.ttl_ms), &leases)
+            .await
+            .map_err(|e| internal_status("Failed to renew actor leases", e))?;
+        Ok(Response::new(proto::RenewActorLeasesResponse {
+            leases: outcomes
+                .into_iter()
+                .map(|outcome| match outcome {
+                    ActorLeaseRenewalOutcome::Renewed(renewal) => proto::RenewedActorLease {
+                        renewal: Some(proto::RenewActorLeaseResponse {
+                            held: true,
+                            inbox_seq: renewal.inbox_seq,
+                            cancel_requested: renewal.cancel_requested(),
+                            cancel_inbox_seq: renewal.cancel_inbox_seq,
+                        }),
+                        session_not_found: false,
+                    },
+                    ActorLeaseRenewalOutcome::Lost => proto::RenewedActorLease {
+                        renewal: Some(proto::RenewActorLeaseResponse::default()),
+                        session_not_found: false,
+                    },
+                    ActorLeaseRenewalOutcome::SessionGone => proto::RenewedActorLease {
+                        renewal: None,
+                        session_not_found: true,
+                    },
+                })
+                .collect(),
         }))
     }
 

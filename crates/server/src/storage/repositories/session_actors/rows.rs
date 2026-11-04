@@ -110,6 +110,33 @@ impl ActorRenewalRow {
     }
 }
 
+/// One lease of a batched renewal, as the holder sends it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActorLeaseRenewalItem {
+    pub session_id: SessionId,
+    pub fence: i64,
+    pub consumed_seq: i64,
+}
+
+/// One lease's outcome in a batched renewal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActorLeaseRenewalOutcome {
+    Renewed(ActorRenewalRow),
+    /// Another holder took it, it was released, or a cancel withdrew it.
+    Lost,
+    /// No actor row: the session was deleted (the row goes with it).
+    SessionGone,
+}
+
+#[derive(FromRow)]
+pub(super) struct BatchRenewalRow {
+    pub session_id: SessionId,
+    pub fence: i64,
+    pub inbox_seq: Option<i64>,
+    pub cancel_inbox_seq: Option<i64>,
+    pub actor_exists: bool,
+}
+
 /// A bounded slice of a session's event log for an actor to fold.
 #[derive(Debug, Clone)]
 pub struct ActorJournalRows {

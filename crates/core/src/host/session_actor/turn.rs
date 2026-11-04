@@ -190,6 +190,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         let renewer = AbortOnDrop(everruns_contracts::rt::spawn(renew_loop(
             lease.clone(),
             self.renew_poke.clone(),
+            self.renew_epoch,
         )));
         // A retryable failure runs the turn again on this lease, off the
         // poison guard's count (module notes).
