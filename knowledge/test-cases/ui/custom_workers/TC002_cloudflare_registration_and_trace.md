@@ -26,17 +26,19 @@ ordinary Agent, Playground, session and Trace surfaces remain its product identi
 
 ## Steps
 
-1. Create a normal Agent. Open Configure execution on its Agent page.
+1. Create a normal Agent. Open the External agent row in its Agent page More list.
 2. Enter the HTTPS endpoint without its trailing slash, plus an incorrect secret.
    Verify ownership fails and no binding appears.
 3. Enter the correct endpoint secret and connect. Verify the secret field clears,
-   the normalized endpoint appears, and the Execution badge says External worker.
+   the normalized endpoint appears, the header shows an External agent badge, the
+   Endpoint pane replaces the system prompt, and harness, capabilities, model and
+   Preview are hidden.
 4. Open Test in Playground. Ask for north sales, exact cents and order count.
    Verify the reply reports 27278 cents and two orders.
 5. Open the session Trace. Verify the actual model generation, sales_summary
    arguments/result and reported usage appear under the canonical turn.
 6. Send a follow-up asking which region was discussed. Verify north is remembered.
-7. Disable the external worker. Verify Disabled appears and another user message
+7. Disconnect the endpoint. Verify Disconnected appears and another user message
    remains queued rather than running the built-in runtime.
 8. Reconnect with a rotated secret after installing it on the Worker. Verify the
    queued input completes through that endpoint.

@@ -17034,6 +17034,16 @@ export interface components {
        */
       last_invoked_at?: string | null;
     };
+    /** @description An Agent's external-agent state, plus whether this installation lets it connect one. */
+    ExternalAgentStatus: {
+      /**
+       * @description Whether a new endpoint can be connected here: the installation sets
+       *     `EXTERNAL_AGENTS_ENABLED=true` and protected worker ingress is off.
+       *     The UI hides the setup when this is false and no endpoint exists.
+       */
+      available: boolean;
+      endpoint?: components["schemas"]["ExternalAgent"] | null;
+    };
     /**
      * @description Result status reported alongside externally computed scores.
      * @enum {string}
@@ -38657,7 +38667,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ExternalAgent"] | null;
+          "application/json": components["schemas"]["ExternalAgentStatus"];
         };
       };
     };

@@ -41,6 +41,8 @@ interface AgentConfigColumnProps {
   onStartEdit: () => void;
   moreRows: AgentMoreRow[];
   onOpenRow: (id: string) => void;
+  /** An external agent's endpoint owns harness, capabilities, model and communication. */
+  external?: boolean;
   className?: string;
 }
 
@@ -54,6 +56,7 @@ export function AgentConfigColumn({
   onStartEdit,
   moreRows,
   onOpenRow,
+  external = false,
   className,
 }: AgentConfigColumnProps) {
   const ui = useUiTranslations();
@@ -73,104 +76,110 @@ export function AgentConfigColumn({
       className={cn("flex min-w-0 flex-col bg-muted/30", className)}
     >
       <div className="flex flex-col gap-4 border-b p-4">
-        <ChatChangeMark field="harness_id" className="flex flex-col gap-1.5">
-          <Label className="text-xs font-medium text-muted-foreground" htmlFor="harness">
-            {ui("Harness")}
-          </Label>
-          {readOnly ? (
-            <span className="text-[13px] text-muted-foreground">
-              {agent.effective_harness?.display_name ||
-                agent.effective_harness?.name ||
-                ui("Default")}
-            </span>
-          ) : (
-            <HarnessSelect
-              id="harness"
-              value={draft.fields.harness_id}
-              onValueChange={edit((value: string) => draft.setField("harness_id", value))}
-              placeholder={ui("Select a harness")}
-              className="w-full bg-background"
-            />
-          )}
-          {draft.errors.harness_id && (
-            <p className="text-xs text-destructive">{draft.errors.harness_id}</p>
-          )}
-        </ChatChangeMark>
-
-        <ChatChangeMark field="capabilities" className="flex flex-col gap-1.5">
-          {editing ? (
-            <CapabilityEditorContext.Provider value={{ modelId: draft.fields.default_model_id }}>
-              <CapabilitySelector
-                capabilities={allCapabilities}
-                selected={draft.capabilities}
-                onChange={draft.setCapabilities}
-                label={ui("Capabilities")}
-                compact
-              />
-            </CapabilityEditorContext.Provider>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <span className="flex-1 text-xs font-medium text-muted-foreground">
-                  {ui("Capabilities")}
+        {!external && (
+          <>
+            <ChatChangeMark field="harness_id" className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground" htmlFor="harness">
+                {ui("Harness")}
+              </Label>
+              {readOnly ? (
+                <span className="text-[13px] text-muted-foreground">
+                  {agent.effective_harness?.display_name ||
+                    agent.effective_harness?.name ||
+                    ui("Default")}
                 </span>
-                {!readOnly && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 px-1.5 text-xs"
-                    onClick={onStartEdit}
-                    aria-label={ui("Edit capabilities")}
-                  >
-                    <Pencil className="size-3" />
-                    {ui("Edit")}
-                  </Button>
-                )}
-              </div>
-              <AgentCapabilityList
-                references={draft.capabilities.map((config) => config.ref)}
-                capabilities={allCapabilities}
-              />
-            </>
-          )}
-        </ChatChangeMark>
+              ) : (
+                <HarnessSelect
+                  id="harness"
+                  value={draft.fields.harness_id}
+                  onValueChange={edit((value: string) => draft.setField("harness_id", value))}
+                  placeholder={ui("Select a harness")}
+                  className="w-full bg-background"
+                />
+              )}
+              {draft.errors.harness_id && (
+                <p className="text-xs text-destructive">{draft.errors.harness_id}</p>
+              )}
+            </ChatChangeMark>
 
-        <ChatChangeMark field="default_model_id" className="flex flex-col gap-1.5">
-          <Label className="text-xs font-medium text-muted-foreground" htmlFor="default-model">
-            {ui("Default model")}
-          </Label>
-          {readOnly ? (
-            <span className="text-[13px] text-muted-foreground">
-              {defaultModel?.display_name ?? ui("Organization default")}
-            </span>
-          ) : (
-            <ModelPicker
-              id="default-model"
-              value={draft.fields.default_model_id}
-              onChange={edit((value: string) => draft.setField("default_model_id", value))}
-              placeholder={ui("Use default model")}
-              className="w-full bg-background"
-            />
-          )}
-        </ChatChangeMark>
+            <ChatChangeMark field="capabilities" className="flex flex-col gap-1.5">
+              {editing ? (
+                <CapabilityEditorContext.Provider
+                  value={{ modelId: draft.fields.default_model_id }}
+                >
+                  <CapabilitySelector
+                    capabilities={allCapabilities}
+                    selected={draft.capabilities}
+                    onChange={draft.setCapabilities}
+                    label={ui("Capabilities")}
+                    compact
+                  />
+                </CapabilityEditorContext.Provider>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 text-xs font-medium text-muted-foreground">
+                      {ui("Capabilities")}
+                    </span>
+                    {!readOnly && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-1.5 text-xs"
+                        onClick={onStartEdit}
+                        aria-label={ui("Edit capabilities")}
+                      >
+                        <Pencil className="size-3" />
+                        {ui("Edit")}
+                      </Button>
+                    )}
+                  </div>
+                  <AgentCapabilityList
+                    references={draft.capabilities.map((config) => config.ref)}
+                    capabilities={allCapabilities}
+                  />
+                </>
+              )}
+            </ChatChangeMark>
 
-        <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
-          <Label className="text-xs font-medium text-muted-foreground" htmlFor="communication">
-            {ui("Communication")}
-          </Label>
-          {readOnly ? (
-            <span className="text-[13px] text-muted-foreground">
-              {ui(getCommunicationOption(agent.communication).label)}
-            </span>
-          ) : (
-            <CommunicationSelect
-              id="communication"
-              value={normalizeCommunication(draft.fields.communication)}
-              onValueChange={edit((value: string) => draft.setField("communication", value))}
-              className="bg-background"
-            />
-          )}
-        </ChatChangeMark>
+            <ChatChangeMark field="default_model_id" className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground" htmlFor="default-model">
+                {ui("Default model")}
+              </Label>
+              {readOnly ? (
+                <span className="text-[13px] text-muted-foreground">
+                  {defaultModel?.display_name ?? ui("Organization default")}
+                </span>
+              ) : (
+                <ModelPicker
+                  id="default-model"
+                  value={draft.fields.default_model_id}
+                  onChange={edit((value: string) => draft.setField("default_model_id", value))}
+                  placeholder={ui("Use default model")}
+                  className="w-full bg-background"
+                />
+              )}
+            </ChatChangeMark>
+
+            <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground" htmlFor="communication">
+                {ui("Communication")}
+              </Label>
+              {readOnly ? (
+                <span className="text-[13px] text-muted-foreground">
+                  {ui(getCommunicationOption(agent.communication).label)}
+                </span>
+              ) : (
+                <CommunicationSelect
+                  id="communication"
+                  value={normalizeCommunication(draft.fields.communication)}
+                  onValueChange={edit((value: string) => draft.setField("communication", value))}
+                  className="bg-background"
+                />
+              )}
+            </ChatChangeMark>
+          </>
+        )}
 
         <ChatChangeMark field="tags" className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground" htmlFor="tags">
@@ -208,6 +217,14 @@ export function AgentConfigColumn({
           </span>
         </div>
       </div>
+
+      {external && (
+        <p className="border-b p-4 text-xs text-muted-foreground">
+          {ui(
+            "Harness, capabilities, model, MCP servers, credentials, files, network access, sandbox and token limits are hidden: your endpoint owns them.",
+          )}
+        </p>
+      )}
 
       <MoreSettingsNav
         rows={moreRows}

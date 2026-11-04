@@ -4,7 +4,12 @@ import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/lo
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
-import { ExternalWorker } from "@/components/agents/external-worker";
+import {
+  ExternalAgentPane,
+  ExternalAgentSheet,
+  externalAgentSummary,
+  useExternalAgent,
+} from "@/components/agents/external-agent";
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
@@ -18,6 +23,11 @@ import { AgentMembersTab, agentMembers } from "@/components/agents/agent-members
 // header swaps Test in Playground for Save changes / Discard, and one Save sends the
 // whole draft so a prompt edit and the capability change that goes with it
 // land together. The old /edit route redirects here with `?mode=edit`.
+//
+// An external agent (its turns run on the customer's HTTPS endpoint) hides the
+// prompt, execution settings, Preview and cost estimate: the endpoint owns them.
+// The endpoint takes the prompt pane's place; setup is the External agent More
+// row (components/agents/external-agent.tsx).
 //
 // One tab row only: Agent · Preview · Integrations · Stats · Sessions. MCP and
 // Credentials are configuration (config column sheets). Copy, export, History,
@@ -243,6 +253,8 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const resumeAgent = useResumeAgent();
   const confirm = useConfirmation();
   const { data: github } = useAgentGitHub(agentId);
+  const externalAgent = useExternalAgent(agentId);
+  const [externalOpen, setExternalOpen] = useState(false);
   const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
   const chatMode = usePageChatMode();
@@ -522,7 +534,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       harnesses,
       catalog: allCapabilities,
     }) || openSection === "files";
-  const moreRows: AgentMoreRow[] = [
+  const externalEndpoint = builtIn ? null : (externalAgent.data?.endpoint ?? null);
+  const isExternal = !!externalEndpoint;
+  const showExternalRow =
+    !builtIn && (isExternal || (!!externalAgent.data?.available && can("agent.dangerous")));
+  const allMoreRows: AgentMoreRow[] = [
     {
       id: "localization",
       label: ui("Localization"),
@@ -612,7 +628,26 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       label: ui("Health check"),
       summary: ui(healthSummary(latestHealth)),
     },
+    ...(showExternalRow
+      ? [
+          {
+            id: "external",
+            label: ui("External agent"),
+            summary: externalAgentSummary(externalEndpoint, ui),
+          },
+        ]
+      : []),
   ].filter((row) => row.id !== "files" || showFiles);
+  // The endpoint owns the model, prompt and tools; only identity, tracing and
+  // usage still mean something for an external agent.
+  const moreRows = isExternal
+    ? allMoreRows.filter((row) =>
+        ["localization", "branding", "service", "tracing", "usage", "external"].includes(row.id),
+      )
+    : allMoreRows;
+  // Preview and Agents describe Everruns execution; an external agent has neither.
+  const shownTab: AgentTab =
+    isExternal && (activeTab === "preview" || activeTab === "agents") ? "agent" : activeTab;
 
   const canArchive = canEdit;
   const canDelete = !builtIn && agent.status === "archived" && can("agent.dangerous");
@@ -791,6 +826,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                     </Badge>
                   )}
                   {builtIn && <Badge variant="outline">{ui("Built-in")}</Badge>}
+                  {isExternal && <Badge variant="outline">{ui("External agent")}</Badge>}
                 </>
               }
               description={
@@ -813,19 +849,21 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
               }
               actions={
                 <>
-                  <AgentCostEstimate
-                    modelId={draft.fields.default_model_id}
-                    maxOutputTokens={draft.fields.max_output_tokens}
-                    previewRequest={{
-                      system_prompt: draft.fields.system_prompt,
-                      harness_id:
-                        draft.fields.harness_id || agent.effective_harness?.id || undefined,
-                      capabilities: draft.capabilities,
-                      initial_files: draft.files,
-                      tools: agent.tools ?? [],
-                      mcpServers: agent.mcpServers,
-                    }}
-                  />
+                  {!isExternal && (
+                    <AgentCostEstimate
+                      modelId={draft.fields.default_model_id}
+                      maxOutputTokens={draft.fields.max_output_tokens}
+                      previewRequest={{
+                        system_prompt: draft.fields.system_prompt,
+                        harness_id:
+                          draft.fields.harness_id || agent.effective_harness?.id || undefined,
+                        capabilities: draft.capabilities,
+                        initial_files: draft.files,
+                        tools: agent.tools ?? [],
+                        mcpServers: agent.mcpServers,
+                      }}
+                    />
+                  )}
                   {actions}
                 </>
               }
@@ -852,14 +890,6 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   </Button>
                 )}
               </Notice>
-            )}
-
-            {!editing && !builtIn && (
-              <ExternalWorker
-                key={agent.id}
-                agentId={agent.id}
-                disabled={!can("agent.dangerous")}
-              />
             )}
 
             {!editing && !builtIn && (
@@ -895,50 +925,59 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
             <div className="flex min-w-0 flex-col">
               <PageControlStrip>
                 <SectionTabs
-                  value={activeTab}
+                  value={shownTab}
                   onValueChange={(value) => {
                     if (isAgentTab(value)) selectTab(value);
                   }}
                   items={getAgentTabItems(sessionCount, integrationCount, ui, {
                     evals: evalsEnabled,
-                    agents: agentMembers(agent)?.length,
+                    agents: isExternal ? undefined : agentMembers(agent)?.length,
+                    preview: !isExternal,
                   })}
                   className="border-x border-t bg-background px-2"
                 />
               </PageControlStrip>
 
-              {activeTab === "agent" && (
+              {shownTab === "agent" && (
                 <div className="agent-workspace grid min-w-0 border-x border-b bg-background lg:grid-cols-[minmax(0,1fr)_340px]">
-                  <ChatChangeMark field="system_prompt">
-                    <AgentPromptPane
+                  {externalEndpoint ? (
+                    <ExternalAgentPane
                       className="lg:border-r"
-                      value={draft.fields.system_prompt}
-                      editing={editing}
-                      onEdit={canEdit ? startEdit : undefined}
-                      onChange={(value) => draft.setField("system_prompt", value)}
-                      error={draft.errors.system_prompt}
-                      checks={
-                        editing ? (
-                          <AgentChecks
-                            systemPrompt={draft.fields.system_prompt}
-                            capabilities={draft.capabilities}
-                            tools={agent.tools ?? []}
-                            onApplyFix={(start, end, replacement) =>
-                              draft.setField(
-                                "system_prompt",
-                                applyByteSpanReplacement(
-                                  draft.fields.system_prompt,
-                                  start,
-                                  end,
-                                  replacement,
-                                ),
-                              )
-                            }
-                          />
-                        ) : undefined
-                      }
+                      endpoint={externalEndpoint}
+                      onManage={() => setExternalOpen(true)}
                     />
-                  </ChatChangeMark>
+                  ) : (
+                    <ChatChangeMark field="system_prompt">
+                      <AgentPromptPane
+                        className="lg:border-r"
+                        value={draft.fields.system_prompt}
+                        editing={editing}
+                        onEdit={canEdit ? startEdit : undefined}
+                        onChange={(value) => draft.setField("system_prompt", value)}
+                        error={draft.errors.system_prompt}
+                        checks={
+                          editing ? (
+                            <AgentChecks
+                              systemPrompt={draft.fields.system_prompt}
+                              capabilities={draft.capabilities}
+                              tools={agent.tools ?? []}
+                              onApplyFix={(start, end, replacement) =>
+                                draft.setField(
+                                  "system_prompt",
+                                  applyByteSpanReplacement(
+                                    draft.fields.system_prompt,
+                                    start,
+                                    end,
+                                    replacement,
+                                  ),
+                                )
+                              }
+                            />
+                          ) : undefined
+                        }
+                      />
+                    </ChatChangeMark>
+                  )}
                   <AgentConfigColumn
                     className="border-t lg:border-t-0"
                     agent={agent}
@@ -949,14 +988,19 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                     defaultModel={defaultModel}
                     onStartEdit={startEdit}
                     moreRows={moreRows}
-                    onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
+                    external={isExternal}
+                    onOpenRow={(id) =>
+                      id === "external"
+                        ? setExternalOpen(true)
+                        : setOpenSection(id as AgentSettingsSection)
+                    }
                   />
                 </div>
               )}
 
-              {activeTab !== "agent" && (
+              {shownTab !== "agent" && (
                 <div className="min-w-0 pt-5 sm:pt-6">
-                  {activeTab === "preview" && (
+                  {shownTab === "preview" && (
                     <AgentPreview
                       systemPrompt={draft.fields.system_prompt}
                       capabilities={draft.capabilities}
@@ -966,18 +1010,18 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                       tools={agent.tools ?? []}
                     />
                   )}
-                  {activeTab === "agents" && <AgentMembersTab agent={agent} canEdit={canEdit} />}
-                  {activeTab === "integrations" && (
+                  {shownTab === "agents" && <AgentMembersTab agent={agent} canEdit={canEdit} />}
+                  {shownTab === "integrations" && (
                     <AgentIntegrationsPanel
                       agent={agent}
                       initialChannelId={searchParams.get("channel")}
                     />
                   )}
-                  {activeTab === "stats" && (
+                  {shownTab === "stats" && (
                     <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
                   )}
-                  {activeTab === "evals" && evalsEnabled && <AgentEvalsTab agentId={agentId} />}
-                  {activeTab === "sessions" && (
+                  {shownTab === "evals" && evalsEnabled && <AgentEvalsTab agentId={agentId} />}
+                  {shownTab === "sessions" && (
                     <AgentSessionsPanel
                       agentId={agentId}
                       defaultModelId={agent?.default_model_id}
@@ -1009,6 +1053,16 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
               kind="agent"
               entityName={displayName}
               permissions={recordPermissions}
+            />
+          )}
+
+          {!builtIn && (
+            <ExternalAgentSheet
+              agentId={agent.id}
+              open={externalOpen}
+              onOpenChange={setExternalOpen}
+              status={externalAgent.data}
+              canManage={can("agent.dangerous") && isActive}
             />
           )}
 

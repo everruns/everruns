@@ -23,7 +23,11 @@ export function getAgentTabItems(
   sessionCount?: number,
   integrationCount?: number,
   translate: (message: string) => string = (message) => message,
-  { evals = false, agents }: { evals?: boolean; agents?: number } = {},
+  {
+    evals = false,
+    agents,
+    preview = true,
+  }: { evals?: boolean; agents?: number; preview?: boolean } = {},
 ): SectionTabItem[] {
   return [
     {
@@ -45,11 +49,15 @@ export function getAgentTabItems(
             icon: <Users className="size-4" />,
           },
         ]),
-    {
-      value: "preview",
-      label: translate("Preview"),
-      icon: <Eye className="size-4" />,
-    },
+    ...(preview
+      ? [
+          {
+            value: "preview",
+            label: translate("Preview"),
+            icon: <Eye className="size-4" />,
+          },
+        ]
+      : []),
     {
       value: "integrations",
       label:

@@ -66,8 +66,9 @@ CP database URL, fleet token, or Slack bot token in this Worker.
 
 ## Register and invoke
 
-Create a normal Agent in Everruns. On its Agent page choose **Configure execution**,
-enter your deployed HTTPS URL and endpoint secret, then **Verify and connect**.
+Create a normal Agent in Everruns. On its Agent page open **External agent** in
+the **More** list, enter your deployed HTTPS URL and the endpoint secret (the
+**Generate** button makes one to install first), then **Verify and connect**.
 The endpoint must pass an authenticated challenge before the CP saves a binding.
 Changing a binding requires no active turns. The account needs permission to
 manage dangerous Agent settings.
@@ -88,8 +89,9 @@ Use the Agent's **Test in Playground** action and ask:
 
 Expect **27278 cents, 2 orders**. Open the session's Trace to inspect model calls,
 `sales_summary` arguments/results and usage. Follow-up messages replay completed
-conversation history from the CP journal. Editor model/prompt/tool settings do
-not configure this external implementation.
+conversation history from the CP journal. Your Worker owns the model, prompt and
+tools, so the Agent page hides those settings while the endpoint is connected and
+shows the endpoint's status in place of the system prompt.
 
 Set `EVERRUNS_URL` to the CP origin (for example,
 `https://app.everruns.com`), without `/api`. `EVERRUNS_TOKEN` is your ordinary
