@@ -574,3 +574,13 @@ remain available for applications holding a direct TypeSafe key.
 ## Offline batches
 
 For independent requests that can wait hours, use [Batch Model Requests](/framework/batch-model-requests/) to submit through Anthropic Message Batches and persist a ticket for later collection.
+
+## Model refusals
+
+The Responses driver reports explicit model refusals as `LlmErrorKind::Refusal`
+for streamed calls, native JSON completions, and batch results. These are terminal
+decisions and are not automatically retried. The diagnostic retains the provider's
+reason, bounded to 16 KiB; treat it as provider content when displaying or logging
+it. Engine sessions apply their configured error disclosure policy and expose the
+stable `model_refusal` category instead of treating refusal text as a successful
+answer.

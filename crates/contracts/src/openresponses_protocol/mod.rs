@@ -53,6 +53,7 @@ mod computer;
 mod hosted_tools;
 mod input;
 mod non_streaming;
+mod refusal;
 mod streaming;
 mod tool_changes;
 mod websocket;

@@ -172,3 +172,27 @@ fn cache_inclusive_totals_use_wide_arithmetic() {
                 && a.value == Value::I64(4 * i64::from(u32::MAX)))
     );
 }
+
+#[tokio::test]
+async fn refusal_classification_survives_without_exporting_provider_prose() {
+    let h = OtelHarness::new(false, TraceConventions::ALL);
+    let mut data = generation(false);
+    data.metadata.error = Some("refusal: private request mentions timeout 503".into());
+    data.metadata.finish_reasons = Some(vec!["refusal".into()]);
+    h.emit(600, h.context(None, None, None), data).await;
+    let spans = h.spans();
+    let span = by_name(&spans, "chat claude-sonnet-4-6");
+    assert_eq!(
+        attr(span, "error.type"),
+        Some(&Value::String("model_refusal".into()))
+    );
+    assert!(
+        matches!(&span.status, Status::Error { description } if description == "model_refusal")
+    );
+    assert!(!span.events.iter().any(|event| {
+        event
+            .attributes
+            .iter()
+            .any(|a| a.value.to_string().contains("private request"))
+    }));
+}

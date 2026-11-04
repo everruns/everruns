@@ -1,5 +1,7 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "The model declined this request.": "The model declined this request.",
+  "Model declined request": "Model declined request",
   "Open in Everruns": "Open in Everruns",
   Expand: "Expand",
   "Loading page": "Loading page",

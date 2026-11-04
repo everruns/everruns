@@ -1166,7 +1166,13 @@ impl OtelEventListener {
                 .error
                 .as_deref()
                 .unwrap_or("LLM generation failed");
-            self.record_failure(&mut span, ts, None, message);
+            let code = data
+                .metadata
+                .finish_reasons
+                .as_ref()
+                .filter(|reasons| reasons.iter().any(|reason| reason == "refusal"))
+                .map(|_| everruns_contracts::user_facing_error::codes::MODEL_REFUSAL);
+            self.record_failure(&mut span, ts, code, message);
         }
         span.end_with_timestamp(ts);
     }

@@ -123,8 +123,8 @@ impl OpenResponsesProtocolChatDriver {
                             | types::ContentPart::Text { text } => {
                                 events.push(LlmStreamEvent::TextDelta(text.clone()))
                             }
-                            types::ContentPart::Refusal { .. } => {
-                                return Err(AgentLoopError::llm("batch response refused"));
+                            types::ContentPart::Refusal { refusal } => {
+                                return Err(super::refusal::error(refusal).into_agent_error());
                             }
                             _ => {}
                         }
