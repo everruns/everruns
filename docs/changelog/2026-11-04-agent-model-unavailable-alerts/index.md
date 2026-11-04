@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, agent]
 links:
   docs: [/features/ui/, /integrations/slack/]
-  prs: [everruns/everruns#5221, everruns/everruns#5225]
+  prs: [everruns/everruns#5221, everruns/everruns#5225, everruns/everruns#5226]
 ---
 
 An agent set to an unusable model no longer fails quietly. A model counts as
