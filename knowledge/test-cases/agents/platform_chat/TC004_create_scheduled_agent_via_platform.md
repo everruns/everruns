@@ -57,17 +57,18 @@ a production credential into this manual test transcript.
    organization-wide Agent. Confirm the exact Agent, model, and trigger request.
 
 4. Inspect the tool trace after confirmation. Verify that Platform Chat:
-   - uses `discover` to find model, Agent, and Agent Trigger operations rather
-     than calling an invented tool such as `read_models`;
-   - discovers exact command names and follows their `bash_usage`; it does not
-     probe builtins with `--help`, shell inventory, or guessed flags such as
-     `--model_id` on `create_agent`;
-   - uses `query` to resolve `gpt-6.1-sol` and inspect existing resources;
-   - uses `execute` for the requested creates and chains dependent returned IDs
-     with `jq` rather than manually converting resource identifiers;
-   - queries the final Agent and Trigger state before answering.
-   - does not call unrelated Generic tools such as Bash, web fetch, session
-     secrets, or Session Schedule tools.
+   - uses bounded `tool_search` to reveal the needed prefixed native operations,
+     then calls `platform_<wire_name>` functions rather than invented tools
+     such as `read_models`;
+   - sends each canonical typed payload under `params`; change calls include
+     the user-facing `reason` and current `context_revision` as separate
+     envelope fields;
+   - resolves `gpt-6.1-sol`, inspects existing resources, performs the creates,
+     and reads back the final Agent and Trigger state before answering;
+   - may use the `everruns` shell for dependent-call composition, using
+     progressive `--help` and exact supported flags rather than guessed flags;
+   - does not call unrelated Generic tools such as web fetch, session secrets,
+     or Session Schedule tools.
 
 5. Open the returned Agent link and verify its `default_model_id` points to the
    model whose provider model ID is `gpt-6.1-sol`.
@@ -102,8 +103,9 @@ a production credential into this manual test transcript.
 
 - If `gpt-6.1-sol` is absent or inactive, Platform Chat reports that fact and
   does not silently choose another model.
-- If the caller cannot assign a requested high-risk capability, `execute`
-  returns a permission error and no elevated Agent is created.
+- If the caller cannot assign a requested high-risk capability, native
+  dispatch returns a permission error and no elevated Agent is created.
 - Supplying `organization_id` to any Platform tool is rejected.
-- A partial multi-command failure is followed by `query`; already-created
-  resources are reused or reported instead of blindly duplicated.
+- A partial multi-operation failure is followed by authoritative native reads;
+  already-created resources are reused or reported instead of blindly
+  duplicated.

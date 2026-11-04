@@ -32,12 +32,17 @@ export function usePageDraftTools(
   const [attempt, setAttempt] = useState(0);
   const [delivery, setDelivery] = useState(0);
   useEffect(() => {
-    if (!enabled || !mode) return;
-    const binding = mode.pageAdapter?.describe().binding;
-    if (binding) {
-      owned.current.add(binding);
-      if (owned.current.size > 50) owned.current.delete(owned.current.values().next().value!);
+    if (!mode) return;
+    if (enabled) {
+      const binding = mode.pageAdapter?.describe().binding;
+      if (binding) {
+        owned.current.add(binding);
+        if (owned.current.size > 50) owned.current.delete(owned.current.values().next().value!);
+      }
     }
+    // Full Chat never claims a page. Previously owned requests still need a result
+    // after closing the split view or navigating away from their original form.
+    if (!owned.current.size) return;
     if (status !== "waiting_for_tool_results" || busy.current) return;
     const request = events.findLast((event) => event.type === "tool.call_requested");
     const calls = request && getEventData(request, "tool.call_requested")?.tool_calls;

@@ -9,6 +9,7 @@
  * upstream package bumps fail visibly during dev review.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { OpenUIBlock } from "@/components/chat/openui-renderer";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 
@@ -32,11 +33,14 @@ series1 = Series("Revenue", [45000, 52000, 61000])`,
 ];
 
 export default function OpenUIBlocksDevPage() {
+  const ui = useUiTranslations();
   return (
     <DevPageShell
       eyebrow="OpenUI Blocks"
-      title="OpenUI Lang renderer"
-      description="Renders sample OpenUI Lang snippets through the production OpenUIBlock. Use as a visual smoke check after bumping @openuidev/react-lang or @openuidev/react-ui."
+      title={ui("OpenUI Lang renderer")}
+      description={ui(
+        "Renders sample OpenUI Lang snippets through the production OpenUIBlock. Use as a visual smoke check after bumping @openuidev/react-lang or @openuidev/react-ui.",
+      )}
       widthClassName="max-w-3xl"
     >
       <div className="space-y-10">

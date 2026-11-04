@@ -2,6 +2,7 @@ pub mod api_endpoint_conversion;
 pub mod api_sessions;
 pub mod commands;
 mod exposure;
+pub(crate) mod history;
 pub mod ingress;
 pub mod invocation;
 pub mod queries;

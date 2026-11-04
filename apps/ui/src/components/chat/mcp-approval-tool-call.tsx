@@ -12,12 +12,14 @@
  * approves, so anything unexpected, an error included, is a denial.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, ShieldQuestion, X } from "lucide-react";
 import { submitToolResults } from "@/lib/api/sessions";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { ApprovalDisplayText } from "./approval-display-text";
 
 export const MCP_APPROVAL_TOOL = "openai_mcp_approval";
 
@@ -58,6 +60,7 @@ export function McpApprovalToolCall({
   approval,
   toolResultsMap,
 }: McpApprovalToolCallProps) {
+  const ui = useUiTranslations();
   const [status, setStatus] = useState<"idle" | "submitting" | "approved" | "denied">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -92,7 +95,11 @@ export function McpApprovalToolCall({
         )}
       >
         {approved ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-        {approved ? `Approved ${tool} on ${server}` : `Denied ${tool} on ${server}`}
+        <ApprovalDisplayText>
+          {approved
+            ? ui("Approved {value0} on {value1}", { value0: tool, value1: server })
+            : ui("Denied {value0} on {value1}", { value0: tool, value1: server })}
+        </ApprovalDisplayText>
       </div>
     );
   }
@@ -103,14 +110,14 @@ export function McpApprovalToolCall({
         <ShieldQuestion className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">
-            Allow {server} to run {tool}?
+            <ApprovalDisplayText>{`${ui("Allow")} ${server} ${ui("to run")} ${tool}?`}</ApprovalDisplayText>
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            OpenAI will call this remote MCP server with these arguments.
+            {ui("OpenAI will call this remote MCP server with these arguments.")}
           </p>
           {args && (
             <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
-              {args}
+              <ApprovalDisplayText>{args}</ApprovalDisplayText>
             </pre>
           )}
           {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
@@ -124,11 +131,11 @@ export function McpApprovalToolCall({
           disabled={status === "submitting"}
           className="text-muted-foreground"
         >
-          Deny
+          {ui("Deny")}
         </Button>
         <Button size="sm" onClick={() => void decide(true)} disabled={status === "submitting"}>
           <Check className="mr-1 h-3.5 w-3.5" />
-          Approve
+          {ui("Approve")}
         </Button>
       </div>
     </div>

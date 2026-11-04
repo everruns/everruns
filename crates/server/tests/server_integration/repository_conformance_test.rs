@@ -82,6 +82,8 @@ pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> Cre
 
 pub(crate) fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow {
     CreateAgentRow {
+        completion_check: Default::default(),
+        localizations: Default::default(),
         public_id: AgentId::new().to_string(),
         name,
         display_name: Some("Conformance Agent".to_string()),
@@ -139,61 +141,8 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
     )
     .await;
 
-    // Only event types reporting projects get an outbox row.
-    let unprojected = repo
-        .create_event(CreateEventRow {
-            session_id: session.id,
-            event_type: "input.message".to_string(),
-            ts: Utc::now(),
-            context: json!({}),
-            data: json!({
-                "message": {
-                    "content": [{ "type": "text", "text": "hello" }]
-                }
-            }),
-            metadata: None,
-            tags: None,
-        })
-        .await
-        .expect("create unprojected event");
-    assert!(
-        repo.list_reporting_outbox(
-            DEFAULT_ORG_ID,
-            "event",
-            &unprojected.id.uuid().to_string(),
-            "event_projection",
-        )
-        .await
-        .expect("list reporting outbox")
-        .is_empty(),
-        "an event reporting never projects gets no outbox row"
-    );
-
-    let event = repo
-        .create_event(CreateEventRow {
-            session_id: session.id,
-            event_type: "turn.completed".to_string(),
-            ts: Utc::now(),
-            context: json!({}),
-            data: json!({
-                "message": {
-                    "content": [{ "type": "text", "text": "hello" }]
-                }
-            }),
-            metadata: None,
-            tags: None,
-        })
-        .await
-        .expect("create event");
-    assert_one_outbox(
-        repo,
-        "event",
-        &event.id.uuid().to_string(),
-        "event_projection",
-    )
-    .await;
-
-    // A stored batch enqueues every projected row in one statement.
+    // Events reach reporting through the listener feed, not the outbox: no
+    // event write enqueues an outbox row, projected type or not.
     let projected = || CreateEventRow {
         session_id: session.id,
         event_type: "turn.completed".to_string(),
@@ -203,12 +152,25 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
         metadata: None,
         tags: None,
     };
-    let batch = repo.create_events(vec![projected(), projected()]).await;
-    let batch = batch.expect("create event batch");
+    let event = repo.create_event(projected()).await.expect("create event");
+    let batch = repo
+        .create_events(vec![projected(), projected()])
+        .await
+        .expect("create event batch");
     assert_eq!(batch.len(), 2);
-    for row in batch {
-        let id = row.id.uuid().to_string();
-        assert_one_outbox(repo, "event", &id, "event_projection").await;
+    for row in std::iter::once(&event).chain(&batch) {
+        assert!(
+            repo.list_reporting_outbox(
+                DEFAULT_ORG_ID,
+                "event",
+                &row.id.uuid().to_string(),
+                "event_projection",
+            )
+            .await
+            .expect("list reporting outbox")
+            .is_empty(),
+            "an event write enqueues no reporting outbox row"
+        );
     }
 
     let provider_prefix = format!("conf-{label}-{}", Uuid::now_v7());
@@ -309,10 +271,7 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
             budget_id: Some(budget.id),
             org_id: DEFAULT_ORG_ID,
             session_id: Some(session.id.uuid()),
-            user_id: None,
             principal_id: Some(principal_id.uuid()),
-            agent_id: None,
-            harness_id: None,
             currency: "usd".to_string(),
             amount: 2.0,
             meter_source: "conformance".to_string(),
@@ -320,6 +279,7 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
             ref_id: Some(event.id.uuid()),
             description: Some("repository conformance usage".to_string()),
             rating_metadata: Some(json!({ "source": "repository_conformance_test" })),
+            ..Default::default()
         })
         .await
         .expect("create usage ledger");

@@ -2,9 +2,8 @@
 
 import { useTextPageFormDraft } from "./use-text-page-form-draft";
 
-// Immediate-save settings expose explicit public values without turning their
-// onChange handlers into model-callable writes. Their normal controls retain
-// their existing authorization and confirmation behavior.
+// Read-only and protected surfaces expose only an explicit public projection.
+// Their immediate actions retain existing authorization and manual controls.
 export function usePageReadContext<K extends string>(options: {
   fields: readonly K[];
   values: Record<K, string>;
@@ -12,10 +11,12 @@ export function usePageReadContext<K extends string>(options: {
   entityId?: string;
   label: string;
   enabled?: boolean;
+  formId?: string;
+  priority?: number;
 }) {
   useTextPageFormDraft({
     ...options,
-    formId: "current_settings",
+    formId: options.formId ?? "current_settings",
     baseline: "view",
     dirty: false,
     writable: false,

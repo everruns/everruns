@@ -12,8 +12,8 @@ mod channels;
 mod connections;
 #[path = "../evals/mod.rs"]
 mod evals;
+mod reviewer;
 mod schedules;
-mod subagents;
 mod tools;
 
 serve::assets!();

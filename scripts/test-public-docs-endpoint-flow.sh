@@ -6,9 +6,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SLACK_GUIDE="$ROOT/docs/capabilities/slack.md"
 
 required_guide_text=(
-  'Select **Integrations**.'
+  'Select **Channels and triggers**.'
   'Select **Add channel**.'
-  'Select **Save channel**.'
+  'Select **Create channel**.'
   'Select **Publish**'
   'Open **Settings** > **Slack workspaces**.'
   'Select **Add to Slack**'
@@ -83,4 +83,4 @@ for text in "${required_lifecycle_text[@]}"; do
   fi
 done
 
-printf 'Public Slack documentation uses the Agent Integrations channel flow.\n'
+printf 'Public Slack documentation uses the agent Channels and triggers flow.\n'

@@ -3,7 +3,9 @@
 //
 // See knowledge/harnesses/sandbox-templates.md for the model.
 
+pub mod builds;
 pub mod commands;
+pub mod metadata;
 pub mod queries;
 pub mod record;
 pub mod resolution;

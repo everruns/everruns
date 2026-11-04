@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -50,6 +51,7 @@ export function MemoryFormDialog({
   onOpenChange,
   onSubmit,
 }: MemoryFormDialogProps) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sourceKind, setSourceKind] = useState<CreateSourceKind>("manual");
@@ -220,13 +222,13 @@ export function MemoryFormDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {mode === "create" ? "Create an org-scoped memory." : memory?.id}
+            {mode === "create" ? ui("Create an org-scoped memory.") : memory?.id}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {chatDraft.notice}
           <div className="space-y-2">
-            <Label htmlFor="memory-name">Name</Label>
+            <Label htmlFor="memory-name">{ui("Name")}</Label>
             <Input
               id="memory-name"
               value={name}
@@ -240,7 +242,7 @@ export function MemoryFormDialog({
             {fieldError && <p className="text-xs text-destructive">{fieldError}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="memory-description">Description</Label>
+            <Label htmlFor="memory-description">{ui("Description")}</Label>
             <Textarea
               id="memory-description"
               value={description}
@@ -251,55 +253,55 @@ export function MemoryFormDialog({
           {showSourceFields && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="memory-source">Source</Label>
+                <Label htmlFor="memory-source">{ui("Source")}</Label>
                 <Select
                   value={sourceKind}
                   onValueChange={(value) => setSourceKind(value as CreateSourceKind)}
                 >
-                  <SelectTrigger id="memory-source" className="w-full" aria-label="Source">
+                  <SelectTrigger id="memory-source" className="w-full" aria-label={ui("Source")}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {mode === "create" && <SelectItem value="manual">Manual</SelectItem>}
-                    <SelectItem value="github">GitHub</SelectItem>
-                    <SelectItem value="git">Git URL</SelectItem>
+                    {mode === "create" && <SelectItem value="manual">{ui("Manual")}</SelectItem>}
+                    <SelectItem value="github">{ui("GitHub")}</SelectItem>
+                    <SelectItem value="git">{ui("Git URL")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               {sourceKind === "github" && (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="memory-repository">Repository</Label>
+                    <Label htmlFor="memory-repository">{ui("Repository")}</Label>
                     <Input
                       id="memory-repository"
                       value={repository}
                       onChange={(event) => setRepository(event.target.value)}
-                      placeholder="owner/repo"
+                      placeholder={ui("owner/repo")}
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="memory-github-connection">Connection</Label>
+                    <Label htmlFor="memory-github-connection">{ui("Connection")}</Label>
                     <Select value={githubConnection ? "github" : "none"} disabled>
                       <SelectTrigger
                         id="memory-github-connection"
                         className="w-full"
-                        aria-label="GitHub connection"
+                        aria-label={ui("GitHub connection")}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="github">
-                          {githubConnection?.provider_username ?? "GitHub connected"}
+                          {githubConnection?.provider_username ?? ui("GitHub connected")}
                         </SelectItem>
-                        <SelectItem value="none">No GitHub connection</SelectItem>
+                        <SelectItem value="none">{ui("No GitHub connection")}</SelectItem>
                       </SelectContent>
                     </Select>
                     {!githubConnection && (
                       <p className="text-xs text-muted-foreground">
-                        Private repositories need a{" "}
+                        {ui("Private repositories need a")}{" "}
                         <Link href="/settings/connections" className="underline">
-                          GitHub connection
+                          {ui("GitHub connection")}
                         </Link>
                         .
                       </p>
@@ -309,7 +311,7 @@ export function MemoryFormDialog({
               )}
               {sourceKind === "git" && (
                 <div className="space-y-2">
-                  <Label htmlFor="memory-git-url">Git URL</Label>
+                  <Label htmlFor="memory-git-url">{ui("Git URL")}</Label>
                   <Input
                     id="memory-git-url"
                     value={gitUrl}
@@ -322,40 +324,40 @@ export function MemoryFormDialog({
               {sourceKind !== "manual" && (
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="memory-branch">Branch</Label>
+                    <Label htmlFor="memory-branch">{ui("Branch")}</Label>
                     <Input
                       id="memory-branch"
                       value={branch}
                       onChange={(event) => setBranch(event.target.value)}
-                      placeholder="main"
+                      placeholder={ui("main")}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="memory-root-folder">Root Folder</Label>
+                    <Label htmlFor="memory-root-folder">{ui("Root Folder")}</Label>
                     <Input
                       id="memory-root-folder"
                       value={rootFolder}
                       onChange={(event) => setRootFolder(event.target.value)}
-                      placeholder="docs"
+                      placeholder={ui("docs")}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="memory-sync-interval">Resync</Label>
+                    <Label htmlFor="memory-sync-interval">{ui("Resync")}</Label>
                     <Select value={syncIntervalSecs} onValueChange={setSyncIntervalSecs}>
                       <SelectTrigger
                         id="memory-sync-interval"
                         className="w-full"
-                        aria-label="Resync interval"
+                        aria-label={ui("Resync interval")}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="0">Manual only</SelectItem>
-                        <SelectItem value="300">Every 5 minutes</SelectItem>
-                        <SelectItem value="900">Every 15 minutes</SelectItem>
-                        <SelectItem value="3600">Hourly</SelectItem>
-                        <SelectItem value="86400">Daily</SelectItem>
-                        <SelectItem value="604800">Weekly</SelectItem>
+                        <SelectItem value="0">{ui("Manual only")}</SelectItem>
+                        <SelectItem value="300">{ui("Every 5 minutes")}</SelectItem>
+                        <SelectItem value="900">{ui("Every 15 minutes")}</SelectItem>
+                        <SelectItem value="3600">{ui("Hourly")}</SelectItem>
+                        <SelectItem value="86400">{ui("Daily")}</SelectItem>
+                        <SelectItem value="604800">{ui("Weekly")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -371,7 +373,7 @@ export function MemoryFormDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" variant="accent" disabled={chatDraft.blocked || isPending}>
               {submitLabel}

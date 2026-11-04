@@ -6,6 +6,7 @@
 // Gating: rendered only when the "leased_resources" session feature is present,
 // matching the same gate used for the Tasks (resources route) nav tab.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
 import { Cpu, ListTodo, Loader2, Radar } from "lucide-react";
@@ -132,6 +133,7 @@ export function SessionTaskChips({ sessionId, basePath, hasTasksFeature }: Sessi
 }
 
 function ActiveTaskChips({ sessionId, basePath }: { sessionId: string; basePath: string }) {
+  const ui = useUiTranslations();
   const { data: tasks } = useSessionTasks(sessionId);
 
   const activeTasks = tasks ? tasks.filter((t) => isActiveState(t.state)) : [];
@@ -147,7 +149,7 @@ function ActiveTaskChips({ sessionId, basePath }: { sessionId: string; basePath:
     <div
       className="flex flex-wrap items-center gap-1.5 border-t border-border/60 bg-muted/30 px-3 py-1.5"
       role="region"
-      aria-label="Active tasks"
+      aria-label={ui("Active tasks")}
     >
       {activeTasks.map((task) => (
         <TaskChip key={task.id} task={task} href={tasksHref} />

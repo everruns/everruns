@@ -37,6 +37,8 @@ async fn agent(db: &Arc<StorageBackend>) -> AgentRow {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            completion_check: Default::default(),
+            localizations: Default::default(),
             public_id: AgentId::new().to_string(),
             name: "jev-triage".into(),
             display_name: None,

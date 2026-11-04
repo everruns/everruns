@@ -40,6 +40,15 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
     register_session_service_capabilities(&mut registry);
+    // `AgentBuilder::member` attaches the Agents capability; it is inert on an
+    // agent without members.
+    #[cfg(feature = "local")]
+    if registry
+        .get(everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID)
+        .is_none()
+    {
+        registry.register(everruns_capabilities::capabilities::AgentHandoffCapability);
+    }
     register_selected_integrations(&mut registry);
     registry
 }
@@ -109,7 +118,7 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     #[cfg(feature = "host-shell")]
     _registry.register(everruns_core::host::capabilities::shell::HostShellCapability);
     #[cfg(feature = "web-fetch")]
-    _registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    _registry.register(everruns_integrations::web_fetch::WebFetchCapability::new());
     #[cfg(feature = "duckduckgo")]
     _registry.register(everruns_integrations::duckduckgo::DuckDuckGoCapability);
     #[cfg(feature = "web-search")]

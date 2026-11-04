@@ -28,9 +28,10 @@ pub use crate::domains::session_files::types::{
     GrepRequest, MoveFileRequest, SearchRequest, StatRequest, UpdateFileRequest,
 };
 use crate::domains::session_files::{
-    CopyWorkspaceFile, CreateWorkspaceFile, DeleteWorkspaceFile, GetWorkspaceFile,
-    GrepWorkspaceFiles, ListWorkspaceFiles, MoveWorkspaceFile, SearchWorkspaceFiles,
-    StatWorkspaceFile, UpdateWorkspaceFile, WorkspaceFileService,
+    ByteRangeRequest, CopyWorkspaceFile, CreateWorkspaceFile, DeleteWorkspaceFile,
+    GetWorkspaceFile, GrepWorkspaceFiles, ListWorkspaceFiles, MoveWorkspaceFile,
+    RangeNotSatisfiable, SearchWorkspaceFiles, StatWorkspaceFile, UpdateWorkspaceFile,
+    WorkspaceFileService, queries as q,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -43,7 +44,6 @@ use axum::{
 };
 use everruns_core::Caller;
 use everruns_core::{FileStat, GrepResult, GrepSearchResult, SessionFile};
-use mime_guess::from_path;
 
 use super::common::{ListResponse, impl_auth_state};
 use std::sync::Arc;
@@ -147,19 +147,6 @@ fn parse_accept_entry(entry: &str) -> Option<(&str, f32)> {
     Some((media_type, quality))
 }
 
-fn raw_file_content_type(file: &SessionFile) -> String {
-    from_path(&file.path)
-        .first_raw()
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| {
-            if file.encoding == "base64" {
-                "application/octet-stream".to_string()
-            } else {
-                "text/plain; charset=utf-8".to_string()
-            }
-        })
-}
-
 fn ascii_filename_fallback(filename: &str) -> String {
     let sanitized: String = filename
         .chars()
@@ -184,38 +171,104 @@ fn content_disposition_value(filename: &str, attachment: bool) -> String {
     format!("{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}")
 }
 
-pub(crate) fn raw_file_response(
-    file: SessionFile,
+/// The single byte range a request asks for, if any.
+fn requested_range(headers: &HeaderMap) -> Option<ByteRangeRequest> {
+    headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(ByteRangeRequest::parse)
+}
+
+/// Whether an `If-Range` validator (when present) still matches `etag`. A
+/// stale or date-based validator means the client must get the whole file.
+fn if_range_matches(headers: &HeaderMap, etag: &str) -> bool {
+    headers
+        .get(header::IF_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .is_none_or(|validator| validator.trim() == etag)
+}
+
+/// Stream a file as raw bytes, honoring `Range` / `If-Range`.
+///
+/// Answers 200 with the whole file, 206 with one range, or 416 when the range
+/// lies outside the file. The body streams from storage, so large recordings
+/// are never held in memory, and video players can seek.
+pub(crate) async fn stream_file_response(
+    service: &WorkspaceFileService,
+    key: uuid::Uuid,
+    path: &str,
+    headers: &HeaderMap,
     attachment: bool,
 ) -> Result<Response, (StatusCode, String)> {
-    let content_type = raw_file_content_type(&file);
-    let content = file.content.as_ref().ok_or((
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "File content missing".to_string(),
-    ))?;
-    let bytes = SessionFile::decode_content(content, &file.encoding).map_err(|error| {
-        tracing::error!(path = %file.path, %error, "Failed to decode session file content");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to decode file content".to_string(),
-        )
-    })?;
+    let open = |range| async move {
+        match service.open_file(key, path, range).await {
+            Ok(Some(file)) => Ok(Ok(file)),
+            Ok(None) => Err((StatusCode::NOT_FOUND, "File not found".to_string())),
+            Err(error) => match error.downcast_ref::<RangeNotSatisfiable>() {
+                Some(unsatisfiable) => Ok(Err(unsatisfiable.size)),
+                None => {
+                    tracing::error!(%path, %error, "Failed to open session file");
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to read file".to_string(),
+                    ))
+                }
+            },
+        }
+    };
 
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
+    let range = requested_range(headers);
+    let mut opened = open(range).await?;
+    if let Ok(file) = &opened
+        && range.is_some()
+        && !if_range_matches(headers, &file.etag)
+    {
+        opened = open(None).await?;
+    }
+    let file = match opened {
+        Ok(file) => file,
+        Err(size) => {
+            return Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(header::CONTENT_RANGE, format!("bytes */{size}"))
+                .header(header::ACCEPT_RANGES, "bytes")
+                .body(Body::empty())
+                .map_err(build_error);
+        }
+    };
+
+    let mut response = Response::builder()
+        .header(header::CONTENT_TYPE, &file.content_type)
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::ETAG, &file.etag)
         .header(
             header::CONTENT_DISPOSITION,
             content_disposition_value(&file.name, attachment),
-        )
-        .body(Body::from(bytes))
-        .map_err(|error| {
-            tracing::error!(path = %file.path, %error, "Failed to build raw file response");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to build file response".to_string(),
+        );
+    response = match &file.range {
+        Some(range) => response
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header(
+                header::CONTENT_RANGE,
+                format!("bytes {}-{}/{}", range.start, range.end - 1, file.size),
             )
-        })
+            .header(header::CONTENT_LENGTH, range.end - range.start),
+        None => response
+            .status(StatusCode::OK)
+            .header(header::CONTENT_LENGTH, file.size),
+    };
+    response
+        .body(Body::from_stream(file.body))
+        .map_err(build_error)
+}
+
+fn build_error(error: axum::http::Error) -> (StatusCode, String) {
+    tracing::error!(%error, "Failed to build raw file response");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Failed to build file response".to_string(),
+    )
 }
 
 /// CSP for the sandboxed HTML preview response (TM-WEB-010).
@@ -366,6 +419,10 @@ pub async fn get_path(
     headers: HeaderMap,
     Query(query): Query<GetQuery>,
 ) -> Result<Response, (StatusCode, String)> {
+    if wants_raw_file(&headers) {
+        return stream_session_file(&state, &org, session_id, path, &headers, false).await;
+    }
+
     let response = GetWorkspaceFile {
         session_id,
         path,
@@ -375,17 +432,47 @@ pub async fn get_path(
     .await
     .map_err(file_error)?;
 
-    if wants_raw_file(&headers) {
-        return match response {
-            GetResponse::File(file) => raw_file_response(file, false),
-            GetResponse::Listing(_) => Err((
-                StatusCode::BAD_REQUEST,
-                "Cannot download a directory".to_string(),
-            )),
-        };
-    }
-
     Ok(Json(response).into_response())
+}
+
+/// Authorize a raw read of a session file, then stream it.
+async fn stream_session_file(
+    state: &AppState,
+    org: &ResolvedOrg,
+    session_id: String,
+    path: String,
+    headers: &HeaderMap,
+    attachment: bool,
+) -> Result<Response, (StatusCode, String)> {
+    let ctx = state.ctx(org);
+    // The stat command carries the read policy, the session check and the
+    // private-memory check; the stream below only runs after it passed.
+    let stat = StatWorkspaceFile {
+        session_id: session_id.clone(),
+        req: StatRequest { path: path.clone() },
+    }
+    .run(&ctx)
+    .await
+    .map_err(file_error)?;
+    if stat.is_directory {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Cannot download a directory".to_string(),
+        ));
+    }
+    let session_id = q::parse_session_id(&session_id).map_err(file_error)?;
+    let access = q::verify_session(&ctx, session_id)
+        .await
+        .map_err(file_error)?;
+    let path = q::normalize_path(&path);
+    stream_file_response(
+        &q::service(&ctx),
+        access.read_key(session_id, &path),
+        &path,
+        headers,
+        attachment,
+    )
+    .await
 }
 
 /// GET /fs/_/download/*path - Download raw file bytes
@@ -398,7 +485,9 @@ pub async fn get_path(
     ),
     responses(
         (status = 200, description = "Raw file bytes", content_type = "application/octet-stream"),
+        (status = 206, description = "The byte range named by the `Range` header", content_type = "application/octet-stream"),
         (status = 400, description = "Invalid session ID or path points to a directory"),
+        (status = 416, description = "The `Range` header lies outside the file"),
         (status = 404, description = "File not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -408,23 +497,9 @@ pub async fn download_path(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, path)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, String)> {
-    let response = GetWorkspaceFile {
-        session_id,
-        path,
-        recursive: false,
-    }
-    .run(&state.ctx(&org))
-    .await
-    .map_err(file_error)?;
-
-    match response {
-        GetResponse::File(file) => raw_file_response(file, true),
-        GetResponse::Listing(_) => Err((
-            StatusCode::BAD_REQUEST,
-            "Cannot download a directory".to_string(),
-        )),
-    }
+    stream_session_file(&state, &org, session_id, path, &headers, true).await
 }
 
 /// POST /fs - Create at root (not allowed)

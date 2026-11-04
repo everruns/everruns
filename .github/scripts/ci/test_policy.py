@@ -26,11 +26,17 @@ def load(name):
 plan, focused, tracker, release = map(load, ['plan','focused','track_failures','wait_full'])
 
 
-def evaluate(expression, values):
+def expression_value(expression, values):
+    if not isinstance(expression, str):
+        return expression
     expression = expression.removeprefix('${{').removesuffix('}}').strip()
     expression = re.sub(r'\b(?:github|needs|steps|matrix)(?:\.[a-zA-Z_][a-zA-Z_0-9-]*)+',
                         lambda m: repr(values.get(m.group(), '')), expression)
-    return bool(eval(expression.replace('&&',' and ').replace('||',' or '), {'__builtins__':{}}, {'always':lambda:True}))
+    return eval(expression.replace('&&',' and ').replace('||',' or '), {'__builtins__':{}}, {'always':lambda:True})
+
+
+def evaluate(expression, values):
+    return bool(expression_value(expression, values))
 
 
 class Policy(unittest.TestCase):
@@ -55,6 +61,35 @@ class Policy(unittest.TestCase):
                     self.assertFalse(evaluate(condition, {'github.event_name': event, 'github.ref': ref,
                         'matrix.shard': 'domain', 'needs.changes.outputs.rust': 'true'}))
         self.assertGreater(producers, 5)
+
+    def test_offline_eval_caches_do_not_compete_with_main_from_prs(self):
+        workflows = sorted((ROOT/'.github/workflows').glob('*-evals.yml'))
+        self.assertGreater(len(workflows), 0)
+        for path in workflows:
+            workflow = yaml.safe_load(path.read_text())
+            for name, job in workflow['jobs'].items():
+                for step in job.get('steps', []):
+                    if not step.get('uses', '').startswith('Swatinem/rust-cache@'):
+                        continue
+                    with self.subTest(workflow=path.name, job=name):
+                        condition = step.get('with', {}).get('save-if', True)
+                        if condition is False:
+                            continue
+                        for event, ref in [('pull_request', 'refs/pull/7/merge'),
+                                           ('workflow_dispatch', 'refs/heads/experiment')]:
+                            self.assertFalse(evaluate(condition, {
+                                'github.event_name': event, 'github.ref': ref}))
+                        self.assertTrue(evaluate(condition, {
+                            'github.event_name': 'push', 'github.ref': 'refs/heads/main'}))
+
+    def test_focused_server_budget_covers_cold_compile_and_full_tests(self):
+        timeout = self.jobs['focused-rust']['timeout-minutes']
+        server = expression_value(timeout, {'matrix.group': 'server'})
+        # The measured cold compile plus selected tests exceeds forty minutes.
+        self.assertGreaterEqual(server, 50)
+        self.assertLessEqual(server, 60)
+        for group in ['foundation', 'runtime', 'facade']:
+            self.assertEqual(expression_value(timeout, {'matrix.group': group}), 40)
 
     def test_cleanup_preserves_active_pr_and_all_branch_caches(self):
         cleanup = load('cache_cleanup')
@@ -143,6 +178,69 @@ class Policy(unittest.TestCase):
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
         self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
+    def test_admission_changes_run_the_http_cancellation_and_replay_contracts(self):
+        paths = [
+            'crates/server/src/api/agent_api_idempotency.rs',
+            'crates/server/src/api/command_dispatch.rs',
+            'crates/server/src/storage/transaction.rs',
+            'crates/server/src/storage/repositories/command_idempotency.rs',
+            'crates/server/tests/domain/agent_api_retry_cors_test.rs',
+            'crates/server/tests/domain/command_dispatch_test.rs',
+            '.github/scripts/ci/focused.py',
+        ]
+        server = dict(id='server', name='everruns-server',
+                      manifest_path='/repo/crates/server/Cargo.toml',
+                      dependencies=[], targets=[{'kind': ['lib']}])
+        for path in paths:
+            with self.subTest(path=path):
+                selection = focused.select(
+                    {'packages': [server], 'workspace_members': ['server']},
+                    [path], Path('/repo'))['include'][0]
+                self.assertIn('agent_api_retry_cors_test::', selection['risk_filters'])
+                self.assertIn('command_dispatch_test::', selection['risk_filters'])
+                command = next(focused.commands(selection))
+                self.assertIn('domain', command)
+                self.assertIn('--lib', command)
+
+    def test_mcp_changes_run_endpoint_and_tenant_contracts(self):
+        paths = [
+            'crates/server/src/api/mcp_endpoint/mod.rs',
+            'crates/server/src/api/mcp_endpoint/resources.rs',
+            'crates/server/src/services/command_catalog/catalog.rs',
+            'crates/server/src/worker_link/platform_command_surface.rs',
+            'crates/server/tests/domain/mcp_endpoint_test.rs',
+            'crates/server/tests/domain/mcp_endpoint_test/tasks.rs',
+            '.github/scripts/ci/focused.py',
+        ]
+        server = dict(id='server', name='everruns-server',
+                      manifest_path='/repo/crates/server/Cargo.toml',
+                      dependencies=[], targets=[{'kind': ['lib']}])
+        for path in paths:
+            with self.subTest(path=path):
+                selection = focused.select(
+                    {'packages': [server], 'workspace_members': ['server']},
+                    [path], Path('/repo'))['include'][0]
+                self.assertIn('mcp_endpoint_test::', selection['risk_filters'])
+                self.assertIn('domain', next(focused.commands(selection)))
+
+    def test_history_changes_cover_rest_and_command_revision_contracts(self):
+        for path in ['crates/server/src/domains/change_history/mod.rs',
+                     'crates/server/src/domains/change_history/snapshot.rs',
+                     'crates/server/src/storage/entity_changes.rs',
+                     'crates/server/src/storage/repositories/entity_changes.rs',
+                     'crates/server/src/storage/manager_context.rs',
+                     'crates/server/src/storage/repositories/manager_context.rs',
+                     'crates/server/src/api/history.rs',
+                     'crates/server/src/api/manager_context.rs',
+                     'crates/server/src/domains/common/mod.rs',
+                     'crates/server/src/storage/transaction.rs',
+                     'crates/server/tests/domain/change_history_test.rs',
+                     '.github/scripts/ci/focused.py']:
+            with self.subTest(path=path):
+                self.assertIn('change_history_test::', focused.risk_filters([path]))
+        self.assertNotIn('change_history_test::', focused.risk_filters([
+            'crates/server/src/domains/models/service.rs']))
+
     def test_knowledge_mount_changes_cover_consumer_workspace_isolation(self):
         for path in ['crates/server/src/domains/knowledge/runtime.rs',
                      'crates/server/src/api/knowledge.rs',
@@ -164,7 +262,19 @@ class Policy(unittest.TestCase):
         command=next(focused.commands(selection))
         for target in targets:self.assertIn(target,command)
         self.assertEqual(focused.real_server_targets(['crates/server/tests/pat_scope_sweep_test.rs']),['pat_scope_sweep_test'])
-        self.assertEqual(focused.real_server_targets(['crates/server/src/domains/models/service.rs']),[])
+        self.assertEqual(focused.real_server_targets(['crates/core/src/engine.rs']),[])
+
+    def test_api_and_command_changes_run_the_production_router_scope_sweep(self):
+        for path in ['crates/server/src/api/organizations/mod.rs',
+                     'crates/server/src/api/virtual_users.rs',
+                     'crates/server/src/api/sandbox_templates.rs',
+                     'crates/server/src/domains/models/service.rs',
+                     'crates/server/src/domains/virtual_users/self_profile.rs',
+                     'crates/server/src/app_builder/mod.rs',
+                     'crates/server-macros/src/lib.rs',
+                     '.github/scripts/ci/focused.py']:
+            with self.subTest(path=path):
+                self.assertEqual(focused.real_server_targets([path]), ['pat_scope_sweep_test'])
 
     def test_mcp_credential_changes_run_the_grpc_identity_contract(self):
         for path in [
@@ -180,7 +290,13 @@ class Policy(unittest.TestCase):
                 self.assertIn('mcp_acts_as_grpc_test::', focused.risk_filters([path]))
 
     def test_selected_server_artifacts_run_with_filters_and_cargo_context(self):
-        selection = dict(packages=['everruns-server'], risk_targets=['router'], risk_filters=['picked::'])
+        server = dict(id='server', name='everruns-server',
+                      manifest_path='/repo/crates/server/Cargo.toml', dependencies=[],
+                      targets=[{'kind': ['lib']}])
+        selection = focused.select({'packages': [server], 'workspace_members': ['server']},
+                                   ['crates/server/tests/domain/db_pool_isolation_test.rs'],
+                                   Path('/repo'))['include'][0]
+        selection['risk_targets'] = ['router']
         commands = list(focused.commands(selection))
         self.assertEqual(len(commands), 1)
         self.assertIn('--no-run', commands[0])
@@ -191,6 +307,7 @@ class Policy(unittest.TestCase):
             root = Path(directory)
             (root/'src').mkdir(); (root/'tests').mkdir()
             (root/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            (root/'build.rs').write_text('fn main() { assert_eq!(std::env::var("NUM_JOBS").unwrap(), "1"); }')
             fixture = '''
 #[test]
 fn cargo_context() {
@@ -203,14 +320,14 @@ fn cargo_context() {
             for target in ['contracts', 'router']:
                 (root/f'tests/{target}.rs').write_text(fixture)
             (root/'tests/domain.rs').write_text('''
-mod picked {
+mod db_pool_isolation_test {
     #[test]
     fn selected() { assert!(std::env::var("FAIL_SELECTED").is_err(), "selected failure"); }
 }
 #[test]
 fn unselected() { panic!("filter was lost"); }
 ''')
-            env = dict(os.environ, TEST_SELECTION=json.dumps(selection), CARGO_TARGET_DIR=str(root/'target'))
+            env = dict(os.environ, TEST_SELECTION=json.dumps(selection), CARGO_TARGET_DIR=str(root/'target'), CARGO_BUILD_JOBS='4')
             env.pop('CARGO_MANIFEST_DIR', None); env.pop('CARGO_MANIFEST_PATH', None)
             env.pop('FAIL_SELECTED', None)
             subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=root, env=env, check=True, capture_output=True)
@@ -229,6 +346,7 @@ fn unselected() { panic!("filter was lost"); }
             package = root/'crates/server'
             (package/'src').mkdir(parents=True); (package/'tests').mkdir()
             (package/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            (package/'build.rs').write_text('fn main() { assert_eq!(std::env::var("NUM_JOBS").unwrap(), "1"); }')
             context = '''
 fn context() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -248,7 +366,7 @@ fn context() {
 #[test] fn offline() { context(); }
 #[test] fn paid() { panic!("paid case was not excluded"); }
 ''')
-            env = dict(os.environ, CARGO_TARGET_DIR=str(root/'target'))
+            env = dict(os.environ, CARGO_TARGET_DIR=str(root/'target'), CARGO_BUILD_JOBS='4')
             script = str(ROOT/'.github/scripts/ci/libtest.py')
             subprocess.run(['cargo','generate-lockfile','--offline'],cwd=package,env=env,check=True,capture_output=True)
             build = ['cargo','test','--locked','-p','everruns-server','--no-run','--message-format=json']
@@ -260,6 +378,7 @@ fn context() {
                                     cwd=package,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(result.stdout.count('1 passed; 0 failed'),3)
+            env['CARGO_BUILD_JOBS'] = '1'
             with artifacts.open('w') as output:
                 subprocess.run([*build,'--test','workflow_test'],cwd=package,env=env,stdout=output,stderr=subprocess.PIPE,check=True)
             archive = root/'transferred'

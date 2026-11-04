@@ -10,13 +10,14 @@ release: "0.28.0"
 links:
   docs: [/features/ui/]
   prs: [everruns/everruns#3637, everruns/everruns#3639]
-visual: "Agents list in dark theme with the user menu Theme submenu open (/agents); crop to sidebar menu and part of the page"
 ---
 
 The Everruns UI has a dark theme. Open the user menu in the sidebar
 and pick **Theme**: light, dark or system. The choice is stored in a cookie, so
 pages render in the right theme on the server and navigation does not flash.
 Scrollbars and native controls follow the theme too.
+
+![Agents page in the dark theme with the user menu Theme submenu open](./dark-theme-menu@2x.png)
 
 Before this change, a machine set to dark mode got a partly dark interface; the
 whole UI now switches together, with semantic status colors that work in both

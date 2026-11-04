@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Platform Chat"
-description: "The canonical operator chat: one Bashkit shell over the everruns CLI, read-only product docs, and durable shared and private memory."
+description: "The canonical operator chat with bounded native platform functions, Bashkit shell composition, read-only docs, and durable shared and private memory."
 tags:
   - everruns
   - harnesses
@@ -13,25 +13,37 @@ tags:
 
 Platform Chat is the unconditional operator surface for every organization.
 A managed Agent owns identity, instructions, platform access, introduction, and
-conversation starters. Generic supplies the execution environment. The reserved
+conversation starters. Bashkit Worker supplies the execution environment. The reserved
 Agent name is reconciled once per organization; there is no feature flag or opt-in.
 Harnesses no longer supply conversation presentation.
 
-## One shell, one namespace
+## Native operations and shell composition
 
-The assistant manages the platform through the `everruns` CLI in the same
-Bashkit shell it uses for files, pipes, filtering, loops, and redirection.
+The managed Agent opts into `{"surface":"native"}` for the Platform capability.
+This registers all 350 public, noninternal, nondurable inventory operations as
+native `platform_<wire_name>` functions; omitting `surface` still selects the
+legacy `discover` / `query` / `execute` interface. The assistant uses those
+native functions for individual platform operations and the `everruns` CLI in
+its Bashkit shell for files,
+pipes, filtering, loops, and redirection. Bounded `tool_search` uses threshold
+1 and reveals operation schemas on demand within the configured count and byte
+limits. The portable `operations.json` catalog is generated from the server
+inventory; workers do not link the server crate. Dispatch checks current feature
+flags and permissions. The static metadata spans feature flags, like the local
+CLI grammar; a disabled operation can be found but is refused when called.
+Native functions and the CLI reach the same authorized
+platform dispatch path. Bashkit Worker remains the shell environment.
 Product documentation is read-only; scratch files belong to the conversation;
 shared and private notes outlive it. The executable composition and prompt
 live in [the Agent definition](../../crates/server/src/platform_chat_agent/mod.rs).
 
 The earlier `discover` / `query` / `execute` split forced the model to reason
 about tool selection without providing a permission boundary. Authorization
-already belongs to command execution. The shell uses that same command
-execution path and its existing policy checks; a different spelling grants
-no additional authority. Help is progressively disclosed by CLI node and leaf. Tool metadata and previews
-honor the same configured shell surface as execution, so the retired three-tool
-surface is not advertised alongside the shell.
+already belongs to operation execution. The shell and native functions use
+that same authorized dispatch path; a different spelling grants no additional
+authority. Native calls wrap the canonical typed payload in `params`, with
+change `reason` and `context_revision` carried as separate metadata. Optional
+schema disclosure is bounded by the configured search count and byte limits.
 
 The platform CLI is installed from the session's effective tool registry.
 Withholding platform capability from the effective Agent and harness composition also withholds the command.
@@ -80,7 +92,7 @@ memory work, not requirements introduced by promotion.
 ## Existing organization and conversation upgrade
 
 Existing agentless canonical and preview conversations move in place to the
-managed Agent on Generic, preserving IDs, URLs, transcripts, workspace files,
+managed Agent on Bashkit Worker, preserving IDs, URLs, transcripts, workspace files,
 owners, and the permanent starter marker. Preview runtime bindings first
 consolidate into the canonical legacy harness. Custom Agents, apps, child
 harnesses, defaults, and triggers retain those authored execution bindings;
@@ -119,7 +131,7 @@ harness definitions retain ownership of that composition.
 * New chat creates no side session before first send; Playground never appears in history.
 * Existing orgs upgrade with prior opt-in both enabled and disabled.
 * Existing canonical and preview conversations keep their IDs and files and
-  use the shell surface on subsequent turns.
+  use bounded native functions with shell composition on subsequent turns.
 * Resumed conversations can read docs after restart and cannot modify them.
 * Existing shared notes survive; new notes are visible across chat threads.
 * Private memory and cross-org isolation keep their existing boundaries.
@@ -130,7 +142,43 @@ run on PostgreSQL (a per-test database from the embedded cluster). Behavioral ca
 [Platform Chat test cases](../test-cases/agents/platform_chat/) and
 [UI chat test cases](../test-cases/ui/chats/).
 
-The offline evaluation defaults to the canonical shell surface. A frozen
+Hosted evaluation classifies native calls through their canonical operation
+metadata, including the production function prefix, alongside CLI traces.
+
+The offline evaluation defaults to the captured historical CLI surface. A frozen
 historical three-tool subject remains selectable as `legacy` for comparisons;
 it is not provisioned as a product harness. See
 [the eval study](../../evals/platform-capability/README.md).
+
+A separate `surface-comparison` experiment compares CLI, eager native and bounded
+native discovery against the same captured platform catalog, in-process state
+and policy prompt. Native functions wrap canonical payloads with separate change
+reason/context-revision metadata. Completed-operation evidence, ordered reads and
+exact state differences grade mutations. Bounded discovery uses the production
+index, while its offline HTTP transport sends changing top-level tool lists;
+it does not qualify Framework durable replay or provider inline tool changes.
+Separate large-result tasks measure filtering and aggregation.
+
+The historical corrected Muse comparison used an offline, unprefixed 344-tool
+catalog including 11 durable operations; production exposes 350 native
+operations with the `platform_` prefix. Keep those measurements and limitations
+as historical evidence; they do not qualify production models, domain
+authorization, transactions, hosted persistence, or provider inline tool
+changes. Production schema discovery is bounded, and Bashkit Worker remains
+available for shell aggregation. Do not infer provider cache hits from inline
+tool changes; qualified drivers preserve the baseline where supported, while
+fallbacks may rewrite the tool list.
+The original two-arm comparison remains provisional historical evidence because
+it lacked invocation-envelope and complete state assertions; see the
+[recorded findings](../../evals/platform-capability/README.md#follow-up-findings-2026-10-24)
+and corrected runs in the study before comparing surface costs.
+
+The corrected evidence supports keeping both execution mechanisms available:
+bounded native lookup can avoid CLI help, while rich platform write schemas and
+large result aggregation favor shell composition in this corpus. Bounded platform
+discovery still has a recorded search-budget miss. Selecting native functions
+for the managed composition does not turn that fixture run into production
+qualification. The [recorded comparison](../../evals/platform-capability/README.md#corrected-muse-comparison-2026-10-24)
+owns measurements and the HTTP/cache limitations; the
+[provenance](../../evals/platform-capability/results/corrected-2026-10-24-summary.json)
+separates cohorts and preserves failed attempts.

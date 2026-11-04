@@ -1334,6 +1334,15 @@ mod tests {
     }
 
     #[test]
+    fn desktop_accepts_baked_snapshot_without_losing_desktop_settings() {
+        let mut value = profile(SandboxTargetSpec::managed("daytona"));
+        value.target.options = json!({"desktop":true,"snapshot":"baked-desktop"});
+        let resolved = resolve_spec(&value).unwrap();
+        assert_eq!(resolved.target.options["snapshot"], "baked-desktop");
+        assert_eq!(resolved.target.options["desktop"], true);
+    }
+
+    #[test]
     fn desktop_option_rejects_bad_settings_and_unsupported_providers() {
         let rejected = |provider: &str, options: Value| {
             let mut value = profile(SandboxTargetSpec::managed(provider));
@@ -1346,9 +1355,20 @@ mod tests {
                 .contains("desktop is not valid")
         );
         assert!(
-            rejected("daytona", json!({"desktop": true, "snapshot": "custom"}))
+            rejected("daytona", json!({"desktop": true, "size": "small"}))
                 .contains("cannot be combined with desktop")
         );
         assert!(rejected("modal", json!({"desktop": true})).contains("desktop"));
+        assert!(
+            rejected("daytona", json!({"desktop": {"record": "no"}}))
+                .contains("desktop.record must be true or false")
+        );
+    }
+
+    #[test]
+    fn desktop_option_accepts_turning_the_recording_off() {
+        let mut value = profile(SandboxTargetSpec::managed("daytona"));
+        value.target.options = json!({"desktop": {"record": false, "display_width": 1280}});
+        assert!(resolve_spec(&value).is_ok());
     }
 }

@@ -136,18 +136,19 @@ version choice and keep their guards:
 - A published crate depending on a **private or registry-restricted** workspace
   package. This is [#3656](https://github.com/everruns/everruns/pull/3656), and
   `sync-publish-pin-versions.py` rejects it.
-- A **new crate name** the registry token cannot publish, which fails mid-cascade
+- A **new crate name** without registry publishing access, which fails mid-cascade
   and leaves a partial set. This is
   [#3648](https://github.com/everruns/everruns/pull/3648), and a bigger publish
-  set makes it costlier, not cheaper. Confirm a new package name is publishable
-  with the current `CARGO_REGISTRY_TOKEN` **before** merging the change that adds
-  it; until then keep it `publish = false`. The publish set is listed in
+  set makes it costlier, not cheaper. Bootstrap the first version with an owner
+  token and configure its trusted publisher **before** merging the change that
+  adds it; until then keep it `publish = false`. The publish set is listed in
   `.github/crates-publish-set.txt`, and `scripts/release-preflight.py` fails when
   a package drops `publish = false` without joining that list, so a new name is
   always a reviewed edit. It also fails when a never-published name is held by
   another crates.io owner, or when one release would create more names than the
-  crates.io new-crate burst (5) allows. It cannot see the token's scopes, so it
-  prints the new names for the person merging to confirm.
+  crates.io new-crate burst (5) allows. It cannot verify bootstrap credentials or
+  trusted-publisher settings, so it prints the new names for the person merging
+  to confirm.
 - A crate **joining the publish set between releases**. Crate Release plans by
   crates.io presence, so a crate flipped off `publish = false` mid-cycle looks
   unpublished at the current platform version and is dispatched at once. It
@@ -260,8 +261,20 @@ other than the one its release tag names, the plan holds back every crate still
 at that version, previously published ones included. A version is published from
 one tree, never finished from a later one. Before v0.34.2 only never-published
 crates were held back, and runs triggered by later pushes to `main` finished
-0.34.1 from three different commits. When the fix has to change source, cut the
-next patch version instead (v0.34.0 was finished by v0.34.1, v0.34.1 by v0.34.2).
+0.34.1 from three different commits. When the fix has to change source, the
+version is lost and only the next patch version can finish it (v0.34.0 was
+finished by v0.34.1, v0.34.1 by v0.34.2).
+
+**Spending tags to repair a release is a hard blocker.** An agent never creates,
+deletes or re-creates release tags, and never cuts another version, to get past
+a failed release. It stops and reports the failure, what it would cost (which
+tags or version numbers), and the options, and waits for the user's explicit
+decision. A pre-approval to "release" or "ship" does not cover it. 0.50.0 was
+lost this way: its crate tags were created at two commits that each failed the
+full-CI gate, so 0.50.1 had to finish it. Prevent it instead: before merging the
+release PR, run full CI on its head (`ci.yml` `workflow_dispatch` with
+`full=true`) and merge only when it is green, so the gate that runs after the
+tags exist has nothing new to find.
 
 **Every crate tag is created up front, in one atomic push.** GitHub refuses a
 `GITHUB_TOKEN` push of a ref whose tree has different workflow files from the
@@ -312,6 +325,33 @@ from Cargo metadata, and publishes only that package. Publishing cannot be
 completed from a sandbox whose egress policy blocks tag pushes — the CI workflow
 is the supported path.
 
+### crates.io trusted publishing
+
+The publishing workflow uses GitHub OIDC instead of a stored registry token.
+Each publish job obtains a masked, short-lived token only after the package has
+been verified without registry credentials. The pinned official authentication
+action revokes the token when the job finishes; only the upload step receives it.
+Token issuance alone does not prove a crate was published: retain the existing
+registry verification and record the first successful OIDC release separately.
+
+Before enabling the workflow, configure every published crate on crates.io to
+trust this repository, the publishing workflow filename, and the `release`
+environment. The workflow is [`publish-crates.yml`](../../.github/workflows/publish-crates.yml).
+The GitHub `release` environment must allow only the `main` branch: the
+controller dispatches from main while the job separately validates the requested
+package tag and exact source commit. Configure the entire reviewed
+[publish set](../../.github/crates-publish-set.txt) before merging the cutover.
+The controller correlates the main-branch workflow by its requested package,
+tag, source commit and unique dispatch token. The workflow's own commit may be
+newer than the release source; it is not the package provenance anchor.
+
+A new crate needs its first version published by an owner with a suitably scoped
+API token before crates.io permits a trusted publisher. Complete that bootstrap
+and configure trust before adding a new name to automated publication. Trusted
+publishing cannot yank versions. Preserve any token needed for separate yank or
+bootstrap operations; remove obsolete publishing credentials only after a real
+OIDC publication succeeds and their other consumers have been checked.
+
 ### Migration Handling
 
 Release preparation does not squash feature migrations into a version-named file. Keep migrations as authored.
@@ -361,7 +401,9 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 2. Release title: `vX.Y.Z`
 3. Release body: Extracted from CHANGELOG.md section for that version
 4. Release card: `release-card-vX.Y.Z.png`, rendered from the reviewed `release-card.yml`
-5. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
+5. Docker images tagged with version, plus the server and worker binaries they carry as
+   `everruns-{server,worker}-<target>.tar.gz` release assets (both from Docker Publish, triggered
+   via `workflow_dispatch` from Release workflow)
 6. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
 7. crates.io packages ship at the same version; each is published from its own
    trusted `crate/<package>/v<version>` tag by the **Publish Crate** workflow
@@ -402,9 +444,28 @@ After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workfl
 - **SHA tags**: Generated on every build for traceability (short + full SHA).
 - **No `:development` tag and no per-main-commit images.** Docker images are a release artifact, not a per-commit artifact. Pin consumers to a released version (`vX.Y.Z` or `latest`).
 
+#### How images are built
+
+Release binaries compile once per architecture on native runners (`ubuntu-latest` for amd64,
+`ubuntu-24.04-arm` for arm64), all in parallel, split into three groups so no job links more than
+two binaries of the server crate: server + egress proxy, admin tools (`reencrypt-secrets`,
+`everruns-migrate`, `sqlx`), and worker. The jobs run inside the same `rust:*-slim-bookworm` image
+as `docker/Dockerfile.unified`'s builder, so the binaries link against the bookworm glibc the
+distroless and `debian:bookworm-slim` runtime bases ship. `docker/Dockerfile.prebuilt` then
+packages them into multi-arch images in minutes, and the same binaries are uploaded as release
+assets, so a downloaded binary and the image carry identical files.
+
+Why: until 0.49.0 the images compiled inside Docker. One 4-core runner built amd64 and then arm64
+back to back (BuildKit `max-parallelism = 1`), and every release started from an empty cargo cache
+because BuildKit cache mounts do not survive ephemeral runners; the GitHub Actions layer cache could
+not help since the source layer changes every release. 0.49.0 spent 2h23m there (64 min amd64,
+69 min arm64, 6 min exporting a cache that was never reused), the critical path of the whole
+release, while a separate workflow compiled the same server and worker natively in 25-35 min.
+`docker/Dockerfile.unified` stays for building images from source locally.
+
 #### Trigger rationale
 
-Docker images are expensive to build, the slow path is `linux/arm64` via QEMU cross-compilation. Earlier versions of this workflow built on every push to `main` to keep a `:development` rolling tag, and on every PR to validate the build. That produced ~40–60 min of multi-arch build time per merge to main and ~18 min per PR, almost all of which was wasted when the change did not touch Docker infrastructure.
+Docker images are expensive to build, even with native per-architecture compilation. Earlier versions of this workflow built on every push to `main` to keep a `:development` rolling tag, and on every PR to validate the build. That produced ~40–60 min of multi-arch build time per merge to main and ~18 min per PR, almost all of which was wasted when the change did not touch Docker infrastructure.
 
 The current trigger shape (`docker-publish.yml`):
 

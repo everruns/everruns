@@ -22,14 +22,14 @@ export interface ChatRun {
   subagentCount: number;
 }
 
-interface TurnWindow {
+export interface TurnWindow {
   turnId: string;
   startedAt: number;
   /** Absent while the turn is still running. */
   endedAt?: number;
 }
 
-function getTurnWindows(events: Event[]): TurnWindow[] {
+export function getTurnWindows(events: Event[]): TurnWindow[] {
   const windows: TurnWindow[] = [];
   const byTurnId = new Map<string, TurnWindow>();
 

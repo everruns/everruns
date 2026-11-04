@@ -104,14 +104,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .ok()
             .filter(|k| !k.is_empty()),
     ) {
-        (Some(key), _) => builder.provider_with_default_model(
-            everruns_drivers::openai::provider("openai", key),
-            OPENAI_MODEL,
-        ),
-        (None, Some(key)) => builder.provider_with_default_model(
-            everruns_drivers::anthropic::provider("anthropic", key),
-            ANTHROPIC_MODEL,
-        ),
+        (Some(key), _) => {
+            builder.provider_with_default_model(everruns::OpenAI::new(key).into(), OPENAI_MODEL)
+        }
+        (None, Some(key)) => builder
+            .provider_with_default_model(everruns::Anthropic::new(key).into(), ANTHROPIC_MODEL),
         (None, None) => return Err("set OPENAI_API_KEY (or ANTHROPIC_API_KEY)".into()),
     };
 

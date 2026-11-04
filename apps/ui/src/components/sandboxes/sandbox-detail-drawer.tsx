@@ -4,6 +4,8 @@
 // its Session allows. Actions go through the Session's Sandbox endpoint, so a
 // Sandbox whose Session is gone is read-only.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
 import { AlertTriangle, Pause, Play, Trash2 } from "lucide-react";
 import { useManageSandbox, useSandbox } from "@/hooks/use-sandbox-fleet";
@@ -54,6 +56,8 @@ function spanSeconds(span: SandboxStateSpan): number {
 
 /** Newest first, with the rebuild between two generations called out. */
 function History({ history }: { history: SandboxStateSpan[] }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const rows = [...history].reverse();
   return (
     <ol className="flex flex-col border-l border-border pl-4">
@@ -70,12 +74,14 @@ function History({ history }: { history: SandboxStateSpan[] }) {
               )}
             />
             <span className="font-medium">
-              {rebuilt ? `Rebuilt as generation ${span.generation}, ` : ""}
+              {rebuilt ? ui("Rebuilt as generation {value0}, ", { value0: span.generation }) : ""}
               {sandboxStateLabel(span.state).toLowerCase()}
             </span>
             <span className="block font-mono text-[11px] text-muted-foreground">
-              {formatDate(span.start)}
-              {span.current ? ", now" : `, for ${formatRunningTime(spanSeconds(span))}`}
+              {formatDate(span.start, displayLocale)}
+              {span.current
+                ? ui(", now")
+                : ui(", for {value0}", { value0: formatRunningTime(spanSeconds(span)) })}
             </span>
           </li>
         );
@@ -85,6 +91,8 @@ function History({ history }: { history: SandboxStateSpan[] }) {
 }
 
 function Facts({ detail }: { detail: SandboxFleetDetail }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useFormattingLocale();
   const rows: Array<[string, React.ReactNode]> = [
     ["State", <SandboxStateBadge key="s" state={detail.state} />],
     ["Wants", DESIRED_LABELS[detail.desired_state] ?? detail.desired_state],
@@ -99,13 +107,13 @@ function Facts({ detail }: { detail: SandboxFleetDetail }) {
     [
       "Provider id",
       <span key="e" className="font-mono text-xs">
-        {detail.external_id ?? "None yet"}
+        {detail.external_id ?? ui("None yet")}
       </span>,
     ],
     [
       "Workspace",
       <span key="w" className="font-mono text-xs">
-        {detail.workspace_path ?? "Unknown"}
+        {detail.workspace_path ?? ui("Unknown")}
       </span>,
     ],
     [
@@ -116,9 +124,9 @@ function Facts({ detail }: { detail: SandboxFleetDetail }) {
     ],
     ["Checkpoints", String(detail.checkpoint_count)],
     ["Role", detail.role === "primary" ? "Primary" : "Resource"],
-    ["Created", formatDate(detail.created_at)],
+    ["Created", formatDate(detail.created_at, displayLocale)],
   ];
-  if (detail.deleted_at) rows.push(["Deleted", formatDate(detail.deleted_at)]);
+  if (detail.deleted_at) rows.push(["Deleted", formatDate(detail.deleted_at, displayLocale)]);
   return (
     <dl className="grid grid-cols-[7.5rem_1fr] gap-x-3 gap-y-1.5 text-sm">
       {rows.map(([label, value]) => (
@@ -132,6 +140,7 @@ function Facts({ detail }: { detail: SandboxFleetDetail }) {
 }
 
 function Actions({ detail }: { detail: SandboxFleetDetail }) {
+  const ui = useUiTranslations();
   const manage = useManageSandbox();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const sessionId = detail.session_id;
@@ -150,7 +159,7 @@ function Actions({ detail }: { detail: SandboxFleetDetail }) {
             onClick={() => run("pause")}
             disabled={manage.isPending}
           >
-            <Pause className="size-4" /> Pause
+            <Pause className="size-4" /> {ui("Pause")}
           </Button>
         ) : null}
         {canResume ? (
@@ -160,7 +169,7 @@ function Actions({ detail }: { detail: SandboxFleetDetail }) {
             onClick={() => run("resume")}
             disabled={manage.isPending}
           >
-            <Play className="size-4" /> Resume
+            <Play className="size-4" /> {ui("Resume")}
           </Button>
         ) : null}
         {confirmDelete ? (
@@ -171,21 +180,21 @@ function Actions({ detail }: { detail: SandboxFleetDetail }) {
               onClick={() => run("delete")}
               disabled={manage.isPending}
             >
-              Delete Sandbox and workspace
+              {ui("Delete Sandbox and workspace")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
-              Keep it
+              {ui("Keep it")}
             </Button>
           </>
         ) : (
           <Button size="sm" variant="outline" onClick={() => setConfirmDelete(true)}>
-            <Trash2 className="size-4" /> Delete
+            <Trash2 className="size-4" /> {ui("Delete")}
           </Button>
         )}
       </div>
       {manage.error ? (
         <p className="text-sm text-destructive">
-          {manage.error instanceof Error ? manage.error.message : "The action failed."}
+          {manage.error instanceof Error ? manage.error.message : ui("The action failed.")}
         </p>
       ) : null}
     </div>
@@ -199,12 +208,17 @@ export function SandboxDetailDrawer({
   sandboxId: string | null;
   onClose: () => void;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { data: detail, isLoading, error } = useSandbox(sandboxId);
   return (
     <Drawer open={sandboxId !== null} onOpenChange={(open) => !open && onClose()}>
-      <DrawerContent className="gap-0 overflow-y-auto p-0 sm:max-w-lg">
+      <DrawerContent
+        chatProtected="Sandbox execution controls"
+        className="gap-0 overflow-y-auto p-0 sm:max-w-lg"
+      >
         <DrawerHeader className="border-b p-5 pr-12">
-          <DrawerTitle>{detail ? sandboxTitle(detail) : "Sandbox"}</DrawerTitle>
+          <DrawerTitle>{detail ? sandboxTitle(detail) : ui("Sandbox")}</DrawerTitle>
           <DrawerDescription className="font-mono text-xs">{sandboxId}</DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-col gap-6 p-5">
@@ -215,7 +229,7 @@ export function SandboxDetailDrawer({
               <Skeleton className="h-4 w-3/4" />
             </div>
           ) : error || !detail ? (
-            <p className="text-sm text-destructive">This Sandbox could not be loaded.</p>
+            <p className="text-sm text-destructive">{ui("This Sandbox could not be loaded.")}</p>
           ) : (
             <>
               {detail.attention.length > 0 ? (
@@ -243,41 +257,47 @@ export function SandboxDetailDrawer({
               <div className="flex flex-wrap gap-2">
                 {detail.session_id ? (
                   <LinkButton size="sm" href={`/sessions/${detail.session_id}`}>
-                    Open session
+                    {ui("Open session")}
                   </LinkButton>
                 ) : null}
                 {detail.agent_id ? (
                   <LinkButton size="sm" variant="outline" href={`/agents/${detail.agent_id}`}>
-                    {detail.agent_name ?? "Agent"}
+                    {detail.agent_name ?? ui("Agent")}
                   </LinkButton>
                 ) : null}
               </div>
               <Actions detail={detail} />
               <section className="flex flex-col gap-3">
-                <h3 className="text-xs font-medium text-muted-foreground">History</h3>
+                <h3 className="text-xs font-medium text-muted-foreground">{ui("History")}</h3>
                 {detail.history.length > 0 ? (
                   <History history={detail.history} />
                 ) : (
-                  <p className="text-sm text-muted-foreground">No state changes recorded yet.</p>
+                  <p className="text-sm text-muted-foreground">
+                    {ui("No state changes recorded yet.")}
+                  </p>
                 )}
               </section>
               {detail.incarnations.length > 0 ? (
                 <section className="flex flex-col gap-2">
-                  <h3 className="text-xs font-medium text-muted-foreground">Provider resources</h3>
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {ui("Provider resources")}
+                  </h3>
                   <ul className="flex flex-col divide-y border text-sm">
                     {detail.incarnations.map((incarnation) => (
                       <li key={incarnation.generation} className="flex flex-col gap-0.5 p-2.5">
                         <span className="flex items-center justify-between gap-2">
                           <span className="font-mono text-xs">{incarnation.external_id}</span>
                           <span className="text-xs text-muted-foreground">
-                            Generation {incarnation.generation}
+                            {ui("Generation")} {incarnation.generation}
                           </span>
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {formatDate(incarnation.created_at)}
+                          {formatDate(incarnation.created_at, displayLocale)}
                           {incarnation.retired_at
-                            ? ` to ${formatDate(incarnation.retired_at)}`
-                            : ", current"}
+                            ? ui(" to {value0}", {
+                                value0: formatDate(incarnation.retired_at, displayLocale),
+                              })
+                            : ui(", current")}
                         </span>
                       </li>
                     ))}
@@ -286,7 +306,9 @@ export function SandboxDetailDrawer({
               ) : null}
               {!detail.session_id ? (
                 <p className="text-xs text-muted-foreground">
-                  Its Session was deleted. The record stays here as history for a limited time.
+                  {ui(
+                    "Its Session was deleted. The record stays here as history for a limited time.",
+                  )}
                 </p>
               ) : null}
             </>

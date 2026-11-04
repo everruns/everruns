@@ -3,7 +3,7 @@
 use everruns_contracts::runtime::computer_use::{ComputerSession, ComputerUseConfig, DisplaySize};
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
-    OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
+    DesktopRecording, OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
     SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
     SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
     SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
@@ -559,6 +559,13 @@ async fn create_daytona_instance(
         // Daytona's default image is the one that ships the desktop; its size
         // is fixed at create time.
         Some(display) => {
+            // A builder can bake the desktop base. Keep its pinned snapshot
+            // instead of silently replacing it with Daytona's default image.
+            create_body.snapshot = config
+                .provider_config
+                .get("snapshot")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
             create_body.env = [
                 (
                     crate::daytona::computer::RESOLUTION_ENV.to_string(),
@@ -809,15 +816,42 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             ));
         }
         let api_key = get_managed_api_key(context, &config.credential).await?;
-        let client = build_client(api_key, config);
         let session = crate::daytona::computer::DaytonaDesktopSession::start(
-            client,
+            build_client(api_key.clone(), config),
             instance.external_id.clone(),
             display,
         )
         .await
         .map_err(ToolExecutionResult::tool_error)?;
+        // A recording that fails to start must not cost the agent its desktop.
+        if config.desktop_recording()
+            && let Err(error) = crate::daytona::recording::ensure_started(
+                &build_client(api_key, config),
+                &instance.external_id,
+            )
+            .await
+        {
+            warn!(sandbox_id = %instance.external_id, %error, "Daytona desktop recording did not start");
+        }
         Ok(Box::new(session))
+    }
+
+    async fn collect_desktop_recordings(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+    ) -> Result<Vec<DesktopRecording>, ToolExecutionResult> {
+        if desktop_display(config).is_none() {
+            return Ok(Vec::new());
+        }
+        let api_key = get_managed_api_key(context, &config.credential).await?;
+        crate::daytona::recording::collect(
+            std::sync::Arc::new(build_client(api_key, config)),
+            &instance.external_id,
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)
     }
 
     async fn pause(

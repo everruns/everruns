@@ -6,6 +6,7 @@
 //! `openrouter` for [`openrouter::OpenRouter`], `anthropic` for
 //! `anthropic::Anthropic`, `gemini` for `gemini::Gemini`, or `bedrock` for
 //! `bedrock::Bedrock` (static AWS keys or the AWS default credential chain).
+//! `mistral`, `groq` and `fireworks` enable their corresponding provider values.
 //!
 //! When an application does not care *which* vendor it reaches — a script, a
 //! test harness, a tool that runs on whoever's machine — [`from_env`] picks the
@@ -17,12 +18,63 @@ use std::fmt;
 pub mod anthropic;
 #[cfg(feature = "bedrock")]
 pub mod bedrock;
+#[cfg(feature = "fireworks")]
+pub mod fireworks;
 #[cfg(feature = "gemini")]
 pub mod gemini;
+#[cfg(feature = "groq")]
+pub mod groq;
+#[cfg(feature = "mistral")]
+pub mod mistral;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "openrouter")]
 pub mod openrouter;
+
+#[cfg(feature = "openai")]
+pub mod azure;
+#[cfg(feature = "chatgpt")]
+pub mod chatgpt;
+#[cfg(feature = "cloudflare")]
+pub mod cloudflare;
+#[cfg(feature = "codex")]
+pub mod codex;
+#[cfg(feature = "mai")]
+pub mod mai;
+#[cfg(feature = "meta")]
+pub mod meta;
+#[cfg(feature = "typesafe")]
+pub mod typesafe;
+#[cfg(feature = "vercel")]
+pub mod vercel;
+
+#[cfg(any(
+    feature = "openai",
+    feature = "meta",
+    feature = "mai",
+    feature = "vercel",
+    feature = "typesafe",
+    feature = "cloudflare"
+))]
+fn resolve_env(
+    descriptor: &everruns_contracts::DriverDescriptor,
+) -> Result<
+    everruns_contracts::credential_provider::ProviderCredentials,
+    everruns_contracts::credential_provider::EnvCredentialError,
+> {
+    use everruns_contracts::credential_provider::{EnvCredentialError, EnvCredentialProvider};
+    EnvCredentialProvider::resolve_with(descriptor, |name| std::env::var(name).ok())
+        .filter(|credentials| {
+            descriptor
+                .credential_schema
+                .validate(credentials.fields())
+                .is_empty()
+        })
+        .ok_or_else(|| EnvCredentialError::Missing {
+            driver: descriptor.id.to_string(),
+            variables: descriptor.declared_env_vars(),
+        })
+}
 
 /// Why no provider could be configured from the environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,7 +100,7 @@ impl fmt::Display for FromEnvError {
                 vars.join(", ")
             ),
             FromEnvError::NoProvidersCompiled => f.write_str(
-                "no provider feature is enabled; build `everruns` with `openai`, `openrouter`, `anthropic` or `gemini`",
+                "no provider feature is enabled; build `everruns` with `openai`, `openrouter`, `anthropic`, `gemini`, `mistral`, `groq`, `fireworks`, `meta`, `vercel`, `cloudflare` or `mai`",
             ),
         }
     }
@@ -59,7 +111,7 @@ impl std::error::Error for FromEnvError {}
 /// Configure whichever provider the environment carries credentials for.
 ///
 /// Enabled providers are tried in a fixed, documented order — OpenAI,
-/// OpenRouter, Anthropic, then Gemini — so the choice is reproducible rather
+/// OpenRouter, Anthropic, Gemini, Mistral, Groq, Fireworks, Meta, Vercel, Cloudflare, then MAI — so the choice is reproducible rather
 /// than dependent on feature resolution or iteration order. Each is resolved
 /// through its own `from_env`, which reads the variables that provider's
 /// driver declares
@@ -126,6 +178,46 @@ pub fn from_env() -> Result<crate::Provider, FromEnvError> {
             Ok(config) => return Ok(config.into()),
             Err(gemini::GeminiError::MissingEnvVar { vars: declared }) => vars.extend(declared),
         }
+    }
+
+    #[cfg(feature = "mistral")]
+    match mistral::Mistral::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(mistral::MistralError::MissingEnvVar { vars: declared }) => vars.extend(declared),
+    }
+    #[cfg(feature = "groq")]
+    match groq::Groq::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(groq::GroqError::MissingEnvVar { vars: declared }) => vars.extend(declared),
+    }
+    #[cfg(feature = "fireworks")]
+    match fireworks::Fireworks::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(_) => vars.extend(everruns_drivers::fireworks::descriptor().declared_env_vars()),
+    }
+
+    #[cfg(feature = "meta")]
+    match meta::Meta::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(_) => vars.extend(everruns_drivers::meta::descriptor().declared_env_vars()),
+    }
+
+    #[cfg(feature = "vercel")]
+    match vercel::Vercel::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(_) => vars.extend(everruns_drivers::vercel::descriptor().declared_env_vars()),
+    }
+
+    #[cfg(feature = "cloudflare")]
+    match cloudflare::Cloudflare::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(_) => vars.extend(everruns_drivers::cloudflare::descriptor().declared_env_vars()),
+    }
+
+    #[cfg(feature = "mai")]
+    match mai::Mai::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(_) => vars.extend(everruns_drivers::mai::descriptor().declared_env_vars()),
     }
 
     if vars.is_empty() {

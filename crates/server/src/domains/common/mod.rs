@@ -217,7 +217,7 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         return CommandError::not_found(nf.resource());
     }
     if crate::errors::is_database_pool_exhausted(&e) {
-        tracing::warn!(error = ?e, "database request pool exhausted");
+        everruns_core::report_repeated_failure!(warn, error = ?e, "database request pool exhausted");
         return CommandError::unavailable(crate::errors::DATABASE_POOL_EXHAUSTED_DETAIL)
             .with_code(crate::errors::DATABASE_POOL_EXHAUSTED_CODE)
             .with_retry_after(crate::errors::DATABASE_POOL_RETRY_AFTER_SECONDS);
@@ -352,6 +352,12 @@ pub struct CommandMeta {
 }
 
 impl CommandMeta {
+    /// Dedicated credential entry stays outside agent tools and their transcripts.
+    /// The authenticated HTTP handler still runs the command's policy normally.
+    pub fn is_interactive_secret_setup(&self) -> bool {
+        self.name == "register_external_agent"
+    }
+
     /// Whether this is internal worker plumbing; see
     /// [`INTERNAL_COMMAND_PATH_PREFIX`].
     pub fn is_internal(&self) -> bool {
@@ -470,6 +476,8 @@ pub struct Ctx {
     pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Whole-install health checks; `None` on surfaces without the server's services.
+    pub system_doctor: Option<Arc<crate::domains::system::doctor::SystemDoctor>>,
     /// Runs the OAuth catalog preset connection check; `None` on surfaces
     /// without the API layer's OAuth client (presets stay `not_checked`).
     pub mcp_oauth_checker:
@@ -543,6 +551,7 @@ impl Ctx {
             utility_llm_service: None,
             decisions: None,
             health_check_service: None,
+            system_doctor: None,
             mcp_event_triggers: None,
             channels: None,
             mcp_oauth_checker: None,
@@ -747,6 +756,11 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
                         .map_err(|e| CommandError::forbidden(e.message))?;
                 }
+                let mutation_key = super::change_history::mutation_guard::subject(
+                    ctx,
+                    Self::change(),
+                    &serde_json::to_value(&self).unwrap_or(Value::Null),
+                );
                 // Boxed: the command's future is deep, and both arms below
                 // would otherwise hold it inline on the stack.
                 let body = Box::pin(async {
@@ -770,7 +784,15 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                     Ok(output)
                 });
                 // The mutation and its history commit together, or neither does.
-                if Self::transactional() {
+                if let Some(key) = mutation_key {
+                    super::change_history::mutation_guard::run(
+                        ctx,
+                        key,
+                        Self::transactional(),
+                        body,
+                    )
+                    .await
+                } else if Self::transactional() {
                     crate::storage::transaction::scope(&ctx.db, body, CommandError::internal).await
                 } else {
                     body.await

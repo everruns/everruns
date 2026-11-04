@@ -1,3 +1,4 @@
+import { LocaleProvider } from "@/providers/locale-provider";
 import { PageChatProvider } from "@/test-utils/page-chat-provider";
 import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
@@ -131,9 +132,11 @@ async function renderPage(mode: ChatModeState | null = null) {
   await act(async () => {
     render(
       <Suspense fallback={<div>Loading...</div>}>
-        <PageChatProvider value={mode}>
-          <HarnessPage params={params} />
-        </PageChatProvider>
+        <LocaleProvider>
+          <PageChatProvider value={mode}>
+            <HarnessPage params={params} />
+          </PageChatProvider>
+        </LocaleProvider>
       </Suspense>,
     );
     await params;
@@ -154,6 +157,14 @@ beforeEach(() => {
 });
 
 describe("HarnessPage layout", () => {
+  afterEach(() => localStorage.clear());
+  it("localizes the unrestricted network summary", async () => {
+    localStorage.setItem("everruns.ui-language", "uk");
+    await renderPage();
+    expect(
+      screen.getByRole("button", { name: /Доступ до мережі\s*Без обмежень/ }),
+    ).toBeInTheDocument();
+  });
   it("shows one tab row and makes the system prompt the page", async () => {
     await renderPage();
 

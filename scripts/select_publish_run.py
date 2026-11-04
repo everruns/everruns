@@ -24,7 +24,9 @@ def select_run(
         for run in runs
         if run.get("event") == "workflow_dispatch"
         and run.get("displayTitle") == title
-        and run.get("headSha") == sha
+        # The workflow runs from main for OIDC, while its title records the
+        # independently verified release source. Main may advance mid-cascade.
+        and run.get("headBranch") == "main"
         and isinstance(run.get("databaseId"), int)
     ]
     if len(matches) > 1:
@@ -41,7 +43,8 @@ def self_test() -> int:
         "databaseId": 42,
         "displayTitle": expected_title(package, tag, sha, correlation),
         "event": "workflow_dispatch",
-        "headSha": sha,
+        "headBranch": "main",
+        "headSha": "b" * 40,
     }
     runs = [
         {
@@ -68,6 +71,18 @@ def self_test() -> int:
     if select_run(runs, package, tag, "b" * 40, correlation) is not None:
         print("FAIL: wrong release SHA matched intended run", file=sys.stderr)
         return 1
+    for ref in (tag, "feature/publish", None):
+        if select_run([{**intended, "headBranch": ref}], package, tag, sha, correlation) is not None:
+            print("FAIL: a non-main workflow matched intended run", file=sys.stderr)
+            return 1
+    for change in (
+        {"event": "push"},
+        {"displayTitle": expected_title(package, tag, "b" * 40, correlation)},
+        {"displayTitle": expected_title(package, tag, sha, "other-dispatch")},
+    ):
+        if select_run([{**intended, **change}], package, tag, sha, correlation) is not None:
+            print("FAIL: an unrelated dispatch matched intended run", file=sys.stderr)
+            return 1
     try:
         select_run([intended, intended], package, tag, sha, correlation)
     except ValueError:

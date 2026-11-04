@@ -29,9 +29,9 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use crate::events::{
-    ConversationMessageData, OutputMessageCompletedData, OutputMessageDeltaData,
-    OutputMessageStartedData, ReasonItemData, SessionTaskEventData, TaskMessageEventData,
-    TurnFailedData,
+    ConversationMessageData, MessageReactionData, OutputMessageCompletedData,
+    OutputMessageDeltaData, OutputMessageStartedData, ReasonItemData, SessionTaskEventData,
+    TaskMessageEventData, TurnFailedData,
 };
 use crate::session_task::{
     SessionTask, SessionTaskState, TASK_KIND_SUBAGENT, TaskMessageDirection, TaskMessagePart,
@@ -41,12 +41,12 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::ag_ui::{
-    ActivitySnapshotEvent, BaseEvent, Event, Interrupt, Metadata, ReasoningMessageContentEvent,
-    ReasoningMessageEndEvent, ReasoningMessageStartEvent, ReasoningSpanEvent, RunErrorEvent,
-    RunFinishedEvent, RunFinishedOutcome, StateDeltaEvent, StateSnapshotEvent, SubagentErrorEvent,
-    SubagentFinishedEvent, SubagentFinishedOutcome, SubagentStartedEvent, TextMessageContentEvent,
-    TextMessageEndEvent, TextMessageStartEvent, TokenUsage, ToolCall, ToolCallArgsEvent,
-    ToolCallEndEvent, ToolCallStartEvent, diff,
+    ActivitySnapshotEvent, BaseEvent, CustomEvent, Event, Interrupt, Metadata,
+    ReasoningMessageContentEvent, ReasoningMessageEndEvent, ReasoningMessageStartEvent,
+    ReasoningSpanEvent, RunErrorEvent, RunFinishedEvent, RunFinishedOutcome, StateDeltaEvent,
+    StateSnapshotEvent, SubagentErrorEvent, SubagentFinishedEvent, SubagentFinishedOutcome,
+    SubagentStartedEvent, TextMessageContentEvent, TextMessageEndEvent, TextMessageStartEvent,
+    TokenUsage, ToolCall, ToolCallArgsEvent, ToolCallEndEvent, ToolCallStartEvent, diff,
 };
 
 /// The metadata key Everruns-specific run details ride under. `ag-ui` is
@@ -56,6 +56,12 @@ pub const METADATA_KEY: &str = "everruns";
 /// `activityType` of the activity a subagent reports: structured progress, and
 /// the note that it carries on in the background after the run ends.
 pub const SUBAGENT_ACTIVITY_TYPE: &str = "everruns.subagent";
+
+/// `name` of the CUSTOM event for a reaction put on or taken off a message.
+/// AG-UI has no reaction event, so it rides on CUSTOM; `value` is
+/// `{messageId, emoji, action, actor}`, `messageId` as this stream names the
+/// message.
+pub const REACTION_EVENT_NAME: &str = "everruns.reaction";
 
 /// The tool whose result is the agent's todo list: `write_todos` from the
 /// `stateless_todo_list` capability (`crate::builtins`, a feature this module
@@ -528,6 +534,11 @@ impl Projector {
                 }
             }
             "llm.generation" => self.record_usage(data),
+            "message.reaction.added" | "message.reaction.removed" => {
+                if let Some(data) = parse::<MessageReactionData>(data) {
+                    self.reaction(event_type == "message.reaction.added", data);
+                }
+            }
             "task.created" | "task.updated" if self.policy.subagents_visible => {
                 if let Some(data) = parse::<SessionTaskEventData>(data) {
                     self.subagent_task(&data.task);
@@ -691,6 +702,27 @@ impl Projector {
         self.streamed = None;
         let alias = self.next_id("message");
         self.message_alias.insert(runtime_id, alias);
+    }
+
+    /// A reaction, as the CUSTOM `everruns.reaction` event.
+    fn reaction(&mut self, added: bool, data: MessageReactionData) {
+        // Message events here are named by the bare UUID; reactions carry the
+        // prefixed public id.
+        let message_id = crate::typed_id::MessageId::parse(&data.message_id)
+            .map(|id| self.ag_ui_id(&id.uuid().to_string()))
+            .unwrap_or(data.message_id);
+        self.queue.push_back(Event::Custom(CustomEvent {
+            name: REACTION_EVENT_NAME.to_string(),
+            value: serde_json::json!({
+                "messageId": message_id,
+                "emoji": data.emoji,
+                "action": if added { "added" } else { "removed" },
+                // Kind and display name only: a channel client has no use
+                // for the platform's ids of other people.
+                "actor": { "kind": data.actor.kind, "name": data.actor.name },
+            }),
+            ..CustomEvent::default()
+        }));
     }
 
     fn ag_ui_id(&self, runtime_id: &str) -> String {

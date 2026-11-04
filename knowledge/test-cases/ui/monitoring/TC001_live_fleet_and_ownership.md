@@ -24,7 +24,7 @@ Verify aggregate execution, worker mapping, and actor diagnostics remain usable 
 
 ## Steps
 
-1. Open Durable Execution → Monitoring and record fixture population totals and generated timestamp.
+1. Open System → Monitoring and record fixture population totals and generated timestamp.
 2. Observe two refreshes within five seconds; open Workers and choose a group.
 3. Check the selected group's worker-to-org mapping; choose a holder.
 4. Inspect an actor and compare holder, fence, expiry, renewal, and cursors with its API response.

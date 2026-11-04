@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import {
   sessionCardScenarios,
@@ -35,19 +36,22 @@ function seededClient(sessionId: string, sandbox: unknown) {
 }
 
 export default function DevSessionComponentsPage() {
+  const ui = useUiTranslations();
   return (
     <DevPageShell
       eyebrow="Session UI"
-      title="Session Components"
-      description="Real session-page chrome and list components in the states the main UI uses."
+      title={ui("Session Components")}
+      description={ui(
+        "Real session-page chrome and list components in the states the main UI uses.",
+      )}
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Session header states</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Session header states")}</h2>
             <p className="text-sm text-muted-foreground">
-              Extracted from the real session layout so the showcase matches main.
+              {ui("Extracted from the real session layout so the showcase matches main.")}
             </p>
           </div>
 
@@ -82,9 +86,9 @@ export default function DevSessionComponentsPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Header badges</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Header badges")}</h2>
             <p className="text-sm text-muted-foreground">
-              These are the exact badge components used inside the session header.
+              {ui("These are the exact badge components used inside the session header.")}
             </p>
           </div>
 
@@ -100,11 +104,11 @@ export default function DevSessionComponentsPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Sandbox panel</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Sandbox panel")}</h2>
             <p className="text-sm text-muted-foreground">
-              The Workspace-tab panel, in the four sandbox states a session can actually have. The
-              capability rows are the point: they answer &ldquo;can this session run a build?&rdquo;
-              before a run proves it cannot.
+              {ui(
+                "The Workspace-tab panel, in the four sandbox states a session can actually have. The capability rows are the point: they answer “can this session run a build?” before a run proves it cannot.",
+              )}
             </p>
           </div>
 
@@ -124,10 +128,11 @@ export default function DevSessionComponentsPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Session approvals</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Session approvals")}</h2>
             <p className="text-sm text-muted-foreground">
-              A request and the grant recorded for it, on one card. An open request and a grant with
-              no logged request sit beside it.
+              {ui(
+                "A request and the grant recorded for it, on one card. An open request and a grant with no logged request sit beside it.",
+              )}
             </p>
           </div>
           <div className="border border-border/70 bg-background p-4">
@@ -140,10 +145,11 @@ export default function DevSessionComponentsPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Session cards</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Session cards")}</h2>
             <p className="text-sm text-muted-foreground">
-              The same list cards used on the sessions index, shown in running, idle, and new
-              states.
+              {ui(
+                "The same list cards used on the sessions index, shown in running, idle, and new states.",
+              )}
             </p>
           </div>
 

@@ -54,19 +54,31 @@ pub(super) fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<Age
         communication: crate::core::conversation::Communication::from_wire(
             proto_agent.communication.as_deref(),
         ),
-        tools: proto_agent
-            .tools
-            .into_iter()
-            .map(|tool| {
-                serde_json::from_str(&tool).map_err(|error| {
-                    AgentLoopError::store(format!(
-                        "Invalid agent tool definition in gRPC response: {error}"
-                    ))
-                })
-            })
-            .collect::<std::result::Result<Vec<_>, _>>()?,
+        completion_check: crate::core::completion_check::CompletionCheck::from_wire(
+            proto_agent.completion_check.as_deref(),
+        ),
+        tools: proto_tool_definitions(&proto_agent.tools, "agent")?,
         mcp_servers: Default::default(),
     })
+}
+
+/// Decode JSON-encoded tool definitions from an agent or session read. A
+/// malformed entry fails the read rather than silently shrinking the tool
+/// surface the model is offered.
+pub(super) fn proto_tool_definitions(
+    tools: &[String],
+    owner: &str,
+) -> Result<Vec<everruns_contracts::tool_types::ToolDefinition>> {
+    tools
+        .iter()
+        .map(|tool| {
+            serde_json::from_str(tool).map_err(|error| {
+                AgentLoopError::store(format!(
+                    "Invalid {owner} tool definition in gRPC response: {error}"
+                ))
+            })
+        })
+        .collect()
 }
 
 // These wire values are decoded only while resolving a source read. The phase

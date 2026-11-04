@@ -5,6 +5,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useChatWorkspace } from "@/components/chat/chat-workspace-context";
 import { useEffect, useState } from "react";
@@ -52,6 +53,7 @@ function runHref(task: SessionTask): string {
 }
 
 export function RunCard({ run, now }: { run: ChatRun; now: number }) {
+  const ui = useUiTranslations();
   const { task, subagentCount } = run;
   const workspace = useChatWorkspace();
   const durationMs = runDurationMs(task, now);
@@ -78,7 +80,7 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
         />
         {subagentCount > 0 && (
           <span>
-            {subagentCount} {subagentCount === 1 ? "subagent" : "subagents"}
+            {subagentCount} {subagentCount === 1 ? ui("subagent") : ui("subagents")}
           </span>
         )}
         {durationMs != null && <span>{formatWorkedDuration(durationMs)}</span>}
@@ -91,12 +93,12 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
           className="ml-auto"
           onClick={() => workspace.openTask(task.id)}
         >
-          View thread
+          {ui("View thread")}
         </Button>
       ) : (
         <LinkButton href={runHref(task)} variant="outline" size="sm" className="ml-auto">
           <ExternalLink className="size-4" />
-          Open session
+          {ui("Open session")}
         </LinkButton>
       )}
     </div>
@@ -117,11 +119,12 @@ function useRunClock(active: boolean): number {
 }
 
 export function RunCards({ runs }: { runs: ChatRun[] }) {
+  const ui = useUiTranslations();
   const now = useRunClock(runs.some((run) => run.task.started_at && !run.task.finished_at));
 
   if (runs.length === 0) return null;
   return (
-    <div role="list" aria-label="Runs started by this turn">
+    <div role="list" aria-label={ui("Runs started by this turn")}>
       {runs.map((run) => (
         <div role="listitem" key={run.task.id}>
           <RunCard run={run} now={now} />

@@ -85,6 +85,18 @@ it("reads unsaved form values and applies an atomic draft patch without losing o
   });
 });
 
+it("invalidates a captured Agent adapter when its page unmounts", () => {
+  const { result, unmount } = setup();
+  const adapter = result.current.adapter;
+  const before = adapter.read(adapter.describe().binding);
+  unmount();
+  expect(adapter.describe().writable).toBe(false);
+  expect(() => adapter.read(before.binding)).toThrow(/page has changed/);
+  expect(() =>
+    adapter.patch(before.binding, before.revision, { system_prompt: "Late edit" }),
+  ).toThrow(/page has changed/);
+});
+
 it("rejects stale, wrong-page, read-only and conflicting patches without changing any field", () => {
   const { result, rerender } = setup();
   const adapter = result.current.adapter;
@@ -177,6 +189,7 @@ function toolsSetup(
       arguments: { binding: "bound", revision: "v1", changes: { system_prompt: "Chat" } },
     },
   ],
+  initialEnabled = true,
 ) {
   const adapter: PageDraftAdapter = {
     describe: () => ({ binding: "bound", revision: "v1", dirty: false, writable: true }),
@@ -204,14 +217,18 @@ function toolsSetup(
   const wrapper = ({ children }: { children: ReactNode }) => (
     <ChatModeContext.Provider value={mode}>{children}</ChatModeContext.Provider>
   );
+  const initialProps: { inputEvents: Event[]; enabled?: boolean } = {
+    inputEvents: events,
+    enabled: initialEnabled,
+  };
   return {
     adapter,
     mode,
     events,
     ...renderHook(
-      ({ inputEvents }) =>
-        usePageDraftTools(true, "session_chat", inputEvents, "waiting_for_tool_results"),
-      { wrapper, initialProps: { inputEvents: events } },
+      ({ inputEvents, enabled = true }: { inputEvents: Event[]; enabled?: boolean }) =>
+        usePageDraftTools(enabled, "session_chat", inputEvents, "waiting_for_tool_results"),
+      { wrapper, initialProps },
     ),
   };
 }
@@ -326,4 +343,62 @@ it("executes a new request that arrives while the preceding result is being deli
   await waitFor(() => expect(adapter.read).toHaveBeenCalledTimes(1));
   expect(adapter.patch).toHaveBeenCalledTimes(1);
   expect(submitToolResults).toHaveBeenCalledTimes(2);
+});
+
+it("answers an owned page request after switching to full Chat without patching another page", async () => {
+  const { adapter, mode, events, rerender } = toolsSetup([]);
+  mode.pageAdapter = undefined;
+  mode.open = false;
+  rerender({
+    enabled: false,
+    inputEvents: [
+      events[0],
+      event("late_request", "tool.call_requested", {
+        tool_calls: [
+          {
+            id: "late",
+            name: PAGE_PATCH_TOOL,
+            arguments: {
+              binding: "bound",
+              revision: "v1",
+              changes: { system_prompt: "Wrong page" },
+            },
+          },
+        ],
+      }),
+    ],
+  });
+  await waitFor(() => expect(submitToolResults).toHaveBeenCalledTimes(1));
+  expect(adapter.patch).not.toHaveBeenCalled();
+  expect(jest.mocked(submitToolResults).mock.calls[0][1][0]).toMatchObject({
+    error: expect.stringContaining("no longer available"),
+  });
+});
+
+it("finishes an authorized page request when Chat closes over the same form", async () => {
+  const { adapter, mode, events, rerender } = toolsSetup([]);
+  mode.open = false;
+  rerender({
+    enabled: false,
+    inputEvents: [
+      events[0],
+      event("late_request", "tool.call_requested", {
+        tool_calls: [
+          {
+            id: "late",
+            name: PAGE_PATCH_TOOL,
+            arguments: { binding: "bound", revision: "v1", changes: { system_prompt: "Chat" } },
+          },
+        ],
+      }),
+    ],
+  });
+  await waitFor(() => expect(submitToolResults).toHaveBeenCalledTimes(1));
+  expect(adapter.patch).toHaveBeenCalledTimes(1);
+});
+
+it("does not claim a page binding when mounted as full Chat", () => {
+  const { adapter } = toolsSetup(undefined, false);
+  expect(adapter.patch).not.toHaveBeenCalled();
+  expect(submitToolResults).not.toHaveBeenCalled();
 });

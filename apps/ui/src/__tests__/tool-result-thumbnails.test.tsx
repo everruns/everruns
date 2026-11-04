@@ -21,6 +21,14 @@ describe("extractResultImages", () => {
     ]);
   });
 
+  it("serves stored screenshots through the images API", () => {
+    const result: ContentPart[] = [
+      { type: "image_file", image_id: "img_0193", filename: "browser_screenshot-1.png" },
+    ];
+    const [src] = extractResultImages(result);
+    expect(src).toMatch(/\/v1\/images\/img_0193$/);
+  });
+
   it("is empty without a result and caps a long strip", () => {
     expect(extractResultImages(undefined)).toEqual([]);
     expect(extractResultImages([{ type: "text", text: "no images" }])).toEqual([]);

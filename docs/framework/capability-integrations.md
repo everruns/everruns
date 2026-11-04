@@ -107,7 +107,7 @@ types. The former core paths move as follows:
 |---|---|
 | `everruns_core::FileSystemCapability` and filesystem tools | `everruns_integrations_filesystem::*` |
 | `everruns_core::BashkitShellCapability`, `BashTool`, and adapter | `everruns_integrations_bashkit::*` |
-| `everruns_core::WebFetchCapability`, `WebFetchTool`, and bot-auth helpers | `everruns_integrations_web_fetch::*` |
+| `everruns_core::WebFetchCapability` and `WebFetchTool` | `everruns_integrations_web_fetch::*` |
 | `everruns_core::LuaCapability` and `LuaCodeModeCapability` | `everruns_integrations_lua::*` |
 | `everruns_core::McpCapability` and MCP capability-ID helpers | `everruns_core::mcp::*` |
 | `everruns_core::DirectEgressService` | `everruns_core::host::DirectEgressService` with `direct-egress` |

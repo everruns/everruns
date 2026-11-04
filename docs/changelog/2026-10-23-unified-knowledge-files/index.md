@@ -13,7 +13,7 @@ links:
 
 [Knowledge](/capabilities/knowledge/) replaces the two undeployed Knowledge Base and Knowledge Index surfaces. Create a file collection, add notes or uploads, or connect GitHub through an existing connection. Public HTTPS Git sources also work. Indexing can stay off while agents browse read-only mounts and use exact grep.
 
-![Knowledge file catalog with a binary DOCX text preview and per-file access controls](./knowledge@2x.png)
+![A Knowledge collection open on its Files tab: a folder tree beside a Markdown preview, with upload and per-file controls](./knowledge@2x.png)
 
 Original binaries and file hierarchy are retained. Markkit extracts HTML, DOCX and spreadsheets; unsupported formats remain downloadable. Enable keyword or hybrid search when needed, and use the same retrieval service through an agent tool or Bashkit:
 

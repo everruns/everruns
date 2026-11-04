@@ -483,6 +483,45 @@ fn display_backend_path(display_root: &str, path: &str) -> String {
 
 #[async_trait]
 impl SessionFileSystem for MountFs {
+    async fn rename_directory(&self, session: SessionId, from: &str, to: &str) -> Result<()> {
+        let src = self.resolve(from)?;
+        let dst = self.resolve(to)?;
+        let same_mount =
+            src.mount_point == dst.mount_point || (src.primary_workspace && dst.primary_workspace);
+        let contains_mount = self
+            .mounts
+            .iter()
+            .filter(|m| !m.primary_workspace)
+            .any(|m| {
+                [(&src, from), (&dst, to)].iter().any(|(resolved, input)| {
+                    let root = if resolved.primary_workspace {
+                        crate::runtime::session_path::to_session_path(&m.mount_point)
+                    } else {
+                        m.mount_point.clone()
+                    };
+                    let path = if resolved.primary_workspace {
+                        resolved.backend_path.clone()
+                    } else {
+                        normalize_virtual(input, &self.cwd())
+                    };
+                    root == path || root.starts_with(&format!("{path}/"))
+                })
+            });
+        if !same_mount
+            || !Arc::ptr_eq(&src.backend, &dst.backend)
+            || src.backend_root != dst.backend_root
+            || contains_mount
+            || src.backend_path == src.backend_root
+            || dst.backend_path == dst.backend_root
+        {
+            return Err(AgentLoopError::config(
+                "directory rename cannot cross or replace mounts",
+            ));
+        }
+        src.backend
+            .rename_directory(session, &src.backend_path, &dst.backend_path)
+            .await
+    }
     async fn create_file_if_absent(
         &self,
         session: SessionId,
@@ -644,6 +683,24 @@ impl SessionFileSystem for MountFs {
             .into_iter()
             .map(|info| resolved.map_file_info(info))
             .collect())
+    }
+
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        let resolved = self.resolve(path)?;
+        // A tree that contains another mount spans two backends; let the caller walk.
+        let virtual_path = normalize_virtual(path, &self.cwd());
+        let nested = self.mounts.iter().any(|mount| {
+            mount.mount_point != resolved.mount_point
+                && mount_suffix(&virtual_path, &mount.mount_point).is_some()
+        });
+        if nested {
+            return Ok(None);
+        }
+        // Entries are relative to the requested directory: nothing to map.
+        resolved
+            .backend
+            .list_tree(session_id, &resolved.backend_path)
+            .await
     }
 
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
@@ -812,6 +869,7 @@ impl SessionFileSystem for MountFs {
 
 #[cfg(test)]
 mod tests {
+    mod directory_rename;
     use super::*;
     use crate::runtime::session_path::GrepPathPattern;
 
@@ -823,6 +881,7 @@ mod tests {
     // avoid requiring core’s optional `host` feature).
     #[derive(Default)]
     struct FlatStore {
+        renames: std::sync::Mutex<Vec<(String, String)>>,
         files: std::sync::Mutex<std::collections::HashMap<String, String>>,
         /// When set, the store presents host-style paths like a real-disk
         /// backend, so `DisplayPolicy::BackendNative` has a host identity to
@@ -832,6 +891,13 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for FlatStore {
+        fn session_scoped_path(&self, path: &str) -> bool {
+            crate::knowledge::is_mount(path)
+        }
+        async fn rename_directory(&self, _: SessionId, from: &str, to: &str) -> Result<()> {
+            self.renames.lock().unwrap().push((from.into(), to.into()));
+            Ok(())
+        }
         fn is_mount_resolver(&self) -> bool {
             false
         }

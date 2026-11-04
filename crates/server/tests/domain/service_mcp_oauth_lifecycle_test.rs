@@ -335,6 +335,8 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("service-oauth-{}", &server_id.to_string()[..8]),
                 display_name: None,

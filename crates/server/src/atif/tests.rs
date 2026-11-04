@@ -533,6 +533,11 @@ fn case_record_carries_reward_and_identity_in_extra() {
         source: EvalRunSource::Internal,
         attribution: None,
         triggered_by: "test".to_string(),
+        trials: 1,
+        max_cost_usd: None,
+        dataset_version: None,
+        experiment_id: None,
+        variant_label: None,
         started_at: None,
         completed_at: None,
         summary: None,
@@ -549,6 +554,7 @@ fn case_record_carries_reward_and_identity_in_extra() {
         target: None,
         target_snapshot: None,
         status: CaseResultStatus::Passed,
+        trial: 0,
         scores: Some(json!([{"pass": true, "value": 1.0, "reason": "ok"}])),
         metadata: None,
         turns: Some(1),
@@ -602,6 +608,11 @@ fn sample_run_and_result(session: SessionId) -> (EvalRun, EvalCaseResult) {
         source: EvalRunSource::Internal,
         attribution: None,
         triggered_by: "test".to_string(),
+        trials: 1,
+        max_cost_usd: None,
+        dataset_version: None,
+        experiment_id: None,
+        variant_label: None,
         started_at: None,
         completed_at: None,
         summary: None,
@@ -618,6 +629,7 @@ fn sample_run_and_result(session: SessionId) -> (EvalRun, EvalCaseResult) {
         target: None,
         target_snapshot: None,
         status: CaseResultStatus::Passed,
+        trial: 0,
         scores: Some(json!([{"pass": true, "value": 1.0, "reason": "ok"}])),
         metadata: None,
         turns: Some(1),
@@ -703,10 +715,10 @@ fn message_fold_reflects_model_view_masking() {
     let session = SessionId::new();
     let (run, result) = sample_run_and_result(session);
 
-    // Five padded (> 4 KiB) tool results. Default cost-control masking
-    // keeps the two most recent and masks the three oldest.
+    // Ten padded (> 4 KiB) tool results. Default cost-control masking
+    // keeps the two most recent and masks the eight older ones, one batch.
     let mut messages = vec![RuntimeMessage::user("start")];
-    for i in 0..5 {
+    for i in 0..10 {
         let call = ToolCall {
             id: format!("call_{i}"),
             name: "fetch".to_string(),
@@ -726,7 +738,7 @@ fn message_fold_reflects_model_view_masking() {
     // Folding the raw (unmasked) messages keeps every distinctive result.
     let raw = build_case_record_from_messages(&run, &result, &messages, AtifOptions::default());
     let raw_str = serde_json::to_string(&raw).unwrap();
-    for i in 0..5 {
+    for i in 0..10 {
         assert!(
             raw_str.contains(&format!("BULKY_RESULT_{i}")),
             "unmasked fold keeps result {i}",
@@ -740,13 +752,13 @@ fn message_fold_reflects_model_view_masking() {
     let masked =
         build_case_record_from_messages(&run, &result, &masked_messages, AtifOptions::default());
     let masked_str = serde_json::to_string(&masked).unwrap();
-    for i in 0..3 {
+    for i in 0..8 {
         assert!(
             !masked_str.contains(&format!("BULKY_RESULT_{i}")),
             "masked result {i} must be absent from the model-view fold",
         );
     }
-    for i in 3..5 {
+    for i in 8..10 {
         assert!(
             masked_str.contains(&format!("BULKY_RESULT_{i}")),
             "recent result {i} must survive in the model-view fold",

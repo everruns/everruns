@@ -51,7 +51,7 @@ const resourceId = (name: string) => `resource-${name.toLowerCase().replace(/[^a
         {!detail.operation.operation.security && <p>See <a href={docsPath("/sre/runbooks/authentication/")}>authentication</a> for credentials and permissions.</p>}
         <Parameters parameters={getParametersByLocation(detail.operation.operation.parameters, detail.operation.pathItem.parameters)} />
         <RequestBody operation={detail.operation.operation} schema={detail.schema} />
-        <section class="api-responses" id="responses"><h2>Responses</h2>{responses.map(([status, response]) => <details open={Number(status) >= 200 && Number(status) < 300}><summary><span>{status}</span>{response.description}</summary><Response name={status} operation={detail.operation.operation} response={response} schema={detail.schema} level={3} prefix={`response-${status}`} /></details>)}</section>
+        <section class="api-responses" id="responses"><h2>Responses</h2>{responses.map(([status, response]) => <details open={Number(status) >= 200 && Number(status) < 300}><summary><span>{status}</span>{response.description}</summary><Response name={status} operation={detail.operation.operation} response={response} schema={detail.schema} headingLevel={3} prefix={`response-${status}`} /></details>)}</section>
         <Callbacks operation={detail.operation.operation} schema={detail.schema} />
         <ExternalDocs docs={detail.operation.operation.externalDocs} />
       </div>

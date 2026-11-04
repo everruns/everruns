@@ -8,7 +8,7 @@ async fn execute_runtime_view(
     params: serde_json::Value,
 ) -> proto::execute_command_response::Result {
     service
-        .execute_command(Request::new(ExecuteCommandRequest {
+        .execute_command(trusted_request(ExecuteCommandRequest {
             runtime_view: true,
             name: name.to_string(),
             api_version: "v1".to_string(),
@@ -274,7 +274,7 @@ async fn runtime_harness_view_rejects_cycles_and_missing_ancestors() {
 async fn runtime_harness_view_cannot_resolve_an_ancestor_in_another_org() {
     let service = test_worker_service().await;
     let foreign = service
-        .execute_command(Request::new(ExecuteCommandRequest {
+        .execute_command(trusted_request(ExecuteCommandRequest {
             name: "create_harness".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{"name":"foreign-parent","system_prompt":"Private rules"}"#.to_vec(),
@@ -323,7 +323,7 @@ async fn runtime_projection_keeps_bound_invocation_authorization() {
     let service = test_worker_service().await;
     let (session_id, harness_id) = create_grpc_test_session(&service).await;
     let status = service
-        .execute_command(Request::new(ExecuteCommandRequest {
+        .execute_command(trusted_request(ExecuteCommandRequest {
             runtime_view: true,
             name: "get_harness".to_string(),
             api_version: "v1".to_string(),

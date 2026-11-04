@@ -167,7 +167,6 @@ class Topology:
                 {
                     "HTTP_ADDR": f"127.0.0.1:{http_port}",
                     "SERVER_GRPC_BIND_ADDR": f"127.0.0.1:{grpc_port}",
-                    "API_BASE_URL": f"http://127.0.0.1:{http_port}",
                     "PUBLIC_APP_URL": f"http://127.0.0.1:{http_port}",
                     "APP_URL": f"http://127.0.0.1:{http_port}",
                     "CORS_ALLOWED_ORIGINS": f"http://127.0.0.1:{http_port}",

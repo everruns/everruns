@@ -24,7 +24,8 @@ const base: api.AgentGitHubStatus = {
   everruns_app_installations: [],
 };
 
-const CREATE_OWN = "Create this agent's own GitHub App";
+const CREATE_OWN = "Create its App";
+const USE_SHARED = "Use the shared App";
 
 /** Opens the create-own-App menu and picks `item`. */
 async function connectVia(item: string) {
@@ -188,8 +189,9 @@ describe("AgentGitHubCard", () => {
     mocked.getAgentGitHub.mockResolvedValue(base);
     renderCard();
     expect(await screen.findByRole("button", { name: CREATE_OWN })).toBeInTheDocument();
-    expect(screen.getByText("Recommended")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Use the Everruns app" })).not.toBeInTheDocument();
+    // A single option is not "recommended" over anything.
+    expect(screen.queryByText("Recommended")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: USE_SHARED })).not.toBeInTheDocument();
   });
 
   it("lets the agent choose an account the org linked to the Everruns App", async () => {
@@ -215,13 +217,15 @@ describe("AgentGitHubCard", () => {
     });
     renderCard();
     expect(await screen.findByRole("button", { name: CREATE_OWN })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Use the Everruns app" }));
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+    expect(screen.getByText(/already connected: acme\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: USE_SHARED }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "acme" }));
     await waitFor(() =>
       expect(mocked.chooseAgentEverrunsApp).toHaveBeenCalledWith("agent_1", "link_1"),
     );
     expect(await screen.findByRole("heading", { name: "everruns[bot]" })).toBeInTheDocument();
-    expect(screen.getByText("Everruns App")).toBeInTheDocument();
+    expect(screen.getByText("Shared Everruns App")).toBeInTheDocument();
     expect(mocked.connectAgentGitHub).not.toHaveBeenCalled();
   });
 
@@ -240,7 +244,7 @@ describe("AgentGitHubCard", () => {
     });
     renderCard();
     expect(await screen.findByRole("button", { name: "Finish installing" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Use the Everruns app" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: USE_SHARED })).not.toBeInTheDocument();
   });
 
   it("stays quiet when the App has every permission", async () => {
@@ -287,7 +291,7 @@ describe("AgentGitHubSection", () => {
 
     expect(screen.getByRole("heading", { level: 3, name: "GitHub" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "pr-summarizer[bot]" })).toBeInTheDocument();
-    expect(screen.getByText("Own GitHub App")).toBeInTheDocument();
+    expect(screen.getByText("Its own GitHub App")).toBeInTheDocument();
     expect(screen.getByText("acme")).toBeInTheDocument();
     expect(screen.getByText("All repositories")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Add pull request trigger/ })).toHaveAttribute(
@@ -344,7 +348,7 @@ describe("AgentGitHubSection", () => {
     });
     renderSection();
 
-    expect(await screen.findByText("Everruns App")).toBeInTheDocument();
+    expect(await screen.findByText("Shared Everruns App")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Set the avatar" })).not.toBeInTheDocument();
   });
 

@@ -149,13 +149,22 @@ When `controls.reasoning.effort` is set, reasoning models generate chain-of-thou
 2. `session.model_id` - session-level override
 3. `agent.default_model_id` - agent's default model
 4. Harness default model
-5. System default model - fallback if no model is configured above
+5. Organization Chat default, only for the built-in Everruns Chat agent
+6. Organization agents/sessions default - fallback if no model is configured above
 
 `session.model_id` holds only a model someone chose for the session (at create,
 or later through `PATCH /v1/sessions/{id}`; `null` clears it). It never copies
 the agent or harness default: the fallback is resolved per turn, so changing the
 agent's default model reaches existing sessions, which is how an operator moves
 a run off a model whose provider is limiting it.
+
+The Chat setting is independent of the agents/sessions default. An unset Chat
+setting inherits the general default. It never affects user-agent Work Chat
+channels, and explicit session, agent, and harness selections still win.
+Organization owners and admins select an enabled shared chat model with an
+available provider and tool support at **Settings → Chat**. Personal provider
+accounts cannot become organization defaults. Default binding changes are read
+across server replicas without retaining an hour-long cached organization binding.
 
 ### Image
 
@@ -183,11 +192,11 @@ When messages containing `image_file` content parts are sent to an LLM, the syst
 3. Convert to `data:` URLs
 4. Each LLM provider formats for its vision API
 
-**gRPC Transfer:**
+**Transfer:**
 
-Image data transferred via gRPC with 150MB message limit (100MB raw + ~33% encoding overhead).
-
-> **Warning:** The 150MB gRPC limit is a temporary workaround. Future: presigned URLs, streaming, or direct storage access. Revert to default 4MB when implemented.
+The resolve RPC returns metadata and a short-lived signed path; the worker
+fetches the bytes over HTTP on the same worker endpoint, never inside a gRPC
+message (`crates/server/src/api/internal_blobs.rs`).
 
 **Error Handling:**
 - Missing images: Replaced with `[Image not found: {id}]`

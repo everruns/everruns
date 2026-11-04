@@ -99,6 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             forked_from_session_id: None,
             blueprint_id: None,
             blueprint_config: None,
+            unattended: false,
         })
         .build()
         .await?;

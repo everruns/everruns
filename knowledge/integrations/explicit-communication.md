@@ -45,6 +45,24 @@ Slack endpoint to the agent; the endpoint's `reply_mode` is gone.
   ([`ExecutionPhase`](../../crates/contracts/src/execution_phase.rs)), some do
   not. One shared reader fixes that in both modes.
 
+## Output demand
+
+Explicit agents keep completed notes and thinking but omit their incremental
+text/thinking events by default. This is resolved in the shared reason phase,
+so workers and embedded hosts behave alike. `send_message` deliveries, tool and
+turn lifecycles, usage, message identity and recovery state remain immediate or
+durable according to their existing contracts. Output suppression never bypasses
+guardrails or executes a partial tool call.
+
+A session's `hints.output_streaming` overrides the default; the triggering
+input's `controls.hints.output_streaming` wins over that. `true` permits live
+inspection, `false` selects completed output even for a direct agent. Child
+sessions default to completed output. A2A, eval and health-check consumers select
+completed output at intake. Demand is not inferred from subscriber counts.
+
+Provider transport is a separate best-effort preference; see
+[LLM drivers](../foundations/llm-drivers.md#native-non-streaming-completion).
+
 ## Costs and how they are contained
 
 | Cost | Containment |
@@ -154,6 +172,12 @@ Source of truth: [`conversation.rs`](../../crates/contracts/src/runtime/conversa
   [`204_agent_communication.sql`](../../crates/server/migrations/legacy/204_agent_communication.sql)
   moved tool-only Slack endpoints onto their agents as `explicit`, and the
   endpoint `reply_mode` and the automatic "On it." acknowledgement are gone.
+- **A message-only step ends the turn.** `send_message(final: true)` is still
+  not a parameter. The follow-up generation after a step whose only successful
+  calls are `send_message` or `no_reply` is skipped, the same way `no_reply`
+  already was. That generation was repeating the message and holding the chat
+  open. Work that should continue has to share the step with the message, or
+  come before it.
 - **Not built yet.** The turn-end reminder when nothing was sent,
   `send_message(final: true)`, the inbound sender envelope, and all of phase 3
   (`update_status`, `ask_decision`, `edit_message`, `react`, streamed

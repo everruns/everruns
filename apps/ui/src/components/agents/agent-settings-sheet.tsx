@@ -4,12 +4,16 @@
 // column or an accordion cannot give, so each opens here, over the page.
 //
 // Two kinds of section live here and the sheet says which:
-// - Draft sections (Branding, Files, Network access) edit the page's
+// - Draft sections (Branding, Files, Network access, Max output tokens) edit the page's
 //   draft. A change puts the page into edit mode; nothing saves until the
 //   header's Save changes.
 // - Live sections (MCP servers, Credentials, Service account) manage their own
 //   resources and save as they go, as they did when they were tabs.
 
+import { TracingRoutingForm } from "@/components/tracing/routing-form";
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
+import { EntityLocalizationsEditor } from "@/components/entity-localizations-editor";
 import { Check, Loader2, X, Zap } from "lucide-react";
 import { useAgentNameAvailability, useAgentTriggers } from "@/hooks";
 import { AgentAvatarField } from "@/components/agents/agent-avatar-field";
@@ -43,6 +47,8 @@ import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { ChatChangeMark } from "@/components/chat-mode/chat-change-mark";
 
 export type AgentSettingsSection =
+  | "tracing"
+  | "localization"
   | "branding"
   | "mcp"
   | "credentials"
@@ -50,6 +56,7 @@ export type AgentSettingsSection =
   | "files"
   | "network"
   | "sandbox"
+  | "max_output_tokens"
   | "usage"
   | "health";
 
@@ -57,6 +64,16 @@ const SECTIONS: Record<
   AgentSettingsSection,
   { title: string; description: string; kind: "draft" | "live" | "info"; wide?: boolean }
 > = {
+  tracing: {
+    title: "Tracing",
+    description: "External destinations for this agent’s traces.",
+    kind: "live",
+  },
+  localization: {
+    title: "Localization",
+    description: "Localized display names and descriptions.",
+    kind: "draft",
+  },
   branding: {
     title: "Branding",
     description: "How the agent is named and how it presents itself in chat.",
@@ -97,6 +114,12 @@ const SECTIONS: Record<
     description: "Sandbox bindings available when a new Playground Session starts.",
     kind: "draft",
     wide: true,
+  },
+  max_output_tokens: {
+    title: "Max output tokens",
+    description:
+      "Ceiling on tokens one model response may use. Leave this empty for the provider default.",
+    kind: "draft",
   },
   usage: {
     title: "Token usage",
@@ -143,6 +166,7 @@ export function AgentSettingsSheet({
   fixedSandbox,
   onDraftChange,
 }: AgentSettingsSheetProps) {
+  const ui = useUiTranslations();
   const chatMode = usePageChatMode();
   const active = useRetainedSection(section);
   const meta = active ? SECTIONS[active] : null;
@@ -156,8 +180,8 @@ export function AgentSettingsSheet({
         {active && meta && (
           <>
             <DrawerHeader className="border-b p-5 pr-12">
-              <DrawerTitle>{meta.title}</DrawerTitle>
-              <DrawerDescription>{meta.description}</DrawerDescription>
+              <DrawerTitle>{ui(meta.title)}</DrawerTitle>
+              <DrawerDescription>{ui(meta.description)}</DrawerDescription>
             </DrawerHeader>
             <ChatChangeMark
               className="flex-1 p-5"
@@ -174,14 +198,30 @@ export function AgentSettingsSheet({
                   : ((
                       {
                         files: "initial_files",
+                        localization: "localizations",
                         network: "network_access",
                         sandbox: "sandbox_policy",
+                        max_output_tokens: "max_output_tokens",
                         mcp: ["mcpServers", "mcp_servers"],
                         service: "service_virtual_user_id",
                       } as Record<string, string | string[]>
                     )[active] ?? active)
               }
             >
+              {active === "tracing" && (
+                <TracingRoutingForm
+                  key={agent.id}
+                  agentId={agent.id}
+                  active={section === "tracing"}
+                />
+              )}
+              {active === "localization" && (
+                <EntityLocalizationsEditor
+                  value={draft.localizations}
+                  onChange={onDraftChange(draft.setLocalizations)}
+                  readOnly={readOnly}
+                />
+              )}
               {active === "branding" && (
                 <BrandingSection
                   agent={agent}
@@ -205,7 +245,9 @@ export function AgentSettingsSheet({
                   value={draft.files}
                   onChange={onDraftChange(draft.setFiles)}
                   disabled={readOnly}
-                  description="Starting files for new sessions. Updating these files does not change existing sessions."
+                  description={ui(
+                    "Starting files for new sessions. Updating these files does not change existing sessions.",
+                  )}
                 />
               )}
               {active === "network" && (
@@ -213,7 +255,9 @@ export function AgentSettingsSheet({
                   value={draft.networkAccess}
                   onChange={onDraftChange(draft.setNetworkAccess)}
                   disabled={readOnly}
-                  description="One pattern per line: example.com, *.example.com, or https://example.com/api/."
+                  description={ui(
+                    "One pattern per line: example.com, *.example.com, or https://example.com/api/.",
+                  )}
                 />
               )}
               {active === "sandbox" &&
@@ -221,7 +265,9 @@ export function AgentSettingsSheet({
                   <div className="border bg-muted/40 p-4 text-sm">
                     <p className="font-medium">{fixedSandbox}</p>
                     <p className="text-muted-foreground">
-                      Locked by the selected Harness. Agent and Session overrides are disabled.
+                      {ui(
+                        "Locked by the selected Harness. Agent and Session overrides are disabled.",
+                      )}
                     </p>
                   </div>
                 ) : (
@@ -232,21 +278,30 @@ export function AgentSettingsSheet({
                     disabled={readOnly}
                   />
                 ))}
+              {active === "max_output_tokens" && (
+                <MaxOutputTokensSection
+                  draft={draft}
+                  readOnly={readOnly}
+                  onDraftChange={onDraftChange}
+                />
+              )}
               {active === "usage" && <UsageSection agent={agent} />}
               {active === "health" && <AgentHealthCheck agentId={agent.id} />}
             </ChatChangeMark>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">
-                {meta.kind === "draft"
-                  ? readOnly
-                    ? "This agent is read-only."
-                    : "Changes are kept with the page edit. Save changes applies them."
-                  : meta.kind === "live"
-                    ? "Changes here save immediately."
-                    : ""}
+                {active === "tracing"
+                  ? ui("Tracing changes apply to new turns after Save.")
+                  : meta.kind === "draft"
+                    ? readOnly
+                      ? ui("This agent is read-only.")
+                      : ui("Changes are kept with the page edit. Save changes applies them.")
+                    : meta.kind === "live"
+                      ? ui("Changes here save immediately.")
+                      : ""}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Done
+                {ui("Done")}
               </Button>
             </DrawerFooter>
           </>
@@ -267,6 +322,7 @@ function BrandingSection({
   readOnly: boolean;
   onDraftChange: AgentSettingsSheetProps["onDraftChange"];
 }) {
+  const ui = useUiTranslations();
   const { fields, errors } = draft;
   const nameAvailability = useAgentNameAvailability(draft.nameChanged ? fields.name : "", agent.id);
   const field = (key: Parameters<AgentDraft["setField"]>[0]) =>
@@ -277,10 +333,10 @@ function BrandingSection({
       <AgentAvatarField agent={agent} readOnly={readOnly} />
 
       <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
+        <Label htmlFor="description">{ui("Description")}</Label>
         <Textarea
           id="description"
-          placeholder="Describe what this agent does..."
+          placeholder={ui("Describe what this agent does...")}
           value={fields.description}
           onChange={(event) => field("description")(event.target.value)}
           disabled={readOnly}
@@ -289,24 +345,24 @@ function BrandingSection({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="display_name">Display name</Label>
+        <Label htmlFor="display_name">{ui("Display name")}</Label>
         <Input
           id="display_name"
-          placeholder={fields.name ? undefined : "Customer Support Agent"}
+          placeholder={fields.name ? undefined : ui("Customer Support Agent")}
           value={fields.display_name}
           onChange={(event) => field("display_name")(event.target.value)}
           disabled={readOnly}
         />
         <p className="text-xs text-muted-foreground">
-          Shown in the UI. Defaults to the name when empty.
+          {ui("Shown in the UI. Defaults to the name when empty.")}
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="name">Name</Label>
+        <Label htmlFor="name">{ui("Name")}</Label>
         <Input
           id="name"
-          placeholder="customer-support"
+          placeholder={ui("customer-support")}
           value={fields.name}
           onChange={(event) => field("name")(event.target.value)}
           aria-invalid={!!errors.name}
@@ -320,28 +376,30 @@ function BrandingSection({
             {nameAvailability.isChecking ? (
               <>
                 <Loader2 className="size-3 animate-spin text-muted-foreground" />
-                <span className="text-muted-foreground">Checking availability…</span>
+                <span className="text-muted-foreground">{ui("Checking availability…")}</span>
               </>
             ) : nameAvailability.available === true ? (
               <>
                 <Check className="size-3 text-success" />
-                <span className="text-success">Name is available</span>
+                <span className="text-success">{ui("Name is available")}</span>
               </>
             ) : nameAvailability.available === false ? (
               <>
                 <X className="size-3 text-destructive" />
-                <span className="text-destructive">Name is already taken or invalid</span>
+                <span className="text-destructive">{ui("Name is already taken or invalid")}</span>
               </>
             ) : null}
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          Unique identifier used in URLs and the API. Lowercase letters, numbers, and hyphens.
+          {ui(
+            "Unique identifier used in URLs and the API. Lowercase letters, numbers, and hyphens.",
+          )}
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="intro_markdown">Intro (Markdown)</Label>
+        <Label htmlFor="intro_markdown">{ui("Intro (Markdown)")}</Label>
         <Textarea
           id="intro_markdown"
           value={fields.intro_markdown}
@@ -351,7 +409,9 @@ function BrandingSection({
           rows={4}
         />
         <p className="text-xs text-muted-foreground">
-          Shown as an intro box on a fresh thread. Images are allowed. Hidden once the user types.
+          {ui(
+            "Shown as an intro box on a fresh thread. Images are allowed. Hidden once the user types.",
+          )}
         </p>
         {errors.intro_markdown && (
           <p className="text-xs text-destructive">{errors.intro_markdown}</p>
@@ -359,17 +419,17 @@ function BrandingSection({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="short_description">Short description</Label>
+        <Label htmlFor="short_description">{ui("Short description")}</Label>
         <Input
           id="short_description"
           value={fields.short_description}
           onChange={(event) => field("short_description")(event.target.value)}
-          placeholder="Answers account questions in seconds."
+          placeholder={ui("Answers account questions in seconds.")}
           disabled={readOnly}
           maxLength={2048}
         />
         <p className="text-xs text-muted-foreground">
-          One line in simplified Markdown, shown below the chat title once the intro hides.
+          {ui("One line in simplified Markdown, shown below the chat title once the intro hides.")}
         </p>
         {errors.short_description && (
           <p className="text-xs text-destructive">{errors.short_description}</p>
@@ -387,7 +447,53 @@ function BrandingSection({
   );
 }
 
+function MaxOutputTokensSection({
+  draft,
+  readOnly,
+  onDraftChange,
+}: {
+  draft: AgentDraft;
+  readOnly: boolean;
+  onDraftChange: AgentSettingsSheetProps["onDraftChange"];
+}) {
+  const ui = useUiTranslations();
+  const setMaxOutputTokens = onDraftChange((value: string) =>
+    draft.setField("max_output_tokens", value),
+  );
+  const invalid = Boolean(draft.errors.max_output_tokens);
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="max-output-tokens">{ui("Max output tokens")}</Label>
+      <Input
+        id="max-output-tokens"
+        type="number"
+        inputMode="numeric"
+        min={1}
+        step={1}
+        placeholder={ui("Provider default")}
+        value={draft.fields.max_output_tokens}
+        onChange={(event) => setMaxOutputTokens(event.target.value)}
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={!readOnly && !invalid ? "max-output-tokens-hint" : undefined}
+        disabled={readOnly}
+      />
+      {invalid ? (
+        <p className="text-xs text-destructive">{draft.errors.max_output_tokens}</p>
+      ) : (
+        !readOnly && (
+          <p id="max-output-tokens-hint" className="text-xs text-muted-foreground">
+            {ui("Lower this if the provider says it can only afford fewer tokens.")}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
 function UsageSection({ agent }: { agent: Agent }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const usage = agent.usage;
   const sessions = agent.session_count ?? 0;
   const apps = agent.app_count ?? 0;
@@ -399,20 +505,24 @@ function UsageSection({ agent }: { agent: Agent }) {
           <Zap className="size-4 text-accent-foreground" />
           <div>
             <p className="font-medium">
-              {formatTokens(usage.input_tokens + usage.output_tokens)} total
+              {formatTokens(usage.input_tokens + usage.output_tokens)} {ui("total")}
             </p>
             <p className="text-xs text-muted-foreground">
-              {formatTokens(usage.input_tokens)} input / {formatTokens(usage.output_tokens)} output
-              {usage.cache_read_tokens ? ` / ${formatTokens(usage.cache_read_tokens)} cached` : ""}
+              {formatTokens(usage.input_tokens)} {ui("input /")} {formatTokens(usage.output_tokens)}{" "}
+              {ui("output")}
+              {usage.cache_read_tokens
+                ? ui(" / {value0} cached", { value0: formatTokens(usage.cache_read_tokens) })
+                : ""}
             </p>
           </div>
         </div>
       ) : (
-        <p className="text-muted-foreground">No tokens used yet.</p>
+        <p className="text-muted-foreground">{ui("No tokens used yet.")}</p>
       )}
       <p className="text-muted-foreground">
-        Across {sessions} {pluralize(sessions, "session")} and {apps} {pluralize(apps, "app")}. The
-        Stats tab breaks usage down over time.
+        {ui("Across")} {sessions} {pluralize(sessions, "session", undefined, displayLocale)}{" "}
+        {ui("and")} {apps} {pluralize(apps, "app", undefined, displayLocale)}
+        {ui(". The Stats tab breaks usage down over time.")}
       </p>
     </div>
   );

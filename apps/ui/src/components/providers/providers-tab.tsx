@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { Notice, NoticeDescription } from "@/components/ui/notice";
@@ -31,6 +32,7 @@ export function ProvidersTab({
   onReviewNew: (provider: Provider) => void;
   onNotice: (notice: { kind: "success" | "error"; text: string }) => void;
 }) {
+  const ui = useUiTranslations();
   const syncModels = useSyncProviderModels();
   const [apiKeyProvider, setApiKeyProvider] = useState<Provider | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -77,13 +79,16 @@ export function ProvidersTab({
     <>
       {providersError && (
         <Notice variant="destructive">
-          <NoticeDescription>Failed to load providers: {providersError.message}</NoticeDescription>
+          <NoticeDescription>
+            {ui("Failed to load providers:")} {providersError.message}
+          </NoticeDescription>
         </Notice>
       )}
       {!canManage && (
         <p className="text-sm text-muted-foreground">
-          Only organization admins connect, rotate or delete providers. You can see what is
-          connected and which models it serves.
+          {ui(
+            "Only organization admins connect, rotate or delete providers. You can see what is connected and which models it serves.",
+          )}
         </p>
       )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -112,13 +117,13 @@ export function ProvidersTab({
             className="flex min-h-48 flex-col items-center justify-center gap-2 border border-dashed text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Plus className="icon-sharp size-5" />
-            Connect provider
+            {ui("Connect provider")}
           </button>
         )}
       </div>
       {!providersLoading && visibleProviders.length === 0 && !canManage && (
         <p className="text-sm text-muted-foreground">
-          No providers are connected yet. Ask an organization admin to connect one.
+          {ui("No providers are connected yet. Ask an organization admin to connect one.")}
         </p>
       )}
       <SetApiKeyDialog

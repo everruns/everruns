@@ -10,6 +10,7 @@
 // selection excluded, which is what makes multi-select usable: picking `failed`
 // does not zero out every other status in the Status facet.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Check, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,7 @@ export function SessionFacetRail({
   viewsAreSaved,
   canSaveView,
 }: SessionFacetRailProps) {
+  const ui = useUiTranslations();
   const [naming, setNaming] = useState(false);
   const [draftName, setDraftName] = useState("");
 
@@ -125,7 +127,7 @@ export function SessionFacetRail({
 
   return (
     <>
-      <RailSection label="Saved views">
+      <RailSection label={ui("Saved views")}>
         <div className="flex flex-col gap-1.5 text-[13px]">
           {views.map((view) => {
             const active = isViewActive(view, filters);
@@ -144,7 +146,7 @@ export function SessionFacetRail({
                 {viewsAreSaved && (
                   <button
                     type="button"
-                    aria-label={`Remove ${view.name}`}
+                    aria-label={ui("Remove {value0}", { value0: view.name })}
                     onClick={() => onRemoveView(view.id)}
                     className="flex-none text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                   >
@@ -162,7 +164,7 @@ export function SessionFacetRail({
                 // asked to name a view, so typing should land in it.
                 ref={(node) => node?.focus()}
                 value={draftName}
-                placeholder="View name"
+                placeholder={ui("View name")}
                 onChange={(event) => setDraftName(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") submitName();
@@ -171,7 +173,7 @@ export function SessionFacetRail({
                 className="h-7 text-[13px]"
               />
               <Button size="sm" variant="outline" onClick={submitName} disabled={!draftName.trim()}>
-                Save
+                {ui("Save")}
               </Button>
             </div>
           ) : (
@@ -182,20 +184,20 @@ export function SessionFacetRail({
               className="mt-1.5 inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus className="size-3.5" />
-              Save current filters
+              {ui("Save current filters")}
             </button>
           )}
         </div>
       </RailSection>
 
       {error ? (
-        <RailSection label="Facets">
-          <p className="text-[13px] text-destructive">Counts unavailable.</p>
+        <RailSection label={ui("Facets")}>
+          <p className="text-[13px] text-destructive">{ui("Counts unavailable.")}</p>
         </RailSection>
       ) : (
         <>
           <FacetList
-            label="Status"
+            label={ui("Status")}
             counts={facets?.by_activity ?? []}
             selected={filters.status}
             labelFor={activityLabel}
@@ -203,7 +205,7 @@ export function SessionFacetRail({
             emptyHint="No runs match these filters."
           />
           <FacetList
-            label="Source"
+            label={ui("Source")}
             counts={facets?.by_source ?? []}
             selected={filters.source}
             labelFor={sourceLabel}
@@ -211,7 +213,7 @@ export function SessionFacetRail({
             emptyHint="No runs match these filters."
           />
           <FacetList
-            label="Agent"
+            label={ui("Agent")}
             counts={facets?.by_agent ?? []}
             selected={filters.agent ? [filters.agent] : []}
             labelFor={agentLabel}

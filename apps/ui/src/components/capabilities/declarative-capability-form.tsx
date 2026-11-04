@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { declarativeDraftSchema } from "@/components/chat-mode/page-form-schemas";
 
@@ -65,6 +66,7 @@ export function DeclarativeCapabilityForm({
   id?: string;
   initialDefinition?: DeclarativeCapabilityDefinition;
 }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const createCapability = useCreateDeclarativeCapability();
   const updateCapability = useUpdateDeclarativeCapability();
@@ -125,12 +127,12 @@ export function DeclarativeCapabilityForm({
   };
 
   const tabItems: SectionTabItem[] = [
-    { value: "general", label: "General", icon: <Settings className="size-4" /> },
+    { value: "general", label: ui("General"), icon: <Settings className="size-4" /> },
     {
       value: "mcp",
       label: (
         <>
-          MCP Servers
+          {ui("MCP Servers")}
           <TabCount count={state.mcpServers.length} />
         </>
       ),
@@ -140,7 +142,7 @@ export function DeclarativeCapabilityForm({
       value: "skills",
       label: (
         <>
-          Skills
+          {ui("Skills")}
           <TabCount count={state.skills.length} />
         </>
       ),
@@ -150,7 +152,7 @@ export function DeclarativeCapabilityForm({
       value: "files",
       label: (
         <>
-          Files
+          {ui("Files")}
           <TabCount count={state.files.length} />
         </>
       ),
@@ -165,7 +167,7 @@ export function DeclarativeCapabilityForm({
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Capabilities", href: "/capabilities" },
+          { label: ui("Capabilities"), href: "/capabilities" },
           { label: mode === "create" ? "New declarative" : "Edit" },
         ]}
       />
@@ -178,21 +180,27 @@ export function DeclarativeCapabilityForm({
             {mode === "create" ? (
               <>
                 <Plus className="size-3" />
-                New
+                {ui("New")}
               </>
             ) : (
               <>
                 <Pencil className="size-3" />
-                Editing
+                {ui("Editing")}
               </>
             )}
           </Badge>
         }
-        description="Declarative capabilities bundle MCP servers, skills, and files into a reusable building block."
+        description={ui(
+          "Declarative capabilities bundle MCP servers, skills, and files into a reusable building block.",
+        )}
         meta={
           mode === "edit" ? (
             <span>
-              Referenced as <span className="font-mono text-primary">declarative:{state.name}</span>
+              {ui("Referenced as")}{" "}
+              <span className="font-mono text-primary">
+                {ui("declarative:")}
+                {state.name}
+              </span>
             </span>
           ) : undefined
         }
@@ -204,10 +212,10 @@ export function DeclarativeCapabilityForm({
               disabled={isPending || !canSubmit || chatDraft.blocked}
             >
               <Pencil className="size-4" />
-              {isPending ? "Saving..." : mode === "create" ? "Create" : "Save changes"}
+              {isPending ? ui("Saving...") : mode === "create" ? ui("Create") : ui("Save changes")}
             </Button>
             <Button type="button" variant="outline" onClick={() => router.back()}>
-              Discard
+              {ui("Discard")}
             </Button>
           </>
         }
@@ -221,7 +229,7 @@ export function DeclarativeCapabilityForm({
         {chatDraft.notice}
         {hasUnresolvedMcpIdentity && (
           <p role="alert" className="mb-4 text-sm text-destructive">
-            Choose an acting identity for each OAuth MCP server.
+            {ui("Choose an acting identity for each OAuth MCP server.")}
           </p>
         )}
         <PageColumns>
@@ -230,7 +238,7 @@ export function DeclarativeCapabilityForm({
               <Card>
                 <CardContent className="space-y-4 pt-6">
                   <div className="grid gap-2">
-                    <Label htmlFor="declarative-name">Unique name</Label>
+                    <Label htmlFor="declarative-name">{ui("Unique name")}</Label>
                     <Input
                       id="declarative-name"
                       placeholder="research_pack"
@@ -240,22 +248,22 @@ export function DeclarativeCapabilityForm({
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      Lowercase letters, digits, <code>_</code> and <code>-</code>. Referenced as{" "}
-                      <code>declarative:{state.name || "name"}</code>.
+                      {ui("Lowercase letters, digits,")} <code>_</code> {ui("and")} <code>-</code>
+                      {ui(". Referenced as")} <code>declarative:{state.name || ui("name")}</code>.
                       {mode === "edit" && " The name cannot be changed after creation."}
                     </p>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="declarative-display-name">Display name</Label>
+                    <Label htmlFor="declarative-display-name">{ui("Display name")}</Label>
                     <Input
                       id="declarative-display-name"
-                      placeholder="Research Pack"
+                      placeholder={ui("Research Pack")}
                       value={state.displayName}
                       onChange={(e) => set("displayName", e.target.value)}
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="declarative-description">Description</Label>
+                    <Label htmlFor="declarative-description">{ui("Description")}</Label>
                     <Input
                       id="declarative-description"
                       value={state.description}
@@ -264,7 +272,7 @@ export function DeclarativeCapabilityForm({
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="declarative-prompt">System prompt addition</Label>
+                    <Label htmlFor="declarative-prompt">{ui("System prompt addition")}</Label>
                     <Textarea
                       id="declarative-prompt"
                       value={state.systemPrompt}
@@ -273,7 +281,7 @@ export function DeclarativeCapabilityForm({
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="declarative-risk">Risk level</Label>
+                    <Label htmlFor="declarative-risk">{ui("Risk level")}</Label>
                     <Select
                       value={state.riskLevel}
                       onValueChange={(value) =>
@@ -284,9 +292,9 @@ export function DeclarativeCapabilityForm({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High (admin only)</SelectItem>
+                        <SelectItem value="low">{ui("Low")}</SelectItem>
+                        <SelectItem value="medium">{ui("Medium")}</SelectItem>
+                        <SelectItem value="high">{ui("High (admin only)")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -297,7 +305,7 @@ export function DeclarativeCapabilityForm({
             {tab === "mcp" && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">MCP Servers</CardTitle>
+                  <CardTitle className="text-base">{ui("MCP Servers")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <McpServersEditor
@@ -311,7 +319,7 @@ export function DeclarativeCapabilityForm({
             {tab === "skills" && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Skills</CardTitle>
+                  <CardTitle className="text-base">{ui("Skills")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <SkillsEditor
@@ -325,7 +333,7 @@ export function DeclarativeCapabilityForm({
             {tab === "files" && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Files</CardTitle>
+                  <CardTitle className="text-base">{ui("Files")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <FilesEditor files={state.files} onChange={(files) => set("files", files)} />
@@ -339,27 +347,27 @@ export function DeclarativeCapabilityForm({
           <PageRail>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Summary</CardTitle>
+                <CardTitle className="text-base">{ui("Summary")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <div>
-                  <p className="font-medium">Name</p>
-                  <p className="text-muted-foreground font-mono">{state.name || "(not set)"}</p>
+                  <p className="font-medium">{ui("Name")}</p>
+                  <p className="text-muted-foreground font-mono">{state.name || ui("(not set)")}</p>
                 </div>
                 <div>
-                  <p className="font-medium">Display name</p>
-                  <p className="text-muted-foreground">{state.displayName || "(not set)"}</p>
+                  <p className="font-medium">{ui("Display name")}</p>
+                  <p className="text-muted-foreground">{state.displayName || ui("(not set)")}</p>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">MCP servers</span>
+                  <span className="font-medium">{ui("MCP servers")}</span>
                   <span className="text-muted-foreground">{state.mcpServers.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">Skills</span>
+                  <span className="font-medium">{ui("Skills")}</span>
                   <span className="text-muted-foreground">{state.skills.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">Files</span>
+                  <span className="font-medium">{ui("Files")}</span>
                   <span className="text-muted-foreground">{state.files.length}</span>
                 </div>
               </CardContent>
@@ -369,7 +377,7 @@ export function DeclarativeCapabilityForm({
       </form>
 
       <PageFooter>
-        <BackLink href="/capabilities">Back to Capabilities</BackLink>
+        <BackLink href="/capabilities">{ui("Back to Capabilities")}</BackLink>
       </PageFooter>
     </PageContainer>
   );

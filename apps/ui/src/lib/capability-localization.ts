@@ -6,27 +6,44 @@
 // before rendering, so the generic settings editor stays capability-agnostic.
 
 import type { Capability, CapabilityLocalization } from "@/lib/api/types";
-import type { SupportedLocale } from "@/lib/i18n";
+import { localeCandidates } from "@/lib/entity-localization";
+import { getSupportedLocale } from "./locale-registry";
+import { uiMessagesByLocale } from "@/lib/ui-messages";
 
-function localizationFor(
+// Category values remain stable for filtering/API use; only product labels
+// have catalog entries. Tenant-defined categories fall back verbatim.
+export function localizedCapabilityCategory(category: string, locale: string): string {
+  return (
+    uiMessagesByLocale[getSupportedLocale(locale)]?.[`Capability category: ${category}`] ?? category
+  );
+}
+
+function localizedField<K extends keyof CapabilityLocalization>(
   capability: Pick<Capability, "localizations">,
-  locale: SupportedLocale,
-): CapabilityLocalization | undefined {
-  return capability.localizations?.[locale];
+  locale: string,
+  field: K,
+): CapabilityLocalization[K] | undefined {
+  for (const candidate of localeCandidates(locale)) {
+    const key = Object.keys(capability.localizations ?? {}).find(
+      (key) => key.toLowerCase() === candidate,
+    );
+    const value = key ? capability.localizations?.[key]?.[field] : undefined;
+    if (value !== undefined && value !== null) return value;
+  }
 }
 
 export function localizedCapabilityName(
   capability: Pick<Capability, "name" | "localizations">,
-  locale: SupportedLocale,
+  locale: string,
 ): string {
-  return localizationFor(capability, locale)?.name ?? capability.name;
+  return localizedField(capability, locale, "name") ?? capability.name;
 }
 
 export function localizedCapabilityDescription(
   capability: Pick<Capability, "description" | "localizations">,
-  locale: SupportedLocale,
+  locale: string,
 ): string {
-  return localizationFor(capability, locale)?.description ?? capability.description;
+  return localizedField(capability, locale, "description") ?? capability.description;
 }
 
 /** First paragraph, for a list row. The capability page keeps the full text. */
@@ -38,10 +55,10 @@ export function capabilitySummary(description: string): string {
 /** One-line summary of what the capability's config controls, if any. */
 export function localizedConfigDescription(
   capability: Pick<Capability, "localizations">,
-  locale: SupportedLocale,
+  locale: string,
 ): string | undefined {
   return (
-    localizationFor(capability, locale)?.config_description ??
+    localizedField(capability, locale, "config_description") ??
     capability.localizations?.en?.config_description
   );
 }
@@ -69,7 +86,10 @@ function mergeNode(schema: Record<string, unknown>, overlay: OverlayNode): Recor
     const labels = overlay.enum_labels;
     if (Array.isArray(merged.oneOf)) {
       merged.oneOf = merged.oneOf.map((option) =>
-        isRecord(option) && "const" in option && labels[String(option.const)] !== undefined
+        isRecord(option) &&
+        "const" in option &&
+        Object.hasOwn(labels, String(option.const)) &&
+        typeof labels[String(option.const)] === "string"
           ? { ...option, title: labels[String(option.const)] }
           : option,
       );
@@ -78,7 +98,10 @@ function mergeNode(schema: Record<string, unknown>, overlay: OverlayNode): Recor
       // plain enums so localized labels still render.
       merged.oneOf = merged.enum.map((value) => ({
         const: value,
-        title: labels[String(value)] ?? String(value),
+        title:
+          Object.hasOwn(labels, String(value)) && typeof labels[String(value)] === "string"
+            ? labels[String(value)]
+            : String(value),
       }));
       delete merged.enum;
     }
@@ -111,11 +134,19 @@ function mergeNode(schema: Record<string, unknown>, overlay: OverlayNode): Recor
  */
 export function localizedConfigSchema(
   capability: Pick<Capability, "config_schema" | "localizations">,
-  locale: SupportedLocale,
+  locale: string,
 ): Record<string, unknown> | undefined {
   const schema = capability.config_schema;
   if (!schema) return undefined;
-  const overlay = localizationFor(capability, locale)?.config_overlay as OverlayNode | undefined;
-  if (!overlay) return schema;
-  return mergeNode(schema, overlay);
+  return localeCandidates(locale)
+    .reverse()
+    .reduce((result, candidate) => {
+      const key = Object.keys(capability.localizations ?? {}).find(
+        (key) => key.toLowerCase() === candidate,
+      );
+      const overlay = key
+        ? (capability.localizations?.[key]?.config_overlay as OverlayNode | undefined)
+        : undefined;
+      return overlay ? mergeNode(result, overlay) : result;
+    }, schema);
 }

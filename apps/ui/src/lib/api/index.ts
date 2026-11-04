@@ -11,6 +11,7 @@ export * from "./notifications";
 export * from "./organizations";
 export * from "./auth";
 export * from "./durable";
+export * from "./system";
 export * from "./virtual-users";
 export * from "./memory";
 export * from "./knowledge-indexes";

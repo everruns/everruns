@@ -13,6 +13,8 @@
 // Task reads are keyed by the task's owning session, so callers pass
 // `sessionId` (the task's `session_id`).
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ListTodo, MessageSquare } from "lucide-react";
@@ -74,13 +76,14 @@ export function TaskProgressBar({ task }: { task: SessionTask }) {
  * prompt is a fact. Fork the session into a chat to actually answer it.
  */
 function TaskInputPrompt({ task, replyHint }: { task: SessionTask; replyHint?: string }) {
+  const ui = useUiTranslations();
   if (task.state !== "awaiting_input" || !task.input_request) return null;
 
   return (
     <div className="space-y-1 rounded border border-warning/50 bg-warning/10 px-3 py-2">
       <div className="text-sm text-foreground">{task.input_request.prompt}</div>
       <div className="text-xs text-muted-foreground">
-        {replyHint ?? "Waiting for input. Fork this session into a chat to answer."}
+        {replyHint ?? ui("Waiting for input. Fork this session into a chat to answer.")}
       </div>
     </div>
   );
@@ -88,6 +91,8 @@ function TaskInputPrompt({ task, replyHint }: { task: SessionTask; replyHint?: s
 
 /** One message in a task's bidirectional thread. */
 function TaskMessageRow({ message }: { message: TaskMessage }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useFormattingLocale();
   const inbound = message.direction === "inbound";
   return (
     <div className={`flex ${inbound ? "justify-end" : "justify-start"}`}>
@@ -97,7 +102,8 @@ function TaskMessageRow({ message }: { message: TaskMessage }) {
         }`}
       >
         <div className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-          {inbound ? "Session → task" : "Task → session"} · {formatRelativeTime(message.created_at)}
+          {inbound ? ui("Session → task") : ui("Task → session")} ·{" "}
+          {formatRelativeTime(message.created_at, displayLocale)}
         </div>
         {message.content.map((part, index) =>
           part.type === "text" ? (
@@ -122,6 +128,8 @@ function TaskMessageRow({ message }: { message: TaskMessage }) {
  *  Fetched lazily when the card is expanded; the list hook's SSE stream keeps
  *  the thread fresh by invalidating this task's detail key on task.message.*. */
 function TaskDrilldown({ task, sessionId }: { task: SessionTask; sessionId: string | undefined }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { data: detail, isLoading, error } = useSessionTask(sessionId, task.id);
   const messages = detail?.messages ?? [];
   // Render the timeline from the freshly-fetched snapshot when available so the
@@ -131,30 +139,48 @@ function TaskDrilldown({ task, sessionId }: { task: SessionTask; sessionId: stri
   return (
     <div className="mt-3 space-y-3 border-t border-border/60 pt-3">
       <div className="grid gap-0.5 text-xs text-muted-foreground">
-        <div>Created {formatRelativeTime(snapshot.created_at)}</div>
-        {snapshot.started_at ? <div>Started {formatRelativeTime(snapshot.started_at)}</div> : null}
+        <div>
+          {ui("Created")} {formatRelativeTime(snapshot.created_at, displayLocale)}
+        </div>
+        {snapshot.started_at ? (
+          <div>
+            {ui("Started")} {formatRelativeTime(snapshot.started_at, displayLocale)}
+          </div>
+        ) : null}
         {snapshot.finished_at ? (
-          <div>Finished {formatRelativeTime(snapshot.finished_at)}</div>
+          <div>
+            {ui("Finished")} {formatRelativeTime(snapshot.finished_at, displayLocale)}
+          </div>
         ) : (
-          <div>Last update {formatRelativeTime(snapshot.updated_at)}</div>
+          <div>
+            {ui("Last update")} {formatRelativeTime(snapshot.updated_at, displayLocale)}
+          </div>
         )}
-        {snapshot.state_detail ? <div>Detail: {snapshot.state_detail}</div> : null}
-        {snapshot.attempt > 1 ? <div>Attempt: {snapshot.attempt}</div> : null}
+        {snapshot.state_detail ? (
+          <div>
+            {ui("Detail:")} {snapshot.state_detail}
+          </div>
+        ) : null}
+        {snapshot.attempt > 1 ? (
+          <div>
+            {ui("Attempt:")} {snapshot.attempt}
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <MessageSquare className="h-3.5 w-3.5" /> Message thread
+          <MessageSquare className="h-3.5 w-3.5" /> {ui("Message thread")}
         </div>
         {isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : error ? (
           <div className="text-xs text-destructive">
-            {error instanceof Error ? error.message : "Failed to load thread"}
+            {error instanceof Error ? error.message : ui("Failed to load thread")}
           </div>
         ) : messages.length === 0 ? (
           <div className="text-xs text-muted-foreground">
-            No messages exchanged with this task yet.
+            {ui("No messages exchanged with this task yet.")}
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -181,6 +207,8 @@ export function TaskCard({
   /** A live Chat surface can offer an answer beside this read-only card. */
   inputReplyHint?: string;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const [expanded, setExpanded] = useState(false);
   const terminal = isTerminalTaskState(task.state);
   const artifacts = task.artifacts ?? [];
@@ -204,33 +232,41 @@ export function TaskCard({
           <div className="flex flex-wrap items-center gap-2">
             {taskStateBadge(task.state)}
             {!terminal && task.cancel_requested_at ? (
-              <span className="text-xs text-muted-foreground">Cancel requested</span>
+              <span className="text-xs text-muted-foreground">{ui("Cancel requested")}</span>
             ) : null}
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              aria-label={expanded ? "Hide task details" : "Show task details"}
+              aria-label={expanded ? ui("Hide task details") : ui("Show task details")}
             >
               {expanded ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (
                 <ChevronRight className="h-4 w-4" />
               )}
-              Details
+              {ui("Details")}
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <div className="grid gap-1">
-          <div>Created: {formatRelativeTime(task.created_at)}</div>
-          {task.state_detail ? <div>Status: {task.state_detail}</div> : null}
+          <div>
+            {ui("Created:")} {formatRelativeTime(task.created_at, displayLocale)}
+          </div>
+          {task.state_detail ? (
+            <div>
+              {ui("Status:")} {task.state_detail}
+            </div>
+          ) : null}
         </div>
         <TaskProgressBar task={task} />
         {terminal && task.summary ? (
-          <div className="text-foreground">Summary: {task.summary}</div>
+          <div className="text-foreground">
+            {ui("Summary:")} {task.summary}
+          </div>
         ) : null}
         {task.error ? (
           <div className="text-destructive">
@@ -239,7 +275,7 @@ export function TaskCard({
         ) : null}
         {task.result_path ? (
           <div className="truncate">
-            Result:{" "}
+            {ui("Result:")}{" "}
             {sessionId ? (
               // Link to the session Files tab; no query-param deep-link to a
               // specific path exists yet — add ?path= support when available.
@@ -276,12 +312,12 @@ export function TaskCard({
                     className="text-primary underline-offset-4 hover:underline"
                   >
                     {artifact.name}
-                    {` (${artifact.path})`}
+                    {ui(" ({value0})", { value0: artifact.path })}
                   </Link>
                 ) : (
                   <span>
                     {artifact.name}
-                    {artifact.path ? ` (${artifact.path})` : ""}
+                    {artifact.path ? ui(" ({value0})", { value0: artifact.path }) : ""}
                   </span>
                 )}
               </div>
@@ -294,7 +330,7 @@ export function TaskCard({
               href={`/sessions/${childSessionId}/trace`}
               className="text-primary underline-offset-4 hover:underline"
             >
-              View child session
+              {ui("View child session")}
             </Link>
           </div>
         ) : null}

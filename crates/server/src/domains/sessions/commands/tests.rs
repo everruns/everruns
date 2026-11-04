@@ -94,6 +94,7 @@ fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
 
 async fn seed_harness(ctx: &Ctx) -> HarnessId {
     CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "limit-harness".to_string(),
         display_name: None,
         description: None,
@@ -277,6 +278,7 @@ async fn cancel_names_the_running_turn() {
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         ))
         .await
@@ -470,6 +472,8 @@ async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
         .create_agent(
             ctx.org_id(),
             crate::storage::CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: public_id.clone(),
                 name: name.to_string(),
                 display_name: None,
@@ -506,6 +510,7 @@ async fn create_session_from_agent_inherits_agent_harness() {
     let ctx = test_ctx(db.clone(), 10);
     let agent_harness = seed_harness(&ctx).await;
     let override_harness = CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "override-harness".to_string(),
         display_name: None,
         description: None,
@@ -612,6 +617,8 @@ async fn participant_commands_list_add_and_leave_history() {
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: host_public_id.to_string(),
                 name: "participant-host".to_string(),
                 display_name: None,
@@ -642,6 +649,8 @@ async fn participant_commands_list_add_and_leave_history() {
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: member_public_id.to_string(),
                 name: "participant-member".to_string(),
                 display_name: None,

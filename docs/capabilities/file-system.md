@@ -8,7 +8,7 @@ appliesTo: [framework, platform, cloud]
 |---|---|
 | **ID** | `session_file_system` |
 | **Category** | File Operations |
-| **Features** | `file_system` (enables Workspace tab) |
+| **Features** | `file_system` (enables the Files tab) |
 | **Dependencies** | None |
 
 Provides tools to access and manipulate files in the session workspace. Each session has an isolated filesystem rooted at `/workspace`. Files persist for the session duration. `read_file` and `write_file` return a `content_hash` (`sha256:...`) so agents can make freshness-checked `edit_file` calls.
@@ -51,6 +51,13 @@ Apply one or more exact text replacements to an existing text file. This tool is
 | `path` | string | yes | Absolute path to an existing text file |
 | `expected_hash` | string | yes | Current `content_hash` (`sha256:...`) |
 | `edits` | array | yes | One or more `{ old_text, new_text }` replacements matched against the original file. Use a single-element array for one replacement. |
+
+If `old_text` has no exact match, the error identifies the failed edit and may show
+up to three similar lines with line numbers. These are recovery hints only: read
+the file again and copy the exact text before retrying. The hint search is bounded
+and may omit distant or long lines. A substantial, unique whole-line `new_text`
+match may suggest that this edit was already applied, but does not establish its
+intended location or completion of other edits. Failed batches write nothing.
 
 Legacy top-level `old_text`/`new_text` are still accepted for backward compatibility, they are folded into `edits[]`, but new callers should always use `edits[]`.
 

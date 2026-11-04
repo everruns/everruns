@@ -12,6 +12,32 @@ Everruns supports multiple observability backends via the `EventListener` patter
 
 For the canonical event type registry and EventContext definition, see `knowledge/execution/events.md` and `crates/core/src/events.rs`.
 
+## Customer destinations
+
+Customer exports are organization-owned operational settings, separate from
+platform exporters and immutable agent packages. New turns resolve the
+organization defaults and the authoritative invocation responder's policy;
+that routing stays fixed through the turn. Missing invocation identity fails
+closed. Delayed starts reject policies and destination configuration saved after the turn began. Replayed or pre-restart turns never acquire newer routing consent. Child sessions resolve their own
+policy. Personal Chat and its descendants never enter customer export routing.
+
+[Routing and fan-out](../../crates/server/src/domains/trace_exports/router.rs) own
+bounded best-effort queues. Destination workers isolate slow receivers; queue
+pressure loses telemetry rather than blocking execution. The configured capture
+policy defaults to metadata, with messages/tools and reasoning separately opted
+in. Deployment exporter settings do not supply customer authentication.
+
+The [transport boundary](../../crates/server/src/domains/trace_exports/transport.rs)
+rechecks destination revision and pause state on every send, including retries,
+and uses tenant-scoped host egress with DNS pinning. Credentials are encrypted
+and write-only. Receiver changes require new authentication. History restores
+routing and safe labels/pause state while preserving current credentials and
+manual content controls. Shared guarded Save/Undo applies to routing forms;
+credential dialogs remain protected manual UI.
+
+[Public setup and delivery limits](../../docs/observability/destinations.md)
+explain assignment, test traces, receiver acceptance, and troubleshooting.
+
 ## Common Architecture
 
 ### Span Hierarchy

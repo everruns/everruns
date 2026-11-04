@@ -4,6 +4,7 @@
 // kind, batches, gaps and the unloaded-turns bars. Layout follows the design
 // handoff: gutter, spine with an icon tile, content, waterfall.
 
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import {
   Bot,
@@ -22,14 +23,21 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
+import { ReactionChips } from "@/components/chat/message-reactions";
+import type { ReactionSummary } from "@/lib/api/message-reactions";
+import { readOrigin, ORIGIN_LABEL_KEY, type MessageOrigin } from "@/lib/message-origin";
 import {
+  errorCodeLabel,
   formatClock,
   formatCount,
   formatDuration,
   formatOffset,
   isSimulatedResult,
+  retrySummary,
   turnSpanMs,
   turnSummary,
   waterfallBar,
@@ -75,12 +83,13 @@ export function UnloadedBar({
   onLoad: () => void;
   onJumpToError?: () => void;
 }) {
+  const ui = useUiTranslations();
   const Icon = edge === "earlier" ? ChevronsUp : ChevronsDown;
   return (
     <div className="flex flex-wrap items-center gap-3 border bg-muted/50 px-4 py-2.5 text-sm">
       <Icon className="size-4 text-muted-foreground" aria-hidden />
       <span className="font-medium">
-        Turns {formatCount(from)}–{formatCount(to)} not loaded
+        {ui("Turns")} {formatCount(from)}–{formatCount(to)} {ui("not loaded")}
       </span>
       <span className="text-muted-foreground">
         {[
@@ -95,11 +104,11 @@ export function UnloadedBar({
       <div className="ml-auto flex gap-2">
         {onJumpToError && (
           <Button variant="outline" size="sm" onClick={onJumpToError} disabled={busy}>
-            Jump to error
+            {ui("Jump to error")}
           </Button>
         )}
         <Button variant="outline" size="sm" onClick={onLoad} disabled={busy}>
-          {edge === "earlier" ? "Load 20 earlier" : "Load 20 later"}
+          {edge === "earlier" ? ui("Load 20 earlier") : ui("Load 20 later")}
         </Button>
       </div>
     </div>
@@ -111,52 +120,85 @@ export function TurnHeader({
   collapsed,
   onToggle,
   showScale,
+  reactions,
 }: {
   turn: TraceTurn;
   collapsed: boolean;
   onToggle: () => void;
   showScale: boolean;
+  /** Reactions on the message that started the turn. */
+  reactions?: ReactionSummary[];
 }) {
+  const ui = useUiTranslations();
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const duration = turn.duration_ms ?? null;
+  const origin = readOrigin(turn.origin);
   return (
     <div className="mt-5 border border-b-0 bg-card first:mt-0">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={!collapsed}
-        className="flex w-full items-start gap-3 border-b bg-accent/9 px-4 py-3.5 text-left hover:bg-accent/14"
+        // Gold wash: a person started the turn. Gray surface with a gray edge:
+        // the platform did (schedule run, trigger, update, notice). Every turn
+        // stays a turn; nothing is folded (knowledge/execution/message-origin.md).
+        className={cn(
+          "flex w-full items-start gap-3 border-b px-4 py-3.5 text-left",
+          origin
+            ? "border-l-[3px] border-l-muted-foreground/40 bg-muted/70 hover:bg-muted"
+            : "bg-accent/9 hover:bg-accent/14",
+        )}
       >
         <Chevron className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="font-mono text-[11px] tracking-[0.04em] text-muted-foreground">
-            TURN {formatCount(turn.turn)} · {formatClock(turn.started_at)} · user
+            {ui("TURN")} {formatCount(turn.turn)} · {formatClock(turn.started_at)}{" "}
+            {origin ? <TurnOrigin origin={origin} /> : ui("· user")}
           </div>
-          <div className="mt-1 line-clamp-3 text-sm font-medium leading-normal break-words">
-            {turn.prompt || <span className="italic text-muted-foreground">No prompt</span>}
+          <div
+            className={cn(
+              "mt-1 line-clamp-3 text-sm leading-normal break-words",
+              origin ? "text-muted-foreground" : "font-medium",
+            )}
+          >
+            {turn.prompt || <span className="italic text-muted-foreground">{ui("No prompt")}</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {turn.status === "running" ? (
-            <span className="font-mono text-foreground">running</span>
+            <span className="font-mono text-foreground">{ui("running")}</span>
           ) : (
             duration !== null && (
               <span className="font-mono text-foreground">{formatDuration(duration)}</span>
             )
           )}
           <span>{turnSummary(turn)}</span>
-          {turn.error_count > 0 && (
+          {errorCodeLabel(turn.error_code) && (
+            <span className="inline-flex items-center gap-1 border border-destructive/35 bg-destructive/8 px-1.5 text-[11px] leading-5 font-medium text-destructive">
+              <CircleAlert className="size-3" aria-hidden />
+              {errorCodeLabel(turn.error_code)}
+            </span>
+          )}
+          {turn.error_count > (errorCodeLabel(turn.error_code) ? 1 : 0) && (
             <span className="inline-flex items-center gap-1 text-destructive">
               <CircleAlert className="size-3.5" aria-hidden />
-              {formatCount(turn.error_count)} error{turn.error_count === 1 ? "" : "s"}
+              {formatCount(turn.error_count)} {ui("error")}
+              {turn.error_count === 1 ? "" : "s"}
             </span>
           )}
         </div>
       </button>
+      {reactions && reactions.length > 0 && (
+        // Outside the toggle: the chips are buttons of their own.
+        <ReactionChips reactions={reactions} className="border-b px-4 py-2 pl-11" />
+      )}
       {!collapsed && showScale && (
-        <div className="hidden justify-end px-0 pt-1 min-[1100px]:flex">
-          <div className="flex w-40 justify-between pr-4 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
-            <span>0s</span>
+        <div className="relative hidden items-center justify-end pt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground min-[1100px]:flex">
+          <span className="absolute inset-y-0 left-[67px] w-px bg-border" aria-hidden />
+          <span className="mr-3 uppercase">{ui("Timeline")}</span>
+          <div className="flex w-40 justify-between pr-4">
+            <span>{ui("0s")}</span>
+            <span>{formatDuration(turnSpanMs(turn) / 2)}</span>
             <span>{formatDuration(turnSpanMs(turn))}</span>
           </div>
         </div>
@@ -165,7 +207,42 @@ export function TurnHeader({
   );
 }
 
-export function TurnFooter({ turn }: { turn: TraceTurn }) {
+/** Who started an automatic turn: icon, kind, name, run counter and id. */
+function TurnOrigin({ origin }: { origin: MessageOrigin }) {
+  const { t } = useLocale();
+  const Icon = ORIGIN_ICON[origin.kind];
+  const run = origin.run;
+  const counter =
+    run?.number === undefined
+      ? null
+      : run.limit === undefined
+        ? t("origin_run_number", { number: run.number })
+        : t("origin_run", { number: run.number, limit: run.limit });
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
+      <span>·</span>
+      <Icon className="size-3.5 text-foreground" aria-hidden />
+      <span className="font-medium text-foreground">{t(ORIGIN_LABEL_KEY[origin.kind])}</span>
+      {origin.name && <span>· {origin.name}</span>}
+      {counter && <span className="border px-1 leading-4">{counter}</span>}
+      {origin.source_id && (
+        <span className="border px-1 leading-4" title={origin.source_id}>
+          {origin.source_id.length > 14 ? `${origin.source_id.slice(0, 13)}…` : origin.source_id}
+        </span>
+      )}
+    </span>
+  );
+}
+
+export function TurnFooter({
+  turn,
+  reactions,
+}: {
+  turn: TraceTurn;
+  /** Reactions on the agent's reply in this turn. */
+  reactions?: ReactionSummary[];
+}) {
+  const ui = useUiTranslations();
   const tokens = turn.input_tokens + turn.output_tokens;
   const label =
     turn.status === "running"
@@ -173,30 +250,56 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
       : turn.status === "completed"
         ? "Turn completed"
         : `Turn ${turn.status}`;
+  const failed = turn.status === "failed";
+  // Step errors in a turn that still completed; a failed turn's header already counts them.
+  const stepErrors = failed ? 0 : turn.error_count;
   return (
     <div className="border border-t-0 bg-card">
-      <div
-        className={cn(
-          "flex flex-wrap gap-x-2 border-t border-border/60 py-2.5 pr-4 pl-[84px] text-xs text-muted-foreground",
-          turn.status === "failed" && "text-destructive",
-        )}
-      >
-        <span className="font-medium">{label}</span>
+      <div className="relative flex flex-wrap gap-x-2 pt-3 pr-4 pb-2.5 pl-[84px] text-xs text-muted-foreground">
+        <span className="absolute top-0 left-[67px] h-[18px] w-px bg-border" aria-hidden />
+        <span
+          className={cn(
+            "absolute top-[16px] left-[63px] size-[9px] rounded-full border",
+            failed ? "border-destructive bg-destructive" : "border-muted-foreground/60 bg-card",
+          )}
+          aria-hidden
+        />
+        <span className={cn("font-medium", failed && "text-destructive")}>{label}</span>
         <span>
-          {formatCount(turn.step_count)} step{turn.step_count === 1 ? "" : "s"}
-          {tokens ? ` · ${formatCount(tokens)} tokens` : ""}
-          {turn.duration_ms != null ? ` · ${formatDuration(turn.duration_ms)}` : ""}
+          {formatCount(turn.step_count)} {ui("step")}
+          {turn.step_count === 1 ? "" : "s"}
+          {tokens ? ui(" · {value0} tokens", { value0: formatCount(tokens) }) : ""}
+          {turn.duration_ms != null
+            ? ui(" · {value0}", { value0: formatDuration(turn.duration_ms) })
+            : ""}
         </span>
-        {turn.error && <span className="w-full truncate text-destructive">{turn.error}</span>}
+        {stepErrors > 0 && (
+          <span className="text-destructive">
+            {formatCount(stepErrors)} {ui("error")}
+            {stepErrors === 1 ? "" : "s"}
+          </span>
+        )}
+        {turn.error && (
+          <span className="mt-0.5 line-clamp-2 w-full break-words text-foreground/80">
+            {turn.error}
+          </span>
+        )}
+        {reactions && reactions.length > 0 && (
+          <div className="mt-1 flex w-full flex-wrap items-center gap-2">
+            <span>{ui("Reactions on the reply")}</span>
+            <ReactionChips reactions={reactions} />
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 export function EmptyTurnRow() {
+  const ui = useUiTranslations();
   return (
     <div className="border-x bg-card py-3 pl-[84px] text-sm italic text-muted-foreground">
-      No steps match the current filter.
+      {ui("No steps match the current filter.")}
     </div>
   );
 }
@@ -218,6 +321,7 @@ function Waterfall({
   return (
     <div className="hidden w-40 shrink-0 pt-4 pr-4 min-[1100px]:block" aria-hidden>
       <div className="relative h-1.5 bg-muted">
+        <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
         <div
           className={cn("absolute inset-y-0", color, running && "animate-tool-progress-active")}
           style={{ left: `${left * 100}%`, width: `max(2px, ${width * 100}%)` }}
@@ -258,9 +362,11 @@ function RowShell({
       role={onSelect ? "button" : undefined}
       tabIndex={onSelect ? 0 : undefined}
       aria-pressed={onSelect ? selected : undefined}
-      onClick={onSelect}
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest("a, button, input")) onSelect?.();
+      }}
       onKeyDown={(e) => {
-        if (onSelect && (e.key === "Enter" || e.key === " ")) {
+        if (e.target === e.currentTarget && onSelect && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onSelect();
         }
@@ -268,7 +374,6 @@ function RowShell({
       className={cn(
         "relative flex border-x bg-card",
         onSelect && "cursor-pointer hover:bg-muted/70",
-        error && "bg-destructive/4",
         selected && "bg-primary/5",
         nested && "pl-6",
       )}
@@ -340,6 +445,7 @@ export function StepRow({
   turn,
   step,
   view,
+  plainText,
   selected,
   onSelect,
   nested,
@@ -348,17 +454,19 @@ export function StepRow({
   turn: TraceTurn;
   step: TraceStep;
   view: "all" | "messages" | "tools";
+  plainText: boolean;
   selected: boolean;
   onSelect: () => void;
   nested?: boolean;
   expand?: ExpandToggle;
 }) {
+  const ui = useUiTranslations();
   const error = step.status === "error";
   const running = step.status === "running";
-  const Icon = error ? CircleAlert : (KIND_ICON[step.kind] ?? Wrench);
+  const Icon = KIND_ICON[step.kind] ?? Wrench;
   return (
     <RowShell
-      label={`#${step.step}`}
+      label={ui("#{value0}", { value0: step.step })}
       offset={formatOffset(step.offset_ms)}
       icon={Icon}
       tile={tileFor(step.kind)}
@@ -377,13 +485,27 @@ export function StepRow({
         />
       }
     >
-      <StepContent step={step} view={view} />
+      <StepContent step={step} view={view} plainText={plainText} onShowError={onSelect} />
     </RowShell>
   );
 }
 
-function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages" | "tools" }) {
+function StepContent({
+  step,
+  view,
+  plainText,
+  onShowError,
+}: {
+  step: TraceStep;
+  view: "all" | "messages" | "tools";
+  plainText: boolean;
+  onShowError: () => void;
+}) {
+  const ui = useUiTranslations();
   const error = step.status === "error";
+  const errorQuote = error && step.result && (
+    <ErrorQuote text={step.result} onShowFull={onShowError} />
+  );
   switch (step.kind) {
     case "model":
     case "answer": {
@@ -397,7 +519,7 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
           {view === "all" && (
             <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">
-                {step.kind === "answer" ? "Final answer" : "Model call"}
+                {step.kind === "answer" ? ui("Final answer") : ui("Model call")}
               </span>
               {tokens && <span className="font-mono">{tokens}</span>}
               {step.duration_ms != null && (
@@ -405,21 +527,30 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
               )}
               {requested > 0 && (
                 <span>
-                  requested {requested} tool call{requested === 1 ? "" : "s"}
+                  {ui("requested")} {requested} {ui("tool call")}
+                  {requested === 1 ? "" : "s"}
                 </span>
               )}
-              {error && step.result && <span className="text-destructive">{step.result}</span>}
+              {retrySummary(step) && <span className="text-warning">{retrySummary(step)}</span>}
+              {error && <FailedBadge />}
             </div>
           )}
+          {errorQuote}
           {step.narration && (
-            <p
+            <div
               className={cn(
-                "text-sm leading-[1.55] break-words whitespace-pre-wrap",
+                "min-w-0 text-sm leading-[1.55] break-words",
                 step.kind === "answer" && "border-l border-primary/65 pl-3.5",
               )}
             >
-              {step.narration}
-            </p>
+              {plainText ? (
+                <p className="whitespace-pre-wrap">{step.narration}</p>
+              ) : (
+                <StreamdownMessage variant="compact" skipHtml>
+                  {step.narration}
+                </StreamdownMessage>
+              )}
+            </div>
           )}
         </>
       );
@@ -428,10 +559,11 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
       return (
         <>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Sub-agent</span>
+            <span className="text-xs font-medium text-muted-foreground">{ui("Sub-agent")}</span>
             {step.target && (
               <span className="truncate text-[13px] font-semibold">{step.target}</span>
             )}
+            {error && <FailedBadge />}
             {step.child_session_id && (
               <Link
                 href={`/sessions/${step.child_session_id}/trace`}
@@ -445,17 +577,19 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
               {formatDuration(step.duration_ms)}
             </span>
           </div>
-          {step.result && (
-            <ResultLine error={error}>
-              <span className="break-words">{step.result}</span>
-            </ResultLine>
-          )}
+          {error
+            ? errorQuote
+            : step.result && (
+                <ResultLine error={false}>
+                  <span className="break-words">{step.result}</span>
+                </ResultLine>
+              )}
         </>
       );
     case "approval":
       return (
         <>
-          <div className="text-[13px] font-medium">Approval recorded</div>
+          <div className="text-[13px] font-medium">{ui("Approval recorded")}</div>
           <div className="flex flex-wrap gap-x-2 text-xs">
             {step.target && <span className="font-mono text-muted-foreground">{step.target}</span>}
             {step.result && (
@@ -471,6 +605,7 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
             <span className="shrink-0 font-mono text-[13px] font-semibold whitespace-nowrap">
               {step.name ?? step.kind}
             </span>
+            {error && <FailedBadge />}
             {step.target && (
               <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
                 {step.target}
@@ -478,21 +613,58 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
             )}
             {isSimulatedResult(step.result) && (
               <span className="shrink-0 border border-warning/40 bg-warning/10 px-1.5 text-[11px] text-warning">
-                Simulated
+                {ui("Simulated")}
               </span>
             )}
             <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
-              {step.status === "running" ? "running" : formatDuration(step.duration_ms)}
+              {step.status === "running" ? ui("running") : formatDuration(step.duration_ms)}
             </span>
           </div>
-          {step.result && (
-            <ResultLine error={error}>
-              <span className="truncate">{step.result}</span>
-            </ResultLine>
-          )}
+          {error
+            ? errorQuote
+            : step.result && (
+                <ResultLine error={false}>
+                  <span className="truncate">{step.result}</span>
+                </ResultLine>
+              )}
         </>
       );
   }
+}
+
+function FailedBadge() {
+  const ui = useUiTranslations();
+  return (
+    <span className="shrink-0 self-center border border-destructive/35 bg-destructive/8 px-1.5 font-sans text-[11px] leading-4 font-medium text-destructive">
+      {ui("Failed")}
+    </span>
+  );
+}
+
+/**
+ * A step's error, set off like the final answer's quote but with a red edge, so it
+ * reads as the step's outcome rather than a banner. Three lines here; the inspector
+ * holds the full error.
+ */
+function ErrorQuote({ text, onShowFull }: { text: string; onShowFull: () => void }) {
+  const ui = useUiTranslations();
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <p className="line-clamp-3 border-l-2 border-destructive/70 pl-3 font-mono text-xs leading-normal break-words text-foreground/85">
+        {text}
+      </p>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onShowFull();
+        }}
+        className="pl-3.5 text-xs font-medium text-primary underline underline-offset-2 hover:no-underline"
+      >
+        {ui("Show full error")}
+      </button>
+    </div>
+  );
 }
 
 function ResultLine({ error, children }: { error: boolean; children: React.ReactNode }) {
@@ -522,10 +694,11 @@ export function BatchRow({
   onSelect: () => void;
   expand?: ExpandToggle;
 }) {
+  const ui = useUiTranslations();
   const okShare = batch.count ? batch.succeeded / batch.count : 0;
   return (
     <RowShell
-      label={`#${batch.first_step}`}
+      label={ui("#{value0}", { value0: batch.first_step })}
       offset={formatOffset(batch.offset_ms)}
       icon={Layers}
       tile="border-border bg-accent/12"
@@ -560,14 +733,24 @@ export function BatchRow({
       </div>
       <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
         <span>
-          {formatCount(batch.succeeded)} succeeded
-          {batch.p50_ms != null ? ` · p50 ${formatDuration(batch.p50_ms)}` : ""}
-          {batch.p95_ms != null ? ` · p95 ${formatDuration(batch.p95_ms)}` : ""}
+          {formatCount(batch.succeeded)} {ui("succeeded")}
+          {batch.p50_ms != null
+            ? ui(" · p50 {value0}", { value0: formatDuration(batch.p50_ms) })
+            : ""}
+          {batch.p95_ms != null
+            ? ui(" · p95 {value0}", { value0: formatDuration(batch.p95_ms) })
+            : ""}
         </span>
         {batch.failed > 0 && (
-          <span className="text-destructive">{formatCount(batch.failed)} failed</span>
+          <span className="text-destructive">
+            {formatCount(batch.failed)} {ui("failed")}
+          </span>
         )}
-        {batch.running > 0 && <span>{formatCount(batch.running)} running</span>}
+        {batch.running > 0 && (
+          <span>
+            {formatCount(batch.running)} {ui("running")}
+          </span>
+        )}
       </div>
     </RowShell>
   );
@@ -582,14 +765,17 @@ export function GapRow({
   busy: boolean;
   onShowMore: () => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="flex flex-wrap items-center gap-3 border-x bg-muted/40 py-2.5 pr-4 pl-[84px] text-xs text-muted-foreground">
       <span>
-        {formatCount(gap.count)} steps hidden (#{gap.first_step}–#{gap.last_step})
+        {formatCount(gap.count)} {ui("steps hidden (#")}
+        {gap.first_step}–#{gap.last_step})
       </span>
       {gap.errors > 0 && (
         <span className="text-destructive">
-          {formatCount(gap.errors)} error{gap.errors === 1 ? "" : "s"}
+          {formatCount(gap.errors)} {ui("error")}
+          {gap.errors === 1 ? "" : "s"}
         </span>
       )}
       <Button
@@ -599,7 +785,7 @@ export function GapRow({
         onClick={onShowMore}
         disabled={busy}
       >
-        Show {formatCount(Math.min(100, gap.count))} more
+        {ui("Show")} {formatCount(Math.min(100, gap.count))} {ui("more")}
       </Button>
     </div>
   );
@@ -613,33 +799,37 @@ export function ExpansionFooter({
   expansion: Expansion;
   onMore?: () => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="flex flex-wrap items-center gap-3 border-x bg-muted/40 py-2 pr-4 pl-[108px] text-xs text-muted-foreground">
       {expansion.loading ? (
-        <span>Loading…</span>
+        <span>{ui("Loading…")}</span>
       ) : expansion.error ? (
-        <span className="text-destructive">Could not load: {expansion.error}</span>
+        <span className="text-destructive">
+          {ui("Could not load:")} {expansion.error}
+        </span>
       ) : expansion.steps.length === 0 ? (
-        <span>No steps yet.</span>
+        <span>{ui("No steps yet.")}</span>
       ) : null}
       {!expansion.loading && expansion.nextStep != null && onMore && (
         <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onMore}>
-          Show more calls from #{expansion.nextStep}
+          {ui("Show more calls from #")}
+          {expansion.nextStep}
         </Button>
       )}
       {!expansion.loading && expansion.childSessionId && (
         <>
           {!!expansion.hiddenTurns && (
             <span>
-              {formatCount(expansion.hiddenTurns)} earlier turn
-              {expansion.hiddenTurns === 1 ? "" : "s"} not shown
+              {formatCount(expansion.hiddenTurns)} {ui("earlier turn")}
+              {expansion.hiddenTurns === 1 ? "" : "s"} {ui("not shown")}
             </span>
           )}
           <Link
             href={`/sessions/${expansion.childSessionId}/trace`}
             className="font-medium text-primary hover:underline"
           >
-            Open the sub-agent&apos;s trace
+            {ui("Open the sub-agent's trace")}
           </Link>
         </>
       )}

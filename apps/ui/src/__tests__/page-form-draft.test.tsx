@@ -87,6 +87,29 @@ it("invalidates an old adapter immediately when the field schema changes", () =>
 });
 beforeEach(() => saved.mockClear());
 
+it("reviews both values and undoes one field without losing another field's changes", () => {
+  render(
+    <PageChatProvider value={mode}>
+      <Form />
+    </PageChatProvider>,
+  );
+  const before = adapter.read(adapter.describe().binding);
+  act(() => {
+    adapter.patch(before.binding, before.revision, {
+      name: "Chat name",
+      description: "Chat description",
+    });
+  });
+  expect(screen.getByText("Existing")).toBeInTheDocument();
+  expect(screen.getByText("Chat name")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Undo name" }));
+  expect(screen.getByLabelText("Name")).toHaveValue("Existing");
+  expect(adapter.read(adapter.describe().binding).values.description).toBe("Chat description");
+  expect(screen.getByText("Review changes (1)")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Undo description" }));
+  expect(adapter.read(adapter.describe().binding).values.description).toBe("Manual requirement");
+});
+
 it("edits the existing draft, supports Undo, and saves only through the normal action", () => {
   render(
     <PageChatProvider value={mode}>

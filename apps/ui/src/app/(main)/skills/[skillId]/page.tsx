@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { use } from "react";
 import { Archive, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +35,8 @@ import {
 } from "@/components/layout";
 
 export default function SkillDetailPage({ params }: { params: Promise<{ skillId: string }> }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { skillId } = use(params);
   const { data: skill, isLoading: skillLoading } = useSkill(skillId);
   const {
@@ -38,7 +46,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
   } = useSkillContent(skillId);
   const { data: usage } = useSkillsUsage();
   const { can } = usePolicies("skills");
-  usePageTitle(skill ? getDisplayName(skill) : null, "Skill");
+  usePageTitle(skill ? getDisplayName(skill, displayLocale) : null, ui("Skill"));
 
   if (skillLoading) {
     return (
@@ -54,8 +62,10 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
   if (!skill) {
     return (
       <ResourceNotFound
-        title="Skill not found"
-        description="This skill may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Skill not found")}
+        description={ui(
+          "This skill may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/skills"
         backLabel="Back to skills"
         resourceId={skillId}
@@ -68,14 +78,19 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[{ label: "Skills", href: "/skills" }, { label: getDisplayName(skill) }]}
+        items={[
+          { label: ui("Skills"), href: "/skills" },
+          { label: getDisplayName(skill, displayLocale) },
+        ]}
       />
 
       <PageMasthead
         icon={skill.source_type === "archive" ? <Archive /> : <FileText />}
         entityId={skill.id}
         title={
-          <span className={getEntityNameClassName(skill.status)}>{getDisplayName(skill)}</span>
+          <span className={getEntityNameClassName(skill.status)}>
+            {getDisplayName(skill, displayLocale)}
+          </span>
         }
         badges={
           <>
@@ -89,17 +104,17 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
         meta={
           <>
             <span>
-              Version <span className="text-primary">v{skill.version}</span>
+              {ui("Version")} <span className="text-primary">v{skill.version}</span>
             </span>
             {skill.license && (
               <span>
-                License <span className="text-foreground">{skill.license}</span>
+                {ui("License")} <span className="text-foreground">{skill.license}</span>
               </span>
             )}
             <span>
-              Created{" "}
+              {ui("Created")}{" "}
               <span className="text-foreground">
-                {new Date(skill.created_at).toLocaleDateString()}
+                {new Date(skill.created_at).toLocaleDateString(displayLocale)}
               </span>
             </span>
           </>
@@ -108,7 +123,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
           <EntityActionsMenu
             entityRef={skill.id}
             kind="skill"
-            entityName={getDisplayName(skill)}
+            entityName={getDisplayName(skill, displayLocale)}
             permissions={{ manage: can("skill.manage") }}
           />
         }
@@ -126,36 +141,36 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
         </PageMain>
 
         <PageRail>
-          <RailSection label="Used by">
+          <RailSection label={ui("Used by")}>
             <SkillUsageRow usage={skillUsage} />
           </RailSection>
 
-          <RailSection label="Details">
+          <RailSection label={ui("Details")}>
             <dl className="flex flex-col gap-2 text-[13px]">
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted-foreground">Source</dt>
+                <dt className="text-muted-foreground">{ui("Source")}</dt>
                 <dd className="text-foreground">{skill.source_type}</dd>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted-foreground">Version</dt>
+                <dt className="text-muted-foreground">{ui("Version")}</dt>
                 <dd className="text-foreground">v{skill.version}</dd>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted-foreground">License</dt>
+                <dt className="text-muted-foreground">{ui("License")}</dt>
                 <dd className="text-foreground">{skill.license ?? "-"}</dd>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted-foreground">Compatibility</dt>
+                <dt className="text-muted-foreground">{ui("Compatibility")}</dt>
                 <dd className="text-foreground">{skill.compatibility ?? "-"}</dd>
               </div>
               <div className="flex flex-col gap-0.5">
-                <dt className="text-muted-foreground">Allowed tools</dt>
+                <dt className="text-muted-foreground">{ui("Allowed tools")}</dt>
                 <dd className="break-words text-foreground">{skill.allowed_tools ?? "-"}</dd>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted-foreground">Updated</dt>
+                <dt className="text-muted-foreground">{ui("Updated")}</dt>
                 <dd className="text-foreground">
-                  {new Date(skill.updated_at).toLocaleDateString()}
+                  {new Date(skill.updated_at).toLocaleDateString(displayLocale)}
                 </dd>
               </div>
             </dl>
@@ -164,7 +179,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
       </PageColumns>
 
       <PageFooter>
-        <BackLink href="/skills">Back to Skills</BackLink>
+        <BackLink href="/skills">{ui("Back to Skills")}</BackLink>
       </PageFooter>
     </PageContainer>
   );

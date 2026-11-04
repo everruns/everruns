@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useOrg } from "@/providers/org-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
@@ -49,7 +51,8 @@ import { formatRelativeTime } from "@/lib/formatting";
 type StatusTab = "active" | "archived";
 
 export default function MemoryPage() {
-  usePageTitle("Memory");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Memory"));
   const { currentOrg } = useOrg();
   const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
@@ -75,22 +78,22 @@ export default function MemoryPage() {
   }, [list, showArchived]);
 
   const statusItems = [
-    { value: "active" as const, label: "Active" },
-    { value: "archived" as const, label: "Archived" },
+    { value: "active" as const, label: ui("Active") },
+    { value: "archived" as const, label: ui("Archived") },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Memory" }]} />
+      <PageBreadcrumb items={[{ label: ui("Memory") }]} />
 
       <PageMasthead
         icon={<MemoryIcon />}
-        title="Memory"
-        description="Knowledge stores that agents can read: manual notes or synced from Git."
+        title={ui("Memory")}
+        description={ui("Knowledge stores that agents can read: manual notes or synced from Git.")}
         actions={
           <Button variant="accent" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
-            New Memory
+            {ui("New Memory")}
           </Button>
         }
       />
@@ -100,8 +103,8 @@ export default function MemoryPage() {
           containerClassName="w-64"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search memory"
-          aria-label="Search memory"
+          placeholder={ui("Search memory")}
+          aria-label={ui("Search memory")}
         />
         <div className="flex-1" />
         <SectionTabs
@@ -121,12 +124,12 @@ export default function MemoryPage() {
           emptyState={
             <EmptyState
               icon={<MemoryIcon />}
-              title={search.trim() ? "No memory found" : "No memory"}
+              title={search.trim() ? ui("No memory found") : ui("No memory")}
               action={
                 !search.trim() && (
                   <Button variant="accent" onClick={() => setCreateOpen(true)}>
                     <Plus className="size-4" />
-                    New Memory
+                    {ui("New Memory")}
                   </Button>
                 )
               }
@@ -198,6 +201,8 @@ function MemoryCard({
   onSync: (memory: Memory) => void;
   isSyncing: boolean;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const isReadOnly = isReadOnlyStatus(memory.status);
   const canSync = memory.source_type !== "manual" && memory.status === "active";
 
@@ -210,7 +215,7 @@ function MemoryCard({
       headerActions={
         <div className="flex flex-col items-end gap-1">
           <EntityStatus status={memory.status} />
-          {memory.is_readonly && <Badge variant="secondary">Read-only</Badge>}
+          {memory.is_readonly && <Badge variant="secondary">{ui("Read-only")}</Badge>}
         </div>
       }
       footer={
@@ -230,12 +235,12 @@ function MemoryCard({
                   }
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Sync
+                  {ui("Sync")}
                 </Button>
               )}
               <LinkButton variant="outline" size="sm" href={`/memory/${memory.id}`}>
                 <FolderOpen className="h-4 w-4" />
-                Open
+                {ui("Open")}
               </LinkButton>
               <Button
                 variant="outline"
@@ -244,12 +249,12 @@ function MemoryCard({
                 disabled={isReadOnly}
               >
                 <Pencil className="h-4 w-4" />
-                Edit
+                {ui("Edit")}
               </Button>
               {!isReadOnly && (
                 <Button variant="outline" size="sm" onClick={() => onArchive(memory)}>
                   <Archive className="h-4 w-4" />
-                  Archive
+                  {ui("Archive")}
                 </Button>
               )}
             </div>
@@ -257,10 +262,10 @@ function MemoryCard({
         />
       }
     >
-      <EntityCardDescription>{memory.description || "No description"}</EntityCardDescription>
+      <EntityCardDescription>{memory.description || ui("No description")}</EntityCardDescription>
       <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
         <div>
-          <div className="font-medium text-foreground">Source</div>
+          <div className="font-medium text-foreground">{ui("Source")}</div>
           <div className="flex items-center gap-1">
             {memory.source_type === "github" ? (
               <Github className="h-3.5 w-3.5" />
@@ -269,16 +274,16 @@ function MemoryCard({
             ) : (
               <HardDrive className="h-3.5 w-3.5" />
             )}
-            <span>{memory.source_type === "manual" ? "Manual" : memory.source_type}</span>
+            <span>{memory.source_type === "manual" ? ui("Manual") : memory.source_type}</span>
           </div>
         </div>
         <div>
-          <div className="font-medium text-foreground">Sync</div>
+          <div className="font-medium text-foreground">{ui("Sync")}</div>
           <div>{formatSyncStatus(memory)}</div>
         </div>
         <div>
-          <div className="font-medium text-foreground">Updated</div>
-          <div>{formatRelativeTime(memory.updated_at)}</div>
+          <div className="font-medium text-foreground">{ui("Updated")}</div>
+          <div>{formatRelativeTime(memory.updated_at, displayLocale)}</div>
         </div>
       </div>
       {memory.last_sync_error && (

@@ -306,6 +306,37 @@ describe("NewPlaygroundChatForm", () => {
     );
   });
 
+  it("starts a fixed-sandbox Agent selected manually without rejecting its default", async () => {
+    setup({
+      agents: [
+        {
+          id: "agent_1",
+          name: "scout",
+          display_name: "Scout",
+          sandbox_policy: {
+            mode: "fixed",
+            default: "build",
+            templates: { build: { target: { kind: "managed", provider: "daytona" } } },
+          },
+        },
+      ],
+    });
+    render(<NewPlaygroundChatForm endUserId="identity_customer" />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "agent:agent_1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        request: {
+          agent_id: "agent_1",
+          source: "playground",
+          playground_user_id: "identity_customer",
+        },
+      }),
+    );
+  });
+
   it("creates a harness-bound thread without an agent", async () => {
     setup({
       harnesses: [

@@ -18,7 +18,11 @@ export function webMcpPermissionsPolicy(env: {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // `npm run build` generates route types and runs tsrs before compilation.
+  // Keep TypeScript installed for tools that consume its JavaScript API.
+  typescript: { ignoreBuildErrors: true },
   transpilePackages: [
+    "@everruns/generative-ui",
     "@rjsf/core",
     "@rjsf/utils",
     "@rjsf/validator-ajv8",
@@ -50,6 +54,10 @@ const nextConfig: NextConfig = {
     // THREAT[TM-WEB-014]: deny browser tool registration unless the deployment gate is open;
     // when open, keep discovery and invocation restricted to the document's own origin.
     return [
+      {
+        source: "/mcp-app/:path*",
+        headers: [{ key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" }],
+      },
       {
         source: "/:path*",
         headers: [

@@ -24,6 +24,7 @@ pub(super) async fn session(db: &Arc<StorageBackend>, org_id: i64) -> SessionId 
         db.create_harness(
             org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "base".to_string(),
                 display_name: None,
                 icon: None,

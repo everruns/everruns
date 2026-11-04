@@ -66,6 +66,17 @@ serving a real session, and comparing against the result after import. See the
 [Platform tests](../../crates/server/tests/domain/agent_packages_test.rs), and
 [serve tests](../../crates/serve/src/wire_tests.rs).
 
+## Display localization
+
+Locale-keyed display overlays belong to the authored package. They survive text,
+folder and ZIP round trips, semantic diffs, imports and clones. Stable addresses
+and execution instructions remain canonical. The shared
+[localization contract](../../crates/contracts/src/runtime/localization.rs)
+owns normalization and bounded validation; transports do not define independent
+translation formats. Complete imports replace overlays, while partial API edits
+preserve omitted fields. Revision restore includes overlays and clears newer
+translations when restoring a revision that predates them.
+
 ## File lifecycle
 
 The Agent owns the starting snapshot. Session creation seeds a newly

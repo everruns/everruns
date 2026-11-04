@@ -177,6 +177,24 @@ impl ContinuationBudget {
         }
     }
 
+    /// Rebuild a budget from what a durable log recorded: `turns` and
+    /// `tokens` already spent, `elapsed` since the first continuation. A host
+    /// that resumes a turn on another worker has no in-memory budget to keep,
+    /// so it reads the spend back instead of starting from zero.
+    pub fn resume(mut self, turns: u32, tokens: u64, elapsed: Duration) -> Self {
+        self.turns = turns;
+        self.tokens = tokens;
+        self.started = Instant::now()
+            .checked_sub(elapsed)
+            .unwrap_or_else(Instant::now);
+        self
+    }
+
+    /// The most automatic continuations this budget allows.
+    pub fn max_turns(&self) -> u32 {
+        self.max_turns
+    }
+
     /// Start a fresh request, keeping the configured limits.
     pub fn reset(&mut self) {
         *self = Self::new(self.max_turns, self.max_tokens, self.max_elapsed);
@@ -379,6 +397,28 @@ mod tests {
                 !ContinuationBudget::new(turns, tokens, Duration::from_secs(60)).observe_turn(1)
             );
         }
+    }
+
+    #[test]
+    fn resumed_budget_counts_what_the_log_already_spent() {
+        let budget = ContinuationBudget::new(2, 100, Duration::from_secs(60));
+        let mut resumed = budget.clone().resume(1, 40, Duration::from_secs(1));
+        assert!(resumed.observe_turn(10));
+        assert_eq!(resumed.usage(), (2, 50));
+        assert!(!budget.clone().resume(2, 0, Duration::ZERO).observe_turn(0));
+        assert!(
+            !budget
+                .clone()
+                .resume(0, 100, Duration::ZERO)
+                .observe_turn(1)
+        );
+        assert!(
+            !budget
+                .clone()
+                .resume(0, 0, Duration::from_secs(61))
+                .observe_turn(0)
+        );
+        assert_eq!(budget.max_turns(), 2);
     }
 
     #[test]

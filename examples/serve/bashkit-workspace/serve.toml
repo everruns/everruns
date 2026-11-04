@@ -1,0 +1,4 @@
+name = "bashkit-workspace"
+
+[sandbox]
+kind = "bashkit"

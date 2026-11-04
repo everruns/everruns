@@ -101,6 +101,26 @@ impl ApiState {
     }
 }
 
+impl ApiState {
+    /// The domain context for a platform-wide request by a platform user:
+    /// the default organization, as owner, like the durable routes.
+    pub fn platform_ctx(&self, user: &crate::auth::PlatformUser) -> Ctx {
+        Ctx {
+            caller: Caller {
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                org_public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
+                user_id: Some(user.0.id),
+                role: everruns_core::OrgRole::Owner,
+                is_platform_user: user.0.is_platform_user,
+                is_internal: false,
+                read_only: crate::auth::pat_scope::PatScope::restricts_writes(user.0.pat_scope),
+            },
+            permission_resolver: self.auth.permission_resolver.clone(),
+            ..(*self.template).clone()
+        }
+    }
+}
+
 impl_auth_state!(ApiState);
 impl_dispatchable!(ApiState);
 

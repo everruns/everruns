@@ -10,6 +10,7 @@
 // Zero-backfill: gauge fields are zero-filled for empty slots; cumulative counter
 // fields are carry-forwarded from the last known value to avoid false rate spikes.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import {
   Area,
@@ -277,12 +278,13 @@ const yAxisDefaults = {
 };
 
 export function WorkflowStatusChart({ data }: { data: ChartData[] }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Workflows</CardTitle>
+        <CardTitle className="text-sm font-medium">{ui("Workflows")}</CardTitle>
         <CardDescription className="text-xs">
-          Throughput per interval: started, completed, failed (last 15 min)
+          {ui("Throughput per interval: started, completed, failed (last 15 min)")}
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
@@ -325,12 +327,13 @@ export function WorkflowStatusChart({ data }: { data: ChartData[] }) {
 }
 
 export function TaskStatusChart({ data }: { data: ChartData[] }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Tasks</CardTitle>
+        <CardTitle className="text-sm font-medium">{ui("Tasks")}</CardTitle>
         <CardDescription className="text-xs">
-          Throughput per interval: started, completed, failed (last 15 min)
+          {ui("Throughput per interval: started, completed, failed (last 15 min)")}
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
@@ -373,12 +376,13 @@ export function TaskStatusChart({ data }: { data: ChartData[] }) {
 }
 
 export function ThroughputChart({ data }: { data: ChartData[] }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Throughput</CardTitle>
+        <CardTitle className="text-sm font-medium">{ui("Throughput")}</CardTitle>
         <CardDescription className="text-xs">
-          Task completions and failures per interval (last 15 min)
+          {ui("Task completions and failures per interval (last 15 min)")}
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
@@ -412,12 +416,13 @@ export function ThroughputChart({ data }: { data: ChartData[] }) {
 }
 
 export function SystemLoadChart({ data }: { data: ChartData[] }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">System Load</CardTitle>
+        <CardTitle className="text-sm font-medium">{ui("System Load")}</CardTitle>
         <CardDescription className="text-xs">
-          Load %, workers, and DLQ size (last 15 min)
+          {ui("Load %, workers, and DLQ size (last 15 min)")}
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">

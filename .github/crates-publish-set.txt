@@ -1,6 +1,6 @@
 # Crates published to crates.io at the platform version, sorted by name.
 # Joining or leaving this set must be a reviewed edit. Before adding a new
-# name, confirm crates.io availability and the registry token permission.
+# name, bootstrap its first version and configure its trusted publisher.
 # scripts/release-preflight.py checks this against publishable workspace crates.
 everruns
 everruns-ard

@@ -8,6 +8,7 @@ mod internal_commands;
 use image_store::DirectImageArtifactStore;
 pub(crate) mod mcp;
 mod message_projection;
+mod provider_config;
 mod user_mcp;
 
 // Direct implementation of WorkerAdapters for in-process worker
@@ -511,12 +512,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()> {
         let id = SessionId::from_uuid(session_id);
-        let update = UpdateSession {
-            status: Some(status.to_string()),
-            ..Default::default()
-        };
         self.db
-            .update_session(org_id, id, update)
+            .set_session_status(org_id, id, status)
             .await
             .inspect_err(|e| tracing::error!("Failed to update session status: {e}"))
             .map_err(|_| store_error("Failed to update session status"))?;
@@ -563,8 +560,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Uuid,
         message_id: Uuid,
     ) -> Result<Option<RuntimeMessage>> {
-        let messages = self.load_messages(session_id).await?;
-        Ok(messages.into_iter().find(|m| m.id == message_id))
+        message_projection::get_message(&self.db, session_id, message_id).await
     }
 
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>> {
@@ -661,16 +657,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .map_err(|_| {
                 store_error("Provider is unavailable for this session's runtime identity")
             })?;
-        Ok(resolved.map(|value| {
-            let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
-                provider.clone(),
-                string_to_provider_type(&value.provider_type),
-            );
-            config.api_key = value.api_key;
-            config.base_url = value.base_url;
-            config.request_options = value.request_options;
-            config
-        }))
+        Ok(resolved.map(|value| provider_config::into_config(provider.clone(), value)))
     }
 
     async fn get_provider_config(
@@ -686,16 +673,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tracing::error!(%error, "Failed to resolve provider");
                 store_error("Failed to resolve provider")
             })?;
-        Ok(resolved.map(|value| {
-            let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
-                provider.clone(),
-                string_to_provider_type(&value.provider_type),
-            );
-            config.api_key = value.api_key;
-            config.base_url = value.base_url;
-            config.request_options = value.request_options;
-            config
-        }))
+        Ok(resolved.map(|value| provider_config::into_config(provider.clone(), value)))
     }
 
     // =========================================================================
@@ -1115,27 +1093,25 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .load_turn_messages(&session, agent.as_ref(), harness.as_ref())
             .await?;
 
-        // Load model (session > agent > harness > default)
-        let model = if let Some(model_id) = session.model_id {
+        // Explicit bindings win before the applicable organization default.
+        let mut model_id = session
+            .model_id
+            .or(agent.as_ref().and_then(|a| a.default_model_id))
+            .or(harness.as_ref().and_then(|h| h.default_model_id));
+        if model_id.is_none()
+            && let Some(agent) = agent.as_ref()
+        {
+            model_id = crate::platform_chat_agent::org_chat_model_id(
+                &self.db,
+                org_id,
+                &agent.name,
+                agent.is_built_in,
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to resolve Chat model: {e}")))?;
+        }
+        let model = if let Some(model_id) = model_id {
             self.get_model_spec(org_id, model_id.uuid()).await?
-        } else if let Some(ref a) = agent {
-            if let Some(model_id) = a.default_model_id {
-                self.get_model_spec(org_id, model_id.uuid()).await?
-            } else if let Some(ref h) = harness {
-                if let Some(model_id) = h.default_model_id {
-                    self.get_model_spec(org_id, model_id.uuid()).await?
-                } else {
-                    self.get_default_model_spec(org_id).await?
-                }
-            } else {
-                self.get_default_model_spec(org_id).await?
-            }
-        } else if let Some(ref h) = harness {
-            if let Some(model_id) = h.default_model_id {
-                self.get_model_spec(org_id, model_id.uuid()).await?
-            } else {
-                self.get_default_model_spec(org_id).await?
-            }
         } else {
             self.get_default_model_spec(org_id).await?
         };

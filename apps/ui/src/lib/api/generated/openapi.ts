@@ -119,6 +119,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/cost-plan": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Plan agent cost workloads
+     * @description Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
+     */
+    post: operations["plan_agent_costs"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/diff": {
     parameters: {
       query?: never;
@@ -560,6 +580,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/costs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What one agent cost the organization this month */
+    get: operations["get_agent_cost"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/credentials": {
     parameters: {
       query?: never;
@@ -749,6 +786,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/eval-proposals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the Eval Builder's proposals for an agent
+     * @description List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.
+     */
+    get: operations["list_eval_proposals"];
+    put?: never;
+    /**
+     * Ask the Eval Builder for cases
+     * @description Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.
+     */
+    post: operations["propose_eval_cases"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/export": {
     parameters: {
       query?: never;
@@ -775,7 +836,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Let live endpoints serve again */
+    /**
+     * Deprecated alias of resume
+     * @deprecated
+     */
     post: operations["resume_agent_exposures"];
     delete?: never;
     options?: never;
@@ -792,9 +856,38 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Take every endpoint offline */
+    /**
+     * Deprecated alias of pause
+     * @deprecated
+     */
     post: operations["suspend_agent_exposures"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/external-worker": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read an Agent's external execution status */
+    get: operations["get_external_agent"];
+    put?: never;
+    /**
+     * Connect or rotate an external HTTPS worker
+     * @description Requires dangerous-settings permission and installation enablement. Stop
+     *     active turns first. The preinstalled secret is encrypted and never returned.
+     */
+    post: operations["register_external_agent"];
+    /**
+     * Disable external worker execution
+     * @description Revocation never falls back to the built-in runtime.
+     */
+    delete: operations["disable_external_agent"];
     options?: never;
     head?: never;
     patch?: never;
@@ -976,6 +1069,44 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pause an agent
+     * @description Its channels stop accepting messages and its triggers and schedules do not
+     *     run until it is resumed. Each channel keeps its own published state.
+     */
+    post: operations["pause_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume a paused agent */
+    post: operations["resume_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/scripts": {
     parameters: {
       query?: never;
@@ -1056,6 +1187,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/source/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List GitHub accounts for Agent source sync
+     * @description Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
+     */
+    get: operations["list_agent_source_accounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/source/options": {
     parameters: {
       query?: never;
@@ -1126,6 +1277,24 @@ export interface paths {
     /** Get aggregate usage stats for an agent */
     get: operations["get_agent_stats"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/tracing": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get agent routing */
+    get: operations["get_agent_routing"];
+    /** Save agent routing */
+    put: operations["save_agent_routing"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1765,6 +1934,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read work chat share */
+    get: operations["read_work_chat_share"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -1934,6 +2120,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Add a reaction
+     * @description Put an emoji reaction on a message of one of the caller's sessions. Adding one already there changes nothing. A reaction on the agent's reply reaches the agent as a short note.
+     */
+    put: operations["agent_api_add_reaction"];
+    post?: never;
+    /**
+     * Remove a reaction
+     * @description Take the caller's emoji reaction off a message. Removing one that is not there changes nothing.
+     */
+    delete: operations["agent_api_remove_reaction"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/sessions/{session_id}/question-answers": {
     parameters: {
       query?: never;
@@ -1949,6 +2159,61 @@ export interface paths {
      */
     post: operations["agent_api_answer_questions"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/reactions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List reactions
+     * @description Reactions on the messages of one of the caller's sessions, the agent's included. `me` marks the caller's own.
+     */
+    get: operations["agent_api_list_reactions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update work chat conversation */
+    post: operations["update_work_chat_conversation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Share work chat conversation */
+    post: operations["share_work_chat_conversation"];
+    /** Revoke work chat share */
+    delete: operations["revoke_work_chat_share"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1985,7 +2250,7 @@ export interface paths {
     put?: never;
     /**
      * Approve tool calls
-     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. The person using the agent answers its approvals.
      */
     post: operations["agent_api_submit_tool_approvals"];
     delete?: never;
@@ -2118,6 +2383,85 @@ export interface paths {
     put?: never;
     /** Add a paragraph to an entity's manager context */
     post: operations["append_manager_context"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/cost-rates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the organization's price list, history included */
+    get: operations["list_cost_rates"];
+    put?: never;
+    /**
+     * Add a rate to the organization's price list
+     * @description Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.
+     */
+    post: operations["create_cost_rate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/cost-rates/{rate_id}/retire": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * End a rate from a date
+     * @description End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.
+     */
+    post: operations["retire_cost_rate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/costs/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the organization's cost settings */
+    get: operations["get_cost_settings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Set the timezone usage policy windows reset in
+     * @description Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.
+     */
+    patch: operations["update_cost_settings"];
+    trace?: never;
+  };
+  "/v1/costs/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Summarize what usage cost the organization */
+    get: operations["get_cost_summary"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2380,6 +2724,46 @@ export interface paths {
      * @description Inspect a session actor across organizations. Requires platform-user access.
      */
     get: operations["get_fleet_monitoring_actor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get recorded execution history across all organizations
+     * @description Get recorded execution history across all organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_timeline"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring/timeline/window": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Break down a selected window across organizations
+     * @description Break down a selected window across organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_timeline_window"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2806,6 +3190,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read work chat share legacy
+     * @deprecated
+     */
+    get: operations["read_work_chat_share_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -2963,6 +3367,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Update work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["update_work_chat_conversation_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Share work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["share_work_chat_conversation_legacy"];
+    /**
+     * Revoke work chat share legacy
+     * @deprecated
+     */
+    delete: operations["revoke_work_chat_share_legacy"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/sessions/{session_id}/sse": {
     parameters: {
       query?: never;
@@ -2996,7 +3444,7 @@ export interface paths {
     /**
      * Approve tool calls
      * @deprecated
-     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. The person using the agent answers its approvals.
      */
     post: operations["agent_api_submit_tool_approvals_legacy"];
     delete?: never;
@@ -3067,6 +3515,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/eval-proposals/{proposal_id}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add a proposed case to a dataset
+     * @description Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.
+     */
+    post: operations["accept_eval_proposal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/eval-proposals/{proposal_id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Turn a proposed case down
+     * @description Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.
+     */
+    post: operations["dismiss_eval_proposal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/evals": {
     parameters: {
       query?: never;
@@ -3079,6 +3567,126 @@ export interface paths {
     put?: never;
     /** Create a new eval */
     post: operations["create_eval"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/experiments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List experiments across evals
+     * @description List the organization's experiments across evals, newest first.
+     */
+    get: operations["list_all_eval_experiments"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/fixes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List suggested fixes
+     * @description List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands.
+     */
+    get: operations["list_finding_fixes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Edit a suggested fix
+     * @description Change the text a suggested fix adds to the agent's instructions. An edited fix must be checked again before it can be applied.
+     */
+    patch: operations["update_finding_fix"];
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Apply a suggested fix
+     * @description Add a checked fix to the agent's instructions as a new agent revision. Only a fix whose check showed no regressions, against the instructions the agent has now, can be applied.
+     */
+    post: operations["apply_finding_fix"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Check a suggested fix
+     * @description Run one of the agent's evals as an experiment with and without a suggested fix. The fix can be applied once the check shows no regressions.
+     */
+    post: operations["check_finding_fix"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Reject a suggested fix
+     * @description Turn down a suggested fix, saying why. The agent is not changed.
+     */
+    post: operations["reject_finding_fix"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3190,6 +3798,67 @@ export interface paths {
     head?: never;
     /** Update an eval case */
     patch: operations["update_eval_case"];
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/experiments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List an eval's experiments, newest first */
+    get: operations["list_eval_experiments"];
+    put?: never;
+    /**
+     * Start an eval experiment
+     * @description Start an experiment: run an eval's cases against one to four variants and compare them case by case.
+     */
+    post: operations["create_eval_experiment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/experiments/{experiment_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get an eval experiment with its comparison
+     * @description Get an experiment with its case-by-case comparison and verdicts.
+     */
+    get: operations["get_eval_experiment"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/experiments/{experiment_id}/gate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Check an experiment's variant against a bar, for CI
+     * @description Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.
+     */
+    get: operations["gate_eval_experiment"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/evals/{eval_id}/runs": {
@@ -3350,6 +4019,30 @@ export interface paths {
     post: operations["create_eval_run_share"];
     /** Revoke all share links for an eval run */
     delete: operations["revoke_eval_run_share"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/samples": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Export a dataset as Mira samples
+     * @description Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.
+     */
+    get: operations["export_eval_samples"];
+    put?: never;
+    /**
+     * Import Mira samples as cases
+     * @description Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.
+     */
+    post: operations["import_eval_samples"];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -3634,6 +4327,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/health-issues/{issue_id}/actions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List actions on a finding
+     * @description List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.
+     */
+    get: operations["list_finding_actions"];
+    put?: never;
+    /**
+     * Act on a finding
+     * @description Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.
+     */
+    post: operations["take_finding_action"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}/actions/{action_id}/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Undo an action on a finding
+     * @description Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.
+     */
+    post: operations["undo_finding_action"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/health-issues/{issue_id}/check": {
     parameters: {
       query?: never;
@@ -3648,6 +4385,46 @@ export interface paths {
      * @description Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.
      */
     post: operations["check_health_issue"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Dismiss a detector finding with a reason
+     * @description Close a finding that needs nothing. The reason is kept to calibrate detectors, and a dismissed session finding stays closed when the same session is flagged again.
+     */
+    post: operations["dismiss_health_issue"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}/fix": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Fix a health issue
+     * @description Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.
+     */
+    post: operations["run_health_issue_fixer"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4525,6 +5302,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/models/selection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Atomically apply reviewed enablement changes
+     * @description Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.
+     */
+    post: operations["apply_model_selection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/models/selection/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Atomically undo selected reviewed model enablement changes
+     * @description Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.
+     */
+    post: operations["undo_model_selection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/models/{id}": {
     parameters: {
       query?: never;
@@ -4612,6 +5429,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/monitoring/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get recorded execution history for the organization */
+    get: operations["get_monitoring_timeline"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/timeline/window": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Break down a window by agent and failure cause */
+    get: operations["get_monitoring_timeline_window"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/notifications": {
     parameters: {
       query?: never;
@@ -4664,6 +5515,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/observers/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Live quality by agent, observer and day */
+    get: operations["get_observer_summary"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/observers/{observer_id}": {
     parameters: {
       query?: never;
@@ -4683,6 +5551,23 @@ export interface paths {
     patch: operations["update_observer"];
     trace?: never;
   };
+  "/v1/observers/{observer_id}/backfill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Score past production traffic with an observer */
+    post: operations["backfill_observer"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/observers/{observer_id}/scores": {
     parameters: {
       query?: never;
@@ -4698,6 +5583,47 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/v1/observers/{observer_id}/scores/{score_id}/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Record whether an observer's score was right */
+    post: operations["review_observer_score"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/organization-accounts/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get organization account name
+     * @description Read an organization account's editable name. Credentials are never returned.
+     */
+    get: operations["get_organization_account"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Rename organization account
+     * @description Rename an organization account while preserving its current credentials.
+     */
+    patch: operations["update_organization_account_name"];
     trace?: never;
   };
   "/v1/orgs": {
@@ -4748,6 +5674,26 @@ export interface paths {
      * @description List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.
      */
     get: operations["list_audit_logs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/decision-settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get organization decision settings
+     * @description Read the active organization's decision-model selection without model credentials.
+     */
+    get: operations["get_org_decision_settings"];
     put?: never;
     post?: never;
     delete?: never;
@@ -5020,7 +5966,11 @@ export interface paths {
     delete: operations["delete_connection"];
     options?: never;
     head?: never;
-    patch?: never;
+    /**
+     * Rename connection
+     * @description Rename an organization account without replacing credentials.
+     */
+    patch: operations["rename_connection"];
     trace?: never;
   };
   "/v1/orgs/{org}/organization-connections/{connection_id}/verify": {
@@ -5788,6 +6738,110 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandbox-template-builds/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Sandbox Template build
+     * @description Inspect a build attempt in the authenticated organization.
+     */
+    get: operations["get_sandbox_template_build"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Save built snapshot as new revision
+     * @description Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.
+     */
+    post: operations["apply_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel Sandbox Template build
+     * @description Cancel queued or running build work and clean up its disposable resources.
+     */
+    post: operations["cancel_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/discard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Discard unused build artifact
+     * @description Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.
+     */
+    post: operations["discard_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-metadata/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get sandbox template metadata
+     * @description Read editable Sandbox Template metadata, excluding execution configuration and environment values.
+     */
+    get: operations["get_sandbox_template_metadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update sandbox template metadata
+     * @description Update Sandbox Template metadata while preserving its current execution specification.
+     */
+    patch: operations["update_sandbox_template_metadata"];
+    trace?: never;
+  };
   "/v1/sandbox-templates": {
     parameters: {
       query?: never;
@@ -5806,6 +6860,30 @@ export interface paths {
      * @description Create a reusable Sandbox Template and its first immutable revision.
      */
     post: operations["create_sandbox_template"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-templates/{id}/builds": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Sandbox Template builds
+     * @description List twenty build attempts at an optional offset, bounded logs, and captured software notes.
+     */
+    get: operations["list_sandbox_template_builds"];
+    put?: never;
+    /**
+     * Build a Sandbox Template snapshot
+     * @description Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.
+     */
+    post: operations["start_sandbox_template_build"];
     delete?: never;
     options?: never;
     head?: never;
@@ -6137,6 +7215,26 @@ export interface paths {
     };
     /** Latest context breakdown */
     get: operations["get_session_context_report"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/cost": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Show what a session spent
+     * @description Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.
+     */
+    get: operations["get_session_cost"];
     put?: never;
     post?: never;
     delete?: never;
@@ -6523,6 +7621,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * React to a message
+     * @description Put an emoji reaction on a user or agent message. Adding one you already put there changes nothing. Reactions on the agent's replies reach the agent as a short note, by default with its next turn.
+     */
+    put: operations["add_message_reaction"];
+    post?: never;
+    /**
+     * Remove your reaction from a message
+     * @description Take your emoji reaction off a message. Removing one that is not there changes nothing. The history is kept in the session's events.
+     */
+    delete: operations["remove_message_reaction"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/participants": {
     parameters: {
       query?: never;
@@ -6597,6 +7719,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/reactions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List reactions in a session
+     * @description List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did.
+     */
+    get: operations["list_message_reactions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/resolved-model": {
     parameters: {
       query?: never;
@@ -6643,8 +7785,49 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Resume all paused session budgets for a session */
+    /** Continue a session past a usage policy's ask step */
     post: operations["resume_session_budgets"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Show a session's whole run
+     * @description Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.
+     */
+    get: operations["get_session_run"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/run-requests": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get run requests
+     * @description Questions and approvals that the agents this session handed work to wait
+     *     on. Empty unless the session is a run's first session.
+     */
+    get: operations["get_run_requests"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -7263,6 +8446,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/system/detections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Open abuse detections in every organization */
+    get: operations["list_platform_detections"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/system/doctor": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check the whole install */
+    get: operations["run_system_doctor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/task-webhooks": {
     parameters: {
       query?: never;
@@ -7318,6 +8535,125 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/defaults": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get defaults */
+    get: operations["get_defaults"];
+    /** Save defaults */
+    put: operations["save_defaults"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/destination-metadata/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read safe destination metadata
+     * @description Read safe destination metadata. Never returns receiver authentication.
+     */
+    get: operations["get_tracing_destination_metadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update tracing destination metadata
+     * @description Update safe destination metadata while preserving its receiver and current authentication.
+     */
+    patch: operations["update_tracing_destination_metadata"];
+    trace?: never;
+  };
+  "/v1/tracing/destinations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List destinations */
+    get: operations["list_destinations"];
+    put?: never;
+    /** Create destination */
+    post: operations["create_destination"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/destinations/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update destination */
+    put: operations["update_destination"];
+    post?: never;
+    /** Delete destination */
+    delete: operations["delete_destination"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/destinations/{id}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test destination */
+    post: operations["test_destination"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/policies/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get tracing policy
+     * @description Read organization or agent trace routing without credentials.
+     */
+    get: operations["get_tracing_policy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Set organization or agent destinations for future turns
+     * @description Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.
+     */
+    patch: operations["update_tracing_policy"];
     trace?: never;
   };
   "/v1/user/connected-clients": {
@@ -7499,6 +8835,26 @@ export interface paths {
      *     The user must be a member of the requested organization.
      */
     post: operations["switch_org"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/users/{id}/profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get your account profile
+     * @description Read your own editable profile, without email, tokens or credentials.
+     */
+    get: operations["get_account_profile"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -7823,6 +9179,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/virtual-users/{id}/self-profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get your organization profile
+     * @description Read your own organization profile.
+     */
+    get: operations["get_own_virtual_user_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update your organization profile
+     * @description Update your own organization profile without changing lifecycle.
+     */
+    patch: operations["update_own_virtual_user_profile"];
+    trace?: never;
+  };
+  "/v1/work-chat/hosts/{label}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat by host
+     * @description Public bootstrap for the live Work Chat published at this hostname.
+     */
+    get: operations["get_work_chat_by_host"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/workspaces": {
     parameters: {
       query?: never;
@@ -7997,6 +9397,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/workspaces/{workspace_id}/fs/_/upload/{path}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Upload raw file bytes
+     * @description Creates or replaces the file with the request body, streamed to storage,
+     *     so files larger than the JSON API carries (recordings, media) can be
+     *     uploaded. Parent directories are created as needed.
+     */
+    put: operations["upload_path"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/workspaces/{workspace_id}/fs/{path}": {
     parameters: {
       query?: never;
@@ -8021,10 +9443,23 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** @description Request to add a proposal to a dataset. */
+    AcceptEvalProposalRequest: {
+      /**
+       * @description Dataset (eval) to add the case to.
+       * @example eval_01933b5a000070008000000000000001
+       */
+      eval_id: string;
+    };
     /** @description Accept response: where the caller now has membership. */
     AcceptInviteResponse: {
       org_id: string;
       role: string;
+    };
+    /** @description The signed-in account editable profile, excluding email and credentials. */
+    AccountProfile: {
+      id: string;
+      name: string;
     };
     /** @description Data for act.completed event */
     ActCompletedData: {
@@ -8126,6 +9561,13 @@ export interface components {
        */
       communication?: components["schemas"]["Communication"];
       /**
+       * @description When a turn about to finish is checked for whether it did what was
+       *     asked, and continued automatically when it did not. `unattended`
+       *     (default): sessions started by triggers and schedules, where no person
+       *     is watching. `always`: chat too. `off`: never.
+       */
+      completion_check?: components["schemas"]["CompletionCheck"];
+      /**
        * Format: date-time
        * @description Timestamp when the agent was created.
        * @example 2026-04-01T10:00:00Z
@@ -8198,6 +9640,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
@@ -8220,6 +9664,12 @@ export interface components {
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
+      /**
+       * @description Agent this one was created as part of, shown as "Created here" on
+       *     that agent's Agents tab and bundled into its export.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      owner_agent_id?: string | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
@@ -8483,6 +9933,13 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AgentChannel: {
+      /**
+       * @description The agent that owns this channel. Also what lets responses carry a
+       *     `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+       *     so a caller can hand out a direct link.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id?: string | null;
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -8517,6 +9974,31 @@ export interface components {
       enabled: boolean;
       id: string;
       status: components["schemas"]["ChannelStatus"];
+    };
+    /** @description An agent's cost this month, for the agent page. */
+    AgentCost: {
+      /** @description Agent's prefixed public identifier. */
+      agent_id: string;
+      /**
+       * Format: double
+       * @description Priced cost in USD since `from`.
+       */
+      cost_usd: number;
+      /**
+       * Format: date-time
+       * @description Start of this month in the org's timezone.
+       */
+      from: string;
+      /**
+       * Format: int64
+       * @description Usage records since `from` with no price.
+       */
+      unpriced_records: number;
+    };
+    /** @description Three representative workload hypotheses; prices and usage frequency are set separately. */
+    AgentCostPlan: {
+      /** @description Exactly three suggested tasks that users can edit before projecting costs. */
+      tasks: components["schemas"]["CostPlanTask"][];
     };
     /**
      * @description Metadata for a write-only credential bound to one agent: either an MCP
@@ -8655,6 +10137,8 @@ export interface components {
        * @example conversation
        */
       harness_name: string;
+      /** @description Locale-keyed display names and descriptions. */
+      localizations: components["schemas"]["EntityLocalizations"];
       /**
        * @description Name (e.g. "dad-jokes-agent")
        * @example dad-jokes-agent
@@ -8789,6 +10273,7 @@ export interface components {
        * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
        *     shared App's (`everruns[bot]`) when the agent chose it and the
        *     deployment names its slug; `None` otherwise.
+       * @example pr-summarizer[bot]
        */
       bot_login?: string | null;
       /**
@@ -8807,6 +10292,7 @@ export interface components {
       /**
        * @description Which GitHub identity the agent acts as: `agent_app` (its own App) or
        *     `everruns_app` (the shared Everruns App). `None` before either exists.
+       * @example agent_app
        */
       kind?: string | null;
       /**
@@ -8815,7 +10301,10 @@ export interface components {
        *     Empty when not connected.
        */
       missing_permissions: string[];
-      /** @description `all` or `selected`. */
+      /**
+       * @description `all` or `selected`.
+       * @example selected
+       */
       repository_selection?: string | null;
       /**
        * @description GitHub accounts this organization already reached, as candidates for
@@ -8824,6 +10313,13 @@ export interface components {
        *     then users, then accounts of unknown kind; by login within each.
        */
       suggested_owners: components["schemas"]["GitHubOwnerSuggestion"][];
+      /**
+       * @description The agent's GitHub page in the console, so a caller can link to it.
+       *     Absolute in responses; built as a relative path here because the
+       *     console's address is known only where links are decorated.
+       * @example https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github
+       */
+      view_url?: string | null;
     };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
@@ -8833,6 +10329,8 @@ export interface components {
     AgentHarnessSummary: {
       display_name?: string | null;
       id?: string | null;
+      /** @description Locale-keyed display names and descriptions. */
+      localizations: components["schemas"]["EntityLocalizations"];
       name?: string | null;
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
@@ -9045,6 +10543,7 @@ export interface components {
      *     or costs, which are management's.
      */
     AgentSessionView: {
+      archived: boolean;
       /** Format: date-time */
       created_at: string;
       /** @example session_01933b5a000070008000000000000001 */
@@ -9062,6 +10561,7 @@ export interface components {
        *     them; a list leaves them out.
        */
       pending_questions?: components["schemas"]["PendingQuestionView"][] | null;
+      pinned: boolean;
       /**
        * @description `started`, `active`, `idle`, `waitingforinput` or `failed`.
        * @example idle
@@ -9071,6 +10571,15 @@ export interface components {
       /** Format: date-time */
       updated_at: string;
       work?: components["schemas"]["WorkReport"] | null;
+    };
+    /** @description Development GitHub accounts available to an Agent's source sync. */
+    AgentSourceAccounts: {
+      /** @description The deployment has the shared Everruns GitHub App configured. */
+      available: boolean;
+      /** @description Where a person installs the shared Everruns App on another GitHub account. */
+      install_url?: string | null;
+      organization: components["schemas"]["OrganizationSourceAccount"];
+      personal: components["schemas"]["PersonalSourceAccount"];
     };
     /** @description Continuous GitHub source binding, applied revision and reconciliation status. */
     AgentSourceStatus: {
@@ -9095,6 +10604,12 @@ export interface components {
        * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
        */
       generation: string;
+      /**
+       * @description GitHub account the source reads through: personal, organization, or
+       *     agent for a binding made before sync stopped using the Agent's identity.
+       * @example organization
+       */
+      github_account: string;
       /**
        * Format: date-time
        * @description UTC time when the source was last checked.
@@ -9418,6 +10933,13 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
+      /**
+       * @description The agent that owns this channel. Also what lets responses carry a
+       *     `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+       *     so a caller can hand out a direct link.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id?: string | null;
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -9560,6 +11082,10 @@ export interface components {
       /** @description The paragraph to add, markdown. */
       text: string;
     };
+    /** @description Apply a set of reviewed model enablement changes in one transaction. */
+    ApplyModelSelection: {
+      changes: components["schemas"]["ModelSelectionChange"][];
+    };
     /** @description Named session file to collect after an eval case completes. */
     ArtifactSpec: {
       /**
@@ -9642,6 +11168,13 @@ export interface components {
        * @example member
        */
       target_type?: string | null;
+    };
+    /** @description An action a person can take on a finding now. */
+    AvailableFindingAction: {
+      /** @description What it would do: `pause_schedule`. */
+      kind: string;
+      /** @description What it would act on, by public id. */
+      target_id: string;
     };
     /** @description Presentation and search metadata for one curated agent avatar. */
     AvatarPreset: {
@@ -9749,6 +11282,79 @@ export interface components {
         use?: components["schemas"]["McpServerPresetRef"] | null;
       };
     };
+    /** @description Score past production traffic with an observer. */
+    BackfillObserverRequest: {
+      /**
+       * Format: int32
+       * @description Most past events to read, newest first (1–5000). Defaults to 500.
+       * @example 500
+       */
+      limit?: number | null;
+      /**
+       * @description Apply the observer's sampling rate. Defaults to true; false scores
+       *     every matching slice read.
+       */
+      sample?: boolean | null;
+      /**
+       * Format: int32
+       * @description How far back to read, in hours (1–720). Defaults to 24.
+       * @example 24
+       */
+      since_hours?: number | null;
+    };
+    /** @description What a backfill read and queued. */
+    BackfillResult: {
+      /**
+       * Format: int64
+       * @description Scores queued. Turns and tool calls already scored are not queued
+       *     again; a conversation's score is refreshed.
+       */
+      enqueued: number;
+      /**
+       * Format: int64
+       * @description Past turn, tool and idle events read.
+       */
+      events_read: number;
+    };
+    /**
+     * @description Limits on background work an org can tune in Settings → Limits.
+     *
+     *     Defaults are code constants rather than environment variables, so every
+     *     deployment starts safe. The lifetime and run limits can only be lowered:
+     *     [`BackgroundLimits::validate`] rejects values above the agent ceilings.
+     */
+    BackgroundLimits: {
+      /**
+       * Format: double
+       * @description Daily cap on unattended work across the org, in USD. `None` is no cap.
+       * @default 20
+       */
+      org_unattended_daily_usd: number | null;
+      /**
+       * Format: double
+       * @description Budget a schedule gets when the agent does not pass one, in USD.
+       * @default 2
+       */
+      schedule_budget_usd: number;
+      /**
+       * Format: double
+       * @description Largest budget an agent may give a schedule, in USD.
+       * @default 10
+       */
+      schedule_max_budget_usd: number;
+      /**
+       * Format: int32
+       * @description Longest an agent-created recurring schedule may run, in days (1-7).
+       * @default 7
+       */
+      schedule_max_lifetime_days: number;
+      /**
+       * Format: int32
+       * @description Most runs an agent-created recurring schedule may have (1-96).
+       * @default 96
+       */
+      schedule_max_runs: number;
+    };
     /** @description Structured progress reported by background tools. */
     BackgroundProgress: {
       /** Format: int64 */
@@ -9823,7 +11429,10 @@ export interface components {
       balance: number;
       /** Format: date-time */
       created_at: string;
-      /** @description Currency: "usd", "tokens", "credits", or custom. */
+      /**
+       * @description What the limit is measured in: "usd" (cost from the org's price
+       *     list) or "tokens".
+       */
       currency: string;
       /** @example bdgt_01933b5a00007000800000000000001 */
       id: string;
@@ -9843,6 +11452,12 @@ export interface components {
        *     `None` for budgets without a period.
        */
       period_started_at?: string | null;
+      /**
+       * @description Name, steps (notify, ask to continue, stop) and which usage counts.
+       *     Empty steps mean the legacy shape: notify at 80%, ask at the soft
+       *     limit, stop at the limit.
+       */
+      policy?: components["schemas"]["UsagePolicy"];
       /**
        * Format: double
        * @description Soft limit — triggers pause/warn when balance drops below this.
@@ -9944,7 +11559,9 @@ export interface components {
       | "user"
       | "organization"
       | "agent_trigger"
-      | "agent_channel";
+      | "agent_channel"
+      | "session_schedule"
+      | "org_unattended";
     /** @description A provider that needs no setup. */
     BuiltInSearchProvider: {
       description: string;
@@ -10202,6 +11819,39 @@ export interface components {
       /** @description Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`). */
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
+    /** @description One case under one variant. */
+    CaseCell: {
+      /**
+       * Format: double
+       * @description What the case cost, all its trials together.
+       * @example 0.05
+       */
+      cost_usd: number;
+      /** @example candidate */
+      label: string;
+      /**
+       * Format: int32
+       * @description Trials that passed, of `trials` that finished.
+       * @example 3
+       */
+      passed: number;
+      /**
+       * Format: int32
+       * @example 3
+       */
+      trials: number;
+    };
+    /** @description One case across the variants. */
+    CaseComparison: {
+      /** @example evalcase_01933b5a000070008000000000000001 */
+      case_id: string;
+      /** @example Refund request, angry customer */
+      case_name: string;
+      /** @description One cell per variant, in variant order. */
+      cells: components["schemas"]["CaseCell"][];
+      /** @description Some variant's pass rate on this case differs from the baseline's. */
+      changed: boolean;
+    };
     /**
      * @description Status of an individual eval case result.
      * @enum {string}
@@ -10438,6 +12088,20 @@ export interface components {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /**
+     * @description The part of the install a check covers. The order is the display order.
+     * @enum {string}
+     */
+    CheckArea:
+      | "control_plane"
+      | "database"
+      | "workers"
+      | "security"
+      | "messaging"
+      | "storage"
+      | "observability"
+      | "models"
+      | "integrations";
     /** @description Request to check a provider credential without storing it. */
     CheckCredentialsRequest: {
       /**
@@ -10460,11 +12124,32 @@ export interface components {
       /** @description The type of LLM provider (e.g., openai, anthropic). */
       provider_type: components["schemas"]["DriverId"];
     };
+    /** @description Options for checking a fix. */
+    CheckFindingFixRequest: {
+      /** @description The agent's eval to check against. Default: the one with most cases. */
+      eval_id?: string | null;
+      /**
+       * Format: double
+       * @description Spending cap in USD for the whole check.
+       */
+      max_cost_usd?: number | null;
+      /**
+       * Format: int32
+       * @description Trials per case and side, 1 to 20 (default 2).
+       */
+      trials?: number | null;
+    };
     /** @description Response for name availability check. */
     CheckNameResponse: {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /**
+     * @description How a check came out. Ordered from best to worst so the report's verdict
+     *     is the maximum.
+     * @enum {string}
+     */
+    CheckStatus: "ok" | "info" | "warning" | "problem";
     /** @description Circuit breaker response */
     CircuitBreakerResponse: {
       /**
@@ -10743,6 +12428,23 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    /**
+     * @description When a turn that is about to finish gets a completion check, and an
+     *     automatic continuation when the check finds the work unfinished.
+     * @enum {string}
+     */
+    CompletionCheck: "off" | "unattended" | "always";
+    /**
+     * @description What the runtime did after a completion check.
+     * @enum {string}
+     */
+    CompletionCheckAction: "finished" | "continued" | "budget_exhausted" | "review_failed";
+    /**
+     * @description What a completion check found: the review's verdict on whether the turn
+     *     did what was asked.
+     * @enum {string}
+     */
+    CompletionVerdict: "achieved" | "in_progress" | "blocked";
     /** @description Reviewed package location and concurrency tokens required to enable source sync. */
     ConnectSourceRequest: components["schemas"]["SourceLocation"] & {
       /**
@@ -10761,6 +12463,7 @@ export interface components {
        * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
        */
       expected_generation?: string | null;
+      github_account?: components["schemas"]["SourceGitHubAccount"] | null;
       /** @description Synchronization direction; two_way requires repository Contents write access. */
       mode?: components["schemas"]["SourceMode"];
     };
@@ -11350,6 +13053,316 @@ export interface components {
        */
       src_path: string;
     };
+    /** @description Spend and tokens of one cost category. */
+    CostCategory: {
+      /**
+       * @description `uncached_input`, `cache_read`, `cache_write` or `output`.
+       * @example uncached_input
+       */
+      key: string;
+      /**
+       * Format: int64
+       * @description Tokens in this category across every model call.
+       * @example 1060877013
+       */
+      tokens: number;
+      /**
+       * Format: double
+       * @description USD, from each call's cost split by the model's price table.
+       * @example 106.09
+       */
+      usd: number;
+    };
+    /** @description Spend in one UTC hour, by category. */
+    CostHour: {
+      /**
+       * Format: double
+       * @description USD of prompt tokens read from cache.
+       */
+      cache_read_usd: number;
+      /**
+       * Format: double
+       * @description USD of prompt tokens written to cache.
+       */
+      cache_write_usd: number;
+      /**
+       * Format: date-time
+       * @description Start of the hour (UTC).
+       */
+      hour: string;
+      /**
+       * Format: int64
+       * @description Model calls made in the hour.
+       */
+      model_calls: number;
+      /**
+       * Format: double
+       * @description USD of output tokens.
+       */
+      output_usd: number;
+      /**
+       * Format: double
+       * @description Spend with no category split (see `SessionCost.unattributed_usd`).
+       */
+      unattributed_usd: number;
+      /**
+       * Format: double
+       * @description USD of prompt tokens not read from cache.
+       */
+      uncached_input_usd: number;
+    };
+    /** @description Spend of one model. */
+    CostModel: {
+      /**
+       * Format: int64
+       * @description Model calls made with this model.
+       * @example 3811
+       */
+      calls: number;
+      /**
+       * @description Model id as the provider reported it.
+       * @example meta/muse-spark-1.3-contributor
+       */
+      model: string;
+      /**
+       * @description Provider driver that served the model, when known.
+       * @example openrouter
+       */
+      provider?: string | null;
+      /**
+       * Format: double
+       * @description Spend in USD on this model.
+       * @example 106.26
+       */
+      usd: number;
+    };
+    /** @description One illustrative task and its editable token and model-call assumptions. */
+    CostPlanTask: {
+      /** @description Expected steps and the main uncertainty behind the workload estimate. */
+      assumption: string;
+      /**
+       * Format: int32
+       * @description Model calls per task, including follow-ups after tools; between 1 and 100.
+       */
+      calls: number;
+      /** @description Example user request that this task represents. */
+      description: string;
+      /**
+       * Format: int32
+       * @description Initial user-input tokens, excluding system instructions and tool schemas.
+       */
+      message_tokens: number;
+      /** @description Short name of the representative task. */
+      name: string;
+      /**
+       * Format: int32
+       * @description Output tokens per model call, including reasoning and tool arguments.
+       */
+      output_tokens: number;
+      /**
+       * Format: int32
+       * @description New tool-result tokens added at each step of the task.
+       */
+      tool_result_tokens: number;
+    };
+    /** @description One row of the org's price list. */
+    CostRate: {
+      /**
+       * Format: date-time
+       * @description When the rate was added.
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description When the rate starts to apply.
+       */
+      effective_from: string;
+      /** @description Rate id (`rate_...`). */
+      id: string;
+      /**
+       * Format: double
+       * @description Multiple of the provider's or catalog's price (0.8 is a 20%
+       *     discount, 0 counts usage at no cost).
+       */
+      list_price_multiplier?: number | null;
+      /**
+       * @description Which usage it applies to. Model tokens: `provider`, `model`,
+       *     `source` (`managed` or `own_keys`). Sandbox time: `provider`, `size`.
+       *     Empty applies to the whole meter.
+       */
+      match: Record<string, unknown>;
+      /** @description What it prices: `model.tokens` or `sandbox.time`. */
+      meter: string;
+      /** @description Why the rate was added: the change reason given with it. */
+      reason?: string | null;
+      /** @description This row ends the rates it matches from `effective_from`. */
+      retired: boolean;
+      /** @description Unit of `unit_price_usd`: `1m_tokens` or `hour`. */
+      unit: string;
+      /**
+       * Format: double
+       * @description Fixed price per unit, in USD.
+       */
+      unit_price_usd?: number | null;
+    };
+    /** @description A sandbox the session ran and how long it ran. */
+    CostSandbox: {
+      /**
+       * Format: date-time
+       * @description When the sandbox was created.
+       */
+      created_at: string;
+      /**
+       * Format: int64
+       * @description Seconds the sandbox spent paused.
+       * @example 1860
+       */
+      paused_seconds: number;
+      /** @description Sandbox template profile, when one was used. */
+      profile_name?: string | null;
+      /**
+       * @description Sandbox provider, e.g. `daytona` or `e2b`.
+       * @example daytona
+       */
+      provider: string;
+      /**
+       * Format: int64
+       * @description Seconds the sandbox spent running.
+       * @example 4320
+       */
+      running_seconds: number;
+      /**
+       * @description Sandbox's prefixed public identifier.
+       * @example sandbox_01a1510c99c8714eabb22a463e7c1fa1
+       */
+      sandbox_id: string;
+      /** @description Lifecycle spans, oldest first. */
+      spans: components["schemas"]["SandboxStateSpan"][];
+    };
+    /** @description The org's cost settings. */
+    CostSettings: {
+      /**
+       * @description IANA timezone (e.g. `America/Chicago`) for calendar windows: daily,
+       *     weekly and monthly usage policies reset at midnight there. `null` is
+       *     UTC.
+       */
+      timezone?: string | null;
+    };
+    /** @description Turns and spend of one origin. */
+    CostSource: {
+      /** @description The schedule still fires: enabled and not deleted. */
+      active?: boolean | null;
+      /**
+       * @description Cron expression of a recurring schedule.
+       * @example *\/5 * * * *
+       */
+      cron?: string | null;
+      /**
+       * @description `user`, `schedule`, `agent_trigger`, `channel`, ...
+       * @example schedule
+       */
+      kind: string;
+      /**
+       * @description The schedule's description, when it is a session schedule.
+       * @example Shipmail claim poll
+       */
+      name?: string | null;
+      /**
+       * @description The schedule, trigger or channel, when there is one.
+       * @example sched_01a1510ebffc7370a495ed68cc7f9ab3
+       */
+      source_id?: string | null;
+      /**
+       * Format: int64
+       * @description Turns this origin started.
+       * @example 1845
+       */
+      turns: number;
+      /**
+       * Format: double
+       * @description Spend in USD on those turns.
+       * @example 106.11
+       */
+      usd: number;
+    };
+    /** @description Org cost over a window, grouped several ways. */
+    CostSummary: {
+      /** @description Totals by agent. */
+      by_agent: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by where the amount came from. */
+      by_basis: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by day, in the org's timezone. */
+      by_day: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by what was used, such as a provider and model. */
+      by_source: components["schemas"]["CostSummaryLine"][];
+      /**
+       * @description Totals by who started the work: `person`, or `unattended` (schedules
+       *     and other runs nobody watches).
+       */
+      by_started_by: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by the person the usage counts for. */
+      by_user: components["schemas"]["CostSummaryLine"][];
+      /**
+       * Format: double
+       * @description Priced cost in USD over the window. Unpriced usage is not in it.
+       */
+      cost_usd: number;
+      /**
+       * Format: date-time
+       * @description Window start (inclusive).
+       */
+      from: string;
+      /**
+       * @description Runs where an agent handed work to other agents: their whole cost by
+       *     the agent the run started with, split by the agent that spent it.
+       *     Every amount is also in `by_agent`, under the agent that spent it.
+       */
+      runs_with_agents: components["schemas"]["RunsWithAgentsLine"][];
+      /** @description The org's timezone; calendar windows and days use it. */
+      timezone: string;
+      /**
+       * Format: date-time
+       * @description Window end (exclusive).
+       */
+      to: string;
+      /**
+       * Format: int64
+       * @description Usage records over the window with no price.
+       */
+      unpriced_records: number;
+    };
+    /** @description One line of the costs summary. */
+    CostSummaryLine: {
+      /**
+       * @description Where the amounts came from: host, rate, provider, list_price,
+       *     unpriced, or mixed.
+       */
+      basis: string;
+      /**
+       * Format: double
+       * @description Priced cost in USD. Unpriced usage is not in it.
+       */
+      cost_usd: number;
+      /** @description Group key: an agent id, a user id, a source key, a basis, a day. */
+      key?: string | null;
+      /** @description Display name for the key, such as the agent's name. */
+      label?: string | null;
+      /**
+       * Format: double
+       * @description Tokens for models, hours for sandboxes, summed as recorded.
+       */
+      quantity: number;
+      /**
+       * Format: int64
+       * @description Usage records in the group, priced or not.
+       */
+      records: number;
+      /**
+       * Format: int64
+       * @description Usage records with no price.
+       */
+      unpriced_records: number;
+    };
     /**
      * @description A pricing tier that activates above a context token threshold.
      *     For example, OpenAI charges higher rates for prompts exceeding 200K tokens.
@@ -11380,6 +13393,96 @@ export interface components {
        * @description Output cost per million tokens (USD) for this tier
        */
       output: number;
+    };
+    /** @description Calls, failures and running time of one tool. */
+    CostTool: {
+      /**
+       * Format: int64
+       * @description Calls of this tool.
+       * @example 1180
+       */
+      calls: number;
+      /**
+       * Format: int64
+       * @description Summed running time of its calls.
+       * @example 627000
+       */
+      duration_ms: number;
+      /**
+       * Format: int64
+       * @description Calls of this tool that ended in an error.
+       * @example 13
+       */
+      failed: number;
+      /**
+       * @description Tool name.
+       * @example web_fetch
+       */
+      name: string;
+    };
+    /** @description Tool calls across the session, from the trace index. */
+    CostTools: {
+      /**
+       * Format: int64
+       * @description Tool calls across the session.
+       * @example 1977
+       */
+      calls: number;
+      /**
+       * Format: int64
+       * @description Summed running time of every call.
+       * @example 645000
+       */
+      duration_ms: number;
+      /**
+       * Format: int64
+       * @description Tool calls that ended in an error.
+       * @example 14
+       */
+      failed: number;
+      /** @description Per tool, most calls first. */
+      items: components["schemas"]["CostTool"][];
+    };
+    /** @description Spend of one turn. */
+    CostTurn: {
+      /**
+       * Format: int64
+       * @description Prompt tokens of the turn, cached and uncached.
+       * @example 2034790
+       */
+      prompt_tokens: number;
+      /**
+       * @description What started the turn: `user`, `schedule`, `agent_trigger`, `channel`, ...
+       * @example schedule
+       */
+      source_kind: string;
+      /**
+       * Format: date-time
+       * @description When the turn started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `completed`, `failed`, `cancelled` or `sealed`.
+       * @example completed
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Per-session turn number, 1-based.
+       * @example 1162
+       */
+      turn: number;
+      /**
+       * @description Turn's prefixed public identifier.
+       * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
+       */
+      turn_id: string;
+      /**
+       * Format: double
+       * @description Spend in USD on the model calls of the turn.
+       * @example 0.2
+       */
+      usd: number;
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentChannelRequest: {
@@ -11499,6 +13602,13 @@ export interface components {
        */
       communication?: components["schemas"]["Communication"];
       /**
+       * @description When a turn about to finish is checked for whether it did what was
+       *     asked, and continued automatically when it did not. `unattended`
+       *     (default): sessions started by triggers and schedules, where no person
+       *     is watching. `always`: chat too. `off`: never.
+       */
+      completion_check?: components["schemas"]["CompletionCheck"];
+      /**
        * @description The ID of the default LLM model to use for this agent.
        *     If not specified, the system default model will be used.
        * @example model_01933b5a00007000800000000000001
@@ -11549,6 +13659,8 @@ export interface components {
        * @example Hey, I'm Ava. Ask me anything about your account.
        */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
@@ -11571,6 +13683,13 @@ export interface components {
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
+      /**
+       * @description Agent this one is created as part of ("Created here" on that agent's
+       *     Agents tab). It groups under that agent on Agents home and is bundled
+       *     into its export.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      owner_agent_id?: string | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598). `true` signals
        *     the provider that parallel tool calls are wanted; `false` requests at
@@ -11769,7 +13888,8 @@ export interface components {
     /** @description Request body for creating a spending budget. */
     CreateBudgetRequest: {
       /**
-       * @description Unit in which usage and the limit are measured.
+       * @description What the limit measures: "usd" (cost from the org's price list) or
+       *     "tokens".
        * @example usd
        */
       currency: string;
@@ -11782,6 +13902,7 @@ export interface components {
       /** @description Free-form metadata attached to this resource. */
       metadata?: unknown;
       period?: components["schemas"]["BudgetPeriod"] | null;
+      policy?: components["schemas"]["UsagePolicy"] | null;
       /**
        * Format: double
        * @description Optional threshold that triggers a warning or pause before exhaustion.
@@ -11812,6 +13933,31 @@ export interface components {
     } & {
       [key: string]: unknown;
     };
+    /**
+     * @description Add a rate to the org's price list. Rates are never edited: a change is
+     *     a new rate from a later date.
+     */
+    CreateCostRate: {
+      /**
+       * Format: date-time
+       * @description When it starts; now when absent.
+       */
+      effective_from?: string | null;
+      /**
+       * Format: double
+       * @description Multiple of the provider's or catalog price. Model tokens only.
+       */
+      list_price_multiplier?: number | null;
+      /** @description Which usage it applies to (see `CostRate.match`). */
+      match?: Record<string, unknown> | null;
+      /** @description `model.tokens` or `sandbox.time`. */
+      meter: string;
+      /**
+       * Format: double
+       * @description Fixed USD per million tokens (model tokens) or per hour (sandboxes).
+       */
+      unit_price_usd?: number | null;
+    };
     /** @description Request body for creating a database. */
     CreateDatabaseRequest: {
       /**
@@ -11838,14 +13984,15 @@ export interface components {
        */
       artifacts?: components["schemas"]["ArtifactSpec"][] | null;
       /**
-       * @description Input messages sent to the agent sequentially.
+       * @description Input messages sent to the agent sequentially. May be empty when a
+       *     simulated user opens the conversation.
        * @example [
        *       {
        *         "content": "Fix the failing test in src/lib.rs"
        *       }
        *     ]
        */
-      conversation: components["schemas"]["EvalInputMessage"][];
+      conversation?: components["schemas"]["EvalInputMessage"][];
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Agent fixes a failing unit test
@@ -11887,6 +14034,7 @@ export interface components {
        *     ]
        */
       scorers: components["schemas"]["Scorer"][];
+      simulated_user?: components["schemas"]["SimulatedUser"] | null;
       /**
        * @description Free-form tags attached to this resource.
        * @example [
@@ -11902,6 +14050,34 @@ export interface components {
        * @example 120
        */
       timeout_seconds?: number | null;
+      /** @description Tools the case gives the agent, each answered with a canned response. */
+      tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
+    };
+    /** @description Request to start an experiment. */
+    CreateEvalExperimentRequest: {
+      /**
+       * Format: double
+       * @description Spending cap in USD for the whole experiment, split evenly between
+       *     the variants' runs.
+       * @example 10
+       */
+      max_cost_usd?: number | null;
+      /**
+       * @description Display name. Defaults to the variant labels joined with "vs".
+       * @example Luna vs Sol
+       */
+      name?: string | null;
+      /**
+       * Format: int32
+       * @description Trials per case and variant, 1 to 20 (default 3).
+       * @example 3
+       */
+      trials?: number | null;
+      /**
+       * @description One to four variants. The first is the baseline the others are
+       *     compared against.
+       */
+      variants: components["schemas"]["ExperimentVariantSpec"][];
     };
     /** @description Request to create a new eval */
     CreateEvalRequest: {
@@ -11933,11 +14109,33 @@ export interface components {
     /** @description Request to create an eval run */
     CreateEvalRunRequest: {
       /**
+       * @description Run only these cases of the eval, by public id ("Try once" on a case
+       *     page). Omitted runs every case.
+       * @example [
+       *       "evalcase_01933b5a00007000800000000000001"
+       *     ]
+       */
+      case_ids?: string[] | null;
+      /**
+       * Format: double
+       * @description Spending cap in USD for the whole run, agents and grading together.
+       *     Once spent, running turns stop and remaining cases are skipped.
+       * @example 5
+       */
+      max_cost_usd?: number | null;
+      /**
        * @description Model override for this run.
-       * @example gpt-5.1
+       * @example gpt-6-luna
        */
       model_override?: string | null;
       target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: int32
+       * @description How many times to run each case, 1 to 20 (default 1). Repeated trials
+       *     report pass@k and pass^k in the run summary.
+       * @example 3
+       */
+      trials?: number | null;
     };
     /** @description Request to create a file */
     CreateFileRequest: {
@@ -12007,6 +14205,8 @@ export interface components {
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -12223,6 +14423,7 @@ export interface components {
     };
     /** @description Request to create a new observer. */
     CreateObserverRequest: {
+      alert?: components["schemas"]["ObserverAlert"] | null;
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Score replies from the support agent
@@ -12398,6 +14599,8 @@ export interface components {
     };
     /** @description Request to create a new LLM provider */
     CreateProviderRequest: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /**
        * @description API key for authenticating with the provider.
        *     Will be encrypted at rest if encryption is configured.
@@ -12827,6 +15030,11 @@ export interface components {
      * @enum {string}
      */
     CredentialUsage: "user" | "service";
+    /**
+     * @description What the runtime did about a provider's "not enough credits" refusal.
+     * @enum {string}
+     */
+    CreditShortfallAction: "shrunk" | "wait_started" | "still_waiting" | "resumed" | "gave_up";
     /** @description Database info response. */
     DatabaseInfoResponse: {
       /** @description Timestamp when this resource was created (RFC 3339). */
@@ -13012,6 +15220,93 @@ export interface components {
     DeleteQuery: {
       recursive?: boolean;
     };
+    /** @description Non-secret receiver settings and explicit content capture consent. */
+    DestinationConfig: {
+      /**
+       * @description Explicit consent to export message and tool content; defaults to metadata only.
+       * @example false
+       */
+      capture_content?: boolean;
+      /**
+       * @description Explicit consent to export reasoning; also requires content capture.
+       * @example false
+       */
+      capture_reasoning?: boolean;
+      /**
+       * @description Whether customer exports may be sent to this receiver; false pauses delivery.
+       * @example true
+       */
+      enabled?: boolean;
+      /**
+       * @description HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.
+       * @example https://collector.example.com/v1/traces
+       */
+      endpoint: string;
+      /**
+       * @description Human-readable destination name, from 1 to 128 characters.
+       * @example Production traces
+       */
+      name: string;
+      /**
+       * Format: uuid
+       * @description Braintrust project identifier; required for Braintrust receivers.
+       * @example 00000000-0000-0000-0000-000000000002
+       */
+      project_id?: string | null;
+      /** @description Receiver protocol: Braintrust project or generic OTLP over HTTPS. */
+      provider: components["schemas"]["TraceProvider"];
+    };
+    /** @description Destination settings, safe delivery health, and routing usage; excludes credentials. */
+    DestinationView: {
+      /**
+       * Format: int64
+       * @description Number of agent policies that explicitly select this destination.
+       * @example 0
+       */
+      agent_selections: number;
+      /** @description Non-secret destination settings, including capture consent and pause state. */
+      config: components["schemas"]["DestinationConfig"];
+      /**
+       * Format: int64
+       * @description Number of events omitted by bounded customer export delivery.
+       * @example 0
+       */
+      dropped_events: number;
+      /**
+       * Format: uuid
+       * @description Destination identifier owned by the current organization.
+       * @example 00000000-0000-0000-0000-000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Time the receiver last accepted an export, or null before any acceptance.
+       * @example 2026-10-28T00:00:00Z
+       */
+      last_accepted_at?: string | null;
+      /**
+       * Format: date-time
+       * @description Time of the latest delivery attempt, or null before the first attempt.
+       * @example 2026-10-28T00:00:00Z
+       */
+      last_attempt_at?: string | null;
+      /**
+       * @description Sanitized delivery failure; never includes receiver credentials or response bodies.
+       * @example Receiver unavailable
+       */
+      last_error?: string | null;
+      /**
+       * @description Whether this destination is selected in organization defaults.
+       * @example false
+       */
+      organization_default: boolean;
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
+      revision: number;
+    };
     /** @description Query for diff endpoint */
     DiffQuery: {
       /**
@@ -13024,6 +15319,25 @@ export interface components {
        * @example a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
        */
       oid: string;
+    };
+    /** @description Request to turn a proposal down. */
+    DismissEvalProposalRequest: {
+      /**
+       * @description Why it is not wanted, kept so the builder does not offer it again.
+       * @example We do not support refunds over the limit at all.
+       */
+      note?: string | null;
+    };
+    /** @description Why a finding needs nothing. */
+    DismissHealthIssueRequest: {
+      /**
+       * @description A false alarm, expected work, or already handled. Kept so detectors
+       *     can be calibrated against it.
+       *     (Named `note` because `reason` is the change-intent flag every
+       *     command takes.)
+       * @example Expected: this is our nightly load test
+       */
+      note: string;
     };
     /** @description DLQ entry response */
     DlqEntryResponse: {
@@ -13093,6 +15407,76 @@ export interface components {
       /** @description Total number of items matching the query, across all pages. */
       total: number;
     };
+    /**
+     * @description One check's outcome, written for an operator: what is true, why it
+     *     matters, and what to do.
+     */
+    DoctorCheck: {
+      area: components["schemas"]["CheckArea"];
+      /** @description How to fix it. */
+      fix?: string | null;
+      /**
+       * @description Stable identifier, `area.name`.
+       * @example database.migrations
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description When the check observed this.
+       */
+      observed_at: string;
+      status: components["schemas"]["CheckStatus"];
+      /**
+       * @description What the check found, in one sentence.
+       * @example All 14 migrations are applied.
+       */
+      summary: string;
+      /**
+       * @description Short name of what is checked.
+       * @example Migrations applied
+       */
+      title: string;
+      /** @description What goes wrong if this is not fixed. */
+      why?: string | null;
+    };
+    /** @description The whole install's health. */
+    DoctorReport: {
+      /**
+       * @description Authentication mode.
+       * @example full
+       */
+      auth_mode: string;
+      /**
+       * Format: date-time
+       * @description When the checks ran.
+       */
+      checked_at: string;
+      /** @description Every check, problems first. */
+      checks: components["schemas"]["DoctorCheck"][];
+      /**
+       * @description Deployment grade (`dev`, `poc`, `preview`, `prod`). Decides how strict
+       *     the security checks are.
+       * @example prod
+       */
+      grade: string;
+      /**
+       * @description What the doctor found this install is made of, one fact per entry.
+       * @example [
+       *       "Postgres 16.4",
+       *       "3 workers",
+       *       "NATS",
+       *       "S3 blob storage"
+       *     ]
+       */
+      setup: string[];
+      /** @description The worst status of any check. */
+      status: components["schemas"]["CheckStatus"];
+      /**
+       * @description Server build version.
+       * @example 0.50.0
+       */
+      version: string;
+    };
     /** @description A GitHub trigger to create once GitHub is connected on the agent. */
     DraftGitHubTrigger: {
       /** @description CI events only: branches to accept, e.g. `main`; empty means every branch. */
@@ -13148,6 +15532,8 @@ export interface components {
      *     one opaque password field.
      */
     DriverCredentialInfo: {
+      /** @description Supported explicit chat APIs; "default" is also accepted. */
+      apis: string[];
       /** @description The fields and instructions to render for this driver's credential. */
       credential_schema: components["schemas"]["CredentialFormSchema"];
       /** @description Driver id (e.g. `openai`, `bedrock`, `mai`). */
@@ -13297,6 +15683,20 @@ export interface components {
       via_session_id?: string | null;
     };
     /**
+     * @description Display-only translations shared by portable agent files and platform resources.
+     *     Addresses, tool identifiers and execution instructions never use these values.
+     */
+    EntityLocalization: {
+      /** @description Localized description (1–2000 characters when set). */
+      description?: string | null;
+      /** @description Localized display name (1–255 characters when set). */
+      display_name?: string | null;
+    };
+    /** @description Locale-keyed display overlays. Deserialization normalizes tags and bounds input. */
+    EntityLocalizations: {
+      [key: string]: components["schemas"]["EntityLocalization"];
+    };
+    /**
      * @description One revision of an entity: the entry that made it and the entity as it
      *     stood after it.
      */
@@ -13424,7 +15824,64 @@ export interface components {
        * @example 2026-01-15T10:30:00Z
        */
       updated_at: string;
+      /**
+       * Format: int32
+       * @description Version of the cases (the eval's dataset). Every case change bumps it;
+       *     runs and experiments record the version they ran.
+       * @example 7
+       */
+      version?: number;
     };
+    /** @description One request to the Eval Builder for an agent. */
+    EvalBuilderRun: {
+      /**
+       * Format: date-time
+       * @description When it finished.
+       */
+      completed_at?: string | null;
+      /**
+       * Format: double
+       * @description What the model call cost, when the provider reported it.
+       * @example 0.012
+       */
+      cost_usd?: number | null;
+      /** @description Why it failed, in words for a person. */
+      error?: string | null;
+      /**
+       * @description Run identifier.
+       * @example evalbuild_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description Model that wrote the proposals.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * Format: int32
+       * @description Proposals it made.
+       * @example 5
+       */
+      proposals: number;
+      /**
+       * Format: int32
+       * @description Production sessions it read.
+       * @example 6
+       */
+      sessions_read: number;
+      /**
+       * Format: date-time
+       * @description When it started.
+       */
+      started_at: string;
+      /** @description Where the run is. */
+      status: components["schemas"]["EvalBuilderStatus"];
+    };
+    /**
+     * @description Where a request for proposals is.
+     * @enum {string}
+     */
+    EvalBuilderStatus: "running" | "done" | "failed" | "unavailable";
     /** @description A single test case within an eval. */
     EvalCase: {
       /**
@@ -13499,6 +15956,7 @@ export interface components {
        *     ]
        */
       scorers: components["schemas"]["Scorer"][];
+      simulated_user?: components["schemas"]["SimulatedUser"] | null;
       /**
        * @description Free-form tags for filtering runs.
        * @example [
@@ -13514,12 +15972,59 @@ export interface components {
        * @example 120
        */
       timeout_seconds?: number | null;
+      /** @description Tools the case gives the agent, answered with canned responses. */
+      tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
       /**
        * Format: date-time
        * @description When the case was last updated.
        * @example 2026-01-15T10:30:00Z
        */
       updated_at: string;
+    };
+    /** @description A case the Eval Builder suggests adding to one of the agent's datasets. */
+    EvalCaseProposal: {
+      /**
+       * @description Agent the case is for.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id: string;
+      /** @description The case as it would be created. */
+      case: components["schemas"]["CreateEvalCaseRequest"];
+      /** @description What part of the job it covers. */
+      category: components["schemas"]["ProposalCategory"];
+      /**
+       * Format: date-time
+       * @description When it was proposed.
+       */
+      created_at: string;
+      /** @description Note left when it was dismissed. */
+      dismiss_note?: string | null;
+      /**
+       * @description Proposal identifier.
+       * @example evalprop_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description `simulated` when a model plays the user, otherwise `scripted`.
+       * @example simulated
+       */
+      kind: string;
+      /**
+       * @description Short name of the case.
+       * @example Refund over the approval limit
+       */
+      name: string;
+      /** @description Why the Eval Builder suggests it, in one or two sentences. */
+      reason: string;
+      /**
+       * @description Sessions that inspired it, by public identifier.
+       * @example [
+       *       "session_01933b5a000070008000000000000001"
+       *     ]
+       */
+      source_session_ids: string[];
+      /** @description Whether it is decided. */
+      status: components["schemas"]["ProposalStatus"];
     };
     /** @description Result of a single case within a run. */
     EvalCaseResult: {
@@ -13591,6 +16096,12 @@ export interface components {
       target_snapshot?: components["schemas"]["EvalTarget"] | null;
       /**
        * Format: int32
+       * @description Which repetition of the case this result is, from 0.
+       * @example 0
+       */
+      trial?: number;
+      /**
+       * Format: int32
        * @description Turn count.
        * @example 3
        */
@@ -13607,6 +16118,44 @@ export interface components {
      * @enum {string}
      */
     EvalDatasetStatus: "pending" | "running" | "completed" | "failed";
+    /** @description An experiment: one dataset version against several variants. */
+    EvalExperiment: {
+      /**
+       * @description Label of the variant the others are compared against.
+       * @example baseline
+       */
+      baseline: string;
+      comparison?: components["schemas"]["ExperimentComparison"] | null;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * Format: int32
+       * @description The eval's `version` the experiment ran.
+       * @example 7
+       */
+      dataset_version: number;
+      /**
+       * @description The eval whose cases are the dataset.
+       * @example eval_01933b5a000070008000000000000001
+       */
+      eval_id: string;
+      /** @example evalexp_01933b5a000070008000000000000001 */
+      id: string;
+      /**
+       * Format: double
+       * @example 10
+       */
+      max_cost_usd?: number | null;
+      /** @example Luna vs Sol */
+      name: string;
+      status: components["schemas"]["ExperimentStatus"];
+      /**
+       * Format: int32
+       * @example 3
+       */
+      trials: number;
+      variants: components["schemas"]["ExperimentVariant"][];
+    };
     /**
      * @description Preflight capability report so optional-feature clients (e.g. Mira) can
      *     check before publishing instead of failing mid-import.
@@ -13631,6 +16180,12 @@ export interface components {
        */
       content: string;
     };
+    /** @description An agent's open proposals and its latest Eval Builder run. */
+    EvalProposalList: {
+      /** @description Open proposals, newest first. */
+      data: components["schemas"]["EvalCaseProposal"][];
+      latest_run?: components["schemas"]["EvalBuilderRun"] | null;
+    };
     /** @description An eval run: one execution of all/some cases. */
     EvalRun: {
       /**
@@ -13652,6 +16207,17 @@ export interface components {
        */
       created_at: string;
       /**
+       * Format: int32
+       * @description Dataset version (the eval's `version`) the run was created from.
+       * @example 7
+       */
+      dataset_version?: number | null;
+      /**
+       * @description The experiment this run is a variant of.
+       * @example evalexp_01933b5a000070008000000000000001
+       */
+      experiment_id?: string | null;
+      /**
        * @description Only run cases matching these tags.
        * @example [
        *       "regression",
@@ -13665,8 +16231,15 @@ export interface components {
        */
       id: string;
       /**
+       * Format: double
+       * @description Spending cap in USD. Once the run's agents and graders have spent it,
+       *     running turns stop and remaining cases are skipped.
+       * @example 5
+       */
+      max_cost_usd?: number | null;
+      /**
        * @description Model override for this run.
-       * @example gpt-5.1
+       * @example gpt-6-luna
        */
       model_override?: string | null;
       /** @description Case results (populated on detail view). */
@@ -13687,6 +16260,12 @@ export interface components {
       summary?: components["schemas"]["RunSummary"] | null;
       target?: components["schemas"]["EvalTarget"] | null;
       /**
+       * Format: int32
+       * @description How many times each case runs; results carry their `trial` number.
+       * @example 3
+       */
+      trials?: number;
+      /**
        * @description What triggered this run.
        * @example manual
        */
@@ -13697,6 +16276,11 @@ export interface components {
        * @example 2026-01-15T10:30:00Z
        */
       updated_at: string;
+      /**
+       * @description The variant's label within its experiment.
+       * @example candidate
+       */
+      variant_label?: string | null;
     };
     /**
      * @description An async dataset-export handle: the durable result of enqueuing a dataset
@@ -13803,6 +16387,61 @@ export interface components {
       /** @description Run lifecycle status. */
       status: components["schemas"]["EvalRunStatus"];
       summary?: components["schemas"]["RunSummary"] | null;
+    };
+    /** @description One Mira dataset row (`mira::Sample`). */
+    EvalSample: {
+      /** @description Non-text input. Not imported. */
+      attachments?: Record<string, unknown>[];
+      /** @description Reference answer. Text becomes a `contains` scorer on import. */
+      expected?: Record<string, unknown> | null;
+      /** @description Files to seed into the workspace. Not imported. */
+      files?: Record<string, unknown>;
+      /**
+       * @description Stable id within the dataset: the case name.
+       * @example refund-over-limit
+       */
+      id: string;
+      /**
+       * @description User turns, sent in order.
+       * @example [
+       *       "Refund $450 for order 1182"
+       *     ]
+       */
+      input: string[];
+      /**
+       * @description Free-form metadata. `everruns` holds the case settings Mira has no
+       *     field for.
+       */
+      metadata?: Record<string, unknown>;
+      tags?: string[];
+    };
+    /** @description What a sample import did. */
+    EvalSampleImportReport: {
+      /** @description Public ids of the affected cases, in import order. */
+      case_ids: string[];
+      /**
+       * Format: int64
+       * @description Cases created.
+       * @example 3
+       */
+      created: number;
+      /**
+       * @description Sample fields a case cannot hold, one line per sample that had them.
+       * @example [
+       *       "refund-with-receipt: attachments"
+       *     ]
+       */
+      left_behind?: string[];
+      /**
+       * Format: int64
+       * @description Existing cases updated, matched by name.
+       * @example 1
+       */
+      updated: number;
+    };
+    /** @description A dataset as Mira samples. */
+    EvalSampleList: {
+      samples: components["schemas"]["EvalSample"][];
     };
     /**
      * @description Eval lifecycle status (standard building-block lifecycle).
@@ -13953,6 +16592,8 @@ export interface components {
       | components["schemas"]["OutputMessageReplacedData"]
       | components["schemas"]["ConversationMessageData"]
       | components["schemas"]["OutputMessageCompletedData"]
+      | components["schemas"]["MessageReactionData"]
+      | components["schemas"]["MessageReactionData"]
       | components["schemas"]["TurnStartedData"]
       | components["schemas"]["TurnCompletedData"]
       | components["schemas"]["DreamingActivityData"]
@@ -13979,6 +16620,8 @@ export interface components {
       | components["schemas"]["ReasonThinkingCompletedData"]
       | components["schemas"]["TurnSealedData"]
       | components["schemas"]["TurnCancelledData"]
+      | components["schemas"]["TurnCompletionCheckedData"]
+      | components["schemas"]["TurnCreditShortfallData"]
       | components["schemas"]["SessionStartedData"]
       | components["schemas"]["SessionActivatedData"]
       | components["schemas"]["SessionIdledData"]
@@ -14124,6 +16767,82 @@ export interface components {
      * @enum {string}
      */
     ExecutionPhase: "commentary" | "final_answer";
+    /** @description Variants compared case by case against the baseline. */
+    ExperimentComparison: {
+      /** @example baseline */
+      baseline: string;
+      /** @description Cases whose result changed come first. */
+      cases: components["schemas"]["CaseComparison"][];
+      /** @description One verdict per variant other than the baseline. */
+      verdicts: components["schemas"]["VariantVerdict"][];
+    };
+    /** @description Result of an experiment gate that passed. */
+    ExperimentGateResult: {
+      /**
+       * Format: double
+       * @example 0.93
+       */
+      pass_rate: number;
+      passed: boolean;
+      /**
+       * Format: double
+       * @description Share of cases passed in every trial (pass^k).
+       * @example 0.9
+       */
+      passed_every_trial: number;
+      /**
+       * @description The variant the gate judged.
+       * @example candidate
+       */
+      variant: string;
+      verdict?: components["schemas"]["Verdict"] | null;
+    };
+    /**
+     * @description Where an experiment is: running until every variant's run finished.
+     * @enum {string}
+     */
+    ExperimentStatus: "running" | "completed" | "failed" | "cancelled";
+    /** @description One variant of an experiment and how its run went. */
+    ExperimentVariant: {
+      /**
+       * Format: double
+       * @description What one case cost on average, all its trials together.
+       * @example 0.031
+       */
+      cost_per_case_usd?: number | null;
+      /** @example candidate */
+      label: string;
+      /** @example gpt-6.1-sol */
+      model_override?: string | null;
+      /**
+       * @description Set when the variant ran outside Everruns and was imported: the system
+       *     that ran it, such as "mira".
+       * @example mira
+       */
+      run_elsewhere?: string | null;
+      /**
+       * @description The variant's run.
+       * @example evalrun_01933b5a000070008000000000000001
+       */
+      run_id: string;
+      status: components["schemas"]["EvalRunStatus"];
+      summary?: components["schemas"]["RunSummary"] | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+    };
+    /** @description One configuration an experiment runs the dataset against. */
+    ExperimentVariantSpec: {
+      /**
+       * @description Short name shown in comparisons, unique within the experiment.
+       * @example candidate
+       */
+      label: string;
+      /**
+       * @description Model for this variant, beating the target's model.
+       * @example gpt-6.1-sol
+       */
+      model_override?: string | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+    };
     /** @description Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`. */
     ExportEvalRunDatasetRequest: {
       /** @description Per-case selection filters. */
@@ -14160,6 +16879,8 @@ export interface components {
       organizations: components["schemas"]["ExportedOrganization"][];
       /** @description Personal access tokens owned by the user (no sensitive secrets — just metadata). */
       personal_access_tokens: components["schemas"]["ExportedPersonalAccessToken"][];
+      /** @description Private profile change records owned by the exporting account. */
+      profile_history?: unknown[];
       /** @description Profile data for the exporting user. */
       user: components["schemas"]["ExportedUserProfile"];
     };
@@ -14295,6 +17016,33 @@ export interface components {
       } | null;
       /** @description Source channel identifier (e.g. "slack", "discord") */
       source: string;
+    };
+    /** @description Public status of a customer-hosted HTTPS runtime; credentials are never exposed. */
+    ExternalAgent: {
+      /** @description Whether this binding can lease new work. Disabled bindings retain routing. */
+      enabled: boolean;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
+      /** @description Sanitized dispatch error, cleared after a successful invocation or registration. */
+      last_error?: string | null;
+      /**
+       * Format: date-time
+       * @description Time of the latest invocation attempt, if any.
+       */
+      last_invoked_at?: string | null;
+    };
+    /** @description An Agent's external-agent state, plus whether this installation lets it connect one. */
+    ExternalAgentStatus: {
+      /**
+       * @description Whether a new endpoint can be connected here: the installation sets
+       *     `EXTERNAL_AGENTS_ENABLED=true` and protected worker ingress is off.
+       *     The UI hides the setup when this is false and no endpoint exists.
+       */
+      available: boolean;
+      endpoint?: components["schemas"]["ExternalAgent"] | null;
     };
     /**
      * @description Result status reported alongside externally computed scores.
@@ -14561,8 +17309,160 @@ export interface components {
       severity: components["schemas"]["FindingSeverity"];
       source: components["schemas"]["FindingSource"];
     };
+    /** @description An action taken on a finding. */
+    FindingAction: {
+      /** @description Whether Everruns took it on its own under the org's policy. */
+      automatic: boolean;
+      /**
+       * Format: date-time
+       * @description When it was taken.
+       */
+      created_at: string;
+      /** @description The finding episode it belongs to is the current one. */
+      current: boolean;
+      /** @description Prefixed public identifier (`fact_…`). */
+      id: string;
+      /** @description What was done: `pause_schedule`. */
+      kind: string;
+      /** @description What it acted on, by public id (a schedule's `sched_…`). */
+      target_id: string;
+      /**
+       * Format: date-time
+       * @description When it was undone, if it was.
+       */
+      undone_at?: string | null;
+    };
+    /** @description What has been done about a finding, and what can be. */
+    FindingActions: {
+      /** @description Actions taken, newest first. */
+      actions: components["schemas"]["FindingAction"][];
+      /** @description Actions the org's policy offers for a person to take now. */
+      available: components["schemas"]["AvailableFindingAction"][];
+      mode?: components["schemas"]["SelfHealingMode"] | null;
+    };
     /** @enum {string} */
     FindingCategory: "structure" | "completeness" | "effectiveness" | "safety" | "cost";
+    /**
+     * @description A suggested change to an agent's instructions, written by the Inspector for
+     *     a finding, and where checking and approving it stand.
+     */
+    FindingFix: {
+      /** @description The text added to the end of the agent's instructions. */
+      addition: string;
+      /**
+       * @description The agent whose instructions the fix changes.
+       * @example agent_550e8400e29b41d4a716446655440000
+       */
+      agent_id: string;
+      check?: components["schemas"]["FixCheck"] | null;
+      /**
+       * Format: date-time
+       * @description When the Inspector wrote the fix.
+       */
+      created_at: string;
+      /**
+       * @description False when the agent's instructions changed after the last check, so
+       *     the fix needs checking again before it can be applied.
+       */
+      current: boolean;
+      /**
+       * Format: date-time
+       * @description When a person applied or rejected the fix.
+       */
+      decided_at?: string | null;
+      /** @description Why it was rejected. */
+      decision_note?: string | null;
+      /** @description The eval the last check ran, while or after it runs. */
+      eval_id?: string | null;
+      /** @description The last check's experiment, while or after it runs. */
+      experiment_id?: string | null;
+      /**
+       * @description Prefixed public identifier of the fix.
+       * @example fix_0190f3a1b2c37d8e9f00112233445566
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description The finding the fix is for.
+       */
+      issue_id: string;
+      /**
+       * @description `proposed` (not checked), `checking`, `verified` (checked, no
+       *     regressions), `regressed`, `check_failed`, `applied` or `rejected`.
+       */
+      status: string;
+      /** @description One line on what the change does. */
+      summary: string;
+    };
+    /** @description The fixes list. */
+    FindingFixList: {
+      /** @description Newest first. */
+      fixes: components["schemas"]["FindingFix"][];
+    };
+    /**
+     * @description The Inspector's write-up of a finding: what happened, how serious it is,
+     *     what to do, and the cluster of similar findings it was filed under.
+     */
+    FindingInvestigation: {
+      /**
+       * Format: uuid
+       * @description The cluster of similar findings in this organization.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      cluster_id?: string | null;
+      /**
+       * Format: int64
+       * @description Open findings in the cluster, this one included.
+       * @example 3
+       */
+      cluster_open?: number | null;
+      /**
+       * @description Title of that cluster, naming the problem the findings share.
+       * @example Schedules polling an expired claim
+       */
+      cluster_title?: string | null;
+      /**
+       * Format: date-time
+       * @description When the write-up was finished.
+       * @example 2026-10-18T21:40:00Z
+       */
+      completed_at?: string | null;
+      /**
+       * @description The note the person gave when dismissing.
+       * @example Expected: load test
+       */
+      dismiss_reason?: string | null;
+      /**
+       * Format: date-time
+       * @description When a person dismissed the finding, and why.
+       */
+      dismissed_at?: string | null;
+      /**
+       * @description The model that wrote it.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * @description `high`, `medium` or `low`, as the Inspector judged it.
+       * @example high
+       */
+      severity?: string | null;
+      /**
+       * @description `running`, `done`, `failed`, or `unavailable` (no model to write it).
+       * @example done
+       */
+      status: string;
+      /**
+       * @description One concrete next step.
+       * @example Add a stop rule to the schedule's instructions.
+       */
+      suggested_action?: string | null;
+      /**
+       * @description What happened, in two to four plain sentences.
+       * @example The schedule polls a sign-in claim that expired; every run since reports the same error.
+       */
+      what_happened?: string | null;
+    };
     /**
      * @description Pointer to the config field (and optional byte span within it) a finding
      *     refers to.
@@ -14589,6 +17489,63 @@ export interface components {
      * @enum {string}
      */
     FindingSource: "builtin" | "llm" | "health_check";
+    /** @description Body of a manual fire. Without `event`, a schedule trigger runs as on a tick. */
+    FireAgentTriggerRequest: {
+      event?: components["schemas"]["ManualTriggerEvent"] | null;
+    };
+    /** @description What a check found: the eval's cases with and without the fix. */
+    FixCheck: {
+      /**
+       * Format: int32
+       * @description Cases the fix made fail.
+       */
+      broke: number;
+      /**
+       * Format: int32
+       * @description Cases that ran on both sides.
+       */
+      cases: number;
+      /** @description The agent as it is. */
+      current: components["schemas"]["FixCheckSide"];
+      /**
+       * Format: int32
+       * @description The eval's dataset version at the check.
+       */
+      dataset_version: number;
+      /** @description Name of the eval the check ran. */
+      eval_name: string;
+      /**
+       * Format: int32
+       * @description Cases the fix made pass.
+       */
+      fixed: number;
+      /**
+       * Format: int32
+       * @description Trials per case and side.
+       */
+      trials: number;
+      /** @description How the variant with the fix compares, noise taken into account. */
+      verdict: components["schemas"]["Verdict"];
+      /** @description The agent with the addition. */
+      with_fix: components["schemas"]["FixCheckSide"];
+    };
+    FixCheckSide: {
+      /**
+       * Format: double
+       * @description What the side's trials cost in USD.
+       */
+      cost_usd: number;
+      /**
+       * Format: double
+       * @description Share of all trials that passed, 0 to 1.
+       */
+      pass_rate: number;
+      /**
+       * Format: int32
+       * @description Cases that passed every trial.
+       */
+      passed: number;
+    };
     /**
      * @description Request to fork a session. Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
@@ -15142,6 +18099,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -15205,6 +18164,8 @@ export interface components {
       display_name: string;
       /** @description Display glyph name rendered by the UI (e.g. `bar-chart`). */
       icon?: string | null;
+      /** @description Locale-keyed display names and descriptions. */
+      localizations: components["schemas"]["EntityLocalizations"];
       /** @description Unique slug (e.g. `data-analyst`). */
       name: string;
       /**
@@ -15340,11 +18301,21 @@ export interface components {
        */
       error_code?: string | null;
       /**
+       * @description The numbers a detector or classifier recorded for a finding: counts,
+       *     costs, probabilities. Never session content.
+       */
+      evidence?: Record<string, unknown> | null;
+      /**
        * Format: date-time
        * @description Time the current issue episode was first detected.
        * @example 2026-10-03T12:00:00Z
        */
       first_detected_at: string;
+      /**
+       * @description Repairs Everruns can make for the issue now, in the order to offer
+       *     them. Empty when it has none, or the issue is resolved.
+       */
+      fixers: components["schemas"]["IssueFixer"][];
       /**
        * @description Application-relative link to the issue details.
        * @example /settings/health?issue=550e8400-e29b-41d4-a716-446655440000
@@ -15356,6 +18327,7 @@ export interface components {
        * @example 550e8400-e29b-41d4-a716-446655440000
        */
       id: string;
+      investigation?: components["schemas"]["FindingInvestigation"] | null;
       /**
        * Format: date-time
        * @description Time the latest accepted verification evidence was observed.
@@ -15375,6 +18347,11 @@ export interface components {
        */
       notification_id?: string | null;
       /**
+       * @description Public identifier of the session the issue points at, when it has one.
+       * @example session_550e8400e29b41d4a716446655440000
+       */
+      session_id?: string | null;
+      /**
        * Format: date-time
        * @description Current user's reminder suppression deadline, if snoozed.
        * @example 2026-10-04T12:00:00Z
@@ -15390,6 +18367,12 @@ export interface components {
        * @example open
        */
       status: string;
+      /**
+       * @description What a background-work issue is about: a schedule (`sched_…`), an agent
+       *     (`agent_…`), a session (`session_…`) or the organization (`org_…`).
+       * @example sched_550e8400e29b41d4a716446655440000
+       */
+      subject_id?: string | null;
       /**
        * @description Human-readable summary of the required action.
        * @example Slack permissions need updating
@@ -15698,6 +18681,7 @@ export interface components {
     ImportEvalRunRequest: {
       /** @description Evals and their case results in this run. */
       evals: components["schemas"]["ImportEvalGroup"][];
+      experiment?: components["schemas"]["ImportExperimentRef"] | null;
       /** @description External system that produced the run. */
       source: components["schemas"]["ImportEvalSource"];
     };
@@ -15740,6 +18724,24 @@ export interface components {
        * @example openai
        */
       provider: string;
+    };
+    /**
+     * @description The experiment an import publishes into. Each imported eval's run becomes
+     *     the variant `variant` of the experiment named `name` on that eval, which
+     *     is created on first use.
+     */
+    ImportExperimentRef: {
+      /**
+       * @description Experiment name, matched within each eval.
+       * @example Luna vs Sol
+       */
+      name: string;
+      /**
+       * @description The variant this import is. A later import with the same label
+       *     replaces it.
+       * @example gpt-6.1-sol
+       */
+      variant: string;
     };
     /** @description A single named score from an external scorer. */
     ImportScore: {
@@ -15874,6 +18876,54 @@ export interface components {
        * @example microsoft-docs
        */
       plugin_name: string;
+    };
+    /** @description The result of running a fixer. */
+    IssueFixOutcome: {
+      /**
+       * @description The provider page that approves the change. Built by the server on the
+       *     provider's own origin.
+       */
+      consent_url?: string | null;
+      /** @description The issue after the fix. */
+      issue: components["schemas"]["HealthIssue"];
+      /**
+       * @description Whether approving returns the browser to the issue by itself. When
+       *     false the person comes back on their own and the page checks again.
+       */
+      returns_automatically: boolean;
+      /**
+       * @description `done` (the change is made and the issue was checked again) or
+       *     `consent` (approve the change at `consent_url`, then come back).
+       * @example consent
+       */
+      status: string;
+    };
+    /** @description A repair Everruns can make for an issue. */
+    IssueFixer: {
+      /**
+       * @description `in_place` when running it is the whole fix; `consent` when the person
+       *     then approves the change in the provider.
+       * @example consent
+       */
+      effect: string;
+      /**
+       * @description What it does: `slack.add_permissions`, `slack.reconnect` or `schedule.pause`.
+       * @example slack.add_permissions
+       */
+      kind: string;
+      /**
+       * @description Button text.
+       * @example Fix in Slack
+       */
+      label: string;
+      /** @description Whether the provider may ask a workspace administrator to approve. */
+      needs_provider_admin: boolean;
+      /** @description What happens when it runs, step by step, in plain words. */
+      steps: string[];
+      /** @description Why it cannot run now, and what unlocks it. Absent when it can run. */
+      unavailable_reason?: string | null;
+      /** @description Whether the fix can be undone from the finding. */
+      undoable: boolean;
     };
     /** @description Key-value entry info (key and timestamps, no value) */
     KeyValueInfo: {
@@ -16120,6 +19170,13 @@ export interface components {
          */
         communication?: components["schemas"]["Communication"];
         /**
+         * @description When a turn about to finish is checked for whether it did what was
+         *     asked, and continued automatically when it did not. `unattended`
+         *     (default): sessions started by triggers and schedules, where no person
+         *     is watching. `always`: chat too. `off`: never.
+         */
+        completion_check?: components["schemas"]["CompletionCheck"];
+        /**
          * Format: date-time
          * @description Timestamp when the agent was created.
          * @example 2026-04-01T10:00:00Z
@@ -16192,6 +19249,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /**
          * @description Maximum number of LLM iterations per turn for this agent.
          * @example 50
@@ -16214,6 +19273,12 @@ export interface components {
          */
         name: string;
         network_access?: components["schemas"]["NetworkAccessList"] | null;
+        /**
+         * @description Agent this one was created as part of, shown as "Created here" on
+         *     that agent's Agents tab and bundled into its export.
+         * @example agent_01933b5a00007000800000000000001
+         */
+        owner_agent_id?: string | null;
         /**
          * @description Request-level parallel tool calling preference (EVE-598).
          *
@@ -16620,6 +19685,13 @@ export interface components {
          * @example 2026-01-15T10:30:00Z
          */
         updated_at: string;
+        /**
+         * Format: int32
+         * @description Version of the cases (the eval's dataset). Every case change bumps it;
+         *     runs and experiments record the version they ran.
+         * @example 7
+         */
+        version?: number;
       }[];
     };
     /**
@@ -16701,6 +19773,7 @@ export interface components {
          *     ]
          */
         scorers: components["schemas"]["Scorer"][];
+        simulated_user?: components["schemas"]["SimulatedUser"] | null;
         /**
          * @description Free-form tags for filtering runs.
          * @example [
@@ -16716,6 +19789,8 @@ export interface components {
          * @example 120
          */
         timeout_seconds?: number | null;
+        /** @description Tools the case gives the agent, answered with canned responses. */
+        tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
         /**
          * Format: date-time
          * @description When the case was last updated.
@@ -16799,6 +19874,12 @@ export interface components {
         target_snapshot?: components["schemas"]["EvalTarget"] | null;
         /**
          * Format: int32
+         * @description Which repetition of the case this result is, from 0.
+         * @example 0
+         */
+        trial?: number;
+        /**
+         * Format: int32
          * @description Turn count.
          * @example 3
          */
@@ -16809,6 +19890,50 @@ export interface components {
          * @example 2026-01-15T10:30:00Z
          */
         updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_EvalExperiment: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * @description Label of the variant the others are compared against.
+         * @example baseline
+         */
+        baseline: string;
+        comparison?: components["schemas"]["ExperimentComparison"] | null;
+        /** Format: date-time */
+        created_at: string;
+        /**
+         * Format: int32
+         * @description The eval's `version` the experiment ran.
+         * @example 7
+         */
+        dataset_version: number;
+        /**
+         * @description The eval whose cases are the dataset.
+         * @example eval_01933b5a000070008000000000000001
+         */
+        eval_id: string;
+        /** @example evalexp_01933b5a000070008000000000000001 */
+        id: string;
+        /**
+         * Format: double
+         * @example 10
+         */
+        max_cost_usd?: number | null;
+        /** @example Luna vs Sol */
+        name: string;
+        status: components["schemas"]["ExperimentStatus"];
+        /**
+         * Format: int32
+         * @example 3
+         */
+        trials: number;
+        variants: components["schemas"]["ExperimentVariant"][];
       }[];
     };
     /**
@@ -16837,6 +19962,17 @@ export interface components {
          */
         created_at: string;
         /**
+         * Format: int32
+         * @description Dataset version (the eval's `version`) the run was created from.
+         * @example 7
+         */
+        dataset_version?: number | null;
+        /**
+         * @description The experiment this run is a variant of.
+         * @example evalexp_01933b5a000070008000000000000001
+         */
+        experiment_id?: string | null;
+        /**
          * @description Only run cases matching these tags.
          * @example [
          *       "regression",
@@ -16850,8 +19986,15 @@ export interface components {
          */
         id: string;
         /**
+         * Format: double
+         * @description Spending cap in USD. Once the run's agents and graders have spent it,
+         *     running turns stop and remaining cases are skipped.
+         * @example 5
+         */
+        max_cost_usd?: number | null;
+        /**
          * @description Model override for this run.
-         * @example gpt-5.1
+         * @example gpt-6-luna
          */
         model_override?: string | null;
         /** @description Case results (populated on detail view). */
@@ -16872,6 +20015,12 @@ export interface components {
         summary?: components["schemas"]["RunSummary"] | null;
         target?: components["schemas"]["EvalTarget"] | null;
         /**
+         * Format: int32
+         * @description How many times each case runs; results carry their `trial` number.
+         * @example 3
+         */
+        trials?: number;
+        /**
          * @description What triggered this run.
          * @example manual
          */
@@ -16882,6 +20031,11 @@ export interface components {
          * @example 2026-01-15T10:30:00Z
          */
         updated_at: string;
+        /**
+         * @description The variant's label within its experiment.
+         * @example candidate
+         */
+        variant_label?: string | null;
       }[];
     };
     /**
@@ -17072,6 +20226,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -17433,6 +20589,7 @@ export interface components {
     ListResponse_Observer: {
       /** @description Array of items returned by the list operation. */
       data: {
+        alert?: components["schemas"]["ObserverAlert"] | null;
         /** Format: date-time */
         archived_at?: string | null;
         /** Format: date-time */
@@ -17481,8 +20638,17 @@ export interface components {
          *     default.
          */
         agentid_agents_per_owner?: number | null;
+        /**
+         * @description Limits on unattended background work (Settings → Limits): schedule
+         *     lifetime and run cap for agent-created schedules, the default and
+         *     largest schedule budget, and the daily unattended spend cap. Code
+         *     defaults when the organization never set any.
+         */
+        background_limits: components["schemas"]["BackgroundLimits"];
         /** @description Base harness used when session creation omits harness_id. */
         base_harness_id?: string | null;
+        /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+        chat_model_id?: string | null;
         /**
          * Format: date-time
          * @description When the organization was created
@@ -17510,6 +20676,13 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /**
+         * @description What Everruns does on its own when a finding opens (Settings →
+         *     Limits): pause a repeating schedule automatically, and whether the
+         *     Inspector suggests changes to agents. Code defaults when the
+         *     organization never set any.
+         */
+        self_healing: components["schemas"]["SelfHealingPolicy"];
         /** @description Optional small chat model, independent of the main chat and decision defaults. */
         small_model_id?: string | null;
         /**
@@ -17717,6 +20890,9 @@ export interface components {
          *     improvement loop.
          */
         reason?: string | null;
+        review?: components["schemas"]["ScoreReview"] | null;
+        /** @description Trace slice this score grades. */
+        scope?: components["schemas"]["ObserverScope"];
         /**
          * @description Scorer key within the observer.
          * @example grounded
@@ -17728,7 +20904,10 @@ export interface components {
          */
         session_id: string;
         status: components["schemas"]["TraceScoreStatus"];
-        /** @description Turn this score grades (turn scope). */
+        /**
+         * @description What was graded: the turn id (turn scope), `session` (session scope)
+         *     or the tool call id (tool scope).
+         */
         turn_id: string;
         /** Format: date-time */
         updated_at: string;
@@ -18208,6 +21387,8 @@ export interface components {
     ListResponse_WithUrls_Provider: {
       /** @description Array of items returned by the list operation. */
       data: ({
+        /** @description Chat API declared by the provider driver; "default" restores its default. */
+        api?: string | null;
         /** @description Whether an API key is configured. The key itself is never returned. */
         api_key_set: boolean;
         /** @description Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint. */
@@ -18345,6 +21526,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -19027,6 +22210,11 @@ export interface components {
     };
     /** @description Authored values only: no organisation, agent, model, harness or channel IDs. */
     Manifest: {
+      /**
+       * @description Agents bundled with this one, each a complete definition. Folders and
+       *     archives keep them in `.agents/agents/<name>/`; text formats inline them.
+       */
+      agents?: components["schemas"]["Manifest"][];
       /** @description Named capabilities, optionally with configuration; the host validates availability. */
       capabilities?: components["schemas"]["PackageCapability"][];
       /** @description Named channel descriptions, upserted without removing omitted destination channels. */
@@ -19034,6 +22222,7 @@ export interface components {
         [key: string]: components["schemas"]["Channel"];
       };
       communication?: components["schemas"]["Communication"] | null;
+      completion_check?: components["schemas"]["CompletionCheck"] | null;
       /** @description Optional description of the agent's purpose. */
       description?: string | null;
       /** @description Human-readable agent label. Defaults to the stable name at the host. */
@@ -19048,6 +22237,8 @@ export interface components {
       instructions_file?: string | null;
       /** @description Optional Markdown introduction shown before the conversation starts. */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
       max_iterations?: number | null;
       /**
@@ -19059,6 +22250,12 @@ export interface components {
       mcpServers?: {
         [key: string]: components["schemas"]["ScopedMcpServer"];
       };
+      /**
+       * @description Other agents, by name, that this agent can hand work to. Agents bundled
+       *     under `.agents/agents/` are found without listing them here; an explicit
+       *     empty list turns that discovery off.
+       */
+      members?: string[] | null;
       model?: components["schemas"]["PackageModel"] | null;
       /** @description Stable agent name used for destination lookup; resource IDs are not portable. */
       name?: string;
@@ -19086,8 +22283,63 @@ export interface components {
       /** @description Tool schemas whose executable implementations must be bound by the host. */
       tools?: components["schemas"]["ToolDefinition"][];
     };
+    /**
+     * @description What a manual fire did.
+     * @enum {string}
+     */
+    ManualFireStatus: "dispatched" | "filtered" | "duplicate";
     /** @description Response body for manual memory source. */
     ManualMemorySourceResponse: Record<string, unknown>;
+    /**
+     * @description An event to fire a trigger with, instead of a plain run.
+     *
+     *     Name it raw, as its source sends it (`payload`, with `name` for GitHub and
+     *     `headers` for webhooks), or for a GitHub trigger by reference
+     *     (`repository` and `pull_request`).
+     */
+    ManualTriggerEvent: {
+      /**
+       * @description GitHub reference: the action the built event carries. Defaults to the
+       *     first of opened, synchronize, reopened, ready_for_review the trigger
+       *     listens to.
+       * @example synchronize
+       */
+      action?: string | null;
+      /** @description Request headers a webhook trigger's templates see as `webhook.headers`. */
+      headers?: {
+        [key: string]: string;
+      } | null;
+      /**
+       * @description Idempotency key. Defaults to a fresh id, so every manual fire runs;
+       *     repeat an id the trigger already saw to test deduplication.
+       */
+      id?: string | null;
+      /**
+       * @description Event name: the GitHub event (`pull_request`, `issue_comment`, the
+       *     `X-GitHub-Event` header). For an MCP event trigger it defaults to the
+       *     trigger's event and must match it.
+       * @example pull_request
+       */
+      name?: string | null;
+      /**
+       * @description The event as its source sends it: a webhook request body, a GitHub
+       *     event payload, an MCP event's `data`, or extra context a schedule
+       *     trigger's message reads as `{{payload.*}}`.
+       */
+      payload?: Record<string, unknown>;
+      /**
+       * Format: int64
+       * @description GitHub reference: the pull request number. The server reads it through
+       *     the agent's GitHub connection and builds a `pull_request` event.
+       * @example 12
+       */
+      pull_request?: number | null;
+      /**
+       * @description GitHub reference: the pull request's repository, `owner/name`.
+       * @example acme/api
+       */
+      repository?: string | null;
+    };
     /**
      * @description Whether a missing sign-in for an agent MCP attachment may pause the turn
      *     with an in-chat Connect card.
@@ -19669,6 +22921,42 @@ export interface components {
      * @enum {string}
      */
     MessageRating: "good" | "bad";
+    /** @description Data for `message.reaction.added` and `message.reaction.removed`. */
+    MessageReactionData: {
+      actor: components["schemas"]["ReactionActor"];
+      /**
+       * @description One Unicode emoji, or a platform custom emoji as `:name:`.
+       * @example 👍
+       */
+      emoji: string;
+      /**
+       * @description Message the reaction is on (`message_...`).
+       * @example message_01933b5a00007000800000000000001
+       */
+      message_id: string;
+      /**
+       * @description Where the reaction was made: `console`, `api`, `work_chat`, `agent`,
+       *     `slack`, `ag_ui`, `a2a`.
+       */
+      source?: string | null;
+    };
+    /** @description The reactions on one message. */
+    MessageReactions: {
+      /**
+       * @description Who wrote the message: `user` (a user-role message) or `agent`.
+       * @example agent
+       */
+      author?: string | null;
+      /** @example message_01933b5a00007000800000000000001 */
+      message_id: string;
+      reactions: components["schemas"]["ReactionSummary"][];
+      /**
+       * Format: int64
+       * @description Position of the message in the session's event log, which places it in
+       *     a turn of the trace. Absent when the message is no longer stored.
+       */
+      sequence?: number | null;
+    };
     /**
      * @description Message role (API layer)
      *
@@ -19972,6 +23260,24 @@ export interface components {
       /** @description Profile origin: curated, discovered, predefined or manual. */
       source: string;
       vendor?: components["schemas"]["ModelVendor"] | null;
+    };
+    /** @description A reviewed model enablement change with the provider and state the user saw. */
+    ModelSelectionChange: {
+      enabled: boolean;
+      expected_enabled: boolean;
+      id: string;
+      provider_id: string;
+    };
+    /** @description The saved before and after values and revisions of a model selection change. */
+    ModelSelectionReceipt: {
+      after: boolean;
+      before: boolean;
+      /** Format: int64 */
+      from_revision: number;
+      id: string;
+      label: string;
+      /** Format: int64 */
+      revision: number;
     };
     /**
      * @description How the model was added to the system
@@ -20456,6 +23762,60 @@ export interface components {
        */
       turn_no: number;
     };
+    /** @description Recorded execution history for one organization or the platform. */
+    MonitoringTimeline: {
+      /**
+       * Format: int32
+       * @description Bucket size in seconds.
+       * @example 300
+       */
+      bucket_seconds: number;
+      /** @description Every bucket in the range, oldest first; buckets without history are zero. */
+      buckets: components["schemas"]["TimelineBucket"][];
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start, aligned to the bucket size.
+       */
+      from: string;
+      /**
+       * Format: date-time
+       * @description UTC time of this read.
+       */
+      generated_at: string;
+      /** @description Deploys and worker changes inside the range. */
+      markers: components["schemas"]["TimelineMarker"][];
+      /** @description Totals for the same length of time immediately before. */
+      previous: components["schemas"]["TimelineSummary"];
+      /**
+       * @description organization or fleet.
+       * @example organization
+       */
+      scope: string;
+      /** @description Totals for this range. */
+      summary: components["schemas"]["TimelineSummary"];
+      /**
+       * Format: date-time
+       * @description Exclusive UTC end.
+       */
+      to: string;
+    };
+    /** @description Breakdown of a selected window. */
+    MonitoringTimelineWindow: {
+      /** @description Up to 5 busiest agents (organization) or organizations (platform). */
+      busiest: components["schemas"]["TimelineRank"][];
+      /** @description Up to 6 failure codes, most frequent first. */
+      failures: components["schemas"]["TimelineFailure"][];
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start.
+       */
+      from: string;
+      /**
+       * Format: date-time
+       * @description Exclusive UTC end.
+       */
+      to: string;
+    };
     /** @description Scope-aware actor ownership with platform-only worker telemetry. */
     MonitoringWorker: {
       /**
@@ -20735,6 +24095,7 @@ export interface components {
     };
     /** @description An observer: online scoring config over production sessions. */
     Observer: {
+      alert?: components["schemas"]["ObserverAlert"] | null;
       /** Format: date-time */
       archived_at?: string | null;
       /** Format: date-time */
@@ -20770,6 +24131,32 @@ export interface components {
       updated_at: string;
     };
     /**
+     * @description Open a health issue, and tell the people who own the watched agents, when
+     *     an observer's pass rate falls under `min_pass_rate` over the last
+     *     `window_hours`. Needs `min_scored` scores in the window so a handful of
+     *     samples cannot raise it. The issue resolves itself once the rate recovers.
+     */
+    ObserverAlert: {
+      /**
+       * Format: double
+       * @description Pass rate (0.0–1.0) under which the alert opens.
+       * @example 0.8
+       */
+      min_pass_rate: number;
+      /**
+       * Format: int32
+       * @description Scores the window needs before the alert can open. Defaults to 20.
+       * @example 20
+       */
+      min_scored?: number;
+      /**
+       * Format: int32
+       * @description Window the rate is measured over, in hours (1–168). Defaults to 24.
+       * @example 24
+       */
+      window_hours?: number;
+    };
+    /**
      * @description Predicates selecting which production sessions an observer scores.
      *     All present predicates must match (AND); within a list, any entry matches (OR).
      *     An empty match block matches all org traffic. Sessions tagged `eval` are
@@ -20784,11 +24171,16 @@ export interface components {
       session_tags?: string[] | null;
     };
     /**
-     * @description What slice of the trace a scorer grades. Phase 1 implements `turn` only;
-     *     `session` and `tool` scopes are reserved for future use.
+     * @description What slice of the trace a scorer grades.
+     *
+     *     - `turn`: one exchange, scored when the turn completes.
+     *     - `session`: the whole conversation, scored once the session has been idle
+     *       for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so
+     *       each session has one current score.
+     *     - `tool`: one tool call and its result, scored when the call completes.
      * @enum {string}
      */
-    ObserverScope: "turn";
+    ObserverScope: "turn" | "session" | "tool";
     /**
      * @description One scorer inside an observer. `key` names the score series in listings
      *     and future dashboards; `scope` selects the trace slice; `method` is how
@@ -20799,12 +24191,21 @@ export interface components {
       key: string;
       /** @description Trace slice this scorer grades. */
       scope?: components["schemas"]["ObserverScope"];
+      /**
+       * @description Tool scope only: grade calls to these tools. Empty or absent grades
+       *     every tool call.
+       */
+      tools?: string[] | null;
     };
     /**
      * @description Observer lifecycle status. `paused` keeps configuration but stops matching.
      * @enum {string}
      */
     ObserverStatus: "active" | "paused" | "archived" | "deleted";
+    /** @description The decision-model selection for the active organization. */
+    OrgDecisionSettings: {
+      model_id?: string | null;
+    };
     /** @description An organization's egress allowlist extension. */
     OrgEgressAllowlistResponse: {
       /**
@@ -20855,6 +24256,16 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
+    /** @description Editable history contains only the account's display name. */
+    OrganizationAccountMetadata: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+    };
+    /** @description A new display name; account credentials remain unchanged. */
+    OrganizationAccountNameRequest: {
+      name: string;
+    };
     /** @description Non-secret metadata for an organization-owned provider account. */
     OrganizationConnectionResponse: {
       /**
@@ -20899,8 +24310,17 @@ export interface components {
        *     default.
        */
       agentid_agents_per_owner?: number | null;
+      /**
+       * @description Limits on unattended background work (Settings → Limits): schedule
+       *     lifetime and run cap for agent-created schedules, the default and
+       *     largest schedule budget, and the daily unattended spend cap. Code
+       *     defaults when the organization never set any.
+       */
+      background_limits: components["schemas"]["BackgroundLimits"];
       /** @description Base harness used when session creation omits harness_id. */
       base_harness_id?: string | null;
+      /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+      chat_model_id?: string | null;
       /**
        * Format: date-time
        * @description When the organization was created
@@ -20928,6 +24348,13 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /**
+       * @description What Everruns does on its own when a finding opens (Settings →
+       *     Limits): pause a repeating schedule automatically, and whether the
+       *     Inspector suggests changes to agents. Code defaults when the
+       *     organization never set any.
+       */
+      self_healing: components["schemas"]["SelfHealingPolicy"];
       /** @description Optional small chat model, independent of the main chat and decision defaults. */
       small_model_id?: string | null;
       /**
@@ -20947,6 +24374,17 @@ export interface components {
        *     defaults (Automatic) when the organization never set any.
        */
       web_search_defaults: components["schemas"]["WebSearchDefaults"];
+    };
+    /** @description The organization's links to the shared Everruns GitHub App. */
+    OrganizationSourceAccount: {
+      /** @description Linked GitHub accounts. */
+      accounts: string[];
+      /** @description The caller may link another GitHub account (organization admins). */
+      can_connect: boolean;
+      /** @description Why repositories could not be listed, when they could not. */
+      error?: string | null;
+      /** @description Repositories reachable through the linked installations. */
+      repositories: components["schemas"]["SourceRepository"][];
     };
     /** @description Data for output.message.completed event */
     OutputMessageCompletedData: {
@@ -22243,12 +25681,10 @@ export interface components {
      *     `pending_approvals` item, plus `answerable`.
      */
     PendingApprovalView: {
-      /**
-       * @description Whether this caller may answer it. When `false` an operator decides in
-       *     Everruns and the tool is not shown.
-       */
+      agent?: components["schemas"]["RequestingAgent"] | null;
+      /** @description Always `true`: the person using the agent answers its approvals. */
       answerable: boolean;
-      arguments?: Record<string, unknown> | null;
+      arguments: Record<string, unknown>;
       /**
        * @description `arguments` is a truncated preview; the decision still binds to the
        *     full arguments.
@@ -22257,16 +25693,22 @@ export interface components {
       /** @description When the request counts as rejected (RFC 3339). */
       expires_at: string;
       /** @description Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`. */
-      risk?: string | null;
+      risk: string;
+      /**
+       * @description The asking agent's session, when another agent in the run asked.
+       *     Answer on this session; the server routes it.
+       */
+      session_id?: string | null;
       /** @description The request to name in `POST …/tool-approvals`. */
       tool_call_id: string;
-      tool_name?: string | null;
+      tool_name: string;
     };
     /**
      * @description An `ask_user` question set the session waits on. Same shape as serve's
      *     `pending_questions` item.
      */
     PendingQuestionView: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
       /** @description When the server stops waiting (RFC 3339). */
       expires_at?: string | null;
       /**
@@ -22274,8 +25716,27 @@ export interface components {
        *     `multi_select`, `allow_other`.
        */
       questions: Record<string, unknown>[];
+      /**
+       * @description The asking agent's session, when another agent in the run asked.
+       *     Answer on this session; the server routes it.
+       */
+      session_id?: string | null;
       /** @description The `ask_user` call to name in `POST …/question-answers`. */
       tool_call_id: string;
+    };
+    /** @description The caller's own GitHub sign-in. */
+    PersonalSourceAccount: {
+      /** @description The caller has signed in to GitHub. */
+      connected: boolean;
+      /** @description Why repositories could not be listed, when they could not. */
+      error?: string | null;
+      /**
+       * @description GitHub login of that sign-in.
+       * @example octocat
+       */
+      login?: string | null;
+      /** @description Repositories reachable through the shared App's installations the person can access. */
+      repositories: components["schemas"]["SourceRepository"][];
     };
     /**
      * @description Where a message's [`ExecutionPhase`] came from.
@@ -22288,6 +25749,102 @@ export interface components {
      * @enum {string}
      */
     PhaseSource: "provider" | "derived" | "communication";
+    /** @description An open finding of the platform operator's concern, in any organization. */
+    PlatformDetection: {
+      /**
+       * @description Display name of the session's agent.
+       * @example Outreach bot
+       */
+      agent_name?: string | null;
+      /** @description Title of the cluster of similar findings in that organization. */
+      cluster_title?: string | null;
+      /**
+       * @description Detector code of the finding.
+       * @example session.suspected_abuse
+       */
+      code: string;
+      /** @description The numbers the classifier recorded, never session content. */
+      evidence?: Record<string, unknown> | null;
+      /**
+       * Format: date-time
+       * @description When the current episode was first detected.
+       * @example 2026-10-18T21:40:00Z
+       */
+      first_detected_at: string;
+      /**
+       * Format: uuid
+       * @description Health issue identifier of the finding.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      issue_id: string;
+      /**
+       * @description Public identifier of the organization.
+       * @example org_550e8400e29b41d4a716446655440000
+       */
+      org_id: string;
+      /**
+       * @description Display name of the organization.
+       * @example Acme
+       */
+      org_name: string;
+      /**
+       * @description Public identifier of the session the finding points at.
+       * @example session_550e8400e29b41d4a716446655440000
+       */
+      session_id?: string | null;
+      /**
+       * @description `high`, `medium` or `low`, as the Inspector judged it.
+       * @example high
+       */
+      severity?: string | null;
+      /** @description The Inspector's suggested next step. */
+      suggested_action?: string | null;
+      /** @description The Inspector's account of what happened, once written. */
+      what_happened?: string | null;
+    };
+    /** @description A page of open platform detections. */
+    PlatformDetectionList: {
+      /** @description Detections in this page. */
+      data: components["schemas"]["PlatformDetection"][];
+      /**
+       * Format: int64
+       * @description Effective page size.
+       * @example 20
+       */
+      limit: number;
+      /**
+       * Format: int64
+       * @description Effective pagination offset.
+       * @example 0
+       */
+      offset: number;
+      /**
+       * Format: int64
+       * @description Number of open detections.
+       * @example 1
+       */
+      total: number;
+    };
+    /**
+     * @description Which usage a policy counts. Absent counts everything.
+     * @enum {string}
+     */
+    PolicySource: "all" | "managed" | "own_keys";
+    /** @description One step of a usage policy, at a percent of the limit. */
+    PolicyStep: {
+      /** @description What happens when usage reaches the step. */
+      action: components["schemas"]["PolicyStepAction"];
+      /**
+       * Format: double
+       * @description Percent of the limit at which the step applies (1 to 100).
+       */
+      at_percent: number;
+    };
+    /**
+     * @description What a usage policy does when its spend crosses a step.
+     * @enum {string}
+     */
+    PolicyStepAction: "notify" | "ask" | "stop";
     /** @description Request body for posting an inbound task message. */
     PostTaskMessageBody: {
       /** @description Structured message parts (alternative to `text`). */
@@ -22431,10 +25988,22 @@ export interface components {
      */
     PromptCacheStrategy: "auto" | "explicit";
     /**
+     * @description What part of the agent's job a proposed case covers.
+     * @enum {string}
+     */
+    ProposalCategory: "happy_path" | "edge_case" | "failure" | "adversarial";
+    /**
+     * @description Whether a proposal is decided.
+     * @enum {string}
+     */
+    ProposalStatus: "proposed" | "accepted" | "dismissed";
+    /**
      * @description LLM Provider entity (API keys never exposed)
      *     This is the persisted provider entity, separate from the runtime provider trait.
      */
     Provider: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /** @description Whether an API key is configured. The key itself is never returned. */
       api_key_set: boolean;
       /** @description Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint. */
@@ -22610,6 +26179,61 @@ export interface components {
         [key: string]: boolean;
       };
     };
+    /** @description Completed scores in one group of a live-quality summary. */
+    QualityGroup: {
+      /**
+       * @description An agent id, an observer id or a day (`YYYY-MM-DD`), by list.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      key: string;
+      /**
+       * Format: double
+       * @description `passed / scored`; absent when nothing was scored.
+       * @example 0.92
+       */
+      pass_rate?: number | null;
+      /** Format: int64 */
+      passed: number;
+      /** Format: int64 */
+      scored: number;
+      /**
+       * Format: int64
+       * @description Distinct sessions the scores read.
+       */
+      sessions: number;
+      /** @description Daily pass rates, oldest first (agent groups only). */
+      trend?: number[];
+    };
+    /**
+     * @description How production traffic scored over the last `days`: in total, by agent,
+     *     by observer and by day.
+     */
+    QualitySummary: {
+      by_agent: components["schemas"]["QualityGroup"][];
+      by_day: components["schemas"]["QualityGroup"][];
+      by_observer: components["schemas"]["QualityGroup"][];
+      /**
+       * Format: int32
+       * @example 7
+       */
+      days: number;
+      /**
+       * Format: double
+       * @example 0.92
+       */
+      pass_rate?: number | null;
+      /** Format: int64 */
+      passed: number;
+      /** Format: int64 */
+      scored: number;
+      /** Format: int64 */
+      sessions: number;
+      /**
+       * Format: date-time
+       * @description Start of the window.
+       */
+      since: string;
+    };
     /** @description Request to answer a pending `ask_user` question set. */
     QuestionAnswersRequest: {
       /**
@@ -22654,6 +26278,57 @@ export interface components {
        * @example answered
        */
       status: string;
+    };
+    /** @description Who put a reaction on a message. */
+    ReactionActor: {
+      /**
+       * @description Stable id of the actor: a user, principal, agent or platform user id.
+       * @example user_01933b5a00007000800000000000001
+       */
+      id: string;
+      kind: components["schemas"]["ReactionActorKind"];
+      /** @description Display name at the time of the reaction. */
+      name?: string | null;
+    };
+    /**
+     * @description Who reacted.
+     * @enum {string}
+     */
+    ReactionActorKind: "user" | "consumer" | "agent" | "external";
+    /** @description One person or agent who reacted. */
+    ReactionActorView: {
+      /** @description User, principal, agent or platform user id. */
+      id: string;
+      kind: components["schemas"]["ReactionActorKind"];
+      name?: string | null;
+      /** Format: date-time */
+      reacted_at: string;
+    };
+    /** @description Result of adding or removing a reaction. */
+    ReactionChange: {
+      /** @description False when the message already was in that state. */
+      changed: boolean;
+      /** @example 👍 */
+      emoji: string;
+      /**
+       * @description Message the reaction is on (`message_...`).
+       * @example message_01933b5a00007000800000000000001
+       */
+      message_id: string;
+      /** @description Whether the reaction is on the message now. */
+      reacted: boolean;
+    };
+    /** @description One emoji on a message. */
+    ReactionSummary: {
+      /** @description Who reacted, earliest first. */
+      actors: components["schemas"]["ReactionActorView"][];
+      /** @description The agent is among those who reacted. */
+      agent: boolean;
+      count: number;
+      /** @example 👍 */
+      emoji: string;
+      /** @description The caller is among those who reacted. */
+      me: boolean;
     };
     /** @description Data for reason.completed event */
     ReasonCompletedData: {
@@ -22899,6 +26574,31 @@ export interface components {
        * @example true
        */
       redact_content?: boolean;
+    };
+    /** @description Register a predeployed HTTPS endpoint after a signed ownership challenge. */
+    RegisterExternalAgent: {
+      /** @description Agent public ID or name; the HTTP route supplies this value. */
+      agent_id?: string;
+      /** @description Preinstall this random, 32+ character secret in the endpoint. Never a user PAT. */
+      endpoint_secret: string;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
+    };
+    /** @description Why a fix is not wanted. */
+    RejectFindingFixRequest: {
+      /**
+       * @description Kept so later suggestions can be compared with what people turned down.
+       *     (Named `note` because `reason` is the change-intent flag every command
+       *     takes.)
+       */
+      note: string;
+    };
+    /** @description A display-name change that preserves the connected account credential. */
+    RenameOrganizationConnectionRequest: {
+      name: string;
     };
     /**
      * @description One column header in a `ReportResult`. The ordered `columns` list
@@ -23190,6 +26890,19 @@ export interface components {
        */
       processing: number;
     };
+    /** @description The agent a request came from. */
+    RequestingAgent: {
+      /**
+       * @description The agent's id, as `/v1/agents/{agent_id}` takes it.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * @description The agent's display name.
+       * @example Research Assistant
+       */
+      name: string;
+    };
     /** @description Response body for the `resolve_org` operation. */
     ResolveOrgResponse: {
       /** @description Public ID of the organization that owns the resource. */
@@ -23378,6 +27091,11 @@ export interface components {
        * @description The revision brought back.
        */
       restored_revision: number;
+      /**
+       * Format: int64
+       * @description The committed inverse's revision, for correlating subsequent reads.
+       */
+      revision?: number | null;
       /** @description Secrets kept at their current value that differ from the revision. */
       warnings: string[];
     };
@@ -23385,6 +27103,13 @@ export interface components {
     ResumeSessionResponse: {
       resumed_budgets: number;
       session_id: string;
+    };
+    /** @description A person's verdict on one score. */
+    ReviewScoreRequest: {
+      /** @description True when the grader got it right. */
+      agrees: boolean;
+      /** @description Optional note on why (at most 2000 characters). */
+      note?: string | null;
     };
     ReviseSandboxTemplateRequest: {
       /**
@@ -23416,12 +27141,124 @@ export interface components {
        */
       overlap_hours?: number | null;
     };
+    /**
+     * @description How an agent combines its destinations with organization defaults.
+     * @enum {string}
+     */
+    RoutingMode: "inherit" | "add" | "replace" | "off";
+    /** @description Customer destinations selected for future turns; never changes platform telemetry. */
+    RoutingPolicy: {
+      /** @description Distinct destination identifiers from this organization; at most eight selections. */
+      destination_ids?: string[];
+      /** @description Use organization defaults, add selections, replace defaults, or disable customer exports. */
+      mode?: components["schemas"]["RoutingMode"];
+    };
+    /** @description The agent behind a session of the run. */
+    RunAgent: {
+      /**
+       * @description The agent's id, as `/v1/agents/{agent_id}` takes it.
+       * @example agent_01h9xk2m
+       */
+      id: string;
+      /**
+       * @description The agent's display name.
+       * @example Triage
+       */
+      name: string;
+    };
     /** @description Turns started and failed in one bucket. */
     RunBucket: {
       /** Format: int64 */
       failed: number;
       /** Format: int64 */
       runs: number;
+    };
+    /** @description Run one of the fixers an issue offers. */
+    RunIssueFixerRequest: {
+      /**
+       * @description The fixer to run, as the issue's `fixers` list names it.
+       * @example slack.add_permissions
+       */
+      kind: string;
+    };
+    /** @description One request from another agent in the run. */
+    RunRequest: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
+      /**
+       * Format: date-time
+       * @example 2026-11-03T10:15:00Z
+       */
+      requested_at: string;
+      /**
+       * @description The asking agent's session.
+       * @example session_01933b5a00007000800000000000001
+       */
+      session_id: string;
+      tool_call: components["schemas"]["RunRequestToolCall"];
+    };
+    /** @description A tool call another agent in the run waits on the person for. */
+    RunRequestToolCall: {
+      arguments: Record<string, unknown>;
+      /** @example call_approval_1 */
+      id: string;
+      /**
+       * @description `ask_user`, `approve_tool_call`, `openai_mcp_approval`,
+       *     `confirm_url_elicitation` or `setup_connection`.
+       * @example approve_tool_call
+       */
+      name: string;
+    };
+    /** @description What the other agents in a run wait on the person for. */
+    RunRequestsResponse: {
+      requests: components["schemas"]["RunRequest"][];
+    };
+    /** @description One agent session of the run. */
+    RunSession: {
+      agent?: components["schemas"]["RunAgent"] | null;
+      /**
+       * Format: double
+       * @description Model spend in USD.
+       * @example 0.21
+       */
+      cost_usd: number;
+      /**
+       * Format: date-time
+       * @example 2026-11-03T09:00:00Z
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description When its last turn ended; absent while it works or before it ran.
+       * @example 2026-11-03T09:01:30Z
+       */
+      last_turn_at?: string | null;
+      /**
+       * @description Outcome of its last finished turn: `completed`, `failed` or `cancelled`.
+       * @example completed
+       */
+      last_turn_status?: string | null;
+      /**
+       * @description The session that handed it work; absent for the first session.
+       * @example session_01h9xk1a
+       */
+      parent_session_id?: string | null;
+      /**
+       * @description Session's prefixed public identifier.
+       * @example session_01h9xk2m
+       */
+      session_id: string;
+      /**
+       * @description Session status: `started`, `active`, `idle`, `waiting_for_tool_results`, ...
+       * @example idle
+       */
+      status: string;
+      /**
+       * @description The session's title: for work handed off, the task's name.
+       * @example Triage the failing build
+       */
+      title?: string | null;
+      /** @description Its turns, oldest first. */
+      turns: components["schemas"]["RunTurn"][];
     };
     /** @description Aggregate metrics for a completed eval run. */
     RunSummary: {
@@ -23443,6 +27280,24 @@ export interface components {
        * @example 3.2
        */
       avg_turns: number;
+      /**
+       * Format: int32
+       * @description Distinct cases in the run.
+       * @example 4
+       */
+      cases?: number;
+      /**
+       * Format: int32
+       * @description Cases that passed in at least one trial (pass@k).
+       * @example 4
+       */
+      cases_passed_any_trial?: number;
+      /**
+       * Format: int32
+       * @description Cases that passed in every trial (pass^k).
+       * @example 3
+       */
+      cases_passed_every_trial?: number;
       /**
        * Format: int32
        * @description Number of cases that errored.
@@ -23474,6 +27329,13 @@ export interface components {
        */
       total: number;
       /**
+       * Format: double
+       * @description What the run spent in USD: the agents' model calls plus grading.
+       *     Absent on imported runs, whose cost is in their own metrics.
+       * @example 0.42
+       */
+      total_cost_usd?: number | null;
+      /**
        * Format: int64
        * @description Total input tokens across cases.
        * @example 14400
@@ -23485,6 +27347,93 @@ export interface components {
        * @example 10200
        */
       total_output_tokens: number;
+      /**
+       * Format: int32
+       * @description Repetitions per case. `total` counts every repetition.
+       * @example 3
+       */
+      trials?: number;
+    };
+    /** @description One turn of a session in the run. */
+    RunTurn: {
+      /**
+       * Format: double
+       * @description Model spend of the turn in USD.
+       * @example 0.21
+       */
+      cost_usd: number;
+      /**
+       * Format: date-time
+       * @description Absent while the turn runs.
+       * @example 2026-11-03T09:01:30Z
+       */
+      ended_at?: string | null;
+      /**
+       * Format: date-time
+       * @example 2026-11-03T09:00:00Z
+       */
+      started_at: string;
+      /**
+       * @description Trace status of the turn: `running`, `completed`, `failed`, ...
+       * @example completed
+       */
+      status: string;
+      /**
+       * @description Public turn id (`turn_...`).
+       * @example turn_01h9xk2m
+       */
+      turn_id: string;
+      /**
+       * Format: int32
+       * @description Turn number within its session, from 1.
+       * @example 1
+       */
+      turn_no: number;
+    };
+    /** @description The runs one agent led, with whole-run cost and who spent it. */
+    RunsWithAgentsLine: {
+      /**
+       * @description The agent the runs started with.
+       * @example agent_01h9xk1a
+       */
+      agent_id: string;
+      /** @example Foreman */
+      agent_name: string;
+      /** @description Who spent it, the leading agent itself included, largest first. */
+      by_agent: components["schemas"]["RunsWithAgentsShare"][];
+      /**
+       * Format: double
+       * @description Priced cost of those runs in USD, every agent included.
+       * @example 212.4
+       */
+      cost_usd: number;
+      /**
+       * Format: int64
+       * @description Runs it handed work to other agents in, with usage in the window.
+       * @example 12
+       */
+      runs: number;
+    };
+    /** @description One agent's spend within the runs another agent led. */
+    RunsWithAgentsShare: {
+      /**
+       * @description Absent for usage recorded with no agent.
+       * @example agent_01h9xk2m
+       */
+      agent_id?: string | null;
+      /** @example Implement */
+      agent_name?: string | null;
+      /**
+       * Format: double
+       * @example 121.3
+       */
+      cost_usd: number;
+      /**
+       * @description `lead` for the leading agent itself, `created_here` for an agent
+       *     created as part of it, `linked` for any other agent.
+       * @example created_here
+       */
+      relation: string;
     };
     /** @description A message in the conversation */
     RuntimeMessage: {
@@ -23519,6 +27468,85 @@ export interface components {
       /** @description Ordered commands replayed when creating or recovering physical compute. */
       commands?: string[];
     };
+    /**
+     * @description Reference data resolved by the server from an applied artifact in this tenant.
+     *     Software notes remain untrusted author content, never runtime policy.
+     */
+    SandboxBuildProvenance: {
+      /**
+       * @description Applied build resolved from the exact tenant, provider account, and snapshot.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
+      build_id: string;
+      /**
+       * Format: date-time
+       * @description Time the originating build attempt was accepted.
+       * @example 2026-10-29T00:01:00Z
+       */
+      built_at: string;
+      /**
+       * @description Exact immutable provider snapshot selected by the Session.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      snapshot_id: string;
+      /**
+       * @description Author-supplied reference notes, never trusted instructions or policy.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
+      software_notes?: string | null;
+      /**
+       * @description Optional check that passed after installation and in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
+      verification_command?: string | null;
+    };
+    /**
+     * @description Inputs for a single isolated installation and reusable filesystem snapshot.
+     *     Build compute receives no workload credentials or private Session state.
+     */
+    SandboxBuildRequest: {
+      build_network?: components["schemas"]["SandboxNetworkPolicy"] | null;
+      /**
+       * @description POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.
+       * @example python -m venv /home/daytona/.venvs/devtools
+       *     /home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4
+       */
+      install_script: string;
+      /**
+       * @description Optional bounded, author-supplied Markdown captured from the builder.
+       * @example /home/daytona/.everruns/sandbox.md
+       */
+      metadata_path?: string | null;
+      /**
+       * @description Source revision to guard against concurrent template edits.
+       * @example sbxtplrev_01933b5a000070008000000000000001
+       */
+      source_revision_id: string;
+      /**
+       * Format: int64
+       * @description Total build deadline, including installation and fresh verification, in seconds.
+       * @example 600
+       */
+      timeout_seconds?: number;
+      /**
+       * @description Optional check run after installation and again in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
+      verification_command?: string | null;
+    };
+    /**
+     * @description Durable build lifecycle. Ready artifacts can be applied only after cleanup completes.
+     * @enum {string}
+     */
+    SandboxBuildStatus:
+      | "queued"
+      | "running"
+      | "ready"
+      | "failed"
+      | "cancelled"
+      | "applied"
+      | "discarded";
     /**
      * @description What the Sandbox target can actually do.
      *
@@ -23977,6 +28005,108 @@ export interface components {
        */
       updated_at: string;
     };
+    /**
+     * @description Tenant-scoped build attempt, retained inputs, bounded output, and provider artifact.
+     *     Management credentials are stored separately and never appear in this record.
+     */
+    SandboxTemplateBuild: {
+      /**
+       * @description Immutable template revision created by applying this artifact, if applied.
+       * @example sbxtplrev_01933b5a000070008000000000000002
+       */
+      applied_revision_id?: string | null;
+      /**
+       * @description Disposable installation compute identifier or its persisted submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440001
+       */
+      builder_id?: string | null;
+      /**
+       * @description Whether cancellation was accepted; stale worker saves cannot erase this request.
+       * @example false
+       */
+      cancel_requested: boolean;
+      /**
+       * @description Whether provider resources still require confirmed cleanup or reconciliation.
+       * @example false
+       */
+      cleanup_pending: boolean;
+      /**
+       * Format: date-time
+       * @description Time this build attempt was accepted.
+       * @example 2026-10-29T00:00:00Z
+       */
+      created_at: string;
+      /**
+       * @description Bounded failure explanation, absent when no failure has been recorded.
+       * @example Command failed with exit code 23
+       */
+      error?: string | null;
+      /**
+       * @description Unique build attempt identifier.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description UTF-8 execution-output tail, bounded to 32 KiB.
+       * @example HTTPie 3.2.4
+       *     Verification passed
+       */
+      logs: string;
+      /** @description Original immutable installation and verification inputs. */
+      request: components["schemas"]["SandboxBuildRequest"];
+      /**
+       * @description Parent template whose immutable source revision supplied the build configuration.
+       * @example sbxtpl_01933b5a000070008000000000000001
+       */
+      sandbox_template_id: string;
+      /**
+       * @description Provider snapshot identifier, present once the artifact has been resolved.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      snapshot_id?: string | null;
+      /**
+       * @description Deterministic provider artifact name used to reconcile uncertain submissions.
+       * @example everruns-build-01933b5a000070008000000000000001
+       */
+      snapshot_name: string;
+      /**
+       * Format: date-time
+       * @description Submission time used when reconciling a snapshot response lost in transport.
+       * @example 2026-10-29T00:00:00Z
+       */
+      snapshot_requested_at?: string | null;
+      /**
+       * @description Up to 16 KiB of author-supplied Markdown, presented as untrusted reference data.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
+      software_notes?: string | null;
+      /** @description Exact source spec; no runtime credentials or workspace are attached. */
+      source_spec: components["schemas"]["SandboxTemplateSpec"];
+      /** @description Persisted lifecycle state; inspect cleanup_pending before applying a Ready build. */
+      status: components["schemas"]["SandboxBuildStatus"];
+      /**
+       * @description Current execution or cleanup step.
+       * @example installing
+       */
+      step: string;
+      /**
+       * Format: date-time
+       * @description Time of the last persisted build update.
+       * @example 2026-10-29T00:01:00Z
+       */
+      updated_at: string;
+      /**
+       * @description Disposable fresh-snapshot verification compute identifier or submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440002
+       */
+      verification_sandbox_id?: string | null;
+    };
+    /** @description Editable template metadata; omitted fields retain their current values. */
+    SandboxTemplateMetadataRequest: {
+      description?: string | null;
+      display_name?: string | null;
+    };
     /** @description Template revision a Sandbox was created from. */
     SandboxTemplateRef: {
       /**
@@ -24070,6 +28200,18 @@ export interface components {
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
     };
+    /** @description Create or update a receiver; omitted authentication preserves existing credentials. */
+    SaveDestinationRequest: {
+      /** @description Non-secret destination settings, including capture consent and pause state. */
+      config: components["schemas"]["DestinationConfig"];
+      /**
+       * Format: int64
+       * @description Expected current revision for updates; omit when creating a destination.
+       * @example 1
+       */
+      revision?: number | null;
+      secrets?: components["schemas"]["TraceSecrets"] | null;
+    };
     /** @description Organization-owned provider account input (sandbox provider or search account). */
     SaveOrganizationConnectionRequest: components["schemas"]["CreateConnectionRequest"] & {
       /**
@@ -24077,6 +28219,17 @@ export interface components {
        * @example Production Daytona
        */
       name: string;
+    };
+    /** @description Save routing only when the supplied revision still matches the current policy. */
+    SaveRoutingRequest: {
+      /** @description Routing mode and the organization-owned destination selections to save. */
+      policy: components["schemas"]["RoutingPolicy"];
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
+      revision: number;
     };
     /**
      * @description A user-saved report definition — a named, persistable wrapper around a
@@ -24520,6 +28673,23 @@ export interface components {
        */
       value: number;
     };
+    /**
+     * @description A person's verdict on one score: whether the grader got it right. Reviews
+     *     calibrate graders, and a disagreed score is a candidate eval case.
+     */
+    ScoreReview: {
+      /** @description True when the person agrees with the grader's pass or fail. */
+      agrees: boolean;
+      /** @description Optional note on why. */
+      note?: string | null;
+      /**
+       * Format: date-time
+       * @description When, set by the server.
+       */
+      reviewed_at?: string | null;
+      /** @description Who reviewed (user id), set by the server. */
+      reviewed_by?: string | null;
+    };
     /** @description A scoring rule applied to eval case output. */
     Scorer:
       | {
@@ -24544,6 +28714,7 @@ export interface components {
           weight?: number;
         }
       | {
+          arguments_contain?: string | null;
           /** Format: int32 */
           min?: number;
           tool: string;
@@ -24574,6 +28745,17 @@ export interface components {
           max: number;
           /** @enum {string} */
           type: "turns_within";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          /**
+           * Format: int64
+           * @example 20000
+           */
+          max: number;
+          /** @enum {string} */
+          type: "tokens_within";
           /** Format: double */
           weight?: number;
         }
@@ -24635,6 +28817,46 @@ export interface components {
            * @example 1
            */
           weight?: number;
+        }
+      | {
+          model_id?: components["schemas"]["modelId"] | null;
+          /**
+           * Format: double
+           * @description Minimum judged value to pass.
+           * @example 0.5
+           */
+          pass_threshold?: number;
+          /**
+           * @description What a good answer does and what a bad one does.
+           * @example Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects.
+           */
+          rubric: string;
+          /** @enum {string} */
+          type: "judge";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          /** @description What a no means. */
+          no?: string | null;
+          /**
+           * Format: double
+           * @description Minimum probability of yes to pass.
+           * @example 0.5
+           */
+          pass_threshold?: number;
+          /**
+           * @description The yes/no question, asked about the user message, the answer and
+           *     the tools used.
+           * @example Does the answer stay within the published refund policy?
+           */
+          question: string;
+          /** @enum {string} */
+          type: "decision";
+          /** Format: double */
+          weight?: number;
+          /** @description What a yes means, when the question alone is ambiguous. */
+          yes?: string | null;
         };
     /**
      * @description How a scorer grades a trace slice: a deterministic `rule` (reusing the
@@ -24828,6 +29050,26 @@ export interface components {
        * @example familiars-patch
        */
       preset_id: string;
+    };
+    /**
+     * @description What Everruns does about one kind of finding.
+     * @enum {string}
+     */
+    SelfHealingMode: "auto" | "suggest" | "off";
+    /** @description An org's self-healing policy (Settings → Limits). */
+    SelfHealingPolicy: {
+      /**
+       * @description The Inspector's suggested changes to an agent's instructions: `suggest`
+       *     (default) or `off`. A person always approves them.
+       * @default suggest
+       */
+      agent_fixes: components["schemas"]["SelfHealingMode"];
+      /**
+       * @description Pausing a schedule whose runs keep ending the same way, at the warning
+       *     count rather than the hard stop. Default `auto`.
+       * @default auto
+       */
+      runaway_schedules: components["schemas"]["SelfHealingMode"];
     };
     /**
      * @description A typed service a provider driver can offer.
@@ -25198,6 +29440,63 @@ export interface components {
       /** @description Prefixed session identifier this report describes. */
       session_id: string;
     };
+    /**
+     * @description What a session spent, split by cost category, over time, by what started
+     *     each turn, by tool, and by sandbox.
+     */
+    SessionCost: {
+      /**
+       * @description Spend and tokens per cost category, in a fixed order: `uncached_input`,
+       *     `cache_read`, `cache_write`, `output`.
+       */
+      categories: components["schemas"]["CostCategory"][];
+      /** @description Spend per UTC hour that had model calls, oldest first. */
+      hours: components["schemas"]["CostHour"][];
+      /**
+       * Format: int64
+       * @description Model calls recorded for the session.
+       * @example 3811
+       */
+      model_calls: number;
+      /** @description Spend per model, largest first. */
+      models: components["schemas"]["CostModel"][];
+      /** @description Sandboxes the session ran, oldest first. */
+      sandboxes: components["schemas"]["CostSandbox"][];
+      /**
+       * @description Session's prefixed public identifier.
+       * @example session_01a1510c99c8714eabb22a463e7c1fa1
+       */
+      session_id: string;
+      /** @description Turns and spend by what started them, largest spend first. */
+      sources: components["schemas"]["CostSource"][];
+      /** @description Tool calls across the session. */
+      tools: components["schemas"]["CostTools"];
+      /**
+       * Format: double
+       * @description Total spend in USD: the provider-reported cost of each model call where
+       *     reported, otherwise the price-table estimate.
+       * @example 106.26
+       */
+      total_usd: number;
+      /** @description Spend per turn, oldest first; the newest turns when `turns_truncated`. */
+      turns: components["schemas"]["CostTurn"][];
+      /** @description Older turns were left out of `turns`. */
+      turns_truncated: boolean;
+      /**
+       * Format: double
+       * @description Spend of model calls whose split by category is unknown: the provider
+       *     reported a cost but the model has no price table.
+       * @example 0
+       */
+      unattributed_usd: number;
+      /**
+       * Format: int64
+       * @description Model calls with no reported cost and no price-table estimate. They count
+       *     tokens but add nothing to `total_usd`.
+       * @example 0
+       */
+      unpriced_calls: number;
+    };
     /** @description One bucket of a sessions facet dimension. */
     SessionFacetCount: {
       /** Format: int64 */
@@ -25403,6 +29702,41 @@ export interface components {
      */
     SessionResourceStatus: "active" | "completed" | "failed" | "released";
     /**
+     * @description The run a session belongs to: every agent that took part, with status,
+     *     timing and spend.
+     */
+    SessionRun: {
+      /**
+       * Format: double
+       * @description Spend of every session in the run, in USD.
+       * @example 5.06
+       */
+      cost_usd: number;
+      /**
+       * Format: double
+       * @description Spend of the first session alone, in USD.
+       * @example 0.25
+       */
+      first_session_cost_usd: number;
+      /**
+       * @description The run's first session, the one the person talks to.
+       * @example session_01h9xk1a
+       */
+      root_session_id: string;
+      /** @description The first session, then every session started under it by creation. */
+      sessions: components["schemas"]["RunSession"][];
+      /**
+       * @description More sessions or turns existed than were returned.
+       * @example false
+       */
+      truncated: boolean;
+      /**
+       * @description Questions and approvals any agent in the run waits on the person for.
+       * @example 1
+       */
+      waiting_requests: number;
+    };
+    /**
      * @description Operator action to take against a session's managed sandbox. `Pause`
      *     suspends the instance, `Resume` restarts it, `Delete` releases the
      *     lease.
@@ -25434,6 +29768,7 @@ export interface components {
     SessionSandboxCredentialSource: "none" | "session_user" | "agent" | "organization";
     /** @description The primary Sandbox a Session is running in. */
     SessionSandboxResponse: {
+      build?: components["schemas"]["SandboxBuildProvenance"] | null;
       capabilities: components["schemas"]["SandboxCapabilities"];
       containment: components["schemas"]["SandboxContainment"];
       /** @description Most recent checkpoint used to recover this logical Sandbox. */
@@ -25719,6 +30054,11 @@ export interface components {
     SetUserMcpToolLabelRequest: {
       label?: components["schemas"]["McpToolLabel"] | null;
     };
+    Settings: {
+      archived?: boolean | null;
+      pinned?: boolean | null;
+      title?: string | null;
+    };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
      *
@@ -25733,6 +30073,42 @@ export interface components {
      * @enum {string}
      */
     SideEffectClass: "Pure" | "Idempotent" | "AtMostOnce";
+    /** @description A model that plays the user for a multistep case. */
+    SimulatedUser: {
+      /**
+       * @description When the user stops: the simulator ends the conversation once this
+       *     holds. Defaults to "the goal is met or clearly cannot be".
+       * @example The agent opened a refund ticket with the right order number.
+       */
+      done_when?: string | null;
+      /**
+       * @description What the user wants from the conversation.
+       * @example Get the duplicate charge refunded, or a clear date when it will be.
+       */
+      goal: string;
+      /**
+       * Format: int32
+       * @description Most messages the simulator sends (default 8, at most 30).
+       * @example 8
+       */
+      max_turns?: number | null;
+      /**
+       * @description Model that plays the user. Omitted: the organization's default model.
+       * @example model_01933b5a00007000800000000000022c
+       */
+      model_id?: string | null;
+      /**
+       * @description Who the user is, what they know and how they write.
+       * @example Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked.
+       */
+      persona: string;
+      /**
+       * @description Virtual user the simulator speaks as, so the agent sees that end
+       *     user's identity, connections and memory.
+       * @example identity_01933b5a000070008000000000000001
+       */
+      virtual_user_id?: string | null;
+    };
     /** @description Skill entity (API response type) */
     Skill: {
       /** @description Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness. */
@@ -25836,6 +30212,12 @@ export interface components {
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
     };
+    /**
+     * @description Development GitHub account a source reads and writes through. Never the
+     *     Agent's runtime GitHub identity.
+     * @enum {string}
+     */
+    SourceGitHubAccount: "personal" | "organization";
     /** @description A connected repository mounted beneath a non-overlapping collection path. */
     SourceInput: {
       /** @description Adapter-specific repository, revision and root-folder configuration, without credentials. */
@@ -25880,6 +30262,7 @@ export interface components {
        * @example main
        */
       branch?: string | null;
+      github_account?: components["schemas"]["SourceGitHubAccount"] | null;
       /**
        * @description Repository-relative directory to browse; empty selects the root.
        * @example agents
@@ -25890,6 +30273,20 @@ export interface components {
        * @example acme/agents
        */
       repository: string;
+    };
+    /** @description One repository a development account can reach. */
+    SourceRepository: {
+      /**
+       * @description GitHub account that owns the repository.
+       * @example acme
+       */
+      account: string;
+      /**
+       * @description Repository in owner/name form.
+       * @example acme/agents
+       */
+      full_name: string;
+      private: boolean;
     };
     /**
      * @description Speed level for models that expose a latency/price service tier.
@@ -26037,6 +30434,11 @@ export interface components {
      * @enum {string}
      */
     SystemDecisions: "deployment" | "organization";
+    /** @description The action to take. */
+    TakeFindingActionRequest: {
+      /** @description `pause_schedule`. */
+      kind: string;
+    };
     /** @description Typed link to something the task produced. */
     TaskArtifact: {
       name: string;
@@ -26236,6 +30638,25 @@ export interface components {
       /** @description Total number of items matching the query, across all pages. */
       total: number;
     };
+    /** @description Editable Sandbox Template labels and metadata, excluding execution configuration. */
+    TemplateMetadata: {
+      description?: string | null;
+      display_name: string;
+      id: components["schemas"]["sbxtplId"];
+    };
+    /** @description Result of sending synthetic data to the receiver; contains no customer turn content. */
+    TestTraceResponse: {
+      /**
+       * @description Whether the receiver accepted the synthetic export; partial OTLP rejection is false.
+       * @example true
+       */
+      accepted: boolean;
+      /**
+       * @description Safe explanation of the synthetic test result.
+       * @example Receiver accepted the test trace
+       */
+      message: string;
+    };
     /**
      * @description A claim-level citation attached to a span of generated text.
      *
@@ -26281,6 +30702,285 @@ export interface components {
        */
       annotations?: components["schemas"]["TextAnnotation"][];
       text: string;
+    };
+    /** @description One time bucket. Averages are over 10-second samples; counters are exact. */
+    TimelineBucket: {
+      /**
+       * Format: double
+       * @description Average sessions with an active, runnable, or held actor.
+       * @example 96.4
+       */
+      active_avg: number;
+      /**
+       * Format: int64
+       * @description Highest sampled count of such sessions.
+       * @example 112
+       */
+      active_peak: number;
+      /** @description Whether this bucket includes history rebuilt from turn records (no phase split or queue data). */
+      backfilled: boolean;
+      /**
+       * Format: double
+       * @description Model spend in USD, actual where reconciled, otherwise estimated.
+       * @example 0.29
+       */
+      cost_usd: number;
+      /**
+       * Format: int64
+       * @description Model input tokens.
+       */
+      input_tokens: number;
+      /**
+       * Format: int64
+       * @description Expired leases another worker took over.
+       */
+      lease_takeovers: number;
+      /**
+       * Format: int64
+       * @description Highest sampled count of valid actor leases.
+       */
+      leases_peak: number;
+      /**
+       * Format: double
+       * @description Average sessions in a model phase.
+       */
+      model_avg: number;
+      /**
+       * Format: int64
+       * @description Model calls started.
+       */
+      model_calls: number;
+      /**
+       * Format: int64
+       * @description Highest per-minute p95 model call duration in the bucket, in milliseconds.
+       */
+      model_latency_p95_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Longest wait for a worker lease observed in the bucket, in milliseconds.
+       */
+      oldest_runnable_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: highest number of organizations with active sessions at once.
+       */
+      organizations_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Model output tokens.
+       */
+      output_tokens: number;
+      /**
+       * Format: double
+       * @description Average sessions ready and waiting for a worker lease.
+       */
+      runnable_avg: number;
+      /**
+       * Format: int64
+       * @description Highest sampled count of sessions waiting for a worker.
+       */
+      runnable_peak: number;
+      /** @description Whether population was sampled; false for empty buckets and history rebuilt from turn records. */
+      sampled: boolean;
+      /**
+       * Format: double
+       * @description Average sessions in turn setup or a phase handoff.
+       */
+      setup_avg: number;
+      /**
+       * Format: date-time
+       * @description UTC start of the bucket.
+       * @example 2026-11-01T05:00:00Z
+       */
+      start: string;
+      /**
+       * Format: int64
+       * @description Tool calls started.
+       */
+      tool_calls: number;
+      /**
+       * Format: int64
+       * @description Tool calls that ended in an error or timeout.
+       */
+      tool_failures: number;
+      /**
+       * Format: double
+       * @description Average sessions running tools.
+       */
+      tools_avg: number;
+      /**
+       * Format: int64
+       * @description Turns cancelled.
+       */
+      turns_cancelled: number;
+      /**
+       * Format: int64
+       * @description Turns completed.
+       */
+      turns_completed: number;
+      /**
+       * Format: int64
+       * @description Turns failed.
+       */
+      turns_failed: number;
+      /**
+       * Format: int64
+       * @description Turns started.
+       */
+      turns_started: number;
+      /**
+       * Format: double
+       * @description Average sessions waiting for input or external tool results.
+       */
+      waiting_avg: number;
+      /**
+       * Format: int64
+       * @description Platform only: total worker slots.
+       */
+      worker_capacity?: number | null;
+      /**
+       * Format: double
+       * @description Platform only: average reported worker load across all workers.
+       */
+      worker_load_avg?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: highest reported total worker load.
+       */
+      worker_load_peak?: number | null;
+      /** @description Platform only: per-worker average load. */
+      worker_loads: components["schemas"]["TimelineWorkerLoad"][];
+      /**
+       * Format: int64
+       * @description Platform only: registered workers with a fresh heartbeat.
+       */
+      workers?: number | null;
+    };
+    /** @description Failed turns of one classified error code. */
+    TimelineFailure: {
+      /**
+       * @description Classified error code, or other.
+       * @example provider_rate_limited
+       */
+      code: string;
+      /**
+       * Format: int64
+       * @description Failed turns with this code.
+       */
+      turns: number;
+    };
+    /** @description Deploy or worker change on the timeline. */
+    TimelineMarker: {
+      /**
+       * Format: date-time
+       * @description UTC time of the change.
+       */
+      at: string;
+      /**
+       * @description deploy, worker_joined, or worker_left (worker changes are platform only).
+       * @example deploy
+       */
+      kind: string;
+      /**
+       * @description Server version for a deploy, worker id otherwise.
+       * @example 0.50.1
+       */
+      label: string;
+    };
+    /** @description One agent (organization) or organization (platform) ranked in a window. */
+    TimelineRank: {
+      /** @description Agent or organization public identifier; null for sessions without an agent. */
+      id?: string | null;
+      /** @description Agent name; null in platform scope. */
+      name?: string | null;
+      /**
+       * Format: int64
+       * @description Sessions that started a turn in the window.
+       */
+      sessions: number;
+      /**
+       * Format: int64
+       * @description Turns started in the window.
+       */
+      turns: number;
+    };
+    /** @description Totals over a range, for the summary row and the previous-period comparison. */
+    TimelineSummary: {
+      /**
+       * Format: double
+       * @description Model spend in USD.
+       */
+      cost_usd: number;
+      /**
+       * Format: double
+       * @description Failed turns divided by finished turns; null when none finished.
+       */
+      failure_rate?: number | null;
+      /**
+       * Format: date-time
+       * @description Start of the bucket with the longest wait.
+       */
+      longest_wait_at?: string | null;
+      /**
+       * Format: int64
+       * @description Longest wait for a worker lease, in milliseconds.
+       */
+      longest_wait_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Highest sampled parallel sessions.
+       */
+      peak_active: number;
+      /**
+       * Format: date-time
+       * @description Minute of that peak.
+       */
+      peak_at?: string | null;
+      /**
+       * Format: int64
+       * @description Platform only: seconds of buckets whose peak load exceeded 90% of capacity.
+       */
+      seconds_above_90?: number | null;
+      /**
+       * Format: int64
+       * @description Tool calls started.
+       */
+      tool_calls: number;
+      /**
+       * Format: int64
+       * @description Turns failed.
+       */
+      turns_failed: number;
+      /**
+       * Format: int64
+       * @description Turns that finished: completed, failed, or cancelled.
+       */
+      turns_finished: number;
+      /**
+       * Format: int64
+       * @description Turns started.
+       */
+      turns_started: number;
+    };
+    /** @description Load of one worker over a bucket (platform scope). */
+    TimelineWorkerLoad: {
+      /**
+       * Format: int64
+       * @description Reported maximum concurrency.
+       * @example 50
+       */
+      capacity: number;
+      /**
+       * Format: double
+       * @description Average reported load over the bucket's samples.
+       * @example 31.5
+       */
+      load_avg: number;
+      /**
+       * @description Worker identifier from the registry.
+       * @example worker-01
+       */
+      worker_id: string;
     };
     /** @description Data for `timer.cancelled`. */
     TimerCancelledData: {
@@ -26591,6 +31291,23 @@ export interface components {
       /** @description Tool name */
       name: string;
     };
+    /** @description A tool the case gives the agent, answered with a canned response. */
+    ToolFixture: {
+      /**
+       * @description What the tool does, as the agent reads it.
+       * @example Open a support ticket
+       */
+      description?: string | null;
+      /**
+       * @description Tool name the agent calls.
+       * @example create_ticket
+       */
+      name: string;
+      /** @description JSON Schema of the arguments. Omitted: an object with any fields. */
+      parameters?: unknown;
+      /** @description What every call returns. */
+      response: unknown;
+    };
     /**
      * @description Semantic hints describing a tool's behavioral properties.
      *
@@ -26604,6 +31321,11 @@ export interface components {
      *     for execution gating (auto vs requires_approval).
      */
     ToolHints: {
+      /**
+       * @description Declared capability description for source-aware tool discovery.
+       *     Never populate this with system prompts, conversation state or secrets.
+       */
+      capability_description?: string | null;
       /**
        * @description Capability that contributed this tool definition.
        *
@@ -27127,6 +31849,11 @@ export interface components {
       /** @description The value, when it fits or `full` was asked for. */
       value?: unknown;
     };
+    /**
+     * @description Receiver protocol used for customer trace delivery.
+     * @enum {string}
+     */
+    TraceProvider: "braintrust" | "otlp";
     /** @description One message of a model request. */
     TraceRequestMessage: {
       /** @description The whole message, when asked for and within the limit. */
@@ -27335,6 +32062,9 @@ export interface components {
        *     improvement loop.
        */
       reason?: string | null;
+      review?: components["schemas"]["ScoreReview"] | null;
+      /** @description Trace slice this score grades. */
+      scope?: components["schemas"]["ObserverScope"];
       /**
        * @description Scorer key within the observer.
        * @example grounded
@@ -27346,7 +32076,10 @@ export interface components {
        */
       session_id: string;
       status: components["schemas"]["TraceScoreStatus"];
-      /** @description Turn this score grades (turn scope). */
+      /**
+       * @description What was graded: the turn id (turn scope), `session` (session scope)
+       *     or the tool call id (tool scope).
+       */
       turn_id: string;
       /** Format: date-time */
       updated_at: string;
@@ -27362,6 +32095,13 @@ export interface components {
      * @enum {string}
      */
     TraceScoreStatus: "pending" | "scoring" | "completed" | "errored" | "skipped";
+    /** @description Write-only receiver authentication, encrypted at rest and never returned. */
+    TraceSecrets: {
+      /** @description Authentication headers: Authorization, X-API-Key, or Api-Key. Values are write-only. */
+      headers?: {
+        [key: string]: string;
+      };
+    };
     /**
      * @description A model call, tool call, approval, sub-agent or message. Empty fields are
      *     left out: a page carries hundreds of these.
@@ -27418,6 +32158,18 @@ export interface components {
       requested_tool_call_ids?: string[];
       /** @description Short result or error. */
       result?: string | null;
+      /**
+       * Format: int32
+       * @description Retries a model call made before it succeeded or gave up.
+       * @example 3
+       */
+      retry_attempts?: number | null;
+      /**
+       * Format: int64
+       * @description Time spent waiting between those retries.
+       * @example 42000
+       */
+      retry_wait_ms?: number | null;
       /**
        * Format: int32
        * @description First event sequence of the step.
@@ -27517,6 +32269,12 @@ export interface components {
       /** @description Why the turn failed, when it did. */
       error?: string | null;
       /**
+       * @description Classified failure (`provider_quota_exhausted`, `provider_rate_limited`,
+       *     `provider_unavailable`, ...), when the turn failed with one.
+       * @example provider_quota_exhausted
+       */
+      error_code?: string | null;
+      /**
        * Format: int32
        * @description Failed steps in the turn.
        * @example 0
@@ -27539,6 +32297,13 @@ export interface components {
        * @example 2
        */
       model_calls: number;
+      /**
+       * @description Who wrote the input when no person did: `kind` (`schedule`,
+       *     `agent_trigger`, `channel_schedule`, `webhook`, `task_wake`, `system`),
+       *     and when known `source_id`, `name` and `run` (`number`, `limit`,
+       *     `ends_at`, `stop_when`). Absent when a person started the turn.
+       */
+      origin?: Record<string, unknown> | null;
       /**
        * Format: int64
        * @description Completion tokens across the turn's model calls.
@@ -27617,6 +32382,38 @@ export interface components {
       /** @description Turns in turn order. */
       turns: components["schemas"]["TraceTurn"][];
     };
+    /** @description Safe destination settings used by native reads and change history. */
+    TracingDestinationMetadata: components["schemas"]["DestinationConfig"] & {
+      /**
+       * Format: uuid
+       * @description Destination identifier owned by the current organization.
+       * @example 00000000-0000-0000-0000-000000000001
+       */
+      id: string;
+    };
+    /** @description Safe organization or agent routing metadata returned by native commands. */
+    TracingPolicyMetadata: {
+      /** @description Distinct destination identifiers from this organization; at most eight selections. */
+      destination_ids: string[];
+      /**
+       * @description Organization public ID or agent public ID whose routing policy is selected.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description Use organization defaults, add selections, replace defaults, or disable customer exports. */
+      mode: components["schemas"]["RoutingMode"];
+    };
+    /** @description Current routing policy and the revision required for a guarded save. */
+    TracingPolicyView: {
+      /** @description Routing mode and the organization-owned destination selections to save. */
+      policy: components["schemas"]["RoutingPolicy"];
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
+      revision: number;
+    };
     /**
      * @description Action taken during transcript repair for a dangling tool call.
      * @enum {string}
@@ -27653,8 +32450,11 @@ export interface components {
     };
     TriggerAgentTriggerOutput: {
       created_session: boolean;
-      /** @description Session's prefixed public identifier. */
-      session_id: components["schemas"]["sessionId"];
+      /** @description Why a filtered or duplicate event did not run. */
+      reason?: string | null;
+      session_id?: components["schemas"]["sessionId"] | null;
+      /** @description `filtered` and `duplicate` happen only for a fire with an event. */
+      status: components["schemas"]["ManualFireStatus"];
     };
     /**
      * @description "Only when it changes": the trigger remembers the last value at `path` per
@@ -27776,6 +32576,103 @@ export interface components {
       usage?: components["schemas"]["TokenUsage"] | null;
     };
     /**
+     * @description Data for turn.completion_checked event.
+     *
+     *     A turn about to finish was reviewed for whether it did what was asked
+     *     (the agent's `completion_check` setting). One event per check, emitted
+     *     before the continuation input it may add.
+     */
+    TurnCompletionCheckedData: {
+      /** @description What the runtime did next. */
+      action: components["schemas"]["CompletionCheckAction"];
+      /**
+       * @description The automatic continuation input, when one was added.
+       * @example message_01933b5a00007000800000000000001
+       */
+      continuation_message_id?: string | null;
+      /**
+       * Format: int32
+       * @description Automatic continuations this turn has used, this one included.
+       */
+      continuations_used: number;
+      /**
+       * Format: int64
+       * @description Milliseconds since the turn's first automatic continuation.
+       */
+      elapsed_ms: number;
+      /**
+       * Format: int32
+       * @description Most automatic continuations one turn may use.
+       */
+      max_continuations: number;
+      /** @description The review's short explanation, or why the review failed. */
+      reason: string;
+      /**
+       * Format: int64
+       * @description Tokens the turn spent since its first automatic continuation.
+       */
+      tokens_used: number;
+      /**
+       * @description Turn identifier
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
+      verdict?: components["schemas"]["CompletionVerdict"] | null;
+    };
+    /**
+     * @description Data for turn.credit_shortfall event.
+     *
+     *     The provider refused a request because the account could not pay for it.
+     *     One event per decision: a smaller retry, the start of a wait, each check
+     *     during it, the resume, and giving up.
+     */
+    TurnCreditShortfallData: {
+      /** @description What the runtime did. */
+      action: components["schemas"]["CreditShortfallAction"];
+      /**
+       * Format: int64
+       * @description Output tokens the balance covered, when the provider said.
+       * @example 283
+       */
+      affordable_tokens?: number | null;
+      /**
+       * @description Whether the provider's balance was read (without spending tokens).
+       *     `false`: the provider has no balance API and the request itself is
+       *     the check.
+       * @example true
+       */
+      balance_checked?: boolean | null;
+      /**
+       * Format: int32
+       * @description Max output tokens of the smaller retry (`shrunk` only).
+       * @example 7680
+       */
+      max_tokens?: number | null;
+      /**
+       * Format: date-time
+       * @description When the next check runs, when one was scheduled.
+       * @example 2026-11-03T07:01:00Z
+       */
+      next_check_at?: string | null;
+      /**
+       * Format: int64
+       * @description Max output tokens the refused request asked for, when the provider said.
+       * @example 65536
+       */
+      requested_max_tokens?: number | null;
+      /**
+       * @description Turn identifier
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
+      /**
+       * Format: date-time
+       * @description When the wait for credits ends at the latest.
+       * @example 2026-11-03T08:00:00Z
+       */
+      wait_until?: string | null;
+    };
+    /**
      * @description Data for turn.failed event. A failed turn is always an error (severity
      *     `error`): the work stopped. Recoverable tool failures never produce this
      *     event; they surface as `tool.completed` issues.
@@ -27849,6 +32746,12 @@ export interface components {
        */
       input_message_id: string;
       /**
+       * @description Who wrote the input message when no person did (a schedule run, a
+       *     trigger, a thread wake-up, a platform notice). Absent when a person
+       *     started the turn.
+       */
+      origin?: Record<string, unknown> | null;
+      /**
        * @description Turn identifier
        * @example turn_01933b5a00007000800000000000001
        */
@@ -27888,6 +32791,18 @@ export interface components {
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
+    /** @description Restore reviewed model selections atomically while their revisions remain current. */
+    UndoModelSelection: {
+      changes: components["schemas"]["UndoModelSelectionItem"][];
+    };
+    /** @description A saved model selection change to restore at an expected current revision. */
+    UndoModelSelectionItem: {
+      /** Format: int64 */
+      expected_revision: number;
+      /** Format: int64 */
+      from_revision: number;
+      id: string;
+    };
     /** @description Request to update an ingress channel owned by an Agent. */
     UpdateAgentChannelRequest: {
       /** @description Replacement transport-specific channel configuration. */
@@ -27920,6 +32835,7 @@ export interface components {
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][] | null;
       communication?: components["schemas"]["Communication"] | null;
+      completion_check?: components["schemas"]["CompletionCheck"] | null;
       /**
        * @description The ID of the default LLM model to use for this agent.
        * @example model_01933b5a00007000800000000000001
@@ -27961,6 +32877,7 @@ export interface components {
        * @example Hey, I'm Ava. Ask me anything about your account.
        */
       intro_markdown?: string | null;
+      localizations?: components["schemas"]["EntityLocalizations"] | null;
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
@@ -28151,6 +33068,7 @@ export interface components {
       limit?: number | null;
       /** @description Free-form metadata attached to this resource. */
       metadata?: unknown;
+      policy?: components["schemas"]["UsagePolicy"] | null;
       /**
        * Format: double
        * @description Replacement soft threshold, or null to remove the threshold.
@@ -28158,6 +33076,10 @@ export interface components {
       soft_limit?: number | null;
       /** @description Current lifecycle status. */
       status?: string | null;
+    };
+    UpdateCostSettings: {
+      /** @description IANA timezone, or null for UTC. */
+      timezone?: string | null;
     };
     /** @description Request body for the `update_declarative_capability` operation. */
     UpdateDeclarativeCapabilityRequest: {
@@ -28231,6 +33153,7 @@ export interface components {
        *     ]
        */
       scorers?: components["schemas"]["Scorer"][] | null;
+      simulated_user?: components["schemas"]["SimulatedUser"] | null;
       /**
        * @description Free-form tags attached to this resource.
        * @example [
@@ -28246,6 +33169,8 @@ export interface components {
        * @example 120
        */
       timeout_seconds?: number | null;
+      /** @description Tool fixtures, replacing the stored ones. `null` removes them. */
+      tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
     };
     /** @description Request to update an eval */
     UpdateEvalRequest: {
@@ -28312,6 +33237,13 @@ export interface components {
        */
       is_readonly?: boolean | null;
     };
+    /** @description New text for a fix. It must be checked again. */
+    UpdateFindingFixRequest: {
+      /** @description The text to add to the agent's instructions. */
+      addition: string;
+      /** @description One line on what the change does. Unchanged when omitted. */
+      summary?: string | null;
+    };
     /** @description Request to update a harness. Only provided fields will be updated. */
     UpdateHarnessRequest: {
       /**
@@ -28363,6 +33295,7 @@ export interface components {
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
+      localizations?: components["schemas"]["EntityLocalizations"] | null;
       mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
        * @description Name, unique per org.
@@ -28516,6 +33449,7 @@ export interface components {
     };
     /** @description Request to update an observer. Omitted fields are unchanged. */
     UpdateObserverRequest: {
+      alert?: components["schemas"]["ObserverAlert"] | null;
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Score replies from the support agent
@@ -28575,11 +33509,17 @@ export interface components {
        * @example 5
        */
       agentid_agents_per_owner?: number | null;
+      background_limits?: components["schemas"]["BackgroundLimits"] | null;
       /**
        * @description Base harness to use when a session is started without an explicit harness_id.
        * @example harness_01933b5a000070008000000000000601
        */
       base_harness_id?: string | null;
+      /**
+       * @description Independent model for the built-in Everruns Chat. Omit to preserve; null inherits
+       *     the agents/sessions default. Must be an available shared chat model with tools.
+       */
+      chat_model_id?: string | null;
       /**
        * @description Default harness to preselect in the UI for new sessions.
        *     Mutually exclusive with `default_harness_name`.
@@ -28613,6 +33553,7 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      self_healing?: components["schemas"]["SelfHealingPolicy"] | null;
       /**
        * @description Shared small chat model for lightweight work. Omit to preserve the selection;
        *     pass null to clear it. Does not change the main chat or decision default.
@@ -28723,6 +33664,8 @@ export interface components {
     };
     /** @description Request to update an LLM provider. Only provided fields will be updated. */
     UpdateProviderRequest: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /**
        * @description API key for authenticating with the provider.
        *     Will be encrypted at rest if encryption is configured.
@@ -28914,6 +33857,24 @@ export interface components {
       name?: string | null;
       status?: string | null;
     };
+    /**
+     * @description Name, steps and filter of a usage policy, stored on `budgets.policy`.
+     *
+     *     Decision: steps are data on the existing budget row rather than a new
+     *     table, so the hierarchy lookup, period rollover and gate keep working
+     *     unchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).
+     */
+    UsagePolicy: {
+      /** @description Display name of the policy. */
+      name?: string | null;
+      /** @description Which usage the policy counts. */
+      source?: components["schemas"]["PolicySource"];
+      /**
+       * @description Steps by percent of the limit. Empty: notify at 80%, ask at the soft
+       *     limit, stop at the limit.
+       */
+      steps?: components["schemas"]["PolicyStep"][];
+    };
     /** @description Which org link to act through. */
     UseEverrunsAppRequest: {
       /**
@@ -29081,6 +34042,47 @@ export interface components {
        */
       skill_md: string;
     };
+    /** @description A variant against the baseline. */
+    VariantVerdict: {
+      /**
+       * Format: int32
+       * @description Cases the baseline passes every trial of and this variant does not.
+       * @example 1
+       */
+      broke: number;
+      /**
+       * Format: int32
+       * @description Cases this variant passes every trial of and the baseline did not.
+       * @example 4
+       */
+      fixed: number;
+      /**
+       * Format: double
+       * @example 9
+       */
+      interval_high_points?: number | null;
+      /**
+       * Format: double
+       * @description 95% interval of that difference (paired bootstrap), in points.
+       * @example 1
+       */
+      interval_low_points?: number | null;
+      /** @example candidate */
+      label: string;
+      /**
+       * Format: int32
+       * @description Cases both ran.
+       * @example 42
+       */
+      paired_cases: number;
+      /**
+       * Format: double
+       * @description Mean per-case pass rate difference, in percentage points.
+       * @example 5
+       */
+      pass_rate_delta_points?: number | null;
+      verdict: components["schemas"]["Verdict"];
+    };
     /**
      * @description Verbosity level for models that support output-length control.
      *     Wire values map 1:1 to the OpenAI `verbosity` request parameter:
@@ -29104,6 +34106,11 @@ export interface components {
       /** @description The API value (e.g., "low", "high") */
       value: components["schemas"]["Verbosity"];
     };
+    /**
+     * @description How a variant compares with the baseline.
+     * @enum {string}
+     */
+    Verdict: "improvement" | "regression" | "within_noise" | "not_enough_data";
     /**
      * @description Whether a cited source entails the claim it is attached to.
      * @example entailed
@@ -29432,6 +34439,13 @@ export interface components {
        */
       communication?: components["schemas"]["Communication"];
       /**
+       * @description When a turn about to finish is checked for whether it did what was
+       *     asked, and continued automatically when it did not. `unattended`
+       *     (default): sessions started by triggers and schedules, where no person
+       *     is watching. `always`: chat too. `off`: never.
+       */
+      completion_check?: components["schemas"]["CompletionCheck"];
+      /**
        * Format: date-time
        * @description Timestamp when the agent was created.
        * @example 2026-04-01T10:00:00Z
@@ -29504,6 +34518,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
@@ -29526,6 +34542,12 @@ export interface components {
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
+      /**
+       * @description Agent this one was created as part of, shown as "Created here" on
+       *     that agent's Agents tab and bundled into its export.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      owner_agent_id?: string | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
@@ -29736,7 +34758,10 @@ export interface components {
       balance: number;
       /** Format: date-time */
       created_at: string;
-      /** @description Currency: "usd", "tokens", "credits", or custom. */
+      /**
+       * @description What the limit is measured in: "usd" (cost from the org's price
+       *     list) or "tokens".
+       */
       currency: string;
       /** @example bdgt_01933b5a00007000800000000000001 */
       id: string;
@@ -29756,6 +34781,12 @@ export interface components {
        *     `None` for budgets without a period.
        */
       period_started_at?: string | null;
+      /**
+       * @description Name, steps (notify, ask to continue, stop) and which usage counts.
+       *     Empty steps mean the legacy shape: notify at 80%, ask at the soft
+       *     limit, stop at the limit.
+       */
+      policy?: components["schemas"]["UsagePolicy"];
       /**
        * Format: double
        * @description Soft limit — triggers pause/warn when balance drops below this.
@@ -30098,6 +35129,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -30445,6 +35478,8 @@ export interface components {
      *     into the convention by overriding `ResourceUrlable::allowed_actions`.
      */
     WithUrls_Provider: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /** @description Whether an API key is configured. The key itself is never returned. */
       api_key_set: boolean;
       /** @description Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint. */
@@ -30584,6 +35619,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -31494,6 +36531,11 @@ export interface components {
      */
     paypolId: string;
     /**
+     * @description Prefixed identifier with 'sbxtpl' prefix
+     * @example sbxtpl_01933b5a000070008000000000000001
+     */
+    sbxtplId: string;
+    /**
      * @description Prefixed identifier with 'session' prefix
      * @example session_01933b5a000070008000000000000001
      */
@@ -31753,6 +36795,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
+      };
+    };
+  };
+  plan_agent_costs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCostPlan"];
         };
       };
     };
@@ -32956,6 +38018,36 @@ export interface operations {
       };
     };
   };
+  get_agent_cost: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCost"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_credentials: {
     parameters: {
       query?: never;
@@ -33395,6 +38487,59 @@ export interface operations {
       };
     };
   };
+  list_eval_proposals: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalProposalList"];
+        };
+      };
+    };
+  };
+  propose_eval_cases: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalBuilderRun"];
+        };
+      };
+      /** @description A run for this agent is still going */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   export_agent: {
     parameters: {
       query?: {
@@ -33454,7 +38599,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Exposures resumed */
+      /** @description Agent resumed */
       200: {
         headers: {
           [name: string]: unknown;
@@ -33486,7 +38631,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Exposures suspended */
+      /** @description Agent paused */
       200: {
         headers: {
           [name: string]: unknown;
@@ -33503,6 +38648,71 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgentStatus"];
+        };
+      };
+    };
+  };
+  register_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterExternalAgent"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgent"];
+        };
+      };
+    };
+  };
+  disable_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -33917,6 +39127,70 @@ export interface operations {
       };
     };
   };
+  pause_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent paused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  resume_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_agent_scripts: {
     parameters: {
       query?: {
@@ -34192,6 +39466,29 @@ export interface operations {
       };
     };
   };
+  list_agent_source_accounts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceAccounts"];
+        };
+      };
+    };
+  };
   get_agent_source_options: {
     parameters: {
       query?: never;
@@ -34306,6 +39603,54 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_routing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
+        };
+      };
+    };
+  };
+  save_agent_routing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveRoutingRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
         };
       };
     };
@@ -34586,15 +39931,29 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    /** @description Optional event to fire the trigger with */
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FireAgentTriggerRequest"];
+      };
+    };
     responses: {
-      /** @description Trigger fired */
+      /** @description Trigger fired, or the event was filtered or a duplicate */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["TriggerAgentTriggerOutput"];
+        };
+      };
+      /** @description The event does not fit the trigger */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Trigger not found */
@@ -35867,6 +41226,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_channel: {
     parameters: {
       query?: never;
@@ -36008,6 +41397,7 @@ export interface operations {
         limit?: number | null;
         /** @description `next_page_token` of the previous page. */
         page_token?: string | null;
+        include_archived?: boolean;
       };
       header?: never;
       path: {
@@ -36491,6 +41881,118 @@ export interface operations {
       };
     };
   };
+  agent_api_add_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+        /** @description Message ID */
+        message_id: string;
+        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The reaction is on the message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Not one emoji */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_remove_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+        /** @description Message ID */
+        message_id: string;
+        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The reaction is off the message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Not one emoji */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   agent_api_answer_questions: {
     parameters: {
       query?: never;
@@ -36553,6 +42055,140 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  agent_api_list_reactions: {
+    parameters: {
+      query?: {
+        /** @description Only this message's reactions. */
+        message_id?: string | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Reactions by message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageReactions"][];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -36651,15 +42287,6 @@ export interface operations {
       };
       /** @description Missing or invalid agent key */
       401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description An operator answers this agent's tool approvals */
-      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -37158,6 +42785,151 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_cost_rates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostRate"][];
+        };
+      };
+    };
+  };
+  create_cost_rate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateCostRate"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostRate"];
+        };
+      };
+    };
+  };
+  retire_cost_rate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        rate_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostRate"];
+        };
+      };
+      /** @description Rate not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_cost_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostSettings"];
+        };
+      };
+    };
+  };
+  update_cost_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateCostSettings"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostSettings"];
+        };
+      };
+    };
+  };
+  get_cost_summary: {
+    parameters: {
+      query?: {
+        /** @description Window start (inclusive). Default: the start of this month. */
+        from?: string;
+        /** @description Window end (exclusive). Default: now. */
+        to?: string;
+        /** @description Only this agent (`agent_...`). */
+        agent_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostSummary"];
         };
       };
     };
@@ -37724,6 +43496,102 @@ export interface operations {
       };
       /** @description Actor not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_fleet_monitoring_timeline: {
+    parameters: {
+      query?: {
+        /**
+         * @description Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.
+         * @example 24h
+         */
+        range?: string;
+        /** @description Inclusive UTC start; use with `to` for a custom range of up to 31 days. */
+        from?: string;
+        /** @description Exclusive UTC end; defaults to now. */
+        to?: string;
+        /**
+         * @description Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.
+         * @example 300
+         */
+        bucket?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform execution history */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimeline"];
+        };
+      };
+      /** @description Invalid range */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_fleet_monitoring_timeline_window: {
+    parameters: {
+      query: {
+        /** @description Inclusive UTC start of the selected window. */
+        from: string;
+        /** @description Exclusive UTC end of the selected window; at most 7 days after `from`. */
+        to: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform window breakdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimelineWindow"];
+        };
+      };
+      /** @description Invalid window */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -38789,6 +44657,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share_legacy: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_endpoint: {
     parameters: {
       query?: never;
@@ -39323,6 +45221,94 @@ export interface operations {
       };
     };
   };
+  update_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   agent_api_stream_events_legacy: {
     parameters: {
       query?: {
@@ -39418,15 +45404,6 @@ export interface operations {
       };
       /** @description Missing or invalid agent key */
       401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description An operator answers this agent's tool approvals */
-      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -39597,6 +45574,74 @@ export interface operations {
       };
     };
   };
+  accept_eval_proposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AcceptEvalProposalRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCase"];
+        };
+      };
+      /** @description The proposal was already decided */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  dismiss_eval_proposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DismissEvalProposalRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCaseProposal"];
+        };
+      };
+      /** @description The proposal was already decided */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_evals: {
     parameters: {
       query?: {
@@ -39642,6 +45687,150 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Eval"];
+        };
+      };
+    };
+  };
+  list_all_eval_experiments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalExperiment"];
+        };
+      };
+    };
+  };
+  list_finding_fixes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFixList"];
+        };
+      };
+    };
+  };
+  update_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateFindingFixRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
+        };
+      };
+    };
+  };
+  apply_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
+        };
+      };
+    };
+  };
+  check_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckFindingFixRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
+        };
+      };
+    };
+  };
+  reject_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectFindingFixRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
         };
       };
     };
@@ -39969,6 +46158,134 @@ export interface operations {
       };
       /** @description Eval case not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_eval_experiments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalExperiment"];
+        };
+      };
+    };
+  };
+  create_eval_experiment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateEvalExperimentRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalExperiment"];
+        };
+      };
+    };
+  };
+  get_eval_experiment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        experiment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalExperiment"];
+        };
+      };
+      /** @description Experiment not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  gate_eval_experiment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        experiment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExperimentGateResult"];
+        };
+      };
+      /** @description Experiment not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Some variant's run is still going */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The variant missed the bar */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -40333,6 +46650,52 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  export_eval_samples: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalSampleList"];
+        };
+      };
+    };
+  };
+  import_eval_samples: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalSampleImportReport"];
+        };
       };
     };
   };
@@ -41055,6 +47418,81 @@ export interface operations {
       };
     };
   };
+  list_finding_actions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
+        };
+      };
+    };
+  };
+  take_finding_action: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TakeFindingActionRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
+        };
+      };
+    };
+  };
+  undo_finding_action: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+        /** @description Prefixed public identifier */
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
+        };
+      };
+    };
+  };
   check_health_issue: {
     parameters: {
       query?: never;
@@ -41080,6 +47518,74 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  dismiss_health_issue: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DismissHealthIssueRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HealthIssue"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  run_health_issue_fixer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RunIssueFixerRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IssueFixOutcome"];
         };
       };
     };
@@ -41546,6 +48052,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path?: never;
@@ -41739,6 +48250,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -41850,6 +48366,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -41881,6 +48402,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -43329,6 +49855,54 @@ export interface operations {
       };
     };
   };
+  apply_model_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ApplyModelSelection"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelSelectionReceipt"][];
+        };
+      };
+    };
+  };
+  undo_model_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UndoModelSelection"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelSelectionReceipt"][];
+        };
+      };
+    };
+  };
   get_model: {
     parameters: {
       query?: never;
@@ -43568,6 +50142,120 @@ export interface operations {
       };
     };
   };
+  get_monitoring_timeline: {
+    parameters: {
+      query?: {
+        /**
+         * @description Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.
+         * @example 24h
+         */
+        range?: string;
+        /** @description Inclusive UTC start; use with `to` for a custom range of up to 31 days. */
+        from?: string;
+        /** @description Exclusive UTC end; defaults to now. */
+        to?: string;
+        /**
+         * @description Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.
+         * @example 300
+         */
+        bucket?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization execution history */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimeline"];
+        };
+      };
+      /** @description Invalid range */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not enrolled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_monitoring_timeline_window: {
+    parameters: {
+      query: {
+        /** @description Inclusive UTC start of the selected window. */
+        from: string;
+        /** @description Exclusive UTC end of the selected window; at most 7 days after `from`. */
+        to: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization window breakdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimelineWindow"];
+        };
+      };
+      /** @description Invalid window */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not enrolled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_notifications: {
     parameters: {
       query?: {
@@ -43668,6 +50356,40 @@ export interface operations {
       };
     };
   };
+  get_observer_summary: {
+    parameters: {
+      query?: {
+        /** @description Window in days (1–90). Defaults to 7. */
+        days?: number;
+        /** @description Only scores of this agent. */
+        agent_id?: string;
+        /** @description Only scores of this observer. */
+        observer_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QualitySummary"];
+        };
+      };
+      /** @description Observer not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   get_observer: {
     parameters: {
       query?: never;
@@ -43760,6 +50482,40 @@ export interface operations {
       };
     };
   };
+  backfill_observer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BackfillObserverRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BackfillResult"];
+        };
+      };
+      /** @description Observer not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_observer_scores: {
     parameters: {
       query?: {
@@ -43769,6 +50525,11 @@ export interface operations {
         limit?: number;
         /** @description Zero-based offset into the result set. */
         offset?: number;
+        /**
+         * @description Only completed scores nobody has reviewed yet, failures first, then a
+         *     random sample of the rest (the review queue).
+         */
+        review_queue?: boolean;
       };
       header?: never;
       path: {
@@ -43786,6 +50547,92 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_TraceScore"];
+        };
+      };
+    };
+  };
+  review_observer_score: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+        /** @description Prefixed public identifier */
+        score_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviewScoreRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceScore"];
+        };
+      };
+      /** @description Observer or completed score not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_organization_account: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationAccountMetadata"];
+        };
+      };
+    };
+  };
+  update_organization_account_name: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OrganizationAccountNameRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationAccountMetadata"];
         };
       };
     };
@@ -43943,6 +50790,29 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_AuditLogEntry"];
+        };
+      };
+    };
+  };
+  get_org_decision_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgDecisionSettings"];
         };
       };
     };
@@ -44318,6 +51188,7 @@ export interface operations {
     parameters: {
       query?: {
         return_to?: string;
+        popup?: boolean;
       };
       header?: never;
       path: {
@@ -44507,6 +51378,32 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  rename_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RenameOrganizationConnectionRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationConnectionResponse"];
+        };
       };
     };
   };
@@ -46654,6 +53551,148 @@ export interface operations {
       };
     };
   };
+  get_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  apply_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  cancel_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  discard_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  get_sandbox_template_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateMetadata"];
+        };
+      };
+    };
+  };
+  update_sandbox_template_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SandboxTemplateMetadataRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateMetadata"];
+        };
+      };
+    };
+  };
   list_sandbox_templates: {
     parameters: {
       query?: never;
@@ -46692,6 +53731,56 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  list_sandbox_template_builds: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"][];
+        };
+      };
+    };
+  };
+  start_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SandboxBuildRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
         };
       };
     };
@@ -47601,6 +54690,29 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_session_cost: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionCost"];
+        };
       };
     };
   };
@@ -48553,6 +55665,74 @@ export interface operations {
       };
     };
   };
+  add_message_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+        /** @description Prefixed public identifier */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  remove_message_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+        /** @description Prefixed public identifier */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_session_participants: {
     parameters: {
       query?: never;
@@ -48858,6 +56038,36 @@ export interface operations {
       };
     };
   };
+  list_message_reactions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageReactions"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   get_session_resolved_model: {
     parameters: {
       query?: never;
@@ -48949,6 +56159,73 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ResumeSessionResponse"];
         };
+      };
+    };
+  };
+  get_session_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRun"];
+        };
+      };
+    };
+  };
+  get_run_requests: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Requests from the other agents in the run */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RunRequestsResponse"];
+        };
+      };
+      /** @description Invalid session ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -50268,6 +57545,95 @@ export interface operations {
       };
     };
   };
+  list_platform_detections: {
+    parameters: {
+      query?: {
+        /** @description Number of detections to skip */
+        offset?: number;
+        /** @description Page size from 1 through 100; defaults to 20 */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Open detections, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlatformDetectionList"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Platform user access is required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  run_system_doctor: {
+    parameters: {
+      query?: {
+        /** @description Run every check now instead of returning the report from the last minute */
+        refresh?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Health of every part of the install */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DoctorReport"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Platform user access is required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description The system doctor is not available */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_webhooks: {
     parameters: {
       query?: never;
@@ -50545,6 +57911,252 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SessionTask"][];
+        };
+      };
+    };
+  };
+  get_defaults: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
+        };
+      };
+    };
+  };
+  save_defaults: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveRoutingRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
+        };
+      };
+    };
+  };
+  get_tracing_destination_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingDestinationMetadata"];
+        };
+      };
+    };
+  };
+  update_tracing_destination_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingDestinationMetadata"];
+        };
+      };
+    };
+  };
+  list_destinations: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DestinationView"][];
+        };
+      };
+    };
+  };
+  create_destination: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveDestinationRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DestinationView"];
+        };
+      };
+    };
+  };
+  update_destination: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Destination ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveDestinationRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DestinationView"];
+        };
+      };
+    };
+  };
+  delete_destination: {
+    parameters: {
+      query: {
+        revision: number;
+      };
+      header?: never;
+      path: {
+        /** @description Destination ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  test_destination: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Destination ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TestTraceResponse"];
+        };
+      };
+    };
+  };
+  get_tracing_policy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyMetadata"];
+        };
+      };
+    };
+  };
+  update_tracing_policy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyMetadata"];
         };
       };
     };
@@ -50928,6 +58540,29 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_account_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountProfile"];
+        };
       };
     };
   };
@@ -52081,6 +59716,85 @@ export interface operations {
       };
     };
   };
+  get_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+    };
+  };
+  update_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+    };
+  };
+  get_work_chat_by_host: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        label: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description No live Work Chat uses this hostname */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_workspaces: {
     parameters: {
       query?: {
@@ -52338,6 +60052,15 @@ export interface operations {
           "application/octet-stream": unknown;
         };
       };
+      /** @description The byte range named by the `Range` header */
+      206: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/octet-stream": unknown;
+        };
+      };
       /** @description Path points to a directory */
       400: {
         headers: {
@@ -52347,6 +60070,13 @@ export interface operations {
       };
       /** @description File not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The `Range` header lies outside the file */
+      416: {
         headers: {
           [name: string]: unknown;
         };
@@ -52544,6 +60274,57 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  upload_path: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace ID (wsp_<32-hex>) */
+        workspace_id: string;
+        /** @description File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value. */
+        path: string;
+      };
+      cookie?: never;
+    };
+    /** @description Raw file bytes */
+    requestBody: {
+      content: {
+        "application/octet-stream": number[];
+      };
+    };
+    responses: {
+      /** @description File written */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileInfo"];
+        };
+      };
+      /** @description Invalid path, or the path is a directory or a mounted folder */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description File or workspace is read-only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description File or session storage limit exceeded */
+      413: {
         headers: {
           [name: string]: unknown;
         };

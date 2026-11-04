@@ -6,8 +6,10 @@
 //! a per-call count in the completion metadata, never as an agent tool call.
 //! File search creates its own vector store for the run and deletes it after.
 
+use crate::{TRANSPORT_ATTEMPTS, is_transient_transport};
 use everruns_contracts::driver_registry::{
-    HostedToolCallStatus, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
+    HostedToolCall, HostedToolCallStatus, LlmCallConfig, LlmCompletionMetadata, LlmStreamEvent,
+    Message, MessageRole,
 };
 use everruns_contracts::model::ReasoningEffort;
 use everruns_contracts::openai_hosted_tools::{
@@ -21,6 +23,9 @@ use futures::StreamExt;
 const LIVE_MODEL: &str = "gpt-6-luna";
 
 /// Stream one prompt with `tools` and check the named hosted call completed.
+///
+/// An attempt that dies in transport (the stream dropped mid-body) is retried
+/// from scratch; any other stream error fails at once.
 async fn assert_hosted_call(tools: OpenAiHostedTools, prompt: &str, tool: &str, item: &str) {
     let api_key =
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for the live test");
@@ -29,24 +34,20 @@ async fn assert_hosted_call(tools: OpenAiHostedTools, prompt: &str, tool: &str, 
     let (key, value) = tools.to_driver_option().unwrap();
     config.driver_options.insert(key, value);
 
-    let messages = vec![Message::text(MessageRole::User, prompt)];
-    let mut stream = provider("openai", api_key)
-        .chat_completion_stream(messages, &config)
-        .await
-        .expect("OpenAI should accept the hosted tool");
-
-    let (mut text, mut hosted, mut done) = (String::new(), Vec::new(), None);
-    while let Some(event) = stream.next().await {
-        match event.expect("stream should not fail") {
-            LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
-            LlmStreamEvent::HostedToolCall(call) => hosted.push(call),
-            LlmStreamEvent::ToolCalls(calls) => panic!("hosted call surfaced as {calls:?}"),
-            LlmStreamEvent::Error(error) => panic!("stream error: {error:?}"),
-            LlmStreamEvent::Done(meta) => done = Some(meta),
-            _ => {}
+    let (text, hosted, done) = 'attempts: {
+        for attempt in 1..=TRANSPORT_ATTEMPTS {
+            match stream_hosted_call(&api_key, &config, prompt).await {
+                Ok(outcome) => break 'attempts outcome,
+                Err(error) if attempt < TRANSPORT_ATTEMPTS && is_transient_transport(&error) => {
+                    eprintln!(
+                        "hosted {tool} attempt {attempt}/{TRANSPORT_ATTEMPTS} lost to transport: {error}; retrying"
+                    );
+                }
+                Err(error) => panic!("stream error: {error}"),
+            }
         }
-    }
-    let done = done.expect("stream completes");
+        unreachable!("the last attempt either returns or panics");
+    };
     eprintln!(
         "answer: {text}\nhosted: {hosted:?}\ncounts: {:?}",
         done.hosted_tool_calls
@@ -60,6 +61,33 @@ async fn assert_hosted_call(tools: OpenAiHostedTools, prompt: &str, tool: &str, 
         "expected a completed {tool} call, got {hosted:?}"
     );
     assert!(done.hosted_tool_calls.get(item).copied().unwrap_or(0) >= 1);
+}
+
+/// One streamed attempt: answer text, hosted-call progress and the completion
+/// metadata, or the stream error rendered for retry classification.
+async fn stream_hosted_call(
+    api_key: &str,
+    config: &LlmCallConfig,
+    prompt: &str,
+) -> Result<(String, Vec<HostedToolCall>, Box<LlmCompletionMetadata>), String> {
+    let messages = vec![Message::text(MessageRole::User, prompt)];
+    let mut stream = provider("openai", api_key.to_owned())
+        .chat_completion_stream(messages, config)
+        .await
+        .expect("OpenAI should accept the hosted tool");
+
+    let (mut text, mut hosted, mut done) = (String::new(), Vec::new(), None);
+    while let Some(event) = stream.next().await {
+        match event.map_err(|error| format!("{error:?}"))? {
+            LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+            LlmStreamEvent::HostedToolCall(call) => hosted.push(call),
+            LlmStreamEvent::ToolCalls(calls) => panic!("hosted call surfaced as {calls:?}"),
+            LlmStreamEvent::Error(error) => return Err(format!("{error:?}")),
+            LlmStreamEvent::Done(meta) => done = Some(meta),
+            _ => {}
+        }
+    }
+    Ok((text, hosted, done.expect("stream completes")))
 }
 
 #[tokio::test]

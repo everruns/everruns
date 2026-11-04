@@ -14,7 +14,10 @@
 // Domain rules (caller confinement, visibility) live in
 // `domains::agent_channels::api_sessions`.
 
+pub mod reactions;
 pub(crate) mod work_chat;
+
+use reactions::{agent_api_add_reaction, agent_api_list_reactions, agent_api_remove_reaction};
 
 use axum::{
     Extension, Json, Router,
@@ -51,13 +54,11 @@ use super::tool_approvals::{
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::api_sessions::{
     AgentSessionView, ApiAuthError, ApiCaller, check_api_message, create_api_session,
-    project_event, public_event_json, send_api_message, session_is_callers, session_pending_input,
+    project_event, public_event_json, run_pending_input, send_api_message, session_is_callers,
     visible_event_types,
 };
 use crate::domains::agent_channels::record::ChannelType;
-use crate::domains::agent_channels::record::api::{
-    AgentApiChannelConfig, ApiToolApprovals, ApiVisibility,
-};
+use crate::domains::agent_channels::record::api::{AgentApiChannelConfig, ApiVisibility};
 use crate::domains::events::work::turn_work_report;
 use crate::domains::messages::intake::receive_files;
 use crate::domains::messages::types::InputMessage;
@@ -123,6 +124,14 @@ pub fn routes(state: ChannelApiState) -> Router {
             "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals",
             post(agent_api_submit_tool_approvals),
         )
+        .route(
+            "/v1/channels/{channel_id}/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+            axum::routing::put(agent_api_add_reaction).delete(agent_api_remove_reaction),
+        )
+        .route(
+            "/v1/channels/{channel_id}/sessions/{session_id}/reactions",
+            get(agent_api_list_reactions),
+        )
         .layer(axum::extract::DefaultBodyLimit::max(6 * 1024 * 1024))
         .with_state(state)
 }
@@ -182,6 +191,12 @@ async fn authorize(
             return Err(error(
                 StatusCode::FORBIDDEN,
                 "This credential may not act for an end user",
+            ));
+        }
+        Ok(Err(ApiAuthError::NotAdmitted)) => {
+            return Err(error(
+                StatusCode::FORBIDDEN,
+                "You do not have access to this chat",
             ));
         }
         Ok(Err(ApiAuthError::Misconfigured)) => {
@@ -541,6 +556,8 @@ pub struct ListSessionsQuery {
     /// `next_page_token` of the previous page.
     #[serde(default)]
     page_token: Option<String>,
+    #[serde(default)]
+    include_archived: bool,
 }
 
 #[utoipa::path(
@@ -582,7 +599,15 @@ pub async fn agent_api_list_sessions(
     let tags = auth.caller.session_tags(&auth.channel);
     let rows = match state
         .db
-        .list_sessions_by_tags(auth.context.org_id, &tags, &[], None, after, limit)
+        .list_sessions_by_tags_with_archive(
+            auth.context.org_id,
+            &tags,
+            &[],
+            None,
+            after,
+            limit,
+            query.include_archived && auth.channel.channel_type == ChannelType::WorkChat,
+        )
         .await
     {
         Ok((rows, _total)) => rows,
@@ -623,7 +648,7 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
         Ok(session) => session,
         Err(response) => return response,
     };
-    let pending = match session_pending_input(&state.db, &session, &auth.caller.config).await {
+    let pending = match run_pending_input(&state.db, &session).await {
         Ok(pending) => pending,
         Err(err) => return internal_error(err),
     };
@@ -640,11 +665,14 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
 }
 
 /// Body of `POST …/sessions/{id}/messages`: the `/v1/sessions/{id}/messages`
-/// body. Fields an execution caller may not set (model controls, tags,
-/// participants) are ignored, as serve ignores them. `files` carries files
+/// body. Tags and participants remain caller-inaccessible. Work Chat accepts
+/// reasoning effort and refuses a caller-selected model. Other execution
+/// channels ignore controls. `files` carries files
 /// inline or by URL, since an execution caller has no upload route.
 #[derive(Debug, Deserialize)]
 struct SendMessageBody {
+    #[serde(default)]
+    controls: Option<Value>,
     message: InputMessage,
     #[serde(default)]
     files: Vec<MessageFile>,
@@ -666,7 +694,9 @@ async fn send_message(
         target: format!("{}/{session_id}", auth.channel.public_id),
         body,
     };
-    let send = send_message_now(state, &auth, session_id, request_id, body);
+    // Message submission carries a large service future in debug builds. Keep
+    // it off the HTTP task state so ordinary Tokio worker stacks remain safe.
+    let send = Box::pin(send_message_now(state, &auth, session_id, request_id, body));
     run_once(state, headers, retry, send).await
 }
 
@@ -686,6 +716,16 @@ async fn send_message_now(
     };
     let session = match callers_session(state, auth, session_id).await {
         Ok(session) => session,
+        Err(response) => return response,
+    };
+    if auth.channel.channel_type == ChannelType::WorkChat && session.archived_at.is_some() {
+        return error(
+            StatusCode::CONFLICT,
+            "Reopen this conversation before sending",
+        );
+    }
+    let controls = match work_chat::experience::controls(auth, body.controls) {
+        Ok(controls) => controls,
         Err(response) => return response,
     };
     if let Err(response) = within_spend_limit(state, auth).await {
@@ -724,6 +764,7 @@ async fn send_message_now(
         body.message,
         files,
         request_id,
+        controls,
     )
     .await
     {
@@ -899,7 +940,6 @@ pub async fn agent_api_stream_events(
     });
     session_event_sse(SessionEventStream {
         event_service: state.event_service.clone(),
-        event_broadcaster: None,
         session_id: session.id.uuid(),
         since_id: query.since_id.map(|id| id.uuid()),
         after_sequence: query.after_sequence,
@@ -971,6 +1011,15 @@ pub async fn agent_api_answer_questions(
         SubmittedStatus::Declined => AskUserStatus::Declined,
     };
     let answers: Vec<AskUserAnswer> = request.answers.into_iter().map(Into::into).collect();
+    // THREAT[TM-AGENT-039]: the caller's own session, or an agent its session
+    // handed work to; the asking session's own validation decides.
+    let target = match request.tool_call_id.as_deref() {
+        Some(id) => match run_answer_target(&state, &session, &[id]).await {
+            Ok(target) => target,
+            Err(response) => return response,
+        },
+        None => session.id,
+    };
     let resolver = QuestionResolver {
         db: &state.db,
         session_service: &state.session_service,
@@ -983,7 +1032,7 @@ pub async fn agent_api_answer_questions(
     match resolve_question_answers(
         &resolver,
         &caller,
-        session.id,
+        target,
         request.tool_call_id.as_deref(),
         status,
         &answers,
@@ -997,7 +1046,7 @@ pub async fn agent_api_answer_questions(
 
 #[utoipa::path(
     description = "Allow or reject tool calls the agent's approval gate held back, and resume \
-        the turn. Only on channels whose `tool_approvals` is `caller`.",
+        the turn. The person using the agent answers its approvals.",
     post,
     path = "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals",
     params(
@@ -1009,7 +1058,6 @@ pub async fn agent_api_answer_questions(
         (status = 200, description = "Decisions recorded and turn resumed", body = SubmitToolApprovalsResponse),
         (status = 400, description = "Invalid decisions", body = ErrorResponse),
         (status = 401, description = "Missing or invalid agent key", body = ErrorResponse),
-        (status = 403, description = "An operator answers this agent's tool approvals", body = ErrorResponse),
         (status = 404, description = "Channel, session or pending request not found", body = ErrorResponse),
         (status = 409, description = "Not waiting, expired, or already answered", body = ErrorResponse)
     ),
@@ -1034,15 +1082,19 @@ pub async fn agent_api_submit_tool_approvals(
         Ok(session) => session,
         Err(response) => return response,
     };
-    // THREAT[TM-AGENTKEY-006]: a held-back action is the caller's to allow
-    // only when the owner said so.
-    if auth.caller.config.tool_approvals != ApiToolApprovals::Caller {
-        return error(
-            StatusCode::FORBIDDEN,
-            "An operator answers this agent's tool approvals",
-        );
-    }
-    let pending = match pending_tool_approvals(&state.db, session.id).await {
+    // THREAT[TM-AGENTKEY-006]: the caller answers only its own session's
+    // pending requests, through the same validation and single-claim resume
+    // as `/v1`.
+    let named: Vec<&str> = request
+        .decisions
+        .iter()
+        .map(|answer| answer.tool_call_id.as_str())
+        .collect();
+    let target = match run_answer_target(&state, &session, &named).await {
+        Ok(target) => target,
+        Err(response) => return response,
+    };
+    let pending = match pending_tool_approvals(&state.db, target).await {
         Ok(pending) => pending,
         Err(err) => return internal_error(err),
     };
@@ -1058,7 +1110,7 @@ pub async fn agent_api_submit_tool_approvals(
             credential_authorizer: None,
         },
         auth.context.org_id,
-        session.id,
+        target,
         &pending,
         &outcomes,
         ApprovalOutcome::NotApproved,
@@ -1073,6 +1125,23 @@ pub async fn agent_api_submit_tool_approvals(
         .into_response(),
         Err(err) => approval_error_response(err).into_response(),
     }
+}
+
+/// The session in the caller's run that waits on `tool_call_ids`.
+async fn run_answer_target(
+    state: &ChannelApiState,
+    session: &SessionRow,
+    tool_call_ids: &[&str],
+) -> Result<SessionId, Response> {
+    crate::domains::sessions::run_requests::answer_target(
+        &state.db,
+        session.org_id,
+        session.id,
+        session.parent_session_id.is_none(),
+        tool_call_ids,
+    )
+    .await
+    .map_err(|error| crate::api::run_requests::answer_target_error(error).into_response())
 }
 
 /// THREAT[TM-AGENTKEY-009]: one caller cannot run up the owner's bill past

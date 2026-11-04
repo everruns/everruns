@@ -14,6 +14,7 @@ pub mod check_rules;
 pub mod checks;
 mod command_validation;
 pub mod commands;
+pub mod cost_plan;
 pub mod credentials;
 pub mod draft;
 pub mod draft_resources;

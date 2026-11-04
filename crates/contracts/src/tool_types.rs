@@ -362,15 +362,37 @@ impl ToolDefinition {
         let capability_name = capability_name.map(Into::into);
         match &mut self {
             ToolDefinition::Builtin(b) => {
+                if b.hints.capability_id.as_deref() != Some(capability_id.as_str()) {
+                    b.hints.capability_description = None;
+                }
                 b.hints.capability_id = Some(capability_id);
                 b.hints.capability_name = capability_name;
             }
             ToolDefinition::ClientSide(c) => {
+                if c.hints.capability_id.as_deref() != Some(capability_id.as_str()) {
+                    c.hints.capability_description = None;
+                }
                 c.hints.capability_id = Some(capability_id);
                 c.hints.capability_name = capability_name;
             }
         }
         self
+    }
+
+    /// Attach declared capability context for discovery as well as reporting.
+    /// This metadata never grants authority or changes a tool's arguments.
+    pub fn with_capability_context(
+        self,
+        capability_id: impl Into<String>,
+        capability_name: Option<impl Into<String>>,
+        description: impl Into<String>,
+    ) -> Self {
+        let mut definition = self.with_capability_attribution(capability_id, capability_name);
+        match &mut definition {
+            Self::Builtin(tool) => tool.hints.capability_description = Some(description.into()),
+            Self::ClientSide(tool) => tool.hints.capability_description = Some(description.into()),
+        }
+        definition
     }
 
     /// Add the cross-cutting `human_intent` argument to the tool's JSON schema.
@@ -561,6 +583,11 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_name: Option<String>,
 
+    /// Declared capability description for source-aware tool discovery.
+    /// Never populate this with system prompts, conversation state or secrets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_description: Option<String>,
+
     /// Entity noun for operation-based narration (e.g. "agent", "harness").
     /// When set, the narration system reads the `operation` argument and
     /// produces verb-based narration like "Created agent: Neon Cartographer"
@@ -637,7 +664,11 @@ impl ToolHints {
         capability_id: impl Into<String>,
         capability_name: Option<impl Into<String>>,
     ) -> Self {
-        self.capability_id = Some(capability_id.into());
+        let capability_id = capability_id.into();
+        if self.capability_id.as_deref() != Some(capability_id.as_str()) {
+            self.capability_description = None;
+        }
+        self.capability_id = Some(capability_id);
         self.capability_name = capability_name.map(Into::into);
         self
     }

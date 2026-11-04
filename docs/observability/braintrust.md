@@ -11,6 +11,10 @@ This integration is in preview. APIs and behavior may change.
 
 Everruns integrates with [Braintrust](https://www.braintrust.dev/) to provide LLM observability, evaluation, and trace visualization for your agentic workflows.
 
+For organization and agent setup in the UI, use
+[Customer tracing destinations](/observability/destinations/). The environment
+configuration below controls the deployment's separate platform exporter.
+
 ## What You Get
 
 - **Turn Traces Grouped by Session**: Keep one trace per turn while grouping the conversation by `metadata.session_id`

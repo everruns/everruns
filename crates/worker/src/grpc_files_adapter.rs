@@ -84,6 +84,21 @@ impl GrpcAdapter {
 
 #[async_trait]
 impl SessionFileSystem for GrpcAdapter {
+    async fn rename_directory(&self, session: SessionId, from: &str, to: &str) -> Result<()> {
+        match self
+            .files_command(
+                session,
+                "move_workspace_file",
+                json!({
+                    "session_id": session.to_string(), "src_path": from, "dst_path": to,
+                }),
+            )
+            .await?
+        {
+            Ok(_) => Ok(()),
+            Err(error) => Err(command_failure("rename directory", error)),
+        }
+    }
     fn session_scoped_path(&self, path: &str) -> bool {
         everruns_contracts::knowledge::is_mount(path)
     }
@@ -230,6 +245,46 @@ impl SessionFileSystem for GrpcAdapter {
             Err(error) if is_not_found(&error) => Ok(Vec::new()),
             Err(error) => Err(command_failure("list directory", error)),
         }
+    }
+
+    /// One recursive listing instead of one call per directory. The control
+    /// plane's recursive listing covers the whole workspace, so entries outside
+    /// `path` are dropped here. Any refusal (a Knowledge mount, an old control
+    /// plane) falls back to walking.
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        // Compare without the leading slash: listings and callers differ on it.
+        let prefix = path.trim_matches('/');
+        let outcome = self
+            .files_command(
+                session_id,
+                "get_workspace_file",
+                json!({ "session_id": session_id.to_string(), "path": path, "recursive": true }),
+            )
+            .await?;
+        let Ok(value) = outcome else {
+            return Ok(None);
+        };
+        let GetResponse::Listing { data } = decode::<GetResponse>("get_workspace_file", value)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(
+            data.into_iter()
+                .filter_map(|mut info| {
+                    let full = info.path.trim_start_matches('/');
+                    let rest = if prefix.is_empty() {
+                        full
+                    } else {
+                        full.strip_prefix(prefix)?.strip_prefix('/')?
+                    };
+                    if rest.is_empty() {
+                        return None;
+                    }
+                    info.path = rest.to_string();
+                    Some(info)
+                })
+                .collect(),
+        ))
     }
 
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {

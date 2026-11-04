@@ -35,6 +35,8 @@ struct EmbeddingsApiRequest {
 
 #[derive(Deserialize)]
 struct EmbeddingsApiResponse {
+    #[serde(default)]
+    id: Option<String>,
     data: Vec<EmbeddingObject>,
     usage: EmbeddingsUsage,
 }
@@ -105,6 +107,7 @@ impl EmbeddingsDriver for OpenAIEmbeddingsDriver {
                             embeddings: data.into_iter().map(|e| e.embedding).collect(),
                             usage_tokens: Some(api_resp.usage.total_tokens),
                             actual_cost_usd: api_resp.usage.cost,
+                            response_id: api_resp.id,
                         });
                     }
                     let text = response.text().await.unwrap_or_default();

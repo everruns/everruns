@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import Link from "next/link";
 import { Key, RefreshCw, Settings2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +59,8 @@ function ProviderCardContent({
   onSyncModels,
   onReviewNew,
 }: ProviderCardProps) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const status = providerStatus(provider);
   const listed = models.filter((model) => !model.stale);
   const enabled = listed.filter((model) => model.enabled).length;
@@ -97,7 +101,12 @@ function ProviderCardContent({
       subtitle={
         <span className="text-xs text-muted-foreground">
           {getProviderLabel(provider.provider_type)}
-          {siblings > 1 && <> · {siblings} connected</>}
+          {siblings > 1 && (
+            <>
+              {" "}
+              · {siblings} {ui("connected")}
+            </>
+          )}
         </span>
       }
       headerActions={
@@ -120,22 +129,25 @@ function ProviderCardContent({
           ) : (
             <Link href={modelsHref} className="mr-auto text-xs text-primary hover:underline">
               {listed.length > 0
-                ? `${enabled} of ${listed.length} models enabled →`
-                : "No models yet"}
+                ? ui("{value0} of {value1} models enabled →", {
+                    value0: enabled,
+                    value1: listed.length,
+                  })
+                : ui("No models yet")}
             </Link>
           )}
           {canEditCredential && !provider.api_key_set && (
             <Button size="sm" onClick={() => onSetApiKey(provider)}>
               <Key className="icon-sharp size-3.5" />
-              Set key
+              {ui("Set key")}
             </Button>
           )}
           {canEditCredential && provider.api_key_set && (
             <Button
               variant="ghost"
               size="icon-sm"
-              title="Update key"
-              aria-label={`Update key for ${provider.name}`}
+              title={ui("Update key")}
+              aria-label={ui("Update key for {value0}", { value0: provider.name })}
               onClick={() => onSetApiKey(provider)}
             >
               <Key className="icon-sharp size-3.5" />
@@ -145,8 +157,8 @@ function ProviderCardContent({
             <Button
               variant="ghost"
               size="icon-sm"
-              title="Sync models"
-              aria-label={`Sync models for ${provider.name}`}
+              title={ui("Sync models")}
+              aria-label={ui("Sync models for {value0}", { value0: provider.name })}
               onClick={() => onSyncModels(provider)}
               disabled={isSyncing}
             >
@@ -157,8 +169,8 @@ function ProviderCardContent({
             variant="ghost"
             size="icon-sm"
             href={detailHref}
-            title="Provider settings"
-            aria-label={`Settings for ${provider.name}`}
+            title={ui("Provider settings")}
+            aria-label={ui("Settings for {value0}", { value0: provider.name })}
           >
             <Settings2 className="icon-sharp size-3.5" />
           </LinkButton>
@@ -170,22 +182,24 @@ function ProviderCardContent({
           {getProviderDescription(provider.provider_type)}
         </p>
         <div className="space-y-1.5">
-          <EntityCardDetail label={<span className="inline-block w-20">Services</span>}>
+          <EntityCardDetail label={<span className="inline-block w-20">{ui("Services")}</span>}>
             <span className="truncate">{services.join(", ") || "—"}</span>
           </EntityCardDetail>
-          <EntityCardDetail label={<span className="inline-block w-20">Credentials</span>}>
+          <EntityCardDetail label={<span className="inline-block w-20">{ui("Credentials")}</span>}>
             <span className={provider.api_key_set ? "truncate" : "truncate text-warning"}>
               {credential}
             </span>
           </EntityCardDetail>
-          <EntityCardDetail label={<span className="inline-block w-20">Endpoint</span>}>
+          <EntityCardDetail label={<span className="inline-block w-20">{ui("Endpoint")}</span>}>
             <span className="min-w-0 truncate font-mono" title={provider.base_url}>
-              {provider.base_url ?? "Driver default"}
+              {provider.base_url ?? ui("Driver default")}
             </span>
           </EntityCardDetail>
-          <EntityCardDetail label={<span className="inline-block w-20">Last synced</span>}>
+          <EntityCardDetail label={<span className="inline-block w-20">{ui("Last synced")}</span>}>
             <span>
-              {provider.last_synced_at ? formatRelativeTime(provider.last_synced_at) : "Never"}
+              {provider.last_synced_at
+                ? formatRelativeTime(provider.last_synced_at, displayLocale)
+                : ui("Never")}
             </span>
           </EntityCardDetail>
         </div>
@@ -196,8 +210,8 @@ function ProviderCardContent({
             className="flex w-full items-center gap-2 border border-accent/30 bg-accent/10 px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-accent/20"
           >
             <Sparkles className="icon-sharp size-3.5 text-accent-foreground" />
-            {newCount} new {newCount === 1 ? "model" : "models"}
-            <span className="ml-auto text-primary">Review</span>
+            {newCount} {ui("new")} {newCount === 1 ? ui("model") : ui("models")}
+            <span className="ml-auto text-primary">{ui("Review")}</span>
           </button>
         )}
       </div>

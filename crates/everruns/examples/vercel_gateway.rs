@@ -10,18 +10,17 @@
 //! in the same field), then:
 //!
 //! ```text
-//! cargo run -p everruns --example vercel_gateway
+//! cargo run -p everruns --features vercel --example vercel_gateway
 //! ```
 //!
 //! An optional positional argument replaces the model id, so one account can be
 //! pointed at a different vendor without touching the code:
 //!
 //! ```text
-//! cargo run -p everruns --example vercel_gateway -- openai/gpt-6-astra
+//! cargo run -p everruns --features vercel --example vercel_gateway -- openai/gpt-6-astra
 //! ```
 
-use everruns::{Agent, Engine};
-use everruns_drivers::vercel;
+use everruns::{Agent, Engine, Vercel};
 
 /// Return the population of a city, from a tiny fixed table.
 ///
@@ -52,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `AI_GATEWAY_API_KEY`. It is the standalone/CLI/dev path: a server resolves
     // credentials from storage and never reads the environment. The error names
     // the missing variable rather than deferring to a 401 on the first request.
-    let provider = vercel::from_env("vercel")?;
+    let provider = Vercel::from_env()?;
 
     let agent = Agent::builder()
         .name("vercel-gateway")

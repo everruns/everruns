@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { LocaleProvider } from "@/providers/locale-provider";
 import { SessionCard } from "@/components/session/session-card";
 import type { Session } from "@/lib/api/types";
 
@@ -73,4 +74,20 @@ it("retains failure details beside the channel and last-message time", () => {
     "dateTime",
     session.created_at,
   );
+});
+
+it("uses British dates after a manual selection while keeping the authored title", () => {
+  localStorage.setItem("everruns.ui-language", "en-GB");
+  try {
+    render(
+      <LocaleProvider>
+        <SessionCard session={{ ...session, created_at: "2026-06-15T12:00:00Z" }} />
+      </LocaleProvider>,
+    );
+    const time = screen.getByText(/^Created /).closest("time");
+    expect(time?.getAttribute("title")).toMatch(/^15\/06\/2026/);
+    expect(screen.getByText("Support conversation")).toBeInTheDocument();
+  } finally {
+    localStorage.clear();
+  }
 });

@@ -23,6 +23,7 @@
 // `knowledge/foundations/domains.md` for the "shared services" rule.
 
 pub mod capability;
+pub(crate) mod capability_localizations;
 pub(crate) mod command_catalog;
 pub mod event;
 pub mod org_feature_flags;

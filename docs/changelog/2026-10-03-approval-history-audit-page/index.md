@@ -7,7 +7,6 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.37.0"
-visual: "Approvals page under Operational with the Recorded filter selected and one consent entry linking to its session; crop to the table."
 links:
   docs: [/capabilities/soft-approval/]
   prs: [everruns/everruns#4110]
@@ -16,6 +15,8 @@ links:
 Approval activity no longer looks like ordinary tool calls. In a chat,
 `request_approval` and `record_approval` show as approval entries with the
 action, the approver's name, and a link to the message that gave consent.
+
+![Chat showing Approval requested and Approval recorded entries around the consenting message](./chat-approval-entries@2x.png)
 
 Organization admins and owners also get an **Approvals** page under
 **Operational**. It filters all activity, recorded approvals, or requests, and

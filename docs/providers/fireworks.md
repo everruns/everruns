@@ -51,3 +51,10 @@ chat models are imported, image and other non-chat endpoints are filtered out.
 - [Fireworks docs](https://docs.fireworks.ai/)
 - [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `fireworks`
 - [Migrate between providers](/how-to/migrate-providers/)
+
+## Native Framework batches
+
+Enable the `fireworks` Cargo feature of `everruns` for direct offline model
+requests through [Batch Model Requests](/framework/batch-model-requests/). Fireworks uses native datasets and batch jobs; configure the account and trusted artifact origins explicitly. Cancellation is unsupported; it never substitutes deletion.
+
+The API is on `main`; published `0.49.0` does not include it. Use the guide’s Git dependency until a release includes this API.

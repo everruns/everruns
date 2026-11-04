@@ -162,6 +162,9 @@ pub struct PageQuery {
     pub version: Option<Uuid>,
     pub offset: Option<u64>,
     pub length: Option<u32>,
+    /// List only the immediate children of `path`: its files plus one entry per
+    /// subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+    pub tree: Option<bool>,
 }
 /// An organization Turbopuffer account referencing an existing service credential.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]

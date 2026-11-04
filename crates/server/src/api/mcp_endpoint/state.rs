@@ -6,6 +6,8 @@ use super::*;
 
 #[derive(Clone)]
 pub struct AppState {
+    /// Classified REST routes shared with the embedded UI, without the MCP route.
+    pub(crate) app_router: Option<Router>,
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
@@ -32,6 +34,8 @@ pub struct AppState {
     pub decisions: Arc<dyn everruns_core::DecisionsService>,
     /// Agent health check service, so health-check commands work over MCP too.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Whole-install health checks, so `system doctor` works over MCP too.
+    pub system_doctor: Option<Arc<crate::domains::system::doctor::SystemDoctor>>,
     pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     /// The channel host Slack runs on, for schedule triggers fired by hand
     /// that run in a channel conversation.
@@ -77,6 +81,7 @@ impl AppState {
         sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     ) -> Self {
         Self {
+            app_router: None,
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
                 (*host_composition.capability_registry()).clone(),
@@ -121,12 +126,18 @@ impl AppState {
             channels: None,
             mcp_oauth_checker: None,
             health_check_service: None,
+            system_doctor: None,
             resource_metadata_url: None,
             mcp_resource: None,
             elicitation_base_url: None,
             mcp_events: None,
             provider_services: None,
         }
+    }
+
+    pub fn with_app_router(mut self, router: Router) -> Self {
+        self.app_router = Some(router);
+        self
     }
 
     pub fn with_org_rate_limiter(
@@ -169,6 +180,14 @@ impl AppState {
         service: Arc<crate::domains::agents::AgentHealthCheckService>,
     ) -> Self {
         self.health_check_service = Some(service);
+        self
+    }
+
+    pub fn with_system_doctor(
+        mut self,
+        doctor: Arc<crate::domains::system::doctor::SystemDoctor>,
+    ) -> Self {
+        self.system_doctor = Some(doctor);
         self
     }
 }

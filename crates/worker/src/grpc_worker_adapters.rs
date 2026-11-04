@@ -466,6 +466,21 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         .await
     }
 
+    async fn list_tree(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<Vec<FileInfo>>> {
+        let store = GrpcAdapter::new_org_scoped(self.client.clone(), org_id);
+        crate::core::session_files::SessionFileSystem::list_tree(
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+        )
+        .await
+    }
+
     async fn stat_file(
         &self,
         org_id: i64,

@@ -5,6 +5,7 @@
 // instead of a lone card. Reached from the emailed link; the verify gate
 // itself stays server-enforced.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -29,7 +30,8 @@ const BRAND = {
 };
 
 export default function VerifyEmailPage() {
-  usePageTitle("Verify your email");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Verify your email"));
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -103,11 +105,14 @@ export default function VerifyEmailPage() {
           <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
         </div>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Verify your email
+          {ui("Verify your email")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          We sent a verification link to <b className="font-medium text-foreground">{email}</b>.
-          Click it to continue. This keeps your account secure and stays enforced on our side.
+          {ui("We sent a verification link to")}{" "}
+          <b className="font-medium text-foreground">{email}</b>
+          {ui(
+            ". Click it to continue. This keeps your account secure and stays enforced on our side.",
+          )}
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button
@@ -118,7 +123,7 @@ export default function VerifyEmailPage() {
             {resendVerificationMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending...
+                {ui("Sending...")}
               </>
             ) : (
               resendLabel
@@ -126,9 +131,9 @@ export default function VerifyEmailPage() {
           </Button>
         </div>
         <p className="mt-6 text-[13px] text-muted-foreground">
-          Wrong address?{" "}
+          {ui("Wrong address?")}{" "}
           <Link href="/login" className="font-medium text-primary hover:underline">
-            Use a different email
+            {ui("Use a different email")}
           </Link>
         </p>
       </AuthShell>
@@ -142,10 +147,10 @@ export default function VerifyEmailPage() {
           <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
         </div>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Verifying your email
+          {ui("Verifying your email")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          This will only take a moment.
+          {ui("This will only take a moment.")}
         </p>
         <div className="mt-7">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -161,10 +166,12 @@ export default function VerifyEmailPage() {
           <Check className="icon-sharp h-[22px] w-[22px]" strokeWidth={2.2} />
         </div>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Your email is verified
+          {ui("Your email is verified")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          Thanks for confirming your email address. You can pick up right where you left off.
+          {ui(
+            "Thanks for confirming your email address. You can pick up right where you left off.",
+          )}
         </p>
         {/* Resume a stored invite/deep-link target when present; otherwise fall
             back to dashboard (which may continue onboarding for zero-org users). */}
@@ -179,7 +186,7 @@ export default function VerifyEmailPage() {
             router.push(target);
           }}
         >
-          Continue
+          {ui("Continue")}
         </Button>
       </AuthShell>
     );
@@ -192,17 +199,17 @@ export default function VerifyEmailPage() {
         <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
       </div>
       <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-        Verification failed
+        {ui("Verification failed")}
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-        This verification link is invalid or has expired.
+        {ui("This verification link is invalid or has expired.")}
       </p>
 
       <div className="mt-7 space-y-4">
         {resent ? (
           <div className="text-sm text-muted-foreground">
-            If an account exists for {effectiveEmail}, we&apos;ve sent a new verification link.
-            Check your inbox.
+            {ui("If an account exists for")} {effectiveEmail}
+            {ui(", we've sent a new verification link. Check your inbox.")}
           </div>
         ) : email ? (
           <Button
@@ -213,7 +220,7 @@ export default function VerifyEmailPage() {
             {resendVerificationMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending...
+                {ui("Sending...")}
               </>
             ) : (
               resendLabel
@@ -230,11 +237,11 @@ export default function VerifyEmailPage() {
             }}
           >
             <div className="space-y-2">
-              <Label htmlFor="resend-email">Enter your email to get a new link</Label>
+              <Label htmlFor="resend-email">{ui("Enter your email to get a new link")}</Label>
               <Input
                 id="resend-email"
                 type="email"
-                placeholder="you@company.com"
+                placeholder={ui("you@company.com")}
                 value={manualEmail}
                 onChange={(e) => setManualEmail(e.target.value)}
                 required
@@ -249,7 +256,7 @@ export default function VerifyEmailPage() {
               {resendVerificationMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
+                  {ui("Sending...")}
                 </>
               ) : (
                 resendLabel
@@ -260,7 +267,7 @@ export default function VerifyEmailPage() {
 
         <p className="text-sm text-muted-foreground">
           <Link href="/login" className="font-medium text-primary hover:underline">
-            Back to sign in
+            {ui("Back to sign in")}
           </Link>
         </p>
       </div>

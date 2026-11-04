@@ -795,11 +795,13 @@ pub(crate) async fn run_app_agent_stream(
         event
     });
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(std::time::Duration::from_secs(15))
-            .text("keepalive"),
-    ))
+    Ok(
+        Sse::new(crate::api::sse::until_shutdown(stream)).keep_alive(
+            KeepAlive::new()
+                .interval(std::time::Duration::from_secs(15))
+                .text("keepalive"),
+        ),
+    )
 }
 
 fn ag_ui_message_metadata(

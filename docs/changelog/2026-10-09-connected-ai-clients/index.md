@@ -10,11 +10,12 @@ release: "0.47.0"
 links:
   docs: [/getting-started/use-in-ai-tools/]
   prs: [everruns/everruns#4461]
-visual: "Settings \u2192 My agent experience with the connected clients list and a Revoke button (/settings/agent-experience), cropped to the panel"
 ---
 
 AI tools that connect to Everruns over MCP OAuth, such as a coding assistant
 using the Everruns MCP server, now show up as connected clients.
+
+![Connected AI clients list with an approved MCP client and its Revoke button](./ai-clients-revoke@2x.png)
 
 **In the UI:** open **Settings → My agent experience** to see each client and
 when it was last used, and revoke any you no longer use. Revoking deletes the

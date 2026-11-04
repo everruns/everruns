@@ -9,7 +9,7 @@ tags: [ui, test-case, agents, platform-chat]
 
 ## Preconditions
 
-- Chat mode enabled; operator can edit a disposable Agent.
+- Chat workspace enabled; operator can edit a disposable Agent.
 - Real model configured; browser network/trace tools available.
 - Record the saved instructions before starting. Use distinct manual and Chat sentences.
 

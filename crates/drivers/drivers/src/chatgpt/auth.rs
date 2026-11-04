@@ -24,7 +24,69 @@ pub trait TokenStore: Send + Sync {
         Ok(true)
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// In-process [`TokenStore`] for tests and ephemeral grants.
+///
+/// Rotations live only as long as the store: hosts that must keep a refreshed
+/// pair across restarts implement [`TokenStore`] over their own storage.
+/// Loads, saves and comparisons share one mutex, so `compare_and_save` is
+/// atomic against every other writer of this store.
+#[derive(Clone, Default)]
+pub struct MemoryTokenStore {
+    lease: Arc<tokio::sync::Mutex<()>>,
+    auth: Arc<tokio::sync::Mutex<Option<CodexAuth>>>,
+}
+impl MemoryTokenStore {
+    pub fn new(auth: CodexAuth) -> Self {
+        Self {
+            lease: Arc::default(),
+            auth: Arc::new(tokio::sync::Mutex::new(Some(auth))),
+        }
+    }
+    /// A store with no grant; `RotatingAuth` reports a sign-in error until a save.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+    /// Remove the grant, as a host logout would.
+    pub async fn clear(&self) {
+        *self.auth.lock().await = None;
+    }
+}
+impl std::fmt::Debug for MemoryTokenStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryTokenStore").finish_non_exhaustive()
+    }
+}
+#[async_trait]
+impl TokenStore for MemoryTokenStore {
+    async fn lock(&self) -> anyhow::Result<Box<dyn Send>> {
+        Ok(Box::new(self.lease.clone().lock_owned().await))
+    }
+    async fn load(&self) -> anyhow::Result<Option<CodexAuth>> {
+        Ok(self.auth.lock().await.clone())
+    }
+    async fn save(&self, auth: CodexAuth) -> anyhow::Result<()> {
+        *self.auth.lock().await = Some(auth);
+        Ok(())
+    }
+    async fn compare_and_save(
+        &self,
+        previous: &CodexAuth,
+        auth: CodexAuth,
+    ) -> anyhow::Result<bool> {
+        let mut current = self.auth.lock().await;
+        if current.as_ref() != Some(previous) {
+            return Ok(false);
+        }
+        *current = Some(auth);
+        Ok(true)
+    }
+}
+/// Which OAuth grant a connection carries, and so which backend it reaches.
+///
+/// `Codex` is a Codex CLI grant for `chatgpt.com/backend-api/codex`;
+/// `ChatGptPlan` is a Sign in with ChatGPT open-source plan grant for the
+/// public plan route. Typed so hosts never parse a flow name from strings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TokenRoute {
     ChatGptPlan,
     Codex,

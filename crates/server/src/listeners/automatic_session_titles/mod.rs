@@ -92,6 +92,7 @@ impl TitleGenerator for LlmTitleGenerator {
         .with_request_options(runtime.request_options);
         provider_config.api_key = runtime.api_key;
         provider_config.base_url = runtime.base_url;
+        provider_config.api = runtime.api;
         let driver = self.drivers.create_chat_driver(&provider_config)?;
         let mut config = LlmCallConfig::new(&row.model_id);
         config.max_tokens = Some(256);
@@ -180,6 +181,12 @@ impl AutomaticSessionTitlesListener {
     }
 
     async fn generate_for_turn(&self, session_id: SessionId, sequence: i32) -> Result<()> {
+        // Bound the composed listener future: model resolution and event writes
+        // otherwise put several large async states on the caller's thread stack.
+        Box::pin(self.generate_for_turn_inner(session_id, sequence)).await
+    }
+
+    async fn generate_for_turn_inner(&self, session_id: SessionId, sequence: i32) -> Result<()> {
         let Some(events) = self.events.get().and_then(Weak::upgrade) else {
             return Ok(());
         };

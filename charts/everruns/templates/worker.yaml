@@ -10,6 +10,9 @@ spec:
   {{- if not .Values.worker.autoscaling.enabled }}
   replicas: {{ .Values.worker.replicas }}
   {{- end }}
+  # Start the replacement before stopping a worker, so turns always have one.
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector:
     matchLabels: {{- include "everruns.selector" (list . "worker") | nindent 6 }}
   template:
@@ -97,4 +100,17 @@ spec:
           SELECT COUNT(*) FROM durable_task_queue
           WHERE status = 'claimed'
           OR (status = 'pending' AND visible_at <= NOW() AND attempt < max_attempts)
+{{- end }}
+{{- if .Values.worker.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  maxUnavailable: {{ .Values.worker.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "worker") | nindent 6 }}
 {{- end }}

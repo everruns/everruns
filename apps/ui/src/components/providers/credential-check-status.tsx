@@ -5,6 +5,7 @@
 // as a separate step. `inconclusive` renders nothing: it says nothing about the
 // credential, and an "unknown" chip would only invite a pointless retry.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Check, Loader2, TriangleAlert } from "lucide-react";
 import type { CredentialCheckState } from "./use-credential-check";
 
@@ -15,6 +16,7 @@ export function CredentialCheckStatus({
   state: CredentialCheckState;
   className?: string;
 }) {
+  const ui = useUiTranslations();
   if (state.status === "checking") {
     return (
       <span
@@ -22,7 +24,7 @@ export function CredentialCheckStatus({
         role="status"
       >
         <Loader2 className="icon-sharp size-3.5 animate-spin" />
-        Checking key…
+        {ui("Checking key…")}
       </span>
     );
   }
@@ -34,7 +36,9 @@ export function CredentialCheckStatus({
         role="status"
       >
         <Check className="icon-sharp size-3.5" />
-        {state.models > 0 ? `Key valid, ${state.models} models` : "Key valid"}
+        {state.models > 0
+          ? ui("Key valid, {value0} models", { value0: state.models })
+          : ui("Key valid")}
       </span>
     );
   }
@@ -46,7 +50,7 @@ export function CredentialCheckStatus({
         role="status"
       >
         <TriangleAlert className="icon-sharp size-3.5" />
-        Key rejected
+        {ui("Key rejected")}
       </span>
     );
   }

@@ -48,6 +48,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("gh-harness-{suffix}"),
                 display_name: None,
                 icon: None,
@@ -72,6 +73,8 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            completion_check: Default::default(),
+            localizations: Default::default(),
             public_id: public_id.clone(),
             name: format!("pr-summarizer-{suffix}"),
             display_name: Some("PR Summarizer".to_string()),
@@ -194,7 +197,13 @@ async fn get_reports_nothing_until_connect_gives_the_agent_an_identity() {
     let ctx = ctx_for(&db, &github, OrgRole::Owner);
     let agent_id = seed_agent(&db).await;
 
-    assert_eq!(status(&ctx, &agent_id).await, AgentGitHubStatus::default());
+    assert_eq!(
+        status(&ctx, &agent_id).await,
+        AgentGitHubStatus {
+            view_url: Some(format!("agents/{agent_id}/github")),
+            ..AgentGitHubStatus::default()
+        }
+    );
 
     let BeginConnectResponse::CreateApp {
         action,

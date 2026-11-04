@@ -1,5 +1,8 @@
 // PostgreSQL repository: Events (source of truth for messages)
 
+mod after_store;
+pub(crate) mod feed;
+pub(crate) mod group_commit;
 mod input_lookups;
 pub(super) mod rows;
 use rows::*;
@@ -12,7 +15,6 @@ use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::host::EventLogError;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_server_macros::sql;
-use tracing::warn;
 use uuid::Uuid;
 
 use crate::storage::message_history_timing::{
@@ -80,7 +82,7 @@ pub struct ActorLeaseFenceRejected {
 
 /// One INSERT of `inputs`, in order, with consecutive per-session sequences
 /// reserved by a single `event_sequences` bump; see `Database::create_events`.
-fn batch_insert_query(inputs: &[CreateEventRow]) -> sqlx::QueryBuilder<sqlx::Postgres> {
+pub(super) fn batch_insert_query(inputs: &[CreateEventRow]) -> sqlx::QueryBuilder<sqlx::Postgres> {
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "WITH input (ord, session_id, event_type, ts, context, data, metadata, tags) AS (",
     );
@@ -133,7 +135,10 @@ fn batch_insert_query(inputs: &[CreateEventRow]) -> sqlx::QueryBuilder<sqlx::Pos
 }
 
 /// `rows` (RETURNING order, unspecified) in the order of `inputs`.
-fn order_batch_rows(inputs: &[CreateEventRow], mut rows: Vec<EventRow>) -> Result<Vec<EventRow>> {
+pub(super) fn order_batch_rows(
+    inputs: &[CreateEventRow],
+    mut rows: Vec<EventRow>,
+) -> Result<Vec<EventRow>> {
     anyhow::ensure!(
         rows.len() == inputs.len(),
         "inserted {} events for a batch of {}",
@@ -164,7 +169,7 @@ fn order_batch_rows(inputs: &[CreateEventRow], mut rows: Vec<EventRow>) -> Resul
 }
 
 /// Most events [`Database::create_events`] inserts in one statement.
-const MAX_EVENT_BATCH: usize = 1000;
+pub(super) const MAX_EVENT_BATCH: usize = 1000;
 
 /// Safety cap for otherwise-unbounded full-history message reads. Applied to
 /// both `list_message_events_limited` (no explicit limit) and the
@@ -198,11 +203,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.enqueue_event_projections(std::slice::from_ref(&row))
-            .await;
-        if Self::ends_trace_turn(&row.event_type) {
-            self.schedule_session_trace_projection(row.session_id.uuid());
-        }
+        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -279,11 +280,7 @@ impl Database {
         .await?;
         tx.commit().await?;
 
-        self.enqueue_event_projections(std::slice::from_ref(&row))
-            .await;
-        if Self::ends_trace_turn(&row.event_type) {
-            self.schedule_session_trace_projection(row.session_id.uuid());
-        }
+        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -343,11 +340,55 @@ impl Database {
     /// - Expiry counts: a holder past its lease is rejected even when no one
     ///   took the session yet. Its renewer has already lost the lease too, or
     ///   is about to; the next holder resumes from the log.
+    ///
+    /// Appends from many callers share one transaction when they arrive
+    /// together (`group_commit`).
     pub async fn create_events_fenced(
         &self,
         inputs: Vec<CreateEventRow>,
         holder: &str,
         fence: i64,
+    ) -> Result<Vec<EventRow>> {
+        self.append_checked(
+            inputs,
+            group_commit::AppendCheck::Lease {
+                holder: holder.to_string(),
+                fence,
+            },
+        )
+        .await
+    }
+
+    /// Insert `inputs` for the detached tool call `tool_call_id`, only while
+    /// `holder` holds its unexpired `detached_tool_calls` row on every session
+    /// the batch writes to: the call's turn parked and no longer holds the
+    /// actor lease (knowledge/execution/detached-tool-calls.md). Otherwise
+    /// nothing is written and the error downcasts to
+    /// [`ActorLeaseFenceRejected`]. The row is taken `FOR SHARE`, so a cancel
+    /// or the expiry sweep deleting it waits for the append, and an append
+    /// after either is refused.
+    pub async fn create_events_detached(
+        &self,
+        inputs: Vec<CreateEventRow>,
+        holder: &str,
+        tool_call_id: &str,
+    ) -> Result<Vec<EventRow>> {
+        self.append_checked(
+            inputs,
+            group_commit::AppendCheck::Detached {
+                holder: holder.to_string(),
+                tool_call_id: tool_call_id.to_string(),
+            },
+        )
+        .await
+    }
+
+    async fn create_events_checked(
+        &self,
+        inputs: Vec<CreateEventRow>,
+        holder: &str,
+        fence: i64,
+        detached_tool_call: Option<&str>,
     ) -> Result<Vec<EventRow>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
@@ -370,17 +411,34 @@ impl Database {
         .bind(&sessions)
         .execute(&mut *tx)
         .await?;
-        let held: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT session_id FROM session_actors \
-             WHERE session_id = ANY($1) AND lease_holder = $2 AND lease_fence = $3 \
-               AND lease_expires_at > NOW() \
-             ORDER BY session_id FOR SHARE",
-        )
-        .bind(&sessions)
-        .bind(holder)
-        .bind(fence)
-        .fetch_all(&mut *tx)
-        .await?;
+        let held: Vec<Uuid> = match detached_tool_call {
+            None => {
+                sqlx::query_scalar(
+                    "SELECT session_id FROM session_actors \
+                     WHERE session_id = ANY($1) AND lease_holder = $2 AND lease_fence = $3 \
+                       AND lease_expires_at > NOW() \
+                     ORDER BY session_id FOR SHARE",
+                )
+                .bind(&sessions)
+                .bind(holder)
+                .bind(fence)
+                .fetch_all(&mut *tx)
+                .await?
+            }
+            Some(tool_call_id) => {
+                sqlx::query_scalar(
+                    "SELECT session_id FROM detached_tool_calls \
+                     WHERE session_id = ANY($1) AND holder = $2 AND tool_call_id = $3 \
+                       AND expires_at > NOW() \
+                     ORDER BY session_id FOR SHARE",
+                )
+                .bind(&sessions)
+                .bind(holder)
+                .bind(tool_call_id)
+                .fetch_all(&mut *tx)
+                .await?
+            }
+        };
         if let Some(lost) = sessions.iter().find(|id| !held.contains(id)) {
             tx.rollback().await?;
             return Err(ActorLeaseFenceRejected {
@@ -401,70 +459,6 @@ impl Database {
         tx.commit().await?;
         self.after_events_stored(&ordered).await;
         Ok(ordered)
-    }
-
-    /// The reporting projection and session trace work a stored batch owes.
-    async fn after_events_stored(&self, ordered: &[EventRow]) {
-        self.enqueue_event_projections(ordered).await;
-        let mut traced: Vec<Uuid> = Vec::new();
-        for row in ordered {
-            if Self::ends_trace_turn(&row.event_type) && !traced.contains(&row.session_id.uuid()) {
-                traced.push(row.session_id.uuid());
-            }
-        }
-        for session_id in traced {
-            self.schedule_session_trace_projection(session_id);
-        }
-    }
-
-    /// One outbox insert for every row of a stored batch that feeds reporting.
-    async fn enqueue_event_projections(&self, rows: &[EventRow]) {
-        // Reporting outbox enqueue is best-effort per knowledge/evaluation/reporting.md:
-        // "If an outbox write fails after canonical state commits, a periodic
-        // reconciler must be able to discover and enqueue missing projection
-        // work from canonical tables." Never fail the canonical event write
-        // because the reporting projector queue is unavailable. No reconciler
-        // job exists yet (tracked separately); until it lands, a failed
-        // enqueue means the corresponding fact will remain stale until the
-        // canonical row is touched again and the next enqueue succeeds.
-        let rows: Vec<&EventRow> = rows
-            .iter()
-            .filter(|row| {
-                crate::storage::reporting::outbox::event_needs_projection(&row.event_type)
-            })
-            .collect();
-        if rows.is_empty() {
-            return;
-        }
-        let event_ids: Vec<String> = rows.iter().map(|row| row.id.uuid().to_string()).collect();
-        let session_ids: Vec<Uuid> = rows.iter().map(|row| row.session_id.uuid()).collect();
-        if let Err(e) = sqlx::query(
-            r#"
-            INSERT INTO reporting_outbox (
-                org_id, source_type, source_id, source_version, reason, status, next_attempt_at
-            )
-            SELECT s.org_id, 'event', e.event_id, e.event_id, 'event_projection', 'pending', NOW()
-            FROM UNNEST($1::text[], $2::uuid[]) AS e(event_id, session_id)
-            JOIN sessions s ON s.id = e.session_id
-            ON CONFLICT (org_id, source_type, source_id, source_version, reason)
-            DO NOTHING
-            "#,
-        )
-        .bind(&event_ids)
-        .bind(&session_ids)
-        .execute(&self.pool)
-        .await
-        {
-            for row in rows {
-                warn!(
-                    event_id = %row.id.uuid(),
-                    session_id = %row.session_id.uuid(),
-                    event_type = %row.event_type,
-                    error = %e,
-                    "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
-                );
-            }
-        }
     }
 
     pub async fn create_waiting_turn_resolution_event(
@@ -511,33 +505,6 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         if let Some(row) = inserted {
-            if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
-                return Ok((row, true));
-            }
-            if let Err(error) = sqlx::query(
-                r#"
-                INSERT INTO reporting_outbox (
-                    org_id, source_type, source_id, source_version, reason, status, next_attempt_at
-                )
-                SELECT s.org_id, 'event', $1, $1, 'event_projection', 'pending', NOW()
-                FROM sessions s
-                WHERE s.id = $2
-                ON CONFLICT (org_id, source_type, source_id, source_version, reason)
-                DO NOTHING
-                "#,
-            )
-            .bind(row.id.uuid().to_string())
-            .bind(row.session_id.uuid())
-            .execute(&self.pool)
-            .await
-            {
-                warn!(
-                    event_id = %row.id.uuid(),
-                    session_id = %row.session_id.uuid(),
-                    error = %error,
-                    "reporting outbox enqueue failed for resolution event"
-                );
-            }
             return Ok((row, true));
         }
 
@@ -666,6 +633,51 @@ impl Database {
         .bind(message_id)
         .fetch_one(&self.pool)
         .await?)
+    }
+
+    /// One turn's events of the given types, oldest first: from the turn's
+    /// `turn.started` (found through the partial turns index, newest first, so
+    /// usually the first row it reads) to the end of the session.
+    pub async fn list_turn_events(
+        &self,
+        session_id: SessionId,
+        turn_id: &str,
+        event_types: &[String],
+    ) -> Result<Vec<EventRow>> {
+        Ok(sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            WITH started AS (
+                SELECT sequence FROM events
+                WHERE session_id = $1
+                  AND event_type = 'turn.started'
+                  AND context->>'turn_id' = $2
+                ORDER BY sequence DESC
+                LIMIT 1
+            )
+            SELECT {EventRow}
+            FROM events
+            WHERE session_id = $1
+              AND sequence >= (SELECT sequence FROM started)
+              AND event_type = ANY($3)
+              AND context->>'turn_id' = $2
+            ORDER BY sequence ASC
+            "#
+        ))
+        .bind(session_id.uuid())
+        .bind(turn_id)
+        .bind(event_types)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// The session's highest stored event sequence, `None` when it has none.
+    pub async fn last_event_sequence(&self, session_id: SessionId) -> Result<Option<i32>> {
+        Ok(
+            sqlx::query_scalar("SELECT MAX(sequence) FROM events WHERE session_id = $1")
+                .bind(session_id.uuid())
+                .fetch_one(&self.pool)
+                .await?,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1409,3 +1421,6 @@ impl Database {
         Ok(rows.into_iter().collect())
     }
 }
+
+#[cfg(test)]
+mod tests;

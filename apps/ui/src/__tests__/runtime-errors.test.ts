@@ -1,4 +1,8 @@
-import { getLocalizedOutputMessageText, localizeRuntimeError } from "@/lib/runtime-errors";
+import {
+  getLocalizedOutputMessageText,
+  localizeRuntimeError,
+  isRetryableRuntimeError,
+} from "@/lib/runtime-errors";
 
 describe("runtime error localization", () => {
   it("localizes output message text from structured budget metadata instead of fallback prose", () => {
@@ -20,7 +24,7 @@ describe("runtime error localization", () => {
       error_fields: { spent: 12.5, limit: 10, currency: "usd" },
     });
 
-    expect(text).toContain("Бюджет вичерпано");
+    expect(text).toContain("Досягнуто ліміту використання");
     expect(text).toContain("12,50");
     expect(text).toContain("10,00");
   });
@@ -109,6 +113,19 @@ describe("runtime error localization", () => {
     expect(text).toContain("32000");
     expect(text).toContain("1234");
     expect(text).toContain("lower the max output tokens");
+  });
+
+  it("says a quota refusal continues by itself while credits are awaited", () => {
+    const text = localizeRuntimeError(
+      "en",
+      {
+        code: "provider_quota_exhausted",
+        fields: { requested_max_tokens: 65536, affordable_tokens: 283, credit_wait: true },
+      },
+      "backend fallback",
+    );
+    expect(text).toContain("the balance covers 283");
+    expect(text).toContain("continues automatically once credits are back");
   });
 
   it("localizes provider quota exhaustion distinctly from misconfiguration", () => {
@@ -212,4 +229,13 @@ describe("runtime error localization", () => {
     expect(text).toContain("Update the integration");
     expect(text).not.toContain("generic processing error");
   });
+});
+
+it("localizes model refusals without suggesting a retry", () => {
+  const error = { code: "model_refusal" };
+  expect(localizeRuntimeError("en", error, "fallback")).toBe("The model declined this request.");
+  expect(localizeRuntimeError("uk", error, "fallback")).toBe(
+    "Модель відмовилася виконати цей запит.",
+  );
+  expect(isRetryableRuntimeError(error)).toBe(false);
 });

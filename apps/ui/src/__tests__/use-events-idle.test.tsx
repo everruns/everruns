@@ -24,6 +24,7 @@ let mockTail: Event[] = [];
 let mockStatus = "idle";
 let mockTasks: Array<{ state: string }> = [];
 jest.mock("@/lib/event-stream", () => ({
+  eventStreamScope: jest.requireActual("@/lib/event-stream").eventStreamScope,
   createEventStream: jest.fn(() => {
     const stream = {
       listeners: {} as Stream["listeners"],
@@ -420,5 +421,29 @@ describe("optional idle SSE lifecycle", () => {
     expect(result.current.data.map((e) => e.id)).toEqual(["input"]);
     expect(listEventsPaginated).toHaveBeenCalledTimes(1);
     expect(getSseUrl).toHaveBeenLastCalledWith("session-1", { sinceId: "input" });
+  });
+  it("recovers continuous streams on online after the retry budget is exhausted, without zombie reconnects", async () => {
+    const { result, unmount } = await mount(true);
+    jest.useFakeTimers();
+    try {
+      for (let attempt = 0; attempt < 11; attempt++) {
+        act(() => mockStreams.at(-1)!.onerror?.());
+        act(() => jest.advanceTimersByTime(40_000));
+      }
+      expect(result.current.error?.message).toContain("max retries");
+      const count = mockStreams.length;
+      act(() => window.dispatchEvent(new window.Event("online")));
+      expect(mockStreams).toHaveLength(count + 1);
+      act(() => window.dispatchEvent(new window.Event("online")));
+      expect(mockStreams).toHaveLength(count + 1);
+      unmount();
+      act(() => {
+        window.dispatchEvent(new window.Event("online"));
+        jest.runOnlyPendingTimers();
+      });
+      expect(mockStreams).toHaveLength(count + 1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

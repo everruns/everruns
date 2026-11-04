@@ -163,18 +163,31 @@ impl KnowledgeService {
             .transpose()?
             .unwrap_or_else(|| "/".into());
         let limit = query.limit.unwrap_or(100).clamp(1, 500) as i64;
-        let rows: Vec<Value> = sqlx::query_scalar(FILES_PAGE_SQL)
-            .bind(c.org_id)
-            .bind(c.id)
-            .bind(query.after.as_deref().unwrap_or(""))
-            .bind(&prefix)
-            .bind(limit + 1)
-            .fetch_all(self.db.tx_pool())
-            .await
-            .map_err(db_error)?;
+        let tree = query.tree == Some(true);
+        // A folder listing matches on the folder itself, so `/docs` never pulls
+        // in `/docs-old/…`.
+        let prefix = if tree && prefix != "/" {
+            format!("{prefix}/")
+        } else {
+            prefix
+        };
+        let rows: Vec<Value> = sqlx::query_scalar(if tree {
+            FOLDER_PAGE_SQL
+        } else {
+            FILES_PAGE_SQL
+        })
+        .bind(c.org_id)
+        .bind(c.id)
+        .bind(query.after.as_deref().unwrap_or(""))
+        .bind(&prefix)
+        .bind(limit + 1)
+        .fetch_all(self.db.tx_pool())
+        .await
+        .map_err(db_error)?;
         let more = rows.len() > limit as usize;
+        let cursor = if tree { "cursor" } else { "path" };
         let next = more.then(|| {
-            rows[limit as usize - 1]["path"]
+            rows[limit as usize - 1][cursor]
                 .as_str()
                 .unwrap_or_default()
                 .to_string()
@@ -250,4 +263,29 @@ pub fn excluded(c: &Collection, kind: &str, p: &str) -> bool {
 /// serves the order and the cursor, so a page reads its rows and no more however
 /// large the collection; `files_page_reads_the_path_index` pins that plan and the
 /// weekly `knowledge_catalog` bench times it on a million files.
+/// One folder level: a loose index scan over `knowledge_files_tree`. Each step
+/// takes the next path in byte order (`~>=~`, the index's `text_pattern_ops`)
+/// and, when it lies in a subfolder, skips past that whole subfolder by seeking
+/// to `prefix || folder || '0'` ('0' is the byte after '/'). A folder costs one
+/// index probe however many files it holds, so the root of a million-file
+/// collection lists as fast as a small folder. The cursor is the last entry's
+/// representative path; the next page resumes after its file or folder. The
+/// `~<~` upper bound (the prefix with its trailing '/' raised to '0') stops the
+/// last probe at the end of the folder instead of the end of the collection.
+pub(crate) const FOLDER_PAGE_SQL: &str = "WITH RECURSIVE walk(n,path) AS (
+ SELECT 1, (SELECT f.path FROM knowledge_files f WHERE f.org_id=$1 AND f.collection_id=$2 AND f.deleted_at IS NULL AND starts_with(f.path,$4) AND f.path ~<~ (left($4,-1)||'0')
+   AND f.path ~>=~ (CASE WHEN $3='' THEN $4 WHEN strpos(substr($3,length($4)+1),'/')>0 THEN $4||split_part(substr($3,length($4)+1),'/',1)||'0' ELSE $3||chr(1) END)
+   ORDER BY f.path USING ~<~ LIMIT 1)
+ UNION ALL
+ SELECT w.n+1, (SELECT f.path FROM knowledge_files f WHERE f.org_id=$1 AND f.collection_id=$2 AND f.deleted_at IS NULL AND starts_with(f.path,$4) AND f.path ~<~ (left($4,-1)||'0')
+   AND f.path ~>=~ (CASE WHEN strpos(substr(w.path,length($4)+1),'/')>0 THEN $4||split_part(substr(w.path,length($4)+1),'/',1)||'0' ELSE w.path||chr(1) END)
+   ORDER BY f.path USING ~<~ LIMIT 1)
+ FROM walk w WHERE w.path IS NOT NULL AND w.n<$5
+)
+SELECT CASE WHEN strpos(substr(w.path,length($4)+1),'/')>0
+ THEN jsonb_build_object('kind','folder','path',$4||split_part(substr(w.path,length($4)+1),'/',1),'name',split_part(substr(w.path,length($4)+1),'/',1),'cursor',w.path)
+ ELSE to_jsonb(f)||jsonb_build_object('kind','file','name',substr(w.path,length($4)+1),'cursor',w.path,'version',to_jsonb(v)-'raw_key'-'raw_parts'-'text_key'-'org_id') END
+FROM walk w LEFT JOIN knowledge_files f ON f.org_id=$1 AND f.collection_id=$2 AND f.path=w.path AND f.deleted_at IS NULL
+LEFT JOIN knowledge_versions v ON v.id=f.current_version
+WHERE w.path IS NOT NULL ORDER BY w.n";
 pub(crate) const FILES_PAGE_SQL: &str = "SELECT to_jsonb(f)||jsonb_build_object('version',to_jsonb(v)-'raw_key'-'raw_parts'-'text_key'-'org_id') FROM knowledge_files f JOIN knowledge_versions v ON v.id=f.current_version WHERE f.org_id=$1 AND f.collection_id=$2 AND f.deleted_at IS NULL AND f.path>$3 AND starts_with(f.path,$4) ORDER BY f.path LIMIT $5";

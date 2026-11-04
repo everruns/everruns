@@ -1,14 +1,9 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useEffect } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { useModels } from "@/hooks/use-providers";
 import { isEmbeddingModel } from "@/lib/model-capabilities";
 import { cn } from "@/lib/utils";
@@ -36,7 +31,8 @@ export function EmbeddingModelPicker({
   "aria-describedby": ariaDescribedBy,
   onValidityChange,
 }: EmbeddingModelPickerProps) {
-  const { data: models = [], isLoading } = useModels();
+  const ui = useUiTranslations();
+  const { data: models = [], isLoading, error } = useModels();
 
   const candidates = models.filter((model) => model.enabled && isEmbeddingModel(model));
   const selectionValid = candidates.some((model) => model.id === value);
@@ -57,45 +53,43 @@ export function EmbeddingModelPicker({
 
   return (
     <div className="space-y-2">
-      <Select
+      <Combobox
+        id={id}
         value={value}
         onValueChange={onChange}
+        ariaLabel={ui("Embedding model")}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+        valueLabel={
+          selectedModel
+            ? `${selectedModel.display_name} (${selectedModel.provider_name})`
+            : undefined
+        }
+        placeholder={isLoading ? ui("Loading models...") : placeholder}
+        searchPlaceholder={ui("Search models")}
+        error={error ? ui("Could not load models. Try again.") : undefined}
+        clearable={false}
         disabled={disabled || isLoading || sorted.length === 0}
-      >
-        <SelectTrigger
-          id={id}
-          className={cn("w-full", className)}
-          aria-label="Embedding model"
-          aria-invalid={ariaInvalid}
-          aria-describedby={ariaDescribedBy}
-        >
-          <SelectValue placeholder={isLoading ? "Loading models..." : placeholder}>
-            {selectedModel
-              ? `${selectedModel.display_name} (${selectedModel.provider_name})`
-              : undefined}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {sorted.map((model) => (
-            <SelectItem key={model.id} value={model.id}>
-              {model.display_name} ({model.provider_name})
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {!isLoading && sorted.length === 0 && (
+        className={cn("w-full", className)}
+        options={sorted.map((model) => ({
+          value: model.id,
+          label: `${model.display_name} (${model.provider_name})`,
+        }))}
+      />
+      {!isLoading && !error && sorted.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No embedding models are configured.{" "}
+          {ui("No embedding models are configured.")}{" "}
           <Link href="/models" className="text-primary underline underline-offset-4">
-            Configure an embedding model
+            {ui("Configure an embedding model")}
           </Link>
           .
         </p>
       )}
       {selectedIsInvalid && (
         <p className="text-xs text-destructive">
-          The configured model is unavailable or does not support embeddings. Choose an embedding
-          model to repair this index.
+          {ui(
+            "The configured model is unavailable or does not support embeddings. Choose an embedding model to repair this index.",
+          )}
         </p>
       )}
     </div>

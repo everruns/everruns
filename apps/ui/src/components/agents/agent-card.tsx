@@ -1,4 +1,11 @@
 "use client";
+import { localizedEntityDescription } from "@/lib/entity-localization";
+
+import {
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
 
 import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
@@ -22,7 +29,7 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { getDisplayName, getEntityNameClassName } from "@/lib/entity-lifecycle";
 import { formatCountLabel } from "@/lib/formatting";
@@ -42,6 +49,8 @@ export function AgentCard({
   showEditButton = false,
   compact = false,
 }: AgentCardProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { locale } = useLocale();
   // Get capability info for display
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
@@ -52,7 +61,9 @@ export function AgentCard({
   const tags = normalizeTags(agent.tags);
   const sessionCount = agent.session_count ?? 0;
   const harness = agent.effective_harness;
-  const harnessName = harness?.display_name || harness?.name;
+  const harnessName = harness?.name
+    ? getDisplayName({ ...harness, name: harness.name }, displayLocale)
+    : undefined;
   const harnessSourceLabel =
     harness?.source === "organization_default" ? "organization default" : "explicit";
   const harnessStatusLabel = harness?.status === "unresolved" ? "unavailable" : harness?.status;
@@ -65,7 +76,7 @@ export function AgentCard({
   return (
     <EntityCard
       icon={<IconTile size="md" icon={<AgentAvatar avatar={agent.avatar} size={28} />} />}
-      title={getDisplayName(agent)}
+      title={getDisplayName(agent, displayLocale)}
       href={`/agents/${agent.id}`}
       titleClassName={getEntityNameClassName(agent.status)}
       headerActions={<EntityStatus status={agent.status} />}
@@ -74,7 +85,7 @@ export function AgentCard({
           <EntityCardFooter
             meta={
               <>
-                <span>{formatCountLabel(sessionCount, "session")}</span>
+                <span>{formatCountLabel(sessionCount, "session", undefined, displayLocale)}</span>
               </>
             }
             actions={
@@ -85,7 +96,7 @@ export function AgentCard({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  aria-label={`Edit ${getDisplayName(agent)}`}
+                  aria-label={ui("Edit {value0}", { value0: getDisplayName(agent, displayLocale) })}
                   href={`/agents/${agent.id}?mode=edit`}
                 >
                   <Pencil className="icon-sharp h-4 w-4" />
@@ -96,17 +107,19 @@ export function AgentCard({
         </>
       }
     >
-      {agent.description ? (
+      {localizedEntityDescription(agent, displayLocale) ? (
         <EntityCardDescription>
-          <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
+          <InlineStreamdownMessage>
+            {localizedEntityDescription(agent, displayLocale)}
+          </InlineStreamdownMessage>
         </EntityCardDescription>
       ) : (
-        <p className="text-sm text-muted-foreground mb-3 italic">No description provided</p>
+        <p className="text-sm text-muted-foreground mb-3 italic">{ui("No description provided")}</p>
       )}
 
       <EntityCardDetail
         className="mb-3"
-        label="Harness"
+        label={ui("Harness")}
         icon={
           <TooltipProvider>
             <Tooltip>
@@ -133,13 +146,15 @@ export function AgentCard({
         ) : (
           <span
             className="min-w-0 truncate italic"
-            title={harness?.id ?? "Harness could not be resolved"}
+            title={harness?.id ?? ui("Harness could not be resolved")}
           >
-            {harnessName ? `${harnessName} (${harnessStatusLabel})` : "unavailable harness"}
+            {harnessName
+              ? ui("{value0} ({value1})", { value0: harnessName, value1: harnessStatusLabel })
+              : ui("unavailable harness")}
           </span>
         )}
         <span className="shrink-0 text-muted-foreground">
-          {harness?.source === "organization_default" ? "Org default" : "Explicit"}
+          {harness?.source === "organization_default" ? ui("Org default") : ui("Explicit")}
         </span>
       </EntityCardDetail>
 

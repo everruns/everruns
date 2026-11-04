@@ -44,11 +44,11 @@ use tracing::{debug, warn};
 
 use super::attachments::{AttachmentIntake, AttachmentPolicy, AttachmentStore, ReceivedAttachment};
 use super::{
-    ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
-    ChannelStore, ControlAction, DeliveryEvent, DeliveryOptions, DeliveryStep, DeliveryTarget,
-    Inbound, InboundAttachment, InboundChannelEvent, InboundControl, InboundDecision,
-    InboundMessage, InboundRoute, MemoryChannelStore, PendingDelivery, SessionBinding,
-    TurnDelivery, build_session_routing_tag,
+    CHANNEL_MESSAGE_KEY, ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest,
+    ChannelResponse, ChannelStore, ControlAction, DeliveryEvent, DeliveryOptions, DeliveryStep,
+    DeliveryTarget, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
+    InboundDecision, InboundMessage, InboundReaction, InboundRoute, LinkedMessage,
+    MemoryChannelStore, PendingDelivery, SessionBinding, TurnDelivery, build_session_routing_tag,
 };
 use everruns_contracts::runtime::egress::EgressService;
 use everruns_contracts::runtime::events::TOOL_CALL_REQUESTED;
@@ -406,6 +406,17 @@ pub trait ChannelSessionPort: Send + Sync {
         Ok(())
     }
 
+    /// Store a reaction a person made on the platform on a linked message.
+    /// The default ignores it.
+    async fn react(
+        &self,
+        _channel: &ChannelConfig,
+        _message: &LinkedMessage,
+        _reaction: &InboundReaction,
+    ) -> Result<(), ChannelError> {
+        Ok(())
+    }
+
     /// Apply an approval answered on the platform, after checking that the
     /// session belongs to the channel and that the decider may decide.
     /// Returns what resuming did: a turn that continues reports `Started`.
@@ -656,6 +667,7 @@ impl ChannelHost {
             Inbound::Message(message) => self.accept(&channel, &driver, *message).await,
             Inbound::Control(control) => self.control(&channel, &driver, *control).await,
             Inbound::Decision(decision) => self.decide(&channel, &driver, *decision).await,
+            Inbound::Reaction(reaction) => self.react(&channel, *reaction).await,
         }
     }
 
@@ -1011,7 +1023,9 @@ impl ChannelHost {
                 match host.recover().await {
                     Ok(0) => {}
                     Ok(resumed) => debug!(resumed, "channel: resumed pending deliveries"),
-                    Err(error) => warn!(%error, "channel: recovery failed"),
+                    Err(error) => {
+                        crate::report_repeated_failure!(warn, %error, "channel: recovery failed")
+                    }
                 }
             }
         })
@@ -1065,8 +1079,28 @@ impl ChannelHost {
         let input = self
             .input_message(&channel.config, &session_id, &message.event)
             .await;
-        self.send_and_deliver(channel, driver, &session_id, input, message.reply_to)
+        let message_key = message
+            .event
+            .message_metadata
+            .get(CHANNEL_MESSAGE_KEY)
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let outcome = self
+            .send_and_deliver(channel, driver, &session_id, input, message.reply_to)
             .await?;
+        if let (
+            Some(key),
+            SendOutcome::Started { input_message_id } | SendOutcome::Pending { input_message_id },
+        ) = (message_key, &outcome)
+        {
+            let linked = LinkedMessage {
+                session_id: session_id.clone(),
+                message_id: input_message_id.clone(),
+            };
+            if let Err(error) = self.inner.store.link_message(name, &key, &linked).await {
+                warn!(%session_id, %error, "channel: could not link an inbound message");
+            }
+        }
         let mut response = ChannelResponse::accepted(&session_id);
         response.body["created"] = json!(created);
         Ok(response)
@@ -1167,6 +1201,28 @@ impl ChannelHost {
             .control(&channel.config, &session_id, &control.action)
             .await?;
         Ok(ChannelResponse::accepted(&session_id))
+    }
+
+    /// A reaction on a platform message the host linked. Messages it never
+    /// saw, and hosts that keep no links, ignore it.
+    async fn react(
+        &self,
+        channel: &ResolvedChannel,
+        reaction: InboundReaction,
+    ) -> Result<ChannelResponse, ChannelError> {
+        let Some(message) = self
+            .inner
+            .store
+            .linked_message(channel.name(), &reaction.message_key)
+            .await?
+        else {
+            return Ok(ChannelResponse::ignored());
+        };
+        self.inner
+            .port
+            .react(&channel.config, &message, &reaction)
+            .await?;
+        Ok(ChannelResponse::accepted(&message.session_id))
     }
 
     async fn decide(

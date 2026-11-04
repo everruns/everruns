@@ -342,6 +342,49 @@ impl GitHubClient {
         Ok(cap_text(body, max_bytes))
     }
 
+    /// The gzipped tarball of `repo` at `sha`, refused past `max_bytes`.
+    /// GitHub answers with a redirect to codeload; reqwest drops the
+    /// `Authorization` header when it leaves api.github.com, and the redirect
+    /// URL carries its own short-lived token for private repositories.
+    pub async fn tarball(
+        &self,
+        repo: &str,
+        sha: &str,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, String> {
+        let url = format!("{}/repos/{repo}/tarball/{sha}", self.api_base);
+        let mut response = self
+            .http
+            .get(&url)
+            .bearer_auth(&self.token)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header("User-Agent", "everruns-github")
+            .send()
+            .await
+            .map_err(|e| format!("Failed to connect to GitHub API: {e}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("GitHub API error ({status}): {body}"));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|e| format!("Failed to read repository archive: {e}"))?
+        {
+            if bytes.len() + chunk.len() > max_bytes {
+                return Err(format!(
+                    "Repository archive is larger than {} MiB",
+                    max_bytes / (1024 * 1024)
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(bytes)
+    }
+
     /// Issue comments on an issue or pull request, oldest first, up to
     /// `max_pages` pages of 100.
     pub async fn issue_comments(

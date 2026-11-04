@@ -1,5 +1,8 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 import { useMemo, useState } from "react";
 import { CreditCard, Plus, ShieldCheck, Trash2, WalletCards } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,12 +64,34 @@ function splitCsv(value: string) {
 }
 
 export default function PaymentSettingsPage() {
-  usePageTitle("Payments", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Payments"), ui("Settings"));
   const { data: currentUser } = useCurrentUser();
   const { data: identities = [] } = useVirtualUsers();
   const { data: accounts = [], isLoading: accountsLoading } = usePaymentAccounts();
   const { data: policies = [] } = usePaymentPolicies();
   const { data: attempts = [] } = usePaymentAttempts({ limit: 25 });
+  useChatPageRows(
+    "Payment accounts",
+    accounts.map((a) => ({
+      id: a.id,
+      label: a.label,
+      rail: a.rail,
+      status: a.status,
+      owner_type: a.owner_type,
+    })),
+    { loading: accountsLoading },
+  );
+  useChatPageRows(
+    "Payment policies",
+    policies.map((p) => ({
+      id: p.id,
+      status: p.status,
+      payment_account_id: p.payment_account_id,
+      max_amount_usd_per_request: p.max_amount_usd_per_request,
+    })),
+  );
+
   const createAccount = useCreatePaymentAccount();
   const disableAccount = useDisablePaymentAccount();
   const createPolicy = useCreatePaymentPolicy();
@@ -139,7 +164,7 @@ export default function PaymentSettingsPage() {
       <section>
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Payment Wallets</h2>
+            <h2 className="text-xl font-semibold">{ui("Payment Wallets")}</h2>
           </div>
           <WalletCards className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -147,7 +172,7 @@ export default function PaymentSettingsPage() {
         <Card className="p-4 mb-4">
           <div className="grid gap-3 md:grid-cols-6">
             <div className="space-y-1">
-              <Label>Owner</Label>
+              <Label>{ui("Owner")}</Label>
               <Select
                 value={ownerType}
                 onValueChange={(value) => setOwnerType(value as PaymentOwnerType)}
@@ -156,20 +181,20 @@ export default function PaymentSettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="virtual_user">Virtual User</SelectItem>
-                  <SelectItem value="organization">Organization</SelectItem>
+                  <SelectItem value="user">{ui("User")}</SelectItem>
+                  <SelectItem value="virtual_user">{ui("Virtual User")}</SelectItem>
+                  <SelectItem value="organization">{ui("Organization")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Owner ID</Label>
+              <Label>{ui("Owner ID")}</Label>
               {ownerType === "organization" ? (
                 <Input value="org" disabled />
               ) : (
                 <Select value={ownerId} onValueChange={setOwnerId}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select owner" />
+                    <SelectValue placeholder={ui("Select owner")} />
                   </SelectTrigger>
                   <SelectContent>
                     {ownerOptions.map((option) => (
@@ -182,32 +207,32 @@ export default function PaymentSettingsPage() {
               )}
             </div>
             <div className="space-y-1">
-              <Label>Rail</Label>
+              <Label>{ui("Rail")}</Label>
               <Select value={rail} onValueChange={(value) => setRail(value as PaymentRail)}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="mpp_tempo" disabled>
-                    MPP / Tempo
+                    {ui("MPP / Tempo")}
                   </SelectItem>
-                  <SelectItem value="x402_base">x402 / Base</SelectItem>
+                  <SelectItem value="x402_base">{ui("x402 / Base")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Label</Label>
+              <Label>{ui("Label")}</Label>
               <Input value={label} onChange={(event) => setLabel(event.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>Address</Label>
+              <Label>{ui("Address")}</Label>
               <Input
                 value={publicAddress}
                 onChange={(event) => setPublicAddress(event.target.value)}
               />
             </div>
             <div className="space-y-1">
-              <Label>Private Key</Label>
+              <Label>{ui("Private Key")}</Label>
               <Input
                 type="password"
                 autoComplete="off"
@@ -223,7 +248,7 @@ export default function PaymentSettingsPage() {
               disabled={!canCreateAccount || createAccount.isPending}
             >
               <Plus className="h-4 w-4 mr-1" />
-              Add Wallet
+              {ui("Add Wallet")}
             </Button>
           </div>
         </Card>
@@ -232,11 +257,11 @@ export default function PaymentSettingsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Wallet</TableHead>
-                <TableHead>Owner</TableHead>
-                <TableHead>Rail</TableHead>
-                <TableHead>Address</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{ui("Wallet")}</TableHead>
+                <TableHead>{ui("Owner")}</TableHead>
+                <TableHead>{ui("Rail")}</TableHead>
+                <TableHead>{ui("Address")}</TableHead>
+                <TableHead>{ui("Status")}</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -251,7 +276,7 @@ export default function PaymentSettingsPage() {
                   </TableCell>
                   <TableCell>{railLabels[account.rail]}</TableCell>
                   <TableCell className="max-w-[220px] truncate">
-                    {account.public_address || "None"}
+                    {account.public_address || ui("None")}
                   </TableCell>
                   <TableCell>
                     <Badge variant={account.status === "active" ? "default" : "secondary"}>
@@ -274,7 +299,7 @@ export default function PaymentSettingsPage() {
               {!accountsLoading && accounts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                    No payment wallets.
+                    {ui("No payment wallets.")}
                   </TableCell>
                 </TableRow>
               )}
@@ -286,7 +311,7 @@ export default function PaymentSettingsPage() {
       <section>
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Spend Policies</h2>
+            <h2 className="text-xl font-semibold">{ui("Spend Policies")}</h2>
           </div>
           <ShieldCheck className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -294,10 +319,10 @@ export default function PaymentSettingsPage() {
         <Card className="p-4 mb-4">
           <div className="grid gap-3 md:grid-cols-4">
             <div className="space-y-1">
-              <Label>Wallet</Label>
+              <Label>{ui("Wallet")}</Label>
               <Select value={policyAccountId} onValueChange={setPolicyAccountId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select wallet" />
+                  <SelectValue placeholder={ui("Select wallet")} />
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((account) => (
@@ -309,7 +334,7 @@ export default function PaymentSettingsPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Subject</Label>
+              <Label>{ui("Subject")}</Label>
               <Select
                 value={subjectType}
                 onValueChange={(value) => setSubjectType(value as PaymentPolicy["subject_type"])}
@@ -318,17 +343,17 @@ export default function PaymentSettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="virtual_user">Virtual User</SelectItem>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="agent">Agent</SelectItem>
-                  <SelectItem value="agent_channel">Channel</SelectItem>
-                  <SelectItem value="session">Session</SelectItem>
-                  <SelectItem value="org">Organization</SelectItem>
+                  <SelectItem value="virtual_user">{ui("Virtual User")}</SelectItem>
+                  <SelectItem value="user">{ui("User")}</SelectItem>
+                  <SelectItem value="agent">{ui("Agent")}</SelectItem>
+                  <SelectItem value="agent_channel">{ui("Channel")}</SelectItem>
+                  <SelectItem value="session">{ui("Session")}</SelectItem>
+                  <SelectItem value="org">{ui("Organization")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Subject ID</Label>
+              <Label>{ui("Subject ID")}</Label>
               <Input
                 value={subjectType === "org" ? "org" : subjectId}
                 disabled={subjectType === "org"}
@@ -336,18 +361,18 @@ export default function PaymentSettingsPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Capabilities</Label>
+              <Label>{ui("Capabilities")}</Label>
               <Input
                 value={capabilities}
                 onChange={(event) => setCapabilities(event.target.value)}
               />
             </div>
             <div className="space-y-1">
-              <Label>Hosts</Label>
+              <Label>{ui("Hosts")}</Label>
               <Input value={hosts} onChange={(event) => setHosts(event.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>Per Request</Label>
+              <Label>{ui("Per Request")}</Label>
               <Input value={perRequest} onChange={(event) => setPerRequest(event.target.value)} />
             </div>
           </div>
@@ -357,7 +382,7 @@ export default function PaymentSettingsPage() {
               disabled={!canCreatePolicy || createPolicy.isPending}
             >
               <Plus className="h-4 w-4 mr-1" />
-              Add Policy
+              {ui("Add Policy")}
             </Button>
           </div>
         </Card>
@@ -366,11 +391,11 @@ export default function PaymentSettingsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Capabilities</TableHead>
-                <TableHead>Hosts</TableHead>
-                <TableHead>Per Request</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{ui("Subject")}</TableHead>
+                <TableHead>{ui("Capabilities")}</TableHead>
+                <TableHead>{ui("Hosts")}</TableHead>
+                <TableHead>{ui("Per Request")}</TableHead>
+                <TableHead>{ui("Status")}</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -382,8 +407,8 @@ export default function PaymentSettingsPage() {
                       {policy.subject_type} · {policy.subject_id}
                     </EntityIdentity>
                   </TableCell>
-                  <TableCell>{policy.allowed_capabilities.join(", ") || "Any"}</TableCell>
-                  <TableCell>{policy.allowed_hosts.join(", ") || "Any"}</TableCell>
+                  <TableCell>{policy.allowed_capabilities.join(", ") || ui("Any")}</TableCell>
+                  <TableCell>{policy.allowed_hosts.join(", ") || ui("Any")}</TableCell>
                   <TableCell>{formatUsd(policy.max_amount_usd_per_request)}</TableCell>
                   <TableCell>
                     <Badge variant={policy.status === "active" ? "default" : "secondary"}>
@@ -406,7 +431,7 @@ export default function PaymentSettingsPage() {
               {policies.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                    No spend policies.
+                    {ui("No spend policies.")}
                   </TableCell>
                 </TableRow>
               )}
@@ -418,7 +443,7 @@ export default function PaymentSettingsPage() {
       <section>
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Recent Attempts</h2>
+            <h2 className="text-xl font-semibold">{ui("Recent Attempts")}</h2>
           </div>
           <CreditCard className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -426,11 +451,11 @@ export default function PaymentSettingsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Operation</TableHead>
-                <TableHead>Rail</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{ui("Operation")}</TableHead>
+                <TableHead>{ui("Rail")}</TableHead>
+                <TableHead>{ui("Amount")}</TableHead>
+                <TableHead>{ui("Target")}</TableHead>
+                <TableHead>{ui("Status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -439,7 +464,7 @@ export default function PaymentSettingsPage() {
                   <TableCell>
                     {attempt.capability} · {attempt.operation}
                   </TableCell>
-                  <TableCell>{attempt.rail ? railLabels[attempt.rail] : "None"}</TableCell>
+                  <TableCell>{attempt.rail ? railLabels[attempt.rail] : ui("None")}</TableCell>
                   <TableCell>{formatUsd(attempt.amount_usd)}</TableCell>
                   <TableCell className="max-w-[260px] truncate">{attempt.target_url}</TableCell>
                   <TableCell>
@@ -452,7 +477,7 @@ export default function PaymentSettingsPage() {
               {attempts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                    No payment attempts.
+                    {ui("No payment attempts.")}
                   </TableCell>
                 </TableRow>
               )}

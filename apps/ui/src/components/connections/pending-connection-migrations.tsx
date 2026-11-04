@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { useOrg } from "@/providers/org-provider";
@@ -10,6 +11,7 @@ interface PendingConnection {
   provider_username?: string;
 }
 export function PendingConnectionMigrations() {
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const client = useQueryClient();
   const pending = useQuery({
@@ -29,10 +31,11 @@ export function PendingConnectionMigrations() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Choose where your connections belong</CardTitle>
+        <CardTitle>{ui("Choose where your connections belong")}</CardTitle>
         <CardDescription>
-          Your previous connections need an organization. Switch organizations above to choose
-          another destination.
+          {ui(
+            "Your previous connections need an organization. Switch organizations above to choose another destination.",
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -43,13 +46,15 @@ export function PendingConnectionMigrations() {
               disabled={!currentOrg || move.isPending}
               onClick={() => move.mutate(connection.id)}
             >
-              Move to {currentOrg?.name}
+              {ui("Move to")} {currentOrg?.name}
             </Button>
           </div>
         ))}
         {move.error && (
           <p className="text-sm text-destructive">
-            This connection could not be moved. The destination may already have this provider.
+            {ui(
+              "This connection could not be moved. The destination may already have this provider.",
+            )}
           </p>
         )}
       </CardContent>

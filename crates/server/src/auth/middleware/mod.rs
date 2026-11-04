@@ -119,6 +119,19 @@ impl AuthError {
             code: Some("internal_error"),
         }
     }
+
+    /// 503 for a transient storage failure while checking credentials (a pool
+    /// timeout, a database restart). Reporting it as 401 told clients their
+    /// valid credential was wrong; during a rolling deploy under load a pool
+    /// timeout turned into a burst of 401s. A 503 with `Retry-After` is
+    /// retried instead.
+    pub fn unavailable(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: Some("service_unavailable"),
+        }
+    }
 }
 
 impl IntoResponse for AuthError {
@@ -131,6 +144,11 @@ impl IntoResponse for AuthError {
         }
         let mut response = body.into_response(self.status).into_response();
         crate::auth::pat_scope::add_challenge(self.code, &mut response);
+        if self.status == StatusCode::SERVICE_UNAVAILABLE {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, header::HeaderValue::from_static("1"));
+        }
         response
     }
 }
@@ -315,6 +333,9 @@ async fn extract_auth_user(
     parts: &mut Parts,
     auth_state: &AuthState,
 ) -> Result<AuthUser, AuthError> {
+    if let Some(user) = super::mcp_app::user(parts) {
+        return user;
+    }
     // In no-auth mode, always return anonymous user
     if auth_state.config.mode == AuthMode::None {
         return Ok(AuthUser::anonymous());
@@ -727,6 +748,9 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
+        if let Some(org) = super::mcp_app::org(parts) {
+            return Ok(org);
+        }
         let auth_state = AuthState::from_ref(state);
         resolve_org_for_user(user, parts, &auth_state).await
     }

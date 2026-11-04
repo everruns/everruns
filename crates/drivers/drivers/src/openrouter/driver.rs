@@ -18,8 +18,9 @@ use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmResponse, LlmResponseStream, Message,
 };
-use everruns_contracts::error::Result;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_contracts::provider_limit::CreditStatus;
 use everruns_contracts::{BearerAuth, Provider, ProviderEndpoint};
 
 use crate::openrouter::request_ext::OpenRouterRequestExtension;
@@ -132,6 +133,78 @@ impl ChatDriver for OpenRouterChatDriver {
         let models_url = models_url_for_api_url(&api_url);
         list_openrouter_models(&self.inner.http_client(), endpoint, &models_url).await
     }
+
+    async fn credit_status(&self, endpoint: &ProviderEndpoint) -> Result<Option<CreditStatus>> {
+        // The key endpoint, like discovery, only against OpenRouter's own host.
+        match endpoint.url("auth/key") {
+            Some(url) if is_openrouter_api_url(&url) => {
+                fetch_credit_status(&self.inner.http_client(), endpoint, &url)
+                    .await
+                    .map(Some)
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
+// ============================================================================
+// Credit balance
+// ============================================================================
+
+/// Read the key's balance from `GET /auth/key`, which spends no tokens.
+async fn fetch_credit_status(
+    client: &everruns_contracts::http_transport::HttpClient,
+    endpoint: &ProviderEndpoint,
+    url: &str,
+) -> Result<CreditStatus> {
+    let resolved = endpoint.resolve("GET", url, &[]).await?;
+    let mut request = client.get(&resolved.url);
+    for (name, value) in resolved.headers {
+        request = request.header(name, value);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("Failed to read the OpenRouter key: {e}")))?;
+    let status = response.status();
+    if status.as_u16() == 402 {
+        return Ok(CreditStatus::Exhausted);
+    }
+    if !status.is_success() {
+        return Err(AgentLoopError::llm(format!(
+            "OpenRouter key endpoint returned HTTP {status}"
+        )));
+    }
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("Failed to parse the OpenRouter key: {e}")))?;
+    key_credit_status(&body)
+        .ok_or_else(|| AgentLoopError::llm("OpenRouter key response has no usable balance"))
+}
+
+/// `limit: null` is an unlimited key. Otherwise `limit_remaining` (or
+/// `limit - usage`) above zero means it can pay again. The account's own
+/// credits are not readable with an inference key, so a key without a limit
+/// reads as available and the resumed call is the final check.
+fn key_credit_status(body: &serde_json::Value) -> Option<CreditStatus> {
+    let data = body.get("data").unwrap_or(body);
+    let limit = data.get("limit")?;
+    if limit.is_null() {
+        return Some(CreditStatus::Available);
+    }
+    let remaining = match data
+        .get("limit_remaining")
+        .and_then(serde_json::Value::as_f64)
+    {
+        Some(remaining) => remaining,
+        None => limit.as_f64()? - data.get("usage")?.as_f64()?,
+    };
+    Some(if remaining > 0.0 {
+        CreditStatus::Available
+    } else {
+        CreditStatus::Exhausted
+    })
 }
 
 impl std::fmt::Debug for OpenRouterChatDriver {
@@ -212,6 +285,26 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 /// ```
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const OPENROUTER_RECOMMENDED:
+    everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "openrouter",
+        recommended_models: &[
+            "muse-spark-1.3-contributor",
+            "gpt-6.1-sol",
+            "gpt-6-luna",
+            "gpt-6-astra",
+            "gpt-6-luna-decisions",
+        ],
+        coding_model: "muse-spark-1.3-contributor",
+        research_model: "gpt-6-astra",
+        chat_model: "gpt-6-luna",
+        small_model: "gpt-6-luna",
+        decision_model: "gpt-6-luna-decisions",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         services: vec![
@@ -241,6 +334,7 @@ pub fn descriptor() -> DriverDescriptor {
         // user-controlled API key, so an admin can connect without minting and
         // pasting a key manually. The key is stored like any other credential.
         oauth: Some(everruns_contracts::DriverOAuthConfig::openrouter()),
+        recommended_models: Some(OPENROUTER_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
             Provider::new(config.provider.clone(), OpenRouterChatDriver::new())
                 .base_url(
@@ -354,8 +448,15 @@ mod tests {
                 assert!(response.reasoning.is_empty());
                 let requests = server.received_requests().await.unwrap();
                 assert_eq!(requests.len(), 1);
+                let mut body = requests[0].body_json::<Value>().unwrap();
+                // Responses requests always carry the session cache routing key.
+                let cache_key = body.as_object_mut().unwrap().remove("prompt_cache_key");
                 assert_eq!(
-                    requests[0].body_json::<Value>().unwrap(),
+                    cache_key.and_then(|key| key.as_str().map(str::len)),
+                    Some(64)
+                );
+                assert_eq!(
+                    body,
                     json!({"model":"vendor/model","input":[{"type":"message","role":"user","content":"hello"}],"stream":true,"parallel_tool_calls":false,"reasoning":{"exclude":true}})
                 );
             }
@@ -560,5 +661,71 @@ mod tests {
             ]
         );
         assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_key_balance_reads_as_available_only_with_room_left() {
+        use serde_json::json;
+        let status = |body| key_credit_status(&body);
+        assert_eq!(
+            status(json!({"data": {"limit": null, "usage": 12.5}})),
+            Some(CreditStatus::Available)
+        );
+        assert_eq!(
+            status(json!({"data": {"limit": 10.0, "usage": 10.0, "limit_remaining": 0.0}})),
+            Some(CreditStatus::Exhausted)
+        );
+        assert_eq!(
+            status(json!({"data": {"limit": 10.0, "usage": 4.0}})),
+            Some(CreditStatus::Available)
+        );
+        assert_eq!(
+            status(json!({"data": {"limit": 10.0, "usage": 11.0}})),
+            Some(CreditStatus::Exhausted)
+        );
+        assert_eq!(status(json!({"data": {"label": "no limit field"}})), None);
+    }
+
+    #[tokio::test]
+    async fn the_balance_is_read_from_the_key_endpoint_with_the_providers_key() {
+        use serde_json::json;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/auth/key"))
+            .and(header("authorization", "Bearer synthetic-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"data": {"limit": 5.0, "usage": 5.0, "limit_remaining": 0.0}}),
+            ))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/auth/key"))
+            .respond_with(ResponseTemplate::new(402))
+            .mount(&server)
+            .await;
+        let service =
+            provider("credits", "synthetic-key").base_url(format!("{}/api/v1", server.uri()));
+        let url = service.endpoint().url("auth/key").unwrap();
+        let client =
+            everruns_contracts::http_transport::HttpClient::new(Arc::new(reqwest::Client::new()));
+        for _ in 0..2 {
+            assert_eq!(
+                fetch_credit_status(&client, service.endpoint(), &url)
+                    .await
+                    .unwrap(),
+                CreditStatus::Exhausted
+            );
+        }
+        // Not OpenRouter's host: no balance API, the request is the check.
+        assert_eq!(
+            OpenRouterChatDriver::new()
+                .credit_status(service.endpoint())
+                .await
+                .unwrap(),
+            None
+        );
     }
 }

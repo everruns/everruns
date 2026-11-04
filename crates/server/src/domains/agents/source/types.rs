@@ -19,12 +19,27 @@ impl SourceMode {
     }
 }
 
+/// Development GitHub account a source reads and writes through. Never the
+/// Agent's runtime GitHub identity.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceGitHubAccount {
+    /// The configuring person's own GitHub sign-in; two-way commits carry their name.
+    Personal,
+    /// The organization's link to the shared Everruns GitHub App for the repository's account.
+    Organization,
+}
+
 /// Continuous GitHub source binding, applied revision and reconciliation status.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AgentSourceStatus {
     /// Direction of synchronization: pull or two_way.
     #[schema(example = "two_way")]
     pub mode: String,
+    /// GitHub account the source reads through: personal, organization, or
+    /// agent for a binding made before sync stopped using the Agent's identity.
+    #[schema(example = "organization")]
+    pub github_account: String,
     /// Local edits are waiting for GitHub synchronization.
     #[schema(example = false)]
     pub local_dirty: bool,
@@ -63,6 +78,7 @@ impl From<AgentSourceRow> for AgentSourceStatus {
     fn from(r: AgentSourceRow) -> Self {
         Self {
             mode: r.mode,
+            github_account: r.github_account,
             local_dirty: r.local_dirty || r.outbox.is_some(),
             generation: r.generation,
             repository: r.repository,

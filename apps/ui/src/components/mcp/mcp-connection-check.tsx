@@ -5,6 +5,7 @@
 // "Check again" (knowledge/integrations/mcp-servers.md), so a host the network
 // policy blocks shows here when it is added, not halfway through a login.
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { CheckCircle2, AlertTriangle, CircleDashed, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrgEgressAllowlist, useSetOrgEgressAllowlist } from "@/hooks/use-organizations";
@@ -61,6 +62,9 @@ export function McpConnectionCheckLine({
   checking: boolean;
   onCheck: () => void;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { tone, label } = describeConnectionCheck(check);
   const Icon = tone === "ready" ? CheckCircle2 : tone === "problem" ? AlertTriangle : CircleDashed;
   const checkedAt = check?.checked_at ? new Date(check.checked_at) : null;
@@ -68,10 +72,14 @@ export function McpConnectionCheckLine({
     <div className="flex max-w-[34ch] flex-col items-start gap-1">
       <span
         className={`flex items-start gap-1 text-xs ${toneClass[tone]}`}
-        title={checkedAt ? `Checked ${checkedAt.toLocaleString()}` : undefined}
+        title={
+          checkedAt
+            ? ui("Checked {value0}", { value0: checkedAt.toLocaleString(displayLocale) })
+            : undefined
+        }
       >
         <Icon className="mt-px size-3.5 shrink-0" aria-hidden />
-        <span>{checking ? "Checking…" : label}</span>
+        <span>{checking ? ui("Checking…") : label}</span>
       </span>
       {!checking && check?.status === "blocked_by_network_policy" && check.host && (
         <BlockedHostAction host={check.host} canAllow={canCheck} onAllowed={onCheck} />
@@ -90,7 +98,7 @@ export function McpConnectionCheckLine({
           onKeyDown={(event) => event.stopPropagation()}
         >
           <RefreshCw className="mr-1 size-3" aria-hidden />
-          Check again
+          {ui("Check again")}
         </Button>
       )}
     </div>
@@ -111,6 +119,7 @@ function BlockedHostAction({
   canAllow: boolean;
   onAllowed: () => void;
 }) {
+  const ui = useUiTranslations();
   const { data: allowlist } = useOrgEgressAllowlist();
   const setAllowlist = useSetOrgEgressAllowlist();
 
@@ -118,7 +127,7 @@ function BlockedHostAction({
   if (!canAllow || !allowlist.granted || !allowlist.can_edit) {
     return (
       <span className="text-xs text-muted-foreground">
-        Ask a platform admin to allow this host for your organization.
+        {ui("Ask a platform admin to allow this host for your organization.")}
       </span>
     );
   }
@@ -136,13 +145,13 @@ function BlockedHostAction({
         }}
         onKeyDown={(event) => event.stopPropagation()}
       >
-        Allow this host for the org
+        {ui("Allow this host for the org")}
       </Button>
       {setAllowlist.isError && (
         <span className="text-xs text-destructive">
           {setAllowlist.error instanceof Error
             ? setAllowlist.error.message
-            : "Could not update the allowlist"}
+            : ui("Could not update the allowlist")}
         </span>
       )}
     </div>

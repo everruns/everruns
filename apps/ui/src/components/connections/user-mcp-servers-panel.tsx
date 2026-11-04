@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 /**
  * My MCP servers: MCP servers a person added for themselves, from the
@@ -13,6 +14,11 @@
  * authorized is hidden. See knowledge/integrations/user-mcp-servers.md.
  */
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { z } from "zod";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { useEffect, useId, useState } from "react";
 import { ExternalLink, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { McpToolLabelsDialog } from "@/components/mcp/mcp-tool-labels-dialog";
@@ -68,11 +74,12 @@ function connectUrl(identityId: string, provider: string) {
 }
 
 function SignInBadge({ server }: { server: UserMcpServer }) {
+  const ui = useUiTranslations();
   switch (server.connection.status) {
     case "connected":
-      return <Badge variant="success">Signed in</Badge>;
+      return <Badge variant="success">{ui("Signed in")}</Badge>;
     case "not_connected":
-      return <Badge variant="outline">Needs sign-in</Badge>;
+      return <Badge variant="outline">{ui("Needs sign-in")}</Badge>;
     default:
       return null;
   }
@@ -86,6 +93,10 @@ function removeWarning(server: UserMcpServer) {
 }
 
 function ServerRow({ identityId, server }: { identityId: string; server: UserMcpServer }) {
+  const { displayLocale } = useLocale();
+
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
   const update = useUpdateUserMcpServer(identityId);
   const remove = useRemoveUserMcpServer(identityId);
   const provider = server.connection.provider;
@@ -106,7 +117,9 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{server.presentation?.title || server.name}</span>
-            <Badge variant="secondary">{server.source === "catalog" ? "Catalog" : "Custom"}</Badge>
+            <Badge variant="secondary">
+              {server.source === "catalog" ? ui("Catalog") : ui("Custom")}
+            </Badge>
             <SignInBadge server={server} />
           </div>
           {server.presentation?.title && server.presentation.title !== server.name && (
@@ -115,7 +128,11 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
           <div className="truncate text-sm text-muted-foreground">
             {server.description ?? host(server.url)}
             {server.connection.connected_at && (
-              <> · Signed in {new Date(server.connection.connected_at).toLocaleDateString()}</>
+              <>
+                {" "}
+                {ui("· Signed in")}{" "}
+                {new Date(server.connection.connected_at).toLocaleDateString(displayLocale)}
+              </>
             )}
           </div>
           <div className="flex items-start gap-2 pt-1">
@@ -123,19 +140,21 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
               id={deferredId}
               checked={server.deferred}
               disabled={update.isPending}
-              aria-label="Load tools on demand"
+              aria-label={ui("Load tools on demand")}
               onCheckedChange={(deferred) =>
                 update.mutate({ serverId: server.id, request: { deferred } })
               }
             />
             <div className="space-y-0.5">
               <Label htmlFor={deferredId} className="text-sm font-normal">
-                Load tools on demand
+                {ui("Load tools on demand")}
               </Label>
               <p className="text-xs text-muted-foreground">
                 {server.deferred
-                  ? "Agents see one line for this server and load its tools when they need them."
-                  : "Its tools are listed at the start of every turn."}
+                  ? ui(
+                      "Agents see one line for this server and load its tools when they need them.",
+                    )
+                  : ui("Its tools are listed at the start of every turn.")}
               </p>
             </div>
           </div>
@@ -152,7 +171,7 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
             }}
           >
             <ExternalLink className="mr-1 h-4 w-4" />
-            Connect
+            {ui("Connect")}
           </Button>
         )}
         {canReconnect && (
@@ -164,17 +183,21 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
             }}
           >
             <RefreshCw className="mr-1 h-4 w-4" />
-            Reconnect
+            {ui("Reconnect")}
           </Button>
         )}
         {server.source === "custom" && (
           <Button variant="ghost" size="sm" onClick={() => setLabeling(true)}>
             <ShieldCheck className="mr-1 h-4 w-4" />
-            Tools
+            {ui("Tools")}
           </Button>
         )}
         <Switch
-          aria-label={server.enabled ? `Turn off ${server.name}` : `Turn on ${server.name}`}
+          aria-label={
+            server.enabled
+              ? ui("Turn off {value0}", { value0: server.name })
+              : ui("Turn on {value0}", { value0: server.name })
+          }
           checked={server.enabled}
           disabled={update.isPending}
           onCheckedChange={(enabled) =>
@@ -186,14 +209,14 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
           size="sm"
           className="text-destructive"
           disabled={remove.isPending}
-          onClick={() => {
-            if (confirm(removeWarning(server))) {
+          onClick={async () => {
+            if (await requestConfirmation(removeWarning(server))) {
               remove.mutate(server.id);
             }
           }}
         >
           <Trash2 className="mr-1 h-4 w-4" />
-          Remove
+          {ui("Remove")}
         </Button>
       </div>
       {labeling && (
@@ -220,6 +243,9 @@ function SignInOnlyRow({
   identityId: string;
   connection: UserMcpConnection;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const revoke = useDeleteUserConnection();
   const add = useAddUserMcpServer(identityId);
   const available = connection.server_status === "active";
@@ -228,14 +254,18 @@ function SignInOnlyRow({
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">
-            {connection.server_status === "deleted" ? "Preset unavailable" : connection.server_name}
+            {connection.server_status === "deleted"
+              ? ui("Preset unavailable")
+              : connection.server_name}
           </span>
-          <Badge variant="secondary">Catalog</Badge>
-          <Badge variant="outline">{available ? "Sign-in only" : "Server unavailable"}</Badge>
+          <Badge variant="secondary">{ui("Catalog")}</Badge>
+          <Badge variant="outline">
+            {available ? ui("Sign-in only") : ui("Server unavailable")}
+          </Badge>
         </div>
         <div className="truncate text-sm text-muted-foreground">
-          {host(connection.server_url)} · Signed in{" "}
-          {new Date(connection.connected_at).toLocaleDateString()}
+          {host(connection.server_url)} {ui("· Signed in")}{" "}
+          {new Date(connection.connected_at).toLocaleDateString(displayLocale)}
         </div>
         {add.error && <p className="text-sm text-destructive">{add.error.message}</p>}
       </div>
@@ -248,7 +278,7 @@ function SignInOnlyRow({
             onClick={() => add.mutate({ catalog: connection.server_name })}
           >
             <Plus className="mr-1 h-4 w-4" />
-            Add to list
+            {ui("Add to list")}
           </Button>
         )}
         <Button
@@ -258,12 +288,18 @@ function SignInOnlyRow({
           disabled={revoke.isPending}
           onClick={() => revoke.mutate(connection.provider)}
         >
-          Revoke
+          {ui("Revoke")}
         </Button>
       </div>
     </div>
   );
 }
+
+const customServerSchema = z.strictObject({
+  name: z.string(),
+  url: z.string().refine(isPublicDraftLocation, "Use a public URL without credentials."),
+});
+const catalogServerSchema = z.strictObject({ catalog: z.string() });
 
 type AuthChoice = "none" | "oauth" | "api_key";
 
@@ -276,6 +312,7 @@ function AddServerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const policies = usePolicies("mcp-servers");
   const canBrowseCatalog = policies.can("mcp_server.view");
   const catalog = useMcpServerCatalog(open && canBrowseCatalog);
@@ -302,8 +339,38 @@ function AddServerDialog({
 
   const activeMode = canBrowseCatalog && presets.length > 0 ? mode : "custom";
 
+  const customDraft = usePageFormDraft({
+    schema: customServerSchema,
+    entityType: "user_mcp_server",
+    label: ui("Personal MCP server"),
+    priority: 30,
+    enabled: open && activeMode === "custom" && isPublicDraftLocation(url),
+    values: { name, url },
+    baseline: "new",
+    dirty: !!name || !!url,
+    writable: !add.isPending,
+    apply: (next) => {
+      setName(next.name);
+      setUrl(next.url);
+    },
+  });
+  const catalogDraft = usePageFormDraft({
+    schema: catalogServerSchema,
+    entityType: "user_mcp_server",
+    label: ui("Add catalog MCP server"),
+    priority: 30,
+    enabled: open && activeMode === "catalog" && canBrowseCatalog,
+    values: { catalog: preset },
+    baseline: "new",
+    dirty: !!preset,
+    writable: !add.isPending,
+    apply: (next) => setPreset(next.catalog),
+  });
+  const chat = activeMode === "catalog" ? catalogDraft : customDraft;
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chat.blocked) return;
     const request =
       activeMode === "catalog"
         ? { catalog: preset }
@@ -322,28 +389,30 @@ function AddServerDialog({
       <DialogContent>
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Add an MCP server</DialogTitle>
+            <DialogTitle>{ui("Add an MCP server")}</DialogTitle>
             <DialogDescription>
-              Only you can use it. Agents that use your MCP servers get its tools when you chat with
-              them.
+              {ui(
+                "Only you can use it. Agents that use your MCP servers get its tools when you chat with them.",
+              )}
             </DialogDescription>
           </DialogHeader>
+          {chat.notice}
           {canBrowseCatalog && presets.length > 0 && (
             <SectionTabs
               value={activeMode}
               onValueChange={(value) => setMode(value as "catalog" | "custom")}
               items={[
-                { value: "catalog", label: "From catalog" },
-                { value: "custom", label: "By URL" },
+                { value: "catalog", label: ui("From catalog") },
+                { value: "custom", label: ui("By URL") },
               ]}
             />
           )}
           {activeMode === "catalog" ? (
             <div className="space-y-2">
-              <Label>Server</Label>
+              <Label>{ui("Server")}</Label>
               <Select value={preset} onValueChange={setPreset}>
-                <SelectTrigger aria-label="Catalog server" className="w-full">
-                  <SelectValue placeholder="Choose a server" />
+                <SelectTrigger aria-label={ui("Catalog server")} className="w-full">
+                  <SelectValue placeholder={ui("Choose a server")} />
                 </SelectTrigger>
                 <SelectContent>
                   {presets.map((entry) => (
@@ -357,17 +426,17 @@ function AddServerDialog({
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="user-mcp-name">Name</Label>
+                <Label htmlFor="user-mcp-name">{ui("Name")}</Label>
                 <Input
                   id="user-mcp-name"
                   required
-                  placeholder="notes"
+                  placeholder={ui("notes")}
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="user-mcp-url">URL</Label>
+                <Label htmlFor="user-mcp-url">{ui("URL")}</Label>
                 <Input
                   id="user-mcp-url"
                   required
@@ -378,21 +447,21 @@ function AddServerDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Sign-in</Label>
+                <Label>{ui("Sign-in")}</Label>
                 <Select value={auth} onValueChange={(value) => setAuth(value as AuthChoice)}>
-                  <SelectTrigger aria-label="Sign-in" className="w-full">
+                  <SelectTrigger aria-label={ui("Sign-in")} className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="oauth">Sign in with the server (OAuth)</SelectItem>
-                    <SelectItem value="api_key">API key</SelectItem>
-                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="oauth">{ui("Sign in with the server (OAuth)")}</SelectItem>
+                    <SelectItem value="api_key">{ui("API key")}</SelectItem>
+                    <SelectItem value="none">{ui("None")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               {auth === "api_key" && (
                 <div className="space-y-2">
-                  <Label htmlFor="user-mcp-key">API key</Label>
+                  <Label htmlFor="user-mcp-key">{ui("API key")}</Label>
                   <Input
                     id="user-mcp-key"
                     required
@@ -407,10 +476,13 @@ function AddServerDialog({
           {add.error && <p className="text-sm text-destructive">{add.error.message}</p>}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
-            <Button type="submit" disabled={add.isPending || (activeMode === "catalog" && !preset)}>
-              Add server
+            <Button
+              type="submit"
+              disabled={chat.blocked || add.isPending || (activeMode === "catalog" && !preset)}
+            >
+              {ui("Add server")}
             </Button>
           </DialogFooter>
         </form>
@@ -420,6 +492,7 @@ function AddServerDialog({
 }
 
 export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string }) {
+  const ui = useUiTranslations();
   const { data: servers = [], isLoading, error } = useUserMcpServers(identityId);
   // Sign-ins are listed for the viewer only (`/v1/user/mcp-connections`).
   const signIns = useUserMcpConnections();
@@ -432,25 +505,38 @@ export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string
       ? (signIns.data ?? []).filter((connection) => !listedProviders.has(connection.provider))
       : [];
 
+  useChatPageRows(
+    "Personal MCP servers",
+    servers.map((server) => ({
+      id: server.id,
+      name: server.name,
+      source: server.source,
+      enabled: server.enabled,
+      deferred: server.deferred,
+      connection_status: server.connection.status,
+    })),
+    { loading: isLoading, error: !!error },
+  );
+
   return (
     <section>
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold">My MCP servers</h2>
+          <h2 className="text-xl font-semibold">{ui("My MCP servers")}</h2>
           <p className="text-sm text-muted-foreground">
-            MCP servers you added or connected. Connecting a catalog server anywhere, here or from a
-            chat, adds it to this list. Agents that use your MCP servers get their tools when you
-            chat with them. Nobody else can use them.
+            {ui(
+              "MCP servers you added or connected. Connecting a catalog server anywhere, here or from a chat, adds it to this list. Agents that use your MCP servers get their tools when you chat with them. Nobody else can use them.",
+            )}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
           <Plus className="mr-1 h-4 w-4" />
-          Add server
+          {ui("Add server")}
         </Button>
       </div>
       {error && (
         <div className="mb-4 bg-destructive/10 p-4 text-destructive">
-          Failed to load your MCP servers: {error.message}
+          {ui("Failed to load your MCP servers:")} {error.message}
         </div>
       )}
       {isLoading ? (
@@ -458,10 +544,11 @@ export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string
       ) : servers.length === 0 && signInOnly.length === 0 ? (
         <Card className="p-8 text-center">
           <McpIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-          <h3 className="mb-2 text-lg font-medium">No MCP servers yet</h3>
+          <h3 className="mb-2 text-lg font-medium">{ui("No MCP servers yet")}</h3>
           <p className="text-muted-foreground">
-            Add a server from your organization&apos;s catalog or by URL, or connect one from a
-            chat.
+            {ui(
+              "Add a server from your organization's catalog or by URL, or connect one from a chat.",
+            )}
           </p>
         </Card>
       ) : (
@@ -486,7 +573,7 @@ export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string
             disabled={signIns.isFetchingNextPage}
             onClick={() => signIns.fetchNextPage()}
           >
-            {signIns.isFetchingNextPage ? "Loading…" : "Load more sign-ins"}
+            {signIns.isFetchingNextPage ? ui("Loading…") : ui("Load more sign-ins")}
           </Button>
         </div>
       )}

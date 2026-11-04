@@ -31,3 +31,7 @@ and immediate actions keep their normal controls. Hover navigation icons for
 explanations, or open **Pages** for a labeled menu.
 
 ![Chat stages Harness instructions beside the open page](./harness-workspace@2x.png)
+
+## Update 2026-10-26
+
+Chat now stages [settings and secondary forms](/changelog/2026-10-26-chat-page-settings/) and shares operational status.

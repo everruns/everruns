@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useHealthIssueAction } from "@/hooks/use-health-issues";
-import { getAgentChannel, beginSlackInstall } from "@/lib/api/agent-channels";
+import { getAgentChannel } from "@/lib/api/agent-channels";
+import { HealthFixer } from "@/components/health/health-fixer";
 import type { HealthIssue, SlackChannelConfig } from "@/lib/api/types";
 
 const SCOPE_LABELS: Record<string, string> = {
   "reactions:write": "Add and remove emoji reactions",
+  "reactions:read": "See emoji reactions people add",
   "chat:write": "Send messages as this bot",
   "assistant:write": "Use Slack's agent surface",
   "channels:history": "Read messages in public channels this bot has joined",
@@ -31,12 +33,13 @@ export function HealthIssueDetails({
   issue: HealthIssue;
   canManage?: boolean;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const { requiresAuth, user } = useAuth();
   const check = useHealthIssueAction("check");
   const snooze = useHealthIssueAction("snooze");
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
   // An organization-level issue (the active turn limit) has no agent or channel.
   const orgIssue = !issue.agent_id || !issue.channel_id;
   const channel = useQuery({
@@ -51,28 +54,40 @@ export function HealthIssueDetails({
   const resolved = issue.status === "resolved" || issue.status === "inapplicable";
   const Icon = resolved ? CheckCircle2 : AlertTriangle;
   const integrationHref = `/agents/${issue.agent_id ?? ""}/channels/${issue.channel_id ?? ""}`;
+  const fixers = issue.fixers ?? [];
+  const manualText = ui(
+    "For a manually configured app: add the listed bot scopes in Slack’s OAuth & Permissions settings, reinstall the existing app, and save the refreshed bot token in Everruns.",
+  );
+  const manualSlack = (
+    <p className="text-xs text-muted-foreground">
+      {manualText}{" "}
+      <Link className="underline" href={integrationHref}>
+        {ui("Open integration settings")}
+      </Link>
+    </p>
+  );
   return (
     <section
       className="space-y-4 border border-border bg-card p-4"
-      aria-label="Health issue details"
+      aria-label={ui("Health issue details")}
     >
       <div className="flex items-start gap-3">
         <Icon className={`mt-0.5 size-4 shrink-0 ${resolved ? "text-success" : "text-warning"}`} />
         <div className="min-w-0 space-y-1">
           <h3 className="text-base font-medium">{issue.title}</h3>
           <p className="text-xs text-muted-foreground">
-            {issue.agent_name ?? "Organization"}
-            {config?.team_id ? ` · ${config.team_id}` : ""}
+            {issue.agent_name ?? ui("Organization")}
+            {config?.team_id ? ui(" · {value0}", { value0: config.team_id }) : ""}
           </p>
           <p className="text-sm">{issue.body}</p>
         </div>
       </div>
       {issue.stale && (
         <p className="text-sm text-warning">
-          Verification is unavailable or out of date.{" "}
+          {ui("Verification is unavailable or out of date.")}{" "}
           {resolved
-            ? "Run a fresh check before relying on this previous result."
-            : "The issue remains open until a fresh check succeeds."}
+            ? ui("Run a fresh check before relying on this previous result.")
+            : ui("The issue remains open until a fresh check succeeds.")}
         </p>
       )}
       {resolved && issue.stale && canManage && (
@@ -84,7 +99,7 @@ export function HealthIssueDetails({
             disabled={check.isPending}
             onClick={() => check.mutate(issue.id)}
           >
-            {check.isPending ? "Checking…" : "Check again"}
+            {check.isPending ? ui("Checking…") : ui("Check again")}
           </Button>
           {check.error && (
             <p role="alert" className="text-sm text-destructive">
@@ -95,7 +110,7 @@ export function HealthIssueDetails({
       )}
       {!resolved && issue.missing_scopes.length > 0 && (
         <div className="space-y-2 bg-muted p-3">
-          <p className="text-sm font-medium">Additional permissions</p>
+          <p className="text-sm font-medium">{ui("Additional permissions")}</p>
           <ul className="space-y-2">
             {issue.missing_scopes.map((scope) => (
               <li key={scope} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
@@ -106,8 +121,25 @@ export function HealthIssueDetails({
           </ul>
         </div>
       )}
-      {!resolved && orgIssue && canManage && (
+      {!resolved && canManage && fixers.length > 0 && (
+        <div className="space-y-3">
+          {fixers.map((fixer) => (
+            <HealthFixer
+              key={fixer.kind}
+              issue={issue}
+              fixer={fixer}
+              manualSteps={!orgIssue && !config?.slack_app_provisioned ? manualSlack : undefined}
+            />
+          ))}
+        </div>
+      )}
+      {!resolved && orgIssue && canManage && fixers.length === 0 && (
         <div className="flex flex-wrap gap-2">
+          {issue.session_id && (
+            <LinkButton href={`/sessions/${issue.session_id}`} size="sm">
+              {ui("Open session")}
+            </LinkButton>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -115,84 +147,57 @@ export function HealthIssueDetails({
             disabled={check.isPending}
             onClick={() => check.mutate(issue.id)}
           >
-            {check.isPending ? "Checking…" : "Check again"}
+            {check.isPending ? ui("Checking…") : ui("Check again")}
           </Button>
         </div>
       )}
+      {!resolved && orgIssue && canManage && fixers.length > 0 && issue.session_id && (
+        <LinkButton href={`/sessions/${issue.session_id}`} size="sm" variant="outline">
+          {ui("Open session")}
+        </LinkButton>
+      )}
       {!resolved && !orgIssue && (
         <>
-          <p className="text-xs text-muted-foreground">
-            Review and approve the permissions in Slack. Your workspace may require administrator
-            approval. Updating app settings alone does not grant permissions to an installed bot.
-          </p>
           {canManage ? (
-            <div className="flex flex-wrap gap-2">
-              {config?.slack_app_provisioned ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={connecting || check.isPending}
-                  onClick={async () => {
-                    setConnecting(true);
-                    setConnectError(null);
-                    try {
-                      const result = await beginSlackInstall(
-                        issue.channel_id ?? "",
-                        config.team_id,
-                      );
-                      // This URL is generated by our authenticated install route.
-                      const url = new URL(result.authorize_url);
-                      if (
-                        url.origin !== "https://slack.com" ||
-                        url.pathname !== "/oauth/v2/authorize"
-                      )
-                        throw new Error("Invalid Slack authorization URL");
-                      window.location.assign(url.href);
-                    } catch (error) {
-                      setConnectError(
-                        error instanceof Error ? error.message : "Could not reconnect Slack",
-                      );
-                      setConnecting(false);
-                    }
-                  }}
-                >
-                  {connecting ? "Opening Slack…" : "Reconnect Slack"}
-                  <ExternalLink className="size-3" />
-                </Button>
-              ) : (
-                <LinkButton href={integrationHref} size="sm">
-                  Open integration settings
-                </LinkButton>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={check.isPending || connecting}
-                onClick={() => check.mutate(issue.id)}
-              >
-                {check.isPending ? "Checking…" : "Check again"}
-              </Button>
-            </div>
+            fixers.length === 0 && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  {ui(
+                    "Review and approve the permissions in Slack. Your workspace may require administrator approval. Updating app settings alone does not grant permissions to an installed bot.",
+                  )}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <LinkButton href={integrationHref} size="sm">
+                    {ui("Open integration settings")}
+                  </LinkButton>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={check.isPending}
+                    onClick={() => check.mutate(issue.id)}
+                  >
+                    {check.isPending ? ui("Checking…") : ui("Check again")}
+                  </Button>
+                </div>
+                {!config?.slack_app_provisioned && (
+                  <p className="text-xs text-muted-foreground">{manualText}</p>
+                )}
+              </>
+            )
           ) : (
-            <p className="text-sm">An administrator needs to reconnect this integration.</p>
+            <p className="text-sm">{ui("An administrator needs to reconnect this integration.")}</p>
           )}
-          {canManage && !config?.slack_app_provisioned && (
-            <p className="text-xs text-muted-foreground">
-              For a manually configured app: add the listed bot scopes in Slack’s OAuth &amp;
-              Permissions settings, reinstall the existing app, and save the refreshed bot token in
-              Everruns.
-            </p>
-          )}
-          {connectError && (
+          {check.error && fixers.length === 0 && (
             <p role="alert" className="text-sm text-destructive">
-              {connectError}{" "}
-              <Link className="underline" href={integrationHref}>
-                Configure manually
-              </Link>
+              {check.error.message}
             </p>
           )}
-          {check.error && (
+        </>
+      )}
+      {!resolved && (
+        <>
+          {orgIssue && check.error && (
             <p role="alert" className="text-sm text-destructive">
               {check.error.message}
             </p>
@@ -206,12 +211,13 @@ export function HealthIssueDetails({
                 disabled={snooze.isPending || !!issue.snoozed_until}
                 onClick={() => snooze.mutate(issue.id)}
               >
-                {issue.snoozed_until ? "Reminder snoozed" : "Remind me tomorrow"}
+                {issue.snoozed_until ? ui("Reminder snoozed") : ui("Remind me tomorrow")}
               </Button>
               {issue.snoozed_until && (
                 <p className="text-xs text-muted-foreground">
-                  Snoozed until {new Date(issue.snoozed_until).toLocaleString()}. The issue remains
-                  open.
+                  {ui("Snoozed until")}{" "}
+                  {new Date(issue.snoozed_until).toLocaleString(displayLocale)}
+                  {ui(". The issue remains open.")}
                 </p>
               )}
             </div>
@@ -223,35 +229,15 @@ export function HealthIssueDetails({
           )}
         </>
       )}
-      {!resolved && orgIssue && (
-        <>
-          {check.error && (
-            <p role="alert" className="text-sm text-destructive">
-              {check.error.message}
-            </p>
-          )}
-          {requiresAuth && user && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={snooze.isPending || !!issue.snoozed_until}
-              onClick={() => snooze.mutate(issue.id)}
-            >
-              {issue.snoozed_until ? "Reminder snoozed" : "Remind me tomorrow"}
-            </Button>
-          )}
-        </>
-      )}
       <p className="text-xs text-muted-foreground">
-        Detected {new Date(issue.first_detected_at).toLocaleString()} · Last checked{" "}
-        {new Date(issue.last_checked_at).toLocaleString()}
+        {ui("Detected")} {new Date(issue.first_detected_at).toLocaleString(displayLocale)}{" "}
+        {ui("· Last checked")} {new Date(issue.last_checked_at).toLocaleString(displayLocale)}
       </p>
       <details className="text-xs text-muted-foreground">
-        <summary>Technical details</summary>
+        <summary>{ui("Technical details")}</summary>
         <p className="mt-2">
           {issue.code}
-          {issue.error_code ? ` · ${issue.error_code}` : ""}
+          {issue.error_code ? ui(" · {value0}", { value0: issue.error_code }) : ""}
         </p>
       </details>
     </section>

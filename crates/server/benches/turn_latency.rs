@@ -43,6 +43,8 @@
 //!
 //! Usage:
 //!   DATABASE_URL=postgres://... cargo bench -p everruns-server --bench turn_latency
+//!   ... -- --model llmsim-realistic --communication explicit --output-streaming true
+//!   ... -- --model llmsim-realistic --communication explicit --output-streaming false
 //!   ... -- --smoke                 # five turns, a second or two
 //!   ... -- --summary out.jsonl     # append one JSON line per scenario
 //!   ... -- --moniker <name>        # label for the summary lines
@@ -78,6 +80,9 @@ struct Options {
     moniker: String,
     summary: Option<PathBuf>,
     top: usize,
+    model: Option<String>,
+    communication: String,
+    output_streaming: Option<bool>,
 }
 
 impl Options {
@@ -86,10 +91,23 @@ impl Options {
         let mut moniker = None;
         let mut summary = None;
         let mut top = 0;
+        let mut model = None;
+        let mut communication = "direct".to_string();
+        let mut output_streaming = None;
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--smoke" => smoke = true,
+                "--model" => model = args.next(),
+                "--communication" => communication = args.next().expect("communication"),
+                "--output-streaming" => {
+                    output_streaming = Some(
+                        args.next()
+                            .expect("output streaming")
+                            .parse()
+                            .expect("true or false"),
+                    )
+                }
                 "--moniker" => moniker = args.next(),
                 "--summary" => summary = args.next().map(PathBuf::from),
                 "--top" => top = args.next().and_then(|n| n.parse().ok()).unwrap_or(10),
@@ -102,6 +120,9 @@ impl Options {
             moniker: moniker.unwrap_or_else(|| "local".into()),
             summary,
             top,
+            model,
+            communication,
+            output_streaming,
         }
     }
 }
@@ -121,6 +142,9 @@ struct Turn {
     /// The turn's slow steps (`--top`): gaps of at least [`SLOW_STEP_MS`]
     /// between consecutive events, by the events' own timestamps.
     slow_steps: Vec<(String, f64)>,
+    event_count: usize,
+    delta_count: usize,
+    event_json_bytes: usize,
 }
 
 /// A step between two of a turn's events this long is shown by `--top`.
@@ -217,9 +241,9 @@ async fn run(opts: &Options, database_url: &str, http_port: u16, grpc_port: u16)
     };
     let worker = tokio::spawn(WorkerAppBuilder::new(worker_config).run());
 
-    let agent = create_agent(&client, &base).await;
+    let agent = create_agent(&client, &base, opts).await;
     // The first turn pays one-off costs (worker registration, caches).
-    let mut warmup = create_session(&client, &base, &agent).await;
+    let mut warmup = create_session(&client, &base, &agent, opts.output_streaming).await;
     send_turn(&client, &base, &mut warmup).await;
     let stats = DbStats::connect(database_url).await;
 
@@ -241,8 +265,11 @@ async fn run(opts: &Options, database_url: &str, http_port: u16, grpc_port: u16)
         ]
     };
     println!(
-        "turn_latency ({}): real server + gRPC worker, llmsim, zero model latency",
-        if opts.smoke { "smoke" } else { "full" }
+        "turn_latency ({}): real server + gRPC worker, model={}, communication={}, output_streaming={:?}",
+        if opts.smoke { "smoke" } else { "full" },
+        opts.model.as_deref().unwrap_or("instant llmsim"),
+        opts.communication,
+        opts.output_streaming,
     );
     let cpu = cpu_model();
     println!("cpu: {}", cpu.as_deref().unwrap_or("unknown"));
@@ -266,7 +293,7 @@ async fn run(opts: &Options, database_url: &str, http_port: u16, grpc_port: u16)
         for _ in 0..load.concurrency {
             let mut sessions = Vec::new();
             for _ in 0..load.sessions_per_slot {
-                sessions.push(create_session(&client, &base, &agent).await);
+                sessions.push(create_session(&client, &base, &agent, opts.output_streaming).await);
             }
             slots.push(sessions);
         }
@@ -334,6 +361,12 @@ async fn run(opts: &Options, database_url: &str, http_port: u16, grpc_port: u16)
         }
         lines.push(json!({
             "bench": "server_turn_latency",
+            "model": opts.model,
+            "communication": opts.communication,
+            "output_streaming": opts.output_streaming,
+            "events_per_turn": turns.iter().map(|turn| turn.event_count).sum::<usize>() as f64 / turns.len() as f64,
+            "deltas_per_turn": turns.iter().map(|turn| turn.delta_count).sum::<usize>() as f64 / turns.len() as f64,
+            "event_json_bytes_per_turn": turns.iter().map(|turn| turn.event_json_bytes).sum::<usize>() as f64 / turns.len() as f64,
             "scenario": format!("text_c{}", load.concurrency),
             "moniker": opts.moniker,
             "cpu": cpu,
@@ -485,11 +518,11 @@ async fn post(client: &reqwest::Client, url: String, body: Value) -> Value {
 }
 
 /// An agent on an llmsim model that answers at once.
-async fn create_agent(client: &reqwest::Client, base: &str) -> String {
+async fn create_agent(client: &reqwest::Client, base: &str, opts: &Options) -> String {
     let provider = post(
         client,
         format!("{base}/v1/providers"),
-        json!({"name": "Turn latency bench", "provider_type": "llmsim"}),
+        json!({"name": format!("Turn latency bench {}", uuid::Uuid::now_v7()), "provider_type": "llmsim"}),
     )
     .await;
     let provider_id = provider["id"].as_str().expect("provider id");
@@ -498,7 +531,7 @@ async fn create_agent(client: &reqwest::Client, base: &str) -> String {
         client,
         format!("{base}/v1/providers/{provider_id}/models"),
         json!({
-            "model_id": format!("llmsim-bench-{}", uuid::Uuid::now_v7().simple()),
+            "model_id": opts.model.clone().unwrap_or_else(|| format!("llmsim-bench-{}", uuid::Uuid::now_v7().simple())),
             "display_name": "Turn latency bench",
             "enabled": true
         }),
@@ -510,7 +543,8 @@ async fn create_agent(client: &reqwest::Client, base: &str) -> String {
         json!({
             "name": format!("turn-latency-bench-{}", uuid::Uuid::now_v7().simple()),
             "system_prompt": "Reply briefly.",
-            "default_model_id": model["id"]
+            "default_model_id": model["id"],
+            "communication": opts.communication
         }),
     )
     .await;
@@ -528,6 +562,7 @@ struct Session {
     /// the server (each with its auth and session reads), which swamped the
     /// turn's own database work in the per-turn statement counts.
     stream: SseReader,
+    output_streaming: Option<bool>,
 }
 
 /// A minimal reader of the session SSE stream: one JSON event per frame.
@@ -598,7 +633,12 @@ impl SseReader {
     }
 }
 
-async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Session {
+async fn create_session(
+    client: &reqwest::Client,
+    base: &str,
+    agent: &str,
+    output_streaming: Option<bool>,
+) -> Session {
     let session = post(
         client,
         format!("{base}/v1/sessions"),
@@ -607,7 +647,11 @@ async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Se
     .await;
     let id = session["id"].as_str().expect("session id").to_owned();
     let stream = SseReader::open(base, &id).await;
-    Session { id, stream }
+    Session {
+        id,
+        stream,
+        output_streaming,
+    }
 }
 
 /// Send one message and wait for its turn to complete on the SSE stream.
@@ -616,7 +660,7 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
     post(
         client,
         format!("{base}/v1/sessions/{}/messages", session.id),
-        json!({"message": {"content": [{"type": "text", "text": "Hello"}]}}),
+        json!({"message": {"content": [{"type": "text", "text": "Hello"}]}, "controls": {"hints": session.output_streaming.map(|live| json!({"output_streaming":live}))}}),
     )
     .await;
     let mut seen: Vec<Value> = Vec::new();
@@ -674,6 +718,20 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
         server_ms: ms(at("turn.completed")),
         pickup_ms: ms(at("turn.started")),
         slow_steps: slow_steps(&seen, &turn_id, input_message_id),
+        event_count: seen.len(),
+        delta_count: seen
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event["type"].as_str(),
+                    Some("output.message.delta" | "reason.thinking.delta")
+                )
+            })
+            .count(),
+        event_json_bytes: seen
+            .iter()
+            .map(|event| serde_json::to_vec(event).expect("event JSON").len())
+            .sum(),
     }
 }
 

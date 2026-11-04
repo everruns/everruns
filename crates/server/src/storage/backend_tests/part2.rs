@@ -457,6 +457,8 @@ async fn test_list_events_empty_session_with_limit() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "empty-agent".to_string(),
                 display_name: Some("Empty Agent".to_string()),
@@ -510,6 +512,8 @@ async fn test_sessions_pagination() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -639,6 +643,8 @@ async fn test_sessions_pagination_ordering() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),

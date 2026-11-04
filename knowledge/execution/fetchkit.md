@@ -24,9 +24,9 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
   (`crates/integrations/src/web_fetch/egress_transport.rs`). fetchkit keeps the
   whole pipeline, specialized fetchers (GitHub, Wikipedia, arXiv, …), SSRF
   via `DnsPolicy` (resolve-then-check; pinned addresses forwarded to
-  `EgressRequest.pinned_addrs`), per-hop redirect validation, bot-auth
-  signing, body caps, while every HTTP hop crosses the egress boundary,
-  which enforces the network access list and system allowlist.
+  `EgressRequest.pinned_addrs`), per-hop redirect validation, body caps,
+  while every HTTP hop crosses the egress boundary, which enforces the
+  network access list and system allowlist and signs the hop.
 - **Direct path** (no egress service in context, e.g. embedded hosts):
   fetchkit owns transport; SSRF via `DnsPolicy::block_private_ips()` (blocks
   loopback, RFC1918, link-local, cloud metadata). Crawl requests are rejected
@@ -79,45 +79,13 @@ Key decisions:
 
 `WebFetchCapability` implements `tools_with_config` and `system_prompt_contribution_with_config` on the `Capability` trait. These methods read the per-capability config JSON during capability collection, enabling file download when `enable_file_download: true` is set. Generic and Chat harnesses set this config alongside `session_file_system`.
 
-## Bot-auth (request signing)
+## Request signing
 
-fetchkit supports Ed25519 request signing per RFC 9421 (HTTP Message Signatures), gated behind the `bot-auth` cargo feature. When enabled, every outbound HTTP request is signed with `Signature`, `Signature-Input`, and optionally `Signature-Agent` headers.
-
-### Configuration
-
-Server-wide via environment variables:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BOT_AUTH_SIGNING_KEY_SEED` | yes (to enable) | base64url-encoded 32-byte Ed25519 seed |
-| `BOT_AUTH_AGENT_FQDN` | no | FQDN for `Signature-Agent` header (key discovery) |
-| `BOT_AUTH_VALIDITY_SECS` | no | signature validity window, default 300 |
-
-When `BOT_AUTH_SIGNING_KEY_SEED` is set, all `web_fetch` requests are signed by fetchkit on both paths: signing happens before each hop is handed to the transport (re-signed per redirect hop), so it applies equally when the hop crosses the egress boundary. Egress-routed hops additionally request `EgressSigning::PlatformDefault`, a no-op until a platform egress signer exists; when one lands, signing policy should consolidate behind `EgressService` for tenant/agent runtime fetches (see `knowledge/operations/egress.md`).
-
-Generate a seed: `python3 -c "import os, base64; print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode())"`
-
-### Integration
-
-- `bot-auth` feature enabled on the fetchkit dependency in `crates/core/Cargo.toml`
-- `WebFetchCapability::from_env()` reads env vars and passes `BotAuthConfig` to all `WebFetchTool` instances
-- Signing failures are non-blocking: requests proceed without signature headers, warning logged
-
-### Key discovery
-
-Public key identity is a JWK Thumbprint (RFC 7638), available via `derive_bot_auth_public_key()`.
-
-Target servers discover public keys via the well-known endpoint (draft-meunier-http-message-signatures-directory):
-
-```
-GET /.well-known/http-message-signatures-directory
-```
-
-Returns a JWKS (RFC 7517) with the server's Ed25519 public key. The `Signature-Agent` FQDN in outbound requests tells target servers where to look up the key.
-
-- **Endpoint**: public, no auth, derived from `BOT_AUTH_SIGNING_KEY_SEED` at startup
-- **Key derivation**: `derive_bot_auth_public_key(seed) -> BotAuthPublicKey`
-- See `crates/server/src/api/http_signing_keys.rs`, `crates/integrations/src/web_fetch/lib.rs`
+fetchkit's own `bot-auth` feature is off. `web_fetch` hops ask the egress
+boundary for `EgressSigning::PlatformDefault`, and the egress service signs
+them with Web Bot Auth, one hop at a time, so every signing caller shares one
+key and one format. See "Signing" in
+[`knowledge/operations/egress.md`](../operations/egress.md).
 
 ## Future: archive extraction (`FilesSaver`)
 

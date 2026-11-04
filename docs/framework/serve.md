@@ -24,7 +24,7 @@ use serve::prelude::*;
 #[agent]
 fn analyst() -> Agent {
     Agent::builder()
-        .model("anthropic/claude-sonnet-5")    // resolved by the host's model gateway
+        .model("anthropic/claude-sonnet-5")    // resolved through the host's provider settings
         .instructions(md!("instructions.md"))  // agent/instructions.md, hot-reloads in dev
         .build()
 }
@@ -61,8 +61,9 @@ compiled into the binary.
 
 ## Try it
 
-Both examples run offline against a scripted simulator, so no keys or network
-are needed. From a checkout of the repository:
+The examples use real models; follow each example's credential requirements.
+The Bashkit workspace walkthrough below uses `OPENAI_API_KEY` and checks
+files across a server restart. From a checkout of the repository:
 
 ```sh
 cargo run -p serve-example-revenue-analyst            # dev server on :3000 with a live console
@@ -79,16 +80,28 @@ curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/js
 curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
 ```
 
-To use a real model, set `OPENROUTER_API_KEY`, or point `SERVE_GATEWAY_URL`
-and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway. With serve's
+For `openai/<model>` agents, set `OPENAI_API_KEY`. Optional `OPENAI_BASE_URL`
+selects an OpenAI-compatible Responses API endpoint; Serve removes the first
+`openai/` prefix before sending the model ID. This explicit URL/key pair takes
+precedence over OpenRouter for these agents. Otherwise, `OPENROUTER_API_KEY`
+routes `provider/model` IDs through OpenRouter unchanged. With serve's
 `bedrock` feature, `bedrock/<model-id>` models (for example
 `bedrock/us.anthropic.claude-sonnet-4-6`) call Amazon Bedrock on the AWS
 default credential chain whenever `AWS_REGION` is set.
 
+OpenAI and OpenRouter HTTP requests honor `HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY` and `NO_PROXY` (including lowercase forms). Configure only a
+trusted forward proxy that blocks private and metadata destinations when it
+resolves and connects. Serve validates destination URLs before
+forwarding, refuses redirects, and keeps TLS verification enabled. The proxy
+performs the final DNS/address check; a failed proxy request does not fall
+back to a direct connection.
+
 | Example | Shows |
 | --- | --- |
 | [Hello app](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
-| [Revenue Analyst](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals and the Bashkit sandbox. |
+| [Bashkit workspace](https://github.com/everruns/everruns/tree/main/examples/serve/bashkit-workspace) | Shell commands, resulting files, persistence across turns and a server restart, and session isolation. Includes a real-model walkthrough. |
+| [Revenue Analyst](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, an agent that hands work to another, evals and the Bashkit sandbox. |
 | [AG-UI app](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 | [AgentCore app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore) | The same kind of app packaged for Amazon Bedrock AgentCore Runtime. |
 | [AgentCore workspace app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore-workspace) | An AgentCore workspace agent with a shell in the microVM and an approval. |
@@ -108,12 +121,12 @@ revenue-analyst/
     skills/sql-style/SKILL.md
   src/
     main.rs                # serve::assets!() + serve::start(...)
-    agent.rs               # #[agent]
+    agent.rs               # #[agent(default)], .member("reviewer")
+    reviewer.rs            # #[agent]
     tools/run_sql.rs       # #[tool]
     channels/slack.rs      # #[channel]
     schedules/weekly.rs    # #[schedule]
     connections/linear.rs  # #[connection]
-    subagents/reviewer.rs  # #[agent(sub)]
   evals/revenue.rs         # #[eval]
 ```
 
@@ -126,7 +139,7 @@ expression or a filter naming an unknown tool.
 
 | Macro | On | Becomes |
 | --- | --- | --- |
-| `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. New sessions use the default one; a subagent becomes an `ask_<name>` tool on the others. |
+| `#[agent]`, `#[agent(default)]` | `fn() -> Agent` | An agent. New sessions use the default one. `Agent::builder().member("name")` lets it hand work to another agent of the app through `spawn_agent`; see [Agents that use other agents](#agents-that-use-other-agents). |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool named after the function, described by its doc comment. It also generates an arguments struct (`run_sql` → `RunSql`) with a JSON Schema. |
 | `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each external thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. |
 | `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. A 5-field cron counts weekdays 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. |
@@ -146,15 +159,15 @@ knows what it registered.
 | Command | What it does |
 | --- | --- |
 | `dev` (default) | Serves the API with local SQLite under `.serve/` and a live console. Models fall back to the simulator, and Markdown prompts and skills hot-reload. |
-| `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
+| `start` | Production mode. Every model must have a provider route, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
 | `manifest` | Prints the host contract as JSON: agents, models, tool schemas, skills, channels, cron entries, secrets, sandbox, evals and a build id. |
 | `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. Against an app that requires a credential, set `SERVE_CREDENTIAL` (or pass `--credential`) and every request carries it as a bearer token. |
 | `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |
 
 Sessions that an earlier release kept in the data directory's `everruns/`
 folder move to the current session store the first time they are opened, with
-their history and their shared workspace files. Subagent sessions they started
-move with them and are linked to their parent. A session that cannot move
+their history and their shared workspace files. Child sessions they started
+through a former `#[agent(sub)]` tool move with them and are linked to their parent. A session that cannot move
 returns an error; it is never served as missing or empty.
 
 ## Keep the data in a bucket
@@ -368,10 +381,47 @@ voice, greeting and speaking style for every agent. Speech uses OpenAI with
 `OPENAI_API_KEY`; without it, `dev` and `eval` use the offline simulator and
 `start` refuses calls. The agent card lists each agent's route under
 `voice.endpoints`. See [Build a voice agent](/framework/voice/).
+## Agents that use other agents
+
+An agent can hand work to other agents of the same app:
+
+```rust ignore
+use serve::prelude::*;
+
+/// Answers revenue questions.
+#[agent(default)]
+fn analyst() -> Agent {
+    Agent::builder()
+        .model("openai/gpt-6.1-sol")
+        .instructions(md!("instructions.md"))
+        .member("reviewer")
+        .build()
+}
+
+/// Reviews a SQL query or a revenue summary before it is shared.
+#[agent]
+fn reviewer() -> Agent {
+    Agent::builder().model("openai/gpt-6-luna").build()
+}
+```
+
+The analyst gets the `spawn_agent` tool with the reviewer as a target, shown
+with its doc comment. Each hand-off runs as the reviewer's own session in the
+analyst's run, in the foreground or as a background task, and the answer comes
+back to the analyst. The reviewer is still an agent of the app, with its own
+sessions and routes. This is the same hand-off the
+[Framework](/framework/) and the platform use; see
+[Agent handoff](/capabilities/agent-handoff/).
+
+A member must be another agent of the app and cannot have members of its own;
+`discover()` reports anything else.
+
 ## Limitations
 
-- After a restart, an approval answered "always" before it is asked again, and a
-  request parked by a subagent is lost.
+- After a restart, an approval answered "always" before it is asked again is
+  lost.
+- A member agent's approvals and questions wait on the member's own session,
+  not on the session that handed it the work.
 - A2A tasks are held in memory, and A2A 0.3 clients are not served.
 - A deny note is not passed to the model.
 - There is no generic OCI build or Postgres or NATS adapter. [AgentCore](/framework/serve-agentcore/) is the one supported deployment target.

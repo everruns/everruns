@@ -251,7 +251,7 @@ impl WorkspaceFileService {
         }
         self.validate_materialized_mount(session_id, path)?;
         // Check if path exists
-        if let Some(existing) = self.db.get_session_file(session_id, path).await? {
+        if let Some(existing) = self.db.get_session_file_info(session_id, path).await? {
             if existing.is_directory {
                 return Ok(()); // Directory already exists, that's fine
             } else {

@@ -8,6 +8,7 @@
 // Unset fields follow the organization's defaults, so the editor writes only
 // what the author changed.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import { Route } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -85,6 +86,7 @@ function DomainField({
   onChange: (value: string[]) => void;
   disabled?: boolean;
 }) {
+  const ui = useUiTranslations();
   const invalid = value.find((domain) => !isValidDomain(domain));
   return (
     <div className="space-y-1.5">
@@ -95,12 +97,14 @@ function DomainField({
         id={id}
         value={value.join(", ")}
         onChange={(next) => onChange(parseDomainList(next))}
-        placeholder="example.com"
+        placeholder={ui("example.com")}
         disabled={disabled}
       />
       {invalid && (
         <p className="text-xs text-destructive">
-          &quot;{invalid}&quot; is not a bare host name like example.com.
+          {ui('"')}
+          {invalid}
+          {ui('" is not a bare host name like example.com.')}
         </p>
       )}
     </div>
@@ -116,6 +120,7 @@ export function WebSearchConfigEditor({
   onChange: (config: Record<string, unknown>) => void;
   disabled?: boolean;
 }) {
+  const ui = useUiTranslations();
   const current = readConfig(config);
   const { modelId } = useCapabilityEditorContext();
   const catalog = useSearchProviders();
@@ -141,9 +146,12 @@ export function WebSearchConfigEditor({
   })();
 
   const choices: { value: string; label: string; hint?: string; disabled?: boolean }[] = [
-    { value: "org_default", label: `Organization default · ${orgDefaultLabel}` },
-    { value: "auto", label: "Automatic", hint: "best available" },
-    { value: "native", label: "Model provider search", hint: "needs a supported model" },
+    {
+      value: "org_default",
+      label: ui("Organization default · {value0}", { value0: orgDefaultLabel }),
+    },
+    { value: "auto", label: ui("Automatic"), hint: "best available" },
+    { value: "native", label: ui("Model provider search"), hint: "needs a supported model" },
     ...accounts.map((account) => ({
       value: `account:${account.id}`,
       label: accountLabel(account),
@@ -153,10 +161,10 @@ export function WebSearchConfigEditor({
     ...(provider === "brave" || provider === "parallel"
       ? [{ value: provider, label: SETTING_LABELS[provider], hint: "user or session key" }]
       : []),
-    { value: "free", label: "Free search", hint: "no key" },
+    { value: "free", label: ui("Free search"), hint: "no key" },
   ];
   if (!choices.some((choice) => choice.value === value)) {
-    choices.push({ value, label: "Search account (not connected)", disabled: true });
+    choices.push({ value, label: ui("Search account (not connected)"), disabled: true });
   }
 
   // Resolve only valid configs: an account choice always carries its id here.
@@ -176,7 +184,7 @@ export function WebSearchConfigEditor({
     <div className="space-y-3 pt-2">
       <div className="space-y-1.5">
         <Label htmlFor="web-search-provider" className="text-xs font-normal text-muted-foreground">
-          Search provider
+          {ui("Search provider")}
         </Label>
         <Select
           value={value}
@@ -215,13 +223,15 @@ export function WebSearchConfigEditor({
       >
         <div className="flex items-center gap-1.5 font-medium text-foreground">
           <Route className="size-3.5" aria-hidden="true" />
-          How this agent will search
+          {ui("How this agent will search")}
         </div>
         {preview.isLoading ? (
-          <p className="text-muted-foreground">Working out the plan…</p>
+          <p className="text-muted-foreground">{ui("Working out the plan…")}</p>
         ) : preview.error ? (
           <p className="text-destructive">
-            {preview.error instanceof Error ? preview.error.message : "Could not resolve the plan."}
+            {preview.error instanceof Error
+              ? preview.error.message
+              : ui("Could not resolve the plan.")}
           </p>
         ) : (
           planLines.map((line) => (
@@ -234,15 +244,15 @@ export function WebSearchConfigEditor({
 
       <label className="flex items-start gap-2.5">
         <Switch
-          aria-label="Tell the model which provider answered"
+          aria-label={ui("Tell the model which provider answered")}
           checked={Boolean(current.show_provider)}
           onCheckedChange={(checked) => update({ show_provider: checked })}
           disabled={disabled}
         />
         <span className="text-xs">
-          <span className="block">Tell the model which provider answered</span>
+          <span className="block">{ui("Tell the model which provider answered")}</span>
           <span className="block text-muted-foreground">
-            Adds the provider and any fallback note to each result.
+            {ui("Adds the provider and any fallback note to each result.")}
           </span>
         </span>
       </label>
@@ -250,7 +260,7 @@ export function WebSearchConfigEditor({
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1.5">
           <Label htmlFor="web-search-limit" className="text-xs font-normal text-muted-foreground">
-            Results per search
+            {ui("Results per search")}
           </Label>
           <Select
             value={current.limit ? String(current.limit) : "org"}
@@ -261,11 +271,16 @@ export function WebSearchConfigEditor({
           >
             <SelectTrigger id="web-search-limit" className="w-full">
               <SelectValue>
-                {current.limit ? String(current.limit) : `Org default (${orgLimit})`}
+                {current.limit
+                  ? String(current.limit)
+                  : ui("Org default ({value0})", { value0: orgLimit })}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="org">Org default ({orgLimit})</SelectItem>
+              <SelectItem value="org">
+                {ui("Org default (")}
+                {orgLimit})
+              </SelectItem>
               {Array.from({ length: WEB_SEARCH_MAX_RESULTS }, (_, i) => i + 1).map((count) => (
                 <SelectItem key={count} value={String(count)}>
                   {count}
@@ -279,7 +294,7 @@ export function WebSearchConfigEditor({
             htmlFor="web-search-freshness"
             className="text-xs font-normal text-muted-foreground"
           >
-            Freshness
+            {ui("Freshness")}
           </Label>
           <Select
             value={current.freshness ?? "any"}
@@ -307,7 +322,7 @@ export function WebSearchConfigEditor({
 
       <div className="space-y-1.5">
         <Label htmlFor="web-search-fallback" className="text-xs font-normal text-muted-foreground">
-          When the provider cannot answer
+          {ui("When the provider cannot answer")}
         </Label>
         <Select
           value={current.fallback ?? "org"}
@@ -320,37 +335,39 @@ export function WebSearchConfigEditor({
           <SelectTrigger id="web-search-fallback" className="w-full">
             <SelectValue>
               {current.fallback === "none"
-                ? "Stop: use only this provider"
+                ? ui("Stop: use only this provider")
                 : current.fallback === "next"
-                  ? "Fall back to the next provider, then free search"
-                  : "Organization default"}
+                  ? ui("Fall back to the next provider, then free search")
+                  : ui("Organization default")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="org">Organization default</SelectItem>
-            <SelectItem value="next">Fall back to the next provider, then free search</SelectItem>
-            <SelectItem value="none">Stop: use only this provider</SelectItem>
+            <SelectItem value="org">{ui("Organization default")}</SelectItem>
+            <SelectItem value="next">
+              {ui("Fall back to the next provider, then free search")}
+            </SelectItem>
+            <SelectItem value="none">{ui("Stop: use only this provider")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <DomainField
         id="web-search-allowed"
-        label="Only these sites"
+        label={ui("Only these sites")}
         value={current.allowed_domains ?? []}
         onChange={(domains) => update({ allowed_domains: domains })}
         disabled={disabled}
       />
       <DomainField
         id="web-search-blocked"
-        label="Never these sites"
+        label={ui("Never these sites")}
         value={current.blocked_domains ?? []}
         onChange={(domains) => update({ blocked_domains: domains })}
         disabled={disabled}
       />
       {preview.data && preview.data.org_blocked_domains.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          The organization also blocks {preview.data.org_blocked_domains.join(", ")}.
+          {ui("The organization also blocks")} {preview.data.org_blocked_domains.join(", ")}.
         </p>
       )}
     </div>

@@ -20,6 +20,7 @@ use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::tool_types::ToolDefinition;
 use everruns_contracts::typed_id::{AgentId, AvatarId, HarnessId, ModelId};
 use everruns_core::AgentDefinition;
+use everruns_core::completion_check::CompletionCheck;
 use everruns_core::conversation::Communication;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
@@ -122,6 +123,9 @@ impl From<&str> for AgentStatus {
 /// An agent defines the behavior and capabilities of an AI assistant.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Agent {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(default)]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Org-scoped service account used when a tool acts as the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type=Option<String>)]
@@ -187,6 +191,11 @@ pub struct Agent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub root_agent_id: Option<AgentId>,
+    /// Agent this one was created as part of, shown as "Created here" on
+    /// that agent's Agents tab and bundled into its export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub owner_agent_id: Option<AgentId>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     #[schema(example = json!(["support", "production"]))]
@@ -242,6 +251,12 @@ pub struct Agent {
     /// on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
     #[serde(default, skip_serializing_if = "Communication::is_direct")]
     pub communication: Communication,
+    /// When a turn about to finish is checked for whether it did what was
+    /// asked, and continued automatically when it did not. `unattended`
+    /// (default): sessions started by triggers and schedules, where no person
+    /// is watching. `always`: chat too. `off`: never.
+    #[serde(default)]
+    pub completion_check: CompletionCheck,
     /// Client-side tools registered for this agent.
     /// These tools are executed by the client, not the server.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -308,6 +323,7 @@ impl Agent {
             parallel_tool_calls: self.parallel_tool_calls,
             max_output_tokens: self.max_output_tokens,
             communication: self.communication,
+            completion_check: self.completion_check,
             tools: self.tools.clone(),
             mcp_servers: self.mcp_servers.clone(),
         }
@@ -391,6 +407,8 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent {
+            completion_check: Default::default(),
+            localizations: Default::default(),
             is_built_in: false,
             avatar: None,
             service_virtual_user_id: None,
@@ -408,6 +426,7 @@ mod tests {
             harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),
             forked_from_agent_id: None,
             root_agent_id: None,
+            owner_agent_id: None,
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],

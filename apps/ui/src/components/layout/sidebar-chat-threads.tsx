@@ -15,6 +15,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Pin } from "lucide-react";
@@ -24,7 +25,6 @@ import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { sideChatNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const [newSideChat, chatHistory] = sideChatNavigation;
 
@@ -46,7 +46,7 @@ function useFrozen<T>(value: T, frozen: boolean): T {
 }
 
 export function SidebarChatThreads({ pathname }: { pathname: string }) {
-  const chatMode = useChatMode();
+  const ui = useUiTranslations();
   const { threads, isLoading } = useChatThreads();
   usePlatformChatThread({ ensure: true });
   const [interacting, setInteracting] = useState(false);
@@ -54,12 +54,11 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
   const visible = stableThreads.slice(0, SIDEBAR_THREAD_LIMIT);
 
   if (isLoading && visible.length === 0) return null;
-  if (chatMode && visible.length === 0) return null;
 
   return (
     <div
       role="group"
-      aria-label="Side chats"
+      aria-label={ui("Subchats")}
       className="ml-9 mr-2.5 mb-1"
       onMouseEnter={() => setInteracting(true)}
       onMouseLeave={() => setInteracting(false)}
@@ -68,18 +67,18 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
     >
       <div className="border-l border-border">
         <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
-          <p className="text-xs font-medium">Side chats</p>
-          {!chatMode && (
+          <p className="text-xs font-medium">{ui("Subchats")}</p>
+          {
             <Link
               href={newSideChat.href}
               prefetch={false}
-              aria-label={newSideChat.name}
-              title={newSideChat.name}
+              aria-label={ui(newSideChat.name)}
+              title={ui(newSideChat.name)}
               className="flex size-7 shrink-0 items-center justify-center hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <newSideChat.icon className="size-3.5" aria-hidden="true" />
             </Link>
-          )}
+          }
         </div>
         {visible.map((thread) => {
           const href = `/chats/${thread.id}`;
@@ -99,14 +98,14 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             >
               <span className="truncate">{threadTitle(thread)}</span>
               {thread.is_pinned === true && (
-                <Pin className="ml-auto size-3 shrink-0 text-primary" aria-label="Pinned" />
+                <Pin className="ml-auto size-3 shrink-0 text-primary" aria-label={ui("Pinned")} />
               )}
             </Link>
           );
         })}
       </div>
 
-      {!chatMode && stableThreads.length > SIDEBAR_THREAD_LIMIT && (
+      {stableThreads.length > SIDEBAR_THREAD_LIMIT && (
         <Link
           href={chatHistory.href}
           prefetch={false}
@@ -115,7 +114,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             "mt-1 font-medium text-foreground underline-offset-4 hover:bg-muted hover:underline focus-visible:underline",
           )}
         >
-          {chatHistory.name}
+          {ui(chatHistory.name)}
           <chatHistory.icon className="size-3.5 shrink-0" aria-hidden="true" />
         </Link>
       )}

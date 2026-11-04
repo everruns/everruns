@@ -123,6 +123,7 @@ fn snapshot_turn_started() {
         agent_id: None,
         agent_name: None,
         agent_description: None,
+        origin: None,
     };
     with_settings!({
         sort_maps => true,
@@ -661,6 +662,7 @@ fn representative_event_payloads_preserve_wire_identity() {
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             }
             .into(),
         ),
@@ -712,6 +714,35 @@ fn representative_event_payloads_preserve_wire_identity() {
                 detail: Some("sealed".to_string()),
                 iterations: Some(3),
                 usage: None,
+            }
+            .into(),
+        ),
+        (
+            "turn.completion_checked",
+            TurnCompletionCheckedData {
+                turn_id: test_turn_id(),
+                verdict: Some(CompletionVerdict::InProgress),
+                reason: "the review was announced but not submitted".to_string(),
+                action: CompletionCheckAction::Continued,
+                continuations_used: 1,
+                max_continuations: 6,
+                tokens_used: 0,
+                elapsed_ms: 0,
+                continuation_message_id: Some(test_message_id()),
+            }
+            .into(),
+        ),
+        (
+            "turn.credit_shortfall",
+            TurnCreditShortfallData {
+                turn_id: test_turn_id(),
+                action: CreditShortfallAction::StillWaiting,
+                requested_max_tokens: Some(65_536),
+                affordable_tokens: Some(283),
+                max_tokens: None,
+                wait_until: Some(chrono::DateTime::UNIX_EPOCH),
+                next_check_at: Some(chrono::DateTime::UNIX_EPOCH),
+                balance_checked: Some(true),
             }
             .into(),
         ),

@@ -58,6 +58,10 @@ pub struct SandboxCapabilities {
 /// The primary Sandbox a Session is running in.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SessionSandboxResponse {
+    /// Server-resolved provenance for the exact tenant, account and snapshot.
+    /// Captured software notes are untrusted author reference data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<super::builds::record::SandboxBuildProvenance>,
     /// Durable logical primary Sandbox id. Absent for legacy capability-derived sessions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_id: Option<String>,

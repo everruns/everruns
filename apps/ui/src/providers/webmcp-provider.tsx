@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { searchAgents, getAgent } from "@/lib/api/agents";
@@ -222,6 +223,7 @@ function WebMcpShellTools({ enabled }: { enabled: boolean }) {
 }
 
 export function WebMcpProvider({ children }: { children: ReactNode }) {
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const { isAuthenticated, user } = useAuth();
   const { currentOrg } = useOrg();
@@ -296,13 +298,13 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => settle(false)}>
-              Reject
+              {ui("Reject")}
             </Button>
             <Button
               variant={pending?.request.destructive ? "destructive" : "default"}
               onClick={() => settle(true)}
             >
-              {pending?.request.confirmLabel ?? "Approve"}
+              {pending?.request.confirmLabel ?? ui("Approve")}
             </Button>
           </DialogFooter>
         </DialogContent>

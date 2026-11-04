@@ -4,7 +4,10 @@
 // account of a connector, with the connector's own credential fields. Sandbox
 // provider accounts and web search accounts share it.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { useSaveOrganizationConnection } from "@/hooks/use-organization-connections";
 import type { OrganizationConnection } from "@/lib/api/organization-connections";
 import type { ConnectionProvider } from "@/lib/api/types";
@@ -36,21 +39,52 @@ export function OrganizationAccountDialog({
   /** What the account is for, shown under the title. */
   description?: string;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState(account?.name ?? "");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const save = useSaveOrganizationConnection();
+  const chat = useTextPageFormDraft({
+    fields: ["name"],
+    values: { name },
+    entityType: "organization_account",
+    entityId: account?.id,
+    label: ui("Account name"),
+    priority: 30,
+    enabled: open && !!provider?.form_schema,
+    baseline: JSON.stringify([account?.id, account?.name, account?.updated_at]),
+    dirty: name !== (account?.name ?? ""),
+    writable: !save.isPending,
+    apply: (values) => setName(values.name),
+  });
+
+  usePageFormPrefill({
+    identity: `${provider?.provider_id}:${account?.id ?? "new"}`,
+    open,
+    values: name,
+    saved: account?.name ?? "",
+    apply: setName,
+  });
 
   useEffect(() => {
     if (!open) return;
     setName(account?.name ?? "");
     setFields({});
     setError(null);
-  }, [account, open, provider]);
+  }, [account?.id, open, provider?.provider_id]);
+
+  useEffect(() => {
+    if (open && !chat.adopted) {
+      setName(account?.name ?? "");
+      setFields({});
+      setError(null);
+    }
+  }, [account, provider, open, chat.adopted]);
 
   if (!provider?.form_schema) return null;
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chat.blocked) return;
     const apiKey = fields.api_key ?? "";
     const extraFields = Object.fromEntries(
       Object.entries(fields).filter(([key, value]) => key !== "api_key" && value.trim()),
@@ -72,19 +106,32 @@ export function OrganizationAccountDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {account ? "Rotate" : "Connect"} {provider.display_name}
+            {account ? ui("Rotate") : ui("Connect")} {provider.display_name}
           </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={submit}>
+          {chat.notice}
+          {chat.adopted && chat.blocked && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setName(account?.name ?? "");
+                chat.clear();
+              }}
+            >
+              {ui("Discard name changes")}
+            </Button>
+          )}
           <div className="space-y-2">
-            <Label htmlFor="account-name">Account name</Label>
+            <Label htmlFor="account-name">{ui("Account name")}</Label>
             <Input
               id="account-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
-              placeholder="Production"
+              placeholder={ui("Production")}
             />
           </div>
           {provider.form_schema.fields.map((field) => (
@@ -97,7 +144,10 @@ export function OrganizationAccountDialog({
                 onChange={(event) =>
                   setFields((current) => ({ ...current, [field.name]: event.target.value }))
                 }
-                required={field.required}
+                required={
+                  field.required &&
+                  !(chat.adopted && account && !Object.values(fields).some((value) => value.trim()))
+                }
                 placeholder={field.placeholder}
                 autoComplete="off"
               />
@@ -109,10 +159,10 @@ export function OrganizationAccountDialog({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? "Validating…" : "Save account"}
+            <Button type="submit" disabled={save.isPending || chat.blocked}>
+              {save.isPending ? ui("Validating…") : ui("Save account")}
             </Button>
           </DialogFooter>
         </form>

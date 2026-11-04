@@ -52,6 +52,8 @@ impl DriverId {
     pub const Vercel: Self = Self(std::borrow::Cow::Borrowed("vercel"));
     #[allow(non_upper_case_globals)]
     pub const Mistral: Self = Self(std::borrow::Cow::Borrowed("mistral"));
+    #[allow(non_upper_case_globals)]
+    pub const Groq: Self = Self(std::borrow::Cow::Borrowed("groq"));
 
     /// Construct an external driver id from its canonical wire id.
     ///
@@ -122,6 +124,9 @@ impl DriverId {
         if matches("fireworks.ai") {
             return Some(DriverId::Fireworks);
         }
+        if host == "api.groq.com" {
+            return Some(DriverId::Groq);
+        }
         if host == "api.mistral.ai" {
             return Some(DriverId::Mistral);
         }
@@ -149,6 +154,7 @@ impl DriverId {
             "gemini" => Some("https://generativelanguage.googleapis.com"),
             "fireworks" => Some("https://api.fireworks.ai/inference/v1"),
             "mistral" => Some("https://api.mistral.ai/v1"),
+            "groq" => Some("https://api.groq.com/openai/v1"),
             // Cloudflare is absent on purpose: its base URL embeds the account
             // and gateway ids, so there is no vendor-wide default.
             "vercel" => Some("https://ai-gateway.vercel.sh/v1"),
@@ -260,6 +266,7 @@ mod tests {
             ),
             ("https://api.fireworks.ai/inference/v1", DriverId::Fireworks),
             ("https://api.mistral.ai/v1", DriverId::Mistral),
+            ("https://api.groq.com/openai/v1", DriverId::Groq),
             (
                 "https://contoso.openai.azure.com/openai",
                 DriverId::AzureOpenAI,

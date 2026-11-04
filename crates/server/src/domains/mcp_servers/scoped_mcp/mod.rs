@@ -510,6 +510,7 @@ pub async fn materialize_scoped_mcp_servers(
         materialized.insert(
             name.clone(),
             ScopedMcpServer {
+                capability_context: server.capability_context.clone(),
                 // Keep the attachment's explicit description when supplied;
                 // otherwise use the catalog operator's description for search.
                 description: server
@@ -862,6 +863,11 @@ pub(crate) fn attach_server_search_metadata(
         let ToolDefinition::Builtin(tool) = definition else {
             continue;
         };
+        if let Some(context) = &server.capability_context {
+            tool.hints.capability_id = Some(context.id.clone());
+            tool.hints.capability_name = Some(context.name.clone());
+            tool.hints.capability_description = Some(context.description.clone());
+        }
         let metadata = tool
             .hints
             .metadata

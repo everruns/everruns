@@ -1,6 +1,11 @@
 //! Reason admission, durable retry boundaries and terminal error handling.
 use super::*;
 
+// Declared here because `reason.rs` is size-ratcheted; the file sits beside
+// this one (`reason/credit.rs`).
+#[path = "credit.rs"]
+pub(super) mod credit;
+
 impl ReasonAtom {
     pub(super) async fn execute_inner(
         &self,
@@ -105,9 +110,18 @@ impl ReasonAtom {
                     .await
             }
         };
+        // A turn a credit check started reads the balance first
+        // (`crate::engine::credit_shortfall`).
+        let credit_check = match &assembled {
+            Ok(assembled) => crate::engine::credit_shortfall::credit_check(
+                &assembled.messages,
+                context.input_message_id,
+            ),
+            _ => None,
+        };
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let (policy, retry, started) =
+                let (policy, retry, started, cause) =
                     durable_retry::restore(retry_operation, &self.provider_retry_config).await?;
                 // Heap-allocate the large fallback future so nested foreground
                 // child turns fit Tokio's default worker stack.
@@ -127,6 +141,7 @@ impl ReasonAtom {
                             mcp_tool_definitions: &mcp_tool_definitions,
                             assembled,
                             prior,
+                            credit_check,
                         },
                     ),
                 ));
@@ -137,11 +152,11 @@ impl ReasonAtom {
                     disclosure: ErrorDisclosure::default(),
                     error_context: UserFacingErrorContext::default(),
                     error_hooks: Vec::new(),
-                    result: Err(AgentLoopError::llm_kind(
-                        everruns_contracts::error::LlmErrorKind::Unavailable,
-                        "provider recovery time budget exhausted",
-                    )
-                    .with_retry_metadata(&retry)),
+                    result: Err(durable_retry::budget_exhausted(
+                        &retry,
+                        started,
+                        cause.as_deref(),
+                    )),
                 };
                 let outcome = match remaining_retry_time(&policy, started) {
                     Some(remaining) if remaining.is_zero() => exhausted(),
@@ -191,6 +206,18 @@ impl ReasonAtom {
                 }
                 Err(error) => Err(error),
             },
+            result => result,
+        };
+
+        // A refusal for lack of credits starts or continues a durable wait.
+        let mut credit_wait = false;
+        let call_result = match call_result {
+            Err(e) if !error_policy::returned_to_turn_driver(&e, &context) => {
+                let (result, waiting) =
+                    credit::after_refusal(self, &context, credit_check, e).await;
+                credit_wait = waiting;
+                result
+            }
             result => result,
         };
 
@@ -254,6 +281,7 @@ impl ReasonAtom {
                 // effect and/or augment the user-facing error fields — before the
                 // message is built. The atom stays behavior-agnostic; each hook
                 // (e.g. `usage_limit_auto_continue`) owns its own logic.
+                let mut retry_schedule_id = None;
                 if !error_hooks.is_empty() {
                     let services = crate::engine::llm_error_hook::LlmErrorHookServices {
                         schedule_store: self.schedule_store.clone(),
@@ -269,12 +297,16 @@ impl ReasonAtom {
                             };
                             hook.on_llm_error(&ctx).await
                         };
+                        retry_schedule_id = outcome.retry_schedule_id.or(retry_schedule_id);
                         for (key, value) in outcome.extra_error_fields {
                             source_error = source_error.with_field(key, value);
                         }
                     }
                 }
 
+                if credit_wait {
+                    source_error = source_error.with_field("credit_wait", true);
+                }
                 let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
                 let user_error_text = user_error.fallback_message();
 
@@ -334,10 +366,11 @@ impl ReasonAtom {
                 );
                 if let Err(emit_err) = self
                     .event_emitter
-                    .emit(EventRequest::new(
+                    .emit(failed_reason_event(
                         context.session_id,
                         completed_context,
                         ReasonCompletedData::failure(error_msg.clone(), Some(reason_duration_ms)),
+                        retry_schedule_id,
                     ))
                     .await
                 {
@@ -363,15 +396,33 @@ impl ReasonAtom {
                     output_message_id,
                     time_to_first_token_ms: None,
                     response_id: None,
-                    finish_reason: error_msg
-                        .to_ascii_lowercase()
-                        .contains("model refused")
-                        .then(|| "refusal".to_string()),
+                    finish_reason: (e.llm_error_kind()
+                        == Some(crate::engine::error::LlmErrorKind::Refusal))
+                    .then(|| "refusal".to_string()),
                     ..ReasonResult::default()
                 }
             }
         };
 
         Ok(result)
+    }
+}
+
+// Construct the large event outside the async phase. Keeping it as a named local
+// there grows nested child-turn stack frames even on the successful path.
+fn failed_reason_event(
+    session_id: SessionId,
+    context: EventContext,
+    data: ReasonCompletedData,
+    retry_schedule_id: Option<crate::engine::typed_id::ScheduleId>,
+) -> EventRequest {
+    let event = EventRequest::new(session_id, context, data);
+    if let Some(schedule_id) = retry_schedule_id {
+        // Trusted context binds the retry to this input independently of disclosure.
+        event.with_metadata(serde_json::json!({
+            "platform_auto_retry": { "schedule_id": schedule_id }
+        }))
+    } else {
+        event
     }
 }

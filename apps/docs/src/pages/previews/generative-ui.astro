@@ -1,0 +1,31 @@
+---
+import "@everruns/generative-ui/styles.css";
+import "../../generated/app-tokens.css";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
+import sansFont from "@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url";
+import monoFont from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url";
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <link rel="preload" href={sansFont} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={monoFont} as="font" type="font/woff2" crossorigin />
+    <title>Interactive generative UI example</title>
+  </head>
+  <body class="ds-example console-widget">
+    <noscript>Enable JavaScript to try this example. Complete A2UI source is available in the gallery.</noscript>
+    <div id="example"><p>Loading interactive example…</p></div>
+    <script src="../../components/generative-ui-demo.tsx"></script>
+  </body>
+</html>
+<style is:global>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: hsl(var(--background)); color: hsl(var(--foreground)); font: 14px/1.5 "Geist Variable", sans-serif; }
+  .demo-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+  .demo-actions button { background: hsl(var(--secondary)); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border)); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+  .demo-result { display: block; margin-top: 16px; border: 1px solid hsl(var(--border)); padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>

@@ -196,6 +196,17 @@ schedule starts with service context; it does not revive the last human turn's
 personal authority. A delegated child receives only explicitly permitted
 runtime authority, never its creator's management permissions by inheritance.
 
+A short platform retry retains the exact failed input's verified invocation.
+The [retry continuation boundary](../../crates/server/src/storage/runtime_identity/continuations/mod.rs)
+requires durable platform failure proof, a recent first one-shot firing and the
+same organization and session. It revalidates current membership, subject and
+responder availability. The final insert atomically checks whether the latest
+invocation identity still matches; a changed identity vetoes retention and
+never supplies a replacement. Missing, malformed or expired proof leaves the
+schedule without personal authority. Ordinary user-created schedules have no
+such proof, including ones with matching retry text. Indexed session lookups
+keep validation independent of unrelated invocation and tool-stream volume.
+
 Session ownership remains durable resource ownership. A private consumer chat
 uses its virtual-user principal. A shared endpoint conversation can retain
 endpoint ownership while several virtual users participate. The initiating
@@ -416,7 +427,8 @@ cleanup must be resolved before destructive identity removal.
   missing/wrong-purpose grants fail closed for MCP and non-MCP consumers alike.
 - Alice and Bob in a shared conversation spend only the initiating turn's
   authorized grants. Addressed guest agents use the correct service identity.
-- A schedule, retry, handoff, or owner change cannot borrow management or prior
+- A retry/resume retains only its own stored invocation context. Schedules,
+  handoffs and owner changes cannot borrow another invocation's management or
   end-user authority. Legitimate delegated child work retains its bounded grant.
 - OAuth popup account/org switches, target archival/rebinding, state replay,
   issuer/workspace collisions, and cross-tenant IDs cannot retarget connections.

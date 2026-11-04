@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useState } from "react";
@@ -58,10 +64,16 @@ function scoreStatusVariant(status: string): "default" | "secondary" | "destruct
 }
 
 function scorerSummary(scorer: ObserverScorerConfig): string {
+  const scope =
+    scorer.scope === "session"
+      ? "conversation · "
+      : scorer.scope === "tool"
+        ? `tool${scorer.tools?.length ? ` (${scorer.tools.join(", ")})` : ""} · `
+        : "";
   if (scorer.method === "llm_judge") {
-    return `llm_judge (pass ≥ ${scorer.pass_threshold})`;
+    return `${scope}llm_judge (pass ≥ ${scorer.pass_threshold})`;
   }
-  return describeRule(scorer.rule);
+  return `${scope}${describeRule(scorer.rule)}`;
 }
 
 function ConfigurationTab({
@@ -73,6 +85,7 @@ function ConfigurationTab({
   agentNames: Map<string, string>;
   harnessNames: Map<string, string>;
 }) {
+  const ui = useUiTranslations();
   const { agent_ids, harness_ids, session_tags } = observer.match;
   const hasMatch =
     (agent_ids?.length ?? 0) > 0 ||
@@ -83,15 +96,17 @@ function ConfigurationTab({
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Match rules</CardTitle>
+          <CardTitle className="text-base">{ui("Match rules")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           {!hasMatch && (
-            <p className="text-muted-foreground">No filters: considers all production sessions.</p>
+            <p className="text-muted-foreground">
+              {ui("No filters: considers all production sessions.")}
+            </p>
           )}
           {agent_ids && agent_ids.length > 0 && (
             <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Agents</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">{ui("Agents")}</p>
               <div className="flex flex-wrap gap-1">
                 {agent_ids.map((id) => (
                   <Badge key={id} variant="outline">
@@ -103,7 +118,7 @@ function ConfigurationTab({
           )}
           {harness_ids && harness_ids.length > 0 && (
             <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Harnesses</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">{ui("Harnesses")}</p>
               <div className="flex flex-wrap gap-1">
                 {harness_ids.map((id) => (
                   <Badge key={id} variant="outline">
@@ -115,7 +130,7 @@ function ConfigurationTab({
           )}
           {session_tags && session_tags.length > 0 && (
             <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Session tags</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">{ui("Session tags")}</p>
               <div className="flex flex-wrap gap-1">
                 {session_tags.map((tag) => (
                   <Badge key={tag} variant="secondary">
@@ -126,19 +141,22 @@ function ConfigurationTab({
             </div>
           )}
           <div>
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Sampling rate</p>
-            <p>{Math.round(observer.sampling_rate * 100)}% of matching turns</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{ui("Sampling rate")}</p>
+            <p>
+              {Math.round(observer.sampling_rate * 100)}
+              {ui("% of matching answers, conversations and tool calls")}
+            </p>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Scorers</CardTitle>
+          <CardTitle className="text-base">{ui("Scorers")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {observer.scorers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No scorers configured.</p>
+            <p className="text-sm text-muted-foreground">{ui("No scorers configured.")}</p>
           ) : (
             observer.scorers.map((scorer) => (
               <div
@@ -157,6 +175,9 @@ function ConfigurationTab({
 }
 
 function ScoreRow({ score }: { score: TraceScore }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const reason = score.reason ?? score.error_message ?? "";
   const truncated = reason.length > 80 ? `${reason.slice(0, 80)}…` : reason;
   return (
@@ -168,7 +189,7 @@ function ScoreRow({ score }: { score: TraceScore }) {
           "—"
         ) : (
           <Badge variant={score.pass ? "default" : "destructive"}>
-            {score.pass ? "pass" : "fail"}
+            {score.pass ? ui("pass") : ui("fail")}
           </Badge>
         )}
       </TableCell>
@@ -180,11 +201,11 @@ function ScoreRow({ score }: { score: TraceScore }) {
         {truncated || "—"}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {new Date(score.created_at).toLocaleString()}
+        {new Date(score.created_at).toLocaleString(displayLocale)}
       </TableCell>
       <TableCell>
         <Link href={`/sessions/${score.session_id}/trace`} className="text-primary hover:underline">
-          View
+          {ui("View")}
         </Link>
       </TableCell>
     </TableRow>
@@ -192,13 +213,14 @@ function ScoreRow({ score }: { score: TraceScore }) {
 }
 
 function QualityTab({ observerId }: { observerId: string }) {
+  const ui = useUiTranslations();
   const { data: scores, isLoading, error } = useObserverScores(observerId);
 
   return (
     <div className="space-y-6">
       <Notice variant="info">
         <NoticeDescription>
-          Trends are computed from recent sampled scores; full aggregation is a follow-up.
+          {ui("Trends are computed from recent sampled scores; full aggregation is a follow-up.")}
         </NoticeDescription>
       </Notice>
 
@@ -209,7 +231,7 @@ function QualityTab({ observerId }: { observerId: string }) {
         errorMessagePrefix="Failed to load scores"
         emptyState={
           <div className="py-12 text-center text-muted-foreground">
-            No scores yet. Scores appear here once matching production turns are sampled.
+            {ui("No scores yet. Scores appear here once matching production turns are sampled.")}
           </div>
         }
       >
@@ -219,20 +241,20 @@ function QualityTab({ observerId }: { observerId: string }) {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Recent scores</CardTitle>
+                <CardTitle className="text-base">{ui("Recent scores")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Scorer</TableHead>
-                      <TableHead>Value</TableHead>
-                      <TableHead>Pass</TableHead>
-                      <TableHead>Label</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Reasoning</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Session</TableHead>
+                      <TableHead>{ui("Scorer")}</TableHead>
+                      <TableHead>{ui("Value")}</TableHead>
+                      <TableHead>{ui("Pass")}</TableHead>
+                      <TableHead>{ui("Label")}</TableHead>
+                      <TableHead>{ui("Status")}</TableHead>
+                      <TableHead>{ui("Reasoning")}</TableHead>
+                      <TableHead>{ui("Created")}</TableHead>
+                      <TableHead>{ui("Session")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -255,20 +277,22 @@ export default function ObserverDetailPage({
 }: {
   params: Promise<{ observerId: string }>;
 }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { observerId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("configuration");
   useChatPageFilters({ tab: activeTab });
 
   const { data: observer, isLoading } = useObserver(observerId);
-  usePageTitle(observer?.name ?? null, "Observer");
+  usePageTitle(observer?.name ?? null, ui("Observer"));
   const { data: agents = [] } = useAgents();
   const { data: harnesses = [] } = useHarnesses();
   const updateObserver = useUpdateObserver();
   const deleteObserver = useDeleteObserver();
 
-  const agentNames = new Map(agents.map((a) => [a.id, getDisplayName(a)]));
-  const harnessNames = new Map(harnesses.map((h) => [h.id, getDisplayName(h)]));
+  const agentNames = new Map(agents.map((a) => [a.id, getDisplayName(a, displayLocale)]));
+  const harnessNames = new Map(harnesses.map((h) => [h.id, getDisplayName(h, displayLocale)]));
 
   const handleToggleStatus = async () => {
     if (!observer) return;
@@ -307,8 +331,10 @@ export default function ObserverDetailPage({
   if (!observer) {
     return (
       <ResourceNotFound
-        title="Observer not found"
-        description="This observer may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Observer not found")}
+        description={ui(
+          "This observer may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/observers"
         backLabel="Back to observers"
         resourceId={observerId}
@@ -324,7 +350,7 @@ export default function ObserverDetailPage({
         href="/observers"
         className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
       >
-        Back to Observers
+        {ui("Back to Observers")}
       </Link>
 
       <div className="mb-6 flex items-start justify-between">
@@ -346,7 +372,7 @@ export default function ObserverDetailPage({
           {!isArchived && (
             <LinkButton variant="outline" href={`/observers/${observerId}/edit`}>
               <Pencil className="mr-2 h-4 w-4" />
-              Edit
+              {ui("Edit")}
             </LinkButton>
           )}
           {!isArchived && (
@@ -358,12 +384,12 @@ export default function ObserverDetailPage({
               {observer.status === "active" ? (
                 <>
                   <Pause className="mr-2 h-4 w-4" />
-                  Pause
+                  {ui("Pause")}
                 </>
               ) : (
                 <>
                   <Play className="mr-2 h-4 w-4" />
-                  Resume
+                  {ui("Resume")}
                 </>
               )}
             </Button>
@@ -391,11 +417,11 @@ export default function ObserverDetailPage({
         <TabsList className="mb-6">
           <TabsTrigger value="configuration">
             <Settings className="mr-2 h-4 w-4" />
-            Configuration
+            {ui("Configuration")}
           </TabsTrigger>
           <TabsTrigger value="quality">
             <BarChart3 className="mr-2 h-4 w-4" />
-            Quality
+            {ui("Quality")}
           </TabsTrigger>
         </TabsList>
 

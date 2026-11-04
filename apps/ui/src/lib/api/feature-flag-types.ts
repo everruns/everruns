@@ -5,7 +5,7 @@ export interface FeatureFlags {
   chat_mode?: boolean;
   /** Organization execution monitoring. Adoption opt-in. */
   monitoring?: boolean;
-  /** Integrated platform Chat workspace. Organization adoption opt-in. */
+  /** Chat delegation and its background Work panel. Organization Adoption opt-in. */
   chat_threads?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;

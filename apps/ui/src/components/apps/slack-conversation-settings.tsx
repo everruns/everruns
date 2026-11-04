@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,20 +33,22 @@ export function SlackConversationSettings({
   onResponsePolicyChange: (value: SlackResponsePolicy) => void;
   onSessionStrategyChange: (value: SessionStrategy) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <section className="space-y-4" aria-labelledby={`${idPrefix}_conversation_heading`}>
       <div className="space-y-1">
         <h3 id={`${idPrefix}_conversation_heading`} className="text-sm font-medium">
-          Conversation behavior
+          {ui("Conversation behavior")}
         </h3>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Choose how conversations share context and when the agent responds. How the agent replies
-          is set by Communication in its agent settings.
+          {ui(
+            "Choose how conversations share context and when the agent responds. How the agent replies is set by Communication in its agent settings.",
+          )}
         </p>
       </div>
       <div className="grid gap-4">
         <div className="min-w-0 space-y-2">
-          <Label htmlFor={`${idPrefix}_session_strategy`}>Session strategy</Label>
+          <Label htmlFor={`${idPrefix}_session_strategy`}>{ui("Session strategy")}</Label>
           <Select
             value={sessionStrategy}
             onValueChange={(value) => onSessionStrategyChange(value as SessionStrategy)}
@@ -76,7 +79,7 @@ export function SlackConversationSettings({
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}_response_policy`}>Response policy</Label>
+        <Label htmlFor={`${idPrefix}_response_policy`}>{ui("Response policy")}</Label>
         <Select
           value={responsePolicy}
           onValueChange={(value) => onResponsePolicyChange(value as SlackResponsePolicy)}
@@ -89,9 +92,9 @@ export function SlackConversationSettings({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all_messages">All messages</SelectItem>
-            <SelectItem value="mentions_only">Mentions only</SelectItem>
-            <SelectItem value="relevant_messages">Relevant messages</SelectItem>
+            <SelectItem value="all_messages">{ui("All messages")}</SelectItem>
+            <SelectItem value="mentions_only">{ui("Mentions only")}</SelectItem>
+            <SelectItem value="relevant_messages">{ui("Relevant messages")}</SelectItem>
           </SelectContent>
         </Select>
         <p
@@ -99,10 +102,12 @@ export function SlackConversationSettings({
           className="text-xs leading-relaxed text-muted-foreground"
         >
           {responsePolicy === "all_messages"
-            ? "Respond to every message received by this channel."
+            ? ui("Respond to every message received by this channel.")
             : responsePolicy === "mentions_only"
-              ? "Respond only to direct messages and @mentions."
-              : "Respond to direct messages, @mentions, and clear requests within the agent’s purpose. Stay silent on unrelated or uncertain messages."}
+              ? ui("Respond only to direct messages and @mentions.")
+              : ui(
+                  "Respond to direct messages, @mentions, and clear requests within the agent’s purpose. Stay silent on unrelated or uncertain messages.",
+                )}
         </p>
       </div>
     </section>
@@ -120,20 +125,23 @@ export function SlackAgentPaneSettings({
   onChange: (enabled: boolean) => void;
   idPrefix?: string;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="space-y-2 border-t pt-4">
       <div className="flex items-center justify-between gap-4">
-        <Label htmlFor={`${idPrefix}_agent_surface`}>Slack agent pane</Label>
+        <Label htmlFor={`${idPrefix}_agent_surface`}>{ui("Slack agent pane")}</Label>
         <Switch id={`${idPrefix}_agent_surface`} checked={enabled} onCheckedChange={onChange} />
       </div>
       <p className="text-xs text-muted-foreground">
-        Show this agent in Slack’s agent pane alongside its channel bot. Requires the
-        assistant:write permission.
+        {ui(
+          "Show this agent in Slack’s agent pane alongside its channel bot. Requires the assistant:write permission.",
+        )}
       </p>
       {enabled && configured && (
         <p className="text-xs text-muted-foreground">
-          Save changes, update the existing Slack app with a fresh manifest under Configure
-          manually, and reinstall it to grant the permission.
+          {ui(
+            "Save changes, update the existing Slack app with a fresh manifest under Configure manually, and reinstall it to grant the permission.",
+          )}
         </p>
       )}
     </div>

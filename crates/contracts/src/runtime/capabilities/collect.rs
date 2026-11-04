@@ -21,7 +21,7 @@
 //! Each capability is in its own file with collocated tools.
 
 use crate::is_plugin_capability;
-use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped;
+use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped_with_context;
 use crate::runtime::events::TokenUsage;
 use crate::runtime::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::runtime::message::RuntimeMessage;
@@ -78,6 +78,8 @@ pub struct CollectedCapabilities {
     /// (e.g. AGENTS.md hierarchies) belongs here, below harness safety
     /// instructions in the instruction hierarchy.
     pub conversation_context_parts: Vec<String>,
+    /// Mutable reference data recorded as later conversation updates.
+    pub conversation_context_update_parts: Vec<String>,
     /// Source attribution for each conversation-context addition.
     pub conversation_context_attributions: Vec<SystemPromptAttribution>,
     /// Tool implementations for the registry
@@ -143,6 +145,12 @@ impl CollectedCapabilities {
         } else {
             Some(self.conversation_context_parts.join("\n\n"))
         }
+    }
+
+    /// Combined current reference data for append-only conversation updates.
+    pub fn conversation_context_update(&self) -> Option<String> {
+        (!self.conversation_context_update_parts.is_empty())
+            .then(|| self.conversation_context_update_parts.join("\n\n"))
     }
 
     /// Apply all collected message filter providers to a query.
@@ -425,7 +433,15 @@ pub fn collect_capability_mcp_servers(
                 if let Some(contributed) = definition.mcp_servers {
                     servers = merge_scoped_mcp_servers(
                         &servers,
-                        &capability_mcp_servers_to_scoped(&contributed),
+                        &capability_mcp_servers_to_scoped_with_context(
+                            &contributed,
+                            cap_id,
+                            definition
+                                .display_name
+                                .as_deref()
+                                .unwrap_or(&definition.name),
+                            &definition.description,
+                        ),
                     );
                 }
             }
@@ -436,8 +452,15 @@ pub fn collect_capability_mcp_servers(
                 continue;
             }
             let contributed = capability.mcp_servers_with_config(cap_config.config_value());
-            servers =
-                merge_scoped_mcp_servers(&servers, &capability_mcp_servers_to_scoped(&contributed));
+            servers = merge_scoped_mcp_servers(
+                &servers,
+                &capability_mcp_servers_to_scoped_with_context(
+                    &contributed,
+                    cap_id,
+                    capability.name(),
+                    capability.description(),
+                ),
+            );
         }
     }
 
@@ -607,6 +630,7 @@ async fn collect(
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut conversation_context_parts: Vec<String> = Vec::new();
+    let mut conversation_context_update_parts: Vec<String> = Vec::new();
     let mut conversation_context_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
@@ -673,7 +697,11 @@ async fn collect(
                     (None, Some(category)) => definition.with_category(category),
                     _ => definition,
                 }
-                .with_capability_attribution(id, Some(capability.name()))
+                .with_capability_context(
+                    id,
+                    Some(capability.name()),
+                    capability.description(),
+                )
             })
             .collect();
         preview_definitions.extend(definitions.iter().cloned());
@@ -744,7 +772,15 @@ async fn collect(
                     if let Some(ref servers) = definition.mcp_servers {
                         mcp_servers = merge_scoped_mcp_servers(
                             &mcp_servers,
-                            &capability_mcp_servers_to_scoped(servers),
+                            &capability_mcp_servers_to_scoped_with_context(
+                                servers,
+                                cap_id,
+                                definition
+                                    .display_name
+                                    .as_deref()
+                                    .unwrap_or(&definition.name),
+                                &definition.description,
+                            ),
                         );
                     }
                     for skill in definition.skill_contributions() {
@@ -833,6 +869,21 @@ async fn collect(
                 conversation_context_parts.push(contribution);
             }
 
+            if dynamic_prompts
+                && let Some(contribution) = effective
+                    .conversation_context_update_contribution_with_config(
+                        ctx,
+                        cap_config.config_value(),
+                    )
+                    .await
+            {
+                conversation_context_attributions.push(SystemPromptAttribution {
+                    capability_id: cap_id.to_string(),
+                    content: contribution.clone(),
+                });
+                conversation_context_update_parts.push(contribution);
+            }
+
             // Collect declared facts. Static facts fold into the cached prompt
             // below; dynamic facts are re-collected per request by `ReasonAtom`
             // and appended at the conversation tail, so here we only note their
@@ -891,7 +942,12 @@ async fn collect(
             let contributed = effective.mcp_servers_with_config(cap_config.config_value());
             mcp_servers = merge_scoped_mcp_servers(
                 &mcp_servers,
-                &capability_mcp_servers_to_scoped(&contributed),
+                &capability_mcp_servers_to_scoped_with_context(
+                    &contributed,
+                    cap_id,
+                    effective.name(),
+                    effective.description(),
+                ),
             );
 
             // Normalize capability-contributed skills into mount points under
@@ -947,7 +1003,7 @@ async fn collect(
                 (None, Some(cat)) => def.with_category(cat),
                 _ => def,
             }
-            .with_capability_attribution(cap.id(), Some(cap.name()));
+            .with_capability_context(cap.id(), Some(cap.name()), cap.description());
             tool_definitions.push(def);
         }
         narration_hooks.push(Arc::new(CapabilityNarrationHook(cap.clone())));
@@ -990,6 +1046,7 @@ async fn collect(
         system_prompt_parts,
         system_prompt_attributions,
         conversation_context_parts,
+        conversation_context_update_parts,
         conversation_context_attributions,
         tools,
         tool_definitions,
@@ -1074,11 +1131,13 @@ pub async fn apply_capabilities(
     // leading user-role message, never as system prompt. Bound before fields
     // move out of `collected` below.
     let conversation_context = collected.conversation_context();
+    let conversation_context_update = collected.conversation_context_update();
     // Build tool registry from collected tools
     let mut tool_registry = ToolRegistry::new();
     for tool in collected.tools {
         tool_registry.register_boxed(tool);
     }
+    tool_registry.set_capability_contexts(&collected.tool_definitions);
 
     // Create modified runtime agent
     let mut runtime_agent = RuntimeAgent {
@@ -1102,6 +1161,7 @@ pub async fn apply_capabilities(
         // Conversation context (e.g. hierarchical AGENTS.md) renders as the
         // leading user-role message, never as system prompt.
         conversation_context,
+        conversation_context_update,
         communication: base_runtime_agent.communication,
     };
 

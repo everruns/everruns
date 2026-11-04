@@ -3,12 +3,119 @@ fn profile_app() -> crate::App {
     let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
     inner.channels.clear();
     inner.schedules.clear();
-    inner.agents.retain(|agent| !agent.sub);
+    inner.agents.retain(|agent| agent.spec.members.is_empty());
     app
 }
 
 use crate::{app::Mode, host::NewSession, hosting::Server};
 use everruns::hosting::{MemoryHosting, SqliteHosting};
+
+/// The Bashkit example's persistence contract, without a provider credential.
+/// Only the model is scripted; Serve, Bashkit and directory storage are real.
+#[tokio::test]
+async fn bashkit_files_survive_turns_and_host_restart_but_shell_state_and_sessions_are_isolated() {
+    use serde_json::{Value, json};
+
+    fn app() -> crate::App {
+        let mut app = profile_app();
+        let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+        inner.config.sandbox.kind = crate::config::SandboxKind::Bashkit;
+        inner.agents.retain(|agent| agent.name == "tester");
+        inner.agents[0].spec = crate::Agent::builder()
+            .model("sim")
+            .customize(|builder| {
+                builder.workspace_policy(
+                    everruns::WorkspacePolicy::builder()
+                        .allow_read("/")
+                        .allow_write("/workspace/demo")
+                        .build()
+                        .unwrap(),
+                )
+            })
+            .offline(crate::sim::script([
+                crate::sim::call(
+                    "bash",
+                    json!({
+                        "commands": "printf 'variable=%s\\n' \"${DEMO_EPHEMERAL-unset}\"; \
+                            export DEMO_EPHEMERAL=only_this_call; \
+                            if test -e /workspace/demo/report.txt; then \
+                            cat /workspace/demo/report.txt; else \
+                            mkdir -p /workspace/demo && \
+                            printf 'apples\\npears\\napples\\n' > /workspace/demo/items.txt && \
+                            sort /workspace/demo/items.txt | uniq > /workspace/demo/report.txt && \
+                            echo created; fi",
+                        "output": "full"
+                    }),
+                ),
+                crate::sim::reply("done"),
+            ]))
+            .build();
+        app
+    }
+
+    async fn run(server: &Server, id: &str, expected: &str) {
+        let session = server.host.session(id).await.unwrap();
+        let before = session.events_after(0).await.unwrap().len();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            session.send_and_wait("Inspect the workspace"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(outcome.success);
+        let events = session.events_after(0).await.unwrap();
+        let results: Vec<Value> = events[before..]
+            .iter()
+            .map(|event| event.canonical_json())
+            .filter(|event| event["type"] == "tool.completed")
+            .cloned()
+            .collect();
+        assert_eq!(results.len(), 1, "{results:?}");
+        let data = &results[0]["data"];
+        assert_eq!(data["tool_name"], "bash");
+        assert_eq!(data["success"], true, "{data}");
+        let result: Value =
+            serde_json::from_str(data["result"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(result["exit_code"], 0, "{result}");
+        assert_eq!(result["stdout"], expected);
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let first = Server::builder(app(), Mode::Start)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    let id = first
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    run(&first, &id, "variable=unset\ncreated\n").await;
+    run(&first, &id, "variable=unset\napples\npears\n").await;
+    first
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+    drop(first);
+
+    let reopened = Server::builder(app(), Mode::Start)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    run(&reopened, &id, "variable=unset\napples\npears\n").await;
+    let other = reopened
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    assert_ne!(id, other);
+    run(&reopened, &other, "variable=unset\ncreated\n").await;
+    reopened
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+}
 
 #[tokio::test]
 async fn serve_registers_ordinary_agents_on_the_same_engine_used_for_admission() {
@@ -164,7 +271,7 @@ async fn pre_authority_sessions_move_to_the_native_authority_on_first_access() {
     );
 }
 
-/// `profile_app` plus a `helper` subagent, as an app that delegated before
+/// `profile_app` plus a `helper` agent (an older release's subagent), as an app that delegated before
 /// serve's native authority.
 fn app_with_helper() -> crate::App {
     let mut app = profile_app();
@@ -172,7 +279,6 @@ fn app_with_helper() -> crate::App {
     inner.agents.push(crate::app::AgentEntry {
         name: "helper".into(),
         doc: "Helps.".into(),
-        sub: true,
         default: false,
         source: "test".into(),
         spec: crate::prelude::Agent::builder()
@@ -351,4 +457,104 @@ async fn pre_authority_sessions_move_under_a_microvm_adapter() {
     );
     let turn = native.host.send(&id, "again".into()).await.unwrap();
     turn.wait().await.unwrap();
+}
+
+/// `profile_app` where `tester` hands work to a `helper` member through
+/// `spawn_agent`, both scripted.
+fn app_with_member() -> crate::App {
+    let mut app = profile_app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents.retain(|agent| agent.name == "tester");
+    inner.agents[0].spec = crate::Agent::builder()
+        .model("sim")
+        .instructions("Hand the work to helper.")
+        .member("helper")
+        .offline(crate::sim::script([
+            crate::sim::call(
+                "spawn_agent",
+                serde_json::json!({
+                    "name": "Check",
+                    "instructions": "Check the numbers.",
+                    "target": {"type": "agent", "id": "helper"},
+                    "mode": "foreground",
+                }),
+            ),
+            crate::sim::reply("delegated"),
+        ]))
+        .build();
+    inner.agents.push(crate::app::AgentEntry {
+        name: "helper".into(),
+        doc: "Checks numbers.".into(),
+        default: false,
+        source: "test".into(),
+        spec: crate::prelude::Agent::builder()
+            .model("sim")
+            .instructions("Help.")
+            .offline(crate::sim::script([crate::sim::reply("HELPED by helper")]))
+            .build(),
+    });
+    assert!(crate::app::check_members(&inner.agents).is_empty());
+    app
+}
+
+/// A member runs as its own session in the lead's run, on serve's native
+/// authority, and its answer comes back to the lead.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_member_runs_as_its_own_session_and_answers_the_lead() {
+    let dir = tempfile::tempdir().unwrap();
+    let server = Server::builder(app_with_member(), Mode::Eval)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    let manifest = server.app().manifest();
+    let tester = manifest.agents.iter().find(|a| a.name == "tester").unwrap();
+    assert_eq!(tester.members, ["helper"]);
+    assert!(tester.tools.iter().any(|tool| tool == "spawn_agent"));
+    let id = server
+        .host
+        .create_session(NewSession {
+            agent: Some("tester".into()),
+            ..NewSession::default()
+        })
+        .await
+        .unwrap();
+    let turn = server.host.send(&id, "go".into()).await.unwrap();
+    turn.wait().await.unwrap();
+    let events = server.host.events_after(&id, 0).await.unwrap();
+    let rendered = serde_json::to_string(
+        &events
+            .iter()
+            .map(|event| event.canonical_json())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    assert!(rendered.contains("HELPED by helper"), "{rendered}");
+}
+
+/// Discovery refuses a member that is not an agent of the app, the lead
+/// itself, and a member that leads others.
+#[test]
+fn members_must_be_other_agents_of_the_app_one_level_deep() {
+    let entry = |name: &str, members: &[&str]| {
+        let mut builder = crate::Agent::builder().model("sim");
+        for member in members {
+            builder = builder.member(*member);
+        }
+        crate::app::AgentEntry {
+            name: name.into(),
+            doc: String::new(),
+            default: false,
+            source: "test".into(),
+            spec: builder.build(),
+        }
+    };
+    let errors = crate::app::check_members(&[
+        entry("lead", &["lead", "ghost", "middle"]),
+        entry("middle", &["leaf"]),
+        entry("leaf", &[]),
+    ]);
+    assert_eq!(errors.len(), 3, "{errors:?}");
+    assert!(errors[0].contains("lists itself"));
+    assert!(errors[1].contains("`ghost`, which is not an agent"));
+    assert!(errors[2].contains("`middle`, which has members of its own"));
 }

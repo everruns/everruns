@@ -202,6 +202,10 @@ pub(crate) fn normalize_and_validate_channel_config(
                 serde_json::from_value(channel_config.clone()).map_err(|e| {
                     CommandError::bad_request(format!("Invalid Work Chat config: {e}"))
                 })?;
+            config.prepare();
+            config
+                .validate_membership()
+                .map_err(CommandError::bad_request)?;
             let normalized = normalize_and_validate_channel_config(
                 ChannelType::Api,
                 serde_json::to_value(&config.execution)

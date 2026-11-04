@@ -224,7 +224,16 @@ pub struct SubmitToolApprovalsResponse {
 pub fn public_event(event: &serde_json::Value) -> serde_json::Value {
     use serde_json::Value;
     let mut envelope = event.clone();
-    let strip = |content: &mut Value| {
+    if let Some(metadata) = envelope.get_mut("metadata") {
+        *metadata = crate::public_metadata::event(metadata);
+    }
+    let strip = |message: &mut Value| {
+        if let Some(metadata) = message.get_mut("metadata") {
+            *metadata = crate::public_metadata::message(metadata);
+        }
+        let Some(content) = message.get_mut("content") else {
+            return;
+        };
         if let Some(parts) = content.as_array_mut() {
             parts.retain(|part| part["type"] != "provider_opaque");
             for part in parts.iter_mut() {
@@ -237,18 +246,23 @@ pub fn public_event(event: &serde_json::Value) -> serde_json::Value {
             }
         }
     };
-    if let Some(content) = envelope.pointer_mut("/data/message/content") {
-        strip(content);
+    if let Some(message) = envelope.pointer_mut("/data/message") {
+        strip(message);
     }
     if let Some(messages) = envelope
         .pointer_mut("/data/messages")
         .and_then(Value::as_array_mut)
     {
         for message in messages {
-            if let Some(content) = message.get_mut("content") {
-                strip(content);
-            }
+            strip(message);
         }
+    }
+    if envelope["type"] == "llm.generation"
+        && let Some(metadata) = envelope
+            .pointer_mut("/data/metadata")
+            .and_then(Value::as_object_mut)
+    {
+        metadata.remove("tool_changes");
     }
     envelope
 }

@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 
 mod changes_only_tests;
 mod github_everruns_app_tests;
+mod manual_fire_tests;
 mod script_target_tests;
 
 // Serializes the env-mutating cap tests.
@@ -68,6 +69,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "trigger-harness".to_string(),
                 display_name: Some("Trigger Harness".to_string()),
                 icon: None,
@@ -92,6 +94,8 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            completion_check: Default::default(),
+            localizations: Default::default(),
             public_id: public_id.clone(),
             name: "trigger-agent".to_string(),
             display_name: Some("Trigger Agent".to_string()),
@@ -268,6 +272,8 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
     let agent = crate::storage::AgentRow {
+        completion_check: Default::default(),
+        localizations: Default::default(),
         avatar_id: None,
         id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
         public_id: AgentId::from_uuid(uuid::Uuid::from_u128(71)).to_string(),
@@ -285,6 +291,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         virtual_user_id: None,
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec![],
         status: "active".to_string(),
         exposures_suspended: false,
@@ -358,6 +365,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "preserved-app-harness".to_string(),
                 display_name: None,
                 icon: None,
@@ -426,6 +434,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         DEFAULT_ORG_ID,
         &agent,
         TriggerId::new(),
+        "schedule",
         session.id,
         preserved_harness.id,
         owner.id,
@@ -460,6 +469,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         DEFAULT_ORG_ID,
         &agent,
         TriggerId::new(),
+        "schedule",
         session.id,
         preserved_harness.id,
         owner.id,
@@ -483,6 +493,11 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         })
         .collect();
     assert_eq!(marked, vec![&serde_json::to_value(&run).unwrap()]);
+    // Both trigger messages say a trigger wrote them, not a person.
+    let origins = events
+        .iter()
+        .filter_map(|event| event.data.pointer("/message/metadata/everruns_origin/kind"));
+    assert_eq!(origins.collect::<Vec<_>>(), vec!["agent_trigger"; 2]);
 }
 
 // ---- cron / config validation -------------------------------------------
@@ -1157,7 +1172,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
     ));
     assert!(matches!(
         fire(pr_event("d3", "acme/api", 7, "labeled")).await,
-        events::TriggerEventOutcome::Filtered
+        events::TriggerEventOutcome::Filtered { .. }
     ));
 
     let events::TriggerEventOutcome::Dispatched(other) =
@@ -1456,7 +1471,7 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
     .await;
     assert!(matches!(
         other_repo.as_slice(),
-        [events::TriggerEventOutcome::Filtered]
+        [events::TriggerEventOutcome::Filtered { .. }]
     ));
     // Unsubscribed actions and the App's own activity are not routed at all.
     assert!(

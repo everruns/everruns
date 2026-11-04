@@ -10,6 +10,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import type { ContextCompactedData } from "@/lib/api/types";
 import { formatCompactNumber } from "@/lib/formatting";
@@ -21,6 +22,7 @@ export type CompactionMarkerData = ContextCompactedData & {
 };
 
 export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
+  const ui = useUiTranslations();
   const [expanded, setExpanded] = useState(false);
   const native = data.strategy_used.split("+").includes("native");
   const tokensKnown = data.tokens_before != null && data.tokens_after != null;
@@ -38,7 +40,7 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
       >
         <div className="h-px flex-1 bg-border" />
         <span className="whitespace-nowrap">
-          Context compacted
+          {ui("Context compacted")}
           {countsKnown && ` · ${data.messages_before} → ${data.messages_after} messages`}
           {native &&
             tokensKnown &&
@@ -53,22 +55,28 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
           <div className="space-y-1">
             {countsKnown ? (
               <div>
-                <span className="font-medium">Saved:</span> {saved} messages in {data.duration_ms}ms
+                <span className="font-medium">{ui("Saved:")}</span> {saved} {ui("messages in")}{" "}
+                {data.duration_ms}
+                {ui("ms")}
               </div>
             ) : (
               <div>
-                <span className="font-medium">Strategy:</span> {data.strategy_used}
+                <span className="font-medium">{ui("Strategy:")}</span> {data.strategy_used}
               </div>
             )}
             {steps.length > 0 && (
               <div>
-                <span className="font-medium">Cascade steps:</span>
+                <span className="font-medium">{ui("Cascade steps:")}</span>
                 <ol className="mt-1 list-inside list-decimal space-y-0.5">
                   {steps.map((step, index) => (
                     <li key={index}>
                       {step.strategy === "native"
-                        ? `native (${step.duration_ms}ms)`
-                        : `${step.strategy} → ${step.messages_after} messages (${step.duration_ms}ms)`}
+                        ? ui("native ({value0}ms)", { value0: step.duration_ms })
+                        : ui("{value0} → {value1} messages ({value2}ms)", {
+                            value0: step.strategy,
+                            value1: step.messages_after,
+                            value2: step.duration_ms,
+                          })}
                     </li>
                   ))}
                 </ol>

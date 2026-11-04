@@ -59,6 +59,8 @@ pub(crate) struct VerifiedIdentity {
     pub provider: String,
     pub realm: String,
     pub subject: String,
+    /// Verified email, when the identity provider confirmed one.
+    pub email: Option<String>,
     /// The agent key that asserted it, for `End-User`.
     pub key_id: Option<uuid::Uuid>,
 }
@@ -107,6 +109,28 @@ pub(crate) async fn resolve_caller(
         }
         Err(error) => return Ok(Err(error)),
     };
+    if channel.channel_type == crate::domains::agent_channels::record::ChannelType::WorkChat
+        && identity.key_id.is_none()
+    {
+        let chat: crate::domains::agent_channels::record::work_chat::WorkChatConfig =
+            match serde_json::from_value(channel.channel_config.clone()) {
+                Ok(chat) => chat,
+                Err(_) => return Ok(Err(ApiAuthError::Misconfigured)),
+            };
+        // THREAT[TM-WEB-025]: a direct identity-provider token is admitted here.
+        // A runtime token was admitted when it was minted.
+        if !crate::domains::agent_channels::work_chat::identity_admitted(
+            checks.db,
+            context.org_id,
+            &chat,
+            &identity.subject,
+            identity.email.as_deref(),
+        )
+        .await?
+        {
+            return Ok(Err(ApiAuthError::NotAdmitted));
+        }
+    }
     let user = resolve_end_user(
         checks.db,
         context.org_id,
@@ -155,6 +179,7 @@ pub(crate) async fn verified_identity(
             provider: AGENT_KEY_PROVIDER.to_string(),
             realm: agent_key_public_id(key.key_id),
             subject: id,
+            email: None,
             key_id: Some(key.key_id),
         })));
     }
@@ -180,6 +205,7 @@ pub(crate) async fn verified_identity(
                     provider: principal.provider,
                     realm: principal.identity_realm,
                     subject: principal.subject,
+                    email: principal.email,
                     key_id: None,
                 })));
             }

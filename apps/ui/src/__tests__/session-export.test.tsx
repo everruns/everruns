@@ -8,6 +8,7 @@ import * as React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SessionCard } from "@/components/session/session-card";
 import { downloadSessionExport } from "@/lib/session-export";
+import { setBlobDownloadHandler } from "@/lib/download";
 import type { Session } from "@/lib/api/types";
 
 // Mock next/link - using span with data-href to avoid linting issues
@@ -204,6 +205,21 @@ describe("downloadSessionExport", () => {
     );
     expect(downloads).toEqual([`${SESSION_ID}.jsonl`]);
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a host save failure without attempting a browser download", async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse());
+    const previous = setBlobDownloadHandler(async () => {
+      throw new Error("Host declined the download");
+    });
+    const notify = jest.fn();
+    try {
+      await downloadSessionExport(SESSION_ID, "jsonl", "en", notify);
+      expect(downloads).toEqual([]);
+      expect(notify).toHaveBeenCalledWith({ title: "Host declined the download", body: "" });
+    } finally {
+      setBlobDownloadHandler(previous);
+    }
   });
 
   it("downloads ATIF via ?format=atif as {sessionId}.atif.json", async () => {

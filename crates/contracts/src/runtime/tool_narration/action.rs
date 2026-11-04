@@ -1,6 +1,8 @@
 //! Shared presentation for tool-owned action wording and explicitly selected details.
 
-use super::{ToolNarrationPhase, is_uk, labeled_phrase, safe_arg_str, truncate, url_display};
+use super::{
+    ToolNarrationPhase, is_uk, localized_labeled_phrase, safe_arg_str, truncate, url_display,
+};
 use serde_json::Value;
 use std::sync::LazyLock;
 
@@ -80,7 +82,7 @@ pub fn narrate_labeled_action(
             }
         })
     });
-    labeled_phrase(verbs.0, verbs.1, verbs.2, detail, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, detail, phase)
 }
 
 #[cfg(test)]

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useContext, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageChangeReviewContext } from "./page-change-review-provider";
 import { useChatMode } from "./chat-mode-context";
 import { useOrg } from "@/providers/org-provider";
 import {
@@ -14,6 +15,7 @@ import type { FieldDiff } from "@/lib/api/types";
 
 export interface ChatChanges {
   canUndo?: boolean;
+  shared?: boolean;
   fields: FieldDiff[];
   undo: (field?: string) => Promise<void>;
   dismiss: () => void;
@@ -21,7 +23,32 @@ export interface ChatChanges {
   error: string | null;
 }
 
+const noSubscribe = () => () => {};
+const noSnapshot = () => 0;
 export function useAgentChatChanges(agentId: string): ChatChanges {
+  const controller = useContext(PageChangeReviewContext);
+  useSyncExternalStore(
+    controller?.subscribe ?? noSubscribe,
+    controller?.snapshot ?? noSnapshot,
+    noSnapshot,
+  );
+  const legacy = useLegacyAgentChatChanges(agentId, !controller);
+  if (!controller) return legacy;
+  const resource = { kind: "agent", id: agentId, label: "Agent" };
+  const receipt = controller
+    .receipts()
+    .find((item) => item.resource.kind === "agent" && item.resource.id === agentId);
+  return {
+    shared: true,
+    fields: receipt?.fields ?? [],
+    pending: receipt?.pending ?? false,
+    canUndo: !!receipt && !receipt.stale && !controller.hasDirtyDraft(resource),
+    error: receipt?.error ?? null,
+    undo: (field) => controller.undo(resource, field),
+    dismiss: () => controller.dismiss(resource),
+  };
+}
+function useLegacyAgentChatChanges(agentId: string, enabled: boolean): ChatChanges {
   const mode = useChatMode();
   const { currentOrg } = useOrg();
   const queryClient = useQueryClient();
@@ -37,8 +64,8 @@ export function useAgentChatChanges(agentId: string): ChatChanges {
   const history = useQuery({
     queryKey: ["chat-mode-history", org, agentId],
     queryFn: () => listEntityHistory(agentId),
-    enabled: !!mode && !!org,
-    refetchInterval: mode?.open ? 1500 : false,
+    enabled: enabled && !!mode && !!org,
+    refetchInterval: enabled && mode?.open ? 1500 : false,
     refetchOnWindowFocus: !!mode,
   });
   const latest = history.data?.entries.find((entry) => entry.revision != null);

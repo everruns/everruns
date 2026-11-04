@@ -11,7 +11,6 @@ use crate::message_filter::{MessageFilter, MessageQuery};
 use crate::message_retriever::{MessageHistory, MessageRetriever};
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result as CoreResult};
-use everruns_contracts::tool_types::ToolResultImage;
 use everruns_contracts::typed_id::{EventId, MessageId, SessionId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1354,16 +1353,19 @@ fn message_from_event(event: &Event) -> Option<RuntimeMessage> {
 }
 
 fn tool_completed_to_message(data: crate::events::ToolCompletedData) -> RuntimeMessage {
-    let mut images = Vec::<ToolResultImage>::new();
+    // Media ride after the result in their original order: inline images,
+    // and screenshots the host moved to its image store (`image_file`).
+    let mut media = Vec::<ContentPart>::new();
     let result = data.result.map(|parts| {
         for part in &parts {
-            if let ContentPart::Image(image) = part
-                && let (Some(base64), Some(media_type)) = (&image.base64, &image.media_type)
-            {
-                images.push(ToolResultImage {
-                    base64: base64.clone(),
-                    media_type: media_type.clone(),
-                });
+            match part {
+                ContentPart::Image(image)
+                    if image.base64.is_some() && image.media_type.is_some() =>
+                {
+                    media.push(part.clone());
+                }
+                ContentPart::ImageFile(_) => media.push(part.clone()),
+                _ => {}
             }
         }
         let text_parts = parts
@@ -1380,10 +1382,12 @@ fn tool_completed_to_message(data: crate::events::ToolCompletedData) -> RuntimeM
             serde_json::to_value(text_parts).unwrap_or_default()
         }
     });
-    let mut message = if images.is_empty() {
+    let mut message = if media.is_empty() {
         RuntimeMessage::tool_result(&data.tool_call_id, result, data.error)
     } else {
-        RuntimeMessage::tool_result_with_images(&data.tool_call_id, result, images)
+        let mut message = RuntimeMessage::tool_result(&data.tool_call_id, result, None);
+        message.content.extend(media);
+        message
     };
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("tool_name".into(), serde_json::json!(data.tool_name));

@@ -93,6 +93,8 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "linear-service-agent".to_string(),
                 display_name: None,

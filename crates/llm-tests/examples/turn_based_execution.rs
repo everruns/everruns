@@ -164,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
         forked_from_session_id: None,
         blueprint_id: None,
         blueprint_config: None,
+        unattended: false,
     };
     session_store.add_session(session).await;
 

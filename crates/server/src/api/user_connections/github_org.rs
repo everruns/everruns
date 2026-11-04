@@ -78,6 +78,8 @@ pub struct EverrunsAppLink {
 pub struct LinkQuery {
     /// Same-origin path; defaults to Settings > Organization.
     pub return_to: Option<String>,
+    /// Finish in a popup that reports back to its opener and closes.
+    pub popup: Option<bool>,
 }
 
 fn internal(context: &str, error: impl std::fmt::Display) -> (StatusCode, String) {
@@ -125,7 +127,7 @@ pub(crate) async fn list_links(
     }))
 }
 
-#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app/authorize", summary = "Link an Everruns GitHub App installation", description = "Start linking a shared Everruns GitHub App installation to the organization.", params(("org" = String, Path), ("return_to" = Option<String>, Query)), responses((status = 303, description = "Redirect to GitHub"), (status = 403, description = "Admin access required")), tag = "Organizations")]
+#[utoipa::path(get, path = "/v1/orgs/{org}/github/everruns-app/authorize", summary = "Link an Everruns GitHub App installation", description = "Start linking a shared Everruns GitHub App installation to the organization.", params(("org" = String, Path), ("return_to" = Option<String>, Query), ("popup" = Option<bool>, Query)), responses((status = 303, description = "Redirect to GitHub"), (status = 403, description = "Admin access required")), tag = "Organizations")]
 pub(crate) async fn authorize_link(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -154,7 +156,7 @@ pub(crate) async fn authorize_link(
         session_id: None,
         agent_id: None,
         virtual_user_id: None,
-        popup: false,
+        popup: query.popup.unwrap_or(false),
         code_verifier: String::new(),
         github_installation_id: None,
     };

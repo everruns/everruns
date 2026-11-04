@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId } from "react";
 import type { MonitoringSnapshot } from "@/lib/api/types";
 import { number, perSecond, phaseCount, rate, phases } from "./model";
@@ -13,6 +14,7 @@ export function ExecutionFlow({
   selected: string | null;
   onSelect: (phase: string) => void;
 }) {
+  const ui = useUiTranslations();
   const id = useId().replaceAll(":", "");
   const nodes = [
     { phase: "runnable", x: 25, y: 108, w: 160, h: 135 },
@@ -28,7 +30,7 @@ export function ExecutionFlow({
       d: "M185 159 C245 159 282 112 329 112",
       color: "hsl(var(--accent))",
       event: "turn.started",
-      label: "Turn start",
+      label: ui("Turn start"),
       x: 241,
       y: 120,
     },
@@ -36,7 +38,7 @@ export function ExecutionFlow({
       d: "M440 182 L440 287",
       color: "hsl(var(--success))",
       event: "act.started",
-      label: "Tool batches",
+      label: ui("Tool batches"),
       x: 510,
       y: 237,
     },
@@ -44,7 +46,7 @@ export function ExecutionFlow({
       d: "M345 369 C210 369 213 127 329 127",
       color: "hsl(var(--info))",
       event: null,
-      label: "Next iteration",
+      label: ui("Next iteration"),
       x: 250,
       y: 270,
     },
@@ -52,7 +54,7 @@ export function ExecutionFlow({
       d: "M535 112 L747 112",
       color: "hsl(var(--muted-foreground))",
       event: "turn.completed",
-      label: "Turn finished",
+      label: ui("Turn finished"),
       x: 642,
       y: 75,
     },
@@ -60,7 +62,7 @@ export function ExecutionFlow({
       d: "M535 370 L747 370",
       color: "hsl(var(--muted-foreground))",
       event: null,
-      label: "Paused",
+      label: ui("Paused"),
       x: 642,
       y: 335,
     },
@@ -68,7 +70,7 @@ export function ExecutionFlow({
       d: "M765 320 C656 320 656 155 552 155",
       color: "hsl(var(--muted-foreground))",
       event: null,
-      label: "Resolved",
+      label: ui("Resolved"),
       x: 654,
       y: 257,
     },
@@ -77,10 +79,10 @@ export function ExecutionFlow({
     <section className="border bg-card p-4" data-testid="monitoring-flow">
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-sm font-semibold">
-          {data.scope === "fleet" ? "Fleet execution" : "Organization execution"}
+          {data.scope === "fleet" ? ui("Fleet execution") : ui("Organization execution")}
         </h2>
         <span className="text-xs text-muted-foreground">
-          Rates over the last {data.window_seconds}s
+          {ui("Rates over the last")} {data.window_seconds}s
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -88,7 +90,9 @@ export function ExecutionFlow({
           viewBox="0 0 980 485"
           className="w-full min-w-[600px]"
           role="group"
-          aria-label="Execution flow: runnable work, model iterations, tools, waiting, and completion"
+          aria-label={ui(
+            "Execution flow: runnable work, model iterations, tools, waiting, and completion",
+          )}
         >
           <defs>
             <pattern id={`${id}-waiting`} width="7" height="7" patternUnits="userSpaceOnUse">
@@ -155,7 +159,10 @@ export function ExecutionFlow({
                 key={node.phase}
                 role="button"
                 tabIndex={0}
-                aria-label={`${phase.label}: ${phaseCount(data, node.phase)} sessions`}
+                aria-label={ui("{value0}: {value1} sessions", {
+                  value0: phase.label,
+                  value1: phaseCount(data, node.phase),
+                })}
                 aria-pressed={selected === node.phase}
                 onClick={() => onSelect(node.phase)}
                 onKeyDown={(event) => {
@@ -213,7 +220,7 @@ export function ExecutionFlow({
                   fontSize="11"
                   fill="hsl(var(--muted-foreground))"
                 >
-                  current sessions
+                  {ui("current sessions")}
                 </text>
               </g>
             );
@@ -235,7 +242,7 @@ export function ExecutionFlow({
               fontWeight="600"
               fill="hsl(var(--foreground))"
             >
-              Completed
+              {ui("Completed")}
             </text>
             <text
               x="860"
@@ -254,7 +261,7 @@ export function ExecutionFlow({
               fontSize="11"
               fill="hsl(var(--muted-foreground))"
             >
-              turns finished
+              {ui("turns finished")}
             </text>
           </g>
           <g>
@@ -267,7 +274,7 @@ export function ExecutionFlow({
               stroke="hsl(var(--destructive) / .35)"
             />
             <text x="860" y="237" textAnchor="middle" fontSize="12" fill="hsl(var(--foreground))">
-              Failed / sealed
+              {ui("Failed / sealed")}
             </text>
             <text x="860" y="257" textAnchor="middle" fontSize="13" fill="hsl(var(--destructive))">
               {perSecond(failed)}/s
@@ -276,14 +283,23 @@ export function ExecutionFlow({
         </svg>
       </div>
       <div className="flex flex-wrap gap-x-6 gap-y-2 border-t pt-3 text-xs text-muted-foreground">
-        <span>{number(data.events["reason.started"] ?? 0)} model iterations</span>
-        <span>{number(data.events["tool.started"] ?? 0)} tool calls started</span>
-        <span>{number(data.events["tool.completed"] ?? 0)} tool calls settled</span>
-        <span>Counts over the last {data.window_seconds}s</span>
+        <span>
+          {number(data.events["reason.started"] ?? 0)} {ui("model iterations")}
+        </span>
+        <span>
+          {number(data.events["tool.started"] ?? 0)} {ui("tool calls started")}
+        </span>
+        <span>
+          {number(data.events["tool.completed"] ?? 0)} {ui("tool calls settled")}
+        </span>
+        <span>
+          {ui("Counts over the last")} {data.window_seconds}s
+        </span>
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
-        Nodes show current sessions. Measured link widths show event rates; dashed paths show the
-        lifecycle. Iterations continue within the same turn.
+        {ui(
+          "Nodes show current sessions. Measured link widths show event rates; dashed paths show the lifecycle. Iterations continue within the same turn.",
+        )}
       </p>
     </section>
   );

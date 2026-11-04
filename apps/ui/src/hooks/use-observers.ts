@@ -1,7 +1,7 @@
 // Observer hooks
 "use client";
 
-import { observersCrudApi, listObserverScores } from "@/lib/api/observers";
+import { observersCrudApi, getObserverSummary, listObserverScores } from "@/lib/api/observers";
 import type { CreateObserverRequest, UpdateObserverRequest } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks, useOrgScopedQuery } from "./create-crud-hooks";
@@ -43,5 +43,18 @@ export function useObserverScores(observerId: string | undefined) {
     queryKey: queryKeys.observers.scores(observerId ?? ""),
     queryFn: () => listObserverScores(observerId!, { limit: 200 }),
     enabled: !!observerId,
+  });
+}
+
+/** Live quality over the last `days`, for the org or one agent. */
+export function useObserverSummary({
+  days = 7,
+  agentId,
+  enabled = true,
+}: { days?: number; agentId?: string; enabled?: boolean } = {}) {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.observers.summary(days, agentId),
+    queryFn: () => getObserverSummary({ days, agent_id: agentId }),
+    enabled,
   });
 }

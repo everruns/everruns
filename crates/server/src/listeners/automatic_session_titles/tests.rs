@@ -136,6 +136,10 @@ impl Fixture {
         }
     }
     async fn turn(&self) -> Result<()> {
+        assert!(
+            std::mem::size_of_val(&self.listener.generate_for_turn(self.id, 0)) < 4096,
+            "the advisory listener must keep its composed future bounded"
+        );
         let event = self
             .events
             .emit(EventRequest::new(
@@ -465,7 +469,10 @@ async fn title_requests_do_not_block_turn_completion() {
     .unwrap()
     .unwrap();
     let (started, release) = f.generator.pause.as_ref().unwrap();
-    tokio::time::timeout(Duration::from_secs(2), started.notified())
+    // The title listener is fed from the database on the later tier: its
+    // window waits for every older transaction in the cluster, which a
+    // parallel test run can hold open for a while.
+    tokio::time::timeout(Duration::from_secs(30), started.notified())
         .await
         .unwrap();
     release.notify_one();
@@ -575,6 +582,64 @@ fn strict_bounded_title_response() {
 }
 
 #[tokio::test]
+async fn session_reference_locks_do_not_drop_automatic_titles() {
+    for foreign_key_insert in [false, true] {
+        let f = fixture(enabled(json!({})), &[], false).await;
+        assert!(
+            f.db.claim_automatic_title_check(1, f.id, 10, true)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        let mut reference = everruns_durable::begin_transaction(f.db.pool())
+            .await
+            .unwrap();
+        if foreign_key_insert {
+            sqlx::query("INSERT INTO session_trace_state (session_id) VALUES ($1)")
+                .bind(f.id)
+                .execute(&mut *reference)
+                .await
+                .unwrap();
+        } else {
+            sqlx::query("SELECT id FROM sessions WHERE id = $1 FOR KEY SHARE")
+                .bind(f.id)
+                .fetch_one(&mut *reference)
+                .await
+                .unwrap();
+        }
+        // Reproduce the old lock conflict while the same reference stays open.
+        let old_lock = sqlx::query("SELECT id FROM sessions WHERE id = $1 FOR UPDATE NOWAIT")
+            .bind(f.id)
+            .fetch_one(f.db.pool())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            old_lock
+                .as_database_error()
+                .and_then(|error| error.code())
+                .as_deref(),
+            Some("55P03")
+        );
+        assert!(
+            f.db.set_automatic_title(2, f.id, Some("Foreign title"), 10, true)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let previous = tokio::time::timeout(
+            Duration::from_secs(2),
+            f.db.set_automatic_title(1, f.id, Some("Automatic title"), 10, true),
+        )
+        .await
+        .expect("reference locks must not delay a title update")
+        .unwrap();
+        assert_eq!(previous, Some((None,)));
+        assert_eq!(f.title().await.as_deref(), Some("Automatic title"));
+        reference.rollback().await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn manual_transaction_does_not_deadlock_with_advisory_write() {
     let f = fixture(enabled(json!({})), &[], false).await;
     assert!(
@@ -601,7 +666,15 @@ async fn manual_transaction_does_not_deadlock_with_advisory_write() {
     )
     .await
     .unwrap();
-    assert!(automatic.is_err());
+    let error = automatic.unwrap_err();
+    let database_error = error.downcast_ref::<sqlx::Error>().unwrap();
+    assert_eq!(
+        database_error
+            .as_database_error()
+            .and_then(|error| error.code())
+            .as_deref(),
+        Some("55P03")
+    );
     everruns_durable::commit_transaction(manual).await.unwrap();
     assert_eq!(f.title().await.as_deref(), Some("Explicit title"));
 }

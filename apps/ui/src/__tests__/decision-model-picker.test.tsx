@@ -4,6 +4,40 @@ import type { ModelWithProvider } from "@/lib/api/types";
 const mockModels = [
   { id: "chat", display_name: "Chat", service: "chat", enabled: true, healthy: true },
   {
+    id: "personal",
+    display_name: "Personal",
+    service: "chat",
+    enabled: true,
+    healthy: true,
+    provider_type: "chatgpt",
+    profile: { tool_call: true },
+  },
+  {
+    id: "no-tools",
+    display_name: "No tools",
+    service: "chat",
+    enabled: true,
+    healthy: true,
+    profile: { tool_call: false },
+  },
+  {
+    id: "terra",
+    display_name: "GPT-6.1 Terra",
+    service: "chat",
+    enabled: true,
+    healthy: true,
+    profile: { tool_call: true },
+  },
+  {
+    id: "unconfigured",
+    display_name: "Unconfigured",
+    service: "chat",
+    enabled: true,
+    healthy: false,
+    profile: { tool_call: true },
+  },
+
+  {
     id: "embedding",
     display_name: "Embedding",
     service: "embeddings",
@@ -48,13 +82,22 @@ jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn() }),
 }));
 jest.mock("@/components/models/model-icon", () => ({ ModelIcon: () => null }));
-jest.mock("@/components/ui/select", () => ({
-  Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectValue: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
-    <div data-testid={value}>{children}</div>
+jest.mock("@/components/ui/combobox", () => ({
+  Combobox: ({
+    options,
+    valueLabel,
+  }: {
+    options: { value: string; label: string }[];
+    valueLabel?: string;
+  }) => (
+    <div>
+      {valueLabel}
+      {options.map((option) => (
+        <div key={option.value} data-testid={option.value}>
+          {option.label}
+        </div>
+      ))}
+    </div>
   ),
 }));
 test("chat selectors exclude decision and embedding models", () => {
@@ -91,4 +134,11 @@ test("session inheritance has a label and no unavailable-model warning", () => {
   );
   expect(screen.getByTestId("session")).toHaveTextContent("Use session model");
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("organization Chat offers every eligible shared tool-capable model", () => {
+  render(<ModelPicker value="" onChange={jest.fn()} organizationDefault requireTools />);
+  for (const id of ["chat", "terra"]) expect(screen.getByTestId(id)).toBeInTheDocument();
+  for (const id of ["personal", "no-tools", "unconfigured", "embedding", "jev"])
+    expect(screen.queryByTestId(id)).not.toBeInTheDocument();
 });

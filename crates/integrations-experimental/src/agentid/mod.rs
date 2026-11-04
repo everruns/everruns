@@ -61,6 +61,18 @@ AgentMail inbox; the app then sees you signed in. Only pass a token the app itse
 pub struct AgentIdCapability;
 
 impl Capability for AgentIdCapability {
+    fn localizations(
+        &self,
+    ) -> Vec<everruns_contracts::runtime::capabilities::CapabilityLocalization> {
+        vec![
+            everruns_contracts::runtime::capabilities::CapabilityLocalization::text(
+                "uk",
+                "Експериментальний вхід через AgentID",
+                "Вхід від імені агента в застосунки з підтримкою AgentID через пошту AgentMail його сервісного облікового запису. Експериментальна можливість може змінюватися.",
+            ),
+        ]
+    }
+
     fn id(&self) -> &str {
         "agentid"
     }

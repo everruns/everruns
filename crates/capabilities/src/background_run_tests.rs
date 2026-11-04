@@ -725,7 +725,9 @@ async fn test_spawn_background_can_create_scheduled_monitor() {
                 "args": { "summary": "Background complete" },
                 "schedule": {
                     "cron_expression": "*/10 * * * *",
-                    "timezone": "America/Chicago"
+                    "timezone": "America/Chicago",
+                    "max_runs": 6,
+                    "stop_when": "PR 1319 is merged or closed"
                 }
             }),
             &context,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { FeatureFlags } from "@/lib/api/types";
@@ -14,17 +15,20 @@ export function FeatureFlagPageGate({
   title: string;
   children: ReactNode;
 }) {
+  const ui = useUiTranslations();
   const enabled = useFeatureFlag(flag);
 
   if (!enabled) {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <div className="space-y-2 text-center text-muted-foreground">
-          <p className="text-lg font-medium text-foreground">{title} is not enabled</p>
+          <p className="text-lg font-medium text-foreground">
+            {title} {ui("is not enabled")}
+          </p>
           <p className="text-sm">
-            Enable it in{" "}
+            {ui("Enable it in")}{" "}
             <Link href="/settings/features" className="font-medium text-primary hover:underline">
-              Settings → Features
+              {ui("Settings → Features")}
             </Link>
             .
           </p>

@@ -89,10 +89,16 @@ pub(super) fn build(
         Arc::new(domains::audit_logs::ApprovalAuditListener::new(db.clone())),
         mcp_events.listener(),
         A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
-        Arc::new(listeners::TurnLatencyListener::new()),
+        Arc::new(listeners::TurnLatencyListener::new(db.clone())),
         thread_turns.clone(),
         automatic_titles.clone(),
     ];
+    // Reporting facts, fed from the listener feed's later tier.
+    if domains::reporting::background::reporting_enabled() {
+        event_listeners.push(Arc::new(
+            domains::reporting::listener::ReportingProjectionListener::new(db.clone()),
+        ));
+    }
     // Run summaries (EVE-867). Registered only when a utility LLM is
     // configured, so the OSS default adds no listener at all rather than one
     // that wakes on every terminal turn to do nothing.
@@ -120,12 +126,14 @@ pub(super) fn build(
                     &auth_config,
                     host_composition.egress_service(),
                 ));
-                let service =
-                    Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
+                let service = Arc::new(
+                    crate::domains::session_sandbox::SessionSandboxService::new(
                         db.clone(),
                         storage_store,
                         connection_resolver,
-                    ));
+                    )
+                    .with_egress(host_composition.egress_service()),
+                );
                 event_listeners.push(Arc::new(
                     crate::domains::session_sandbox::SessionSandboxEventListener::new(
                         service.clone(),
@@ -173,6 +181,16 @@ pub(super) fn build(
     if let Some(braintrust_listener) = BraintrustListener::from_env() {
         tracing::info!("Braintrust integration enabled");
         event_listeners.push(Arc::new(braintrust_listener));
+    }
+
+    if let Some(encryption) = &encryption {
+        event_listeners.push(Arc::new(
+            crate::domains::trace_exports::router::CustomerTracingListener::new(
+                db.clone(),
+                encryption.clone(),
+                host_composition.egress_service(),
+            ),
+        ));
     }
 
     // Append custom event listeners

@@ -42,6 +42,9 @@ pub struct ChannelAuthPrincipal {
     pub subject: String,
     /// Identity namespace proven by the configured verifier, not by token claims.
     pub identity_realm: String,
+    /// Email the provider marked verified (`email_verified` or `email_confirmed`).
+    /// An address the token does not confirm is omitted.
+    pub email: Option<String>,
 }
 
 /// Secrets a host keeps outside the [`ChannelAuthConfig`] for the

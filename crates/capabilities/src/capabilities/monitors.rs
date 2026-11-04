@@ -159,6 +159,12 @@ mod tests {
                 trigger_count: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
+                deleted_at: None,
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
+                stop_reason: None,
+                budget: None,
             })
         }
 

@@ -174,7 +174,8 @@ jobs:
           echo "Created release v$VERSION"
 
       # GITHUB_TOKEN tag pushes don't trigger other workflows (GitHub anti-recursion).
-      # Explicitly dispatch Docker Publish to build version-tagged images.
+      # Explicitly dispatch Docker Publish to build version-tagged images. It also
+      # uploads the server & worker binaries it builds to the GitHub release.
       - name: Trigger Docker Publish for release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -201,12 +202,3 @@ jobs:
           echo "Triggering CLI binary builds for tag $TAG..."
           gh workflow run cli-binaries.yml --ref "$TAG" -f "tag=$TAG"
           echo "CLI binary builds triggered for $TAG"
-
-      - name: Trigger server & worker binary builds for release tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          echo "Triggering server & worker binary builds for tag $TAG..."
-          gh workflow run server-worker-binaries.yml --ref "$TAG" -f "tag=$TAG"
-          echo "Server & worker binary builds triggered for $TAG"

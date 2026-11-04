@@ -2,8 +2,9 @@
 
 // Only the managed Agent's personal side conversations belong in Chat.
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { subscribeSessionChanges } from "@/lib/session-activity";
 import { listSessions } from "@/lib/api/sessions";
 import { queryKeys } from "@/lib/query-keys";
 import { selectChatThreads, THREAD_SCAN_LIMIT } from "@/lib/chat-threads";
@@ -12,9 +13,9 @@ import { PLATFORM_CHAT_AGENT_NAME, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-
 import { useOrg } from "@/providers/org-provider";
 import type { Session } from "@/lib/api/types";
 
-/** Poll interval for the thread list. Threads gain activity from turns that run
- *  outside this tab, and there is no org-wide session event stream to subscribe
- *  to, so the list refreshes on a timer. */
+/** Observed turn/task changes refresh immediately; this polling fallback
+ *  covers work outside the subscribed sessions until an authorized summary
+ *  feed exists. */
 const THREAD_POLL_MS = 15_000;
 
 export interface UseChatThreadsResult {
@@ -60,17 +61,36 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
   const includeArchived = options.includeArchived ?? false;
   const poll = options.poll ?? true;
   const mine = options.mine ?? true;
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.sessions.filtered(
+    org,
+    `${mine ? "my-threads" : "threads"}${includeArchived ? "+archived" : ""}:${platformAgent?.id}:${options.search ?? ""}`,
+    offset,
+    limit,
+  );
+  const queryKeyId = JSON.stringify(queryKey);
+  useEffect(() => {
+    if (!enabled || !poll) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = subscribeSessionChanges((changedOrg) => {
+      if (changedOrg !== org || timer !== undefined) return;
+      // Coalesce a burst of task/turn transitions into one authorized list read.
+      timer = setTimeout(() => {
+        timer = undefined;
+        void queryClient.invalidateQueries({ queryKey: JSON.parse(queryKeyId), exact: true });
+      }, 250);
+    });
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [enabled, poll, org, queryClient, queryKeyId]);
 
   const query = useQuery({
     // Still under the `["sessions"]` prefix, so a create/update invalidation of
     // `sessions.all()` refreshes the sidebar too. The archived variant is a
     // separate cache entry because it is a different server-side predicate.
-    queryKey: queryKeys.sessions.filtered(
-      org,
-      `${mine ? "my-threads" : "threads"}${includeArchived ? "+archived" : ""}:${platformAgent?.id}:${options.search ?? ""}`,
-      offset,
-      limit,
-    ),
+    queryKey,
     queryFn: () =>
       listSessions({
         offset,

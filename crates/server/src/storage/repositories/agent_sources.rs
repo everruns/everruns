@@ -13,7 +13,10 @@ pub struct AgentSourceRow {
     pub generation: Uuid,
     pub identity_id: Uuid,
     pub connection_id: Uuid,
-    pub installation_id: i64,
+    pub installation_id: Option<i64>,
+    /// Which development GitHub account reads and writes the source:
+    /// `personal`, `organization`, or `agent` for bindings made before the split.
+    pub github_account: String,
     pub configured_by: Option<Uuid>,
     pub configured_role: String,
     pub repository_id: i64,
@@ -66,16 +69,17 @@ impl Database {
                 agent_id, org_id, generation, identity_id, connection_id,
                 configured_by, configured_role, repository_id, repository, branch, path,
                 applied_commit, package_digest, managed_channels, installation_id, status,
-                last_checked_at, last_synced_at, next_sync_at, mode, local_digest, local_package
+                last_checked_at, last_synced_at, next_sync_at, mode, local_digest, local_package,
+                github_account
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                'synced', NOW(), NOW(), NOW() + INTERVAL '60 seconds', $16, $17, $18
+                'synced', NOW(), NOW(), NOW() + INTERVAL '60 seconds', $16, $17, $18, $19
             )
             ON CONFLICT (agent_id) DO UPDATE SET
                 generation=$3, identity_id=$4, connection_id=$5, configured_by=$6,
                 configured_role=$7, repository_id=$8, repository=$9, branch=$10, path=$11,
                 applied_commit=$12, package_digest=$13, managed_channels=$14, installation_id=$15,
-                mode=$16, local_digest=$17, local_package=$18, local_dirty=FALSE, outbox=NULL,
+                mode=$16, local_digest=$17, local_package=$18, github_account=$19, local_dirty=FALSE, outbox=NULL,
                 status='synced', error=NULL, last_checked_at=NOW(), last_synced_at=NOW(),
                 next_sync_at=NOW() + INTERVAL '60 seconds', lease_token=NULL, lease_until=NULL
             WHERE agent_github_sources.org_id=$2
@@ -99,6 +103,7 @@ impl Database {
         .bind(&row.mode)
         .bind(&row.local_digest)
         .bind(&row.local_package)
+        .bind(&row.github_account)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -171,13 +176,15 @@ impl Database {
         &self,
         org: i64,
         identities: &[Uuid],
+        installation: Option<i64>,
         repo: i64,
         branch: &str,
     ) -> Result<()> {
-        // Signed deliveries only wake bindings on the receiving installation's identities.
+        // Signed deliveries only wake bindings on the receiving installation's identities,
+        // or, for an org link, bindings that read through that installation.
         // Replays coalesce into the same work; payload commits are never applied directly.
-        sqlx::query("UPDATE agent_github_sources SET next_sync_at=LEAST(next_sync_at,NOW()) WHERE org_id=$1 AND identity_id=ANY($2) AND repository_id=$3 AND branch=$4")
-            .bind(org).bind(identities).bind(repo).bind(branch).execute(&self.pool).await?;
+        sqlx::query("UPDATE agent_github_sources SET next_sync_at=LEAST(next_sync_at,NOW()) WHERE org_id=$1 AND (identity_id=ANY($2) OR (github_account='organization' AND installation_id=$5)) AND repository_id=$3 AND branch=$4")
+            .bind(org).bind(identities).bind(repo).bind(branch).bind(installation).execute(&self.pool).await?;
         Ok(())
     }
 

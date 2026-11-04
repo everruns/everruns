@@ -10,7 +10,6 @@ release: "0.26.0"
 links:
   docs: [/providers/, /reference/cli/providers/]
   prs: [everruns/everruns#3526, everruns/everruns#3516, everruns/everruns#3515, everruns/everruns#3517, everruns/everruns#3512]
-visual: "Settings provider connect grid with the provider tiles (/settings/providers or equivalent); crop to the grid"
 ---
 
 **In the UI:** a **Connect** grid offers one tile each for Anthropic, OpenAI,
@@ -19,6 +18,8 @@ need more than a key stay behind **Another provider**. Keys are checked as you
 type, and only an outright rejection is shown. Once a key is saved, Everruns
 discovers the provider's models, enables a shortlist, stars a few favorites and
 sets a default model if none exists.
+
+![Connect provider sheet with tiles for Anthropic, OpenAI, Gemini, OpenRouter and Meta](./connect-provider-grid@2x.png)
 
 **In the API and CLI:** `POST /v1/providers/check-credentials` checks a key
 without storing it:

@@ -51,7 +51,8 @@ const MAX_EVENT_FIELD_LEN: usize = 512;
 /// A normalized event, as handed to the pipeline by a source.
 #[derive(Debug, Clone)]
 pub struct TriggerEvent {
-    /// Source name recorded on the delivery (`schedule`, `webhook`, `github`).
+    /// Source name recorded on the delivery (`schedule`, `webhook`, `github`,
+    /// `mcp_event`, or `manual` for an event fired by hand).
     pub source: &'static str,
     /// Idempotency key from the source, if it has one.
     pub event_id: Option<String>,
@@ -92,7 +93,10 @@ pub struct ChannelRun<'a> {
 #[derive(Debug, Clone)]
 pub enum TriggerEventOutcome {
     Dispatched(AgentTriggerInvocationResult),
-    Filtered,
+    /// The event missed the filter; `reason` is the first condition it missed.
+    Filtered {
+        reason: String,
+    },
     Duplicate,
 }
 
@@ -144,7 +148,10 @@ pub async fn dispatch_trigger_event(
 
     if let Some(reason) = miss {
         let claimed = db
-            .record_agent_trigger_delivery(new_row(TriggerDeliveryStatus::Filtered, Some(reason)))
+            .record_agent_trigger_delivery(new_row(
+                TriggerDeliveryStatus::Filtered,
+                Some(reason.clone()),
+            ))
             .await?;
         if claimed.is_none() {
             record_duplicate(db, new_row(TriggerDeliveryStatus::Duplicate, None)).await?;
@@ -156,7 +163,7 @@ pub async fn dispatch_trigger_event(
             change.record(db, trigger).await?;
         }
         prune(db, trigger).await;
-        return Ok(TriggerEventOutcome::Filtered);
+        return Ok(TriggerEventOutcome::Filtered { reason });
     }
 
     let Some(delivery) = db
@@ -264,6 +271,7 @@ async fn run(
         trigger.org_id,
         agent,
         trigger.id,
+        &trigger.trigger_type,
         session_id,
         execution_context.harness_id,
         execution_context.owner_principal_id,

@@ -721,6 +721,43 @@ async fn the_journal_tail_starts_at_the_latest_turn() {
     assert!(!rest.has_more);
 }
 
+// EVERRUNS-37: each `llm.generation` carries the turn's whole prompt (twice,
+// with the provider request body), so reading them made one resume fetch
+// megabytes the fold never looks at.
+#[tokio::test]
+async fn the_journal_leaves_out_llm_generations() {
+    let db = StorageBackend::test_database();
+    let id = session(&db, ORG_A).await;
+    let started = event(&db, id, "turn.started").await;
+    event(&db, id, "llm.generation").await;
+    let reasoned = event(&db, id, "reason.completed").await;
+    let generated = event(&db, id, "llm.generation").await;
+
+    let tail = db.read_session_actor_journal(id, None, 0).await.unwrap();
+    assert_eq!(
+        tail.events.iter().map(|e| e.sequence).collect::<Vec<_>>(),
+        vec![started, reasoned]
+    );
+    assert!(!tail.has_more);
+    assert_eq!(
+        tail.head_sequence,
+        Some(generated),
+        "the head is still the log's"
+    );
+
+    let page = db.read_session_actor_journal(id, None, 1).await.unwrap();
+    assert!(page.has_more, "a page counts only the events it returns");
+    let rest = db
+        .read_session_actor_journal(id, Some(page.events[0].sequence), 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        rest.events.iter().map(|e| e.sequence).collect::<Vec<_>>(),
+        vec![reasoned]
+    );
+    assert!(!rest.has_more);
+}
+
 #[tokio::test]
 async fn deleting_the_session_removes_its_actor() {
     let db = StorageBackend::test_database();
@@ -846,5 +883,98 @@ async fn a_session_without_an_actor_takes_no_fenced_append() {
             .await
             .unwrap()
             .is_empty()
+    );
+}
+
+/// A session `active` with a log of `events` whose actor ran a turn and was
+/// released: neither leased nor runnable.
+async fn released_active(db: &StorageBackend, events: &[&str]) -> SessionId {
+    let id = runnable(db, ORG_A, 1).await;
+    let mut head = 0;
+    for event_type in events {
+        head = event(db, id, event_type).await;
+    }
+    let lease = db
+        .lease_session_actors("worker-a", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(lease.session_id, id);
+    db.release_session_actor(id, "worker-a", lease.fence, i64::from(head))
+        .await
+        .unwrap();
+    db.set_session_status(ORG_A, id, "active").await.unwrap();
+    id
+}
+
+// Production, 2026-10-29: a lease released a closed turn without idling the
+// session, which then stayed `active` with no actor runnable for days. The
+// sweep marks such an actor resumable, so a worker folds the log and idles
+// it (or resumes the open turn); nothing else is touched.
+#[tokio::test]
+async fn stranded_active_sessions_are_marked_resumable() {
+    let db = StorageBackend::test_database();
+    let closed = released_active(&db, &["turn.started", "turn.completed"]).await;
+    let open = released_active(&db, &["turn.started", "tool.completed"]).await;
+    // Already idled: a status the fold cannot fix is not re-marked forever.
+    let idled = released_active(&db, &["turn.started", "turn.completed", "session.idled"]).await;
+    let idle_status = released_active(&db, &["turn.started", "turn.completed"]).await;
+    db.set_session_status(ORG_A, idle_status, "idle")
+        .await
+        .unwrap();
+    // A live lease runs the turn; a runnable actor is about to.
+    let leased = released_active(&db, &["turn.started"]).await;
+    db.mark_session_actor_resumable(leased).await.unwrap();
+    assert_eq!(
+        db.lease_session_actors("worker-b", 1, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    let queued = released_active(&db, &["turn.started"]).await;
+    db.mark_session_actor_resumable(queued).await.unwrap();
+    let before = db.get_session_actor(queued).await.unwrap().unwrap();
+
+    // Within the grace nothing is stranded yet.
+    assert!(
+        db.recover_stranded_session_actors(Duration::from_secs(3600), 100)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let recovered: HashSet<SessionId> = db
+        .recover_stranded_session_actors(Duration::ZERO, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect();
+    assert_eq!(recovered, HashSet::from([closed, open]));
+    for id in [closed, open] {
+        let row = db.get_session_actor(id).await.unwrap().unwrap();
+        assert!(row.runnable_since.is_some(), "a worker leases it next");
+        assert_eq!(row.inbox_seq, 2, "the inbox is at the log's head");
+    }
+    for id in [idled, idle_status] {
+        let row = db.get_session_actor(id).await.unwrap().unwrap();
+        assert!(row.runnable_since.is_none(), "not stranded");
+    }
+    let after = db.get_session_actor(queued).await.unwrap().unwrap();
+    assert_eq!(
+        after.runnable_since, before.runnable_since,
+        "a runnable actor keeps its place"
+    );
+    let taken = db
+        .lease_session_actors("worker-c", 10, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .unwrap();
+    assert_eq!(ids(&taken), HashSet::from([closed, open, queued]));
+    assert!(
+        db.recover_stranded_session_actors(Duration::ZERO, 100)
+            .await
+            .unwrap()
+            .is_empty(),
+        "leased actors are not stranded"
     );
 }

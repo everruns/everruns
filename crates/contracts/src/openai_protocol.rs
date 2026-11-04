@@ -14,6 +14,8 @@
 // llm.generation events are emitted by ReasonAtom, and OtelEventListener
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
 
+mod batch_codec;
+
 use crate::http_transport::{HttpClient, HttpResponse, HttpTransport};
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -396,12 +398,23 @@ impl OpenAIProtocolChatDriver {
     }
 
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<OpenAiTool> {
+        Self::convert_tools_mode(tools, true)
+    }
+
+    fn convert_tools_mode(tools: &[ToolDefinition], normalize: bool) -> Vec<OpenAiTool> {
         tools
             .iter()
             .map(|tool| {
-                let strict_parameters =
-                    crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters());
-                let strict = strict_parameters.is_some().then_some(true);
+                let strict_parameters = normalize
+                    .then(|| {
+                        crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters())
+                    })
+                    .flatten();
+                let strict = if normalize {
+                    strict_parameters.is_some().then_some(true)
+                } else {
+                    Some(false)
+                };
                 OpenAiTool {
                     r#type: "function".to_string(),
                     function: OpenAiFunction {
@@ -484,37 +497,10 @@ impl ChatDriver for OpenAIProtocolChatDriver {
     ) -> Result<LlmResponse> {
         // Same request as the streaming path, but with streaming disabled so
         // the provider answers with one JSON body instead of SSE.
-        let openai_messages: Vec<OpenAiMessage> = convert_messages(&messages);
-        let tools = if config.tools.is_empty() {
-            None
-        } else {
-            Some(Self::convert_tools(&config.tools))
-        };
-        let metadata = if config.metadata.is_empty() {
-            None
-        } else {
-            Some(config.metadata.clone())
-        };
+        crate::openai_compat::validate_config(config)?;
+        let messages = drop_orphaned_tool_messages(&messages);
         let api_url = chat_completions_url(endpoint)?;
-        let (max_tokens, max_completion_tokens) = max_output_fields(&api_url, config.max_tokens);
-        let request = OpenAiRequest {
-            model: config.model.clone(),
-            messages: openai_messages,
-            temperature: config.temperature,
-            max_tokens,
-            max_completion_tokens,
-            stream: false,
-            stream_options: None,
-            tools,
-            parallel_tool_calls: config
-                .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            reasoning_effort: OpenAiRequest::reasoning_effort_for(config),
-            service_tier: config.speed.clone(),
-            verbosity: config.verbosity.clone(),
-            metadata,
-            response_format: OpenAiRequest::response_format_for(config),
-            prompt_cache_key: self.prompt_cache_key_for(config),
-        };
+        let request = self.completion_request(&api_url, &messages, config, true)?;
         let captured_request = capture_request_body(config, &request);
         let (response, retry_metadata) = self
             .send_chat_completion_request(
@@ -527,89 +513,15 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             )
             .await?;
         let body: OpenAiChatCompletionResponse = response.json().await.map_err(|error| {
-            AgentLoopError::llm(format!("failed to decode non-streaming response: {error}"))
+            AgentLoopError::llm_kind(
+                crate::llm_error::LlmErrorKind::MalformedResponse,
+                format!("failed to decode non-streaming response: {error}"),
+            )
         })?;
-        if let Some(error) = body.error {
-            return Err(error.into_stream_error().into_agent_error());
-        }
-        let response_model = body.model.clone();
-        let (text, mut tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next()
-        {
-            Some(mut choice) => {
-                let (text, thinking) = choice.message.text_and_thinking();
-                // Mirror the streaming path: tool calls whose arguments are not
-                // complete JSON values cannot execute, so drop them.
-                let tool_calls: Vec<ToolCall> = choice
-                    .message
-                    .tool_calls
-                    .into_iter()
-                    .filter_map(|tool_call| {
-                        let arguments = serde_json::from_str(&tool_call.function.arguments).ok()?;
-                        Some(ToolCall {
-                            id: tool_call.id,
-                            name: tool_call.function.name,
-                            arguments,
-                        })
-                    })
-                    .collect();
-                let reasoning = thinking.map(|text| {
-                    crate::reasoning::ReasoningContentPart::opaque("openai-protocol")
-                        .with_text(crate::reasoning::ReasoningText::Plain { text })
-                });
-                (text, tool_calls, reasoning, choice.finish_reason)
-            }
-            None => (String::new(), Vec::new(), None, None),
-        };
-        crate::tool_schema_compat::restore_strict_openai_tool_calls(&config.tools, &mut tool_calls);
-        let (prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, cost) = body
-            .usage
-            .map(|usage| {
-                let cached = usage
-                    .prompt_tokens_details
-                    .as_ref()
-                    .and_then(|details| details.cached_tokens);
-                let reasoning = usage
-                    .completion_tokens_details
-                    .as_ref()
-                    .and_then(|details| details.reasoning_tokens);
-                let prompt = usage.prompt_tokens.unwrap_or(0);
-                (
-                    Some(prompt),
-                    usage.completion_tokens,
-                    Some(disjoint_prompt_tokens(prompt, cached)),
-                    reasoning,
-                    usage.cost,
-                )
-            })
-            .unwrap_or((None, None, None, None, None));
-        Ok(LlmResponse {
-            text,
-            reasoning: reasoning.into_iter().collect(),
-            tool_calls: if tool_calls.is_empty() {
-                None
-            } else {
-                Some(tool_calls)
-            },
-            metadata: LlmCompletionMetadata {
-                total_tokens: prompt_tokens
-                    .unwrap_or(0)
-                    .checked_add(completion_tokens.unwrap_or(0)),
-                prompt_tokens,
-                completion_tokens,
-                cache_read_tokens: cached_tokens,
-                reasoning_tokens,
-                provider_cost_usd: cost,
-                model: Some(config.model.clone()),
-                response_model,
-                // Chat Completions reasons are already the normalized vocabulary.
-                provider_finish_reason: finish_reason.clone(),
-                finish_reason,
-                retry_metadata: retry_metadata.had_retries().then_some(retry_metadata),
-                response_id: body.id,
-                request_body: captured_request,
-                ..Default::default()
-            },
-        })
+        let mut response = self.decode_completion(body, config)?;
+        response.metadata.retry_metadata = retry_metadata.had_retries().then_some(retry_metadata);
+        response.metadata.request_body = captured_request;
+        Ok(response)
     }
 
     #[expect(
@@ -622,6 +534,12 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        if config.prefer_non_streaming && !config.limits.needs_incremental_events() {
+            return self
+                .chat_completion_non_streaming(endpoint, messages, config)
+                .await
+                .map(LlmResponse::into_stream);
+        }
         crate::openai_compat::validate_config(config)?;
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener
