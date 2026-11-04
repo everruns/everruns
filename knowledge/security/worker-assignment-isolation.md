@@ -119,7 +119,7 @@ Require mutually authenticated workload identity over protected transport, or a
 qualified local identity broker that binds the same proof to an isolated IPC
 peer. A caller-controlled identity header is not proof. Both client and server
 must enforce the transport contract; current
-[worker connection setup](../../crates/worker/src/grpc_adapters/connect.rs)
+[worker connection setup](../../crates/worker/src/grpc_adapters/connect/mod.rs)
 does not establish this new boundary. No plaintext or unbound-identity fallback
 is allowed for a scoped executor.
 
