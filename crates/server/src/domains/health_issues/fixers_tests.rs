@@ -12,9 +12,12 @@ use wiremock::{
     matchers::{body_string_contains, method, path},
 };
 
+/// One `update_permissions` call: workspace, app id, scopes.
+type Update = (Option<String>, String, Vec<String>);
+
 #[derive(Default)]
 struct Provisioner {
-    updates: Mutex<Vec<(Option<String>, String, Vec<String>)>>,
+    updates: Mutex<Vec<Update>>,
     refuse: Option<&'static str>,
 }
 #[async_trait]
