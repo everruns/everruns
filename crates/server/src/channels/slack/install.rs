@@ -636,7 +636,7 @@ pub(crate) async fn begin_reconsent(
                 org_id,
                 provisioned.team_id.as_deref(),
                 &provisioned.app_id,
-                &super::events::slack_bot_scopes(config.agent_surface_enabled),
+                &crate::domains::agent_channels::record::slack_channel::slack_scopes(&config),
             )
             .await?;
     }
@@ -663,6 +663,7 @@ pub(crate) async fn begin_reconsent(
         &redirect_uri,
         team_id.as_deref(),
         config.agent_surface_enabled,
+        config.code_channels_enabled,
     ))
 }
 
@@ -1417,6 +1418,37 @@ mod tests {
                 .map(|scope| scope.as_str().unwrap())
                 .collect();
             assert_eq!(scopes, declared);
+        }
+    }
+
+    #[test]
+    fn code_consent_matches_the_scopes_used_to_update_an_existing_app() {
+        for agent_surface_enabled in [false, true] {
+            for code_channels_enabled in [false, true] {
+                let config = SlackChannelConfig {
+                    agent_surface_enabled,
+                    code_channels_enabled,
+                    ..Default::default()
+                };
+                let url = url::Url::parse(&authorize_url(
+                    "client",
+                    "nonce",
+                    "https://example.com/callback",
+                    None,
+                    agent_surface_enabled,
+                    code_channels_enabled,
+                ))
+                .unwrap();
+                let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
+                let scopes: Vec<_> = params["scope"].split(',').collect();
+                assert_eq!(
+                    scopes,
+                    crate::domains::agent_channels::record::slack_channel::slack_scopes(&config)
+                );
+                for scope in ["code_channels:manage", "channels:read", "groups:read"] {
+                    assert_eq!(scopes.contains(&scope), code_channels_enabled);
+                }
+            }
         }
     }
 
