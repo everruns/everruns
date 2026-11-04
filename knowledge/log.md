@@ -195,6 +195,7 @@
 
 ## 2026-10-26
 
+- Recorded that HTTP credential bindings inject on `web_fetch` and Bashkit only. Daytona, E2B, and Modal commands stay outside that contract. See [Bound Secrets](security/bound-secrets.md).
 * **Binding-only chat internals.** Remove the example-only internal bearer
   secret and trust native DO bindings, with workerd coverage that the public
   gateway rejects internal tool/session routes and forged credentials. Shared

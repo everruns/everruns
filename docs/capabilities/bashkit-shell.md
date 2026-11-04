@@ -112,10 +112,16 @@ that header and only for requests to the bound URL:
 curl -sS https://api.example.com/v1/items -H "Authorization: Bearer $EXAMPLE_API_KEY"
 ```
 
-The model can never read the value: printing `$NAME` shows the placeholder, a
-request to any other host (including a redirect target) carries the
-placeholder, and the key is redacted if a response echoes it back. The bound
-URL still has to pass the agent's network access list.
+The model can never read the value: printing `$NAME` shows an opaque handle.
+A request that places that handle on another host, path, header, or form field
+is refused before it is sent, including a redirect to another destination. A
+response that echoes the key is redacted. The bound URL still has to pass the
+agent's network access list.
+
+A Daytona, E2B, or Modal command runs without these bindings. `sandbox_exec`
+does not expand `$NAME`, and those providers do not add the credential to
+outbound HTTPS. Modal's GitHub connection injection is a separate, domain-wide
+control.
 
 Set one for every session of an agent on the agent's **Credentials** tab:
 **Add binding**, choose **HTTP API**, and give the shell variable, the URL and
