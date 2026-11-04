@@ -1,7 +1,6 @@
 //! Coalesces one holder's lease renewals into batched store calls.
 //!
-//! Decisions (`knowledge/operations/durable-execution-engine.md`, "Session
-//! actors", "Batched lease renewal"):
+//! Decisions:
 //! - Group commit, not a timer: a renewal goes out at once when none is in
 //!   flight; renewals that arrive while one is in flight wait for it and go
 //!   out together in the next call. An idle holder pays no added latency; a
