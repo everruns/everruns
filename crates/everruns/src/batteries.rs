@@ -118,7 +118,7 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     #[cfg(feature = "host-shell")]
     _registry.register(everruns_core::host::capabilities::shell::HostShellCapability);
     #[cfg(feature = "web-fetch")]
-    _registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    _registry.register(everruns_integrations::web_fetch::WebFetchCapability::new());
     #[cfg(feature = "duckduckgo")]
     _registry.register(everruns_integrations::duckduckgo::DuckDuckGoCapability);
     #[cfg(feature = "web-search")]

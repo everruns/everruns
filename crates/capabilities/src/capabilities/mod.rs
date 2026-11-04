@@ -160,7 +160,7 @@ pub fn register_environment_capabilities(
 ) {
     registry.register(everruns_integrations::filesystem::FileSystemCapability);
     registry.register(everruns_integrations::bashkit::BashkitShellCapability);
-    registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    registry.register(everruns_integrations::web_fetch::WebFetchCapability::new());
     // Hosted search reads Brave keys from the session only, never the
     // process environment.
     registry.register(everruns_integrations::web_search::WebSearchCapability::default());

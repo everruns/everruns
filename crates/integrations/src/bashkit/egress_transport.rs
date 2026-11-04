@@ -84,10 +84,8 @@ impl HttpTransport for BashkitEgressTransport {
             &request.url,
             EgressRequestKind::Capability,
         )
-        // bashkit signs bot-auth headers before handing the hop to the
-        // transport (re-signed per hop); platform-default signing
-        // remains available for a future platform signer
-        // (knowledge/operations/egress.md).
+        // The egress boundary signs each hop with Web Bot Auth when the
+        // host configures it (host::web_bot_auth).
         .signing(EgressSigning::PlatformDefault)
         .network_access(self.network_access.clone())
         .pinned_addrs(host, pinned)
