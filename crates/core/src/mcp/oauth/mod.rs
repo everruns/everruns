@@ -487,7 +487,11 @@ mod tests {
 
     #[tokio::test]
     async fn resource_survives_login_restart_and_rotating_refresh_without_metadata() {
-        for advertised in [None, Some("https://mcp.example.com/audience")] {
+        for (published, advertised) in [
+            (false, None),
+            (true, None),
+            (true, Some("https://mcp.example.com/audience")),
+        ] {
             let resource = advertised.unwrap_or("https://mcp.example.com/mcp");
             let metadata = serde_json::json!({"resource": advertised,
                 "authorization_servers": ["https://auth.example.com"]})
@@ -495,7 +499,7 @@ mod tests {
             let egress = FakeEgress::with(vec![
                 (
                     "https://mcp.example.com/.well-known/oauth-protected-resource/mcp",
-                    if advertised.is_some() { 200 } else { 404 },
+                    if published { 200 } else { 404 },
                     &metadata,
                 ),
                 (
