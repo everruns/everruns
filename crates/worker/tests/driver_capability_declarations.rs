@@ -22,6 +22,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
                 ServiceKind::Realtime,
                 ServiceKind::Embeddings,
                 ServiceKind::Decisions,
+                ServiceKind::Images,
             ],
             false,
         ),
@@ -40,7 +41,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         (
             DriverId::AzureOpenAI,
             "Azure OpenAI",
-            &[ServiceKind::Chat],
+            &[ServiceKind::Chat, ServiceKind::Images],
             false,
         ),
         (
@@ -65,7 +66,11 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         (
             DriverId::OpenRouter,
             "OpenRouter",
-            &[ServiceKind::Chat, ServiceKind::Decisions],
+            &[
+                ServiceKind::Chat,
+                ServiceKind::Decisions,
+                ServiceKind::Images,
+            ],
             true,
         ),
         (
@@ -86,7 +91,12 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
             &[ServiceKind::Chat],
             false,
         ),
-        (DriverId::Meta, "Meta", &[ServiceKind::Chat], false),
+        (
+            DriverId::Meta,
+            "Meta",
+            &[ServiceKind::Chat, ServiceKind::Images],
+            false,
+        ),
         (
             DriverId::Cloudflare,
             "Cloudflare AI Gateway",

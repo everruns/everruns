@@ -538,6 +538,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/models/config", Read),
     ("GET", "/v1/models/decision-default", Read),
     ("PUT", "/v1/models/decision-default", Write),
+    ("GET", "/v1/models/images-default", Read),
+    ("PUT", "/v1/models/images-default", Write),
     ("GET", "/v1/models/default", Read),
     ("DELETE", "/v1/models/{id}", Write),
     ("GET", "/v1/models/{id}", Read),

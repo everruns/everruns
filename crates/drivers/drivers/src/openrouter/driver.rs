@@ -311,6 +311,9 @@ pub fn descriptor() -> DriverDescriptor {
             everruns_contracts::ServiceKind::Chat,
             #[cfg(not(target_arch = "wasm32"))]
             everruns_contracts::ServiceKind::Decisions,
+            // `/api/v1/images` (GPT Image, Muse Image, Gemini image models).
+            #[cfg(not(target_arch = "wasm32"))]
+            everruns_contracts::ServiceKind::Images,
         ],
         provider: Some(Arc::new(|config| {
             let account = provider(
@@ -394,7 +397,11 @@ mod tests {
         let descriptor = registry.descriptor(&DriverId::OpenRouter).unwrap();
         assert_eq!(
             descriptor.services,
-            vec![ServiceKind::Chat, ServiceKind::Decisions]
+            vec![
+                ServiceKind::Chat,
+                ServiceKind::Decisions,
+                ServiceKind::Images,
+            ]
         );
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
         assert_eq!(

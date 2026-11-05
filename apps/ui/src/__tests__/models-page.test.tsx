@@ -74,6 +74,10 @@ const mockReview = jest.fn();
 const mockUpdateOrganization = jest.fn((_data: unknown) => Promise.resolve());
 
 jest.mock("@/hooks/use-providers", () => ({
+  useImageDefault: () => ({
+    data: null,
+    setDefault: { isPending: false, mutateAsync: jest.fn() },
+  }),
   useDecisionDefault: () => ({
     data: null,
     setDefault: { isPending: false, mutateAsync: jest.fn() },
@@ -281,7 +285,7 @@ describe("ModelsPage", () => {
     expect(screen.getByRole("button", { name: /Add model/ })).toBeDisabled();
   });
 
-  it("groups defaults into Chat, Decisions and Other services", () => {
+  it("groups defaults into Chat, Decisions, Images and Other services", () => {
     mockPathname = "/models/defaults";
     render(<ModelsPage />, { wrapper });
     const chat = screen.getByRole("region", { name: "Chat" });
@@ -292,7 +296,9 @@ describe("ModelsPage", () => {
     expect(
       within(decisions).getByRole("combobox", { name: "System decisions" }),
     ).toBeInTheDocument();
-    for (const label of ["Realtime (voice)", "Embeddings", "Images", "Rerank"]) {
+    const images = screen.getByRole("region", { name: "Images" });
+    expect(within(images).getByLabelText("Default image model")).toBeInTheDocument();
+    for (const label of ["Realtime (voice)", "Embeddings", "Rerank"]) {
       expect(within(other).getByLabelText(label)).toBeInTheDocument();
     }
   });

@@ -54,6 +54,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon".into(),
             ),
             decisions: None,
+            images: None,
         }),
         // Gemini 3.x series (newest). Source: models.dev (google provider).
         // `gemini-3-pro-preview` is deprecated upstream; 3.1 Pro Preview is the
@@ -111,6 +112,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Gemini 3.6/3.7/3.8 Flash and 3.5 Flash Lite. Source: models.dev
@@ -196,6 +198,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Gemini 3.1 Flash Lite — low-latency, high-volume tier. Source:
@@ -246,6 +249,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         "gemini-2.5-pro" => Some(ModelProfile {
@@ -292,6 +296,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         "gemini-2.5-flash" => Some(ModelProfile {
@@ -338,6 +343,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         _ => None,
@@ -400,5 +406,6 @@ fn gemini_flash(
         supports_server_compaction: false,
         model_card_url: None,
         decisions: None,
+        images: None,
     }
 }

@@ -18,7 +18,7 @@ FEATURES = {
     'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities', 'portable-builtins'],
     'everruns-integrations': ['bashkit', 'brave-search', 'brave-search-hosted', 'browserless',
         'cursor', 'daytona', 'daytona-test-util', 'docker', 'duckduckgo', 'e2b', 'filesystem',
-        'github', 'lua', 'openai-decisions', 'openai-image', 'openrouter', 'parallel',
+        'github', 'lua', 'openai-decisions', 'image-generation', 'openrouter', 'parallel',
         'typesafe', 'typesafe-hosted', 'web-fetch', 'modal', 'modal-test-util', 'boxd',
         'boxd-test-util'],
     'everruns-integrations-experimental': ['sprites'],

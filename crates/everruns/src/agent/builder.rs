@@ -387,6 +387,18 @@ impl AgentBuilder {
         self
     }
 
+    /// Also allow writes at and below `path` on top of the current workspace
+    /// policy, for a folder the application opts into (for example where
+    /// image generation saves its outputs). Hidden and denied paths stay
+    /// unwritable. Call it after [`workspace_policy`](Self::workspace_policy).
+    pub fn allow_workspace_write(
+        mut self,
+        path: impl Into<String>,
+    ) -> Result<Self, crate::WorkspacePolicyError> {
+        self.workspace_policy = self.workspace_policy.with_write_scope(path)?;
+        Ok(self)
+    }
+
     /// Register a backend for durable typed resume of backend-owned heads.
     ///
     /// Starting a session from a live Environment also remembers its backend

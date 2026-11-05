@@ -354,6 +354,7 @@ fn openai_compatible_profile(
         supports_server_compaction: false,
         model_card_url: None,
         decisions: None,
+        images: None,
     });
 
     (display_name, profile)

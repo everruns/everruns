@@ -105,6 +105,13 @@ impl Host {
                 Err(_) => {}
             }
         }
+        if let Some(images) = &self.app.inner.config.images {
+            // `[images]` opts the app into saving images: the default
+            // read-only workspace would refuse the files otherwise.
+            builder = builder
+                .capability(images.capability())
+                .allow_workspace_write(crate::config::ImagesConfig::OUTPUT_DIR)?;
+        }
         builder = match self.app.inner.config.sandbox.kind {
             SandboxKind::None => builder,
             SandboxKind::Local => builder.capability(everruns::FileSystem),

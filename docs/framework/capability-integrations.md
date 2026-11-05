@@ -24,6 +24,7 @@ execution or network surface.
 | `mcp-stdio` | No | `everruns-core` (`mcp` feature) | Adds local-process MCP servers and implies `mcp` |
 | `host-shell` | No | `everruns-core` (`host` feature) | `bash` tool over real host processes, bounded by a kernel policy; implies `host-compute` |
 
+| `images` | No | `everruns-integrations` (`image-generation` feature) | [Image generation](/capabilities/image-generation/) (stills, GIFs, SVGs) through the host egress contract; keys from `OPENAI_API_KEY` and friends |
 | `duckduckgo` | No | `everruns-integrations` (`duckduckgo` feature) | DuckDuckGo web search through the host egress contract |
 | `a2a` | No | `everruns-capabilities` | Outbound A2A delegation to remote agents; implies `local` |
 | `otel` | No | `everruns-core` (`host` feature) | OpenTelemetry exporter; see [Observability](/observability/) |

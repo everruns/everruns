@@ -293,6 +293,24 @@ export function useDecisionDefault() {
   return { ...query, setDefault: mutation };
 }
 
+/** The organization's default image model, used by Image Generation when an agent names none. */
+export function useImageDefault() {
+  const { currentOrg } = useOrg();
+  const client = useQueryClient();
+  const query = useQuery({
+    queryKey: ["images-default", currentOrg?.public_id],
+    enabled: !!currentOrg,
+    queryFn: async () =>
+      (await api.get<ModelWithProvider | null>("/v1/models/images-default")).data,
+  });
+  const mutation = useMutation({
+    mutationFn: async (model_id: string | null) =>
+      (await api.put("/v1/models/images-default", { model_id })).data,
+    onSuccess: () => client.invalidateQueries({ queryKey: ["images-default"] }),
+  });
+  return { ...query, setDefault: mutation };
+}
+
 /** Mark providers' discovered models as reviewed (clears `is_new`). */
 export function useReviewProviderModels() {
   const queryClient = useQueryClient();
@@ -336,6 +354,7 @@ export function useSetModelsEnabled() {
       // Disabling the org default clears it server-side.
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       queryClient.invalidateQueries({ queryKey: ["decision-default"] });
+      queryClient.invalidateQueries({ queryKey: ["images-default"] });
     },
   });
 }

@@ -638,6 +638,7 @@ dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "eventsource-stream",
  "everruns-contracts",
  "futures",
  "reqwest",

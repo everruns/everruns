@@ -23,6 +23,17 @@ impl ProviderCredentialStore for DirectProviderCredentialStore {
             .map_err(|_| store_error("Organization decision model is unavailable"))
     }
 
+    async fn get_image_model(
+        &self,
+        model_id: Option<&str>,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Result<Option<everruns_core::connection_services::ImageModelBinding>> {
+        self.provider_resolver
+            .resolve_image_model(self.org_id, model_id, session_id.uuid())
+            .await
+            .map_err(|_| store_error("Image model is unavailable"))
+    }
+
     async fn get_default_provider_credentials(
         &self,
         provider_type: &str,

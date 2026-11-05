@@ -231,6 +231,8 @@ models decision-default set	--context-revision --model-id --reason
 models default get	--context-revision --reason
 models delete	--context-revision --id --reason <id>
 models get	--context-revision --id --reason <id>
+models images-default get	--context-revision --reason
+models images-default set	--context-revision --model-id --reason
 models list	--context-revision --favorites-only --include-stale --reason --service --source
 models selection apply	--changes! --context-revision --reason
 models selection undo	--changes! --context-revision --reason

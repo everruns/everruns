@@ -357,6 +357,7 @@ impl MistralModelInfo {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }
     }
 }

@@ -19,6 +19,8 @@ LLM models available to agents, and organization defaults.
 | [`models decision-default get`](#models-decision-default-get) | Get the selected decision model. |
 | [`models decision-default set`](#models-decision-default-set) | Set the selected decision model. |
 | [`models default get`](#models-default-get) | Get the effective organization default model. |
+| [`models images-default get`](#models-images-default-get) | Get the organization's default image model. |
+| [`models images-default set`](#models-images-default-set) | Set the organization's default image model. |
 | [`models selection apply`](#models-selection-apply) | Atomically apply reviewed enablement changes. |
 | [`models selection undo`](#models-selection-undo) | Atomically undo selected reviewed model enablement changes. |
 
@@ -156,6 +158,40 @@ Example:
 ```bash
 # Check which model new sessions use when none is chosen
 everruns models default get
+```
+
+## models images-default get
+
+Get the organization's default image model.
+
+```bash
+everruns models images-default get [OPTIONS]
+```
+
+Example:
+
+```bash
+# Check which model agents use for images
+everruns models images-default get
+```
+
+## models images-default set
+
+Set the organization's default image model.
+
+```bash
+everruns models images-default set [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--model-id <MODEL_ID>` | Prefixed saved model ID of an image model; omit or pass null to clear the default, which make... |
+
+Example:
+
+```bash
+# Make GPT Image 2.6 Sunburst the default image model
+everruns models images-default set --model-id model_01h9 --reason 'Sharper text in diagrams'
 ```
 
 ## models selection apply

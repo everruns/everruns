@@ -23,14 +23,14 @@ pub mod e2b;
 pub mod filesystem;
 #[cfg(feature = "github")]
 pub mod github;
+#[cfg(feature = "image-generation")]
+pub mod image_generation;
 #[cfg(feature = "lua")]
 pub mod lua;
 #[cfg(feature = "modal")]
 pub mod modal;
 #[cfg(feature = "openai-decisions")]
 pub mod openai_decisions;
-#[cfg(feature = "openai-image")]
-pub mod openai_image;
 #[cfg(feature = "openrouter")]
 pub mod openrouter;
 #[cfg(feature = "parallel")]

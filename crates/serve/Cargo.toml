@@ -55,7 +55,7 @@ voice = ["everruns/voice", "axum/ws"]
 bedrock = ["everruns/bedrock"]
 
 [dependencies]
-everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs", "channel-auth", "channels"] }
+everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs", "channel-auth", "channels", "images"] }
 everruns-core = { workspace = true, features = ["host"] }
 everruns-serve-macros.workspace = true
 everruns-contracts = { workspace = true, features = ["runtime"] }

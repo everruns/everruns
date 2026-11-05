@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [agent]
 release: "0.26.0"
 links:
-  docs: [/capabilities/openai-image-generation/]
+  docs: [/capabilities/image-generation/]
   prs: [everruns/everruns#3523]
 ---
 
@@ -29,4 +29,4 @@ Azure OpenAI.
 Credentials now come only from configured providers. The capability no longer
 reads `OPENAI_API_KEY` or `OPENAI_BASE_URL` from session secrets.
 
-See [OpenAI image generation](/capabilities/openai-image-generation/). [#3523](https://github.com/everruns/everruns/pull/3523)
+See [Image generation](/capabilities/image-generation/). [#3523](https://github.com/everruns/everruns/pull/3523)

@@ -416,7 +416,7 @@ Skills can also be discovered from the session filesystem at `/.agents/skills/`.
 | Capability ID | `skill:{uuid}` | `skills` (aggregate) |
 | Best for | Shared/reusable skills | Project-specific skills |
 
-A third source, **capability-contributed skills**: also feeds this pipeline. Any `Capability` can ship skills in code via `contribute_skills()` (see `knowledge/execution/capabilities.md`); those contributions mount at the same `/.agents/skills/{name}/` path and are served through the same `skills` capability. They are per-session (scoped to the contributing capability's activation) and best for bundling a reusable workflow with the capability that powers it, e.g., a `gpt_image_gen` capability shipping a "prompt an image" skill alongside its tools.
+A third source, **capability-contributed skills**: also feeds this pipeline. Any `Capability` can ship skills in code via `contribute_skills()` (see `knowledge/execution/capabilities.md`); those contributions mount at the same `/.agents/skills/{name}/` path and are served through the same `skills` capability. They are per-session (scoped to the contributing capability's activation) and best for bundling a reusable workflow with the capability that powers it, e.g., an `image_generation` capability shipping a "prompt an image" skill alongside its tools.
 
 ### Multi-Scope Discovery (`ScopedSkillsCapability`)
 

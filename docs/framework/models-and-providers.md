@@ -178,18 +178,18 @@ The set below is what ships today. The boundary is open, so a
 
 | Driver | Crate | Wire protocol | Services | Model discovery |
 | --- | --- | --- | --- | --- |
-| OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Decisions API | chat, embeddings, realtime, decisions | yes |
+| OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Decisions API, OpenAI Images | chat, embeddings, realtime, decisions, images | yes |
 | ChatGPT Plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
 | OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
-| Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat | yes |
+| Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Images | chat, images | yes |
 | Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
 | Google Gemini | `everruns-drivers` (`gemini`) | Gemini `generateContent` | chat | yes |
 | AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
-| OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One | chat, decisions | yes, including decision models |
+| OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One, OpenRouter Images | chat, decisions, images | yes, including decision models |
 | TypeSafe | `everruns-drivers` (`typesafe`) | System One | decisions | yes, plus curated Jev profiles |
 | Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions, System One (Azure AI Foundry) | chat, decisions | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
-| Meta | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
+| Meta | `everruns-drivers` (`meta`) | OpenAI Responses-compatible, OpenAI-compatible Images | chat, images | yes |
 | Mistral AI | `everruns-drivers` (`mistral`) | Chat Completions; connection-selected stateless Responses | chat | yes |
 | Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
 | Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
@@ -226,6 +226,10 @@ browser. The server then opens a WebSocket sideband
 land in the session as ordinary events — so a voice turn and a typed turn are
 the same session, readable through the same history and event streams. This
 needs the platform server; an embedded Framework process does not expose it.
+
+**Images.** OpenAI, Azure OpenAI, OpenRouter and Meta also serve image models
+(GPT Image 2.6, Muse Image) for the
+[image generation capability](/capabilities/image-generation/).
 
 ### Interactive connect
 

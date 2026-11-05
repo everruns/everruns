@@ -97,6 +97,8 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
             18,
             serde_json::json!({"bounded":true,"threshold":1}),
         ),
+        // Images, GIFs and SVGs in chat on the org's default image model.
+        ("image_generation".into(), 19, serde_json::json!({})),
     ];
     let existing = db.get_agent_capabilities(id.uuid()).await?;
     if existing.len() != capabilities.len()

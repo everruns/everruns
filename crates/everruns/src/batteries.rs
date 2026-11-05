@@ -86,6 +86,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         feature = "web-fetch",
         feature = "duckduckgo",
         feature = "web-search",
+        feature = "images",
         feature = "lua",
         feature = "mcp"
     ))]
@@ -97,6 +98,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         feature = "web-fetch",
         feature = "duckduckgo",
         feature = "web-search",
+        feature = "images",
         feature = "lua",
         feature = "mcp"
     )))]
@@ -123,6 +125,10 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     _registry.register(everruns_integrations::duckduckgo::DuckDuckGoCapability);
     #[cfg(feature = "web-search")]
     _registry.register(everruns_integrations::web_search::WebSearchCapability::from_env());
+    #[cfg(feature = "images")]
+    _registry.register(crate::images::ImageGeneration::with_credentials(
+        std::sync::Arc::new(crate::images::EnvImageCredentials),
+    ));
     #[cfg(feature = "lua")]
     if everruns_core::InternalFeatureFlags::from_env().lua {
         _registry.register(everruns_integrations::lua::LuaCapability);

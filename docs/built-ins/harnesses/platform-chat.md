@@ -132,6 +132,7 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | Coordination | Hand focused work to threads you can open and follow, when the organization has adopted Chat background work |
 | Poppy Personal Agent | Talk to companies' agents for the person over the Personal Agent Protocol ([Poppy Personal Agent](/capabilities/poppy-personal-agent/)) |
 | Tool Search | Discover native operations on demand with bounded schema disclosure ([Tool Search](/capabilities/tool-search/)) |
+| Image Generation | Draw images, animated GIFs and SVGs on the organization's default image model ([Image Generation](/capabilities/image-generation/)) |
 
 ## Existing conversations
 

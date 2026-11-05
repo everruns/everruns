@@ -61,3 +61,6 @@ pub mod async_tools;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod decisions;
+/// The OpenAI-compatible Images API (GPT Image, Muse Image, OpenRouter images).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod images;

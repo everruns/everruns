@@ -9224,6 +9224,50 @@
     ]
   },
   {
+    "wire_name": "get_default_image_model",
+    "path": [
+      "models",
+      "images-default"
+    ],
+    "verb": "get",
+    "description": "Get the organization's default image model.",
+    "method": "GET",
+    "http_path": "/v1/models/images-default",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Check which model agents use for images",
+        "command": "everruns models images-default get"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_default_image_model",
+    "path": [
+      "models",
+      "images-default"
+    ],
+    "verb": "set",
+    "description": "Set the organization's default image model.",
+    "method": "PUT",
+    "http_path": "/v1/models/images-default",
+    "args": [
+      {
+        "field": "model_id",
+        "long": "model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Prefixed saved model ID of an image model; omit or pass null to clear the default, which make..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Make GPT Image 2.6 Sunburst the default image model",
+        "command": "everruns models images-default set --model-id model_01h9 --reason 'Sharper text in diagrams'"
+      }
+    ]
+  },
+  {
     "wire_name": "list_models",
     "path": [
       "models"

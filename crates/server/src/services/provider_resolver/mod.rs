@@ -277,6 +277,55 @@ impl ProviderResolverService {
         }) {
             anyhow::bail!("Jev calibrated primitives required");
         }
+        self.bind_catalog_model(org_id, row, session_id, ServiceKind::Decisions)
+            .await
+            .map(Some)
+    }
+
+    /// Resolve an image model: the catalog `model_id` when given (a
+    /// capability setting), otherwise the org's default image model.
+    /// `Ok(None)` means the org chose no default.
+    pub async fn resolve_image_model(
+        &self,
+        org_id: i64,
+        model_id: Option<&str>,
+        session_id: Uuid,
+    ) -> Result<Option<everruns_core::connection_services::ImageModelBinding>> {
+        self.db
+            .get_session(org_id, session_id.into())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Session unavailable"))?;
+        let id = match model_id {
+            Some(id) => id.parse::<everruns_contracts::typed_id::ModelId>()?.uuid(),
+            None => match self.db.get_image_default(org_id).await? {
+                Some(id) => id,
+                None => return Ok(None),
+            },
+        };
+        let row = self
+            .db
+            .get_model(org_id, id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Image model unavailable"))?;
+        if !row.enabled
+            || crate::domains::models::catalog::service(row.provider_metadata.as_ref())
+                != ServiceKind::Images
+        {
+            anyhow::bail!("Enabled image model required");
+        }
+        self.bind_catalog_model(org_id, row, Some(session_id), ServiceKind::Images)
+            .await
+            .map(Some)
+    }
+
+    /// Credentials for a catalog model whose provider driver serves `service`.
+    async fn bind_catalog_model(
+        &self,
+        org_id: i64,
+        row: crate::storage::ModelRow,
+        session_id: Option<Uuid>,
+        service: ServiceKind,
+    ) -> Result<everruns_core::connection_services::DecisionModelBinding> {
         let provider = self
             .resolve_runtime_provider_config_for_session(
                 org_id,
@@ -285,30 +334,28 @@ impl ProviderResolverService {
             )
             .await?
             .ok_or_else(|| anyhow::anyhow!("Provider unavailable"))?;
-        if !self.driver_supports(&provider.provider_type, ServiceKind::Decisions) {
-            anyhow::bail!("Provider does not support decisions");
+        if !self.driver_supports(&provider.provider_type, service) {
+            anyhow::bail!("Provider does not support {service:?}");
         }
         let api_key = provider
             .api_key
             .filter(|k| !k.is_empty())
             .ok_or_else(|| anyhow::anyhow!("Provider credentials required"))?;
-        Ok(Some(
-            everruns_core::connection_services::DecisionModelBinding {
-                model_id: row.id.to_string(),
-                provider_id: row.provider_id.to_string(),
-                provider_type: provider.provider_type,
-                model: row.model_id,
-                profile_key: crate::domains::models::catalog::key(row.provider_metadata.as_ref()),
-                api_key,
-                base_url: provider.base_url,
-                headers: provider
-                    .request_options
-                    .headers
-                    .into_iter()
-                    .map(|h| (h.name, h.value))
-                    .collect(),
-            },
-        ))
+        Ok(everruns_core::connection_services::DecisionModelBinding {
+            model_id: row.id.to_string(),
+            provider_id: row.provider_id.to_string(),
+            provider_type: provider.provider_type,
+            model: row.model_id,
+            profile_key: crate::domains::models::catalog::key(row.provider_metadata.as_ref()),
+            api_key,
+            base_url: provider.base_url,
+            headers: provider
+                .request_options
+                .headers
+                .into_iter()
+                .map(|h| (h.name, h.value))
+                .collect(),
+        })
     }
 
     /// Resolve a model by ID without provider credentials or endpoint details.

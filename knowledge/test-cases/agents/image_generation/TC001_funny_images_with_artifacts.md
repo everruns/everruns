@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: GPT Image Generation with Session Files and Persisted Artifacts"
-description: "Verify that an agent using `gpt_image_gen` can complete a three-image generation request end to end: plan three `generate_image` calls, persist durable `img_*` artifacts, mirror each image into the session filesystem,..."
+description: "Verify that an agent using `image_generation` can complete a three-image generation request end to end: plan three `generate_image` calls, persist durable `img_*` artifacts, mirror each image into the session filesystem,..."
 tags:
   - everruns
   - test-case
@@ -12,17 +12,17 @@ tags:
 
 ## Description
 
-Verify that an agent using `gpt_image_gen` can complete a three-image generation request end to end: plan three `generate_image` calls, persist durable `img_*` artifacts, mirror each image into the session filesystem, and finish with a coherent final reply instead of an internal-error message.
+Verify that an agent using `image_generation` can complete a three-image generation request end to end: plan three `generate_image` calls, persist durable `img_*` artifacts, mirror each image into the session filesystem, and finish with a coherent final reply instead of an internal-error message.
 
 This case is based on the successful 2026-04-23 live run captured after fixing the regressions tracked in `EVE-383`, `EVE-384`, and the tool-search exposure issue discovered during validation.
 
 ## Preconditions
 
 - Control-plane running (`just start-dev` or `just start-all`)
-- OpenAI credentials configured so `gpt_image_gen` can call `gpt-image-2` (default)
+- OpenAI credentials configured so `image_generation` can call `gpt-image-2.6-flare` (default)
 - OpenAI `gpt-6.1-sol` model available in the org
 - Agent can enable these capabilities:
-  - `gpt_image_gen`
+  - `image_generation`
   - `session_file_system`
   - `session_storage`
 
@@ -34,7 +34,7 @@ This case is based on the successful 2026-04-23 live run captured after fixing t
 | Agent display name | `Funny Images Agent` |
 | Agent description | `Generates funny images and saves them as artifacts.` |
 | Model | `gpt-6.1-sol` |
-| Agent capabilities | `gpt_image_gen`, `session_file_system`, `session_storage` |
+| Agent capabilities | `image_generation`, `session_file_system`, `session_storage` |
 | Agent tags | `funny`, `images`, `dev-test` |
 | Agent system prompt | `You create funny but safe images. When the user asks for images, use generate_image. Save outputs to /workspace/.outputs/images, persist image artifacts, and then reply with a short caption for each image plus any saved paths or image ids.` |
 | Session title | `Funny image generation run` |

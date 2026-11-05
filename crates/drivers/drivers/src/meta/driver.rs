@@ -194,6 +194,11 @@ pub fn descriptor() -> DriverDescriptor {
         .with_api_key_fallback_env("MODEL_API_KEY"),
         base_url_env: Some("LLAMA_BASE_URL".into()),
         recommended_models: Some(META_RECOMMENDED),
+        // Muse Image at the OpenAI-compatible `/v1/images/generations`.
+        services: vec![
+            everruns_contracts::ServiceKind::Chat,
+            everruns_contracts::ServiceKind::Images,
+        ],
         ..DriverDescriptor::chat_only(DriverId::Meta, |config| {
             Provider::new(config.provider.clone(), MetaChatDriver::new())
                 .base_url(
@@ -260,7 +265,10 @@ mod tests {
         register_driver(&mut registry);
         let descriptor = registry.descriptor(&DriverId::Meta).unwrap();
         assert_eq!(descriptor.display_name, "Meta");
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
+        assert_eq!(
+            descriptor.services,
+            vec![ServiceKind::Chat, ServiceKind::Images]
+        );
         assert_eq!(descriptor.credential_schema.fields.len(), 1);
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
         assert!(descriptor.credential_schema.fields[0].required);

@@ -147,8 +147,8 @@ pub const CATALOG: &[CatalogEntry] = &[
         feature_flags: everruns_integrations::modal::FEATURE_FLAGS,
     },
     CatalogEntry {
-        crate_name: "everruns-integrations::openai_image",
-        capabilities: everruns_integrations::openai_image::CAPABILITY_PLUGINS,
+        crate_name: "everruns-integrations::image_generation",
+        capabilities: everruns_integrations::image_generation::CAPABILITY_PLUGINS,
         connectors: &[],
         feature_flags: &[],
     },

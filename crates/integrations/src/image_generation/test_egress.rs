@@ -1,4 +1,4 @@
-//! Test egress transports for the image client (EVE-1174).
+//! Test egress transports for image requests (EVE-1174).
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::{
@@ -31,10 +31,7 @@ impl LoopbackTestEgress {
             "image requests must require DNS pinning"
         );
         self.seen.lock().unwrap().push(request.clone());
-        let loopback = reqwest::Url::parse(&request.url)
-            .ok()
-            .and_then(|url| url.host_str().map(|host| host == "127.0.0.1"))
-            .unwrap_or(false);
+        let loopback = request.url.starts_with("http://127.0.0.1:");
         if loopback {
             request.dns_pinning_required = false;
         }

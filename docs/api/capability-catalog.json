@@ -743,26 +743,6 @@
       "tools": []
     },
     {
-      "category": "Media",
-      "dependencies": [
-        "session_file_system"
-      ],
-      "docs_slug": "openai-image-generation",
-      "feature_flag": null,
-      "features": [],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "gpt_image_gen",
-      "name": "OpenAI Image Generation",
-      "status": "available",
-      "tools": [
-        "edit_image",
-        "generate_image"
-      ]
-    },
-    {
       "category": "Safety",
       "dependencies": [],
       "docs_slug": "guardrails",
@@ -791,6 +771,24 @@
       "name": "Human Intent",
       "status": "available",
       "tools": []
+    },
+    {
+      "category": "Media",
+      "dependencies": [],
+      "docs_slug": "image-generation",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "image_generation",
+      "name": "Image Generation",
+      "status": "available",
+      "tools": [
+        "edit_image",
+        "generate_image"
+      ]
     },
     {
       "category": "Optimization",

@@ -15,6 +15,7 @@ import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { FailureIcon, failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { McpAppResourceList } from "./mcp-app-resource-list";
 import { ToolResultThumbnails } from "./tool-result-thumbnails";
+import { extractGeneratedGifs, GeneratedGifPlayer } from "./generated-gif-player";
 import type { ToolCallContent } from "./tool-call-utils";
 import {
   formatResultDetails,
@@ -48,7 +49,11 @@ export function ToolActivityRow({
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
   const mcpAppResources = extractMcpAppResources(toolResult?.result, toolCall.name);
-  const resultImages = extractResultImages(toolResult?.result);
+  const allResultImages = extractResultImages(toolResult?.result);
+  // A generated GIF plays from its artifact; its first-frame PNG (the image
+  // the model saw) becomes the paused still instead of a thumbnail.
+  const generatedGifs = extractGeneratedGifs(toolCall.name, fullText);
+  const resultImages = generatedGifs.length > 0 ? [] : allResultImages;
   const detailsId = `tool-activity-details-${toolCall.id}`;
   const hasToolError = Boolean(toolResult?.error);
   // In chat the raw tool error waits behind Details; see tool-error-disclosure.ts.
@@ -137,6 +142,12 @@ export function ToolActivityRow({
           <ExecutedArgumentsNotice toolResult={toolResult} originalArguments={toolCall.arguments} />
 
           <McpAppResourceList resources={mcpAppResources} />
+
+          {generatedGifs.map((gif, index) => (
+            <div key={gif.artifactId} className="mt-1.5">
+              <GeneratedGifPlayer gif={gif} still={allResultImages[index]} />
+            </div>
+          ))}
 
           <ToolResultThumbnails images={resultImages} />
 

@@ -297,18 +297,18 @@ When users provide data (CSV, JSON, or raw values):
         description: "An agent specialized in generating and editing images, saving results to the workspace, and iterating on art direction.",
         system_prompt: r#"You are an image generation specialist.
 
-Use `generate_image` for fresh concepts and `edit_image` when refining an existing artifact or workspace image.
+Use `generate_image` for fresh concepts and `edit_image` when refining an existing artifact or workspace image. Use format `gif` for short animations and `svg` for icons, logos and other vector art.
 
 Workflow:
 1. Clarify the visual goal from the user's request.
 2. Prefer saving outputs into `/workspace/.outputs/images/` so the user can inspect and reuse them.
 3. When revising, keep track of which artifact ID or workspace file produced the best result and build on it.
-4. Use `secret_store` for per-session OpenAI overrides when the user provides alternate credentials or base URLs.
+4. For a GIF, describe the motion and keep it to a short loop; adjust `frames` and `frame_duration_ms` when the user asks for a slower or smoother animation.
 
 Keep prompts concrete: subject, composition, lighting, materials, color palette, camera angle, and constraints."#,
-        tags: &["media", "images", "openai", "seed"],
+        tags: &["media", "images", "gif", "seed"],
         capabilities: &[
-            SeedCapability::new("gpt_image_gen"),
+            SeedCapability::new("image_generation"),
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],

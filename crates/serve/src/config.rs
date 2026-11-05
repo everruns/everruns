@@ -15,6 +15,10 @@
 //! [auth]                            # open when no method is set
 //! api_keys = []                     # prefer SERVE_API_KEYS
 //!
+//! [images]                          # image generation on every agent
+//! model = "gpt-image-2.6-flare"     # optional; this is the default
+//! format = "png"                    # optional default: png | jpeg | webp | gif | svg
+//!
 //! [voice]                           # `voice` feature: how calls sound
 //! voice = "marin"
 //! greeting = "Hi, you are talking to an AI assistant."
@@ -38,6 +42,11 @@ pub struct AppConfig {
     /// `[auth]`: who may call the agent routes. Open when empty.
     #[serde(default)]
     pub auth: crate::auth::AuthConfig,
+    /// `[images]`: give every agent `generate_image` and `edit_image`.
+    /// Provider keys come from the environment (`OPENAI_API_KEY`,
+    /// `OPENROUTER_API_KEY`, ...). Absent means no image tools.
+    #[serde(default)]
+    pub images: Option<ImagesConfig>,
     /// `[voice]`: settings for every agent's voice channel (`voice` feature).
     /// The platform's voice channel config, so a channel moves between serve
     /// and Everruns unchanged.
@@ -78,6 +87,37 @@ impl SandboxKind {
             SandboxKind::Bashkit => "bashkit",
             SandboxKind::Microvm => "microvm",
         }
+    }
+}
+
+/// `[images]`: the `image_generation` capability's settings.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ImagesConfig {
+    /// Image model; GPT Image 2.6 Flare when unset.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Default output format when a call picks none.
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+impl ImagesConfig {
+    /// Workspace folder generated images are saved to.
+    pub const OUTPUT_DIR: &'static str = "/workspace/images";
+
+    /// The capability reference agents get. Images are saved under
+    /// `/workspace/images`, outside the hidden folders the workspace policy
+    /// keeps read-only, so the session's files expose them.
+    pub fn capability(&self) -> everruns::CapabilityRef {
+        let mut config = serde_json::json!({ "output_dir": Self::OUTPUT_DIR });
+        if let Some(model) = &self.model {
+            config["model"] = model.clone().into();
+        }
+        if let Some(format) = &self.format {
+            config["default_format"] = format.clone().into();
+        }
+        everruns::CapabilityRef::with_config("image_generation", config)
     }
 }
 
@@ -122,6 +162,29 @@ mod tests {
         assert_eq!(voice.voice, "cedar");
         assert_eq!(voice.greeting.as_deref(), Some("Hello"));
         assert_eq!(voice.model, "gpt-realtime-2");
+    }
+
+    #[test]
+    fn parses_images_into_a_capability() {
+        let config = AppConfig::parse(
+            r#"
+            [images]
+            model = "gpt-image-2.6-sunburst"
+            format = "gif"
+            "#,
+        )
+        .unwrap();
+        let capability = config.images.unwrap().capability();
+        assert_eq!(capability.capability_id(), "image_generation");
+        assert_eq!(
+            capability.config_value(),
+            &serde_json::json!({
+                "model": "gpt-image-2.6-sunburst",
+                "default_format": "gif",
+                "output_dir": "/workspace/images"
+            })
+        );
+        assert!(AppConfig::parse("").unwrap().images.is_none());
     }
 
     #[test]

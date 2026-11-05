@@ -107,6 +107,10 @@ duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations", "everr
 # `BRAVE_SEARCH_API_KEY`). Configure it with `everruns::WebSearch`.
 web-search = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/web-search"]
 lua = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/lua"]
+# The `image_generation` capability: stills, animated GIFs and SVGs from GPT
+# Image, Muse Image or Gemini, with provider keys from the environment
+# (`everruns::images`).
+images = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/image-generation"]
 # Run commands on the machine this process is already running on, with nothing
 # between the command and the filesystem. Opt-in because it is the one target
 # that contains nothing; the contract types compile without it.
@@ -316,6 +320,10 @@ required-features = ["openai"]
 [[example]]
 name = "hello"
 required-features = ["openai"]
+
+[[example]]
+name = "image_generation"
+required-features = ["openai", "images", "local"]
 
 [[example]]
 name = "explicit_communication"

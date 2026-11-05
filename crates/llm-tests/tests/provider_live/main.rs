@@ -27,6 +27,7 @@ mod openai_agents_api;
 mod openai_astra_compaction;
 mod openai_completions_max_tokens;
 mod openai_hosted_tools;
+mod openai_images;
 mod openai_native_async;
 mod openai_parallel_tool_calls;
 mod openrouter_chat;

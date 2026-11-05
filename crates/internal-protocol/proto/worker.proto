@@ -1133,6 +1133,10 @@ message GetDefaultProviderCredentialsRequest {
     // false means the deployment answers; an org binding comes back in
     // `decision_binding_json`; an org without a usable model is an error.
     bool system_decisions = 7;
+    // Resolve an image model: the catalog model id, or the org's default
+    // image model when empty. The binding comes back in
+    // `decision_binding_json` (same shape); `found` false means no default.
+    optional string image_model_id = 8;
 }
 
 message GetDefaultProviderCredentialsResponse {
