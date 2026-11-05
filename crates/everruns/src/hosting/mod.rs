@@ -8,6 +8,9 @@
 #[cfg(all(feature = "hosting-conformance", not(target_arch = "wasm32")))]
 pub mod conformance;
 mod request_metadata;
+/// Experimental: an Agent's runtime over host-owned backends, outside Engine.
+#[cfg(feature = "external-runtime")]
+pub mod runtime;
 pub mod services;
 pub mod spi;
 

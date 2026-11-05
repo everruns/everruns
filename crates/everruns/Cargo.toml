@@ -62,6 +62,9 @@ harness = false
 test = true
 
 [features]
+# Experimental: build an Agent's in-process runtime over host-owned backends
+# (`hosting::runtime`), for hosts that schedule and replicate turns themselves.
+external-runtime = []
 # Opt-in, native test harness for downstream SessionHosting implementations.
 hosting-conformance = ["builtins"]
 # Default features stay offline: the facade includes the contained session
@@ -400,6 +403,10 @@ name = "model_catalog"
 required-features = ["openai"]
 
 # Host orchestration tests run under the facade's explicit batteries.
+[[test]]
+name = "external_runtime"
+required-features = ["external-runtime"]
+
 [[test]]
 name = "host"
 path = "tests/host/main.rs"

@@ -755,6 +755,19 @@ impl Agent {
         self.plugin_warnings.clone()
     }
 
+    #[cfg(feature = "external-runtime")]
+    pub(crate) async fn build_external_runtime(
+        &self,
+        backends: HostBackends,
+        session_id: SessionId,
+        event_sink: Option<Arc<dyn EventSink>>,
+    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
+        self.runtime_builder(backends, session_id, None, None, event_sink, None, None)
+            .await?
+            .build()
+            .await
+    }
+
     #[cfg(test)]
     pub(crate) async fn build_runtime_with_backends(
         &self,
