@@ -263,7 +263,7 @@ impl ActsAsArrangement {
             .await
             .unwrap()
             .unwrap();
-        let settings = server.settings.unwrap();
+        let settings = server.settings;
         let oauth = &settings["oauth"];
         // Seed the current persisted envelope. oauth_client owns this fixed
         // binding tuple; an unwrapped secret is a legacy grant, not a refreshable one.
