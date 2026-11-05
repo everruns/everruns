@@ -916,6 +916,7 @@ runtime values.
 **TM-LLM-007, Prompt Injection (ACCEPTED):**
 Indirect prompt injection via tool results or user messages is an inherent LLM limitation. Mitigations:
 - Role separation (system, user, assistant, tool_result)
+- Local compaction uses escaped JSON-line role/tool envelopes and asks summaries to retain attribution, user adoption, and uncertainty across rounds. Summaries remain model-generated context, not authorization or verified evidence; this does not harden provider-native opaque compaction. See [Compaction](../runtime-resources/compaction.md).
 - Max iteration limit prevents infinite loops
 - No automatic code execution without registered tool
 - Monitoring via usage tracking
