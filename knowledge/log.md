@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-05
+
+- MCP OAuth retains validated resource binding across persistence and token
+  rotation. Legacy grants reauthorize at refresh; web grants reject changed
+  OAuth configuration before exchanging secrets.
+
 ## 2026-11-03
 
 - Add bounded immutable trace index caching, planner-free session/locator reads,

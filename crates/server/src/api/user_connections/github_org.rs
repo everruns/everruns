@@ -159,6 +159,7 @@ pub(crate) async fn authorize_link(
         popup: query.popup.unwrap_or(false),
         code_verifier: String::new(),
         github_installation_id: None,
+        mcp_config_hash: None,
     };
     begin_installation(&state, config, jar, pending).await
 }

@@ -17,7 +17,10 @@ use crate::kernel_imports::{
     contracts::url_validation::validate_safe_url,
     mcp_oauth_provider_id_for_uuid,
 };
-use crate::oauth_client::{OAuthCodeExchangeRequest, exchange_oauth_code, org_scoped_egress};
+use crate::oauth_client::{
+    McpRefreshGrant, OAuthCodeExchangeRequest, exchange_oauth_code, mcp_oauth_config_hash,
+    org_scoped_egress,
+};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -316,6 +319,9 @@ struct PendingOAuthState {
     /// access to it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     github_installation_id: Option<i64>,
+    /// Server-ledger hash binds this browser round trip to its original config.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mcp_config_hash: Option<String>,
 }
 
 // ============================================================================
@@ -1063,6 +1069,10 @@ async fn authorize_connection_inner(
         popup,
         code_verifier,
         github_installation_id: None,
+        mcp_config_hash: updated_settings
+            .oauth
+            .as_ref()
+            .map(|oauth| mcp_oauth_config_hash(&row.url, oauth)),
     };
     register_pending_setup(&state, &pending).await?;
     let cookie = Cookie::build((
@@ -1227,6 +1237,17 @@ async fn complete_mcp_oauth_callback(
         StatusCode::BAD_REQUEST,
         "OAuth metadata missing for MCP server".to_string(),
     ))?;
+    let config_hash = mcp_oauth_config_hash(&row.url, &oauth);
+    if pending.mcp_config_hash.as_deref() != Some(config_hash.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "MCP OAuth settings changed; sign in again".into(),
+        ));
+    }
+    let resource = oauth.resource.clone().ok_or((
+        StatusCode::BAD_REQUEST,
+        "MCP OAuth resource binding is missing; sign in again".into(),
+    ))?;
     let client_id = oauth.client_id.ok_or((
         StatusCode::BAD_REQUEST,
         "OAuth client_id missing".to_string(),
@@ -1257,6 +1278,15 @@ async fn complete_mcp_oauth_callback(
         },
     )
     .await?;
+
+    let refresh_grant = token.refresh_token.as_ref().map(|refresh_token| {
+        McpRefreshGrant {
+            refresh_token: refresh_token.clone(),
+            resource,
+            config_hash,
+        }
+        .encode()
+    });
 
     let expires_at = token
         .expires_in
@@ -1299,8 +1329,7 @@ async fn complete_mcp_oauth_callback(
                 access_token_encrypted: encryption
                     .encrypt_string(&token.access_token)
                     .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-                refresh_token_encrypted: token
-                    .refresh_token
+                refresh_token_encrypted: refresh_grant
                     .as_deref()
                     .map(|value| encryption.encrypt_string(value))
                     .transpose()
@@ -1364,8 +1393,7 @@ async fn complete_mcp_oauth_callback(
                             .encrypt_string(&token.access_token)
                             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
                     ),
-                    refresh_token_encrypted: token
-                        .refresh_token
+                    refresh_token_encrypted: refresh_grant
                         .as_deref()
                         .map(|value| encryption.encrypt_string(value))
                         .transpose()
@@ -1417,8 +1445,7 @@ async fn complete_mcp_oauth_callback(
                         .encrypt_string(&token.access_token)
                         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
                 ),
-                refresh_token_encrypted: token
-                    .refresh_token
+                refresh_token_encrypted: refresh_grant
                     .as_deref()
                     .map(|value| encryption.encrypt_string(value))
                     .transpose()

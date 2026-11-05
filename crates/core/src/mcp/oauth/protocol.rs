@@ -83,6 +83,9 @@ pub enum OAuthError {
     /// No refresh token is available, so the grant cannot be renewed.
     #[error("token set has no refresh token")]
     NotRefreshable,
+    /// Legacy grants have no trustworthy resource; only a new login can bind them.
+    #[error("MCP OAuth resource binding is missing; sign in again")]
+    ReauthorizationRequired,
     /// The egress boundary refused or failed the request.
     #[error("egress failure during {what}: {message}")]
     Egress {
@@ -265,6 +268,10 @@ pub struct TokenSet {
     /// Token endpoint that issued this set, so a refresh is self-contained.
     #[serde(default)]
     pub token_endpoint: Option<String>,
+    /// Exact resource selected and validated at authorization time. Missing on
+    /// legacy records, which must reauthorize before refreshing.
+    #[serde(default)]
+    pub resource: Option<String>,
     /// Client id used to obtain it.
     #[serde(default)]
     pub client_id: Option<String>,
@@ -603,7 +610,7 @@ impl<'a> OAuthClient<'a> {
         let response = self
             .post_form(token_endpoint, &form, "code exchange")
             .await?;
-        Ok(response.into_token_set(token_endpoint, client, None))
+        Ok(response.into_token_set(token_endpoint, client, None, resource))
     }
 
     /// Renew an access token from its refresh token.
@@ -623,6 +630,11 @@ impl<'a> OAuthClient<'a> {
                 what: "token refresh",
                 message: "token set has no token endpoint".to_string(),
             })?;
+        let resource = tokens
+            .resource
+            .as_deref()
+            .filter(|resource| !resource.trim().is_empty())
+            .ok_or(OAuthError::ReauthorizationRequired)?;
         let client = RegisteredClient {
             client_id: tokens.client_id.clone().unwrap_or_default(),
             client_secret: tokens.client_secret.clone(),
@@ -631,6 +643,8 @@ impl<'a> OAuthClient<'a> {
         let mut form = BTreeMap::new();
         form.insert("grant_type", "refresh_token".to_string());
         form.insert("refresh_token", refresh_token.to_string());
+        // THREAT[TM-MCP-008]: never rediscover or infer the audience on refresh.
+        form.insert("resource", resource.to_string());
         if !client.client_id.is_empty() {
             form.insert("client_id", client.client_id.clone());
         }
@@ -640,7 +654,12 @@ impl<'a> OAuthClient<'a> {
         let response = self
             .post_form(token_endpoint, &form, "token refresh")
             .await?;
-        Ok(response.into_token_set(token_endpoint, &client, tokens.refresh_token.clone()))
+        Ok(response.into_token_set(
+            token_endpoint,
+            &client,
+            tokens.refresh_token.clone(),
+            Some(resource),
+        ))
     }
 }
 
@@ -663,6 +682,7 @@ impl TokenResponse {
         token_endpoint: &str,
         client: &RegisteredClient,
         carried_refresh_token: Option<String>,
+        resource: Option<&str>,
     ) -> TokenSet {
         TokenSet {
             expires_at: self
@@ -673,6 +693,7 @@ impl TokenResponse {
             scope: self.scope,
             access_token: self.access_token,
             token_endpoint: Some(token_endpoint.to_string()),
+            resource: resource.map(str::to_owned),
             client_id: (!client.client_id.is_empty()).then(|| client.client_id.clone()),
             client_secret: client.client_secret.clone(),
         }
@@ -1037,6 +1058,7 @@ mod tests {
             expires_at: Some(Utc::now() - ChronoDuration::seconds(1)),
             scope: None,
             token_endpoint: Some("https://auth.example.com/token".to_string()),
+            resource: Some("https://mcp.example.com/".to_string()),
             client_id: Some("client-1".to_string()),
             client_secret: None,
         };
@@ -1044,6 +1066,7 @@ mod tests {
         let renewed = client.refresh(&existing).await.expect("refresh");
 
         assert_eq!(renewed.access_token, "at-2");
+        assert_eq!(renewed.resource, existing.resource);
         assert_eq!(
             renewed.refresh_token.as_deref(),
             Some("rt-1"),
@@ -1062,6 +1085,7 @@ mod tests {
             expires_at: None,
             scope: None,
             token_endpoint: Some("https://auth.example.com/token".to_string()),
+            resource: Some("https://mcp.example.com/".to_string()),
             client_id: None,
             client_secret: None,
         };
@@ -1114,6 +1138,7 @@ mod tests {
             expires_at: None,
             scope: Some("mcp:read".to_string()),
             token_endpoint: Some("https://auth.example.com/token".to_string()),
+            resource: Some("https://mcp.example.com/".to_string()),
             client_id: Some("client-1".to_string()),
             client_secret: Some("cs-secret".to_string()),
         };
@@ -1145,6 +1170,7 @@ mod tests {
             expires_at: Some(now + ChronoDuration::seconds(30)),
             scope: None,
             token_endpoint: None,
+            resource: None,
             client_id: None,
             client_secret: None,
         };

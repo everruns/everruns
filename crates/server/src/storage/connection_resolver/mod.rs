@@ -32,8 +32,8 @@ use super::{
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService};
 use crate::oauth_client::{
-    EgressOAuthRefreshExchange, OAuthRefreshError, OAuthRefreshExchange, OAuthRefreshRequest,
-    OAuthTokenResponse,
+    EgressOAuthRefreshExchange, McpRefreshGrant, OAuthRefreshError, OAuthRefreshExchange,
+    OAuthRefreshRequest, OAuthTokenResponse, mcp_oauth_config_hash,
 };
 
 const OAUTH_REFRESH_SKEW: Duration = Duration::seconds(60);
@@ -82,7 +82,7 @@ struct OAuthClientConfig {
     token_endpoint: String,
     client_id: String,
     client_secret: Option<String>,
-    resource: Option<String>,
+    config_hash: String,
     /// The server's org, to which the refresh request is attributed.
     org_id: i64,
 }
@@ -421,12 +421,13 @@ impl DbConnectionResolver {
         if settings.auth_mode != McpServerAuthMode::OAuth {
             return Ok(None);
         }
-        self.oauth_client_config_from_settings(org_id, settings.oauth.as_ref())
+        self.oauth_client_config_from_settings(org_id, &row.url, settings.oauth.as_ref())
     }
 
     fn oauth_client_config_from_settings(
         &self,
         org_id: i64,
+        server_url: &str,
         oauth: Option<&McpServerOAuthSettings>,
     ) -> Result<Option<OAuthClientConfig>> {
         let Some(oauth) = oauth else {
@@ -451,7 +452,7 @@ impl DbConnectionResolver {
             token_endpoint,
             client_id,
             client_secret,
-            resource: oauth.resource.clone(),
+            config_hash: mcp_oauth_config_hash(server_url, oauth),
             org_id,
         }))
     }
@@ -459,7 +460,7 @@ impl DbConnectionResolver {
     async fn exchange_refresh(
         &self,
         config: OAuthClientConfig,
-        refresh_token: String,
+        grant: &McpRefreshGrant,
     ) -> std::result::Result<OAuthTokenResponse, OAuthRefreshError> {
         match self
             .oauth_refresh
@@ -467,8 +468,8 @@ impl DbConnectionResolver {
                 token_endpoint: config.token_endpoint,
                 client_id: config.client_id,
                 client_secret: config.client_secret,
-                refresh_token,
-                resource: config.resource,
+                refresh_token: grant.refresh_token.clone(),
+                resource: Some(grant.resource.clone()),
                 org_id: config.org_id,
             })
             .await
@@ -559,10 +560,16 @@ impl DbConnectionResolver {
         let Some(config) = self.oauth_client_config(session_id, server_id).await? else {
             return Ok(None);
         };
-        let Ok(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
+        let Some(mut grant) = McpRefreshGrant::decode(&refresh_token, &config.config_hash) else {
+            return Ok(None); // Legacy or changed config: reconnect, never guess an audience.
+        };
+        let Ok(token) = self.exchange_refresh(config, &grant).await else {
             return Ok(None);
         };
-        let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
+        if let Some(rotated) = &token.refresh_token {
+            grant.refresh_token = rotated.clone();
+        }
+        let rotated_refresh = grant.encode();
         let expires_at = Self::expiry_from_response(&token);
         // THREAT[TM-TOOL-025]: replace the complete rotated grant in one
         // storage transaction before exposing the new access token.
@@ -584,7 +591,7 @@ impl DbConnectionResolver {
                         })?,
                     refresh_token_encrypted: Some(
                         self.encryption
-                            .encrypt_string(rotated_refresh)
+                            .encrypt_string(&rotated_refresh)
                             .map_err(|e| {
                                 AgentLoopError::store(format!(
                                     "Failed to encrypt OAuth refresh token: {e}"
@@ -669,7 +676,10 @@ impl DbConnectionResolver {
         let Some(config) = config else {
             return Ok(None);
         };
-        let token = match self.exchange_refresh(config, refresh_token.clone()).await {
+        let Some(mut grant) = McpRefreshGrant::decode(&refresh_token, &config.config_hash) else {
+            return Ok(None);
+        };
+        let token = match self.exchange_refresh(config, &grant).await {
             Ok(token) => token,
             Err(OAuthRefreshError::InvalidGrant) => {
                 self.db
@@ -684,7 +694,10 @@ impl DbConnectionResolver {
             }
             Err(OAuthRefreshError::Failed(_)) => return Ok(None),
         };
-        let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
+        if let Some(rotated) = &token.refresh_token {
+            grant.refresh_token = rotated.clone();
+        }
+        let rotated_refresh = grant.encode();
         let fresh_access_token = token.access_token.clone();
         let updated = self
             .db
@@ -702,7 +715,7 @@ impl DbConnectionResolver {
                         })?,
                     refresh_token_encrypted: self
                         .encryption
-                        .encrypt_string(rotated_refresh)
+                        .encrypt_string(&rotated_refresh)
                         .map_err(|e| {
                             AgentLoopError::store(format!(
                                 "Failed to encrypt OAuth refresh token: {e}"

@@ -325,6 +325,16 @@ async fn identity_oauth_callback_stores_only_an_identity_grant() {
             .unwrap(),
         "identity-access"
     );
+    let persisted = state
+        .encryption
+        .as_ref()
+        .unwrap()
+        .decrypt_to_string(grant.refresh_token_encrypted.as_deref().unwrap())
+        .unwrap();
+    let saved: McpRefreshGrant = serde_json::from_str(&persisted).unwrap();
+    assert_eq!(saved.refresh_token, "identity-refresh");
+    assert_eq!(Some(saved.config_hash), pending.mcp_config_hash);
+    assert_eq!(saved.resource, "https://8.8.8.8/mcp");
     assert!(
         state
             .db
@@ -333,6 +343,50 @@ async fn identity_oauth_callback_stores_only_an_identity_grant() {
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn oauth_callback_rejects_configuration_changed_after_authorization() {
+    let (state, org, server_id, agent_id, _) = identity_oauth_fixture(true).await;
+    let provider = mcp_oauth_provider_id_for_uuid(server_id);
+    let (jar, _) = begin_identity_oauth(state.clone(), org.clone(), server_id, agent_id)
+        .await
+        .unwrap();
+    let pending = pending_state(&jar, &provider);
+    let row = state
+        .db
+        .get_mcp_server(org.org_id, server_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut settings = McpServerService::settings_from_row(&row);
+    settings.oauth.as_mut().unwrap().resource = Some("https://mcp.linear.app/changed".into());
+    state
+        .db
+        .update_mcp_server_settings_any_owner(
+            org.org_id,
+            server_id,
+            serde_json::to_value(settings).unwrap(),
+        )
+        .await
+        .unwrap();
+    let error = complete_mcp_oauth_callback(
+        &state,
+        Ok(org),
+        server_id,
+        &provider,
+        &pending,
+        &OAuthCallbackQuery {
+            code: Some("code".into()),
+            state: Some(pending.state.clone()),
+            error: None,
+            error_description: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    assert!(error.1.contains("settings changed"));
 }
 
 #[tokio::test]
@@ -666,6 +720,7 @@ fn github_setup_validates_the_canonical_pending_state() {
         popup: false,
         code_verifier: String::new(),
         github_installation_id: None,
+        mcp_config_hash: None,
     };
     let jar = CookieJar::new().add(Cookie::new(
         oauth_state_cookie_name("github"),

@@ -170,6 +170,17 @@ is the issuer), the token is bound to the server with a `resource` indicator
 supplies only the callback leg, a loopback listener for a CLI, a redirect
 route for the control plane. Persistence is the `McpTokenStore` trait.
 
+The validated resource is part of the stored grant, not a value rediscovered at
+refresh time. Code exchange, encrypted or file persistence, refresh-token rotation,
+and process restart retain its exact spelling. Metadata absence at initial login
+uses the configured MCP URL after the same validation. Legacy records without a
+resource remain readable and their existing access token can run until refresh is
+needed; refresh then requires a new login, without contacting the token endpoint.
+The web host also binds the authorization round trip and refresh grant to the
+server URL and OAuth configuration. Changed settings require reconnecting, rather
+than sending an old grant to a new endpoint or assigning it another audience.
+
+
 Outbound login can negotiate Client ID Metadata Documents (CIMD) through
 `prepare_login_with_options`. A host-supplied configured or saved registration
 wins; otherwise an explicitly advertised CIMD capability selects the host's
