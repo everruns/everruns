@@ -20,6 +20,7 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde_json::{Value, json};
 
+mod code_task;
 mod model_view;
 
 use crate::slack_action::{
@@ -84,7 +85,11 @@ impl Capability for SlackCapability {
              message created. `channel` and `timestamp` come from the Slack message you are \
              replying to: copy them exactly from its `[slack channel=... timestamp=...]` annotation, \
              including every fractional digit. Never infer the timestamp from a date. Prefer a reaction over a \
-             message when you only need to acknowledge something.",
+             message when you only need to acknowledge something. In a Slack Code task, use \
+             slack_code_task to keep repository context, a real diff and the summary current after \
+             meaningful changes. Use the publication revision on the task input, then the latest \
+             returned revision. When the task is finished and validation is recorded, queue a final \
+             summary with complete=true; the runtime archives only after the turn ends.",
         )
     }
 
@@ -97,6 +102,7 @@ impl Capability for SlackCapability {
             Box::new(SlackUpdateMessageTool),
             Box::new(SlackLookupUserTool),
             Box::new(SlackUploadFileTool),
+            Box::new(code_task::SlackCodeTaskTool),
         ]
     }
 
@@ -145,6 +151,9 @@ async fn run(context: &ToolContext, action: SlackAction) -> ToolExecutionResult 
 
 fn outcome_to_json(outcome: SlackActionOutcome) -> Value {
     match outcome {
+        SlackActionOutcome::CodeTaskUpdated { revision } => {
+            json!({"queued":true,"revision":revision})
+        }
         SlackActionOutcome::MessagePosted { channel, timestamp } => json!({
             "success": true, "channel": channel, "timestamp": timestamp,
         }),
@@ -720,6 +729,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn code_review_reads_the_attached_workspace_not_the_session_keyspace() {
+        use everruns_core::host::InMemorySessionFileStore;
+        use everruns_core::session_files::SessionFileSystem;
+        let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::CodeTaskUpdated {
+            revision: 1,
+        }));
+        let mut context = context_with(invoker.clone())
+            .with_workspace_id(everruns_contracts::typed_id::WorkspaceId::new());
+        let files = Arc::new(InMemorySessionFileStore::new());
+        files
+            .write_file(context.session_id, "/review.diff", "STALE", "text")
+            .await
+            .unwrap();
+        let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n";
+        files
+            .write_file(context.workspace_fs_key(), "/review.diff", diff, "text")
+            .await
+            .unwrap();
+        context.file_store = Some(files);
+        let result = code_task::SlackCodeTaskTool
+            .execute_with_context(
+                json!({
+                    "expected_revision":0,"context":[],"summary":"Review","diff_path":"/review.diff"
+                }),
+                &context,
+            )
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::Success(_)),
+            "{result:?}"
+        );
+        let seen = invoker.seen.lock().unwrap();
+        let SlackAction::CodeTask { request } = &seen[0] else {
+            panic!("wrong action")
+        };
+        let request: Value = serde_json::from_str(request).unwrap();
+        assert_eq!(request["diff"], diff);
+        assert!(request.get("diff_path").is_none());
+    }
+
+    #[tokio::test]
     async fn add_reaction_forwards_the_action() {
         let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::ReactionAdded {
             already_reacted: false,
@@ -933,6 +983,7 @@ mod tests {
                 "slack_update_message",
                 "slack_lookup_user",
                 "slack_upload_file",
+                "slack_code_task",
             ]
         );
     }

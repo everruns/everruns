@@ -499,7 +499,9 @@ async fn begin_install(
                         org.org_id,
                         existing.team_id.as_deref(),
                         &existing.app_id,
-                        &super::events::slack_bot_scopes(config.agent_surface_enabled),
+                        &crate::domains::agent_channels::record::slack_channel::slack_scopes(
+                            &config,
+                        ),
                     )
                     .await
                     .map_err(provisioning_error_response)?;
@@ -571,6 +573,7 @@ async fn begin_install(
         &redirect_uri,
         team_id_for_consent.as_deref(),
         config.agent_surface_enabled,
+        config.code_channels_enabled,
     );
     Ok(Json(BeginInstallResponse { authorize_url }))
 }
@@ -633,7 +636,7 @@ pub(crate) async fn begin_reconsent(
                 org_id,
                 provisioned.team_id.as_deref(),
                 &provisioned.app_id,
-                &super::events::slack_bot_scopes(config.agent_surface_enabled),
+                &crate::domains::agent_channels::record::slack_channel::slack_scopes(&config),
             )
             .await?;
     }
@@ -660,6 +663,7 @@ pub(crate) async fn begin_reconsent(
         &redirect_uri,
         team_id.as_deref(),
         config.agent_surface_enabled,
+        config.code_channels_enabled,
     ))
 }
 
@@ -669,8 +673,13 @@ fn authorize_url(
     redirect_uri: &str,
     team_id: Option<&str>,
     agent_surface_enabled: bool,
+    code_channels_enabled: bool,
 ) -> String {
-    let scopes = super::events::slack_bot_scopes(agent_surface_enabled).join(",");
+    let mut scopes = super::events::slack_bot_scopes(agent_surface_enabled);
+    if code_channels_enabled {
+        scopes.extend(["code_channels:manage", "channels:read", "groups:read"]);
+    }
+    let scopes = scopes.join(",");
     let mut authorize_url = format!(
         "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}&scope={}",
         urlencoding_encode(client_id),
@@ -1378,6 +1387,7 @@ mod tests {
                 redirect,
                 Some("T1"),
                 agent_surface_enabled,
+                false,
             ))
             .unwrap();
             let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
@@ -1408,6 +1418,36 @@ mod tests {
                 .map(|scope| scope.as_str().unwrap())
                 .collect();
             assert_eq!(scopes, declared);
+        }
+    }
+
+    #[test]
+    fn code_consent_matches_the_scopes_used_to_update_an_existing_app() {
+        for agent_surface_enabled in [false, true] {
+            for code_channels_enabled in [false, true] {
+                let config = parse_config(&serde_json::json!({
+                    "agent_surface_enabled": agent_surface_enabled,
+                    "code_channels_enabled": code_channels_enabled,
+                }));
+                let url = url::Url::parse(&authorize_url(
+                    "client",
+                    "nonce",
+                    "https://example.com/callback",
+                    None,
+                    agent_surface_enabled,
+                    code_channels_enabled,
+                ))
+                .unwrap();
+                let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
+                let scopes: Vec<_> = params["scope"].split(',').collect();
+                assert_eq!(
+                    scopes,
+                    crate::domains::agent_channels::record::slack_channel::slack_scopes(&config)
+                );
+                for scope in ["code_channels:manage", "channels:read", "groups:read"] {
+                    assert_eq!(scopes.contains(&scope), code_channels_enabled);
+                }
+            }
         }
     }
 

@@ -101,6 +101,11 @@ Framework drops from deltas. Rules carried over from the Slack dispatcher:
 - Streaming is per output message, flushed on a cadence; a guardrail
   replacement rewrites the open stream; every opened stream is stopped.
 - Status and title are advisory: a failure is logged, never fails the turn.
+- Session lifecycle is separate from progress narration. Execution publishes
+  processing, a parked tool request or completed soft-approval ask publishes
+  suspended, and ordinary turn completion/cancellation publishes active.
+  Closing the conversation is explicit, never inferred from a turn ending.
+  A parked tool request closes reply streams without a completion notice.
 - A turn that ends having delivered nothing posts exactly one short notice,
   with no error detail, plus an optional session link from the host.
 - A cancellation ends every delivery on the session once the turn boundary was

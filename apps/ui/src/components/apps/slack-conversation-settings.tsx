@@ -147,3 +147,37 @@ export function SlackAgentPaneSettings({
     </div>
   );
 }
+
+export function SlackCodeSettings({
+  enabled,
+  configured,
+  onChange,
+  idPrefix = "slack",
+}: {
+  enabled: boolean;
+  configured: boolean;
+  onChange: (enabled: boolean) => void;
+  idPrefix?: string;
+}) {
+  const ui = useUiTranslations();
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <div className="flex items-center justify-between gap-4">
+        <Label htmlFor={`${idPrefix}_code_channels`}>{ui("Slack Code channels")}</Label>
+        <Switch id={`${idPrefix}_code_channels`} checked={enabled} onCheckedChange={onChange} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {ui(
+          "Channel mentions create a shared coding task. Teammates and thread replies use one session. Direct messages keep their existing behavior.",
+        )}
+      </p>
+      {enabled && configured && (
+        <p className="text-xs text-muted-foreground">
+          {ui(
+            "Save changes, update the existing Slack app with a fresh manifest under Configure manually, and reinstall it to grant the permission.",
+          )}
+        </p>
+      )}
+    </div>
+  );
+}

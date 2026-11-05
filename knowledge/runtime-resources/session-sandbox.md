@@ -111,6 +111,15 @@ resolves the configured provider and delegates through the trait. After a
 completed shell or file mutation, the provider checkpoint is persisted before
 the tool result is returned to the runtime.
 
+A requested working directory gates the entire shell command, including every
+line: a missing directory must run no user command in the provider's default
+directory. Shell comments must not consume the adapter's closing wrapper.
+
+Review publication reads the active sandbox filesystem, with size and encoding
+validation, rather than an older virtual-workspace copy. A failed sandbox read
+does not fall back to VFS. Virtual-only sessions use their attached workspace's
+file-store key, including shared workspaces.
+
 Initial session files are copied into a newly created managed workspace exactly
 once before the first tool call. The managed target removes the inherited VFS
 file and Bashkit shell capabilities, so every tool sees the same `/workspace`.

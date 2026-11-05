@@ -30,6 +30,12 @@
 
 - Preserve cached prompt prefixes during skill installation with recorded inventory updates, bounded stable discovery, explicit removals and transcript-based replay. See [Skills Registry](project/skills-registry.md#cache-stable-inventory-disclosure).
 
+- Fail closed for every line of a Daytona command when its requested working directory is missing, and preserve trailing shell comments. Read Slack Code review diffs from the active sandbox or attached workspace instead of a stale VFS copy. See [managed sandbox runtime](runtime-resources/session-sandbox.md).
+
+- Qualified real-model/Daytona Slack Code diff publication, clearing and completion/archive through signed test inputs, plus stopped delivery across restart. Human/private-origin qualification remains outstanding. See [Slack Code](integrations/slack-code.md#qualification).
+
+- Completed Slack Code backend narration and catalog integration; live Slack accepts an empty diff snapshot for clearing the permanent Code tab. Preserve newer content through exact publication receipts. See [Slack Code](integrations/slack-code.md).
+
 - Add bounded exact-edit recovery hints from the authorized read snapshot, with conservative per-hunk already-applied evidence and unchanged atomic editing. See [Session Filesystem](runtime-resources/file-store.md#exact-edit-recovery-diagnostics).
 - Normalize canonical Unicode and segment multilingual words in the shared scoped discovery index. See [Tool Search](execution/tool-search.md).
 
@@ -46,6 +52,12 @@
 - Add the captioned Cloudflare chat recording to its walkthrough and example README. See [Product Video Knowledge](docs/product-videos.md).
 
 ## 2026-10-30
+
+- Live [Slack Code](integrations/slack-code.md#qualification) API smoke verifies
+  creation reuse, public-origin privacy, assignment, status/context/diff and
+  archive. Correct conversation inspection to use query parameters. Diff
+  singleton removal remains a live Slack contract blocker; full runtime and
+  collaboration qualification are pending.
 
 * **Chat pre-merge security pins.** Carry the latest ZIP and Undici fixes into
   the example's independent lockfiles while retaining its qualified Worker
@@ -92,6 +104,8 @@
 
 ## 2026-10-29
 
+- Implemented the [Slack Code](integrations/slack-code.md) durable task worker, shared session routing, review projection, requester hard approvals and opt-in installation. Live release qualification still requires private-origin and two-person Slack acceptance, provider-delivered events, and live reopen.
+
 - Add an unmounted [bounded managed host-dispatch component](foundations/managed-dispatch.md): host admission and preallocated identity, immutable supplier requests, canonical receipt review and explicit transactional journaling. Preserve worker/isolation boundaries and require supplier/host qualification before activation.
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
 
@@ -125,6 +139,8 @@
 - Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
 
 ## 2026-10-28
+
+- Started [Slack Code](integrations/slack-code.md) with a typed session lifecycle, documented status payloads and scoped root/legacy controls; recorded remaining implementation and release gates.
 
 - Preserve provider attribution for Knowledge embeddings and retain deployment-owned index operation receipts separately from host pricing. See [Knowledge Indexing and Storage](runtime-resources/knowledge-indexing.md).
 - Unified console and Work Chat generative UI on a shared 69-component A2UI 1.0 catalog, with generated prompts, message actions, legacy compatibility and browser qualification. See [A2UI](ui/a2ui.md).

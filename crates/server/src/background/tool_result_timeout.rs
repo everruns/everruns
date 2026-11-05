@@ -406,6 +406,7 @@ async fn resolve_expired_approvals(
     };
     match resolve_tool_approvals(
         &ApprovalServices {
+            external_actor: None,
             db,
             event_service,
             runner,

@@ -17,6 +17,7 @@
 
 pub mod actions;
 pub mod approvals;
+pub(crate) mod code;
 pub mod delivery;
 pub mod events;
 pub(crate) mod host;

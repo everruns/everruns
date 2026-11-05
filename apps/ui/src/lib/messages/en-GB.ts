@@ -11,6 +11,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Open in Everruns": "Open in Everruns",
   Expand: "Expand",
   "Loading page": "Loading page",
+  "Slack Code channels": "Slack Code channels",
+  "Channel mentions create a shared coding task. Teammates and thread replies use one session. Direct messages keep their existing behavior.":
+    "Channel mentions create a shared coding task. Teammates and thread replies use one session. Direct messages keep their existing behaviour.",
+
   "Changes affect only this estimate.": "Changes affect only this estimate.",
   "This content could not be displayed.": "This content could not be displayed.",
   "The message could not be sent.": "The message could not be sent.",

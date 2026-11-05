@@ -10,9 +10,9 @@
 
 use async_trait::async_trait;
 use everruns_core::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReactionSurface, ChannelStreamDelivery,
-    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
-    OutboundChannelMessage,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReactionSurface, ChannelSessionState,
+    ChannelStreamDelivery, DeliveryContext as ChannelDeliveryContext,
+    DeliveryResult as ChannelDeliveryResult, OutboundChannelMessage,
 };
 pub(crate) mod turn_adapter;
 use crate::domains::agent_channels::record::exposure;
@@ -232,6 +232,9 @@ pub(crate) use reactions::emoji_for_slack_reaction;
 mod streams;
 use streams::classify_slack_failure;
 
+#[cfg(test)]
+mod session_tests;
+
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
 /// Slack's agent-surface methods, in one place.
 ///
@@ -247,16 +250,21 @@ const SLACK_TITLE_MAX_CHARS: usize = 250;
 
 #[async_trait]
 impl ChannelAgentSurface for SlackDeliveryAdapter {
-    async fn set_status(
+    async fn set_session_state(
         &self,
-        status: &str,
+        state: ChannelSessionState,
         context: &ChannelDeliveryContext,
     ) -> ChannelDeliveryResult {
-        // The pane keys status off the thread, so a thread_ts is required; a
-        // channel post has none and has no status line to set either.
+        // Until code channels have verified bindings, a thread is required.
         if context.thread_ref.is_empty() {
             return ChannelDeliveryResult::Ok;
         }
+        let status = match state {
+            ChannelSessionState::Processing => "processing",
+            ChannelSessionState::Active => "active",
+            ChannelSessionState::Suspended => "suspended",
+            ChannelSessionState::Closed => "closed",
+        };
         let payload = serde_json::json!({
             "channel_id": context.channel_id,
             "thread_ts": context.thread_ref,
@@ -273,6 +281,16 @@ impl ChannelAgentSurface for SlackDeliveryAdapter {
             Ok(_) => ChannelDeliveryResult::Ok,
             Err(e) => classify_slack_failure(e),
         }
+    }
+
+    async fn set_status(
+        &self,
+        _status: &str,
+        _context: &ChannelDeliveryContext,
+    ) -> ChannelDeliveryResult {
+        // The unified Slack API has no custom loading message. Narration must
+        // never be sent as a lifecycle value or inferred to mean task closure.
+        ChannelDeliveryResult::Ok
     }
 
     async fn set_title(

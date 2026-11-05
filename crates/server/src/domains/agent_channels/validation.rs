@@ -58,6 +58,17 @@ pub(crate) fn normalize_and_validate_channel_config(
                     CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
                 })?;
             validate_session_binding(&channel_type, config.session_strategy)?;
+            if config.code_channels_enabled
+                && !config.signing_secret.trim().is_empty()
+                && config
+                    .team_id
+                    .as_deref()
+                    .is_none_or(|team| team.trim().is_empty())
+            {
+                return Err(CommandError::bad_request(
+                    "Slack Code requires the Slack workspace ID before configuring webhook credentials",
+                ));
+            }
         }
         ChannelType::AgUi => {
             let config: AgUiChannelConfig = serde_json::from_value(channel_config.clone())
@@ -642,6 +653,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
             for key in [
+                "code_channels_enabled",
                 "agent_surface_enabled",
                 "tool_visibility",
                 "generic_tool_text",
@@ -968,6 +980,7 @@ mod tests {
             "webhook_verified_at": "2026-10-03T10:00:00Z",
             "first_message_received_at": "2026-10-03T10:01:00Z",
             "agent_surface_enabled": true,
+            "code_channels_enabled": true,
             "tool_visibility": "none",
             "generic_tool_text": "Working"
         });
@@ -980,6 +993,7 @@ mod tests {
             "webhook_verified_at",
             "first_message_received_at",
             "agent_surface_enabled",
+            "code_channels_enabled",
             "tool_visibility",
             "generic_tool_text",
         ] {

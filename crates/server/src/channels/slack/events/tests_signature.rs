@@ -173,6 +173,42 @@ fn test_event_matches_slack_scope_accepts_matching_team_and_channel() {
     assert!(event_matches_slack_scope(&config, Some("T123"), &event));
 }
 #[test]
+fn test_session_controls_use_the_same_coordinates_as_scope_checks() {
+    let mut config = test_config(SessionBinding::Thread);
+    config.channel_id = Some("D1".into());
+    for (payload, accepted) in [
+        (
+            serde_json::json!({"assistant_thread": {"channel_id": "D1", "thread_ts": "1.0"}}),
+            true,
+        ),
+        (
+            serde_json::json!({"channel": "D1", "thread_ts": "1.0"}),
+            true,
+        ),
+        (
+            serde_json::json!({"channel": "D1", "assistant_thread": {"channel_id": "D2", "thread_ts": "1.0"}}),
+            false,
+        ),
+        (
+            serde_json::json!({"channel": "D2", "assistant_thread": {"channel_id": "D1", "thread_ts": "1.0"}}),
+            false,
+        ),
+        (
+            serde_json::json!({"assistant_thread": {"channel_id": "D2", "thread_ts": "1.0"}}),
+            false,
+        ),
+    ] {
+        let mut payload = payload;
+        payload["type"] = serde_json::json!("agent_session_stopped");
+        let event: SlackEvent = serde_json::from_value(payload).unwrap();
+        assert_eq!(
+            event_matches_slack_scope(&config, Some("T1"), &event),
+            accepted
+        );
+    }
+}
+
+#[test]
 fn test_supported_slack_message_subtypes() {
     for subtype in [None, Some("file_share"), Some("thread_broadcast")] {
         assert!(
