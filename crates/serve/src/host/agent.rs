@@ -105,6 +105,9 @@ impl Host {
                 Err(_) => {}
             }
         }
+        if let Some(images) = &self.app.inner.config.images {
+            builder = builder.capability(images.capability());
+        }
         builder = match self.app.inner.config.sandbox.kind {
             SandboxKind::None => builder,
             SandboxKind::Local => builder.capability(everruns::FileSystem),

@@ -4318,6 +4318,7 @@ version = "0.50.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.23.1",
  "chrono",
  "everruns",
  "everruns-capabilities",
@@ -4327,6 +4328,7 @@ dependencies = [
  "everruns-integrations",
  "everruns-test-support",
  "futures",
+ "image",
  "reqwest",
  "rstest",
  "serde_json",
