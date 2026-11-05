@@ -15,6 +15,7 @@ mod anthropic_profiles;
 mod anthropic_capabilities;
 mod enumeration;
 mod gpt6;
+mod image_profiles;
 mod model_id_match;
 mod realtime;
 mod speed;
@@ -257,6 +258,7 @@ const fn md_service(
 // ...) are reachable via Responses-capable gateways (e.g. OpenRouter) and the
 // Chat Completions path, but never Azure.
 const OPENAI: &[&str] = &["openai", "openrouter", "azure_openai", "openai_completions"];
+const OPENAI_IMAGES: &[&str] = &["openai", "azure_openai", "openrouter"];
 const OPENAI_COMPAT: &[&str] = &["openai", "openrouter", "openai_completions"];
 const ANTHROPIC: &[&str] = &["anthropic"];
 const GEMINI: &[&str] = &["gemini"];
@@ -342,6 +344,76 @@ static REGISTRY: &[ModelDescriptor] = &[
         ModelVendor::OpenAi,
         OPENAI,
         ServiceKind::Realtime,
+    ),
+    // Image models (`ServiceKind::Images`). GPT Image is served at the
+    // OpenAI-compatible Images API: first-party, Azure deployments, and
+    // OpenRouter's `/api/v1/images` (which masks GIF/SVG, see
+    // `image_profiles::mask_for_surface`). Never Chat Completions.
+    md_service(
+        &["gpt-image-2.6-flare", "openai/gpt-image-2.6-flare"],
+        ModelVendor::OpenAi,
+        OPENAI_IMAGES,
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gpt-image-2.6-sunburst", "openai/gpt-image-2.6-sunburst"],
+        ModelVendor::OpenAi,
+        OPENAI_IMAGES,
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gpt-image-2.5-flare", "openai/gpt-image-2.5-flare"],
+        ModelVendor::OpenAi,
+        OPENAI_IMAGES,
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gpt-image-2.5-sunburst", "openai/gpt-image-2.5-sunburst"],
+        ModelVendor::OpenAi,
+        OPENAI_IMAGES,
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gpt-image-2", "openai/gpt-image-2"],
+        ModelVendor::OpenAi,
+        OPENAI_IMAGES,
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gpt-image-1.5"],
+        ModelVendor::OpenAi,
+        &["openai", "azure_openai"],
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gpt-image-1-mini", "openai/gpt-image-1-mini"],
+        ModelVendor::OpenAi,
+        OPENAI_IMAGES,
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gpt-image-1", "openai/gpt-image-1"],
+        ModelVendor::OpenAi,
+        OPENAI_IMAGES,
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["muse-image-1.0", "meta/muse-image"],
+        ModelVendor::Meta,
+        &["meta", "openrouter"],
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gemini-3.1-flash-image", "google/gemini-3.1-flash-image"],
+        ModelVendor::Google,
+        &["openrouter"],
+        ServiceKind::Images,
+    ),
+    md_service(
+        &["gemini-3-pro-image", "google/gemini-3-pro-image"],
+        ModelVendor::Google,
+        &["openrouter"],
+        ServiceKind::Images,
     ),
     md(&["o3"], ModelVendor::OpenAi, OPENAI),
     md(&["o3-pro"], ModelVendor::OpenAi, OPENAI),
@@ -615,6 +687,7 @@ pub fn get_model_profile(provider_type: &str, model_id: &str) -> Option<ModelPro
     if provider_type != "openai" {
         profile.verbosity = None;
     }
+    image_profiles::mask_for_surface(provider_type, &mut profile);
     Some(profile)
 }
 
@@ -802,6 +875,7 @@ fn authored_profile_data(canonical: &str) -> Option<ModelProfile> {
         .or_else(|| meta_profile_data(canonical))
         .or_else(|| third_party_profile_data(canonical))
         .or_else(|| llmsim_profile_data(canonical))
+        .or_else(|| image_profiles::image_profile_data(canonical))
 }
 
 mod meta_profiles;
@@ -889,6 +963,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
         _ => None,
     }
@@ -957,6 +1032,7 @@ fn jev_profile(name: &str) -> ModelProfile {
             state_tokens: Some(32_000),
             request_tokens: Some(64_000),
         }),
+        images: None,
     }
 }
 

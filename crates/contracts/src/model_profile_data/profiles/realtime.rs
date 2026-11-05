@@ -34,6 +34,7 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // GPT-Realtime-2.1. Source: models.dev (openai provider). Cost is left
@@ -72,6 +73,7 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
         _ => None,
     }

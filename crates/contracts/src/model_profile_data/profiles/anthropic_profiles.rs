@@ -54,6 +54,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude Fable 5 (previous Fable release; still served, below Fable 5.1)
@@ -105,6 +106,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude Opus 5.5 (current Opus; successor to Opus 5 at a lower price)
@@ -155,6 +157,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude Opus 5 (previous Opus; below Opus 5.5, above Opus 4.8)
@@ -205,6 +208,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude 4.8 series
@@ -253,6 +257,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude 4.7 series
@@ -299,6 +304,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude 4.6 series
@@ -342,6 +348,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // 1M-context twins of the base profiles above. Same pricing and
@@ -422,6 +429,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude Sonnet 5
@@ -472,6 +480,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         "claude-sonnet-4-6" => Some(ModelProfile {
@@ -513,6 +522,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude 4.5 series
@@ -555,6 +565,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         // Claude Haiku 5.5 (current Haiku; successor to Haiku 4.5)
@@ -615,6 +626,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         "claude-haiku-4-5" => Some(ModelProfile {
@@ -656,6 +668,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }),
 
         _ => None,

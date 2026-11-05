@@ -1547,6 +1547,7 @@ impl AnthropicModelInfo {
             supports_server_compaction: false, // only curated direct profiles prove it
             model_card_url: None,
             decisions: None,
+            images: None,
         }
     }
 

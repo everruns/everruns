@@ -1,4 +1,4 @@
-use crate::openai_image::GptImageGenCapability;
+use super::ImageGenerationCapability;
 use everruns_contracts::runtime::capabilities::Capability;
 use everruns_contracts::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 use everruns_contracts::tool_types::ToolCall;
@@ -6,7 +6,7 @@ use serde_json::json;
 
 #[test]
 fn catalog_tools_narrate_all_phases_without_exposing_bodies() {
-    let tools = GptImageGenCapability.tools();
+    let tools = ImageGenerationCapability::new().tools();
     assert!(!tools.is_empty());
     for tool in tools {
         let call = ToolCall {

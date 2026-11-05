@@ -208,6 +208,10 @@ pub use everruns_integrations::filesystem::FileSystem;
 /// capability that hands the same tool to an agent.
 #[cfg(feature = "typesafe")]
 pub use everruns_integrations::typesafe::{Jev, TypeSafeAI};
+#[cfg(feature = "images")]
+pub mod images;
+#[cfg(feature = "images")]
+pub use images::{EnvImageCredentials, ImageGeneration};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations::web_fetch::WebFetch;
 #[cfg(feature = "web-search")]

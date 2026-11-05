@@ -147,6 +147,7 @@ impl StorageBackend {
 }
 
 mod decision_defaults;
+mod image_defaults;
 mod harnesses_sessions;
 mod identity;
 mod identity_cache;

@@ -29,8 +29,8 @@ pub mod lua;
 pub mod modal;
 #[cfg(feature = "openai-decisions")]
 pub mod openai_decisions;
-#[cfg(feature = "openai-image")]
-pub mod openai_image;
+#[cfg(feature = "image-generation")]
+pub mod image_generation;
 #[cfg(feature = "openrouter")]
 pub mod openrouter;
 #[cfg(feature = "parallel")]

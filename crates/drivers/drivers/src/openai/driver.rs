@@ -698,6 +698,10 @@ pub fn descriptor() -> DriverDescriptor {
             ServiceKind::Embeddings,
             #[cfg(not(target_arch = "wasm32"))]
             ServiceKind::Decisions,
+            // GPT Image through `openai::images`, sent over the host's
+            // images transport by the image generation capability.
+            #[cfg(not(target_arch = "wasm32"))]
+            ServiceKind::Images,
         ],
         // Matches the openai SDK's own variables.
         credential_schema: CredentialFormSchema::api_key(
@@ -746,6 +750,12 @@ pub fn azure_descriptor() -> DriverDescriptor {
         ),
         base_url_env: None,
         recommended_models: Some(AZURE_OPENAI_RECOMMENDED),
+        // Image model deployments on the resource's `/openai/v1` surface.
+        services: vec![
+            ServiceKind::Chat,
+            #[cfg(not(target_arch = "wasm32"))]
+            ServiceKind::Images,
+        ],
         ..DriverDescriptor::chat_only(DriverId::AzureOpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), OpenAIChatDriver::new())

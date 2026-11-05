@@ -331,6 +331,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::models::get_default_model,
         api::models::get_default_decision_model,
         api::models::set_default_decision_model,
+        api::models::get_default_image_model,
+        api::models::set_default_image_model,
         api::models::update_model,
         api::models::delete_model,
         api::capabilities::list_capabilities,

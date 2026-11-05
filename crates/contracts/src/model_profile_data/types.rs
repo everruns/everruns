@@ -419,6 +419,55 @@ pub struct DecisionModelProfile {
     pub request_tokens: Option<usize>,
 }
 
+/// What an image model can make, so tools and pickers read it instead of
+/// hard-coding model ids (knowledge/execution/image-generation.md).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ImageModelProfile {
+    /// Output formats: `png`, `jpeg`, `webp`, `gif` (animated), `svg`.
+    pub formats: Vec<String>,
+    /// Accepted `quality` values, `auto` included when supported.
+    pub qualities: Vec<String>,
+    /// Recommended sizes, `auto` included when supported.
+    pub sizes: Vec<String>,
+    /// Whether the model edits existing images.
+    pub edits: bool,
+    /// Whether edits accept a `markup` layer (drawn comments on a transparent PNG).
+    pub markup: bool,
+    /// Whether the model takes `complexity` (`low`, `medium`, `high`).
+    pub complexity: bool,
+    /// Most images one request returns.
+    pub max_count: u8,
+    /// Animated GIF limits, present when `formats` lists `gif`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gif: Option<GifLimits>,
+}
+
+impl ImageModelProfile {
+    /// Whether the model produces `format`.
+    pub fn supports_format(&self, format: &str) -> bool {
+        self.formats.iter().any(|value| value.eq_ignore_ascii_case(format))
+    }
+}
+
+/// Animated GIF request limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct GifLimits {
+    /// Fewest frames per animation.
+    pub min_frames: u8,
+    /// Most frames per animation.
+    pub max_frames: u8,
+    /// Frames used when the request does not say.
+    pub default_frames: u8,
+    /// Shortest frame duration in milliseconds.
+    pub min_frame_ms: u16,
+    /// Longest frame duration in milliseconds.
+    pub max_frame_ms: u16,
+    /// Frame duration used when the request does not say.
+    pub default_frame_ms: u16,
+}
+
 /// LLM Model Profile describing model capabilities
 /// Based on models.dev structure (<https://models.dev/api.json>)
 ///
@@ -501,6 +550,9 @@ pub struct ModelProfile {
     /// Typed semantics when this profile describes a decision model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decisions: Option<DecisionModelProfile>,
+    /// What the model makes when this profile describes an image model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub images: Option<ImageModelProfile>,
 }
 
 impl ModelProfile {
@@ -541,6 +593,7 @@ impl ModelProfile {
             supports_server_compaction: false,
             model_card_url: None,
             decisions: None,
+            images: None,
         }
     }
 }

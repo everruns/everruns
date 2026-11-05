@@ -14,6 +14,7 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             decision_model_id: Some(model_id.unwrap_or("").to_owned()),
             system_decisions: false,
+            image_model_id: None,
         };
         let response = self
             .client
@@ -57,6 +58,33 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
         serde_json::from_str(&response.decision_binding_json)
             .map(SystemDecisionModel::Organization)
             .map_err(|_| AgentLoopError::store("Invalid decision model binding"))
+    }
+
+    async fn get_image_model(
+        &self,
+        model_id: Option<&str>,
+        session_id: SessionId,
+    ) -> Result<Option<crate::core::connection_services::ImageModelBinding>> {
+        let request = proto::GetDefaultProviderCredentialsRequest {
+            org_id: self.org_id,
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            image_model_id: Some(model_id.unwrap_or("").to_owned()),
+            ..Default::default()
+        };
+        let response = self
+            .client
+            .inner
+            .client()
+            .get_default_provider_credentials(request)
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        if !response.found {
+            return Ok(None);
+        }
+        serde_json::from_str(&response.decision_binding_json)
+            .map(Some)
+            .map_err(|_| AgentLoopError::store("Invalid image model binding"))
     }
 
     async fn get_default_provider_credentials(

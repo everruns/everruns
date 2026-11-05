@@ -311,6 +311,9 @@ pub fn descriptor() -> DriverDescriptor {
             everruns_contracts::ServiceKind::Chat,
             #[cfg(not(target_arch = "wasm32"))]
             everruns_contracts::ServiceKind::Decisions,
+            // `/api/v1/images` (GPT Image, Muse Image, Gemini image models).
+            #[cfg(not(target_arch = "wasm32"))]
+            everruns_contracts::ServiceKind::Images,
         ],
         provider: Some(Arc::new(|config| {
             let account = provider(

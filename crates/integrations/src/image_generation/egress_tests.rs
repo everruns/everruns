@@ -3,8 +3,11 @@
 //! org-configured provider base URL cannot reach internal addresses or forward
 //! the decrypted provider key to an unapproved origin.
 
-use super::*;
-use crate::openai_image::test_egress::LoopbackTestEgress;
+use super::test_egress::LoopbackTestEgress;
+use super::tools::GenerateImageTool;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use serde_json::json;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::EgressService;
@@ -50,9 +53,7 @@ fn store(base_url: String) -> Arc<MutableProviderStore> {
 }
 
 async fn generate(context: &ToolContext, streaming: bool) -> ToolExecutionResult {
-    let tool = GenerateImageTool {
-        config: json!({ "partial_images": if streaming { 1 } else { 0 } }),
-    };
+    let tool = GenerateImageTool::new(json!({ "partial_images": if streaming { 1 } else { 0 } }));
     tool.execute_with_context(json!({ "prompt": "otter" }), context)
         .await
 }
@@ -100,10 +101,7 @@ async fn changed_base_url_with_retained_key_is_revalidated_per_call() {
         .mount(&approved)
         .await;
     let internal = silent_server().await;
-    let port = reqwest::Url::parse(&internal.uri())
-        .unwrap()
-        .port()
-        .unwrap();
+    let port: u16 = internal.uri().rsplit(':').next().unwrap().parse().unwrap();
 
     let store = store(format!("{}/v1", approved.uri()));
     let egress = LoopbackTestEgress::new();
@@ -167,4 +165,20 @@ async fn missing_egress_service_fails_closed() {
         "{result:?}"
     );
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+/// A public-looking provider hostname that resolves to any private,
+/// loopback, link-local or metadata address is refused before any bytes
+/// leave, whether the call streams or not.
+#[tokio::test]
+async fn rebound_hostnames_are_refused_for_every_blocked_answer() {
+    use super::test_egress::{BLOCKED_ANSWERS, rebinding_egress};
+    for answer in BLOCKED_ANSWERS {
+        let egress = Arc::new(rebinding_egress(answer.parse().unwrap()));
+        let context = context_with(store("https://images.example.test/v1".into()), egress);
+        for streaming in [false, true] {
+            let result = generate(&context, streaming).await;
+            assert!(result.is_error(), "{answer} must be refused");
+        }
+    }
 }

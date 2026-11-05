@@ -35,7 +35,7 @@ let _ = std::any::type_name::<FileSystemCapability>();
 | `github` | `github` | GitHub repository tools |
 | `lua` | `lua` | Lua code mode |
 | `openai-decisions` | `openai_decisions` | OpenAI decision services |
-| `openai-image` | `openai_image` | OpenAI image generation |
+| `image-generation` | `image_generation` | Image generation (GPT Image, Muse, Gemini; stills, GIF, SVG) |
 | `openrouter` | `openrouter` | OpenRouter provider integration |
 | `parallel` | `parallel` | Parallel search |
 | `slack-channel` | `slack_channel` | Slack channel driver (Events API in, `chat.postMessage` out) |

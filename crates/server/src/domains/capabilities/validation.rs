@@ -633,7 +633,7 @@ mod tests {
     async fn invalid_builtin_capability_config_is_bad_request() {
         let db = Arc::new(StorageBackend::test_database());
         let caps = vec![AgentCapabilityConfig::with_config(
-            "gpt_image_gen",
+            "image_generation",
             serde_json::json!({ "partial_images": 4 }),
         )];
 

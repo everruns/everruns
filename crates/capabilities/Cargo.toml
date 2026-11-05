@@ -56,7 +56,7 @@ hosted-integration-catalog = [
     "everruns-integrations/e2b",
     "everruns-integrations/github",
     "everruns-integrations/modal",
-    "everruns-integrations/openai-image",
+    "everruns-integrations/image-generation",
     "everruns-integrations/parallel",
     "everruns-integrations/typesafe",
     "everruns-integrations/typesafe-hosted",

@@ -244,6 +244,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("models default", "The organization's default model."),
     (
+        "models images-default",
+        "The organization's default image model.",
+    ),
+    (
         "models selection",
         "Review and atomically change which models are enabled.",
     ),

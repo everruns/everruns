@@ -457,3 +457,65 @@ impl Command for SetDefaultDecisionModel {
         Ok(model)
     }
 }
+
+/// Read the organization's default image model.
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct GetDefaultImageModel {}
+#[command(
+    name = "get_default_image_model",
+    category = "models",
+    description = "Get the organization's default image model.",
+    method = "GET",
+    cli = CliRoute::new(&["models", "images-default"], "get").with_examples(&[CliExample::new("Check which model agents use for images", "everruns models images-default get")]),
+    path = "/v1/models/images-default",
+    policy = LLM_MODEL_VIEW,
+)]
+impl Command for GetDefaultImageModel {
+    type Output = Option<ModelWithProvider>;
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let id = ctx.db.get_image_default(ctx.caller.org_id).await?;
+        let models = q::service(ctx).list_all(&ctx.caller).await?;
+        Ok(id.and_then(|id| models.into_iter().find(|m| m.id.uuid() == id)))
+    }
+}
+
+/// Select or clear the organization's default image model.
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct SetDefaultImageModel {
+    /// Prefixed saved model ID of an image model; omit or pass null to clear
+    /// the default, which makes agents use GPT Image 2.6 Flare.
+    pub model_id: Option<String>,
+}
+
+#[command(
+    name = "set_default_image_model",
+    category = "models",
+    description = "Set the organization's default image model.",
+    method = "PUT",
+    cli = CliRoute::new(&["models", "images-default"], "set").with_examples(&[CliExample::new("Make GPT Image 2.6 Sunburst the default image model", "everruns models images-default set --model-id model_01h9 --reason 'Sharper text in diagrams'")]),
+    path = "/v1/models/images-default",
+    policy = LLM_MODEL_MANAGE,
+)]
+impl Command for SetDefaultImageModel {
+    type Output = Option<ModelWithProvider>;
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let model = match self.model_id {
+            None => None,
+            Some(id) => {
+                let models = q::service(ctx).list_all(&ctx.caller).await?;
+                let model = models
+                    .into_iter()
+                    .find(|m| m.id.to_string() == id)
+                    .ok_or_else(|| CommandError::bad_request("Image model not found"))?;
+                if model.service != everruns_contracts::ServiceKind::Images || !model.enabled {
+                    return Err(CommandError::bad_request("Enabled image model required"));
+                }
+                Some(model)
+            }
+        };
+        ctx.db
+            .set_image_default(ctx.caller.org_id, model.as_ref().map(|m| m.id.uuid()))
+            .await?;
+        Ok(model)
+    }
+}

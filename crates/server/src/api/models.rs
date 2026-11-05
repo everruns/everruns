@@ -301,6 +301,10 @@ pub fn routes(state: AppState) -> Router {
             get(get_default_decision_model).put(set_default_decision_model),
         )
         .route(
+            "/v1/models/images-default",
+            get(get_default_image_model).put(set_default_image_model),
+        )
+        .route(
             "/v1/providers/{provider_id}/models",
             post(create_model).get(list_provider_models),
         )
@@ -475,6 +479,27 @@ pub async fn set_default_decision_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<crate::domains::models::commands::SetDefaultDecisionModel>,
+) -> ApiResult<Option<ModelWithProvider>> {
+    Ok(Json(req.run(&state.ctx(&org)).await?))
+}
+
+#[utoipa::path(get, path = "/v1/models/images-default", description = "Get the organization's default image model. Agents whose Image Generation capability names no model use it; no selection returns null and agents use GPT Image 2.6 Flare.", responses((status = 200, description = "Selected image model", body = Option<ModelWithProvider>)), tag = "models")]
+pub async fn get_default_image_model(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<Option<ModelWithProvider>> {
+    Ok(Json(
+        crate::domains::models::commands::GetDefaultImageModel {}
+            .run(&state.ctx(&org))
+            .await?,
+    ))
+}
+
+#[utoipa::path(put, path = "/v1/models/images-default", description = "Select an enabled image model as the organization default. Omit model_id or set it to null to clear the default.", request_body = crate::domains::models::commands::SetDefaultImageModel, responses((status = 200, description = "Selected image model", body = Option<ModelWithProvider>)), tag = "models")]
+pub async fn set_default_image_model(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<crate::domains::models::commands::SetDefaultImageModel>,
 ) -> ApiResult<Option<ModelWithProvider>> {
     Ok(Json(req.run(&state.ctx(&org)).await?))
 }

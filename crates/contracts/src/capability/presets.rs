@@ -101,6 +101,9 @@ impl BuiltInHarnessPreset {
                 CapabilityRef::new("subagents"),
                 CapabilityRef::new("session_tasks"),
                 web_search(),
+                // Images, animated GIFs and SVGs out of the box on the org's
+                // default image model (GPT Image 2.6 Flare when unset).
+                CapabilityRef::new("image_generation"),
             ],
             Self::BashkitWorker => vec![CapabilityRef::new("bashkit_shell")],
         }
@@ -209,6 +212,7 @@ pub fn generic_capabilities() -> Vec<CapabilityRef> {
         // permission wall, so it costs nothing on safe work and is overridden
         // per agent with `{"mode": "off"}`.
         CapabilityRef::new("soft_approval"),
+        CapabilityRef::new("image_generation"),
     ]
 }
 
@@ -252,6 +256,7 @@ mod tests {
             // Workers search the web out of the box. Conversation stays plain
             // chat: an assistant that should search opts in on the agent.
             assert_eq!(ids.contains(&"web_search"), worker_kit);
+            assert_eq!(ids.contains(&"image_generation"), worker_kit);
             for opt_in in [
                 "web_fetch",
                 "session_storage",

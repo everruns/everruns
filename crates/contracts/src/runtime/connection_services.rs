@@ -40,6 +40,19 @@ pub trait ProviderCredentialStore: Send + Sync {
         Ok(SystemDecisionModel::Deployment)
     }
 
+    /// Resolve an image model for this session: the catalog model id when
+    /// given (a capability setting), otherwise the org's default image model.
+    /// `Ok(None)` means no default is chosen, so callers fall back to the
+    /// provider-type defaults below. Never falls back to another account for
+    /// an explicit id.
+    async fn get_image_model(
+        &self,
+        _model_id: Option<&str>,
+        _session_id: SessionId,
+    ) -> Result<Option<ImageModelBinding>> {
+        Ok(None)
+    }
+
     /// Resolve default credentials for a provider type (for example `openai`).
     ///
     /// Implementations may apply environment fallbacks internally, but tools
@@ -420,6 +433,10 @@ impl std::fmt::Debug for ServiceApiKeyConnection {
             .finish()
     }
 }
+
+/// A resolved image model and account: same shape as a decision binding, and
+/// it never leaves the host boundary either.
+pub type ImageModelBinding = DecisionModelBinding;
 
 /// Resolved account material stays internal to the host boundary.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]

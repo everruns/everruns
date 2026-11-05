@@ -44,6 +44,30 @@ impl WorkerServiceImpl {
                 ..Default::default()
             }));
         }
+        if let Some(model_id) = req.image_model_id.as_deref() {
+            let session_id = req
+                .session_id
+                .as_ref()
+                .ok_or_else(|| Status::invalid_argument("Session is required"))?;
+            let binding = self
+                .provider_resolver_service
+                .resolve_image_model(
+                    req.org_id,
+                    (!model_id.is_empty()).then_some(model_id),
+                    parse_uuid(Some(session_id))?,
+                )
+                .await
+                .map_err(|_| Status::failed_precondition("Image model is unavailable"))?;
+            return Ok(Response::new(GetDefaultProviderCredentialsResponse {
+                found: binding.is_some(),
+                decision_binding_json: binding
+                    .map(|b| serde_json::to_string(&b))
+                    .transpose()
+                    .map_err(|_| Status::internal("Invalid binding"))?
+                    .unwrap_or_default(),
+                ..Default::default()
+            }));
+        }
         if let Some(model_id) = req.decision_model_id.as_deref() {
             let session_id = req
                 .session_id

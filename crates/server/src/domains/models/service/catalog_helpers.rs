@@ -191,6 +191,7 @@ impl ModelService {
             supports_server_compaction: hardcoded.supports_server_compaction,
             model_card_url: hardcoded.model_card_url.or(discovered.model_card_url),
             decisions: hardcoded.decisions,
+            images: hardcoded.images.or(discovered.images),
         }
     }
 }

@@ -198,7 +198,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "github_scout" => Some("github-scout"),
         "session_file_system" => Some("file-system"),
         "infinity_context" => Some("infinity-context"),
-        "gpt_image_gen" => Some("openai-image-generation"),
+        "image_generation" => Some("image-generation"),
         "openai_tool_search" => Some("tool-search"),
         "tool_search" => Some("tool-search"),
         "auto_tool_search" => Some("tool-search"),
