@@ -25,6 +25,7 @@ Changelog: https://everruns.com/docs/changelog/2026-11-05-everruns-0-51-0/
 
 ### What's Changed
 
+- test(mcp): bind service refresh fixtures across gRPC ([#5242](https://github.com/everruns/everruns/pull/5242)) by [@chaliy](https://github.com/chaliy)
 - fix(mcp): preserve OAuth resource binding through refresh and restart ([#5239](https://github.com/everruns/everruns/pull/5239)) by [@chaliy](https://github.com/chaliy)
 - fix(compaction): preserve provenance and uncertainty ([#5240](https://github.com/everruns/everruns/pull/5240)) by [@chaliy](https://github.com/chaliy)
 - feat(images): GPT Image 2.6 with animated GIFs, org default image model and image_generation capability ([#5238](https://github.com/everruns/everruns/pull/5238)) by [@chaliy](https://github.com/chaliy)
