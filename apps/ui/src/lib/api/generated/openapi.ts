@@ -18627,7 +18627,7 @@ export interface components {
     };
     /**
      * @description What an image model can make, so tools and pickers read it instead of
-     *     hard-coding model ids (knowledge/execution/image-generation.md).
+     *     hard-coding model ids.
      */
     ImageModelProfile: {
       /** @description Whether the model takes `complexity` (`low`, `medium`, `high`). */

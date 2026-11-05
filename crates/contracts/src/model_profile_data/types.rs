@@ -420,7 +420,7 @@ pub struct DecisionModelProfile {
 }
 
 /// What an image model can make, so tools and pickers read it instead of
-/// hard-coding model ids (knowledge/execution/image-generation.md).
+/// hard-coding model ids.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ImageModelProfile {

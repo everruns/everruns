@@ -1,4 +1,4 @@
-//! Image generation service contract (knowledge/execution/image-generation.md).
+//! Image generation service contract.
 //!
 //! An [`ImagesDriver`] makes images for one bound account: the OpenAI-compatible
 //! Images API driver in `everruns-drivers` (OpenAI, Azure OpenAI, OpenRouter,

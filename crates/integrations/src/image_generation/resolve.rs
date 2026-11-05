@@ -1,7 +1,7 @@
 //! Which image model a call uses, on which provider account, and the egress
 //! transport the driver sends through.
 //!
-//! Resolution order (design: knowledge/execution/image-generation.md):
+//! Resolution order:
 //! 1. the capability's `model` setting: a catalog model id (`model_...`) is
 //!    resolved by the host and never falls back to another account; a plain
 //!    model name is looked up on the org's default provider of each type

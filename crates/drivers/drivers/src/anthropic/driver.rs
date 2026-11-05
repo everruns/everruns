@@ -1508,11 +1508,9 @@ impl AnthropicModelInfo {
             .and_then(|c| c.thinking.as_ref())
             .is_some_and(|t| t.supported);
 
-        let reasoning_effort = if reasoning {
-            self.build_reasoning_effort(caps)
-        } else {
-            None
-        };
+        let reasoning_effort = reasoning
+            .then(|| self.build_reasoning_effort(caps))
+            .flatten();
 
         let structured_output = caps
             .and_then(|c| c.structured_outputs.as_ref())

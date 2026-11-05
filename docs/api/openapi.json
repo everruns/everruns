@@ -52759,7 +52759,7 @@
       },
       "ImageModelProfile": {
         "type": "object",
-        "description": "What an image model can make, so tools and pickers read it instead of\nhard-coding model ids (knowledge/execution/image-generation.md).",
+        "description": "What an image model can make, so tools and pickers read it instead of\nhard-coding model ids.",
         "required": [
           "formats",
           "qualities",
