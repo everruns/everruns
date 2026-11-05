@@ -169,13 +169,20 @@ mod driver_tests {
                 ServiceKind::Chat,
                 ServiceKind::Realtime,
                 ServiceKind::Embeddings,
-                ServiceKind::Decisions
+                ServiceKind::Decisions,
+                ServiceKind::Images,
             ]
         );
         assert_eq!(openai.credential_schema.fields[0].name, "api_key");
         for id in [DriverId::AzureOpenAI, DriverId::OpenAICompletions] {
             let descriptor = registry.descriptor(&id).unwrap();
-            assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
+            // Azure also serves image deployments; neither serves embeddings.
+            let expected = if id == DriverId::AzureOpenAI {
+                vec![ServiceKind::Chat, ServiceKind::Images]
+            } else {
+                vec![ServiceKind::Chat]
+            };
+            assert_eq!(descriptor.services, expected);
             assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
             assert!(
                 registry

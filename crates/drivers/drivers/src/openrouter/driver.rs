@@ -397,7 +397,11 @@ mod tests {
         let descriptor = registry.descriptor(&DriverId::OpenRouter).unwrap();
         assert_eq!(
             descriptor.services,
-            vec![ServiceKind::Chat, ServiceKind::Decisions]
+            vec![
+                ServiceKind::Chat,
+                ServiceKind::Decisions,
+                ServiceKind::Images,
+            ]
         );
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
         assert_eq!(
