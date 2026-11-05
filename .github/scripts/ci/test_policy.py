@@ -302,6 +302,11 @@ class Policy(unittest.TestCase):
 
     def test_mcp_credential_changes_run_the_grpc_identity_contract(self):
         for path in [
+            'crates/core/src/mcp/oauth/protocol.rs',
+            'crates/server/src/oauth_client.rs',
+            'crates/server/src/storage/connection_resolver/mod.rs',
+            'crates/server/src/api/user_connections/mcp_callback/mod.rs',
+            'crates/server/src/api/user_connections/mcp_oauth.rs',
             'crates/server/src/domains/agents/credentials.rs',
             'crates/server/src/domains/credentials/service.rs',
             'crates/server/src/domains/resource_access/mod.rs',
@@ -309,6 +314,7 @@ class Policy(unittest.TestCase):
             'crates/server/src/worker_link/grpc_service/worker/credentials.rs',
             'crates/server/src/worker_link/direct_worker_adapters/mod.rs',
             'crates/server/tests/domain/mcp_acts_as_grpc_test.rs',
+            '.github/scripts/ci/focused.py',
         ]:
             with self.subTest(path=path):
                 self.assertIn('mcp_acts_as_grpc_test::', focused.risk_filters([path]))

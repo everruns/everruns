@@ -302,6 +302,12 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 ## Testing strategy (goal 9)
 
+OAuth protocol, callback, and credential-resolver changes select the worker gRPC
+identity contracts in PR CI. Refresh fixtures use the current bound grant envelope;
+legacy records separately prove reconnection is required before any network request.
+The selection lives in [focused CI](../../.github/scripts/ci/focused.py), with the
+boundary exercised by [gRPC tests](../../crates/server/tests/domain/mcp_acts_as_grpc_test.rs).
+
 - **`everruns-core` (`mcp` feature) unit/integration**: against a `wiremock` HTTP MCP server,
   `tools/list`, `tools/call`, SSE vs plain JSON, image extraction, error
   mapping, and SSRF blocks (localhost/private/metadata/IPv6). With `mcp-stdio`
