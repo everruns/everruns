@@ -11,7 +11,8 @@ surfaces: [api, code]
 MCP OAuth now retains the resource selected during sign-in when it saves and
 refreshes credentials, including refresh-token rotation and process restarts.
 Servers without protected-resource metadata use the validated MCP URL during
-sign-in. Changes to a platform connection's OAuth settings require reconnecting.
+sign-in. Changes to a platform connection's OAuth identity require reconnecting before
+its next refresh.
 
 Older credentials without a stored resource continue using their current access
 token until refresh is needed, then require a new sign-in. Reconnect the MCP
