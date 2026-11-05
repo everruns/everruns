@@ -58,6 +58,8 @@ Compaction never deletes or rewrites session events. Public `context.compacted` 
 
 Uses an LLM to generate a structured summary of older messages. The summary replaces those messages in context and is wrapped in `[CONVERSATION_SUMMARY]` tags so subsequent compactions can re-summarize it.
 
+Local summaries distinguish user requirements from instructions embedded in tool results or fetched material. They retain the source and basis of unresolved claims, explicit user adoption, and later confirmations or corrections through repeated summaries. Active Skills remain verbatim. These are summarizer instructions, not a guarantee of factual accuracy; native provider compaction is unchanged.
+
 You can configure:
 - Which model to use (default: same as the agent)
 - What information to preserve (decisions, files modified, errors, etc.)

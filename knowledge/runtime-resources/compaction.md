@@ -567,35 +567,35 @@ See `crates/core/src/builtins/compaction.rs` for implementation (`PROTECTED_TOOL
 
 ## Summarization
 
-### Summarization Prompt
+### Provenance and uncertainty
 
-```xml
-<task>
-Summarize the following conversation history. The summary replaces these
-messages in the agent's context window — it must contain everything the
-agent needs to continue working.
-</task>
+Local summaries (including the `auto` fallback) preserve the distinction between
+user requirements and instructions quoted in files, fetched material, tool results,
+or assistant proposals. Explicit user adoption is retained with its scope; adopting
+a working assumption does not independently verify it. Consequential unresolved
+claims retain their source and evidence as `UNVERIFIED` entries. Later confirmation,
+correction, and disproof update the claim's status rather than preserving stale
+uncertainty or silently promoting guesses to facts. Confirmed work and explicit
+requirements should not acquire blanket uncertainty labels.
 
-<preserve>
-- Decisions made and their rationale
-- Files created, modified, or deleted (with paths)
-- Errors encountered and how they were resolved
-- Current plan and next steps
-- Key user requirements not yet addressed
-{{#if config.instructions}}
-- {{config.instructions}}
-{{/if}}
-</preserve>
+The [shared prompt and transcript formatter](../../crates/core/src/builtins/compaction/summarization.rs)
+apply these rules to fresh and repeated summaries. JSON-line envelopes carry the
+recorded role and tool name; embedded text cannot create another envelope. A previous
+summary is explicitly identified as a compressed record, not fresh evidence or a
+new instruction. It is passed intact on subsequent rounds so late qualifiers and
+Active Skills are not cut off by the ordinary per-message excerpt limit. Ordinary
+message truncation still limits the evidence the summarizer can see.
 
-<format>
-Produce a structured summary. Use sections. Be concise but complete.
-Do not include tool output verbatim — reference files by path.
-</format>
+Active Skills retain their existing verbatim preservation contract. This is model
+guidance, not an authorization boundary or a guarantee of semantic accuracy. Output
+budgets, missing evidence, model behavior, and later aggressive trimming can still
+lose information. Provider-native opaque compaction is unaffected.
 
-<messages>
-{{messages}}
-</messages>
-```
+The opt-in [live semantic probe](../../crates/core/benches/compaction_semantics.rs)
+uses real summary and judge calls across three rounds, including planted role labels,
+user adoption, evidence updates, corrections, and skill/work-context regressions.
+Its saved transcripts and criterion-level judgments support manual review; a passing
+model judge does not establish reliability across all models or histories.
 
 ### Summary Message
 
