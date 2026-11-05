@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-05
+
+- Local compaction preserves source attribution, scoped user adoption, and claim status through repeated summaries; documented its semantic evaluation and model-dependent limits.
+
 ## 2026-11-03
 
 - Add bounded immutable trace index caching, planner-free session/locator reads,
