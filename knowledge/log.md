@@ -2,6 +2,9 @@
 
 ## 2026-11-05
 
+- MCP OAuth retains validated resource binding across persistence and token
+  rotation. Legacy grants reauthorize at refresh; web grants reject changed
+  OAuth configuration before exchanging secrets.
 - Local compaction preserves source attribution, scoped user adoption, and claim status through repeated summaries; documented its semantic evaluation and model-dependent limits.
 
 ## 2026-11-03

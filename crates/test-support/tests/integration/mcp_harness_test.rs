@@ -369,7 +369,10 @@ async fn refresh_rotates_and_revoke_invalidates_the_latest_token() {
     let mock = MockMcpOAuthServer::default();
     let oauth = OAuthClient::new(&mock, EgressRequestKind::Mcp);
     let verifier = "rotation-verifier";
-    let code = mock.authorize(challenge(verifier), None, None).unwrap();
+    let resource = mock.mcp_url();
+    let code = mock
+        .authorize_with_resource(challenge(verifier), None, None, Some(&resource))
+        .unwrap();
     let client = RegisteredClient {
         client_id: "test-client".to_string(),
         client_secret: None,
@@ -381,11 +384,15 @@ async fn refresh_rotates_and_revoke_invalidates_the_latest_token() {
             &code,
             verifier,
             "http://127.0.0.1:7777/callback",
-            None,
+            Some(&resource),
         )
         .await
         .unwrap();
+    // Reload the stored grant before refreshing. The mock authorization server
+    // rejects any exchange whose resource differs from the original grant.
+    let first = serde_json::from_value(serde_json::to_value(first).unwrap()).unwrap();
     let second = oauth.refresh(&first).await.unwrap();
+    assert_eq!(second.resource.as_deref(), Some(resource.as_str()));
     assert_eq!(second.refresh_token.as_deref(), Some("refresh-2"));
 
     let old_error = oauth

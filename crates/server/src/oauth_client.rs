@@ -7,10 +7,57 @@ use crate::kernel_imports::{
 };
 use async_trait::async_trait;
 use axum::http::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::api::common::sanitized_bad_gateway;
+
+/// The refresh secret and its original audience travel in one encrypted value.
+/// Plain legacy refresh tokens cannot prove a binding and require reauthorization.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct McpRefreshGrant {
+    pub refresh_token: String,
+    pub resource: String,
+    pub config_hash: String,
+}
+
+/// Binds pending authorization and persisted refresh grants to the same server
+/// and OAuth configuration, without putting client secrets in browser cookies.
+pub(crate) fn mcp_oauth_config_hash(
+    server_url: &str,
+    oauth: &crate::domains::mcp_servers::McpServerOAuthSettings,
+) -> String {
+    use sha2::{Digest, Sha256};
+    // Hash only binding inputs in a fixed order. Adding unrelated settings or
+    // changing requested scopes must not invalidate every existing grant.
+    // Secret/key rotation does not change the client identity or audience.
+    // These concrete types cannot fail JSON serialization.
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(&(
+            server_url,
+            &oauth.issuer,
+            &oauth.authorization_endpoint,
+            &oauth.token_endpoint,
+            &oauth.client_id,
+            &oauth.resource,
+        ))
+        .expect("OAuth settings JSON"),
+    ))
+}
+
+impl McpRefreshGrant {
+    pub fn encode(&self) -> String {
+        serde_json::to_string(self).expect("MCP refresh grant JSON")
+    }
+
+    pub fn decode(value: &str, config_hash: &str) -> Option<Self> {
+        let grant: Self = serde_json::from_str(value).ok()?;
+        if grant.config_hash != config_hash || grant.resource.is_empty() {
+            return None;
+        }
+        Some(grant)
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct OAuthTokenResponse {
@@ -369,6 +416,29 @@ pub(crate) const OAUTH_BLOCKED_BY_NETWORK_POLICY: &str =
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grant_binding_survives_secret_rotation_but_rejects_retargeting() {
+        let mut oauth = crate::domains::mcp_servers::McpServerOAuthSettings {
+            token_endpoint: Some("https://auth.example/token".into()),
+            client_id: Some("client".into()),
+            resource: Some("https://mcp.example/resource".into()),
+            ..Default::default()
+        };
+        let binding = mcp_oauth_config_hash("https://mcp.example/mcp", &oauth);
+        oauth.client_secret_encrypted = Some("rotated-ciphertext".into());
+        oauth.scope = Some("new-requested-scope".into());
+        assert_eq!(
+            binding,
+            mcp_oauth_config_hash("https://mcp.example/mcp", &oauth)
+        );
+        oauth.resource = Some("https://mcp.example/another-resource".into());
+        assert_ne!(
+            binding,
+            mcp_oauth_config_hash("https://mcp.example/mcp", &oauth)
+        );
+    }
+
     use std::collections::BTreeMap;
 
     struct InvalidGrantEgress;

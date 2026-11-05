@@ -322,6 +322,7 @@ async fn without_protected_resource_metadata_the_origin_is_the_issuer() {
     );
     let oauth = stored_settings(&state, &server).await.oauth.unwrap();
     assert_eq!(oauth.issuer.as_deref(), Some("https://8.8.8.8"));
+    assert_eq!(oauth.resource.as_deref(), Some("https://8.8.8.8/mcp"));
 }
 
 #[tokio::test]
