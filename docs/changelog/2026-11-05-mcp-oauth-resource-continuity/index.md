@@ -2,6 +2,7 @@
 title: MCP OAuth keeps its audience when tokens refresh
 description: MCP connections preserve the authorized resource through token refresh and restart, and older grants request a new login instead of guessing an audience.
 date: 2026-11-05
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [platform, framework]

@@ -2,6 +2,7 @@
 title: "Compaction keeps claim sources and uncertainty"
 description: "Local summaries preserve user intent, evidence, working assumptions and later corrections across repeated compaction, with Active Skills retained."
 date: 2026-11-05
+release: "0.51.0"
 kind: improvement
 significance: minor
 products: [framework, platform, cloud]

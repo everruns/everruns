@@ -2,6 +2,7 @@
 title: Agents draw animated GIFs and SVGs with GPT Image 2.6
 description: Image Generation now runs GPT Image 2.6 Flare by default, makes GIFs and SVGs, takes an organization default image model, and ships in Framework and serve.
 date: 2026-11-05
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud, framework]

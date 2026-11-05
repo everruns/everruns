@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.50.1"
+version = "0.51.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -496,7 +496,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.50.1"
+version = "0.51.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -541,7 +541,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.50.1"
+version = "0.51.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -576,11 +576,12 @@ dependencies = [
 
 [[package]]
 name = "everruns-drivers"
-version = "0.50.1"
+version = "0.51.0"
 dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "eventsource-stream",
  "everruns-contracts",
  "futures",
  "reqwest",
@@ -609,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations"
-version = "0.50.1"
+version = "0.51.0"
 dependencies = [
  "async-trait",
  "everruns-contracts",
@@ -625,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.50.1"
+version = "0.51.0"
 dependencies = [
  "anyhow",
  "async-trait",

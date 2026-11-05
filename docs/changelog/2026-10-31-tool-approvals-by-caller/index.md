@@ -2,6 +2,7 @@
 title: The person using an Agent approves its tools
 description: Tool calls an Agent holds for approval are answered by the person using it, in Work Chat or through the Agent API. Channels no longer pick who approves.
 date: 2026-10-31
+release: "0.51.0"
 kind: improvement
 significance: notable
 products: [platform, cloud]

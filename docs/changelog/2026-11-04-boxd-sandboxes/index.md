@@ -2,6 +2,7 @@
 title: Run Sandboxes on boxd machines that keep working while idle
 description: boxd is a Sandbox Template target and an agent capability, with region and size choices and hibernation that keeps running processes.
 date: 2026-11-04
+release: "0.51.0"
 kind: feature
 significance: minor
 products: [platform, cloud]

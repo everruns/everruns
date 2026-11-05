@@ -2,6 +2,7 @@
 title: "See which MCP client created a session or message"
 description: "MCP consent explains callback trust and full access, while session details, messages, and change history identify the registered client behind each action."
 date: 2026-11-04
+release: "0.51.0"
 kind: improvement
 significance: minor
 products: [platform, cloud]

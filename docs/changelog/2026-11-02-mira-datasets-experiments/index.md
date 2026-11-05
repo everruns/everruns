@@ -2,6 +2,7 @@
 title: Run a Mira model matrix against your hosted Everruns agents
 description: Mira now tests the agents you deployed on Everruns and publishes each run into an experiment, next to the versions Everruns ran itself.
 date: 2026-11-02
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud, mira]

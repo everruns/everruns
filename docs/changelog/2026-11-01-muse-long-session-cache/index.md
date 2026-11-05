@@ -2,6 +2,7 @@
 title: "Long Muse sessions read their history from the prompt cache"
 description: "Responses requests now always carry a prompt cache key, so Muse Spark caches prompts above 100k tokens instead of re-reading every call at full price."
 date: 2026-11-01
+release: "0.51.0"
 kind: fix
 significance: notable
 products: [platform, cloud, framework]

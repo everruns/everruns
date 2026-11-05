@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="560" viewBox="0 0 520 560">
+<rect x="20" y="214" width="170" height="132" fill="#0A1636" stroke="#D4A43A" stroke-width="3"/>
+<text x="40" y="250" font-family="Geist Mono" font-size="13" fill="#D4A43A">RELEASE</text>
+<text x="40" y="300" font-family="Geist" font-size="40" font-weight="600" fill="#FFFFFF">0.51.0</text>
+<text x="40" y="328" font-family="Geist Mono" font-size="13" fill="#A8B0BE">Nov 05</text>
+<path d="M190 280 H222 V130 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="258" y="106" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
+<text x="274" y="136" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Agent teams</text>
+<path d="M190 280 H222 V230 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="258" y="206" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
+<text x="274" y="236" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Conversation evals</text>
+<path d="M190 280 H222 V330 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="258" y="306" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
+<text x="274" y="336" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">MCP OAuth continuity</text>
+<path d="M190 280 H222 V430 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
+<rect x="258" y="406" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
+<text x="274" y="436" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Compaction sources</text>
+</svg>

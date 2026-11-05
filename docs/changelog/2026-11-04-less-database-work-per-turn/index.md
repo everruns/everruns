@@ -2,6 +2,7 @@
 title: "Agent turns put less load on PostgreSQL"
 description: "Servers share event commits across turns, keep a session on the worker that ran it, batch lease renewals and build reports outside the turn."
 date: 2026-11-04
+release: "0.51.0"
 kind: improvement
 significance: notable
 products: [platform, cloud]

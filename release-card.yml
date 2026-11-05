@@ -1,22 +1,22 @@
-version: 0.50.1
-date: 2026-10-31
+version: 0.51.0
+date: 2026-11-05
 headline:
-  - Customer-hosted
-  - agent workers.
+  - Agent teams.
+  - Multistep evals.
 summary:
-  - System health doctor checks the install.
-  - Sandbox snapshots from install scripts.
-  - Agent cost estimates, Framework batches.
+  - Agents share work in one conversation.
+  - MCP refresh keeps its resource.
+  - Summaries preserve sources and doubt.
 highlights:
-  - title: Customer-hosted workers
-    description: Your own agent runtime over HTTPS, with Everruns sessions and traces.
-    source: "#5057"
-  - title: System health
-    description: One report checks every part of a self-hosted install.
-    source: "#4971"
-  - title: Sandbox snapshot builder
-    description: Sandbox snapshots built from install scripts on Daytona and verified.
-    source: "#5040"
-  - title: Cost estimates
-    description: Per-task and monthly model spend from an agent's configuration.
-    source: "#5050"
+  - title: Agent teams
+    description: Hand work to other agents with shared files and one conversation.
+    source: "#5202"
+  - title: Conversation evals
+    description: Simulated users and tool fixtures test complete conversations.
+    source: "#5160"
+  - title: MCP OAuth continuity
+    description: Keep the authorized resource through token rotation and restart.
+    source: "#5239"
+  - title: Compaction sources
+    description: Summaries retain sources, uncertainty and corrections.
+    source: "#5240"

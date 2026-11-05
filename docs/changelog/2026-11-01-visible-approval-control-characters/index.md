@@ -2,6 +2,7 @@
 title: "Tool approvals reveal hidden bidi controls"
 description: "Approval cards show directional and control characters as visible Unicode escapes, helping you inspect tool names and arguments before consenting."
 date: 2026-11-01
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [platform, cloud]

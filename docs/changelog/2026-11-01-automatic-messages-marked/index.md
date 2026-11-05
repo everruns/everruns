@@ -2,6 +2,7 @@
 title: Scheduled and triggered messages no longer look like yours
 description: Messages written by schedules, triggers, thread updates and notices are marked with who wrote them in Chat, Work Chat, the session trace and the API.
 date: 2026-11-01
+release: "0.51.0"
 kind: improvement
 significance: minor
 products: [platform, cloud]

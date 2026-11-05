@@ -2,6 +2,7 @@
 title: Tool discovery recognizes multilingual words
 description: Bounded tool discovery and tools search now match equivalent Unicode accents and words in Chinese, Japanese and Thai metadata within current access.
 date: 2026-10-31
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [platform, framework]

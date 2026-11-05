@@ -2,6 +2,7 @@
 title: "Health and Slack say when an agent's model is unavailable"
 description: "An agent whose model is off, unlisted, not a chat model or on a disabled provider opens a health issue, and channels say the agent needs fixing."
 date: 2026-11-04
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [platform, cloud]

@@ -2,6 +2,7 @@
 title: Channels and triggers tab, with Pause agent in the header
 description: The agent's Integrations tab becomes Channels and triggers, each row opens its own page, GitHub gets its own page, and Pause agent stops schedules too.
 date: 2026-11-03
+release: "0.51.0"
 kind: improvement
 significance: minor
 products: [platform, cloud]

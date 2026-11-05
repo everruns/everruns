@@ -2,6 +2,7 @@
 title: Turns out of provider credits retry smaller or wait for credits
 description: When the provider refuses a request for lack of credits, the turn retries with fewer output tokens, or checks every minute for an hour and continues.
 date: 2026-11-03
+release: "0.51.0"
 kind: improvement
 significance: notable
 products: [platform, cloud]

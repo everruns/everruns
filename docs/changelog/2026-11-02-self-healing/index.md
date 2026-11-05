@@ -2,6 +2,7 @@
 title: Repeating schedules now pause themselves, with one-click resume
 description: When a schedule keeps ending the same way, Everruns pauses it at 24 runs, records it on the finding, and lets you resume it from there.
 date: 2026-11-02
+release: "0.51.0"
 kind: feature
 significance: minor
 products: [platform, cloud]

@@ -2,6 +2,7 @@
 title: Emoji reactions on messages, for people and agents
 description: React to any user or agent message in Chat, Work Chat and the API. The agent reads reactions as a short note and can react back with a tool.
 date: 2026-11-01
+release: "0.51.0"
 kind: feature
 significance: minor
 products: [platform, cloud]

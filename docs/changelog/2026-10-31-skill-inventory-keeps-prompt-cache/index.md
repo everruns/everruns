@@ -2,6 +2,7 @@
 title: Skill installation preserves cached prompt prefixes
 description: Installing or editing skills appends a recorded inventory update instead of rewriting system instructions, preserving earlier prompt prefixes.
 date: 2026-10-31
+release: "0.51.0"
 kind: fix
 significance: notable
 products: [platform, framework, cloud]
