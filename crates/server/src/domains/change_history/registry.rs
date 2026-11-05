@@ -623,6 +623,10 @@ pub fn declared(name: &str) -> Change {
             Change::Exempt("an organization setting, recorded in the management audit log")
         }
         "set_default_decision_model" => on(K::OrganizationDecision, Updated, SubjectId::CallerOrg),
+        // Not versioned yet: it would need its own entity kind and snapshot reader.
+        "set_default_image_model" => {
+            Change::Exempt("an organization default, read back through images-default")
+        }
 
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),

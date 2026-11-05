@@ -12838,6 +12838,21 @@
   },
   {
     "category": "models",
+    "cli": "models images-default get",
+    "description": "Get the organization's default image model.",
+    "input_schema": {
+      "description": "Read the organization's default image model.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_default_image_model",
+    "output_shape": "unknown",
+    "path": "/v1/models/images-default",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "models",
     "cli": "models default get",
     "description": "Get the effective organization default model.",
     "input_schema": {
@@ -21197,6 +21212,30 @@
     "name": "set_default_decision_model",
     "output_shape": "unknown",
     "path": "/v1/models/decision-default",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "models",
+    "cli": "models images-default set",
+    "description": "Set the organization's default image model.",
+    "input_schema": {
+      "description": "Select or clear the organization's default image model.",
+      "properties": {
+        "model_id": {
+          "description": "Prefixed saved model ID of an image model; omit or pass null to clear\nthe default, which makes agents use GPT Image 2.6 Flare.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_default_image_model",
+    "output_shape": "unknown",
+    "path": "/v1/models/images-default",
     "positional_arg": null,
     "read_only": false
   },
