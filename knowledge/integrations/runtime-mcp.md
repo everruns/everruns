@@ -180,7 +180,6 @@ The web host also binds the authorization round trip and refresh grant to the
 server URL and OAuth configuration. Changed settings require reconnecting, rather
 than sending an old grant to a new endpoint or assigning it another audience.
 
-
 Outbound login can negotiate Client ID Metadata Documents (CIMD) through
 `prepare_login_with_options`. A host-supplied configured or saved registration
 wins; otherwise an explicitly advertised CIMD capability selects the host's
