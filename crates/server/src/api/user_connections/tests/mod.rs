@@ -34,6 +34,12 @@ struct FakeOAuthEgress;
 impl EgressService for FakeOAuthEgress {
     async fn send(&self, request: EgressRequest) -> everruns_core::EgressResult<EgressResponse> {
         if request.method == "POST" && request.url.ends_with("/token") {
+            let form: BTreeMap<String, String> =
+                serde_urlencoded::from_bytes(&request.body).unwrap();
+            assert_eq!(
+                form.get("resource").map(String::as_str),
+                Some("https://8.8.8.8/mcp")
+            );
             return Ok(EgressResponse {
                 status: 200,
                 headers: BTreeMap::new(),
