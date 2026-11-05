@@ -116,7 +116,10 @@ async fn gif_generation_sends_frames_and_reads_usage() {
             "frame_count": 9, "frame_duration_ms": 200
         })
     );
-    assert_eq!(response.images[0].revised_prompt.as_deref(), Some("a lantern"));
+    assert_eq!(
+        response.images[0].revised_prompt.as_deref(),
+        Some("a lantern")
+    );
     assert_eq!(
         response.usage,
         Some(ImageUsage {
@@ -212,7 +215,11 @@ async fn edit_sends_sources_and_markup_as_multipart() {
         .unwrap();
     let sent = transport.last();
     assert_eq!(sent.url, "https://api.openai.com/v1/images/edits");
-    assert!(header(&sent, "content-type").unwrap().starts_with("multipart/form-data"));
+    assert!(
+        header(&sent, "content-type")
+            .unwrap()
+            .starts_with("multipart/form-data")
+    );
     let body = String::from_utf8_lossy(&sent.body);
     assert!(body.contains("name=\"image\"; filename=\"kitchen.webp\""));
     assert!(body.contains("name=\"markup\"; filename=\"overlay.png\""));
@@ -242,8 +249,14 @@ async fn streamed_still_reports_progress() {
     assert!(transport.last().stream);
     assert_eq!(response.images[0].b64_json, "iVBORw0K");
     assert_eq!(response.usage.unwrap().output_tokens, 9);
-    assert_eq!(receiver.recv().await, Some(ImageProgress::Partial { index: 0 }));
-    assert_eq!(receiver.recv().await, Some(ImageProgress::Completed { count: 1 }));
+    assert_eq!(
+        receiver.recv().await,
+        Some(ImageProgress::Partial { index: 0 })
+    );
+    assert_eq!(
+        receiver.recv().await,
+        Some(ImageProgress::Completed { count: 1 })
+    );
 }
 
 #[tokio::test]
@@ -283,7 +296,11 @@ async fn redirects_and_errors_surface_without_the_key() {
 #[test]
 fn endpoint_url_strips_pasted_suffixes() {
     assert_eq!(
-        endpoint_url("https://api.openai.com/v1/images/generations", "images/edits").unwrap(),
+        endpoint_url(
+            "https://api.openai.com/v1/images/generations",
+            "images/edits"
+        )
+        .unwrap(),
         "https://api.openai.com/v1/images/edits"
     );
     assert!(endpoint_url("not a url", "images").is_err());

@@ -381,6 +381,24 @@ voice, greeting and speaking style for every agent. Speech uses OpenAI with
 `OPENAI_API_KEY`; without it, `dev` and `eval` use the offline simulator and
 `start` refuses calls. The agent card lists each agent's route under
 `voice.endpoints`. See [Build a voice agent](/framework/voice/).
+
+## Images
+
+An `[images]` section in `serve.toml` gives every agent the
+[Image Generation](/capabilities/image-generation/) tools, so an agent can draw
+stills, animated GIFs and SVGs:
+
+```toml
+[images]
+model = "gpt-image-2.6-flare"   # the default
+format = "png"                  # when a call picks none; "gif" animates
+```
+
+Images are saved under `/workspace/images` in the session's files, which the
+section also makes writable. Keys come from the environment:
+`OPENAI_API_KEY` (GIF and SVG need OpenAI or Azure OpenAI), or
+`OPENROUTER_API_KEY` for stills. Without the section agents get no image tools.
+
 ## Agents that use other agents
 
 An agent can hand work to other agents of the same app:

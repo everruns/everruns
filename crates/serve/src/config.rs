@@ -103,11 +103,14 @@ pub struct ImagesConfig {
 }
 
 impl ImagesConfig {
+    /// Workspace folder generated images are saved to.
+    pub const OUTPUT_DIR: &'static str = "/workspace/images";
+
     /// The capability reference agents get. Images are saved under
     /// `/workspace/images`, outside the hidden folders the workspace policy
     /// keeps read-only, so the session's files expose them.
     pub fn capability(&self) -> everruns::CapabilityRef {
-        let mut config = serde_json::json!({ "output_dir": "/workspace/images" });
+        let mut config = serde_json::json!({ "output_dir": Self::OUTPUT_DIR });
         if let Some(model) = &self.model {
             config["model"] = model.clone().into();
         }

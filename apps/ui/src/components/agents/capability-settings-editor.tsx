@@ -165,7 +165,9 @@ export function translateValidationErrors(
   return errors.map((error) => {
     const key = error.name ? VALIDATION_MESSAGE_KEYS[error.name] : undefined;
     if (!key) return error;
-    const message = formatMessage(locale, key, { value: validationMessageValue(error) });
+    const message = formatMessage(locale, key, {
+      value: validationMessageValue(error),
+    });
     return { ...error, message, stack: message };
   });
 }
@@ -191,6 +193,22 @@ function DecisionModelWidget(props: WidgetProps) {
   );
 }
 
+// Image generation: empty means the organization's default image model.
+function ImageModelWidget(props: WidgetProps) {
+  const ui = useUiTranslations();
+  return (
+    <ModelPicker
+      id={props.id}
+      service="images"
+      value={props.value || ""}
+      placeholder={ui("Organization default image model")}
+      additionalOptions={[{ value: "default", label: ui("Organization default image model") }]}
+      onChange={(value) => props.onChange(value === "default" || !value ? undefined : value)}
+      disabled={props.disabled || props.readonly}
+    />
+  );
+}
+
 function SessionTitleModelWidget(props: WidgetProps) {
   const ui = useUiTranslations();
   return (
@@ -208,6 +226,7 @@ function SessionTitleModelWidget(props: WidgetProps) {
 const CAPABILITY_CONFIG_WIDGETS = {
   SessionTitleModel: SessionTitleModelWidget,
   DecisionModel: DecisionModelWidget,
+  ImageModel: ImageModelWidget,
   CheckboxWidget,
   EmailWidget: TextWidget,
   PasswordWidget: TextWidget,

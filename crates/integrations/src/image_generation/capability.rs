@@ -9,10 +9,10 @@
 
 use super::resolve::{PLATFORM_DEFAULT_IMAGE_MODEL, is_known_image_model};
 use super::tools::{EditImageTool, GenerateImageTool};
-use everruns_contracts::runtime::connection_services::ProviderCredentialStore;
 use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
+use everruns_contracts::runtime::connection_services::ProviderCredentialStore;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::{DeferrablePolicy, ToolDefinition};
 use serde::Deserialize;
@@ -100,7 +100,9 @@ impl Capability for ImageGenerationCapability {
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         vec![
-            Box::new(GenerateImageTool::new(config.clone()).with_credentials(self.credentials.clone())),
+            Box::new(
+                GenerateImageTool::new(config.clone()).with_credentials(self.credentials.clone()),
+            ),
             Box::new(EditImageTool::new(config.clone()).with_credentials(self.credentials.clone())),
         ]
     }
@@ -398,8 +400,9 @@ pub(crate) fn parse_capability_config(
     if config.is_null() {
         return Ok(ImageGenerationConfig::default());
     }
-    let invalid =
-        |message: String| ToolExecutionResult::tool_error(format!("Invalid image_generation config: {message}"));
+    let invalid = |message: String| {
+        ToolExecutionResult::tool_error(format!("Invalid image_generation config: {message}"))
+    };
     let parsed = serde_json::from_value::<ImageGenerationConfig>(config.clone())
         .map_err(|error| invalid(error.to_string()))?;
 
@@ -412,8 +415,12 @@ pub(crate) fn parse_capability_config(
         )));
     }
     check_one_of("default_format", parsed.default_format.as_deref(), FORMATS).map_err(invalid)?;
-    check_one_of("default_quality", parsed.default_quality.as_deref(), QUALITIES)
-        .map_err(invalid)?;
+    check_one_of(
+        "default_quality",
+        parsed.default_quality.as_deref(),
+        QUALITIES,
+    )
+    .map_err(invalid)?;
     check_one_of("complexity", parsed.complexity.as_deref(), COMPLEXITIES).map_err(invalid)?;
     if parsed.partial_images > 3 {
         return Err(invalid("partial_images must be between 0 and 3".into()));
@@ -431,12 +438,15 @@ pub(crate) fn parse_capability_config(
     Ok(parsed)
 }
 
-pub(crate) fn check_one_of(field: &str, value: Option<&str>, allowed: &[&str]) -> Result<(), String> {
+pub(crate) fn check_one_of(
+    field: &str,
+    value: Option<&str>,
+    allowed: &[&str],
+) -> Result<(), String> {
     match value {
-        Some(value) if !allowed.contains(&value) => Err(format!(
-            "{field} must be one of {}",
-            allowed.join(", ")
-        )),
+        Some(value) if !allowed.contains(&value) => {
+            Err(format!("{field} must be one of {}", allowed.join(", ")))
+        }
         _ => Ok(()),
     }
 }

@@ -342,20 +342,20 @@ impl ProviderResolverService {
             .filter(|k| !k.is_empty())
             .ok_or_else(|| anyhow::anyhow!("Provider credentials required"))?;
         Ok(everruns_core::connection_services::DecisionModelBinding {
-                model_id: row.id.to_string(),
-                provider_id: row.provider_id.to_string(),
-                provider_type: provider.provider_type,
-                model: row.model_id,
-                profile_key: crate::domains::models::catalog::key(row.provider_metadata.as_ref()),
-                api_key,
-                base_url: provider.base_url,
-                headers: provider
-                    .request_options
-                    .headers
-                    .into_iter()
-                    .map(|h| (h.name, h.value))
-                    .collect(),
-            })
+            model_id: row.id.to_string(),
+            provider_id: row.provider_id.to_string(),
+            provider_type: provider.provider_type,
+            model: row.model_id,
+            profile_key: crate::domains::models::catalog::key(row.provider_metadata.as_ref()),
+            api_key,
+            base_url: provider.base_url,
+            headers: provider
+                .request_options
+                .headers
+                .into_iter()
+                .map(|h| (h.name, h.value))
+                .collect(),
+        })
     }
 
     /// Resolve a model by ID without provider credentials or endpoint details.

@@ -5,17 +5,17 @@
 
 use super::test_egress::LoopbackTestEgress;
 use super::tools::GenerateImageTool;
-use everruns_contracts::runtime::tool_context::ToolContext;
-use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
-use serde_json::json;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::EgressService;
 use everruns_contracts::runtime::connection_services::{
     ProviderCredentialStore, ProviderCredentials,
 };
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::DirectEgressService;
+use serde_json::json;
 use std::sync::{Arc, Mutex};
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 

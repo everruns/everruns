@@ -212,7 +212,6 @@ pub fn generic_capabilities() -> Vec<CapabilityRef> {
         // permission wall, so it costs nothing on safe work and is overridden
         // per agent with `{"mode": "off"}`.
         CapabilityRef::new("soft_approval"),
-        CapabilityRef::new("image_generation"),
     ]
 }
 

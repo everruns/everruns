@@ -6,11 +6,11 @@ import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-d
 
 // Organization defaults, one row per service, grouped by what they drive:
 // Chat (the model agents and sessions run on), Decisions (the Jev decision
-// model and who answers system checks), and Other services (provider-level
-// defaults). The groups follow the two kinds of default below, so a row's
+// model and who answers system checks), Images (the model Image Generation
+// draws with), and Other services (provider-level defaults). The groups follow the two kinds of default below, so a row's
 // meaning comes from its section rather than repeated row text.
 //
-// Chat and decisions default to a model; realtime, embeddings, images and
+// Chat, decisions and images default to a model; realtime, embeddings and
 // rerank default to a provider (EVE-569: tier 2 of service-bound resolution,
 // after an explicit per-consumer binding and before the single-active-provider
 // fallback). Pickers are searchable because a catalog can hold hundreds of
@@ -26,16 +26,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
-import { useDecisionDefault } from "@/hooks/use-providers";
+import { useDecisionDefault, useImageDefault } from "@/hooks/use-providers";
 import { ApiError } from "@/lib/api/client";
 import type { ModelWithProvider, Provider, SystemDecisionsSource } from "@/lib/api/types";
-import { isChatModel, isDecisionModel } from "@/lib/model-capabilities";
+import { isChatModel, isDecisionModel, isImageModel } from "@/lib/model-capabilities";
 import { compareByRecency, modelLabel } from "@/lib/model-selection";
 
 const PROVIDER_SERVICES: { key: string; label: string; description: string }[] = [
-  { key: "realtime", label: "Realtime (voice)", description: "Voice realtime sessions." },
+  {
+    key: "realtime",
+    label: "Realtime (voice)",
+    description: "Voice realtime sessions.",
+  },
   { key: "embeddings", label: "Embeddings", description: "Text embeddings." },
-  { key: "images", label: "Images", description: "Image generation." },
   { key: "rerank", label: "Rerank", description: "Search-result reranking." },
 ];
 
@@ -45,10 +48,12 @@ const defaultsSchema = z.strictObject({
   system_decisions: z.enum(["deployment", "organization"]),
   realtime_provider_id: z.string(),
   embeddings_provider_id: z.string(),
-  images_provider_id: z.string(),
   rerank_provider_id: z.string(),
 });
 const decisionSchema = z.strictObject({ decision_model_id: z.string() });
+const imageSchema = z.strictObject({ image_model_id: z.string() });
+
+export const PLATFORM_IMAGE_DEFAULT_LABEL = "Platform default · GPT Image 2.6 Flare";
 
 export const PLATFORM_DEFAULT_LABEL = "Platform default · GPT-6 Luna";
 
@@ -97,6 +102,7 @@ export function DefaultsTab({
   const { data: org } = useOrganization();
   const updateOrg = useUpdateOrganization();
   const decisionDefault = useDecisionDefault();
+  const imageDefault = useImageDefault();
   const [error, setError] = useState<string | null>(null);
 
   // The PATCH replaces the whole per-service map, and the mutation only
@@ -123,7 +129,6 @@ export function DefaultsTab({
       system_decisions: org?.system_decisions ?? "deployment",
       realtime_provider_id: org?.default_provider_per_service?.realtime ?? "",
       embeddings_provider_id: org?.default_provider_per_service?.embeddings ?? "",
-      images_provider_id: org?.default_provider_per_service?.images ?? "",
       rerank_provider_id: org?.default_provider_per_service?.rerank ?? "",
     },
     saveLabel: "Save model defaults",
@@ -153,6 +158,18 @@ export function DefaultsTab({
     writable: canManage && !decisionDefault.setDefault.isPending,
     saveLabel: "Save decision model",
     save: (values) => decisionDefault.setDefault.mutateAsync(values.decision_model_id || null),
+  });
+  const images = usePageSettingsDraft({
+    schema: imageSchema,
+    values: { image_model_id: imageDefault.data?.id ?? "" },
+    entityType: "model_defaults",
+    entityId: org?.id,
+    label: ui("Image model"),
+    formId: "image_model",
+    enabled: !!org,
+    writable: canManage && !imageDefault.setDefault.isPending,
+    saveLabel: "Save image model",
+    save: (values) => imageDefault.setDefault.mutateAsync(values.image_model_id || null),
   });
   const serviceDraft = settings.adopted
     ? Object.fromEntries(
@@ -215,6 +232,22 @@ export function DefaultsTab({
         .map((model) => ({ value: model.id, label: modelLabel(model) })),
     [models, currentDecisionId],
   );
+  const currentImageId = images.adopted ? images.values.image_model_id : imageDefault.data?.id;
+  const imageOptions = useMemo(
+    () =>
+      models
+        .filter(
+          (model) =>
+            model.id === currentImageId ||
+            (model.enabled &&
+              !model.stale &&
+              isImageModel(model) &&
+              model.provider_type !== "chatgpt"),
+        )
+        .sort(compareByRecency)
+        .map((model) => ({ value: model.id, label: imageModelLabel(model) })),
+    [models, currentImageId],
+  );
   // Personal providers are skipped by shared defaults.
   const providerOptions = useMemo(
     () =>
@@ -243,6 +276,7 @@ export function DefaultsTab({
     <div className="flex max-w-3xl flex-col gap-6">
       {settings.controls}
       {decisions.controls}
+      {images.controls}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -267,7 +301,10 @@ export function DefaultsTab({
             value={currentModelId ?? ""}
             onValueChange={(value) =>
               settings.adopted
-                ? settings.setValues({ ...settings.values, default_model_id: value })
+                ? settings.setValues({
+                    ...settings.values,
+                    default_model_id: value,
+                  })
                 : void run(() => updateOrg.mutateAsync({ default_model_id: value || null }))
             }
             placeholder={PLATFORM_DEFAULT_LABEL}
@@ -285,7 +322,10 @@ export function DefaultsTab({
             value={currentSmallModelId ?? ""}
             onValueChange={(value) =>
               settings.adopted
-                ? settings.setValues({ ...settings.values, small_model_id: value })
+                ? settings.setValues({
+                    ...settings.values,
+                    small_model_id: value,
+                  })
                 : void run(() => updateOrg.mutateAsync({ small_model_id: value || null }))
             }
             placeholder={ui("Not set · titles use session model")}
@@ -345,7 +385,9 @@ export function DefaultsTab({
                     system_decisions: value as SystemDecisionsSource,
                   })
                 : void run(() =>
-                    updateOrg.mutateAsync({ system_decisions: value as SystemDecisionsSource }),
+                    updateOrg.mutateAsync({
+                      system_decisions: value as SystemDecisionsSource,
+                    }),
                   )
             }
             disabled={busy}
@@ -364,6 +406,31 @@ export function DefaultsTab({
               </SelectItem>
             </SelectContent>
           </Select>
+        </DefaultRow>
+      </DefaultSection>
+      <DefaultSection
+        title={ui("Images")}
+        description={ui("Stills, animated GIFs and SVGs made by the Image Generation capability.")}
+      >
+        <DefaultRow
+          label={ui("Default image model")}
+          description={ui(
+            "Used when an agent's Image Generation settings name no model. GIF and SVG need GPT Image 2.6 on OpenAI or Azure OpenAI.",
+          )}
+          problem={imageDefault.data ? modelDefaultProblem(imageDefault.data.id, models) : null}
+        >
+          <Combobox
+            options={imageOptions}
+            value={currentImageId ?? ""}
+            onValueChange={(value) =>
+              images.adopted
+                ? images.setValues({ image_model_id: value })
+                : void run(() => imageDefault.setDefault.mutateAsync(value || null))
+            }
+            placeholder={ui(PLATFORM_IMAGE_DEFAULT_LABEL)}
+            searchPlaceholder="Search image models…"
+            disabled={!canManage || imageDefault.setDefault.isPending || images.pending}
+          />
         </DefaultRow>
       </DefaultSection>
       <DefaultSection
@@ -405,6 +472,15 @@ export function DefaultsTab({
       </DefaultSection>
     </div>
   );
+}
+
+/** Model label with what the model can make beyond stills, as on the Models list. */
+export function imageModelLabel(model: ModelWithProvider): string {
+  const extras = [
+    model.profile?.images?.gif ? "GIF" : null,
+    model.profile?.images?.formats?.includes("svg") ? "SVG" : null,
+  ].filter(Boolean);
+  return extras.length ? `${modelLabel(model)} · ${extras.join(", ")}` : modelLabel(model);
 }
 
 function DefaultSection({

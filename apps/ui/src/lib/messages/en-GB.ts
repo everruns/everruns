@@ -241,4 +241,5 @@ export const messages: Readonly<Record<string, string>> = {
     "Select and save a named Organisation provider account before building.",
   "Organization users": "Organisation users",
   "Members of this organization can sign in.": "Members of this organisation can sign in.",
+  "Organization default image model": "Organisation default image model",
 };

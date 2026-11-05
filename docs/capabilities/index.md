@@ -104,11 +104,11 @@ Structured data, knowledge retrieval, and memory.
 
 ### Media
 
-Image generation and editing workflows.
+Image generation and editing: stills, animated GIFs and SVGs.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [OpenAI Image Generation](/capabilities/openai-image-generation/) | `gpt_image_gen` | 2 |
+| [Image Generation](/capabilities/image-generation/) | `image_generation` | 2 |
 
 ### Models and provider tools
 
@@ -307,7 +307,6 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Browserless](/capabilities/browserless/) | [Storage](/capabilities/session-storage/) |
 | [Browser Use](/capabilities/browser-use/) | [Storage](/capabilities/session-storage/) |
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
-| [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
 | [Knowledge](/capabilities/knowledge/) | [File System](/capabilities/file-system/) |
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |

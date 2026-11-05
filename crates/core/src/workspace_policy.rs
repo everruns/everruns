@@ -230,6 +230,25 @@ impl WorkspacePolicy {
         WorkspacePolicyBuilder::default()
     }
 
+    /// Also allow writes at and below `path`, on top of what this policy allows.
+    ///
+    /// Every layer gains the write scope, so this widens a composed policy too;
+    /// use it only for a folder the application itself opts into, such as the
+    /// one a capability saves its outputs to. Deny rules, hidden and sensitive
+    /// protection still apply, so a hidden or denied path stays unwritable.
+    pub fn with_write_scope(
+        mut self,
+        path: impl Into<String>,
+    ) -> Result<Self, WorkspacePolicyError> {
+        let scope = parse_paths("write allow", vec![path.into()])?.remove(0);
+        for layer in &mut self.layers {
+            if !layer.write.contains(&scope) {
+                layer.write.push(scope.clone());
+            }
+        }
+        Ok(self)
+    }
+
     /// Compose an additional restriction with this policy.
     ///
     /// Both policies must allow an operation. This makes composition safe for
@@ -587,6 +606,22 @@ fn parse_components(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_write_scope_opens_one_folder_and_keeps_hidden_paths_closed() {
+        let policy = WorkspacePolicy::read_only()
+            .with_write_scope("/workspace/images")
+            .unwrap();
+        assert!(policy.permits_write("images/lantern.gif"));
+        assert!(policy.permits_write("/workspace/images/a/b.png"));
+        assert!(!policy.permits_write("notes.txt"));
+        assert!(policy.permits_read("notes.txt"));
+        let hidden = WorkspacePolicy::read_only()
+            .with_write_scope("/workspace/.outputs/images")
+            .unwrap();
+        assert!(!hidden.permits_write(".outputs/images/a.png"));
+        assert!(WorkspacePolicy::read_only().with_write_scope(" ").is_err());
+    }
 
     #[test]
     fn default_is_read_only_and_hides_sensitive_paths() {

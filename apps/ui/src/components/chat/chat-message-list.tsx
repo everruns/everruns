@@ -91,6 +91,7 @@ import {
   getCompletedTurnDurationsByTurn,
 } from "@/components/chat/turn-delimiter";
 import { TurnWorkLog, WorkLogEntries } from "@/components/chat/turn-work-log";
+import { turnAttention } from "@/components/chat/generated-gif-player";
 import {
   WorkPlanPinned,
   WorkResultBox,
@@ -788,6 +789,8 @@ export const ChatMessageList = memo(function ChatMessageList({
     return getFirstPlainLine(streamingWork.text) || undefined;
   };
 
+  const attentionFor = (group: Event[], live: boolean) =>
+    turnAttention(group, live ? renderInteractiveToolCalls : null);
   const renderWorkLog = (
     event: Event,
     workEvents: Event[],
@@ -805,9 +808,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     const startedAt = (turnId && turnStartedAtByTurnId.get(turnId)) || event.ts;
     const startedAtMs = Date.parse(startedAt);
     const report = reportFor(turnId);
-    const attentionCards = isActive
-      ? workEvents.map((workEvent) => renderInteractiveToolCalls(workEvent)).filter(Boolean)
-      : [];
+    const attentionCards = attentionFor(workEvents, isActive);
 
     return (
       <TurnWorkLog
@@ -918,9 +919,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     const live = isLiveTurnPhase(row.phase);
     const streamsHere =
       !!turnId && !!streamingRow && !!streamingWork?.text && streamingWork.turnId === turnId;
-    const attention = live
-      ? group.map((workEvent) => renderInteractiveToolCalls(workEvent)).filter(Boolean)
-      : [];
+    const attention = attentionFor(group, live);
     const report = reportFor(turnId);
     return (
       <TurnWorkLog

@@ -145,7 +145,11 @@ impl std::fmt::Debug for ImagesHttpRequest {
             .field("url", &self.url)
             .field(
                 "headers",
-                &self.headers.iter().map(|(name, _)| name).collect::<Vec<_>>(),
+                &self
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
             )
             .field("body_len", &self.body.len())
             .field("stream", &self.stream)
@@ -174,6 +178,8 @@ pub struct ImagesHttpResponse {
 pub trait ImagesTransport: Send + Sync {
     /// Send one request. Transport failures (blocked host, DNS, timeout) are
     /// errors; HTTP error statuses are responses.
-    async fn send(&self, request: ImagesHttpRequest)
-    -> Result<ImagesHttpResponse, ImagesDriverError>;
+    async fn send(
+        &self,
+        request: ImagesHttpRequest,
+    ) -> Result<ImagesHttpResponse, ImagesDriverError>;
 }

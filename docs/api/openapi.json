@@ -20717,6 +20717,84 @@
         }
       }
     },
+    "/v1/models/images-default": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get default image model",
+        "description": "Get the organization's default image model. Agents whose Image Generation capability names no model use it; no selection returns null and agents use GPT Image 2.6 Flare.",
+        "operationId": "get_default_image_model",
+        "responses": {
+          "200": {
+            "description": "Selected image model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ModelWithProvider"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Set default image model",
+        "description": "Select an enabled image model as the organization default. Omit model_id or set it to null to clear the default.",
+        "operationId": "set_default_image_model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultImageModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Selected image model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ModelWithProvider"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/models/selection": {
       "post": {
         "tags": [
@@ -51011,6 +51089,56 @@
         ],
         "description": "Unified response for GET that can be file or directory listing"
       },
+      "GifLimits": {
+        "type": "object",
+        "description": "Animated GIF request limits.",
+        "required": [
+          "min_frames",
+          "max_frames",
+          "default_frames",
+          "min_frame_ms",
+          "max_frame_ms",
+          "default_frame_ms"
+        ],
+        "properties": {
+          "default_frame_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Frame duration used when the request does not say.",
+            "minimum": 0
+          },
+          "default_frames": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Frames used when the request does not say.",
+            "minimum": 0
+          },
+          "max_frame_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Longest frame duration in milliseconds.",
+            "minimum": 0
+          },
+          "max_frames": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most frames per animation.",
+            "minimum": 0
+          },
+          "min_frame_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Shortest frame duration in milliseconds.",
+            "minimum": 0
+          },
+          "min_frames": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Fewest frames per animation.",
+            "minimum": 0
+          }
+        }
+      },
       "GitCommitInfo": {
         "type": "object",
         "description": "A commit entry in the log",
@@ -52626,6 +52754,71 @@
           "size_bytes": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ImageModelProfile": {
+        "type": "object",
+        "description": "What an image model can make, so tools and pickers read it instead of\nhard-coding model ids (knowledge/execution/image-generation.md).",
+        "required": [
+          "formats",
+          "qualities",
+          "sizes",
+          "edits",
+          "markup",
+          "complexity",
+          "max_count"
+        ],
+        "properties": {
+          "complexity": {
+            "type": "boolean",
+            "description": "Whether the model takes `complexity` (`low`, `medium`, `high`)."
+          },
+          "edits": {
+            "type": "boolean",
+            "description": "Whether the model edits existing images."
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Output formats: `png`, `jpeg`, `webp`, `gif` (animated), `svg`."
+          },
+          "gif": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GifLimits",
+                "description": "Animated GIF limits, present when `formats` lists `gif`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "markup": {
+            "type": "boolean",
+            "description": "Whether edits accept a `markup` layer (drawn comments on a transparent PNG)."
+          },
+          "max_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most images one request returns.",
+            "minimum": 0
+          },
+          "qualities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Accepted `quality` values, `auto` included when supported."
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Recommended sizes, `auto` included when supported."
           }
         }
       },
@@ -61109,6 +61302,17 @@
           "family": {
             "type": "string",
             "description": "Model family (e.g., \"gpt-5.6-sol\", \"claude-sonnet-5\")"
+          },
+          "images": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImageModelProfile",
+                "description": "What the model makes when this profile describes an image model."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "knowledge": {
             "type": [
@@ -73351,6 +73555,19 @@
               "null"
             ],
             "description": "Prefixed saved model ID; omit or pass null to clear the default."
+          }
+        }
+      },
+      "SetDefaultImageModel": {
+        "type": "object",
+        "description": "Select or clear the organization's default image model.",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Prefixed saved model ID of an image model; omit or pass null to clear\nthe default, which makes agents use GPT Image 2.6 Flare."
           }
         }
       },

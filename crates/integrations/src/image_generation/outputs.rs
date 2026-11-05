@@ -58,7 +58,10 @@ pub(crate) async fn materialize_outputs(
 
         // A host without an image store (an embedded Framework app) keeps
         // the image as a session file instead.
-        let image_store = context.image_store.as_ref().filter(|_| input.persist_artifact && !svg);
+        let image_store = context
+            .image_store
+            .as_ref()
+            .filter(|_| input.persist_artifact && !svg);
         let artifact_id = if let Some(image_store) = image_store {
             match image_store
                 .create_image(CreateStoredImage {
@@ -92,7 +95,8 @@ pub(crate) async fn materialize_outputs(
                     "Session file store not available in this context",
                 );
             };
-            let output_dir = normalize_workspace_path(input.output_dir.unwrap_or(DEFAULT_OUTPUT_DIR));
+            let output_dir =
+                normalize_workspace_path(input.output_dir.unwrap_or(DEFAULT_OUTPUT_DIR));
             let normalized_path = join_workspace_path(&output_dir, &filename);
             match file_store
                 .write_file(
@@ -229,7 +233,11 @@ pub(crate) fn normalize_workspace_path(path: &str) -> String {
     } else {
         format!("/{path}")
     };
-    if path.is_empty() { "/".to_string() } else { path }
+    if path.is_empty() {
+        "/".to_string()
+    } else {
+        path
+    }
 }
 
 pub(crate) fn add_workspace_prefix(path: &str) -> String {

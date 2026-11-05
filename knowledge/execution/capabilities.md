@@ -637,7 +637,6 @@ See `crates/contracts/src/runtime/capabilities/mod.rs` for `resolve_dependencies
 |------------|-----------|----------|
 | `skills` | `session_file_system` | *(none)* |
 | `bashkit_shell` | `session_file_system` | `file_system` |
-| `gpt_image_gen` | `session_file_system`, `session_storage` | *(none)* |
 
 #### Tool-Side Provider Clients
 
@@ -646,7 +645,7 @@ Some capabilities call provider APIs directly instead of routing through the LLM
 - `provider_credential_store` for resolving default provider credentials without reading provider environment variables in tool code
 - `image_store` for durable image artifact persistence and later reuse by ID
 
-`gpt_image_gen` is the first built-in example of this pattern: it resolves OpenAI credentials through session secrets or the provider credential store, persists generated outputs in org-scoped image storage, and can optionally mirror them into the session filesystem. Because the org-configured base URL receives the decrypted provider key, its HTTP traffic goes through `ToolContext.egress_service` with `require_dns_pinning()` and the session ACL, and redirects are errors; without an egress service the tools fail closed (EVE-1174, TM-LLM-047).
+`image_generation` is the first built-in example of this pattern ([Image Generation](image-generation.md)): it resolves the image model and provider account through the provider credential store, persists generated outputs in org-scoped image storage, and can optionally mirror them into the session filesystem. Because the org-configured base URL receives the decrypted provider key, its HTTP traffic goes through `ToolContext.egress_service` with `require_dns_pinning()` and the session ACL, and redirects are errors; without an egress service the tools fail closed (EVE-1174, TM-LLM-047).
 
 ### Capability Features
 

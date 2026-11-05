@@ -1,8 +1,7 @@
 //! `generate_image` and `edit_image`.
 
 use super::capability::{
-    COMPLEXITIES, FORMATS, ImageGenerationConfig, QUALITIES, check_one_of,
-    parse_capability_config,
+    COMPLEXITIES, FORMATS, ImageGenerationConfig, QUALITIES, check_one_of, parse_capability_config,
 };
 use super::outputs::{
     MaterializeInput, add_workspace_prefix, infer_image_content_type, materialize_outputs,
@@ -148,7 +147,11 @@ impl Tool for GenerateImageTool {
         let english = if gif {
             ("Animating GIF", "Made GIF", "Could not make GIF")
         } else {
-            ("Generating image", "Generated image", "Could not generate image")
+            (
+                "Generating image",
+                "Generated image",
+                "Could not generate image",
+            )
         };
         let ukrainian = if gif {
             ("Створюю GIF", "Створив GIF", "Не вдалося створити GIF")
@@ -229,10 +232,11 @@ impl Tool for GenerateImageTool {
             Err(result) => return result,
         };
         let format = args.common.format(&config).to_string();
-        let resolved = match resolve_image_model(context, self.credentials.as_ref(), &config, &format).await {
-            Ok(resolved) => resolved,
-            Err(result) => return result,
-        };
+        let resolved =
+            match resolve_image_model(context, self.credentials.as_ref(), &config, &format).await {
+                Ok(resolved) => resolved,
+                Err(result) => return result,
+            };
         let request = match build_request(
             &args.prompt,
             &args.common,
@@ -354,10 +358,11 @@ impl Tool for EditImageTool {
                 "GIF output is only available for new images. Use generate_image with format gif.",
             );
         }
-        let resolved = match resolve_image_model(context, self.credentials.as_ref(), &config, &format).await {
-            Ok(resolved) => resolved,
-            Err(result) => return result,
-        };
+        let resolved =
+            match resolve_image_model(context, self.credentials.as_ref(), &config, &format).await {
+                Ok(resolved) => resolved,
+                Err(result) => return result,
+            };
         if let Some(profile) = &resolved.profile {
             if !profile.edits {
                 return ToolExecutionResult::tool_error(format!(
@@ -483,7 +488,9 @@ pub(crate) fn build_request(
     let count = args.count();
     let single_output = matches!(format, "gif" | "svg");
     if single_output && count != 1 {
-        return Err(format!("{format} output makes one image per call; set count to 1"));
+        return Err(format!(
+            "{format} output makes one image per call; set count to 1"
+        ));
     }
     let max_count = resolved
         .profile
@@ -520,9 +527,17 @@ pub(crate) fn build_request(
                 Some(quality.to_string())
             }
         }
-        None => Some(args.quality.as_deref().unwrap_or_else(|| config.quality()).to_string()),
+        None => Some(
+            args.quality
+                .as_deref()
+                .unwrap_or_else(|| config.quality())
+                .to_string(),
+        ),
     };
-    let complexity = args.complexity.clone().or_else(|| config.complexity.clone());
+    let complexity = args
+        .complexity
+        .clone()
+        .or_else(|| config.complexity.clone());
     let complexity = match profile {
         Some(profile) if !profile.complexity => {
             if args.complexity.is_some() {
@@ -575,7 +590,11 @@ pub(crate) fn build_request(
 
     // A GIF is drawn as one sheet of frames, so the frame size depends on the
     // frame count and the API rejects most explicit sizes. Let it choose.
-    let size = if format == "gif" { None } else { args.size.clone() };
+    let size = if format == "gif" {
+        None
+    } else {
+        args.size.clone()
+    };
 
     Ok(ImageRequest {
         model: resolved.api_model.clone(),
@@ -635,7 +654,9 @@ async fn run(
     );
     let response = match response {
         Ok(response) => response,
-        Err(error) => return ToolExecutionResult::tool_error(format!("Image API error: {}", error.0)),
+        Err(error) => {
+            return ToolExecutionResult::tool_error(format!("Image API error: {}", error.0));
+        }
     };
 
     materialize_outputs(

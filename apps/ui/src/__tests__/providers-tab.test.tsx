@@ -32,6 +32,10 @@ jest.mock("@/hooks/use-providers", () => ({
   useSyncProviderModels: () => ({ mutateAsync: mockSync, isPending: false }),
   useUpdateProvider: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useProvidersConfig: () => mockConfig,
+  useImageDefault: () => ({
+    data: null,
+    setDefault: { isPending: false, mutateAsync: jest.fn() },
+  }),
   useDecisionDefault: () => ({
     data: null,
     setDefault: { mutateAsync: jest.fn(), isPending: false },

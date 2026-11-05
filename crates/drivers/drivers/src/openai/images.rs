@@ -379,8 +379,9 @@ fn status_error(status: u16, body: &[u8]) -> ImagesDriverError {
 }
 
 fn decode_response(body: &[u8]) -> Result<ImageResponse, ImagesDriverError> {
-    let response: ApiResponse = serde_json::from_slice(body)
-        .map_err(|error| ImagesDriverError(format!("failed to decode image API response: {error}")))?;
+    let response: ApiResponse = serde_json::from_slice(body).map_err(|error| {
+        ImagesDriverError(format!("failed to decode image API response: {error}"))
+    })?;
     Ok(ImageResponse {
         images: response
             .data
@@ -485,8 +486,9 @@ impl ImagesDriver for OpenAIImagesDriver {
             let (content_type, body) = edit_form(&request, partial_images)?;
             self.http_request("images/edits", content_type, body, partial_images.is_some())?
         } else {
-            let body = serde_json::to_vec(&generation_body(&request, partial_images))
-                .map_err(|error| ImagesDriverError(format!("failed to encode image request: {error}")))?;
+            let body = serde_json::to_vec(&generation_body(&request, partial_images)).map_err(
+                |error| ImagesDriverError(format!("failed to encode image request: {error}")),
+            )?;
             self.http_request(
                 self.generations_path(),
                 "application/json".into(),

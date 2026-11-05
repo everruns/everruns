@@ -1,5 +1,5 @@
 import type { DriverId } from "./provider-driver-types";
-import type { ModelVendor } from "./schema-types";
+import type { ImageModelProfile, ModelVendor } from "./schema-types";
 export type ModelService = "chat" | "decisions" | "embeddings" | "realtime" | "images" | "rerank";
 export interface DecisionModelProfile {
   primitives: string[];
@@ -147,6 +147,7 @@ export interface VerbosityConfig {
  */
 export interface ModelProfile {
   decisions?: DecisionModelProfile;
+  images?: ImageModelProfile | null;
   /** Display name of the model */
   name: string;
   /** Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5") */

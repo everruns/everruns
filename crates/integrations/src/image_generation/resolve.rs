@@ -140,8 +140,7 @@ pub(crate) async fn resolve_image_model(
         .as_deref()
         .unwrap_or(PLATFORM_DEFAULT_IMAGE_MODEL);
     let mut skipped_for_format = false;
-    if let Some(resolved) = by_provider_type(store, model, format, &mut skipped_for_format).await?
-    {
+    if let Some(resolved) = by_provider_type(store, model, format, &mut skipped_for_format).await? {
         return Ok(resolved);
     }
     if config.fallback == ImageModelFallback::Auto

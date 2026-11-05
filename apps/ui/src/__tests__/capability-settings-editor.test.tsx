@@ -50,7 +50,7 @@ function capability(overrides: Partial<Capability>): Capability {
 
 function imageGenerationCapability(): Capability {
   return capability({
-    id: "gpt_image_gen",
+    id: "image_generation",
     config_schema: {
       type: "object",
       properties: {
@@ -101,7 +101,7 @@ function imageGenerationCapability(): Capability {
 
 describe("CapabilitySettingsEditor", () => {
   it("exposes settings when a capability provides config schema", () => {
-    expect(hasCapabilitySettings(capability({ id: "gpt_image_gen" }))).toBe(false);
+    expect(hasCapabilitySettings(capability({ id: "image_generation" }))).toBe(false);
     expect(
       hasCapabilitySettings(
         capability({

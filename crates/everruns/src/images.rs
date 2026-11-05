@@ -17,22 +17,32 @@
 //! GPT Image 2.6 Flare:
 //!
 //! ```rust
-//! use everruns::{Agent, CapabilityRef};
+//! use everruns::{Agent, CapabilityRef, Model};
 //!
-//! let agent = Agent::builder("animator")
-//!     .model("gpt-6.1-sol")
+//! let agent = Agent::builder()
+//!     .name("animator")
+//!     // A real app picks a chat model here, e.g. GPT-6.1 Sol.
+//!     .model(Model::simulated("Here is your GIF."))
 //!     .instructions("Make short looping GIFs.")
 //!     .capability(CapabilityRef::with_config(
 //!         "image_generation",
-//!         serde_json::json!({ "model": "gpt-image-2.6-sunburst", "default_format": "gif" }),
+//!         serde_json::json!({
+//!             "model": "gpt-image-2.6-sunburst",
+//!             "default_format": "gif",
+//!             "output_dir": "/workspace/images"
+//!         }),
 //!     ))
+//!     // The default workspace is read-only; let the images folder be written.
+//!     .allow_workspace_write("/workspace/images")
+//!     .unwrap()
 //!     .build()
 //!     .unwrap();
 //! # let _ = agent;
 //! ```
 //!
 //! Without an image store, generated images are written to the session
-//! filesystem under `/workspace/.outputs/images`.
+//! filesystem, under `output_dir` (default `/workspace/.outputs/images`,
+//! which the workspace policy keeps read-only, so name a visible folder).
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::connection_services::{

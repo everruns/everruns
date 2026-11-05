@@ -165,7 +165,11 @@ export function ModelRow({
                 </span>
               )}
               {profile?.release_date && (
-                <span title={ui("Released {value0}", { value0: profile.release_date })}>
+                <span
+                  title={ui("Released {value0}", {
+                    value0: profile.release_date,
+                  })}
+                >
                   <span aria-hidden className="mx-1">
                     ·
                   </span>
@@ -226,6 +230,21 @@ export function ModelRow({
                 <Badge variant="secondary" className="text-xs" title={ui("Attachments")}>
                   <Image className="h-3 w-3 mr-1" />
                   {ui("Vision")}
+                </Badge>
+              )}
+              {profile.images?.formats.includes("gif") && (
+                <Badge variant="secondary" className="text-xs" title={ui("Animated GIF")}>
+                  GIF
+                </Badge>
+              )}
+              {profile.images?.formats.includes("svg") && (
+                <Badge variant="secondary" className="text-xs" title={ui("Vector SVG")}>
+                  SVG
+                </Badge>
+              )}
+              {profile.images?.edits && (
+                <Badge variant="secondary" className="text-xs" title={ui("Edits images")}>
+                  {ui("Edit")}
                 </Badge>
               )}
             </div>
@@ -304,7 +323,9 @@ export function ModelRow({
                 size="sm"
                 className="text-destructive"
                 onClick={() => onDelete(model.id)}
-                aria-label={ui("Delete {value0}", { value0: model.display_name })}
+                aria-label={ui("Delete {value0}", {
+                  value0: model.display_name,
+                })}
                 title={ui("Delete model")}
               >
                 <Trash2 className="h-4 w-4" />

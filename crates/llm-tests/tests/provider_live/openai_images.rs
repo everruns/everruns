@@ -140,7 +140,10 @@ async fn sunburst_edits_with_markup() {
     let png = |pixel: image::Rgba<u8>| {
         let mut bytes = Vec::new();
         image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(256, 256, pixel))
-            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
             .unwrap();
         bytes
     };
@@ -152,7 +155,10 @@ async fn sunburst_edits_with_markup() {
     }
     let mut markup_png = Vec::new();
     image::DynamicImage::ImageRgba8(markup)
-        .write_to(&mut std::io::Cursor::new(&mut markup_png), image::ImageFormat::Png)
+        .write_to(
+            &mut std::io::Cursor::new(&mut markup_png),
+            image::ImageFormat::Png,
+        )
         .unwrap();
     let request = ImageRequest {
         model: "gpt-image-2.6-sunburst".to_string(),

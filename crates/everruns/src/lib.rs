@@ -210,8 +210,6 @@ pub use everruns_integrations::filesystem::FileSystem;
 pub use everruns_integrations::typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "images")]
 pub mod images;
-#[cfg(feature = "images")]
-pub use images::{EnvImageCredentials, ImageGeneration};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations::web_fetch::WebFetch;
 #[cfg(feature = "web-search")]
@@ -228,6 +226,8 @@ pub use hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookPoint, HookRecovery, IntoHookResult,
     ToolEndContext, ToolStartContext, TurnStartContext,
 };
+#[cfg(feature = "images")]
+pub use images::{EnvImageCredentials, ImageGeneration};
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
 pub use models::{CatalogError, ModelInfo};

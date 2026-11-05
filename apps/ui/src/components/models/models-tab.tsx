@@ -12,7 +12,16 @@ import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Layers, MessageSquare, Plus, Scale, Binary, Sparkles, ListChecks } from "lucide-react";
+import {
+  Layers,
+  MessageSquare,
+  Plus,
+  Scale,
+  Binary,
+  Sparkles,
+  ListChecks,
+  ImageIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,6 +55,7 @@ const SERVICE_ICONS: Partial<Record<ModelService | "all", typeof Layers>> = {
   chat: MessageSquare,
   decisions: Scale,
   embeddings: Binary,
+  images: ImageIcon,
 };
 
 // Chat, decisions and embeddings are always offered; rarer services appear

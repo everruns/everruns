@@ -446,7 +446,9 @@ pub struct ImageModelProfile {
 impl ImageModelProfile {
     /// Whether the model produces `format`.
     pub fn supports_format(&self, format: &str) -> bool {
-        self.formats.iter().any(|value| value.eq_ignore_ascii_case(format))
+        self.formats
+            .iter()
+            .any(|value| value.eq_ignore_ascii_case(format))
     }
 }
 

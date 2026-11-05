@@ -22,6 +22,9 @@ export function isEmbeddingModel(model: ModelCapabilities): boolean {
 export function isDecisionModel(model: ModelCapabilities): boolean {
   return matchesModelService(model, "decisions");
 }
+export function isImageModel(model: ModelCapabilities): boolean {
+  return matchesModelService(model, "images");
+}
 export function isChatModel(model: ModelCapabilities): boolean {
   return matchesModelService(model, "chat");
 }

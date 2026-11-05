@@ -5302,6 +5302,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/models/images-default": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get default image model
+     * @description Get the organization's default image model. Agents whose Image Generation capability names no model use it; no selection returns null and agents use GPT Image 2.6 Flare.
+     */
+    get: operations["get_default_image_model"];
+    /**
+     * Set default image model
+     * @description Select an enabled image model as the organization default. Omit model_id or set it to null to clear the default.
+     */
+    put: operations["set_default_image_model"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/models/selection": {
     parameters: {
       query?: never;
@@ -17691,6 +17715,39 @@ export interface components {
     GetResponse:
       | components["schemas"]["SessionFile"]
       | components["schemas"]["ListResponse_FileInfo"];
+    /** @description Animated GIF request limits. */
+    GifLimits: {
+      /**
+       * Format: int32
+       * @description Frame duration used when the request does not say.
+       */
+      default_frame_ms: number;
+      /**
+       * Format: int32
+       * @description Frames used when the request does not say.
+       */
+      default_frames: number;
+      /**
+       * Format: int32
+       * @description Longest frame duration in milliseconds.
+       */
+      max_frame_ms: number;
+      /**
+       * Format: int32
+       * @description Most frames per animation.
+       */
+      max_frames: number;
+      /**
+       * Format: int32
+       * @description Shortest frame duration in milliseconds.
+       */
+      min_frame_ms: number;
+      /**
+       * Format: int32
+       * @description Fewest frames per animation.
+       */
+      min_frames: number;
+    };
     /** @description A commit entry in the log */
     GitCommitInfo: {
       /** @description Author email from the commit. */
@@ -18567,6 +18624,30 @@ export interface components {
       metadata: unknown;
       /** Format: int64 */
       size_bytes: number;
+    };
+    /**
+     * @description What an image model can make, so tools and pickers read it instead of
+     *     hard-coding model ids (knowledge/execution/image-generation.md).
+     */
+    ImageModelProfile: {
+      /** @description Whether the model takes `complexity` (`low`, `medium`, `high`). */
+      complexity: boolean;
+      /** @description Whether the model edits existing images. */
+      edits: boolean;
+      /** @description Output formats: `png`, `jpeg`, `webp`, `gif` (animated), `svg`. */
+      formats: string[];
+      gif?: components["schemas"]["GifLimits"] | null;
+      /** @description Whether edits accept a `markup` layer (drawn comments on a transparent PNG). */
+      markup: boolean;
+      /**
+       * Format: int32
+       * @description Most images one request returns.
+       */
+      max_count: number;
+      /** @description Accepted `quality` values, `auto` included when supported. */
+      qualities: string[];
+      /** @description Recommended sizes, `auto` included when supported. */
+      sizes: string[];
     };
     /** @description Image upload response */
     ImageUploadResponse: {
@@ -23207,6 +23288,7 @@ export interface components {
       description?: string | null;
       /** @description Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5") */
       family: string;
+      images?: components["schemas"]["ImageModelProfile"] | null;
       /** @description Knowledge cutoff date (YYYY-MM-DD format) */
       knowledge?: string | null;
       /** @description Last updated date (YYYY-MM-DD format) */
@@ -30044,6 +30126,14 @@ export interface components {
     /** @description Select or clear the organization decision default. */
     SetDefaultDecisionModel: {
       /** @description Prefixed saved model ID; omit or pass null to clear the default. */
+      model_id?: string | null;
+    };
+    /** @description Select or clear the organization's default image model. */
+    SetDefaultImageModel: {
+      /**
+       * @description Prefixed saved model ID of an image model; omit or pass null to clear
+       *     the default, which makes agents use GPT Image 2.6 Flare.
+       */
       model_id?: string | null;
     };
     /** @description Replace an entity's manager context. */
@@ -49863,6 +49953,50 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_default_image_model: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Selected image model */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelWithProvider"] | null;
+        };
+      };
+    };
+  };
+  set_default_image_model: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetDefaultImageModel"];
+      };
+    };
+    responses: {
+      /** @description Selected image model */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelWithProvider"] | null;
         };
       };
     };

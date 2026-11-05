@@ -66,6 +66,8 @@ export default defineConfig({
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // generic-tool-search page renamed to tool-search
     "/capabilities/generic-tool-search/": "/capabilities/tool-search/",
+    // gpt_image_gen capability renamed to image_generation
+    "/capabilities/openai-image-generation/": "/capabilities/image-generation/",
     // Application users now enter through the Framework section. Keep the
     // former runtime, migration, and embedding routes durable for inbound links.
     "/features/runtime/": "/framework/custom-backends/",
@@ -572,7 +574,7 @@ export default defineConfig({
                       label: "Media",
                       collapsed: true,
                       items: [
-                        { label: "OpenAI Image Generation", slug: "capabilities/openai-image-generation" },
+                        { label: "Image Generation", slug: "capabilities/image-generation" },
                       ],
                     },
                     {

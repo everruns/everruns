@@ -6,7 +6,8 @@ description: The worker kit with no compute, for agents that work through tools,
 Worker inherits [Base](/built-ins/harnesses/base/) and adds everything a working agent needs except
 a shell: session files, project instructions (`AGENTS.md`), session tools, durable and distilled tool
 output, skills, history retrieval, automatic tool discovery, budget awareness, todo lists, subagents,
-task controls and [Web Search](/capabilities/web-search/) on the organization's default provider.
+task controls, [Web Search](/capabilities/web-search/) on the organization's default provider, and
+[Image Generation](/capabilities/image-generation/) on the organization's default image model.
 
 It runs no code. Choose it for agents that act through tools and MCP servers: triage and integration
 agents over Linear, Slack or GitHub, research agents over knowledge and files, and organizations that

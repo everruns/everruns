@@ -220,7 +220,10 @@ async fn catalog_model_never_falls_back_to_another_account() {
     )
     .await
     .unwrap_err();
-    assert!(error.contains("not available in this organization"), "{error}");
+    assert!(
+        error.contains("not available in this organization"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -252,7 +255,10 @@ fn config_accepts_legacy_settings_and_ignores_unknown_fields() {
 #[test]
 fn config_rejects_bad_values() {
     for (settings, needle) in [
-        (json!({ "model": "chatgpt-image-latest" }), "unknown image model"),
+        (
+            json!({ "model": "chatgpt-image-latest" }),
+            "unknown image model",
+        ),
         (json!({ "partial_images": 4 }), "partial_images"),
         (json!({ "gif_frames": 65 }), "gif_frames"),
         (json!({ "gif_frame_ms": 10 }), "gif_frame_ms"),
@@ -344,9 +350,30 @@ fn requests_are_checked_against_the_model() {
         )
         .contains("only apply to format gif")
     );
-    assert!(reject(json!({ "format": "svg", "count": 2 }), &flare, Animation::default()).contains("count to 1"));
-    assert!(reject(json!({ "quality": "xhigh" }), &classic, Animation::default()).contains("xhigh"));
-    assert!(reject(json!({ "complexity": "low" }), &classic, Animation::default()).contains("complexity"));
+    assert!(
+        reject(
+            json!({ "format": "svg", "count": 2 }),
+            &flare,
+            Animation::default()
+        )
+        .contains("count to 1")
+    );
+    assert!(
+        reject(
+            json!({ "quality": "xhigh" }),
+            &classic,
+            Animation::default()
+        )
+        .contains("xhigh")
+    );
+    assert!(
+        reject(
+            json!({ "complexity": "low" }),
+            &classic,
+            Animation::default()
+        )
+        .contains("complexity")
+    );
 
     // Configured options a model lacks fall back to its defaults.
     let request = build_request(
@@ -363,8 +390,14 @@ fn requests_are_checked_against_the_model() {
 
     // Muse takes no quality at all and one image per call.
     let muse = resolved("meta", "muse-image-1.0");
-    let request = build_request("p", &args(json!({})), &defaults, &muse, Animation::default())
-        .unwrap();
+    let request = build_request(
+        "p",
+        &args(json!({})),
+        &defaults,
+        &muse,
+        Animation::default(),
+    )
+    .unwrap();
     assert_eq!(request.quality, None);
     assert!(reject(json!({ "count": 2 }), &muse, Animation::default()).contains("between 1 and 1"));
 }

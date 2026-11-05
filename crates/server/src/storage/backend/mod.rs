@@ -147,10 +147,10 @@ impl StorageBackend {
 }
 
 mod decision_defaults;
-mod image_defaults;
 mod harnesses_sessions;
 mod identity;
 mod identity_cache;
+mod image_defaults;
 pub use identity_cache::SessionLineage;
 mod config_row_cache;
 mod org_feature_flag_cache;
