@@ -30,11 +30,19 @@ async fn platform_store_wait_for_idle_reaches_event_service() {
 }
 
 /// Subscription precedes the durable probe, and a terminal notification wakes
-/// the server wait without another half-second worker polling round trip.
+/// the server wait without another worker polling round trip.
+///
+/// Deterministic: the probe stretches reconciliation to an hour and the
+/// deadline beyond that, so only a delivered notification can end the wait.
+/// The test waits until the waiter is parked on its subscription before the
+/// terminal event is written, and measures nothing against the wall clock;
+/// the outer timeout only turns a regression into a failure instead of a hang.
 #[tokio::test]
 async fn platform_store_wait_for_idle_wakes_on_terminal_notification() {
+    use crate::worker_link::runtime_command_view::session_wait::test_probe::{PROBE, WaitProbe};
     use everruns_contracts::typed_id::TurnId;
     use everruns_core::{DEFAULT_ORG_ID, EventContext, EventRequest, TurnCompletedData};
+    use std::sync::Arc;
     let adapters = test_adapters();
     let user = seed_platform_owner(&adapters.db, DEFAULT_ORG_ID, "push-wait@example.com").await;
     let harness =
@@ -44,8 +52,17 @@ async fn platform_store_wait_for_idle_wakes_on_terminal_notification() {
         .platform_store(DEFAULT_ORG_ID, session)
         .for_execution(session.uuid())
         .unwrap();
-    let waiter = tokio::spawn(async move { store.wait_for_idle(session, Some(5)).await });
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let probe = Arc::new(WaitProbe {
+        reconcile: std::time::Duration::from_secs(3600),
+        parked: tokio::sync::Notify::new(),
+    });
+    let waiter = tokio::spawn(PROBE.scope(probe.clone(), async move {
+        store.wait_for_idle(session, Some(7200)).await
+    }));
+    let hang_guard = std::time::Duration::from_secs(30);
+    tokio::time::timeout(hang_guard, probe.parked.notified())
+        .await
+        .expect("waiter must park on a live subscription, not fall back to polling");
     adapters
         .db
         .update_session(
@@ -58,7 +75,6 @@ async fn platform_store_wait_for_idle_wakes_on_terminal_notification() {
         )
         .await
         .unwrap();
-    let started = std::time::Instant::now();
     adapters
         .event_service
         .emit(EventRequest::new(
@@ -72,13 +88,12 @@ async fn platform_store_wait_for_idle_wakes_on_terminal_notification() {
         ))
         .await
         .unwrap();
-    let status = tokio::time::timeout(std::time::Duration::from_millis(300), waiter)
+    let status = tokio::time::timeout(hang_guard, waiter)
         .await
-        .expect("notification must beat the old 500ms poll")
+        .expect("the terminal notification must wake the parked waiter")
         .unwrap()
         .unwrap();
     assert_eq!(status, "completed");
-    assert!(started.elapsed() < std::time::Duration::from_millis(300));
 }
 
 #[tokio::test]
