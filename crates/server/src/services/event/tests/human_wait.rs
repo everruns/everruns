@@ -1,4 +1,5 @@
 use super::*;
+use chrono::SubsecRound;
 use everruns_contracts::{
     tool_types::ToolCall,
     typed_id::{MessageId, TurnId},
@@ -55,8 +56,9 @@ async fn human_wait_batch_partial_resolution_restart_and_late_completion() {
             &[],
         ),
     );
-    ask.ts = chrono::Utc::now() - chrono::Duration::seconds(30);
-    let asked_at = ask.ts;
+    ask.ts =
+        chrono::DateTime::from_timestamp(chrono::Utc::now().timestamp() - 30, 123_456_789).unwrap();
+    let asked_at = ask.ts.trunc_subsecs(6);
     let answer = EventRequest::new(
         session,
         context.clone(),
@@ -78,6 +80,10 @@ async fn human_wait_batch_partial_resolution_restart_and_late_completion() {
     assert_eq!(
         answered.metadata.as_ref().unwrap()[METADATA_KEY][0]["outcome"],
         "answered"
+    );
+    assert_eq!(
+        answered.metadata.as_ref().unwrap()[METADATA_KEY][0]["started_at"],
+        json!(asked_at)
     );
     drop(service);
     let recovered = EventService::new(db, EventDelivery::in_memory());
@@ -256,7 +262,8 @@ async fn human_wait_postgres_command_recovery_keeps_outcome_time_and_exports_onc
         .await
         .unwrap();
     assert_eq!(event.id, duplicate.id);
-    assert_eq!(event.ts, original_time);
+    assert_eq!(event.ts, original_time.trunc_subsecs(6));
+    assert_eq!(duplicate.ts, event.ts);
     assert_eq!(
         event.metadata.as_ref().unwrap()[METADATA_KEY][0]["outcome"],
         "declined"

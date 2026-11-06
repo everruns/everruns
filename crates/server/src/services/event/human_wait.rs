@@ -1,5 +1,6 @@
 //! Rebuild wait facts from committed events, not process-local listener clocks.
 use super::*;
+use chrono::SubsecRound;
 use everruns_core::human_wait::{HumanWaitState, may_resolve};
 
 impl EventService {
@@ -82,7 +83,11 @@ impl EventService {
             .iter()
             .filter(|prior| prior.session_id == request.session_id)
         {
-            state.observe(&prior.clone().into_event(EventId::from_uuid(Uuid::nil()), 0));
+            let mut event = prior.clone().into_event(EventId::from_uuid(Uuid::nil()), 0);
+            // Match PostgreSQL's stored microsecond precision so recovery retains
+            // the same start time and request identity as this atomic batch.
+            event.ts = event.ts.trunc_subsecs(6);
+            state.observe(&event);
         }
         state.annotate(request);
         Ok(())
