@@ -1012,3 +1012,32 @@ async fn a_lease_takes_nothing_while_the_request_pool_is_exhausted() {
         .unwrap();
     assert_eq!(ids(&leased), HashSet::from([id]));
 }
+
+#[tokio::test]
+async fn a_lease_waits_out_a_momentarily_full_request_pool() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 1).await;
+    let pool = db.database().pool().clone();
+    let mut held = Vec::new();
+    for _ in 0..pool.options().get_max_connections() {
+        held.push(pool.acquire().await.expect("acquire a pool connection"));
+    }
+    assert!(request_pool_exhausted(&pool));
+    // One connection frees up well within the lease's wait.
+    let freed = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        held.pop();
+        held
+    });
+
+    let leased = db
+        .lease_session_actors("worker-a", 10, TTL, 100)
+        .await
+        .unwrap();
+    assert_eq!(
+        ids(&leased),
+        HashSet::from([id]),
+        "a burst that clears within the wait is not saturation"
+    );
+    drop(freed.await.unwrap());
+}

@@ -90,7 +90,9 @@
 //   observability records, never a turn's input or state. `head_sequence`
 //   is still the log's, so the cursor and the fence see every event.
 // - A lease call takes nothing while the request pool has no free connection
-//   (`request_pool_exhausted`). Workers no longer cap their running turns by a
+//   (`request_pool_exhausted`) and none frees up within
+//   `LEASE_POOL_WAIT`: a momentary burst (or a small test pool) is not
+//   saturation, so only a pool that stays full turns leases away. Workers no longer cap their running turns by a
 //   small slot count (they admit turns by memory and runtime lag), so the
 //   database pool is where too many turns at once would show first: every
 //   running turn's writes would queue behind new turns' setup reads. Leasing
@@ -139,6 +141,23 @@ pub const MAX_ACTOR_LEASE_TTL: Duration = Duration::from_secs(300);
 /// size cap opens a connection on demand, so only a full one counts.
 pub(crate) fn request_pool_exhausted(pool: &sqlx::PgPool) -> bool {
     pool.num_idle() == 0 && pool.size() >= pool.options().get_max_connections()
+}
+
+/// How long a lease call waits for a connection of a full request pool before
+/// it takes nothing. See the header.
+const LEASE_POOL_WAIT: Duration = Duration::from_millis(100);
+
+/// Whether the request pool stays full for `LEASE_POOL_WAIT`. The connection
+/// a successful wait gets goes straight back to the pool for the lease's own
+/// statements.
+async fn request_pool_saturated(pool: &sqlx::PgPool) -> bool {
+    if !request_pool_exhausted(pool) {
+        return false;
+    }
+    !matches!(
+        tokio::time::timeout(LEASE_POOL_WAIT, pool.acquire()).await,
+        Ok(Ok(_))
+    )
 }
 
 /// Journal page size when the caller passes none.
@@ -463,11 +482,8 @@ impl Database {
         if limit == 0 {
             return Ok(Vec::new());
         }
-        if request_pool_exhausted(self.pool.raw()) {
-            tracing::debug!(
-                holder,
-                "Request pool has no free connection; leasing no actors"
-            );
+        if request_pool_saturated(self.pool.raw()).await {
+            tracing::debug!(holder, "Request pool stayed full; leasing no actors");
             return Ok(Vec::new());
         }
         let scan = (limit * ACTOR_LEASE_SCAN_FACTOR).min(MAX_ACTOR_LEASE_SCAN);
