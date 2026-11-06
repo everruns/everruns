@@ -10,17 +10,13 @@ surfaces: [ui, api, cli]
 
 Slack sends one @-mention in a channel as two events with the same timestamp:
 a plain message and a mention. When the plain message arrived first, a channel
-with the **Mentions only** response policy declined it and then took the
-mention for a duplicate, so the agent stayed silent: no session, no reply, no
-health issue. **Relevant messages** could lose a mention the same way.
+set to **Mentions only** declined it and took the mention for a duplicate, so
+the agent stayed silent. **Relevant messages** could lose mentions the same way.
 
-The two events no longer cancel each other. Only a message the agent is going
-to answer counts toward duplicate detection, and a plain message that
-@-mentions the agent's bot user is treated as a mention. Each @-mention now
-starts exactly one turn under every response policy, whichever event Slack
-delivers first, and a real Slack retry is still dropped.
+Now only a message the agent will answer counts toward duplicate detection, and
+a plain message that @-mentions the agent's bot user counts as a mention. Each
+@-mention starts exactly one turn, whichever event arrives first.
 
-Updating a Slack channel's settings with a full config, such as
-`everruns agents channels update --channel-config`, also keeps the channel's
-Slack workspace (`team_id`) when the new config leaves it out. The workspace
-scopes which events the channel accepts and addresses its replies.
+Updating a Slack channel with a full config, such as
+`everruns agents channels update --channel-config`, also keeps its workspace
+(`team_id`) when the new config leaves it out.
