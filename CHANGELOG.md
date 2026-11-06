@@ -22,9 +22,11 @@ Changelog: https://everruns.com/docs/changelog/2026-11-05-everruns-0-51-0/
 
 - MCP credentials saved before this release need a new sign-in when their access token next needs refresh. An in-progress MCP sign-in must restart after the upgrade. Rolling back to an older server after new credentials have been saved can require reconnecting those MCP connections.
 - Rust callers constructing MCP OAuth `TokenSet` values must initialize the new `resource` field; use the resource validated during authorization. An absent resource allows loading older records but cannot authorize refresh.
+- Slack duplicate detection now includes the channel identity. A retry of an event first handled before the upgrade can be answered once more after the upgrade.
 
 ### What's Changed
 
+- fix(slack): answer @-mentions under mentions-only and keep team_id on update ([#5244](https://github.com/everruns/everruns/pull/5244)) by [@chaliy](https://github.com/chaliy)
 - test(llm): require observable hosted Python execution ([#5243](https://github.com/everruns/everruns/pull/5243)) by [@chaliy](https://github.com/chaliy)
 - test(mcp): bind service refresh fixtures across gRPC ([#5242](https://github.com/everruns/everruns/pull/5242)) by [@chaliy](https://github.com/chaliy)
 - fix(mcp): preserve OAuth resource binding through refresh and restart ([#5239](https://github.com/everruns/everruns/pull/5239)) by [@chaliy](https://github.com/chaliy)

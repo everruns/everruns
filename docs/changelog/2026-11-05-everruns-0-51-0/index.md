@@ -23,6 +23,8 @@ release: "0.51.0"
 - MCP credentials saved before this release need a new sign-in when their access token next needs refresh. An in-progress MCP sign-in must restart after the upgrade. Rolling back to an older server after new credentials have been saved can require reconnecting those MCP connections.
 - Rust callers constructing MCP OAuth `TokenSet` values must initialize the new `resource` field; use the resource validated during authorization. An absent resource allows loading older records but cannot authorize refresh.
 
+- Slack duplicate detection now includes the channel identity. A retry of an event first handled before the upgrade can be answered once more after the upgrade.
+
 ## In the changelog
 
 - [Exact file edit failures show recovery hints](/changelog/2026-10-31-exact-edit-recovery-hints/)
@@ -73,5 +75,7 @@ release: "0.51.0"
 - [Compaction keeps claim sources and uncertainty](/changelog/2026-11-05-compaction-preserves-sources-and-uncertainty/)
 - [Agents draw animated GIFs and SVGs with GPT Image 2.6](/changelog/2026-11-05-gpt-image-2-6-gifs/)
 - [MCP OAuth keeps its audience when tokens refresh](/changelog/2026-11-05-mcp-oauth-resource-continuity/)
+
+- [Slack agents set to Mentions only answer their @-mentions again](/changelog/2026-11-06-slack-mentions-only/)
 
 [GitHub release](https://github.com/everruns/everruns/releases/tag/v0.51.0) · [Full release notes](https://github.com/everruns/everruns/blob/v0.51.0/CHANGELOG.md#0510---2026-11-05)
