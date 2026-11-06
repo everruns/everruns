@@ -5,8 +5,10 @@ date: 2026-11-05
 release: "0.51.0"
 kind: fix
 significance: minor
-products: [platform, framework]
-surfaces: [api, code]
+products: [platform, framework, yolop]
+surfaces: [api, code, cli]
+links:
+  prs: [everruns/everruns#5239, everruns/yolop#916]
 ---
 
 MCP OAuth now retains the resource selected during sign-in when it saves and
@@ -19,3 +21,9 @@ Older credentials without a stored resource continue using their current access
 token until refresh is needed, then require a new sign-in. Reconnect the MCP
 server when prompted. This strengthens audience binding; it does not establish
 that an authorization server issued tokens for an unintended audience.
+
+[Yolop 0.23.2](https://github.com/everruns/yolop/releases/tag/v0.23.2)
+also preserves the resource in its saved MCP credentials, including repeated
+refresh-token rotation and restarts. For an older Yolop connection, run
+`yolop mcp login <name>` when refresh requests a new sign-in, then
+`yolop mcp test <name>` to verify discovery.
