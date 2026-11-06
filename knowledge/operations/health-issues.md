@@ -46,7 +46,15 @@ an opened issue to specific people right away. See
 "Usable" follows the rule the model pickers apply: the model is enabled, still listed by its
 provider, a chat model, and on an active provider. An issue appears exactly when a picker
 flags the setting. An agent without its own model is covered by the default's single issue,
-so a broken default opens one issue rather than one per agent. The 15-minute sweep
+so a broken default opens one issue rather than one per agent. "Still listed" means the
+provider's last model list (read only at a model sync) includes the model under its id or
+under its registry identity: OpenRouter lists `openai/gpt-6.1-sol` for a row moved from
+the OpenAI provider as `gpt-6.1-sol`, and both are the same model. A model missing from
+that list is reported as what was observed, the list's date and the id looked up, never
+as "no longer listed", because the list can be days old on a deployment that never syncs
+on its own. Such an issue offers the provider's model sync as its fix, which separates an
+old list (the issue clears), a real removal (it stays) and an unreachable provider (the
+sync's error, such as a rejected key, is shown). The 15-minute sweep
 judges every configured model. A provider sync, a model change or an agent's model or
 archive change rechecks that organization at once, so fixing the cause resolves the
 issue without waiting. The issue goes to the agent's authors, or to the org's owners.
@@ -98,6 +106,8 @@ recorded once per episode as a finding action, so the issue shows who fixed it.
   manual steps (add scopes, reinstall, save the token) remain.
 - **Runaway schedule** (`schedule.pause`): the finding's existing pause action, with
   undo, also offered as a fix.
+- **Model missing from its provider's list** (`models.sync`): syncs that provider's
+  models. Unavailable, with the reason, when the provider has no key.
 
 When several open issues offer the same fixer, the Health page walks through them one
 at a time, since Slack approves each app separately. Detectors without a fixer keep

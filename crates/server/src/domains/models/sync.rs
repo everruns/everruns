@@ -267,6 +267,8 @@ impl ModelSyncService {
         // Track which model_ids we've seen in this sync
         let mut seen_model_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
+        // Rows this sync already stamped as seen.
+        let mut stamped: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
 
         for (rank, model) in discovered.iter().enumerate() {
             seen_model_ids.insert(model.model_id.clone());
@@ -284,8 +286,27 @@ impl ModelSyncService {
                 .iter()
                 .find(|m| m.model_id == model.model_id)
                 .and_then(|m| m.provider_metadata.as_ref());
-            if let Some(binding) =
-                stored.and_then(|m| m.get(crate::domains::models::catalog::BINDING))
+            // Keep a stored binding, except a custom one the registry has
+            // since learned: a row saved as `custom/openrouter/openai/gpt-6.1-sol`
+            // before the registry knew OpenRouter's spelling takes the real
+            // identity (and its prices) now, when the service agrees.
+            let learned = everruns_contracts::model_profile_data::get_model_profile_key(
+                &provider.provider_type,
+                &model.model_id,
+            )
+            .filter(|key| {
+                let stored_key = crate::domains::models::catalog::key(stored);
+                stored_key.starts_with("custom/")
+                    && everruns_contracts::model_profile_data::all_profile_entries()
+                        .iter()
+                        .find(|entry| &entry.key == key)
+                        .is_some_and(|entry| {
+                            entry.service == crate::domains::models::catalog::service(stored)
+                        })
+            });
+            if let Some(binding) = stored
+                .and_then(|m| m.get(crate::domains::models::catalog::BINDING))
+                .filter(|_| learned.is_none())
             {
                 metadata[crate::domains::models::catalog::BINDING] = binding.clone();
             }
@@ -335,6 +356,7 @@ impl ModelSyncService {
                     self.db
                         .update_model(provider.org_id, existing_model.id.uuid(), update)
                         .await?;
+                    stamped.insert(existing_model.id.uuid());
                     updated += 1;
                 }
             } else {
@@ -372,13 +394,46 @@ impl ModelSyncService {
             }
         }
 
-        // Mark models not seen in this sync as stale (set last_seen_at to NULL won't work,
-        // instead we just leave them - they're stale if last_seen_at < provider.last_synced_at)
-        // Models with source='discovered' that have last_seen_at < last_synced_at are considered stale
-        let stale = existing
+        // A stored row the loop did not stamp can still be listed: the
+        // provider may list the same model under its own spelling. A row
+        // moved from the OpenAI provider to OpenRouter keeps `gpt-6.1-sol`
+        // while OpenRouter lists `openai/gpt-6.1-sol`, and a row the catalog
+        // dedupe above skipped is listed by its exact id.
+        // Decision: compare normalized identities (`catalog::identity`), so
+        // "no longer listed" means no spelling of the model was listed. Rows
+        // matching nothing keep their older `last_seen_at`, which is how
+        // staleness (`last_seen_at < last_synced_at`) is read back.
+        let listed_identities: std::collections::HashSet<String> = discovered
             .iter()
-            .filter(|m| m.source == "discovered" && !seen_model_ids.contains(&m.model_id))
-            .count();
+            .filter_map(|model| {
+                crate::domains::models::catalog::identity(&provider.provider_type, &model.model_id)
+            })
+            .collect();
+        let mut stale = 0;
+        for row in existing
+            .iter()
+            .filter(|row| row.source == "discovered" && !stamped.contains(&row.id.uuid()))
+        {
+            if listed_under_any_spelling(
+                &provider.provider_type,
+                row,
+                &seen_model_ids,
+                &listed_identities,
+            ) {
+                self.db
+                    .update_model(
+                        provider.org_id,
+                        row.id.uuid(),
+                        UpdateModel {
+                            last_seen_at: Some(now),
+                            ..Default::default()
+                        },
+                    )
+                    .await?;
+            } else {
+                stale += 1;
+            }
+        }
 
         Ok(SyncResult::Success {
             created,
@@ -391,6 +446,23 @@ impl ModelSyncService {
     fn resolve_api_key(&self, provider_row: &ProviderRow) -> Result<Option<String>> {
         resolve_provider_api_key(&self.db, self.encryption.as_deref(), provider_row)
     }
+}
+
+/// Whether a stored row names a model the provider just listed: by its exact
+/// id, or by its normalized identity (`catalog::row_identity`).
+fn listed_under_any_spelling(
+    driver: &str,
+    row: &crate::storage::ModelRow,
+    listed_ids: &std::collections::HashSet<String>,
+    listed_identities: &std::collections::HashSet<String>,
+) -> bool {
+    listed_ids.contains(&row.model_id)
+        || crate::domains::models::catalog::row_identity(
+            driver,
+            &row.model_id,
+            row.provider_metadata.as_ref(),
+        )
+        .is_some_and(|identity| listed_identities.contains(&identity))
 }
 
 /// The registry's decision models for a provider type, as the model id stored
@@ -597,6 +669,100 @@ mod tests {
             .unwrap();
         assert!(!stale(&after_second, "gpt-kept"));
         assert!(stale(&after_second, "gpt-gone"));
+    }
+
+    /// A row moved onto OpenRouter from the OpenAI provider keeps OpenAI's
+    /// spelling (`gpt-6.1-sol`) while OpenRouter lists `openai/gpt-6.1-sol`.
+    /// It is the same model, so the sync counts it as listed; a model the
+    /// provider lists under no spelling still reads as no longer listed.
+    #[tokio::test]
+    async fn a_model_listed_under_the_providers_own_spelling_is_not_stale() {
+        use crate::domains::models::ModelService;
+        use crate::kernel_imports::{Caller, OrgRole};
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::test_database());
+        let service = ModelSyncService::new(db.clone(), Arc::new(DriverRegistry::new()), None);
+        let models = ModelService::new(db.clone());
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: format!("org_{DEFAULT_ORG_ID:032}"),
+            user_id: None,
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+            read_only: false,
+        };
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                CreateProviderRow {
+                    name: "OpenRouter sync".to_string(),
+                    provider_type: "openrouter".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        // Rows saved under OpenAI's spelling, as a move between providers
+        // leaves them.
+        for model_id in ["gpt-6.1-sol", "gpt-6-sol"] {
+            let metadata = crate::domains::models::catalog::assign(
+                "openai",
+                model_id,
+                &["chat".to_string()],
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+            db.create_model(
+                DEFAULT_ORG_ID,
+                CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: model_id.to_string(),
+                    display_name: model_id.to_string(),
+                    capabilities: vec!["chat".to_string()],
+                    enabled: true,
+                    is_favorite: false,
+                    source: "discovered".to_string(),
+                    provider_metadata: Some(metadata),
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let listed = DiscoveredModel {
+            model_id: "openai/gpt-6.1-sol".to_string(),
+            display_name: None,
+            created_at: None,
+            owned_by: None,
+            capabilities: vec!["chat".to_string()],
+            discovered_profile: None,
+        };
+
+        let result = service.record_sync(&provider, &[listed]).await.unwrap();
+        assert!(
+            matches!(result, SyncResult::Success { stale: 1, .. }),
+            "{result:?}"
+        );
+        let after = models
+            .list_all_with_filters(&caller, None, true, false)
+            .await
+            .unwrap();
+        let stale = |id: &str| {
+            after
+                .iter()
+                .find(|model| model.model_id == id && model.provider_id == provider.id)
+                .unwrap_or_else(|| panic!("{id} is stored"))
+                .stale
+        };
+        assert!(!stale("gpt-6.1-sol"), "listed as openai/gpt-6.1-sol");
+        assert!(!stale("openai/gpt-6.1-sol"));
+        // OpenRouter lists no spelling of GPT-6 Sol in this sync.
+        assert!(stale("gpt-6-sol"));
     }
 
     // --- resolve_api_key tests ---
