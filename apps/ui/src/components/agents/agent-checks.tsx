@@ -22,6 +22,8 @@ interface AgentChecksProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
   tools?: ToolDefinition[];
+  /** Saved agent being edited, so checks can look at its channels. */
+  agentId?: string;
   /** Applies a server-proposed byte span replacement to the authored system prompt. */
   onApplyFix?: (start: number, end: number, replacement: string) => void;
 }
@@ -30,6 +32,7 @@ export function AgentChecks({
   systemPrompt,
   capabilities,
   tools = [],
+  agentId,
   onApplyFix,
 }: AgentChecksProps) {
   const ui = useUiTranslations();
@@ -38,6 +41,7 @@ export function AgentChecks({
     system_prompt: systemPrompt,
     capabilities,
     tools,
+    ...(agentId ? { agent_id: agentId } : {}),
   };
   const requestKey = JSON.stringify(request);
   const latestRequestKey = useRef(requestKey);

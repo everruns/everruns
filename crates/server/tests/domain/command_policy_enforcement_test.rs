@@ -103,6 +103,7 @@ async fn agent_preview_requires_harness_view_before_resolving_inheritance() {
         capabilities: Vec::new(),
         tools: Vec::new(),
         mcp_servers: Default::default(),
+        agent_id: None,
     };
     preview(None)
         .run(&ctx)

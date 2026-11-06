@@ -8,7 +8,7 @@ significance: minor
 products: [platform, cloud]
 surfaces: [ui, api]
 links:
-  docs: [/features/ui/#sessions, /features/agent-api/, /features/channels/, /features/a2a/#reactions, /capabilities/slack/#reactions]
+  docs: [/features/ui/#sessions, /features/agent-api/, /features/channels/, /features/a2a/#reactions, /capabilities/slack/#reactions, /capabilities/slack/#acknowledging-messages]
   prs: [everruns/everruns#5146, everruns/everruns#5150, everruns/everruns#5173, everruns/everruns#5178, everruns/everruns#5187]
 ---
 
@@ -20,8 +20,11 @@ show as chips under the message; the smile button opens a quick row of emoji.
 
 A reaction on the agent's reply reaches the agent as a short note, not a typed
 message, at its next turn. Add the **Reactions** capability to let the agent
-react with `react` (👀 when it starts, ✅ when it is done) and to choose whether
-a reaction starts a turn right away or is not told at all.
+react with `react` and to choose whether a reaction starts a turn right away or
+is not told at all. On Slack messages the agent reacts 👀 when it starts and ✅
+once it has answered, unless its instructions say otherwise, and an agent's
+first Slack channel turns the capability on (see
+[acknowledging messages](/capabilities/slack/#acknowledging-messages)).
 
 The [Agent API](/features/agent-api/) and `/v1` share the same routes:
 

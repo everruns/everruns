@@ -86,6 +86,7 @@ async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
         capabilities: Vec::new(),
         tools: Vec::new(),
         mcp_servers: Default::default(),
+        agent_id: None,
     }
     .execute(&ctx)
     .await

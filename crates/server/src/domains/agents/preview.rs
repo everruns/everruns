@@ -5,7 +5,7 @@ use crate::domains::common::*;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use everruns_contracts::typed_id::HarnessId;
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -29,6 +29,11 @@ pub struct PreviewAgent {
     pub tools: Vec<ToolDefinition>,
     #[serde(default)]
     pub mcp_servers: ScopedMcpServers,
+    /// Saved agent this draft edits. Enables checks that depend on the agent's
+    /// channels and harness, which the draft itself does not carry.
+    #[serde(default)]
+    #[schema(value_type = Option<String>)]
+    pub agent_id: Option<AgentId>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -133,6 +138,11 @@ impl Command for PreviewAgent {
             ctx.capability_service.registry(),
             &external_tools,
         ));
+        if let Some(agent_id) = self.agent_id {
+            builtin.extend(
+                saved_agent_checks(ctx, agent_id, self.harness_id, &effective.capabilities).await?,
+            );
+        }
         let mut findings = super::checks::apply_rule_overrides(builtin, &rule_config.overrides);
         findings.extend(super::checks::run_declarative_rules(
             &rule_config.declarative,
@@ -146,4 +156,45 @@ impl Command for PreviewAgent {
             findings,
         })
     }
+}
+
+/// Checks that need the saved agent: its channels and, when the draft did not
+/// name a harness, the harness the agent runs on.
+async fn saved_agent_checks(
+    ctx: &Ctx,
+    agent_id: AgentId,
+    draft_harness: Option<HarnessId>,
+    draft_capabilities: &[AgentCapabilityConfig],
+) -> Result<Vec<super::checks::Finding>, CommandError> {
+    let Some(agent) = ctx
+        .db
+        .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+        .await?
+    else {
+        return Ok(Vec::new());
+    };
+    let has_slack_channel = ctx
+        .db
+        .list_agent_channels(ctx.org_id(), agent.id.uuid())
+        .await?
+        .iter()
+        .any(|channel| channel.channel_type == "slack");
+    if !has_slack_channel {
+        return Ok(Vec::new());
+    }
+    let mut capabilities = draft_capabilities.to_vec();
+    if draft_harness.is_none() {
+        capabilities.extend(
+            crate::domains::harnesses::queries::get_capabilities(
+                &ctx.db,
+                ctx.org_id(),
+                agent.harness_id.uuid(),
+            )
+            .await?,
+        );
+    }
+    Ok(super::checks::check_slack_without_reactions(
+        has_slack_channel,
+        &capabilities,
+    ))
 }

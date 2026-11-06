@@ -472,6 +472,33 @@ fn check_duplicate_tool_names(tools: &[ToolDefinition], findings: &mut Vec<Findi
     }
 }
 
+/// Rule `channels.slack_without_reactions`: the agent answers Slack but
+/// cannot react, so people in a Slack thread see nothing until the reply
+/// lands. The 👀/✅ acknowledgement is a default in the Reactions
+/// capability's instructions, so the fix is enabling that capability, not a
+/// prompt line. `capabilities` must include the harness's.
+pub fn check_slack_without_reactions(
+    has_slack_channel: bool,
+    capabilities: &[AgentCapabilityConfig],
+) -> Vec<Finding> {
+    let reactions = everruns_capabilities::capabilities::reactions::REACTIONS_CAPABILITY_ID;
+    if !has_slack_channel || capabilities.iter().any(|c| c.capability_id() == reactions) {
+        return Vec::new();
+    }
+    vec![
+        Finding::builtin(
+            "channels.slack_without_reactions",
+            FindingSeverity::Suggestion,
+            FindingCategory::Effectiveness,
+            "People in Slack get no sign this agent saw their message until it replies. \
+             Add the Reactions capability: it reacts 👀 when it starts and ✅ when it has answered, \
+             unless its instructions say otherwise."
+                .to_string(),
+        )
+        .at("capabilities", None),
+    ]
+}
+
 /// An enabled capability that another enabled capability supersedes does
 /// nothing (`Capability::supersedes`; collection already skips it), so the
 /// agent pays for configuration that never takes effect. Takes the registry
@@ -642,6 +669,12 @@ pub fn builtin_rule_catalog() -> &'static [BuiltinRuleInfo] {
             description: "A capability that another enabled capability replaces does nothing.",
         },
         BuiltinRuleInfo {
+            rule_id: "channels.slack_without_reactions",
+            default_severity: Suggestion,
+            category: Effectiveness,
+            description: "Agent answers Slack but cannot acknowledge messages with a reaction.",
+        },
+        BuiltinRuleInfo {
             rule_id: "capabilities.duplicate_web_search",
             default_severity: Warning,
             category: Cost,
@@ -736,6 +769,19 @@ mod tests {
 
     fn rule_ids(findings: &[Finding]) -> Vec<&str> {
         findings.iter().map(|f| f.rule_id.as_str()).collect()
+    }
+
+    #[test]
+    fn slack_agent_without_reactions_gets_a_suggestion() {
+        let findings = check_slack_without_reactions(true, &[capability("slack")]);
+        assert_eq!(
+            rule_ids(&findings),
+            vec!["channels.slack_without_reactions"]
+        );
+        assert_eq!(findings[0].severity, FindingSeverity::Suggestion);
+        assert!(findings[0].message.contains("Reactions"));
+        assert!(check_slack_without_reactions(true, &[capability("reactions")]).is_empty());
+        assert!(check_slack_without_reactions(false, &[]).is_empty());
     }
 
     #[test]

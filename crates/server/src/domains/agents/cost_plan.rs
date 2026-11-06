@@ -102,6 +102,7 @@ impl Command for PlanAgentCosts {
             capabilities: a.capabilities,
             tools: a.tools,
             mcp_servers: a.mcp_servers,
+            agent_id: None,
         }
         .run(ctx)
         .await?;
