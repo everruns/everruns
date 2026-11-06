@@ -89,6 +89,15 @@
 //   took over a second) while no fold or scan reads them. They are
 //   observability records, never a turn's input or state. `head_sequence`
 //   is still the log's, so the cursor and the fence see every event.
+// - A lease call takes nothing while the request pool has no free connection
+//   (`request_pool_exhausted`). Workers no longer cap their running turns by a
+//   small slot count (they admit turns by memory and runtime lag), so the
+//   database pool is where too many turns at once would show first: every
+//   running turn's writes would queue behind new turns' setup reads. Leasing
+//   nothing then makes new turns wait their turn in the runnable index, where
+//   waiting costs nothing, and lets the running ones finish. The worker's
+//   lease loop polls again within a second, so a short burst costs pickup
+//   latency only.
 
 mod capability_admission;
 mod detached;
@@ -125,6 +134,13 @@ const MAX_ACTOR_LEASE_SCAN: i64 = 1000;
 /// Shortest and longest lease a caller may ask for.
 pub const MIN_ACTOR_LEASE_TTL: Duration = Duration::from_secs(1);
 pub const MAX_ACTOR_LEASE_TTL: Duration = Duration::from_secs(300);
+/// Whether every connection the request pool may open is open and in use.
+/// See the header: a lease call then takes nothing. A pool still below its
+/// size cap opens a connection on demand, so only a full one counts.
+pub(crate) fn request_pool_exhausted(pool: &sqlx::PgPool) -> bool {
+    pool.num_idle() == 0 && pool.size() >= pool.options().get_max_connections()
+}
+
 /// Journal page size when the caller passes none.
 pub const DEFAULT_ACTOR_JOURNAL_LIMIT: i64 = 500;
 /// Largest journal page one read returns.
@@ -445,6 +461,13 @@ impl Database {
     ) -> Result<Vec<LeasedActorRow>> {
         let limit = limit.clamp(0, MAX_ACTOR_LEASE_BATCH);
         if limit == 0 {
+            return Ok(Vec::new());
+        }
+        if request_pool_exhausted(self.pool.raw()) {
+            tracing::debug!(
+                holder,
+                "Request pool has no free connection; leasing no actors"
+            );
             return Ok(Vec::new());
         }
         let scan = (limit * ACTOR_LEASE_SCAN_FACTOR).min(MAX_ACTOR_LEASE_SCAN);

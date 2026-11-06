@@ -978,3 +978,37 @@ async fn stranded_active_sessions_are_marked_resumable() {
         "leased actors are not stranded"
     );
 }
+
+#[tokio::test]
+async fn a_lease_takes_nothing_while_the_request_pool_is_exhausted() {
+    let db = StorageBackend::test_database();
+    let id = runnable(&db, ORG_A, 1).await;
+    let pool = db.database().pool().clone();
+    let max = pool.options().get_max_connections();
+    let mut held = Vec::new();
+    for _ in 0..max {
+        held.push(pool.acquire().await.expect("acquire a pool connection"));
+    }
+    assert!(request_pool_exhausted(&pool));
+
+    let leased = db.lease_session_actors("worker-a", 10, TTL, 100).await;
+    assert!(
+        leased.unwrap().is_empty(),
+        "new turns wait in the runnable index while running ones hold every connection"
+    );
+
+    // A dropped connection goes back to the pool on a spawned task.
+    held.pop();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while request_pool_exhausted(&pool) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a free connection lifts it");
+    let leased = db
+        .lease_session_actors("worker-a", 10, TTL, 100)
+        .await
+        .unwrap();
+    assert_eq!(ids(&leased), HashSet::from([id]));
+}

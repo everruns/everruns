@@ -1,14 +1,17 @@
 //! The worker's detached tool calls: long server-side calls taken off their
-//! turn, so the turn parks and frees its execution slot, lease and memory
-//! while the call runs (knowledge/execution/detached-tool-calls.md).
+//! turn, so the turn parks and frees its place on the worker, its lease and
+//! memory while the call runs (knowledge/execution/detached-tool-calls.md).
 //!
 //! Decisions:
-//! - A call detaches after `WORKER_TOOL_DETACH_AFTER_SECS` (30 s; 0 turns
-//!   detaching off). The threshold is high because each detach costs a
-//!   re-lease and a turn setup when the turn resumes; a held slot for 30 s
-//!   costs more than that.
+//! - A call detaches after `WORKER_TOOL_DETACH_AFTER_SECS` (300 s; 0 turns
+//!   detaching off). A turn waiting on a tool holds no execution slot (turn
+//!   admission counts memory and runtime lag, not slots), so a held turn
+//!   costs only its memory and a lease renewal. Detaching is for calls that
+//!   run for minutes: a sandbox build, a long test run. Each detach costs a
+//!   re-lease and a turn setup when the turn resumes. It was 30 s while a
+//!   waiting call held one of the worker's 20 slots (2026-10-27 to 11-05).
 //! - `MAX_DETACHED_TOOL_CALLS` (1000) bounds the futures one worker holds.
-//!   Past it a call stays with its turn, as a model wait past its cap does.
+//!   Past it a call stays with its turn.
 //! - Each detached call has a control-plane record. The worker renews all of
 //!   its records in one call every third of the TTL, and early on a cancel
 //!   notification; a record missing from the reply (cancelled, expired) stops
@@ -41,7 +44,7 @@ use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
 
 /// Default for `WORKER_TOOL_DETACH_AFTER_SECS`.
-pub const DEFAULT_TOOL_DETACH_AFTER: Duration = Duration::from_secs(30);
+pub const DEFAULT_TOOL_DETACH_AFTER: Duration = Duration::from_secs(300);
 /// Default for `MAX_DETACHED_TOOL_CALLS`, per worker.
 pub const DEFAULT_MAX_DETACHED_TOOL_CALLS: usize = 1000;
 /// Life of a detached call's record between renewals.

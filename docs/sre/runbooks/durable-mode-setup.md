@@ -71,8 +71,8 @@ async fn main() -> anyhow::Result<()> {
 | `SERVER_GRPC_ADDRESS` | Server gRPC address (`WORKER_GRPC_ADDRESS` legacy alias) | `127.0.0.1:9001` |
 | `WORKER_GRPC_AUTH_TOKEN` | Bearer token for gRPC auth | Unset (disabled) |
 | `WORKER_ID` | Unique worker identifier | Auto-generated |
-| `MAX_CONCURRENT_TASKS` | Max tasks per worker | `50` |
-| `MAX_CONCURRENT_MODEL_WAITS` | Max reason steps per worker that free their slot while waiting on the model (`0` = off) | `200` |
+| `MAX_CONCURRENT_TASKS` | Max queued background tasks per worker (session turns do not count) | `50` |
+| `WORKER_MAX_RUNNING_TURNS` | Max session turns per worker (`0` = from the memory limit) | from the memory limit |
 
 ### Database Tables
 

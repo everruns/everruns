@@ -17,7 +17,7 @@ network disk does. Production stays the final check, not the place to search.
   python3 scripts/stress/run.py --server-bin target/release/everruns-server \
       --worker-bin target/release/everruns-worker --sessions 200
   # sweep: every combination runs on a fresh database
-  ... --sweep env:MAX_CONCURRENT_MODEL_WAITS=200,2000 --sweep pg:commit_delay=0,200
+  ... --sweep env:WORKER_MAX_RUNNING_TURNS=20,0 --sweep pg:commit_delay=0,200
 
 See knowledge/operations/load-testing.md ("Local stress bench").
 """
