@@ -2,6 +2,7 @@
 title: "Run a trigger on an event you choose"
 description: "Fire any agent trigger with an event, or point a GitHub trigger at an open pull request, and it runs exactly as a real delivery would."
 date: 2026-11-03
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud, cli]

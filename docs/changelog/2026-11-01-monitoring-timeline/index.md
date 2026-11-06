@@ -2,6 +2,7 @@
 title: Monitoring shows parallel sessions and turns over time
 description: A new Timeline tab in Monitoring charts parallel sessions by phase, turns by outcome, waits for a worker, spend and worker load over any range up to 30 days.
 date: 2026-11-01
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud]

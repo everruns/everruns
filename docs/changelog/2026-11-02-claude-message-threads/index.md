@@ -2,6 +2,7 @@
 title: "Claude message threads send only new messages"
 description: "Opt into short-lived Claude message threads to reduce repeated history uploads, with full local transcripts and automatic replay when state expires."
 date: 2026-11-02
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud, framework]

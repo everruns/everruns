@@ -2,6 +2,7 @@
 title: MCP session status keeps delivered replies visible
 description: MCP status polling returns the latest delivered reply even after long tool runs, filtered event requests, or polling past the reply event.
 date: 2026-11-03
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [platform, cloud]

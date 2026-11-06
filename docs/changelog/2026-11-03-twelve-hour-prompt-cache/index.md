@@ -2,6 +2,7 @@
 title: "OpenAI Responses caching defaults to twelve hours"
 description: "Keep reusable OpenAI Responses prefixes warm across longer pauses with a twelve-hour default lifetime and estimates that include the higher write rate."
 date: 2026-11-03
+release: "0.51.0"
 kind: improvement
 significance: minor
 products: [platform, cloud, framework]

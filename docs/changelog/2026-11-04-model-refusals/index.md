@@ -2,6 +2,7 @@
 title: Model refusals stay distinct from provider failures
 description: Responses refusals keep the same classification in streaming, JSON, batches and session traces, without automatic retries.
 date: 2026-11-04
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [framework, platform, cloud]

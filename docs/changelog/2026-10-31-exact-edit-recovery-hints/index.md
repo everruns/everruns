@@ -2,6 +2,7 @@
 title: Exact file edit failures show recovery hints
 description: Failed exact file edits now show bounded similar-line hints and cautious already-applied guidance, helping agents recover without changing files.
 date: 2026-10-31
+release: "0.51.0"
 kind: improvement
 significance: minor
 products: [framework, platform, cloud]

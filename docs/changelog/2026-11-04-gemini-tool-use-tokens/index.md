@@ -2,6 +2,7 @@
 title: "Gemini usage includes hosted-tool prompt tokens"
 description: "Gemini token usage now includes provider-reported tool-use prompts, preserving cache accounting across streaming, continuation, recovery and batch responses."
 date: 2026-11-04
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [framework, platform]

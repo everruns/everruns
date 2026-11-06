@@ -2,6 +2,7 @@
 title: Scheduled jobs no longer stop when one schedule has no runner
 description: A schedule nothing runs now holds one queued task instead of filling the queue, so Memory sync, sandbox template builds and cleanup jobs keep running.
 date: 2026-11-02
+release: "0.51.0"
 kind: fix
 significance: notable
 products: [platform, cloud]

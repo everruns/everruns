@@ -2,6 +2,7 @@
 title: Agents that hand work to other agents
 description: Give an agent other agents to hand work to. They work as one run with a shared team folder and bring every question back to one conversation.
 date: 2026-11-03
+release: "0.51.0"
 kind: feature
 significance: major
 products: [platform, cloud, framework]

@@ -2,6 +2,7 @@
 title: Slack agents set to Mentions only answer their @-mentions again
 description: A Slack channel set to answer mentions only, or relevant messages, no longer drops an @-mention in a channel, and editing its settings keeps its workspace.
 date: 2026-11-06
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [platform]

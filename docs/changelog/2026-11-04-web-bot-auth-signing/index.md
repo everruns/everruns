@@ -2,6 +2,7 @@
 title: Request signing now verifies with Cloudflare Web Bot Auth
 description: Agent web requests are signed in the format Cloudflare verifies, and the key directory is signed so a deployment can register as a verified bot.
 date: 2026-11-04
+release: "0.51.0"
 kind: fix
 significance: notable
 products: [platform]

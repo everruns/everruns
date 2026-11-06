@@ -2,6 +2,7 @@
 title: "Review agents on Bashkit can read the code around a change"
 description: "github_checkout_pull_request now works without a managed sandbox: on Bashkit it copies the pull request's files into the session files."
 date: 2026-11-02
+release: "0.51.0"
 kind: feature
 significance: minor
 products: [platform, cloud]

@@ -2,6 +2,7 @@
 title: MCP Apps open the real Everruns workspaces
 description: Open Agent, Harness, Capability and Knowledge cards, plus the full Home and Session interfaces with Trace, through your existing MCP connection.
 date: 2026-11-03
+release: "0.51.0"
 kind: improvement
 significance: notable
 products: [platform, cloud]

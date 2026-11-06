@@ -2,6 +2,7 @@
 title: Compare agent variants with eval experiments
 description: Run one eval dataset against several models side by side, see which cases each fixed or broke, and gate CI on a verdict that accounts for run-to-run noise.
 date: 2026-11-01
+release: "0.51.0"
 kind: feature
 significance: major
 products: [platform, cloud]

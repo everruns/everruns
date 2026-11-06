@@ -2,6 +2,7 @@
 title: "Health issues fix themselves in one click"
 description: "Fix in Slack adds missing bot permissions to an agent's Slack app, including apps set up by hand, and opens Slack to approve them."
 date: 2026-11-04
+release: "0.51.0"
 kind: feature
 significance: minor
 products: [platform, cloud]

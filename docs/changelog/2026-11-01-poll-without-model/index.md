@@ -2,6 +2,7 @@
 title: "Agents can poll a URL without spending model tokens"
 description: "A scheduled web_fetch monitor with a wake condition fetches on every run without an agent turn, and wakes the agent once when the response changes."
 date: 2026-11-01
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud]

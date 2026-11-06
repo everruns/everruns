@@ -2,6 +2,7 @@
 title: Home shows what needs attention across the organization
 description: A new Home page ranks what needs a person, from failing agents to paused sessions and health issues, above the last 24 hours of activity.
 date: 2026-11-01
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud]

@@ -3,6 +3,7 @@ title: See what agents cost and limit usage with usage policies
 description: Settings → Costs shows each usage's cost and where it came from, keeps your own price list, and turns budgets into usage policies that notify, ask or stop.
 date: 2026-11-01
 cloud: 2026-11-03
+release: "0.51.0"
 kind: feature
 significance: major
 products: [platform, cloud]
