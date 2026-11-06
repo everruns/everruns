@@ -97,13 +97,18 @@ def risk_filters(paths):
         # Agent Knowledge mounts remain private to runtime views; a consumer's
         # workspace must not expose them through normalized workspace aliases.
         filters.add('work_chat_test::')
-    if any(p.startswith(('crates/server/src/domains/agents/credentials.rs',
+    if any(p.startswith(('crates/core/src/mcp/oauth/',
+                         'crates/server/src/api/user_connections/mcp',
+                         'crates/server/src/storage/connection_resolver/',
+                         'crates/server/src/domains/agents/credentials.rs',
                          'crates/server/src/domains/credentials/',
                          'crates/server/src/domains/resource_access/',
                          'crates/server/src/domains/mcp_servers/',
                          'crates/server/src/worker_link/'))
-           or p == 'crates/server/tests/domain/mcp_acts_as_grpc_test.rs' for p in paths):
-        # Credential parameter lookup must not preempt native OAuth's identity
+           or p in ('crates/server/src/oauth_client.rs',
+                    'crates/server/tests/domain/mcp_acts_as_grpc_test.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        # Refresh and credential changes must preserve native OAuth's identity
         # and connection-required behavior over the actual worker transport.
         filters.add('mcp_acts_as_grpc_test::')
     if any(p.startswith(('crates/server/src/api/', 'crates/server/src/openapi/')) for p in paths):

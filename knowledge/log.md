@@ -2,6 +2,8 @@
 
 ## 2026-11-05
 
+- MCP OAuth changes select worker gRPC identity contracts before merge, covering
+  current resource-bound refresh grants and legacy reconnection without network calls.
 - MCP OAuth retains validated resource binding across persistence and token
   rotation. Legacy grants reauthorize at refresh; web grants reject changed
   OAuth configuration before exchanging secrets.
