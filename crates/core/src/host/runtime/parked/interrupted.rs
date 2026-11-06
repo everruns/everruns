@@ -69,7 +69,9 @@ impl InProcessRuntime {
     /// `interrupted` first. A turn cut off outside its act, or whose calls
     /// were all settled, reasons again. The turn keeps its id; its iteration
     /// count and usage carry on from the log. Steering works as in
-    /// [`run_steerable_turn`](Self::run_steerable_turn).
+    /// [`run_steerable_turn`](Self::run_steerable_turn). A turn whose answer
+    /// is already in the log only gets its end recorded: the model and tools
+    /// do not run again.
     ///
     /// # Errors
     ///
@@ -81,6 +83,14 @@ impl InProcessRuntime {
         session_id: SessionId,
         steering: TurnSteering,
     ) -> Result<TurnResult> {
+        // Decision: an answer committed before the process died is completed
+        // from the log (turn.completed, session.idled) without running the
+        // model or tools again, as the session actor does.
+        if let Some((org_id, turn)) = self.last_open_turn(session_id).await?
+            && turn.is_answered()
+        {
+            return self.complete_answered_turn(org_id, turn).await;
+        }
         let (state, act) = self
             .interrupted_turn_plan(session_id)
             .await?
@@ -126,6 +136,14 @@ impl InProcessRuntime {
     /// continued through [`resume_steerable_turn`](Self::resume_steerable_turn)
     /// instead.
     async fn open_turn(&self, session_id: SessionId) -> Result<Option<(i64, OpenTurn)>> {
+        Ok(self
+            .last_open_turn(session_id)
+            .await?
+            .filter(|(_, turn)| !turn.is_answered()))
+    }
+
+    /// The last turn while it is open, answered or not.
+    async fn last_open_turn(&self, session_id: SessionId) -> Result<Option<(i64, OpenTurn)>> {
         if lock_parked(&self.parked_turns).contains_key(&session_id) {
             return Ok(None);
         }
@@ -146,7 +164,7 @@ impl InProcessRuntime {
             };
             request = EventReadRequest::from_cursor(cursor, limit);
         }
-        let Some(turn) = fold.open_turn().filter(|turn| !turn.is_answered()) else {
+        let Some(turn) = fold.open_turn() else {
             return Ok(None);
         };
         let snapshot = self.resolved_execution_snapshot(session_id).await?;
@@ -154,6 +172,35 @@ impl InProcessRuntime {
             in_process_internal_org_id(&snapshot.organization_id),
             turn,
         )))
+    }
+
+    /// End `turn`, whose answer is already in the log.
+    async fn complete_answered_turn(&self, org_id: i64, turn: OpenTurn) -> Result<TurnResult> {
+        let lifecycle =
+            crate::host::RuntimeSessionLifecycle::new(self.clone(), org_id, turn.session_id());
+        let completion = turn.completed_data(chrono::Utc::now());
+        let iterations = completion.iterations;
+        let usage = completion.usage.clone();
+        lifecycle
+            .emit_turn_completed(turn.input_message_id(), completion)
+            .await?;
+        lifecycle
+            .emit_session_idled(
+                turn.turn_id(),
+                turn.input_message_id(),
+                Some(iterations),
+                usage,
+            )
+            .await?;
+        Ok(TurnResult {
+            response: turn.final_text().to_string(),
+            iterations: iterations as usize,
+            tool_calls_count: turn.tool_call_count() as usize,
+            success: true,
+            error: None,
+            stop_reason: everruns_contracts::turn::TurnStopReason::EndTurn,
+            turn_id: turn.turn_id(),
+        })
     }
 }
 

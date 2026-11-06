@@ -1,13 +1,20 @@
 //! An external host drives an Agent's turns over its own canonical log, and a
 //! turn cut off mid-act finishes on a runtime rebuilt from that log alone.
+//! A turn whose answer committed before its holder died ends without asking
+//! the model again.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use everruns::hosting::runtime::{AcceptedTurnInput, HostBackends, TurnId, TurnSteering};
 use everruns::prelude::*;
 use everruns::{LlmSimConfig, SimToolCall, SimTurn};
-use everruns_core::host::{EventReadLimit, EventReadRequest, EventReader, InMemoryEventLog};
+use everruns_core::events::{Event, EventRequest};
+use everruns_core::host::{
+    EventDurability, EventLog, EventLogError, EventPage, EventReadLimit, EventReadRequest,
+    EventReader, InMemoryEventLog,
+};
 use serde_json::{Value, json};
 
 fn call(name: &str, id: &str) -> SimTurn {
@@ -144,4 +151,107 @@ async fn a_turn_cut_off_mid_act_finishes_on_a_rebuilt_runtime() {
         1,
         "{after:?}"
     );
+}
+
+/// Commits through `inner` until the turn tries to end, then hangs: the
+/// holder dies after its answer is durable and before `turn.completed`.
+struct DiesBeforeTurnEnd {
+    inner: Arc<InMemoryEventLog>,
+}
+
+#[async_trait]
+impl EventReader for DiesBeforeTurnEnd {
+    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
+        self.inner.read_page(request).await
+    }
+}
+
+#[async_trait]
+impl EventLog for DiesBeforeTurnEnd {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        if request.event_type == "turn.completed" {
+            std::future::pending::<()>().await;
+        }
+        self.inner.append(request).await
+    }
+
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        if request.event_type == "turn.completed" {
+            std::future::pending::<()>().await;
+        }
+        self.inner
+            .append_conditional(request, expected_last_sequence)
+            .await
+    }
+
+    fn durability(&self) -> EventDurability {
+        self.inner.durability()
+    }
+}
+
+#[tokio::test]
+async fn an_answered_turn_cut_off_before_its_end_completes_without_the_model() {
+    // One scripted answer: a second model call would fail the turn.
+    let sim = LlmSimConfig::scripted(vec![SimTurn::Assistant("Done.".into())]);
+    let agent = Agent::builder()
+        .instructions("Answer.")
+        .model(Model::simulated_with_config(sim))
+        .build()
+        .expect("agent");
+    let log = Arc::new(InMemoryEventLog::new());
+    let session = SessionId::new();
+    {
+        let dying = Arc::new(DiesBeforeTurnEnd { inner: log.clone() });
+        let runtime = agent
+            .external_runtime(HostBackends::in_memory().with_event_log(dying), session)
+            .await
+            .expect("runtime");
+        let message = runtime
+            .persist_accepted_input(session, AcceptedTurnInput::new("hi"))
+            .await
+            .expect("admit");
+        let cut = tokio::time::timeout(
+            Duration::from_millis(500),
+            runtime.run_stored_turn(session, message, TurnId::new(), TurnSteering::new()),
+        )
+        .await;
+        assert!(cut.is_err(), "the turn hangs at its end");
+    }
+    let before = event_types(&log, session).await;
+    assert!(
+        before.iter().any(|t| t == "output.message.completed"),
+        "{before:?}"
+    );
+    assert!(!before.iter().any(|t| t == "turn.completed"), "{before:?}");
+
+    let runtime = agent
+        .external_runtime(
+            HostBackends::in_memory().with_event_log(log.clone()),
+            session,
+        )
+        .await
+        .expect("rebuilt runtime");
+    let turn = runtime
+        .resume_interrupted_turn(session, TurnSteering::new())
+        .await
+        .expect("resume");
+
+    assert!(turn.success, "{:?}", turn.error);
+    assert_eq!(turn.response, "Done.");
+    let after = event_types(&log, session).await;
+    assert_eq!(
+        after.iter().filter(|t| *t == "reason.started").count(),
+        1,
+        "the model is not asked again: {after:?}"
+    );
+    assert_eq!(
+        after.iter().filter(|t| *t == "turn.completed").count(),
+        1,
+        "{after:?}"
+    );
+    assert!(after.iter().any(|t| t == "session.idled"), "{after:?}");
 }
