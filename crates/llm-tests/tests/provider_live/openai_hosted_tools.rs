@@ -109,7 +109,12 @@ async fn openai_runs_hosted_code_interpreter() {
         code_interpreter: Some(ContainerTool::default()),
         ..Default::default()
     };
-    let prompt = "Use python to compute 2**100. Reply with the number only.";
+    // A familiar arithmetic answer can come from memory without a tool call.
+    // Ask for the actual container's state so execution is part of the task.
+    let prompt = "Use the code interpreter's Python tool to execute \
+        `import sys; print(sys.version)` in its container. Return the exact \
+        output from that tool call only. You must execute the tool; do not \
+        infer or guess the Python version.";
     assert_hosted_call(tools, prompt, "code_interpreter", "code_interpreter_call").await;
 }
 
