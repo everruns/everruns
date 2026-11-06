@@ -4,8 +4,6 @@
 
 - Hosted container-tool live tests require observations from the execution environment;
   completed-call and usage-count assertions still reject answers without tool execution.
-- Live provider send failures use the existing bounded transport retry policy;
-  exhausting that budget remains a failure, never a skip.
 
 ## 2026-11-05
 

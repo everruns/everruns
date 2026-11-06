@@ -816,9 +816,6 @@ pub fn is_transient_transport_error(err: &str) -> bool {
         "transport error",
         "stream error",
         "error decoding response body",
-        // reqwest's send error can hide the lower-level connection cause.
-        // Production llm_retry already treats this no-response failure as transport.
-        "error sending request for url",
         "connection reset",
         "connection closed",
         "connection error",
