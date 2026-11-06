@@ -255,3 +255,100 @@ async fn an_answered_turn_cut_off_before_its_end_completes_without_the_model() {
     );
     assert!(after.iter().any(|t| t == "session.idled"), "{after:?}");
 }
+
+/// Refuses `tool.started`, as a log does once another holder owns the turn.
+struct RefusesToolStart {
+    inner: Arc<InMemoryEventLog>,
+}
+
+#[async_trait]
+impl EventReader for RefusesToolStart {
+    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
+        self.inner.read_page(request).await
+    }
+}
+
+#[async_trait]
+impl EventLog for RefusesToolStart {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        if request.event_type == "tool.started" {
+            return Err(EventLogError::Backend {
+                detail: "claim lost".into(),
+            });
+        }
+        self.inner.append(request).await
+    }
+
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        if request.event_type == "tool.started" {
+            return Err(EventLogError::Backend {
+                detail: "claim lost".into(),
+            });
+        }
+        self.inner
+            .append_conditional(request, expected_last_sequence)
+            .await
+    }
+
+    fn durability(&self) -> EventDurability {
+        self.inner.durability()
+    }
+}
+
+#[tokio::test]
+async fn a_call_that_may_not_run_twice_does_not_run_unless_its_start_is_stored() {
+    // A tool not declared idempotent runs at most once: a holder that cannot
+    // record the start (it lost the turn) must not run it unseen.
+    let runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = runs.clone();
+    let pay = FunctionTool::new(
+        "pay",
+        "Pay.",
+        json!({ "type": "object", "properties": {} }),
+        move |_args: Value| {
+            let counter = counter.clone();
+            async move {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok::<_, String>(json!({ "paid": true }))
+            }
+        },
+    );
+    let sim = LlmSimConfig::scripted(vec![
+        call("pay", "call_1"),
+        SimTurn::Assistant("Payment not made.".into()),
+    ]);
+    let agent = Agent::builder()
+        .instructions("Pay, then report.")
+        .model(Model::simulated_with_config(sim))
+        .tool(pay)
+        .build()
+        .expect("agent");
+    let log = Arc::new(InMemoryEventLog::new());
+    let session = SessionId::new();
+    let runtime = agent
+        .external_runtime(
+            HostBackends::in_memory()
+                .with_event_log(Arc::new(RefusesToolStart { inner: log.clone() })),
+            session,
+        )
+        .await
+        .expect("runtime");
+    let message = runtime
+        .persist_accepted_input(session, AcceptedTurnInput::new("pay"))
+        .await
+        .expect("admit");
+    let result = runtime
+        .run_stored_turn(session, message, TurnId::new(), TurnSteering::new())
+        .await;
+    assert!(result.is_ok(), "the turn carries on with the failure");
+
+    assert_eq!(
+        runs.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "the call ran without a stored start"
+    );
+}
