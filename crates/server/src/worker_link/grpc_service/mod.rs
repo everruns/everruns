@@ -8,6 +8,8 @@
 
 pub mod assignment_scope;
 pub mod authority;
+mod http2;
+pub use http2::grpc_server_builder;
 pub mod journal_capability;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
