@@ -98,7 +98,7 @@ pub(super) fn spawn_grpc_server(
                     grpc_service::GrpcAuthInterceptor::new(Some(grpc_token.clone()));
                 tracing::info!("gRPC server listening on {}", grpc_addr);
 
-                let mut builder = tonic::transport::Server::builder();
+                let mut builder = grpc_service::grpc_server_builder();
                 if let Some(tls) = grpc_tls_config {
                     match builder.tls_config(tls) {
                         Ok(tls_builder) => builder = tls_builder,
@@ -498,7 +498,7 @@ pub(super) fn spawn_custom_worker_server(
             let events = events.clone();
             let tls = tls.clone();
             async move {
-                let mut server = tonic::transport::Server::builder();
+                let mut server = grpc_service::grpc_server_builder();
                 if let Some(tls) = tls {
                     match server.tls_config(tls) {
                         Ok(configured) => server = configured,
