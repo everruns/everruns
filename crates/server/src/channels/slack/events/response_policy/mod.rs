@@ -32,7 +32,10 @@ pub(crate) async fn should_process_message(
     event: &SlackEvent,
     session: Option<SessionId>,
 ) -> bool {
-    if config.response_policy == SlackResponsePolicy::AllMessages || is_directed_message(event) {
+    if config.response_policy == SlackResponsePolicy::AllMessages
+        || is_directed_message(event)
+        || mentions_agent(state, config, endpoint, event).await
+    {
         return true;
     }
     if config.response_policy == SlackResponsePolicy::MentionsOnly {
@@ -89,6 +92,43 @@ fn is_directed_message(event: &SlackEvent) -> bool {
             .channel
             .as_deref()
             .is_some_and(|channel| channel.starts_with('D'))
+}
+
+/// Whether a plain `message` event @-mentions the agent's bot user.
+///
+/// Slack delivers one channel mention twice under the same `ts`: a `message`
+/// (from `message.channels`) and an `app_mention`. Which comes first is not
+/// guaranteed, so the `message` half must read as directed too, or the policy
+/// answer would depend on arrival order. When Slack cannot say who the bot is,
+/// this is `false` and the `app_mention` half is still answered.
+async fn mentions_agent(
+    state: &SlackState,
+    config: &SlackChannelConfig,
+    endpoint: &IngressChannel,
+    event: &SlackEvent,
+) -> bool {
+    let Some(text) = event.text.as_deref().filter(|text| text.contains("<@")) else {
+        return false;
+    };
+    let Some(bot) = super::resolve_slack_bot_user(
+        &state.bot_user_cache,
+        &config.bot_token,
+        &endpoint.public_id.to_string(),
+    )
+    .await
+    else {
+        return false;
+    };
+    mentions_user(text, &bot)
+}
+
+/// `<@U123>` or `<@U123|name>` in Slack's message markup.
+fn mentions_user(text: &str, user: &str) -> bool {
+    text.match_indices("<@").any(|(at, _)| {
+        let rest = &text[at + 2..];
+        rest.strip_prefix(user)
+            .is_some_and(|tail| tail.starts_with('>') || tail.starts_with('|'))
+    })
 }
 
 /// The org-selected model behind the same interface the deployment's has.

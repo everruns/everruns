@@ -926,6 +926,29 @@ async fn a_message_the_driver_declines_starts_nothing() {
 }
 
 #[tokio::test]
+async fn a_declined_delivery_does_not_spend_its_key() {
+    // Slack sends one channel mention twice under the same key: a `message`
+    // the policy may decline, and an `app_mention` it admits. Only an
+    // admitted delivery is recorded, so the second is not taken for a retry.
+    let f = fixture(SessionBinding::Thread);
+    f.driver.declined.lock().unwrap().push("chatter".into());
+    f.host
+        .handle("support", &message("chatter", "t1", "m1"))
+        .await;
+    let admitted = f
+        .host
+        .handle("support", &message("mention", "t1", "m1"))
+        .await;
+    assert_eq!(admitted.body["created"], true, "{}", admitted.body);
+    let retry = f
+        .host
+        .handle("support", &message("mention", "t1", "m1"))
+        .await;
+    assert_eq!(retry.body["duplicate"], true);
+    assert_eq!(f.port.state().sent.len(), 1);
+}
+
+#[tokio::test]
 async fn a_new_session_for_a_thread_under_way_is_seeded_with_its_history() {
     let f = fixture(SessionBinding::Thread);
     *f.driver.history.lock().unwrap() = vec!["earlier one".into(), "earlier two".into()];
