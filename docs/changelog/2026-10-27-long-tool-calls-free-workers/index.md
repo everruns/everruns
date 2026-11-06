@@ -1,6 +1,6 @@
 ---
 title: Long tool calls no longer hold a worker slot
-description: A server-side tool call running past 5 minutes keeps running while its turn gives back its memory and session lease.
+description: A server-side tool call running past 5 minutes keeps running on the worker while its turn parks and gives back its memory and session lease.
 date: 2026-10-27
 kind: improvement
 significance: minor
