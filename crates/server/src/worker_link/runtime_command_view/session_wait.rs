@@ -5,29 +5,6 @@ use super::*;
 use crate::domains::sessions::record::SessionStatus;
 use std::time::Duration;
 
-/// Test-only view into one wait, scoped with `PROBE.scope(..)` around the
-/// waiter future. It replaces the reconciliation interval and reports when the
-/// waiter parks on its live subscription, so a test can prove a notification
-/// (not a timer) ended the wait without a wall-clock budget.
-#[cfg(test)]
-pub(crate) mod test_probe {
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    pub(crate) struct WaitProbe {
-        pub(crate) reconcile: Duration,
-        pub(crate) parked: tokio::sync::Notify,
-    }
-
-    tokio::task_local! {
-        pub(crate) static PROBE: Arc<WaitProbe>;
-    }
-
-    pub(super) fn current() -> Option<Arc<WaitProbe>> {
-        PROBE.try_with(Arc::clone).ok()
-    }
-}
-
 async fn completed_status(
     current: &Session,
     session: &str,
@@ -156,5 +133,28 @@ pub(super) async fn wait(params: Value, ctx: &Ctx) -> Result<String, CommandErro
         } else {
             tokio::time::sleep_until(reconcile_at).await;
         }
+    }
+}
+
+/// Test-only view into one wait, scoped with `PROBE.scope(..)` around the
+/// waiter future. It replaces the reconciliation interval and reports when the
+/// waiter parks on its live subscription, so a test can prove a notification
+/// (not a timer) ended the wait without a wall-clock budget.
+#[cfg(test)]
+pub(crate) mod test_probe {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    pub(crate) struct WaitProbe {
+        pub(crate) reconcile: Duration,
+        pub(crate) parked: tokio::sync::Notify,
+    }
+
+    tokio::task_local! {
+        pub(crate) static PROBE: Arc<WaitProbe>;
+    }
+
+    pub(super) fn current() -> Option<Arc<WaitProbe>> {
+        PROBE.try_with(Arc::clone).ok()
     }
 }
