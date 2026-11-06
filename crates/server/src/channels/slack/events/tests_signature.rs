@@ -334,7 +334,7 @@ fn test_parse_slack_inbound_event_basic() {
     assert_eq!(inbound.actor.actor_name.as_deref(), Some("Alice"));
     assert_eq!(inbound.actor.source, "slack");
     assert_eq!(inbound.text, "Hello");
-    assert_eq!(inbound.dedup_key, "1234.5678");
+    assert_eq!(inbound.dedup_key, "C123:1234.5678");
     assert_eq!(inbound.thread_ref.as_deref(), Some("1234.0000"));
     assert_eq!(
         inbound.routing_metadata.get("thread_ref").unwrap(),

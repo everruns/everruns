@@ -1038,14 +1038,6 @@ impl ChannelHost {
         message: InboundMessage,
     ) -> Result<ChannelResponse, ChannelError> {
         let name = channel.name();
-        let dedup_key = &message.event.dedup_key;
-        if !dedup_key.is_empty() && !self.inner.store.first_sighting(name, dedup_key).await? {
-            debug!(channel = %name, %dedup_key, "channel: dropped a platform retry");
-            return Ok(ChannelResponse::ok(
-                json!({ "ok": true, "duplicate": true }),
-            ));
-        }
-
         let route = message.route();
         let binding = driver.binding(&route, channel.config.binding);
         let key = binding_key(channel.platform(), binding, &route);
@@ -1056,6 +1048,18 @@ impl ChannelHost {
         if !driver.admit(&message, bound.as_deref()).await? {
             debug!(channel = %name, "channel: the driver declined a message");
             return Ok(ChannelResponse::ignored());
+        }
+        // The key is spent only by a delivery that is admitted. A platform can
+        // send one message as several deliveries under one key that a policy
+        // treats differently (a Slack channel mention arrives as `message` and
+        // `app_mention`); recording the declined one first would drop the one
+        // that would have been answered as a retry.
+        let dedup_key = &message.event.dedup_key;
+        if !dedup_key.is_empty() && !self.inner.store.first_sighting(name, dedup_key).await? {
+            debug!(channel = %name, %dedup_key, "channel: dropped a platform retry");
+            return Ok(ChannelResponse::ok(
+                json!({ "ok": true, "duplicate": true }),
+            ));
         }
         let (session_id, created) = match bound {
             Some(session_id) => (session_id, false),

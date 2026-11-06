@@ -641,7 +641,11 @@ pub(crate) fn merge_preserved_secret_fields(
                     out.insert(key.to_string(), value.clone());
                 }
             }
+            // `team_id` scopes inbound events and names the recipient workspace
+            // on every delivery, so a config written without it (a whole-config
+            // replace from the CLI) must not unset it.
             for key in [
+                "team_id",
                 "agent_surface_enabled",
                 "tool_visibility",
                 "generic_tool_text",
@@ -965,6 +969,7 @@ mod tests {
             "signing_secret": "saved-secret",
             "bot_token": "saved-token",
             "provisioned_app": { "app_id": "A123" },
+            "team_id": "T123",
             "webhook_verified_at": "2026-10-03T10:00:00Z",
             "first_message_received_at": "2026-10-03T10:01:00Z",
             "agent_surface_enabled": true,
@@ -977,6 +982,7 @@ mod tests {
             "signing_secret",
             "bot_token",
             "provisioned_app",
+            "team_id",
             "webhook_verified_at",
             "first_message_received_at",
             "agent_surface_enabled",

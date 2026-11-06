@@ -169,6 +169,30 @@ async fn mentions_and_dms_bypass_the_judge_even_when_unavailable() {
 }
 
 #[tokio::test]
+async fn a_message_event_that_mentions_the_bot_bypasses_the_judge() {
+    let judge = Arc::new(Judge {
+        fail: true,
+        ..Judge::probability(0.0)
+    });
+    let (state, app, mut config, mut event) = fixture(Some(judge.clone())).await;
+    state
+        .bot_user_cache
+        .insert(app.channels[0].public_id.to_string(), Some("UBOT".into()));
+    event.text = Some("<@UBOT> run your first check".into());
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
+    event.text = Some("hey <@UBOT|ecosystem-watch>, anything new?".into());
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
+    assert!(judge.requests.lock().unwrap().is_empty());
+
+    // Mentioning someone else is not a mention of the agent.
+    config.response_policy = SlackResponsePolicy::MentionsOnly;
+    event.text = Some("<@UOTHER> run your first check".into());
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
+    event.text = Some("<@UBOTTOM> hi".into());
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
+}
+
+#[tokio::test]
 async fn all_messages_preserves_existing_behavior_without_a_judge() {
     let (state, app, mut config, event) = fixture(None).await;
     config.response_policy = SlackResponsePolicy::AllMessages;
