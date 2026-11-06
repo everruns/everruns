@@ -241,11 +241,15 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
     finally:
         topo.stop()
         pg.stop()
+    logs = [os.path.join(out_dir, name) for name in sorted(os.listdir(out_dir)) if name.endswith(".log")]
+    result["incidents"] = metrics.incidents(logs)
+    result["incident_count"] = sum(result["incidents"].values())
     return result
 
 
 COLUMNS = [
     ("label", "point"), ("turns", "turns"), ("failed_turns", "failed"), ("driver_errors", "drv err"),
+    ("incident_count", "incidents"),
     ("overhead_per_call_ms_p50", "ovh/call p50"), ("overhead_per_call_ms_p99", "p99"),
     ("pickup_ms_p50", "pickup p50"), ("pickup_ms_p99", "p99"),
     ("commits_per_turn", "xacts/turn"), ("wal_syncs_per_turn", "WAL syncs/turn"), ("wal_kb_per_turn", "WAL KB/turn"),
@@ -301,7 +305,14 @@ def main(argv=None) -> int:
         f.write(md + "\n")
     print(md)
     print(f"[stress] results in {run_dir}")
-    return 0 if all(r["failed_turns"] == 0 and r["driver_errors"] == 0 for r in results) else 1
+    # A run passes only when no turn failed and no log shows lost work
+    # (`metrics.INCIDENTS`): lost leases and dropped connections slow turns
+    # down without failing them, so the turn counts alone miss them.
+    for r in results:
+        if r.get("incident_count"):
+            print(f"[stress] {r['label']}: incidents {r['incidents']}")
+    return 0 if all(r["failed_turns"] == 0 and r["driver_errors"] == 0 and not r.get("incident_count")
+                    for r in results) else 1
 
 
 if __name__ == "__main__":

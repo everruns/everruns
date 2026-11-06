@@ -439,9 +439,21 @@ stays the final check after a deploy.
 Each run is one machine, so absolute throughput tracks its cores, not
 production's. Compare per-turn costs and the ratios between points, and keep
 `cpus`, `fsync_delay_ms`, the mix and the revision with each result. The bench
-exits non-zero when a turn fails or a driver reports errors.
-`scripts/test-stress-bench.sh` covers sweep parsing, turn accounting and the
-fsync shim without binaries.
+exits non-zero when a turn fails or is sealed, a driver reports errors, or a
+server or worker log shows an incident (`metrics.INCIDENTS`: a lost lease, a
+failed lease renewal, a sealed turn, a dropped gRPC connection or a database
+deadlock). Incidents are counted because the platform recovers from them: a
+turn whose lease is lost restarts from its log and still completes, so the
+turn counts alone read "0 failed" while hundreds of turns restarted (500 agents,
+2026-11-06).
+`scripts/test-stress-bench.sh` covers sweep parsing, turn accounting, incident
+counting and the fsync shim without binaries.
+
+What the bench cannot see: when PostgreSQL is the bottleneck, as it is on one
+machine, the server is never the side that falls behind, so failures that need
+a fast database and a lagging server (the gRPC `too_many_data_frames` GOAWAY of
+2026-11-06) reproduce only in production or in a targeted unit test that stalls
+the server (`worker_link::grpc_service::http2`).
 
 ## Chaos Harness
 
