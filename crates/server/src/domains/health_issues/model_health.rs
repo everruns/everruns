@@ -67,7 +67,11 @@ pub fn copy_for(
     }
     let model = evidence["model"].as_str().unwrap_or("its model");
     let provider = evidence["provider"].as_str().unwrap_or("its provider");
-    let (why, fix) = match evidence["reason"].as_str() {
+    let reason = evidence["reason"].as_str();
+    if !matches!(reason, Some("provider_inactive" | "disabled" | "not_chat")) {
+        return listing_copy(org_default, agent, model, provider, evidence);
+    }
+    let (why, fix) = match reason {
         Some("provider_inactive") => (
             format!("is on {provider}, which is turned off"),
             format!("turn {provider} back on from the Models page"),
@@ -76,13 +80,9 @@ pub fn copy_for(
             "is turned off on the Models page".to_string(),
             "turn it back on".to_string(),
         ),
-        Some("not_chat") => (
+        _ => (
             "is not a chat model".to_string(),
             "choose a chat model".to_string(),
-        ),
-        _ => (
-            format!("is no longer listed by {provider}"),
-            format!("sync {provider}'s models on the Models page if it should still be there"),
         ),
     };
     if org_default {
@@ -101,6 +101,51 @@ pub fn copy_for(
             ),
         )
     }
+}
+
+/// Copy for a model missing from the provider's last model list.
+///
+/// Decision: say what was observed, not a conclusion. The list is read only
+/// when the provider's models are synced, which a deployment may never do on
+/// its own, so it can be days old, and missing one spelling is not proof the
+/// provider dropped the model. The copy names the id and the date of the list
+/// so a person can tell an old list from a real removal, and the issue offers
+/// the sync that settles it (`fixers::MODELS_SYNC`).
+fn listing_copy(
+    org_default: bool,
+    agent: Option<&str>,
+    model: &str,
+    provider: &str,
+    evidence: &serde_json::Value,
+) -> (String, String) {
+    let id = evidence["model_id"]
+        .as_str()
+        .map(|id| format!(" {id}"))
+        .unwrap_or_else(|| " it".into());
+    let list = evidence["synced_at"]
+        .as_str()
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .map(|at| format!("{provider}'s model list from {}", at.format("%b %-d")))
+        .unwrap_or_else(|| format!("{provider}'s last model list"));
+    let (title, subject, other) = if org_default {
+        (
+            "Default model not found at its provider",
+            format!("The organization's default model, {model} ({provider})"),
+            "choose another default model",
+        )
+    } else {
+        (
+            "Agent's model not found at its provider",
+            format!("{} uses {model} ({provider})", agent.unwrap_or("An agent")),
+            "choose another model in the agent's settings",
+        )
+    };
+    (
+        title.into(),
+        format!(
+            "{subject}, but {list} does not include{id}. Sync {provider}'s models to check again: if {provider} still offers it, this clears. If not, {other}, since its chats and channels can fail to answer."
+        ),
+    )
 }
 
 /// One pass over every organization.
@@ -126,7 +171,10 @@ async fn check(db: &StorageBackend, org_id: Option<i64>) -> anyhow::Result<()> {
         let evidence = serde_json::json!({
             "reason": reason,
             "model": row.model_name,
+            "model_id": row.model_id,
             "provider": row.provider_name,
+            "provider_id": row.provider_id,
+            "synced_at": row.last_synced_at.map(|at| at.to_rfc3339()),
         });
         let (code, subject, agent) = match row.agent_id {
             Some(agent_id) => {

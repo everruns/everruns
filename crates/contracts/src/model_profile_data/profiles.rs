@@ -835,6 +835,43 @@ pub fn get_model_profile_key(provider_type: &str, model_id: &str) -> Option<Stri
         .map(|descriptor| format!("{}/{}", descriptor.vendor.slug(), descriptor.ids[0]))
 }
 
+/// The id a provider calls a registry model by, given its stable key
+/// (`"{vendor}/{canonical_id}"`): the inverse of [`get_model_profile_key`].
+///
+/// A model has several spellings (`gpt-6.1-sol` at OpenAI,
+/// `openai/gpt-6.1-sol` at OpenRouter). Among the aliases that resolve to this
+/// key on `provider_type`, a gateway that names models `vendor/model` gets the
+/// vendor-qualified one, and a first-party provider the bare one. `None` when
+/// the provider does not offer the model under any registered spelling.
+pub fn provider_model_id(provider_type: &str, key: &str) -> Option<&'static str> {
+    let (vendor_slug, canonical) = key.split_once('/')?;
+    let descriptor = REGISTRY.iter().find(|descriptor| {
+        descriptor.vendor.slug().eq_ignore_ascii_case(vendor_slug)
+            && descriptor.ids[0].eq_ignore_ascii_case(canonical)
+    })?;
+    let offered: Vec<&'static str> = descriptor
+        .ids
+        .iter()
+        .copied()
+        .filter(|alias| {
+            resolve_descriptor(provider_type, alias)
+                .is_some_and(|found| std::ptr::eq(found, descriptor))
+        })
+        .collect();
+    let qualified = offered.iter().copied().find(|alias| alias.contains('/'));
+    let bare = offered.iter().copied().find(|alias| !alias.contains('/'));
+    if vendor_qualified_ids(provider_type) {
+        qualified.or(bare)
+    } else {
+        bare.or(qualified)
+    }
+}
+
+/// Gateways that call models by `vendor/model`.
+pub fn vendor_qualified_ids(provider_type: &str) -> bool {
+    matches!(provider_type, "openrouter" | "vercel" | "cloudflare")
+}
+
 /// Look up a profile by its stable key (`"{vendor}/{canonical_id}"`).
 ///
 /// Key lookup is provider-independent, so the returned profile is the base

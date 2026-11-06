@@ -170,7 +170,13 @@ export function channelTrafficLine(activity: ChannelActivity | undefined): strin
 
 /* ──────────────────────────── Needs attention ──────────────────────────── */
 
-export type AttentionKind = "model" | "permission" | "connection" | "public-access" | "setup";
+export type AttentionKind =
+  | "model"
+  | "permission"
+  | "connection"
+  | "health"
+  | "public-access"
+  | "setup";
 
 export interface AttentionItem {
   key: string;
@@ -207,6 +213,7 @@ const KIND_LABEL: Record<AttentionKind, string> = {
   model: "Model",
   permission: "Permission",
   connection: "Connection",
+  health: "Health",
   "public-access": "Public access",
   setup: "Setup",
 };
@@ -220,6 +227,25 @@ export function adoptedExample(agent: Pick<Agent, "tags">): string | null {
   return tag ? tag.slice(EXAMPLE_TAG_PREFIX.length) : null;
 }
 
+/** Server detectors about the model an agent is set to use. */
+const MODEL_ISSUE_CODES = new Set(["agent.model_unavailable"]);
+
+function isOpenIssue(issue: HealthIssue): boolean {
+  return issue.status === "open" || issue.status === "needs_check";
+}
+
+/**
+ * What an agent's health issue is about, which decides the action offered.
+ * Only a channel's issue is about a connection: a model or background-work
+ * issue offered "Reconnect" / "Fix channel" before, which fixes nothing.
+ */
+export function issueKind(issue: HealthIssue): AttentionKind {
+  if (MODEL_ISSUE_CODES.has(issue.code)) return "model";
+  if (issue.missing_scopes.length > 0) return "permission";
+  if (issue.channel_id) return "connection";
+  return "health";
+}
+
 export function attentionItems({
   agents,
   exposures,
@@ -231,10 +257,17 @@ export function attentionItems({
   const active = agents.filter((agent) => !isArchivedStatus(agent.status));
   const activeIds = new Set(active.map((agent) => agent.id));
   const items: AttentionItem[] = [];
+  // Agents the server already reports a model issue for; that issue, with
+  // its fix, replaces the local "disabled" check.
+  const modelIssueAgents = new Set(
+    healthIssues
+      .filter((issue) => MODEL_ISSUE_CODES.has(issue.code) && isOpenIssue(issue))
+      .map((issue) => issue.agent_id),
+  );
 
   for (const agent of active) {
     const model = agent.default_model_id ? models.get(agent.default_model_id) : undefined;
-    if (model && !model.enabled) {
+    if (model && !model.enabled && !modelIssueAgents.has(agent.id)) {
       items.push({
         key: `model:${agent.id}`,
         kind: "model",
@@ -270,8 +303,8 @@ export function attentionItems({
   for (const issue of healthIssues) {
     // Organization-level issues (the active-turn limit) are capacity, not setup.
     if (!issue.agent_id || !activeIds.has(issue.agent_id)) continue;
-    if (issue.status !== "open" && issue.status !== "needs_check") continue;
-    const kind: AttentionKind = issue.missing_scopes.length > 0 ? "permission" : "connection";
+    if (!isOpenIssue(issue)) continue;
+    const kind = issueKind(issue);
     items.push({
       key: `health:${issue.id}`,
       kind,

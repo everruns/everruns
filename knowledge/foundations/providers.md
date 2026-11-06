@@ -242,6 +242,18 @@ The model's identity, promoted from a runtime-computed shadow type to a first-cl
 
 Profile matching heuristics (version normalization, slug mapping) run at **sync/creation time** to assign `profile_key`; reads use the stored assignment.
 
+**Model identity normalization.** One model has a different id at each provider
+(`gpt-6.1-sol` at OpenAI, `openai/gpt-6.1-sol` at OpenRouter). Its normal form is
+`vendor/model`: the profile key when the registry knows the model, otherwise derived
+from the driver's spelling (a first-party driver's bare id is prefixed with its vendor;
+a gateway's `vendor/model` id is kept). A custom endpoint's own names have no identity.
+The inverse gives the id a provider calls the model by. Model sync compares identities,
+so "no longer listed" means no spelling of the model was listed; a stored custom
+`profile_key` the registry has since learned is replaced at the next sync. Moving a model
+to another provider rewrites its id to that provider's spelling, and is refused when that
+provider already has the model (one row per model and provider) or cannot serve it.
+Source: `crates/server/src/domains/models/catalog.rs` (`identity`, `provider_spelling`).
+
 Embedded consumers can enumerate the built-in registry for fresh-install menus
 and offline fallback instead of maintaining model lists. The registry currently
 is the curated selected set; selection does not introduce an independent preset
