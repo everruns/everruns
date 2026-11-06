@@ -12,7 +12,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
-mod session_wait;
+pub(crate) mod session_wait;
 
 fn decode<T: DeserializeOwned>(json: &str) -> Result<T, CommandError> {
     serde_json::from_str(json).map_err(|error| anyhow::Error::from(error).into())

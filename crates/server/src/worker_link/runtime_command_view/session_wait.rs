@@ -5,6 +5,29 @@ use super::*;
 use crate::domains::sessions::record::SessionStatus;
 use std::time::Duration;
 
+/// Test-only view into one wait, scoped with `PROBE.scope(..)` around the
+/// waiter future. It replaces the reconciliation interval and reports when the
+/// waiter parks on its live subscription, so a test can prove a notification
+/// (not a timer) ended the wait without a wall-clock budget.
+#[cfg(test)]
+pub(crate) mod test_probe {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    pub(crate) struct WaitProbe {
+        pub(crate) reconcile: Duration,
+        pub(crate) parked: tokio::sync::Notify,
+    }
+
+    tokio::task_local! {
+        pub(crate) static PROBE: Arc<WaitProbe>;
+    }
+
+    pub(super) fn current() -> Option<Arc<WaitProbe>> {
+        PROBE.try_with(Arc::clone).ok()
+    }
+}
+
 async fn completed_status(
     current: &Session,
     session: &str,
@@ -88,11 +111,16 @@ pub(super) async fn wait(params: Value, ctx: &Ctx) -> Result<String, CommandErro
         if tokio::time::Instant::now() >= deadline {
             return encode(&format!("timeout (last status: {:?})", current.status));
         }
-        let interval = if subscription.is_some() {
+        #[allow(unused_mut)]
+        let mut interval = if subscription.is_some() {
             Duration::from_secs(5)
         } else {
             Duration::from_millis(500)
         };
+        #[cfg(test)]
+        if let Some(probe) = test_probe::current() {
+            interval = probe.reconcile;
+        }
         let reconcile_at = (tokio::time::Instant::now() + interval).min(deadline);
         if let Some(events) = subscription.as_mut() {
             let wake = async {
@@ -115,6 +143,12 @@ pub(super) async fn wait(params: Value, ctx: &Ctx) -> Result<String, CommandErro
                 }
                 false
             };
+            // Only the subscribed path reports parking: a fallback-polling wait
+            // never satisfies a test that requires notification wakeups.
+            #[cfg(test)]
+            if let Some(probe) = test_probe::current() {
+                probe.parked.notify_one();
+            }
             tokio::select! {
                 open = wake => if !open { subscription = None; },
                 _ = tokio::time::sleep_until(reconcile_at) => {}
