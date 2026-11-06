@@ -51,7 +51,6 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
 use crate::ExecutionContext;
 use crate::engine::{ActInput, ActPlan, TurnPlan, TurnState};
-#[cfg(feature = "actor-runtime")]
 use crate::events::TurnCompletedData;
 use crate::events::{
     Event, EventContext, EventData, EventRequest, RecoveryMode, TokenUsage, ToolCompletedData,
@@ -94,13 +93,14 @@ pub struct OpenTurn {
     input_message_id: MessageId,
     started_at: DateTime<Utc>,
     reasons: u32,
-    #[cfg(feature = "actor-runtime")]
     latest_reason_completed: bool,
     tool_call_count: u32,
     /// Failed `tool.completed` calls so far: issues the turn carries on from.
     issue_count: u32,
     usage: Option<TokenUsage>,
     final_message_id: Option<MessageId>,
+    /// Text of the turn's latest agent message: the answer once `answered`.
+    final_text: String,
     /// The tool calls of the turn's latest agent message.
     calls: Vec<ToolCall>,
     /// Calls with a `tool.completed`.
@@ -149,7 +149,6 @@ impl OpenTurn {
     }
 
     /// Complete a saved answer without discarding its identity and work summary.
-    #[cfg(feature = "actor-runtime")]
     pub(crate) fn completed_data(&self, now: DateTime<Utc>) -> TurnCompletedData {
         // Output can commit before reason.completed. Its saved answer proves
         // that final phase ran, but its missing usage must not become a partial
@@ -179,6 +178,16 @@ impl OpenTurn {
             status: Some("completed".to_string()),
             ..Default::default()
         }
+    }
+
+    /// The answer's text, when [`is_answered`](Self::is_answered).
+    pub fn final_text(&self) -> &str {
+        &self.final_text
+    }
+
+    /// Tool calls the turn made so far.
+    pub fn tool_call_count(&self) -> u32 {
+        self.tool_call_count
     }
 
     /// Whether the turn's latest agent message made no tool calls and was
@@ -250,12 +259,12 @@ impl TurnLogFold {
                     input_message_id: data.input_message_id,
                     started_at: event.ts,
                     reasons: 0,
-                    #[cfg(feature = "actor-runtime")]
                     latest_reason_completed: false,
                     tool_call_count: 0,
                     issue_count: 0,
                     usage: None,
                     final_message_id: None,
+                    final_text: String::new(),
                     calls: Vec::new(),
                     settled: HashSet::new(),
                     started: HashSet::new(),
@@ -299,24 +308,15 @@ impl TurnLogFold {
             // only what was there at that attempt's `reason.started`.
             EventData::ReasonStarted(_) => {
                 turn.steered_since_reason = false;
-                #[cfg(feature = "actor-runtime")]
-                {
-                    turn.latest_reason_completed = false;
-                }
+                turn.latest_reason_completed = false;
             }
             EventData::ReasonRecovered(data) if matches!(data.mode, RecoveryMode::Restart) => {
                 turn.steered_since_reason = false;
-                #[cfg(feature = "actor-runtime")]
-                {
-                    turn.latest_reason_completed = false;
-                }
+                turn.latest_reason_completed = false;
             }
             EventData::ReasonCompleted(data) => {
                 turn.reasons = turn.reasons.saturating_add(1);
-                #[cfg(feature = "actor-runtime")]
-                {
-                    turn.latest_reason_completed = true;
-                }
+                turn.latest_reason_completed = true;
                 turn.tool_call_count = turn.tool_call_count.saturating_add(data.tool_call_count);
                 if let Some(usage) = &data.usage {
                     match &mut turn.usage {
@@ -327,6 +327,7 @@ impl TurnLogFold {
             }
             EventData::OutputMessageCompleted(data) => {
                 turn.final_message_id = Some(data.message.id);
+                turn.final_text = data.message.text().unwrap_or_default().to_string();
                 turn.calls = data
                     .message
                     .tool_calls()
