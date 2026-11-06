@@ -1,5 +1,10 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-06
+
+- Hosted container-tool live tests require observations from the execution environment;
+  completed-call and usage-count assertions still reject answers without tool execution.
+
 ## 2026-11-05
 
 - MCP OAuth changes select worker gRPC identity contracts before merge, covering
