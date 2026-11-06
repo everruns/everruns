@@ -35,6 +35,11 @@
 # The same job then runs `crates/server/benches/knowledge_catalog.rs`: catalog
 # pages on a million-file knowledge collection, failing over a fixed per-page
 # time budget.
+#
+# And `crates/server/benches/engine_sim.rs`: hundreds of agents through the
+# server and three gRPC workers, with llmsim model and tool waits. It reports
+# turns held per worker, pickup, statements per turn and memory per held turn
+# (no baseline gate yet), and fails when a turn fails or never ends.
 name: Durable Benchmarks
 
 on:
@@ -252,6 +257,15 @@ jobs:
       - name: Run knowledge_catalog
         if: ${{ !cancelled() }}
         run: cargo bench -p everruns-server --bench knowledge_catalog | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Run engine_sim
+        if: ${{ !cancelled() }}
+        run: |
+          cargo bench -p everruns-server --bench engine_sim -- \
+            --sessions 300 --messages 2 --top 20 --moniker "$BENCH_MONIKER" \
+            | tee "$RUNNER_TEMP/engine_sim.txt"
+          { echo '### Engine simulator'; echo; echo '```'; cat "$RUNNER_TEMP/engine_sim.txt"; echo '```'; } \
+            >> "$GITHUB_STEP_SUMMARY"
 
       - name: PostgreSQL stalls
         if: always()

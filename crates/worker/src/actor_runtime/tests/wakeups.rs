@@ -3,34 +3,21 @@
 //! was started by a wake-up.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use tokio::sync::watch;
 
 use super::*;
-use crate::actor_runtime::{ActorSlots, ActorWakeups};
-use crate::engine::model_wait::ModelWaitSlots;
+use crate::actor_runtime::{ActorSlots, ActorWakeups, AdmissionConfig, TurnAdmission};
 
 /// Long enough that a test waiting on the poll times out first.
 const NO_POLL: Duration = Duration::from_secs(60);
 
-/// Model waits keep their slot.
-struct KeepSlots;
-
-impl ModelWaitSlots for KeepSlots {
-    fn release(&self) -> bool {
-        false
-    }
-    fn reacquire(&self) {}
-}
-
-fn slots(max_concurrent: usize) -> ActorSlots {
+fn slots(max_running: usize) -> ActorSlots {
     ActorSlots {
-        in_flight: Arc::new(AtomicUsize::new(0)),
-        max_concurrent,
-        claim_batch: max_concurrent,
-        model_waits: Arc::new(KeepSlots),
+        admission: TurnAdmission::new(AdmissionConfig::fixed(max_running)),
+        claim_batch: max_running,
         draining: Arc::new(AtomicBool::new(false)),
         poll_interval: NO_POLL,
         poll_backoff_max: NO_POLL,

@@ -10,9 +10,10 @@
 //! - The session log is the only turn state. A lease folds the log's tail and
 //!   resumes the open turn, or starts a fresh one from the first unconsumed
 //!   input, so a crash anywhere costs a lease TTL and nothing else.
-//! - Execution slots are the worker's: actors and queued activities share
-//!   `in_flight`, its cap, the model-wait slot release, operator drain and the
-//!   shutdown grace. The loop has its own wake-up (`session_actor`
+//! - Turns do not take the worker's execution slots: they wait far more than
+//!   they work, so [`admission`] decides how many run, by memory and runtime
+//!   lag, and `MAX_CONCURRENT_TASKS` caps only queued activities. Both loops
+//!   share operator drain and the shutdown grace. The loop has its own wake-up (`session_actor`
 //!   notifications and finished actors), and cancel notifications poke every
 //!   running lease to renew now, which is how a holder learns of a cancel.
 //!   A worker without a push channel (the in-process DEV_MODE worker) gets
@@ -39,11 +40,13 @@
 #[cfg(test)]
 mod tests;
 
+pub mod admission;
+pub use admission::{AdmissionConfig, TurnAdmission};
 pub mod detached_calls;
 pub use detached_calls::{DetachedCalls, DetachedCallsConfig};
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -54,7 +57,6 @@ use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
 use crate::actor_lease_store::{ActorLeaseStore, LeasedActor, SessionActorStore};
-use crate::engine::model_wait::{self, ModelWaitSlots};
 use crate::engine::tool_detach;
 use crate::host::{DEFAULT_SESSION_LEASE_TTL, TurnDrive, WaitsOnPerson};
 use crate::phase_reads::PhaseIds;
@@ -148,13 +150,13 @@ impl ActorRuntimeConfig {
     }
 }
 
-/// The worker's execution slots, shared with its queued activities.
+/// How the actor loop leases: its admission, batch, polling and drain.
 #[derive(Clone)]
 pub struct ActorSlots {
-    pub in_flight: Arc<AtomicUsize>,
-    pub max_concurrent: usize,
+    /// Counts running turns and decides how many more to lease.
+    pub admission: TurnAdmission,
+    /// Most actors one lease call asks for.
     pub claim_batch: usize,
-    pub model_waits: Arc<dyn ModelWaitSlots>,
     /// The registry reported the worker draining: lease nothing.
     pub draining: Arc<AtomicBool>,
     pub poll_interval: Duration,
@@ -281,6 +283,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
         let base = slots.poll_interval.min(slots.poll_backoff_max);
         let mut backoff = base;
         let mut running = JoinSet::new();
+        let lag_probe = tokio::spawn(slots.admission.lag_probe().probe());
         let renewer = self
             .detached
             .clone()
@@ -318,6 +321,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
                     .min(slots.poll_backoff_max)
             };
         }
+        lag_probe.abort();
         // Running turns finish the step they are in and hand their leases
         // back, so other workers resume them at once; the grace bounds a step
         // that runs long (a slow model call), then aborts it as before.
@@ -359,10 +363,7 @@ impl<H: ActorHosts> ActorRuntime<H> {
         if slots.draining.load(Ordering::SeqCst) {
             return Ok(0);
         }
-        let available = slots
-            .max_concurrent
-            .saturating_sub(slots.in_flight.load(Ordering::SeqCst));
-        let limit = available.min(slots.claim_batch);
+        let limit = slots.admission.room().min(slots.claim_batch);
         if limit == 0 {
             return Ok(0);
         }
@@ -373,22 +374,21 @@ impl<H: ActorHosts> ActorRuntime<H> {
         }
         for actor in actors {
             let runtime = self.clone();
-            let guard = InFlight::enter(slots.in_flight.clone());
-            let model_waits = slots.model_waits.clone();
+            let guard = slots.admission.enter();
             let detacher = runtime
                 .detached
                 .as_ref()
                 .map(|detached| detached.for_lease(actor.fence, runtime.wake.clone()));
             running.spawn(async move {
-                let run = model_wait::scope(model_waits, runtime.run_actor(actor));
+                let run = runtime.run_actor(actor);
                 match detacher {
                     Some(detacher) => tool_detach::provide(detacher, run).await,
                     None => run.await,
                 }
                 // The release may have left the actor runnable (input arrived
-                // as its turn ended), and a slot just opened. Free the slot
-                // before the wake-up, or the woken loop can still count it
-                // taken, lease nothing and sleep.
+                // as its turn ended), and room just opened. Count the turn
+                // finished before the wake-up, or the woken loop can still
+                // count it running, lease nothing and sleep.
                 drop(guard);
                 runtime.wake.notify_one();
             });
@@ -402,21 +402,6 @@ fn log_join(result: Result<(), tokio::task::JoinError>) {
         && !error.is_cancelled()
     {
         warn!(error = %error, "Session actor task failed");
-    }
-}
-
-struct InFlight(Arc<AtomicUsize>);
-
-impl InFlight {
-    fn enter(in_flight: Arc<AtomicUsize>) -> Self {
-        in_flight.fetch_add(1, Ordering::SeqCst);
-        Self(in_flight)
-    }
-}
-
-impl Drop for InFlight {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

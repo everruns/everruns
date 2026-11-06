@@ -1,10 +1,10 @@
 //! Lets a host take a long tool call off its turn, so the turn parks instead
-//! of holding its execution slot, lease and memory while the tool works.
+//! of holding its place on the worker, its lease and memory while the tool works.
 //!
 //! Decision: a worker runs a session's whole turn on one lease, and a
 //! server-side call held all of it until the tool returned. A 20-minute
-//! sandbox build kept one of the worker's slots, a lease renewal every few
-//! seconds and the whole turn in memory, so 50 such waits filled a worker.
+//! sandbox build kept one of the worker's running turns, a lease renewal
+//! every few seconds and the whole turn in memory for its whole length.
 //! A call still running after [`ToolDetacher::detach_after`] is handed to the
 //! host instead: the call keeps running there, the act parks the turn
 //! ([`parked`]), and the host records the call's `tool.completed` when it
@@ -12,7 +12,7 @@
 //! like a turn parked on client tools: every call settled, so it goes on to
 //! its next reason.
 //!
-//! Decision: hosts opt in through task-locals, like [`super::model_wait`]. A
+//! Decision: hosts opt in through task-locals. A
 //! worker installs its detacher around each leased turn ([`provide`]); only
 //! the act of that turn's own loop may use it ([`for_act`]), and tools the act
 //! runs inline do not see it ([`without`]). So a child turn a tool runs inline
@@ -22,8 +22,8 @@
 //!
 //! Decision: a call detaches only when nothing else in its turn depends on it
 //! running inline: it runs on the server, is not `cpu_bound` (an in-process
-//! interpreter really uses the worker's CPU, which the slot cap must keep
-//! counting), does not shape the turn (`stays_direct`, native-only tools such
+//! interpreter really uses the worker's CPU, which turn admission must keep
+//! seeing as the runtime's lag), does not shape the turn (`stays_direct`, native-only tools such
 //! as `spawn_agent` and `ask_user`), and its act has no client-side calls.
 
 use std::future::Future;

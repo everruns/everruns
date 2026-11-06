@@ -385,7 +385,7 @@ def bootstrap(lab):
                 "access_token_lifetime_seconds": 14400,
                 "provider_credentials_present": False,
                 "worker_slots": lab.args.worker_slots,
-                "model_wait_slots": lab.args.model_waits,
+                "max_running_turns": lab.args.max_running_turns,
                 "agent_profiles": {
                     "console": "managed Platform Chat / Bashkit Worker, explicit llmsim session model",
                     "agent-api/work-chat": "base harness + session_file_system, direct communication",
@@ -662,7 +662,7 @@ def main():
     p.add_argument("--burst-ack-p95-ms", type=float, default=5000)
     p.add_argument("--generators", type=int, default=4)
     p.add_argument("--worker-slots", type=int, default=50)
-    p.add_argument("--model-waits", type=int, default=200)
+    p.add_argument("--max-running-turns", type=int, default=0, help="WORKER_MAX_RUNNING_TURNS; 0 derives it from memory")
     p.add_argument("--port-prefix", type=int, default=284)
     p.add_argument(
         "--run-dir",

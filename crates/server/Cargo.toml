@@ -184,6 +184,14 @@ harness = false
 name = "turn_latency"
 harness = false
 
+# Engine simulator: many agents through the real server and several gRPC
+# workers in one process, llmsim scenario waits, no SSE readers
+# (`benches/engine_sim.rs`); needs DATABASE_URL. Run weekly by
+# `durable-bench.yml`, never by `cargo test`.
+[[bench]]
+name = "engine_sim"
+harness = false
+
 # Catalog pages on a million-file knowledge collection, with a time budget
 # (`benches/knowledge_catalog.rs`). Run weekly by `durable-bench.yml`.
 [[bench]]

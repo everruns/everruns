@@ -3,7 +3,7 @@
 // Decision: Single worker implementation generic over WorkerAdapters
 // Decision: Works with both gRPC (external) and Direct (in-process) adapters
 //
-// TaskWorker runs two loops over one set of execution slots:
+// TaskWorker runs two loops:
 // - the session actor loop (`actor_runtime`): leases runnable sessions and
 //   runs each one's whole turn. Turns run only here (actor-based design,
 //   step 6c); no turn step is a queued task any more.
@@ -11,9 +11,12 @@
 //   (leased-resource cleanup, the session task reaper, scheduled channel and
 //   agent-trigger invocations) and runs them through `TaskDriver`.
 //
-// Decision: the worker owns registration, heartbeats, operator drain and
-// concurrency for both loops: they share `in_flight` (the advertised load),
-// the model-wait slot release, and the shutdown grace.
+// Decision: the worker owns registration, heartbeats, operator drain and the
+// shutdown grace for both loops. Each has its own concurrency: queued
+// activities take one of `MAX_CONCURRENT_TASKS` execution slots (`in_flight`),
+// turns are admitted by memory and runtime lag (`actor_runtime::admission`),
+// because a turn waits on the model and its tools far more than it works.
+// The advertised load is both together.
 
 use crate::durable::WorkerInfo;
 use anyhow::Result;
@@ -26,11 +29,9 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::actor_runtime::{
-    ActorRuntime, ActorRuntimeConfig, ActorSlots, DetachedCalls, DetachedCallsConfig,
-    WorkerActorHosts,
+    ActorRuntime, ActorRuntimeConfig, ActorSlots, AdmissionConfig, DetachedCalls,
+    DetachedCallsConfig, TurnAdmission, WorkerActorHosts,
 };
-use crate::engine::model_wait::ModelWaitSlots;
-use crate::model_wait_slots::{DEFAULT_MAX_CONCURRENT_MODEL_WAITS, WorkerModelWaitSlots};
 use crate::task_driver::TaskDriver;
 use crate::task_store::TaskStore;
 use crate::task_wakeup::spawn_wakeup_listener;
@@ -40,7 +41,8 @@ use crate::worker_adapters::WorkerAdapters;
 // Configuration
 // =============================================================================
 
-/// Default execution concurrency for workers.
+/// Default execution concurrency for queued activities (not turns, which
+/// `actor_runtime::admission` admits).
 ///
 /// Historically 1000, which let a single worker advertise too much capacity for
 /// small Postgres instances. 1000-way concurrency is now opt-in via
@@ -82,14 +84,15 @@ pub struct TaskWorkerConfig {
     pub worker_id: String,
     /// Activity types this worker handles
     pub activity_types: Vec<String>,
-    /// Maximum concurrent tasks (execution concurrency / advertised capacity)
+    /// Maximum concurrent queued activities (their execution slots).
     pub max_concurrent_tasks: usize,
-    /// Maximum tasks claimed in a single request, regardless of available slots.
+    /// Maximum tasks or actors claimed in a single request, regardless of
+    /// available room.
     pub claim_batch_size: usize,
-    /// How many reason steps may hand their slot back while they wait on the
-    /// model (`MAX_CONCURRENT_MODEL_WAITS`; 0 turns it off). See
-    /// `model_wait_slots`.
-    pub max_concurrent_model_waits: usize,
+    /// How many session turns run at once (`WORKER_MAX_RUNNING_TURNS`, the
+    /// memory limit, `WORKER_MAX_RUNTIME_LAG_MS`). See
+    /// `actor_runtime::admission`.
+    pub turn_admission: AdmissionConfig,
     /// Base poll interval when no tasks available
     pub poll_interval: Duration,
     /// Cap for the exponential poll backoff while the queue is empty.
@@ -127,7 +130,11 @@ impl Default for TaskWorkerConfig {
             activity_types: crate::activities::all(),
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
-            max_concurrent_model_waits: DEFAULT_MAX_CONCURRENT_MODEL_WAITS,
+            turn_admission: AdmissionConfig {
+                ceiling: crate::actor_runtime::admission::auto_ceiling(None),
+                memory_limit: None,
+                max_runtime_lag: crate::actor_runtime::admission::DEFAULT_MAX_RUNTIME_LAG,
+            },
             poll_interval: DEFAULT_POLL_INTERVAL,
             poll_backoff_max: DEFAULT_POLL_BACKOFF_MAX,
             heartbeat_interval: Duration::from_secs(10),
@@ -172,9 +179,9 @@ impl TaskWorkerConfig {
     /// Create configuration from environment variables.
     ///
     /// Execution concurrency (`MAX_CONCURRENT_TASKS`), claim batch size
-    /// (`CLAIM_BATCH_SIZE`), and the poll interval/backoff cap
+    /// (`CLAIM_BATCH_SIZE`), turn admission, and the poll interval/backoff cap
     /// (`WORKER_POLL_INTERVAL_MS` / `WORKER_POLL_BACKOFF_MAX_MS`) are independent.
-    /// The claim batch is clamped to the execution concurrency.
+    /// A task claim never asks for more than the free slots.
     pub fn from_env() -> Self {
         use crate::core::config::{env_duration_ms, env_duration_secs, env_or, env_string_any};
 
@@ -182,17 +189,13 @@ impl TaskWorkerConfig {
             std::env::var("WORKER_ID").unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7()));
         let defaults = Self::default();
         let max_concurrent_tasks = env_or("MAX_CONCURRENT_TASKS", defaults.max_concurrent_tasks);
-        let claim_batch_size =
-            env_or("CLAIM_BATCH_SIZE", defaults.claim_batch_size).min(max_concurrent_tasks);
+        let claim_batch_size = env_or("CLAIM_BATCH_SIZE", defaults.claim_batch_size);
 
         Self {
             worker_id,
             max_concurrent_tasks,
             claim_batch_size,
-            max_concurrent_model_waits: env_or(
-                "MAX_CONCURRENT_MODEL_WAITS",
-                defaults.max_concurrent_model_waits,
-            ),
+            turn_admission: AdmissionConfig::from_env(),
             poll_interval: env_duration_ms("WORKER_POLL_INTERVAL_MS", defaults.poll_interval),
             poll_backoff_max: env_duration_ms(
                 "WORKER_POLL_BACKOFF_MAX_MS",
@@ -246,8 +249,8 @@ where
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     in_flight: Arc<AtomicUsize>,
-    /// Lets reason steps hand their slot back while waiting on the model.
-    model_waits: Arc<dyn ModelWaitSlots>,
+    /// Counts running turns and decides how many more the actor loop leases.
+    admission: TurnAdmission,
     /// Cuts the poll backoff short when new work may be claimable.
     wake: Arc<Notify>,
     /// The registry reported this worker draining (operator drain): claim
@@ -269,7 +272,6 @@ where
         info!(
             worker_id = %config.worker_id,
             max_concurrent_tasks = config.max_concurrent_tasks,
-            max_concurrent_model_waits = config.max_concurrent_model_waits,
             claim_batch_size = config.claim_batch_size,
             poll_interval_ms = config.poll_interval.as_millis(),
             poll_backoff_max_ms = config.poll_backoff_max.as_millis(),
@@ -309,11 +311,7 @@ where
 
         let in_flight = Arc::new(AtomicUsize::new(0));
         let wake = Arc::new(Notify::new());
-        let model_waits = Arc::new(WorkerModelWaitSlots::new(
-            in_flight.clone(),
-            config.max_concurrent_model_waits,
-            wake.clone(),
-        ));
+        let admission = TurnAdmission::new(config.turn_admission);
         Self {
             config,
             store,
@@ -322,7 +320,7 @@ where
             shutdown_tx,
             shutdown_rx,
             in_flight,
-            model_waits,
+            admission,
             wake,
             draining: Arc::new(AtomicBool::new(false)),
             actors,
@@ -368,7 +366,10 @@ where
             id: self.config.worker_id.clone(),
             worker_group: self.config.worker_group.clone(),
             activity_types: self.config.activity_types.clone(),
-            max_concurrency: self.config.max_concurrent_tasks as u32,
+            max_concurrency: u32::try_from(
+                self.config.max_concurrent_tasks + self.config.turn_admission.ceiling,
+            )
+            .unwrap_or(u32::MAX),
             current_load: 0,
             status: "active".to_string(),
             accepting_tasks: true,
@@ -408,6 +409,7 @@ where
             self.config.worker_id.clone(),
             self.config.heartbeat_interval,
             self.in_flight.clone(),
+            self.admission.clone(),
             self.draining.clone(),
             shutting_down.clone(),
             self.wake.clone(),
@@ -495,10 +497,8 @@ where
     /// per id.
     fn spawn_actor_loop(&self) -> Vec<tokio::task::JoinHandle<()>> {
         let slots = ActorSlots {
-            in_flight: self.in_flight.clone(),
-            max_concurrent: self.config.max_concurrent_tasks,
+            admission: self.admission.clone(),
             claim_batch: self.config.claim_batch_size,
-            model_waits: self.model_waits.clone(),
             draining: self.draining.clone(),
             poll_interval: self.config.poll_interval,
             // An expired lease sends no wake-up; see `ACTOR_POLL_BACKOFF_MAX`.
@@ -695,6 +695,7 @@ async fn heartbeat_loop<S: TaskStore>(
     worker_id: String,
     interval: Duration,
     in_flight: Arc<AtomicUsize>,
+    admission: TurnAdmission,
     draining: Arc<AtomicBool>,
     shutting_down: Arc<AtomicBool>,
     wake: Arc<Notify>,
@@ -706,7 +707,8 @@ async fn heartbeat_loop<S: TaskStore>(
             _ = tokio::time::sleep(interval) => {}
             _ = &mut stop => break,
         }
-        let current_load = in_flight.load(Ordering::SeqCst);
+        // Queued activities and running turns: what the worker is holding.
+        let current_load = in_flight.load(Ordering::SeqCst) + admission.running();
         let accepting = !shutting_down.load(Ordering::SeqCst);
         match store
             .worker_heartbeat(&worker_id, current_load, accepting)

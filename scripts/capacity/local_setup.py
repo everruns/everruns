@@ -304,7 +304,7 @@ class Lab:
             **env,
             "SERVER_GRPC_ADDRESS": f"127.0.0.1:{self.grpc}",
             "MAX_CONCURRENT_TASKS": str(self.args.worker_slots),
-            "MAX_CONCURRENT_MODEL_WAITS": str(self.args.model_waits),
+            "WORKER_MAX_RUNNING_TURNS": str(self.args.max_running_turns),
         }
         self.start("worker", [str(self.args.worker_bin)], worker_env)
 
