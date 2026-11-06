@@ -61,6 +61,8 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use super::openinference as oi;
 #[path = "otel_causal.rs"]
 mod causal;
+#[path = "otel_human_wait.rs"]
+mod human_wait;
 use causal::turn_anchor;
 #[path = "otel_usage.rs"]
 mod usage;
@@ -164,6 +166,7 @@ struct TurnState {
 
 #[derive(Default)]
 struct ListenerState {
+    wait_events: std::collections::VecDeque<everruns_contracts::typed_id::EventId>,
     spans: HashMap<String, ActiveSpan>,
     /// `exec:{id}` → span key of the phase that owns that exec.
     aliases: HashMap<String, String>,
@@ -1424,6 +1427,7 @@ impl EventListener for OtelEventListener {
         self.restore_trace_anchor(context, metadata);
     }
     async fn on_event(&self, event: &Event) {
+        self.handle_human_waits(event);
         match &event.data {
             EventData::TurnStarted(data) => self.handle_turn_started(event, data),
             EventData::TurnCompleted(data) => self.handle_turn_completed(event, data),

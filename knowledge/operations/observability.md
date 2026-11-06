@@ -157,6 +157,29 @@ Tool lifecycle state is scoped by session, turn and execution because provider c
 
 The OTLP factory pins a blocking HTTP client for the SDK's thread-based batch processor, including when downstream feature unification enables async clients. A local collector test exercises event-to-OTLP delivery (`telemetry_transport_tests.rs`).
 
+### Human waits
+
+Human approvals and attended `ask_user` requests export completed `human.wait`
+spans separately from tool execution. Each interval starts at the committed
+request and ends at its durable resolution or terminal turn event. A denial is
+not a failed tool call; timeout, cancellation and unanswered terminal turns remain
+distinct. Unattended defaults produce no human wait.
+
+The [wait projection](../../crates/core/src/human_wait.rs) retains only identities,
+timing and bounded classifications. SQLite persists that projection alongside
+session authority state; the hosted event service reconstructs it from committed
+requests and resolutions. The [exporter](../../crates/core/src/host/observability/otel_human_wait.rs)
+parents waits to the stored durable turn anchor, including after restart or turn
+closure, without replaying old events. A stable request identity supports backend
+correlation; delivery still has the exporter transport's usual best-effort
+semantics, not an exactly-once guarantee. Historical records without wait facts
+are not assigned invented durations. Already parked SQLite sessions from before
+this change start collecting wait facts on their next request.
+
+Wait spans never capture prompts, answers, tool arguments, error messages,
+credentials or URLs, even when general content capture is enabled. Existing tool
+and model spans retain their separately configured content policy.
+
 ### Attributes
 
 The exact attribute set per span lives in `otel.rs`

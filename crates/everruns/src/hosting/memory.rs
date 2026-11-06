@@ -110,6 +110,7 @@ struct Control {
     suspended: bool,
     open: Option<TurnId>,
     pending: Vec<crate::ToolCall>,
+    human_waits: everruns_core::human_wait::HumanWaitState,
     finalizing: HashSet<TurnId>,
     records: HashMap<String, Value>,
     pending_inputs: std::collections::VecDeque<i64>,
@@ -355,7 +356,7 @@ impl Ports {
     }
     async fn append(
         &self,
-        request: EventRequest,
+        mut request: EventRequest,
         expected: Option<Option<i32>>,
     ) -> std::result::Result<Event, EventLogError> {
         self.scope(request.session_id).map_err(log_error)?;
@@ -380,6 +381,7 @@ impl Ports {
             }
             return Err(log_error("conflicting turn terminal outcome"));
         }
+        state.human_waits.annotate(&mut request);
         let event = match expected {
             None => self.session.log.append(request).await?,
             Some(expected) => {
@@ -389,6 +391,7 @@ impl Ports {
                     .await?
             }
         };
+        state.human_waits.observe(&event);
         if matches!(event.data, EventData::TurnStarted(_)) {
             state.open = turn;
             state.open_input = event.context.input_message_id;

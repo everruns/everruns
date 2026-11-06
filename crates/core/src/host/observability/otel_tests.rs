@@ -1268,3 +1268,6 @@ mod regressions;
 
 #[path = "otel_causal_tests.rs"]
 mod causal_tests;
+
+#[path = "otel_human_wait_tests.rs"]
+mod human_wait_tests;

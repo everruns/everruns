@@ -48,6 +48,7 @@ use uuid::Uuid;
 /// (`auth::builtin`) and reuses the same moka version.
 mod deleted_session;
 mod feed;
+mod human_wait;
 mod listener_dispatch;
 mod tool_images;
 use deleted_session::{session_gone, single_session};
@@ -226,6 +227,7 @@ impl EventService {
     /// Returns an error if event_type doesn't match the data type.
     pub async fn emit(&self, mut request: EventRequest) -> Result<Event> {
         self.prepare_request(&mut request).await?;
+        self.attach_human_waits(&mut request, &[]).await?;
 
         // Only skip PG for delta events when the delivery backend supports it
         // (NATS provides durable pub/sub with replay). InMemory mode persists
@@ -262,6 +264,7 @@ impl EventService {
             .into());
         }
         self.prepare_request(&mut request).await?;
+        self.attach_human_waits(&mut request, &[]).await?;
         let row = self
             .db
             .create_event_if_last(Self::create_row(request)?, expected_last_sequence)
@@ -278,6 +281,7 @@ impl EventService {
         event_index: i32,
     ) -> Result<Event> {
         self.prepare_request(&mut request).await?;
+        self.attach_human_waits(&mut request, &[]).await?;
         let create_row = CreateEventRow {
             session_id: request.session_id,
             event_type: request.event_type,
@@ -307,6 +311,13 @@ impl EventService {
     }
 
     async fn prepare_request(&self, request: &mut EventRequest) -> Result<()> {
+        if let Some(metadata) = request
+            .metadata
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            metadata.remove(everruns_core::human_wait::METADATA_KEY);
+        }
         self.attach_agent_metadata(request).await;
         self.attach_session_participant_metadata(request).await;
         self.attach_service_mcp_provenance(request).await?;
@@ -784,6 +795,7 @@ impl EventService {
         let mut prepared = Vec::with_capacity(requests.len());
         for mut request in requests {
             self.prepare_request(&mut request).await?;
+            self.attach_human_waits(&mut request, &prepared).await?;
             prepared.push(request);
         }
 
@@ -1010,6 +1022,7 @@ mod tests {
     mod cancelled_caller;
     mod emit_conditional;
     mod fed_listeners;
+    mod human_wait;
     mod service_mcp_responder;
     mod tool_images;
 
