@@ -574,3 +574,75 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
     }
     assert!(create("not_a_policy").run(&ctx).await.is_err());
 }
+
+async fn agent_capability_ids(ctx: &Ctx, agent_id: &str) -> Vec<String> {
+    let agent = ctx
+        .db
+        .get_agent_by_public_id(ctx.org_id(), agent_id)
+        .await
+        .unwrap()
+        .unwrap();
+    crate::domains::agents::queries::get_capabilities(&ctx.db, ctx.org_id(), agent.id.uuid())
+        .await
+        .unwrap()
+        .iter()
+        .map(|capability| capability.capability_id().to_string())
+        .collect()
+}
+
+/// The 👀/✅ Slack acknowledgement lives in the Reactions capability's
+/// instructions, so the first Slack channel turns that capability on. A later
+/// Slack channel does not bring it back after the author removed it, and a
+/// package-owned channel never changes the package's capabilities.
+#[tokio::test]
+async fn first_slack_channel_turns_on_reactions_once() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = test_ctx(db.clone());
+    let slack = |agent_id: &str, config: serde_json::Value| CreateAgentChannel {
+        agent_id: agent_id.to_string(),
+        req: CreateAgentChannelRequest {
+            channel_type: ChannelType::Slack,
+            channel_config: config,
+            enabled: true,
+        },
+    };
+
+    let agent_id = seed_agent(&db).await;
+    assert!(agent_capability_ids(&ctx, &agent_id).await.is_empty());
+    slack(&agent_id, json!({})).run(&ctx).await.unwrap();
+    assert_eq!(
+        agent_capability_ids(&ctx, &agent_id).await,
+        vec!["reactions"]
+    );
+
+    let agent = ctx
+        .db
+        .get_agent_by_public_id(ctx.org_id(), &agent_id)
+        .await
+        .unwrap()
+        .unwrap();
+    ctx.db
+        .remove_agent_capability(agent.id.uuid(), "reactions")
+        .await
+        .unwrap();
+    slack(&agent_id, json!({})).run(&ctx).await.unwrap();
+    assert!(agent_capability_ids(&ctx, &agent_id).await.is_empty());
+
+    let packaged = seed_agent(&db).await;
+    slack(&packaged, json!({"package_name": "team-slack"}))
+        .run(&ctx)
+        .await
+        .unwrap();
+    assert!(agent_capability_ids(&ctx, &packaged).await.is_empty());
+
+    let webhook_only = seed_agent(&db).await;
+    create_channel(
+        &ctx,
+        &webhook_only,
+        ChannelType::Webhook,
+        json!({ "token": "channel-secret", "message": "Process {{payload}}" }),
+        false,
+    )
+    .await;
+    assert!(agent_capability_ids(&ctx, &webhook_only).await.is_empty());
+}

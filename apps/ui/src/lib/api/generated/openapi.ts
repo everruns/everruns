@@ -25949,6 +25949,12 @@ export interface components {
     /** @description Request to preview the final agent shape with capabilities applied */
     PreviewAgentRequest: {
       /**
+       * @description Saved agent this draft edits, for checks that depend on its channels
+       *     and harness (for example, a Slack channel without Reactions).
+       * @example agent_01933b5a00007000800000000000001
+       */
+      agent_id?: string | null;
+      /**
        * @description Capabilities to apply with per-agent configuration.
        * @example [
        *       {

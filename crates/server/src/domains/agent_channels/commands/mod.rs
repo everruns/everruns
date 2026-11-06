@@ -243,6 +243,9 @@ impl Command for CreateAgentChannel {
                 },
             )
             .await?;
+        if self.req.channel_type == ChannelType::Slack {
+            super::slack_reactions::ensure_on_first_slack_channel(ctx, &agent, &config).await?;
+        }
         row_to_channel(ctx, row)
     }
 }

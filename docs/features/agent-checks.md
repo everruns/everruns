@@ -76,6 +76,7 @@ Checks run against the *resolved* configuration, after harness and capability co
 | `tools.duplicate_names` | warning | Two tools share a name, so the model cannot distinguish them |
 | `capabilities.superseded` | suggestion | An enabled capability does nothing because another enabled capability replaces it (for example tool search alongside [Tools in Shell](/capabilities/tools-in-shell/)) |
 | `capabilities.duplicate_web_search` | warning | The agent can search the web in more than one way, for example [Web search](/capabilities/web-search/) next to Parallel Search and Fetch or an MCP server's `web_search` tool, so the model has to guess which one to use |
+| `channels.slack_without_reactions` | suggestion | The agent answers a Slack channel but has no Reactions capability, so people in Slack see no sign it got their message until it replies (see [acknowledging messages](/capabilities/slack/#acknowledging-messages)) |
 
 High-cardinality rules (`prompt.duplicate_paragraphs`, `tools.unknown_reference`, `tools.duplicate_names`) cap how many findings they emit. When the cap is exceeded they add a single companion `info` finding with the rule ID suffixed `.summary` (e.g. `prompt.duplicate_paragraphs.summary`) noting that only the first N were shown, so a large prompt cannot amplify into an unbounded response.
 

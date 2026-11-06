@@ -18,6 +18,8 @@ export interface PreviewAgentRequest {
   capabilities?: AgentCapabilityConfig[];
   /** Client-side tools to include in preview output */
   tools?: ToolDefinition[];
+  /** Saved agent this draft edits, for checks that depend on its channels and harness */
+  agent_id?: string;
 }
 
 /** Response showing the final agent shape after applying capabilities */

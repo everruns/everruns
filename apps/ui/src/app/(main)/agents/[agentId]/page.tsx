@@ -961,6 +961,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                               systemPrompt={draft.fields.system_prompt}
                               capabilities={draft.capabilities}
                               tools={agent.tools ?? []}
+                              agentId={agent.id}
                               onApplyFix={(start, end, replacement) =>
                                 draft.setField(
                                   "system_prompt",
