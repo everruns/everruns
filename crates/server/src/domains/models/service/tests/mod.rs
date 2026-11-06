@@ -893,3 +893,84 @@ async fn explicit_profile_survives_preference_updates_with_unchanged_identity() 
     assert!(updated.is_favorite);
     assert_eq!(updated.display_name, "Preferred label");
 }
+
+async fn create_typed_provider(
+    db: &StorageBackend,
+    name: &str,
+    provider_type: &str,
+) -> everruns_contracts::typed_id::ProviderId {
+    db.create_provider(
+        DEFAULT_ORG_ID,
+        CreateProviderRow {
+            name: name.to_string(),
+            provider_type: provider_type.to_string(),
+            base_url: None,
+            api_key_encrypted: None,
+            settings: None,
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+fn move_to(provider: everruns_contracts::typed_id::ProviderId) -> UpdateModelRequest {
+    UpdateModelRequest {
+        service: None,
+        profile_key: None,
+        provider_id: Some(provider.to_string()),
+        model_id: None,
+        display_name: None,
+        capabilities: None,
+        enabled: None,
+        is_favorite: None,
+    }
+}
+
+/// Moving a model to another provider calls it by that provider's spelling
+/// of the same model, so the provider's model list matches it; a move onto a
+/// provider that already has the model, or cannot serve it, is refused.
+#[tokio::test]
+async fn moving_a_model_renames_it_for_the_new_provider() {
+    let db = Arc::new(StorageBackend::test_database());
+    let service = ModelService::new(db.clone());
+    let caller = Caller::internal(DEFAULT_ORG_ID);
+    let openai = create_typed_provider(&db, "OpenAI", "openai").await;
+    let openrouter = create_typed_provider(&db, "OpenRouter", "openrouter").await;
+    let anthropic = create_typed_provider(&db, "Anthropic", "anthropic").await;
+    let create = |model_id: &str| CreateModelRequest {
+        model_id: model_id.to_string(),
+        display_name: model_id.to_string(),
+        ..build_create_request()
+    };
+
+    let sol = service
+        .create(&caller, openai.uuid(), create("gpt-6.1-sol"))
+        .await
+        .unwrap();
+    let moved = service
+        .update(&caller, sol.id.uuid(), move_to(openrouter))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(moved.model_id, "openai/gpt-6.1-sol");
+    assert_eq!(moved.profile_key, "openai/gpt-6.1-sol");
+
+    // OpenRouter now has GPT-6.1 Sol: moving another copy there is refused.
+    let second = service
+        .create(&caller, openai.uuid(), create("gpt-6.1-sol"))
+        .await
+        .unwrap();
+    let err = service
+        .update(&caller, second.id.uuid(), move_to(openrouter))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("OpenRouter already has"), "{err}");
+
+    // Anthropic's API does not serve OpenAI models.
+    let err = service
+        .update(&caller, second.id.uuid(), move_to(anthropic))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("does not offer"), "{err}");
+}

@@ -23,6 +23,7 @@ const KIND_ICON: Record<AttentionKind, typeof Cpu> = {
   model: Cpu,
   permission: ShieldAlert,
   connection: PlugZap,
+  health: TriangleAlert,
   "public-access": Globe,
   setup: ListChecks,
 };
@@ -123,6 +124,11 @@ function AttentionRow({ item, canManage }: { item: AttentionItem; canManage: boo
   );
 }
 
+/** The Health page entry for an issue, where its fixes are offered. */
+function issueHref(issueId: string): string {
+  return `/settings/health?issue=${encodeURIComponent(issueId)}`;
+}
+
 function AttentionActions({ item }: { item: AttentionItem }) {
   const ui = useUiTranslations();
   const check = useHealthIssueAction("check");
@@ -137,9 +143,24 @@ function AttentionActions({ item }: { item: AttentionItem }) {
     case "model":
       return (
         <div className="flex shrink-0 flex-wrap gap-2">
+          {item.healthIssueId && (
+            <Link href={issueHref(item.healthIssueId)} className={linkClass}>
+              {ui("Review")}
+            </Link>
+          )}
           <Link href={`/agents/${item.agentId}?mode=edit`} className={linkClass}>
             {ui("Change model")}
           </Link>
+        </div>
+      );
+    case "health":
+      return (
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {item.healthIssueId && (
+            <Link href={issueHref(item.healthIssueId)} className={linkClass}>
+              {ui("Review")}
+            </Link>
+          )}
         </div>
       );
     case "permission":

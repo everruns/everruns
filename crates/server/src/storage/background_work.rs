@@ -59,7 +59,12 @@ pub struct ConfiguredModelRow {
     pub org_id: i64,
     pub agent_id: Option<Uuid>,
     pub model_name: String,
+    /// The id the provider is called with, e.g. `openai/gpt-6.1-sol`.
+    pub model_id: String,
+    pub provider_id: Uuid,
     pub provider_name: String,
+    /// When the provider's model list was last read.
+    pub last_synced_at: Option<DateTime<Utc>>,
     pub enabled: bool,
     /// Discovered, and the provider's last sync no longer listed it.
     pub no_longer_listed: bool,
@@ -500,7 +505,8 @@ impl StorageBackend {
                 FROM organization_settings os
                 WHERE os.default_model_id IS NOT NULL
              )
-             SELECT c.org_id, c.agent_id, m.display_name AS model_name, p.name AS provider_name,
+             SELECT c.org_id, c.agent_id, m.display_name AS model_name, m.model_id,
+                    p.id AS provider_id, p.name AS provider_name, p.last_synced_at,
                     m.enabled,
                     (m.source = 'discovered' AND p.last_synced_at IS NOT NULL
                         AND (m.last_seen_at IS NULL OR m.last_seen_at < p.last_synced_at))

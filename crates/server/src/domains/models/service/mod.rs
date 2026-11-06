@@ -441,6 +441,27 @@ impl ModelService {
             None
         };
 
+        // Moving a model to another provider: call it by that provider's
+        // spelling of the same model (`catalog::provider_spelling`), so the
+        // provider's listing matches it. One row per model and provider, so a
+        // move onto a provider that already has the model is refused and
+        // points at that row; repointing what uses this one would change
+        // agents behind their history.
+        let mut req = req;
+        if let Some(target) = provider_id.filter(|id| *id != existing.provider_id)
+            && req.model_id.is_none()
+        {
+            let target_provider = self.get_visible_provider(caller, target.uuid()).await?;
+            req.model_id = self
+                .spelling_on_move(
+                    caller.org_id,
+                    &existing,
+                    &existing_provider,
+                    &target_provider,
+                )
+                .await?;
+        }
+
         let identity_changed = req
             .model_id
             .as_ref()
@@ -507,6 +528,54 @@ impl ModelService {
             self.invalidate_resolver_cache(caller.org_id).await;
         }
         Ok(row.as_ref().map(Self::row_to_model))
+    }
+
+    /// The id a model moved to `target` is called by there, or `None` to
+    /// keep its id when its spelling names no vendor (a custom endpoint).
+    async fn spelling_on_move(
+        &self,
+        org_id: i64,
+        existing: &crate::storage::ModelRow,
+        source: &crate::storage::ProviderRow,
+        target: &crate::storage::ProviderRow,
+    ) -> Result<Option<String>> {
+        use crate::domains::models::catalog;
+        let Some(identity) = catalog::row_identity(
+            &source.provider_type,
+            &existing.model_id,
+            existing.provider_metadata.as_ref(),
+        ) else {
+            return Ok(None);
+        };
+        let Some(spelling) = catalog::provider_spelling(&target.provider_type, &identity) else {
+            anyhow::bail!(crate::errors::BadRequestError::new(format!(
+                "{} does not offer {}. Add a model from {}'s own list instead.",
+                target.name, existing.display_name, target.name
+            )));
+        };
+        let taken = self
+            .db
+            .list_models_for_provider(org_id, target.id.uuid())
+            .await?
+            .into_iter()
+            .find(|row| {
+                row.id != existing.id
+                    && (row.model_id == spelling
+                        || catalog::row_identity(
+                            &target.provider_type,
+                            &row.model_id,
+                            row.provider_metadata.as_ref(),
+                        )
+                        .as_deref()
+                            == Some(identity.as_str()))
+            });
+        if let Some(row) = taken {
+            anyhow::bail!(crate::errors::ConflictError::new(format!(
+                "{} already has {} ({}). Choose that model instead of moving this one.",
+                target.name, row.display_name, row.model_id
+            )));
+        }
+        Ok((spelling != existing.model_id).then_some(spelling))
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
