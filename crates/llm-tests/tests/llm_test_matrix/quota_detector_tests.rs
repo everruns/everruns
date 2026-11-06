@@ -290,6 +290,40 @@ async fn transient_failure_retries_with_backoff() {
     assert_eq!(started.elapsed(), Duration::from_secs(15));
 }
 
+/// A send failure has not produced a provider response; use the existing bounded
+/// transport backoff, but preserve a failure when every attempt is exhausted.
+#[tokio::test(start_paused = true)]
+async fn exhausted_send_failure_keeps_the_bounded_transport_retry_contract() {
+    use std::cell::Cell;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    let _no_coverage = super::CoverageSuppressed::new();
+    let attempts = Cell::new(0usize);
+    let started = Instant::now();
+    // The predicate used by tool_search_test::live_turn: a non-transport
+    // failure returns immediately, while transport failures spend the budget.
+    let outcome = run_live_turn!(
+        SYNTHETIC,
+        3,
+        |r: &TurnResult| r.success || !r.error.as_deref().is_some_and(is_transient_transport_error),
+        {
+            attempts.set(attempts.get() + 1);
+            failed_result(
+                "LLM error: provider 'anthropic': Failed to send request: error sending request \
+                 for url (https://api.anthropic.com/v1/messages) (after 2 retries)",
+            )
+        }
+    );
+
+    assert_eq!(attempts.get(), 3);
+    assert_eq!(started.elapsed(), Duration::from_secs(15));
+    assert!(
+        outcome.is_some_and(|r| !r.success),
+        "exhaustion must fail, not skip"
+    );
+}
+
 /// A model that cleanly declines the tool is not a transport problem, so the
 /// retries must fire back to back with no delay.
 #[tokio::test(start_paused = true)]

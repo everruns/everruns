@@ -1008,6 +1008,8 @@ server tools: model-decided, executed inside the response, never dispatched by t
   environment, not a familiar answer the model can supply from memory. A completed hosted
   call and its usage count remain mandatory; missing calls are never retried as transport
   failures. See [hosted-tool tests](../../crates/llm-tests/tests/provider_live/openai_hosted_tools.rs).
+  Provider send failures use the live harness's existing bounded transport backoff;
+  exhaustion remains a failed test rather than unverified/skipped coverage.
 - **MCP approvals**: an `mcp_approval_request` item is the one hosted interaction that needs a
   person. The driver surfaces it as a synthetic `openai_mcp_approval` tool call with no tool
   definition; ActAtom routes it down the client-side path (`act_hooks::runs_on_server`), so the
