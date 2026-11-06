@@ -129,7 +129,8 @@ impl MemoryHosting {
             }
         }
         let mut head = head;
-        for event in plan.events {
+        for mut event in plan.events {
+            state.human_waits.annotate(&mut event);
             if let EventData::ToolCompleted(result) = &event.data {
                 state.pending.retain(|call| call.id != result.tool_call_id);
             }
@@ -139,13 +140,9 @@ impl MemoryHosting {
             ) {
                 state.has_history = true;
             }
-            head = session
-                .log
-                .append(event)
-                .await
-                .map_err(core_error)?
-                .sequence
-                .unwrap_or(head);
+            let committed = session.log.append(event).await.map_err(core_error)?;
+            state.human_waits.observe(&committed);
+            head = committed.sequence.unwrap_or(head);
         }
         match plan.control {
             ControlUpdate::None => {}

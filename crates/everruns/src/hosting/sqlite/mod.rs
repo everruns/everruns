@@ -84,6 +84,8 @@ struct Control {
     suspended: bool,
     open: Option<(TurnId, MessageId)>,
     pending: Vec<crate::ToolCall>,
+    #[serde(default)]
+    human_waits: everruns_core::human_wait::HumanWaitState,
     finalizing: HashSet<TurnId>,
     target_cancels: HashMap<MessageId, i64>,
     /// Active conversation branch; `None` until the first selection.
@@ -348,7 +350,7 @@ fn retain_command(
 fn append(
     tx: &Transaction<'_>,
     state: &mut Control,
-    request: EventRequest,
+    mut request: EventRequest,
     expected: Option<Option<i32>>,
 ) -> Result<Event> {
     let session = request.session_id;
@@ -393,6 +395,7 @@ fn append(
         .head
         .checked_add(1)
         .ok_or_else(|| error("session event capacity reached"))?;
+    state.human_waits.annotate(&mut request);
     let event = request.into_event(EventId::new(), state.head);
     let encoded = encode(&event)?;
     if encoded.len() > 2 * 1024 * 1024 {
@@ -452,6 +455,7 @@ fn event_identity(data: &EventData, turn: Option<TurnId>) -> Result<Option<Strin
 /// imports share them, so an imported journal leaves the same open turn and
 /// pending calls a native authority would hold at that position.
 fn advance(state: &mut Control, event: &Event) {
+    state.human_waits.observe(event);
     match &event.data {
         EventData::TurnStarted(data) => state.open = Some((data.turn_id, data.input_message_id)),
         EventData::ToolCallRequested(data) => state.pending = data.tool_calls.clone(),

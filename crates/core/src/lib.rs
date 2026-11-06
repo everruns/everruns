@@ -98,6 +98,9 @@ pub use everruns_contracts::runtime::feature_flag_grade;
 pub use everruns_contracts::runtime::localization;
 
 // Telemetry conventions (neutral gen-ai span metadata contracts)
+/// Privacy-safe journal projections for human interaction waits.
+#[cfg(feature = "engine")]
+pub mod human_wait;
 pub mod telemetry;
 pub use everruns_contracts::runtime::causal;
 pub use everruns_contracts::runtime::tool_narration;
