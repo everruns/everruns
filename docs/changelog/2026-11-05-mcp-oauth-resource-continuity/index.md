@@ -27,3 +27,8 @@ also preserves the resource in its saved MCP credentials, including repeated
 refresh-token rotation and restarts. For an older Yolop connection, run
 `yolop mcp login <name>` when refresh requests a new sign-in, then
 `yolop mcp test <name>` to verify discovery.
+
+## Update 2026-11-06
+
+Linux download users should use [Yolop 0.23.3](/changelog/2026-11-06-yolop-linux-downloads/),
+which restores glibc 2.39 compatibility after a packaging regression in 0.23.2.
