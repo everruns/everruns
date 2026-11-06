@@ -58,6 +58,33 @@ class Sweep(unittest.TestCase):
         self.assertEqual(worker.env, {"K": "v"})
 
 
+class Sealed(unittest.TestCase):
+    def test_a_sealed_turn_is_a_failed_turn(self):
+        (turn,) = metrics.turns([["c", "input.message", "6000", "0"], ["c", "turn.started", "6100", "0"],
+                                 ["c", "turn.sealed", "6200", "0"]])
+        self.assertFalse(turn["ok"])
+        self.assertEqual(metrics.turn_summary([turn])["failed_turns"], 1)
+
+
+class Incidents(unittest.TestCase):
+    def test_lost_work_in_any_log_is_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            worker, server = os.path.join(d, "worker-0.log"), os.path.join(d, "server-0.log")
+            with open(worker, "w") as f:
+                f.write("\x1b[33m WARN\x1b[0m lease: Actor lease lost; stopping the turn\n")
+                f.write("ERROR turn: Sealing a session turn that keeps failing without progress\n")
+                f.write("WARN x: error=h2 protocol error: GoAway(b\"too_many_data_frames\", ENHANCE_YOUR_CALM, Remote)\n")
+                f.write("INFO everything fine\n")
+            with open(server, "w") as f:
+                f.write("ERROR renew: error returned from database: deadlock detected at line 1130\n")
+            counts = metrics.incidents([worker, server, os.path.join(d, "missing.log")])
+        self.assertEqual(counts["lease_lost"], 1)
+        self.assertEqual(counts["turn_sealed"], 1)
+        self.assertEqual(counts["grpc_goaway"], 1)
+        self.assertEqual(counts["db_deadlock"], 1)
+        self.assertEqual(sum(counts.values()), 4)
+
+
 class Turns(unittest.TestCase):
     ROWS = [
         # session a: one turn, two model calls (300 ms) and a tool (100 ms) in a 1 s turn.

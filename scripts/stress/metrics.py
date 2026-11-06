@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import collections
 import os
+import re
 import threading
 import time
 
@@ -121,7 +122,7 @@ def moving(values: list[float], width: int) -> list[float]:
 
 
 TURN_EVENTS = ("input.message", "turn.started", "llm.generation", "act.completed",
-               "turn.completed", "turn.failed", "turn.cancelled")
+               "turn.completed", "turn.failed", "turn.cancelled", "turn.sealed")
 
 
 def turn_rows(pg) -> list[list[str]]:
@@ -147,7 +148,7 @@ def turns(rows: list[list[str]]) -> list[dict]:
             cur["calls"] += 1
         elif cur and kind == "act.completed":
             cur["tool"] += d
-        elif cur and kind in ("turn.completed", "turn.failed", "turn.cancelled"):
+        elif cur and kind in ("turn.completed", "turn.failed", "turn.cancelled", "turn.sealed"):
             cur["turn"] = t - cur["start"]
             cur["ok"] = kind == "turn.completed"
             cur["overhead"] = cur["turn"] - cur["llm"] - cur["tool"]
@@ -222,3 +223,34 @@ def per_turn(before: dict, after: dict, turns_done: int, rate: dict | None = Non
         if k.startswith("cpu_"):
             out[f"{k}_ms_per_turn"] = round(1000 * d[k] / n, 1)
     return out
+
+
+# Log lines that mean the platform lost work or a connection, even when every
+# turn the driver watched finished: a turn whose lease is lost restarts from its
+# log, so the driver only sees it as slower. Each counts as an incident and
+# fails the run. Plain substrings, matched after ANSI colors are stripped.
+INCIDENTS = {
+    "lease_lost": "Actor lease lost",
+    "lease_renew_failed": "Actor lease renew failed",
+    "turn_sealed": "Sealing a session turn",
+    "grpc_goaway": "GoAway(",
+    "grpc_transport_error": "transport error",
+    "db_deadlock": "deadlock detected",
+}
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def incidents(log_paths: list[str]) -> dict[str, int]:
+    counts = {name: 0 for name in INCIDENTS}
+    for path in log_paths:
+        try:
+            f = open(path, errors="replace")
+        except OSError:
+            continue
+        with f:
+            for line in f:
+                line = ANSI.sub("", line)
+                for name, needle in INCIDENTS.items():
+                    if needle in line:
+                        counts[name] += 1
+    return counts

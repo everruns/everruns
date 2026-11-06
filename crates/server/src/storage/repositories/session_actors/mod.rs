@@ -572,6 +572,19 @@ impl Database {
                 FROM UNNEST($3::uuid[], $4::int8[], $5::int8[])
                      AS l(session_id, fence, consumed_seq)
                 GROUP BY session_id, fence
+            ), locked AS (
+                -- Lock the rows in session_id order before updating them. An
+                -- UPDATE takes its row locks in join order, while the event
+                -- append's fence check (`events::group_commit`) and other
+                -- batches take theirs in session_id order; two transactions
+                -- locking shared rows in different orders deadlock, and
+                -- PostgreSQL then fails one of them (the stress bench lost
+                -- hundreds of leases this way at 500 agents).
+                SELECT a.session_id FROM session_actors a
+                WHERE a.session_id IN (SELECT session_id FROM wanted)
+                  AND a.lease_holder = $1
+                ORDER BY a.session_id
+                FOR NO KEY UPDATE
             ), renewed AS (
                 UPDATE session_actors a SET
                     lease_expires_at = NOW() + $2::float8 * INTERVAL '1 millisecond',
@@ -579,6 +592,7 @@ impl Database {
                     consumed_seq = GREATEST(a.consumed_seq, w.consumed_seq)
                 FROM wanted w
                 WHERE a.session_id = w.session_id
+                  AND a.session_id IN (SELECT session_id FROM locked)
                   AND a.lease_holder = $1 AND a.lease_fence = w.fence
                   -- As for one renewal: a renewal a crash loses only makes
                   -- the lease look older, and the fence guards every write.
