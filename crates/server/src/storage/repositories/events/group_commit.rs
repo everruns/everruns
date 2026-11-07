@@ -42,8 +42,8 @@ use uuid::Uuid;
 use super::rows::{CreateEventRow, EventRow};
 use super::{ActorLeaseFenceRejected, MAX_EVENT_BATCH};
 use crate::storage::repositories::Database;
-use everruns_server_macros::sql;
 use everruns_contracts::typed_id::SessionId;
+use everruns_server_macros::sql;
 
 /// Appends one group may take.
 const MAX_GROUP_APPENDS: usize = 64;
@@ -465,7 +465,10 @@ fn read_verdicts(group: &[Append], rows: Vec<sqlx::postgres::PgRow>) -> Result<V
     for row in rows {
         let index: i32 = row.try_get("append_idx")?;
         let index = usize::try_from(index)?;
-        anyhow::ensure!(index < group.len(), "verdict for an append not in the group");
+        anyhow::ensure!(
+            index < group.len(),
+            "verdict for an append not in the group"
+        );
         let sequenced: bool = row.try_get("append_sequenced")?;
         let lost: Option<Uuid> = row.try_get("append_lost")?;
         let id: Option<Uuid> = row.try_get("id")?;
@@ -747,7 +750,10 @@ mod tests {
                         .create_event(row(id, "input.message"))
                         .await
                         .unwrap();
-                    intake.mark_session_actor_runnable(id, ORG, 1).await.unwrap();
+                    intake
+                        .mark_session_actor_runnable(id, ORG, 1)
+                        .await
+                        .unwrap();
                 }
             });
         }
@@ -772,12 +778,13 @@ mod tests {
             done.unwrap();
         }
         for (id, _) in sessions {
-            let sequences: Vec<i32> =
-                sqlx::query_scalar("SELECT sequence FROM events WHERE session_id = $1 ORDER BY sequence")
-                    .bind(id)
-                    .fetch_all(db.database().pool())
-                    .await
-                    .unwrap();
+            let sequences: Vec<i32> = sqlx::query_scalar(
+                "SELECT sequence FROM events WHERE session_id = $1 ORDER BY sequence",
+            )
+            .bind(id)
+            .fetch_all(db.database().pool())
+            .await
+            .unwrap();
             assert_eq!(sequences, (1..=11).collect::<Vec<i32>>());
         }
     }
