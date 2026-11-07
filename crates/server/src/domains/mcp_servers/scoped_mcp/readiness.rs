@@ -192,21 +192,16 @@ pub(super) async fn fetch(
             .retain(|_, entry| entry.age() < MCP_DISCOVERY_DEADLINE + Duration::from_secs(60));
         if let Some(entry) = state.entries.get(&key) {
             match entry.completion.get().map(|done| &done.result) {
-                Some(Ok(result))
-                    if result
-                        .cache_hints
-                        .is_none_or(|hints| entry.age() < hints.ttl) =>
-                {
+                Some(Ok(_)) => {
                     let tools = harvest(entry.completion.get().expect("completed"));
-                    if result.cache_hints.is_none() {
-                        // The map holds one handoff, not a cache for servers
-                        // without TTL. Already attached waiters keep their Arc.
+                    if tools.cache_hints.is_none() {
+                        // Even an expired TTL may be delivered once as a
+                        // delayed response. It is not fresh cache data and
+                        // carries no hints that could write a new DB TTL.
+                        // Existing waiters retain their completion generation.
                         state.entries.remove(&key);
                     }
                     return Ok(tools);
-                }
-                Some(Ok(_)) => {
-                    state.entries.remove(&key);
                 }
                 Some(Err(auth)) if *auth || entry.age() < Duration::from_secs(5) => {
                     return Err(if *auth {
@@ -307,8 +302,9 @@ pub(super) async fn fetch(
     }
     match completion.get() {
         Some(done) => match &done.result {
-            Ok(result) => {
-                if result.cache_hints.is_none() {
+            Ok(_) => {
+                let tools = harvest(done);
+                if tools.cache_hints.is_none() {
                     let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
                     if state
                         .entries
@@ -318,7 +314,7 @@ pub(super) async fn fetch(
                         state.entries.remove(&key);
                     }
                 }
-                Ok(harvest(done))
+                Ok(tools)
             }
             Err(auth) => Err(if *auth {
                 context.authentication_required(name)
@@ -478,6 +474,122 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(egress.0.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn expired_short_ttl_is_delivered_once_without_restarting_freshness() {
+        struct ShortTtlEgress(SlowEgress);
+        #[async_trait::async_trait]
+        impl EgressService for ShortTtlEgress {
+            async fn send(
+                &self,
+                request: everruns_core::EgressRequest,
+            ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+                let listing = serde_json::from_slice::<serde_json::Value>(&request.body).unwrap()["method"]
+                    == "tools/list";
+                let mut response = self.0.send(request).await?;
+                if listing {
+                    let mut body: serde_json::Value =
+                        serde_json::from_slice(&response.body).unwrap();
+                    body["result"]["ttlMs"] = serde_json::json!(10);
+                    body["result"]["cacheScope"] = serde_json::json!("private");
+                    response.body = serde_json::to_vec(&body).unwrap();
+                }
+                Ok(response)
+            }
+            async fn send_stream(
+                &self,
+                request: everruns_core::EgressRequest,
+            ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+                let response = self.send(request).await?;
+                Ok(everruns_core::EgressStreamResponse {
+                    status: response.status,
+                    headers: response.headers,
+                    body: Box::pin(futures::stream::iter(vec![Ok(response.body)])),
+                })
+            }
+        }
+        let egress = Arc::new(ShortTtlEgress(SlowEgress(CatalogPreviewEgress::default())));
+        let session = SessionId::new();
+        let server = ScopedMcpServer {
+            url: "http://8.8.8.8/short-ttl".into(),
+            ..Default::default()
+        };
+        let initial = Readiness::new(1, session, egress.clone(), Duration::from_millis(1));
+        assert!(
+            fetch(
+                Some(&initial),
+                "docs",
+                &server,
+                "inline",
+                egress.as_ref(),
+                &server.url,
+                None,
+                &server.headers
+            )
+            .await
+            .unwrap_err()
+            .is::<Pending>()
+        );
+        let key = key(&initial, "docs", &server, "inline", None).unwrap();
+        let completion = STATE.lock().unwrap().entries[&key].completion.clone();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while completion.get().is_none() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            completion
+                .get()
+                .unwrap()
+                .result
+                .as_ref()
+                .unwrap()
+                .cache_hints
+                .is_some()
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let handoff = Readiness::new(1, session, egress.clone(), Duration::ZERO);
+        let tools = fetch(
+            Some(&handoff),
+            "docs",
+            &server,
+            "inline",
+            egress.as_ref(),
+            &server.url,
+            None,
+            &server.headers,
+        )
+        .await
+        .unwrap();
+        assert!(!tools.tools.is_empty());
+        assert!(
+            tools.cache_hints.is_none(),
+            "expired response must not write a new DB TTL"
+        );
+        assert_eq!(
+            egress.0.0.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        let next = Readiness::new(1, session, egress.clone(), Duration::from_secs(2));
+        fetch(
+            Some(&next),
+            "docs",
+            &server,
+            "inline",
+            egress.as_ref(),
+            &server.url,
+            None,
+            &server.headers,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            egress.0.0.calls.load(std::sync::atomic::Ordering::SeqCst),
+            2
+        );
     }
 
     #[tokio::test]

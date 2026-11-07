@@ -430,3 +430,8 @@ resolution. Background results are local to the Platform process and are
 short-lived; restarting or routing the next turn to another replica may require
 another discovery. Successful catalog results still follow their existing
 identity-scoped cache policy once a turn picks them up.
+
+A discovery response whose cache TTL expires before the next turn can still be
+delivered once as a delayed response, after current authority and configuration
+are checked. It is not treated as fresh cached data and does not restart its
+database cache TTL. Subsequent turns rediscover it.
