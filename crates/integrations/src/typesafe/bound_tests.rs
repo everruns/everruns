@@ -337,7 +337,7 @@ impl EgressService for DelayedNetwork {
 
 #[tokio::test]
 async fn decision_trace_times_success_invalid_answers_and_provider_refusals() {
-    let valid = json!({"answers":{"q":{"type":"noul","noul":0.97}},"usage":{"input_tokens":100,"output_tokens":2,"cost":0.001}});
+    let valid = json!({"model":"typesafe/jev-1.13","answers":{"q":{"type":"noul","noul":0.97}},"usage":{"input_tokens":100,"output_tokens":2,"cost":0.001}});
     let invalid = json!({"answers":{},"usage":{"input_tokens":100,"output_tokens":2,"cost":0.001}});
     for (status, response, success, minimum_ms) in [
         (200, valid, true, 40),
