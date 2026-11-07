@@ -38,6 +38,7 @@ pub use commands::*;
 pub use draft::DraftAgent;
 pub use examples::{AdoptAgentExample, ListAgentExamples};
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};
+pub(crate) use managed::check_high_risk_dependencies;
 pub use packages::{DiffAgentPackage, ExportAgent, ImportAgent, ValidateAgentPackage};
 pub use preview::*;
 

@@ -17,6 +17,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 struct MockAuthBackend {
     user_id: Uuid,
+    roles: Vec<String>,
 }
 
 #[async_trait]
@@ -27,7 +28,7 @@ impl AuthBackend for MockAuthBackend {
             id: self.user_id,
             email: "test@example.com".to_string(),
             name: "Test User".to_string(),
-            roles: vec!["user".to_string()],
+            roles: self.roles.clone(),
             is_platform_user: true,
             auth_method: AuthMethod::Jwt,
             organizations: vec![OrgMembership {
@@ -77,6 +78,13 @@ impl OrgCreatePolicy for RejectAllPolicy {
 async fn create_org_app(
     policy: Option<Arc<dyn OrgCreatePolicy>>,
 ) -> (Router, Arc<StorageBackend>, Uuid) {
+    create_org_app_with_roles(policy, vec!["user".to_string()]).await
+}
+
+async fn create_org_app_with_roles(
+    policy: Option<Arc<dyn OrgCreatePolicy>>,
+    roles: Vec<String>,
+) -> (Router, Arc<StorageBackend>, Uuid) {
     let db = Arc::new(StorageBackend::test_database());
     let user_id = db.create_test_user(Uuid::now_v7()).await;
     let config = AuthConfig {
@@ -87,7 +95,7 @@ async fn create_org_app(
         },
         ..Default::default()
     };
-    let auth = AuthState::new(config, Arc::new(MockAuthBackend { user_id }));
+    let auth = AuthState::new(config, Arc::new(MockAuthBackend { user_id, roles }));
     let mut state = AppState::new(db.clone(), auth);
     state.org_create_policy = policy;
     (routes(state), db, user_id)
@@ -551,7 +559,13 @@ async fn create_org_app_with_initializers(
         },
         ..Default::default()
     };
-    let auth = AuthState::new(config, Arc::new(MockAuthBackend { user_id }));
+    let auth = AuthState::new(
+        config,
+        Arc::new(MockAuthBackend {
+            user_id,
+            roles: vec!["user".to_string()],
+        }),
+    );
     let mut state = AppState::new(db.clone(), auth);
     state.org_initializers = initializers;
     (routes(state), db, user_id)
@@ -1105,4 +1119,117 @@ async fn organization_chat_model_is_independent_validated_and_clearable() {
     assert_eq!(status, StatusCode::OK, "{org}");
     assert!(org["chat_model_id"].is_null());
     assert_eq!(org["default_model_id"], main.to_string());
+}
+
+// ---- Direct member add requires platform admin (TM-AUTHZ-027) ----
+
+/// Make `user_id` an owner of the default org, which the mock backend's
+/// membership names, and return its ids.
+async fn default_org_owned_by(db: &StorageBackend, user_id: Uuid) -> (i64, String) {
+    db.ensure_membership(user_id, DEFAULT_ORG_ID, "owner")
+        .await
+        .unwrap();
+    (
+        DEFAULT_ORG_ID,
+        "org_00000000000000000000000000000001".to_string(),
+    )
+}
+
+async fn org_owned_by(db: &StorageBackend, user_id: Uuid, name: &str) -> (i64, String) {
+    use crate::storage::CreateOrganizationRow;
+    let public_id = generate_org_public_id();
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: public_id.clone(),
+            name: name.to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    db.add_organization_member(org.org_id, user_id, "owner")
+        .await
+        .unwrap();
+    (org.org_id, public_id)
+}
+
+fn add_member_request(org_public_id: &str, target: Uuid) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(format!("/v1/orgs/{org_public_id}/members"))
+        .header("Authorization", "Bearer test-token")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({"user_id": target.to_string(), "role": "member"}).to_string(),
+        ))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn org_owner_cannot_add_existing_user_without_invitation() {
+    let (app, db, owner) = create_org_app(None).await;
+    let (org_id, public_id) = default_org_owned_by(&db, owner).await;
+    let victim = db.create_test_user(Uuid::now_v7()).await;
+
+    let response = app
+        .oneshot(add_member_request(&public_id, victim))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(
+        db.get_organization_member(org_id, victim)
+            .await
+            .unwrap()
+            .is_none(),
+        "victim must not be added without accepting an invitation"
+    );
+}
+
+#[tokio::test]
+async fn platform_admin_can_add_existing_user_directly() {
+    let (app, db, admin) = create_org_app_with_roles(None, vec!["admin".to_string()]).await;
+    let (org_id, public_id) = default_org_owned_by(&db, admin).await;
+    let target = db.create_test_user(Uuid::now_v7()).await;
+
+    let response = app
+        .oneshot(add_member_request(&public_id, target))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let member = db
+        .get_organization_member(org_id, target)
+        .await
+        .unwrap()
+        .expect("platform admin add persists the membership");
+    assert_eq!(member.role, "member");
+}
+
+#[tokio::test]
+async fn default_org_is_earliest_joined_not_alphabetical() {
+    let (_app, db, user_id) = create_org_app(None).await;
+    // The user's own org, joined first, sorts last by name.
+    let (home_org, _) = org_owned_by(&db, user_id, "zzz home").await;
+    // A later membership in an org whose name sorts first.
+    use crate::storage::CreateOrganizationRow;
+    let hostile = db
+        .create_organization(CreateOrganizationRow {
+            public_id: generate_org_public_id(),
+            name: "!!!".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    db.add_organization_member(hostile.org_id, user_id, "member")
+        .await
+        .unwrap();
+
+    let orgs = db.list_user_organizations(user_id).await.unwrap();
+    let ids: Vec<i64> = orgs.iter().map(|o| o.org_id).collect();
+    let home_pos = ids.iter().position(|id| *id == home_org).unwrap();
+    let hostile_pos = ids.iter().position(|id| *id == hostile.org_id).unwrap();
+    assert!(
+        home_pos < hostile_pos,
+        "earliest-joined org must come before a later, alphabetically-first org: {orgs:?}"
+    );
 }

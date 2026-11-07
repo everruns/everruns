@@ -206,6 +206,7 @@ impl Database {
                 sync_status = COALESCE($10, sync_status),
                 last_synced_at = CASE WHEN $11 THEN $12 ELSE last_synced_at END,
                 last_sync_error = CASE WHEN $13 THEN $14 ELSE last_sync_error END,
+                resolved_owner_user_id = CASE WHEN $15 THEN $16 ELSE resolved_owner_user_id END,
                 archived_at = CASE
                     WHEN $6 = 'archived' THEN COALESCE(archived_at, NOW())
                     WHEN $6 = 'active' THEN NULL
@@ -234,6 +235,8 @@ impl Database {
         .bind(input.last_synced_at.flatten())
         .bind(input.last_sync_error.is_some())
         .bind(input.last_sync_error.flatten())
+        .bind(input.resolved_owner_user_id.is_some())
+        .bind(input.resolved_owner_user_id.flatten())
         .fetch_optional(&self.pool)
         .await?;
 

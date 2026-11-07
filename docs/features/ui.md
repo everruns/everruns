@@ -343,7 +343,10 @@ or `["read"]` is rejected with `400` and `"code": "unsupported_pat_scopes"`.
 
 ### Members
 
-View and manage team members (when authentication is enabled).
+View and manage team members (when authentication is enabled). Owners and
+admins add people by invitation; the invitee accepts with a verified matching
+email. Adding an existing user directly by ID
+(`POST /v1/orgs/{org}/members`) is limited to platform admins.
 
 ## Virtual users and personal settings
 

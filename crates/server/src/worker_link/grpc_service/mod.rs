@@ -23,6 +23,8 @@ mod tests_platform_command_surface;
 #[cfg(test)]
 mod tests_provider_services;
 #[cfg(test)]
+mod tests_saved_script_writes;
+#[cfg(test)]
 mod tests_sqldb_sharing;
 #[cfg(test)]
 mod tests_turn_context;

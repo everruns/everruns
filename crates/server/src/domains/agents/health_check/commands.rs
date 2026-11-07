@@ -61,6 +61,35 @@ impl AgentHealthCheckService {
         let model_id = agent.default_model_id.map(|m| m.to_string());
         let config_hash = config_hash(&resolved_prompt, &tool_listing, model_id.as_deref());
 
+        // Refuse an oversized config before charging admission, so a request
+        // that can never run does not spend anyone's budget.
+        super::generate::generation_input(
+            agent.description.as_deref(),
+            &resolved_prompt,
+            &tool_listing,
+        )
+        .map_err(CommandError::bad_request)?;
+        // THREAT[TM-DOS-055]: admission lives here, not in one transport, so
+        // REST, `POST /v1/commands/...`, MCP execute and the Platform shell
+        // all share one per-org / per-caller window and a global concurrency
+        // slot, held by the background run until it ends.
+        let permit = crate::domains::agents::analysis::acquire_health_check_permit(caller)
+            .map_err(|e| {
+                let retry_after_seconds = match e {
+                    crate::domains::agents::analysis::AnalysisAdmissionError::RateLimited {
+                        retry_after_seconds,
+                    }
+                    | crate::domains::agents::analysis::AnalysisAdmissionError::Busy {
+                        retry_after_seconds,
+                    } => retry_after_seconds,
+                };
+                CommandError::rate_limited(
+                    "Agent health check rate limit exceeded; please try again later",
+                )
+                .with_code("agent_health_check_rate_limited")
+                .with_retry_after(retry_after_seconds)
+            })?;
+
         let public_id = format!("healthcheck_{:032x}", Uuid::now_v7().as_u128());
         let row = self
             .run_ctx
@@ -88,6 +117,7 @@ impl AgentHealthCheckService {
                 resolved_system_prompt: resolved_prompt,
                 tool_listing,
             },
+            permit,
         );
 
         Ok(HealthCheckRun::from(row))
