@@ -138,6 +138,45 @@ class Turns(unittest.TestCase):
         self.assertEqual(metrics.proc_cpu_seconds(2 ** 22 + 7), 0.0)
 
 
+class Children(unittest.TestCase):
+    def test_child_processes_are_found_by_parent_pid(self):
+        # PostgreSQL backends start their own sessions, so the parent pid is
+        # the only link back to the postmaster.
+        child = subprocess.Popen([sys.executable, "-c", "import os, time; os.setsid(); time.sleep(5)"])
+        try:
+            time.sleep(0.3)
+            self.assertIn(child.pid, metrics.child_pids(os.getpid()))
+        finally:
+            child.kill()
+            child.wait()
+
+
+class Budget(unittest.TestCase):
+    def test_peak_running_turns_counts_overlap(self):
+        ts = [{"start": 0, "turn": 10}, {"start": 5, "turn": 10}, {"start": 12, "turn": 1}, {"start": 20, "turn": 1}]
+        self.assertEqual(metrics.peak_running_turns(ts), 2)
+
+    def test_budget_fits_only_when_every_measured_cost_is_under(self):
+        under = {key: limit / 2 for key, limit, _ in metrics.BUDGET_8K.values()}
+        self.assertTrue(metrics.budget(under)["fits"])
+        over = dict(under, statements_per_turn=308)
+        b = metrics.budget(over)
+        self.assertFalse(b["fits"])
+        self.assertEqual(b["rows"]["db_statements"]["x_over"], 10.3)
+
+    def test_unmeasured_costs_do_not_decide(self):
+        b = metrics.budget({"statements_per_turn": 20})
+        self.assertTrue(b["fits"])
+        self.assertIsNone(b["rows"]["nats_replay"]["value"])
+        self.assertFalse(metrics.budget({})["fits"])
+
+    def test_budget_table_has_one_row_per_point(self):
+        r = {"label": "baseline", "budget_8k": metrics.budget({"statements_per_turn": 308})}
+        lines = stress.budget_table([r]).splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertIn("308 (10.3x)", lines[3])
+
+
 class FsyncShim(unittest.TestCase):
     def test_shim_delays_fsync_only_when_asked(self):
         with tempfile.TemporaryDirectory() as d:

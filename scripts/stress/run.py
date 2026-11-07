@@ -178,7 +178,8 @@ def drive(args, base_urls: list[str], model: str, out_dir: str) -> list[dict]:
     return results
 
 
-def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int, out_dir: str) -> dict:
+def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int, out_dir: str,
+              nats_monitor_port: int | None = None) -> dict:
     a, env, pg_settings = apply_point(args, point)
     os.makedirs(out_dir, exist_ok=True)
     pg.start(pg_settings, a.fsync_delay_ms)
@@ -213,6 +214,7 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
         # counters the reset zeroed.
         pg.psql("stress", "SELECT pg_stat_statements_reset()")
         before = metrics.counters(pg, procs)
+        nats_before = metrics.nats_stream(nats_monitor_port)
         sampler = metrics.Sampler(pg, procs)
         sampler.start()
         t0, load_start_ms = time.monotonic(), time.time() * 1000
@@ -220,8 +222,12 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
         elapsed = time.monotonic() - t0
         load = sampler.stop()
         after = metrics.counters(pg, procs)
+        nats_after = metrics.nats_stream(nats_monitor_port)
         ts = metrics.measured(metrics.turns(metrics.turn_rows(pg)), load_start_ms)
         summary = metrics.turn_summary(ts)
+        net = metrics.per_turn(before, after, summary["turns"], rate, elapsed)
+        peak_running = metrics.peak_running_turns(ts)
+        worker_growth = load["rss_peak_mib"].get("worker", 0) - load["rss_idle_mib"].get("worker", 0)
         result = {
             "label": label(point),
             "point": {f"{kind}:{k}": v for kind, k, v in point},
@@ -232,7 +238,12 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
             "driver_errors": sum(d.get("errors", 0) + d.get("stuck_count", 0) for d in drivers),
             "driver_error_sample": [e for d in drivers for e in d.get("error_sample", [])][:3],
             **summary,
-            **metrics.per_turn(before, after, summary["turns"], rate, elapsed),
+            **net,
+            "app_cpu_ms_per_turn": round(net.get("cpu_server_ms_per_turn", 0) + net.get("cpu_worker_ms_per_turn", 0), 1),
+            "peak_running_turns": peak_running,
+            "worker_mib_per_running_turn": round(worker_growth / peak_running, 2) if peak_running else None,
+            "nats_kb_per_turn": round((nats_after["nats_bytes"] - nats_before["nats_bytes"]) / 1024
+                                      / max(1, summary["turns"]), 1) if nats_before and nats_after else None,
             "background_per_s": {k: round(v, 2) for k, v in rate.items()},
             "gross_per_turn": metrics.per_turn(before, after, summary["turns"]),
             "top_statements": metrics.top_statements(pg, summary["turns"]),
@@ -244,6 +255,7 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
     logs = [os.path.join(out_dir, name) for name in sorted(os.listdir(out_dir)) if name.endswith(".log")]
     result["incidents"] = metrics.incidents(logs)
     result["incident_count"] = sum(result["incidents"].values())
+    result["budget_8k"] = metrics.budget(result)
     return result
 
 
@@ -266,6 +278,19 @@ def table(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def budget_table(results: list[dict]) -> str:
+    """Each point's per-turn costs against the budget for 8k agents on today's production."""
+    names = list(metrics.BUDGET_8K)
+    lines = ["| point | fits 8k | " + " | ".join(names) + " |", "|" + "---|" * (len(names) + 2),
+             "| budget | | " + " | ".join(
+                 f"{round(metrics.BUDGET_8K[n][1], 1)} {metrics.BUDGET_8K[n][2]}".strip() for n in names) + " |"]
+    for r in results:
+        rows = r["budget_8k"]["rows"]
+        cells = [("" if rows[n]["value"] is None else f"{rows[n]['value']} ({rows[n]['x_over']}x)") for n in names]
+        lines.append(f"| {r['label']} | {'yes' if r['budget_8k']['fits'] else 'no'} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     for binary in (args.server_bin, args.worker_bin):
@@ -279,11 +304,11 @@ def main(argv=None) -> int:
     os.makedirs(infra_root, mode=0o755, exist_ok=True)
     os.chmod(infra_root, 0o755)
     prefix = args.port_prefix
-    nats_port, valkey_port = int(f"{prefix}22"), int(f"{prefix}79")
+    nats_port, nats_monitor_port, valkey_port = int(f"{prefix}22"), int(f"{prefix}23"), int(f"{prefix}79")
     cpus = kv(args.cpus.split(",")) if args.cpus else {}
     pg = infra.Postgres(infra_root, int(f"{prefix}32"), cpus.get("postgres"))
     pg.init()
-    daemons = [infra.nats(infra_root, nats_port), infra.valkey(infra_root, valkey_port)]
+    daemons = [infra.nats(infra_root, nats_port, nats_monitor_port), infra.valkey(infra_root, valkey_port)]
     for d in daemons:
         d.start()
     results = []
@@ -291,7 +316,8 @@ def main(argv=None) -> int:
         points = sweep_points(args.sweep)
         for i, point in enumerate(points):
             print(f"[stress] point {i + 1}/{len(points)}: {label(point)}", flush=True)
-            r = run_point(args, point, pg, valkey_port, nats_port, os.path.join(run_dir, f"point-{i + 1}"))
+            r = run_point(args, point, pg, valkey_port, nats_port, os.path.join(run_dir, f"point-{i + 1}"),
+                          nats_monitor_port)
             results.append(r)
             with open(os.path.join(run_dir, "results.jsonl"), "a") as f:
                 f.write(json.dumps(r) + "\n")
@@ -300,7 +326,8 @@ def main(argv=None) -> int:
         pg.stop()
         for d in daemons:
             d.stop()
-    md = table(results)
+    md = table(results) + "\n\nPer-turn cost against the budget for 8k agents on today's production " \
+        "(value, and how many times over budget):\n\n" + budget_table(results)
     with open(os.path.join(run_dir, "results.md"), "w") as f:
         f.write(md + "\n")
     print(md)
