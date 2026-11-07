@@ -4,22 +4,36 @@
 //! Decision: the store is bound to a session, and the session's agent is
 //! looked up on first use. The shell never names an agent, so a script can
 //! only list or save scripts of the agent whose turn it is.
+//!
+//! Decision: reads run as the org's internal caller, but a save runs as the
+//! turn's management user. The act binds the turn's input message
+//! (`for_execution`); the write carries it, and the control plane resolves
+//! the invocation's principal and applies `AGENT_MANAGE`. An unbound store
+//! refuses to save, and the server refuses unbound script writes too
+//! (TM-TOOL-067).
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::saved_scripts::{SavedScript, SavedScriptStore};
 use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
+use std::sync::Arc;
 use tokio::sync::OnceCell;
+use uuid::Uuid;
 
 use crate::grpc_adapters::GrpcAdapter;
 
 const SURFACE: &str = "Saved scripts";
+const UNBOUND_SAVE: &str =
+    "saving a script requires a management-authorized turn; this one has none";
 
 /// Saved scripts of one session's agent.
+#[derive(Clone)]
 pub struct GrpcSavedScripts {
     adapter: GrpcAdapter,
     session_id: SessionId,
     agent_id: OnceCell<String>,
+    /// The turn a save is authorized as; `None` until the act binds it.
+    input_message_id: Option<Uuid>,
 }
 
 impl GrpcSavedScripts {
@@ -28,6 +42,30 @@ impl GrpcSavedScripts {
             adapter,
             session_id,
             agent_id: OnceCell::new(),
+            input_message_id: None,
+        }
+    }
+
+    /// A write, authorized as the bound turn's management user.
+    async fn write(&self, name: &str, params: Value, reason: &str) -> Result<Value, String> {
+        let Some(input_message) = self.input_message_id else {
+            return Err(UNBOUND_SAVE.to_string());
+        };
+        match self
+            .adapter
+            .execute_invocation_command(
+                SURFACE,
+                name,
+                params,
+                self.session_id,
+                input_message,
+                reason,
+            )
+            .await
+        {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(error)) => Err(error.message),
+            Err(error) => Err(error.to_string()),
         }
     }
 
@@ -89,15 +127,20 @@ impl SavedScriptStore for GrpcSavedScripts {
     }
 
     async fn save(&self, script: SavedScript) -> Result<SavedScript, String> {
+        // Refuse before any read: an unbound store has no turn to act as.
+        if self.input_message_id.is_none() {
+            return Err(UNBOUND_SAVE.to_string());
+        }
         let existing = self
             .records()
             .await?
             .into_iter()
             .find(|record| record["name"].as_str() == Some(script.name.as_str()));
         let agent_id = self.agent_id().await?;
+        let reason = format!("Saved script '{}' from the agent's shell", script.name);
         let saved = match existing.as_ref().and_then(|r| r["id"].as_str()) {
             Some(script_id) => {
-                self.command(
+                self.write(
                     "update_agent_script",
                     json!({
                         "agent_id": agent_id,
@@ -106,11 +149,12 @@ impl SavedScriptStore for GrpcSavedScripts {
                         "input_schema": script.input_schema,
                         "body": script.body,
                     }),
+                    &reason,
                 )
                 .await?
             }
             None => {
-                self.command(
+                self.write(
                     "create_agent_script",
                     json!({
                         "agent_id": agent_id,
@@ -119,17 +163,49 @@ impl SavedScriptStore for GrpcSavedScripts {
                         "input_schema": script.input_schema,
                         "body": script.body,
                     }),
+                    &reason,
                 )
                 .await?
             }
         };
         to_script(&saved).ok_or_else(|| "the saved script came back malformed".to_string())
     }
+
+    fn for_execution(&self, input_message_id: Uuid) -> Option<Arc<dyn SavedScriptStore>> {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(input_message_id);
+        Some(Arc::new(bound))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn store() -> GrpcSavedScripts {
+        let channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
+        GrpcSavedScripts::new(
+            GrpcAdapter::new_org_scoped(crate::grpc_adapters::GrpcClient::from_channel(channel), 1),
+            SessionId::new(),
+        )
+    }
+
+    fn script() -> SavedScript {
+        SavedScript {
+            name: "triage".into(),
+            description: "Label PRs.".into(),
+            input_schema: None,
+            body: "echo hi".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn unbound_store_refuses_to_save_without_calling_the_server() {
+        // The endpoint is unreachable, so reaching the network would fail with
+        // a transport error, not this message.
+        let error = store().save(script()).await.unwrap_err();
+        assert_eq!(error, UNBOUND_SAVE);
+    }
 
     #[test]
     fn records_map_to_scripts() {

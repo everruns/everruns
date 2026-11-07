@@ -36,6 +36,17 @@ pub trait SavedScriptStore: Send + Sync {
     /// Create the script, or replace the description, schema and body of the
     /// one with the same name.
     async fn save(&self, script: SavedScript) -> Result<SavedScript, String>;
+
+    /// This store bound to the turn whose input message is `input_message_id`.
+    ///
+    /// Decision: a save is authorized as the turn's principal, not as the
+    /// host. The control plane resolves the invocation's management user from
+    /// this id and checks it may manage the agent, so a channel, consumer or
+    /// anonymous turn cannot plant code that later runs in members' sessions
+    /// (TM-TOOL-067). `None` keeps the store as it is.
+    fn for_execution(&self, _input_message_id: uuid::Uuid) -> Option<Arc<dyn SavedScriptStore>> {
+        None
+    }
 }
 
 /// Tool context extension carrying the bound store.
