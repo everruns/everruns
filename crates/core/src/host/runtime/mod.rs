@@ -57,6 +57,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 mod builder;
+use builder::hydrate_plugin_refs;
 mod input_message;
 use input_message::{message_from_input, message_from_input_with_id};
 mod commands;
@@ -1464,38 +1465,6 @@ fn effective_overlay(
             .chain(agent_layers)
             .chain([AgentConfigOverlay::from(session)]),
     )
-}
-
-/// Replace bare `plugin:{name}` refs (empty config) with the hydrated version
-/// (config = serialised `DeclarativeCapabilityDefinition`) so that the core
-/// capability resolution path can deserialise them without a registry entry.
-///
-/// Only replaces entries whose config is empty / `null`; entries that already
-/// carry a non-empty config are left unchanged so explicit overrides are honoured.
-fn hydrate_plugin_refs(
-    capabilities: &mut [everruns_contracts::CapabilityRef],
-    plugin_configs: &[everruns_contracts::CapabilityRef],
-) {
-    for cap in capabilities.iter_mut() {
-        let cap_id = cap.capability_id();
-        if !everruns_contracts::is_plugin_capability(cap_id) {
-            continue;
-        }
-        // Only replace if the config is missing / empty so explicit overrides are honoured.
-        let is_bare = cap.config_value().is_null()
-            || cap
-                .config_value()
-                .clone()
-                .as_object()
-                .map(|o| o.is_empty())
-                .unwrap_or(false);
-        if !is_bare {
-            continue;
-        }
-        if let Some(hydrated) = plugin_configs.iter().find(|c| c.capability_id() == cap_id) {
-            cap.set_config(hydrated.config_value().clone());
-        }
-    }
 }
 
 #[cfg(test)]

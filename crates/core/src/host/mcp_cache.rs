@@ -14,6 +14,8 @@
 //!     (stale-while-revalidate), so a turn never blocks on `tools/list`.
 //!   - **Cold** (never fetched): the caller blocks on a single-flight refresh
 //!     shared across concurrent callers, so a burst of turns triggers one fetch.
+//!     With an interactive deadline, only the caller stops waiting; bounded
+//!     background discovery continues and later turns read the complete catalog.
 //!
 //! Unlike the server domain, every scoped server here is background-refreshable:
 //! the runtime's `McpAuthProvider` is re-invoked on each `discover`, so there is
@@ -686,6 +688,46 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(peak.load(Ordering::SeqCst), 16);
+    }
+
+    #[tokio::test]
+    async fn cancelling_interactive_wait_preserves_background_discovery() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let caller = {
+            let cache = cache.clone();
+            let started = started.clone();
+            let release = release.clone();
+            tokio::spawn(async move {
+                cache
+                    .resolve_until(
+                        key(),
+                        move || {
+                            let started = started.clone();
+                            let release = release.clone();
+                            async move {
+                                started.notify_one();
+                                release.notified().await;
+                                Ok(vec![def("ready_after_cancel")])
+                            }
+                        },
+                        Some(tokio::time::Instant::now() + Duration::from_secs(10)),
+                    )
+                    .await
+            })
+        };
+        started.notified().await;
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        release.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while cache.status(&key()) != McpDiscoveryStatus::Ready {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
     }
 
     /// A cold key fetches once and is served from cache on the next call.

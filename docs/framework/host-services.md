@@ -199,7 +199,7 @@ and request capture see these values, so never put a secret in them.
 ## MCP readiness
 
 Cold MCP discovery waits for complete tool catalogs by default. Interactive
-hosts can opt into a short readiness budget:
+hosts can opt into a short readiness budget with the `mcp` feature enabled:
 
 ```rust
 use std::time::Duration;

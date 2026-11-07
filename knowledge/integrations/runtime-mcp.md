@@ -420,8 +420,8 @@ Remaining follow-up:
 
 The host discovery cache distinguishes typed HTTP authentication rejections
 from transient transport failures. A 401 or 403 clears that attachment's stale
-tools and pauses discovery until invalidation, a new runtime, or a changed
-configuration. Configuration identities are canonical hashes, including static
+tools and pauses discovery until invalidation, a new cache, or a changed
+configuration. Opt-in shared host services retain that hold across runtime rebuilds. Configuration identities are canonical hashes, including static
 credential headers without retaining them in cache keys. Transient failures
 preserve previously discovered tools and permit retry after a short cooldown.
 Both successful and negative entries share the bounded cache and single-flight
