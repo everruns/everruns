@@ -4,6 +4,7 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub(crate) mod oauth_binding;
 pub mod queries;
 pub mod types;
 pub mod validation;

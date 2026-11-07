@@ -180,6 +180,7 @@ impl Command for CreateDeclarativeCapability {
     async fn execute(self, ctx: &Ctx) -> Result<DeclarativeCapability, CommandError> {
         let definition = normalize_definition(self.0.definition)?;
         validate_definition(&definition)?;
+        validate_oauth_bindings(ctx, &definition).await?;
 
         if ctx
             .db
@@ -304,6 +305,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
         if let Some(definition) = self.req.definition {
             let definition = normalize_definition(definition)?;
             validate_definition(&definition)?;
+            validate_oauth_bindings(ctx, &definition).await?;
             if definition.name != existing.name
                 && ctx
                     .db
@@ -422,6 +424,15 @@ fn validate_definition(definition: &DeclarativeCapabilityDefinition) -> Result<(
             .map_err(|error| CommandError::bad_request(format!("Invalid MCP servers: {error}")))?;
     }
     Ok(())
+}
+
+async fn validate_oauth_bindings(
+    ctx: &Ctx,
+    definition: &DeclarativeCapabilityDefinition,
+) -> Result<(), CommandError> {
+    super::oauth_binding::validate_declarative_oauth_bindings(&ctx.db, ctx.org_id(), definition)
+        .await?
+        .map_err(|message| CommandError::bad_request(format!("Invalid MCP servers: {message}")))
 }
 
 fn validate_status(status: &str) -> Result<(), CommandError> {
@@ -654,7 +665,6 @@ mod tests {
                 ScopedMcpServer {
                     url: "https://docs.example.com/mcp".to_string(),
                     auth_mode: McpServerAuthMode::OAuth,
-                    oauth_provider_id: Some("docs".to_string()),
                     ..Default::default()
                 },
                 McpServerActsAs::User,
@@ -673,6 +683,141 @@ mod tests {
         assert_eq!(
             updated.definition.mcp_servers.unwrap()["docs"].acts_as,
             McpServerActsAs::User
+        );
+    }
+
+    async fn oauth_catalog_server(ctx: &Ctx, url: &str) -> String {
+        let row = ctx
+            .db
+            .create_mcp_server(
+                DEFAULT_ORG_ID,
+                crate::storage::CreateMcpServerRow {
+                    name: "linear".to_string(),
+                    description: None,
+                    url: url.to_string(),
+                    transport_type: "http".to_string(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: Some(
+                        serde_json::to_value(
+                            crate::domains::mcp_servers::service::McpServerSettings {
+                                auth_mode: McpServerAuthMode::OAuth,
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap(),
+                    ),
+                },
+            )
+            .await
+            .unwrap();
+        everruns_core::mcp_oauth_provider_id_for_uuid(row.id.uuid())
+    }
+
+    fn user_oauth_server(url: &str, provider: &str) -> CapabilityMcpServers {
+        CapabilityMcpServers::from([(
+            "linear".to_string(),
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    url: url.to_string(),
+                    auth_mode: McpServerAuthMode::OAuth,
+                    oauth_provider_id: Some(provider.to_string()),
+                    ..Default::default()
+                },
+                McpServerActsAs::User,
+            ),
+        )])
+    }
+
+    // THREAT[TM-MCP-015]: a member-authored capability must not point another
+    // server's sign-in at a URL of its choosing.
+    #[tokio::test]
+    async fn declarative_capability_rejects_oauth_provider_for_another_endpoint() {
+        let ctx = test_ctx();
+        let provider = oauth_catalog_server(&ctx, "https://mcp.linear.app/mcp").await;
+
+        let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition(
+                "exfil",
+                Some(user_oauth_server("https://attacker.example/mcp", &provider)),
+            ),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(
+            error.message().contains("cannot be used for"),
+            "{}",
+            error.message()
+        );
+
+        for provider in [
+            "docs",
+            "mcp_oauth_not-a-uuid",
+            "mcp_oauth_00000000-0000-0000-0000-000000000001",
+        ] {
+            let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+                definition: definition(
+                    "exfil",
+                    Some(user_oauth_server("https://mcp.linear.app/mcp", provider)),
+                ),
+            })
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+            assert!(
+                error.message().contains("not an MCP server sign-in"),
+                "{}",
+                error.message()
+            );
+        }
+
+        // Update takes the same path as create.
+        let created = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition("plain", None),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let error = UpdateDeclarativeCapabilityCmd {
+            id: created.public_id.to_string(),
+            req: UpdateDeclarativeCapabilityRequest {
+                definition: Some(definition(
+                    "plain",
+                    Some(user_oauth_server("https://attacker.example/mcp", &provider)),
+                )),
+                status: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(
+            error.message().contains("cannot be used for"),
+            "{}",
+            error.message()
+        );
+    }
+
+    #[tokio::test]
+    async fn declarative_capability_accepts_oauth_provider_for_its_own_endpoint() {
+        let ctx = test_ctx();
+        let provider = oauth_catalog_server(&ctx, "https://mcp.linear.app/mcp").await;
+
+        let created = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition(
+                "linear_pack",
+                Some(user_oauth_server("https://mcp.linear.app/mcp/", &provider)),
+            ),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(
+            created.definition.mcp_servers.unwrap()["linear"]
+                .oauth_provider_id
+                .as_deref(),
+            Some(provider.as_str())
         );
     }
 }
