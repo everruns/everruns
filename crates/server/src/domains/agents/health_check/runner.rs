@@ -31,6 +31,10 @@ const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const CASE_TIMEOUT: Duration = Duration::from_secs(120);
 const JUDGE_TIMEOUT: Duration = Duration::from_secs(45);
 const JUDGE_MAX_TOKENS: u32 = 800;
+/// Bound on the agent response the judge reads. The response is the agent's
+/// own output, so it is truncated rather than refused; the judge still sees
+/// enough to grade a smoke-test answer.
+const MAX_JUDGE_CONTENT_BYTES: usize = 32 * 1024;
 /// Max turns a case may take before deterministic scoring marks it inefficient.
 const MAX_CASE_TURNS: u32 = 8;
 /// How many cases run at once.
@@ -61,9 +65,18 @@ pub struct HealthCheckTarget {
 }
 
 /// Spawn the run in the background and return immediately.
-pub fn spawn_health_check_run(ctx: Arc<HealthCheckRunContext>, target: HealthCheckTarget) {
+///
+/// `permit` is the admission slot from `trigger`; the task holds it until the
+/// run ends, so the global concurrency cap covers the whole run, not only the
+/// request that started it.
+pub fn spawn_health_check_run(
+    ctx: Arc<HealthCheckRunContext>,
+    target: HealthCheckTarget,
+    permit: crate::domains::agents::analysis::AnalysisPermit,
+) {
     // It reads the run row, so it starts once that commits.
     crate::storage::transaction::spawn_after_commit(async move {
+        let _permit = permit;
         if let Err(e) = execute_run(&ctx, &target).await {
             tracing::warn!(error = %e, run_id = %target.run_id, "health check run failed");
             let safe_error = super::super::safe_agent_check_error(&e).fallback_message();
@@ -378,6 +391,18 @@ struct JudgeVerdict {
     reason: String,
 }
 
+/// The longest prefix of `s` that fits in `max` bytes, cut at a char boundary.
+fn truncate_utf8(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Decisions verdict plus the judge call's token usage (input, output).
 type JudgeOutcome = (bool, f64, String, u32, u32);
 
@@ -391,7 +416,7 @@ async fn judge_case(
          </agent-response>",
         super::xml_escape(&case.rubric),
         super::xml_escape(&case.user_message),
-        super::xml_escape(final_content),
+        super::xml_escape(truncate_utf8(final_content, MAX_JUDGE_CONTENT_BYTES)),
     );
     let request = UtilityLlmRequest::new(vec![
         Message::text(MessageRole::System, JUDGE_SYSTEM.to_string()),
@@ -499,6 +524,16 @@ use SessionId as _SessionId;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn judge_input_is_truncated_at_a_char_boundary() {
+        assert_eq!(truncate_utf8("short", MAX_JUDGE_CONTENT_BYTES), "short");
+        let long = "é".repeat(MAX_JUDGE_CONTENT_BYTES);
+        let cut = truncate_utf8(&long, MAX_JUDGE_CONTENT_BYTES);
+        assert!(cut.len() <= MAX_JUDGE_CONTENT_BYTES);
+        assert!(cut.len() > MAX_JUDGE_CONTENT_BYTES - 2);
+        assert!(cut.chars().all(|c| c == 'é'));
+    }
 
     fn case(name: &str) -> HealthCheckCase {
         HealthCheckCase {
