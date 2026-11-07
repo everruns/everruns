@@ -40,8 +40,8 @@ fn inline_raster(part: &ContentPart) -> Option<(&str, String)> {
             base64: Some(data),
             media_type: Some(media_type),
         }) => {
-            let normalized = crate::api::images::normalize_content_type(media_type);
-            crate::api::images::ALLOWED_CONTENT_TYPES
+            let normalized = crate::domains::images::normalize_content_type(media_type);
+            crate::domains::images::ALLOWED_CONTENT_TYPES
                 .contains(&normalized.as_str())
                 .then_some((data.as_str(), normalized))
         }

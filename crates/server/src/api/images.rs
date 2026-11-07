@@ -37,9 +37,7 @@ pub(crate) const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
 const THUMBNAIL_MAX_DIM: u32 = 200;
 const MAX_IMAGE_PIXELS: u64 = 40_000_000;
 
-/// Allowed MIME types
-pub(crate) const ALLOWED_CONTENT_TYPES: &[&str] =
-    &["image/png", "image/jpeg", "image/gif", "image/webp"];
+pub(crate) use crate::domains::images::{ALLOWED_CONTENT_TYPES, normalize_content_type};
 
 // ============================================
 // API Types
@@ -100,17 +98,6 @@ pub fn routes(state: ApiState) -> Router {
 // ============================================
 // Helper Functions
 // ============================================
-
-/// Strip MIME parameters (`; charset=...`) and lowercase the bare media type
-/// so callers tolerate common header variations.
-pub(crate) fn normalize_content_type(content_type: &str) -> String {
-    content_type
-        .split(';')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase()
-}
 
 /// Validate content type is allowed
 pub(crate) fn is_valid_content_type(content_type: &str) -> bool {
