@@ -310,3 +310,76 @@ async fn a_refused_request_names_the_http_status_but_not_the_body() {
         .unwrap_err();
     assert_eq!(error, "Decision provider request failed (HTTP 400)");
 }
+
+/// Delay headers and body independently so timing must cover the full response.
+struct DelayedNetwork {
+    response: Vec<u8>,
+    status: u16,
+}
+#[async_trait]
+impl EgressService for DelayedNetwork {
+    async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+        panic!("must stream")
+    }
+    async fn send_stream(&self, _: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        let response = self.response.clone();
+        Ok(EgressStreamResponse {
+            status: self.status,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::once(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                Ok(response)
+            })),
+        })
+    }
+}
+
+#[tokio::test]
+async fn decision_trace_times_success_invalid_answers_and_provider_refusals() {
+    let valid = json!({"answers":{"q":{"type":"noul","noul":0.97}},"usage":{"input_tokens":100,"output_tokens":2,"cost":0.001}});
+    let invalid = json!({"answers":{},"usage":{"input_tokens":100,"output_tokens":2,"cost":0.001}});
+    for (status, response, success, minimum_ms) in [
+        (200, valid, true, 40),
+        (200, invalid, false, 40),
+        (200, json!("private invalid response"), false, 40),
+        (403, json!("private refusal"), false, 20),
+    ] {
+        let (mut context, events) = context(vec![], "active");
+        context.egress_service = Some(Arc::new(DelayedNetwork {
+            response: serde_json::to_vec(&response).unwrap(),
+            status,
+        }));
+        context.event_context = Some(
+            everruns_contracts::runtime::EventContext::turn(
+                everruns_contracts::typed_id::TurnId::new(),
+                everruns_contracts::typed_id::MessageId::new(),
+            )
+            .with_span("trace".into(), "decision".into(), Some("parent".into())),
+        );
+        let result = evaluate(binding(), input(), &context).await;
+        assert_eq!(result.is_ok(), success);
+        if status == 403 {
+            assert_eq!(
+                result.unwrap_err(),
+                "Decision provider request failed (HTTP 403)"
+            );
+        }
+        let events = events.0.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        let metadata = &event["data"]["metadata"];
+        assert!(metadata["duration_ms"].as_u64().expect("measured duration") >= minimum_ms);
+        assert_eq!(metadata["success"], success);
+        assert_eq!(
+            event["context"],
+            serde_json::to_value(context.event_context.as_ref().unwrap()).unwrap()
+        );
+        assert_eq!(event["session_id"], context.session_id.to_string());
+        if response.get("usage").is_some() {
+            assert_eq!(metadata["usage"]["actual_cost_usd"], 0.001);
+        }
+        assert!(!event.to_string().contains("private"));
+        assert!(!event.to_string().contains("saved-account-key"));
+    }
+}

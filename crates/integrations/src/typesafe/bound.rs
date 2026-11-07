@@ -91,6 +91,7 @@ pub(crate) async fn evaluate_request(
         .event_context
         .clone()
         .ok_or("Decision event context is unavailable")?;
+    let started = std::time::Instant::now();
     let attempt = attempt(
         binding,
         request,
@@ -98,11 +99,12 @@ pub(crate) async fn evaluate_request(
         context.network_access.clone(),
     )
     .await?;
+    // Exclude budget checks and event persistence from provider latency.
+    let duration_ms = started.elapsed().as_millis() as u64;
     record_usage(
         binding,
-        &attempt.requested_model,
-        attempt.value.as_ref(),
-        attempt.outcome.is_ok(),
+        &attempt,
+        duration_ms,
         emitter,
         context.session_id,
         event_context,
@@ -388,14 +390,15 @@ pub(crate) fn render_outcome(
 
 async fn record_usage(
     binding: &DecisionModelBinding,
-    requested: &str,
-    value: Option<&Value>,
-    success: bool,
+    attempt: &Attempt,
+    duration_ms: u64,
     emitter: &std::sync::Arc<dyn everruns_contracts::runtime::EventEmitter>,
     session_id: everruns_contracts::typed_id::SessionId,
     event_context: everruns_contracts::runtime::EventContext,
 ) -> Result<(), String> {
-    let value = value.unwrap_or(&Value::Null);
+    let requested = attempt.requested_model.as_str();
+    let success = attempt.outcome.is_ok();
+    let value = attempt.value.as_ref().unwrap_or(&Value::Null);
     let input = value["usage"]["input_tokens"]
         .as_u64()
         .and_then(|v| u32::try_from(v).ok());
@@ -424,7 +427,7 @@ async fn record_usage(
             estimated_cost_usd: estimated,
             ..Default::default()
         }),
-        None,
+        Some(duration_ms),
         None,
     );
     generation.metadata.success = success;
