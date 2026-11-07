@@ -110,9 +110,9 @@ async fn build_turn_mcp_tool_definitions_inner(
         use futures::StreamExt;
         // Owned inputs and erased future types keep this Send through both
         // async_trait worker adapters, without higher-ranked iterator borrows.
-        let mut discoveries: Vec<
-            futures::future::BoxFuture<'_, Result<(Vec<ToolDefinition>, Vec<String>)>>,
-        > = Vec::with_capacity(listed.len());
+        type Discovery<'a> =
+            futures::future::BoxFuture<'a, Result<(Vec<ToolDefinition>, Vec<String>)>>;
+        let mut discoveries: Vec<Discovery<'_>> = Vec::with_capacity(listed.len());
         for (name, server) in listed.clone() {
             discoveries.push(Box::pin(async move {
                 let one = ScopedMcpServers::from([(name, server)]);
@@ -174,17 +174,13 @@ async fn build_turn_mcp_tool_definitions_inner(
             readiness.is_some(),
         )
         .await?;
-        if readiness.is_some() {
+        if let Some(readiness) = readiness {
             let authentication_required = readiness
-                .map(|r| {
-                    r.authentication_required
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone()
-                })
-                .unwrap_or_default();
+                .authentication_required
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             let mut statuses = readiness
-                .expect("enabled")
                 .snapshots
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -201,13 +197,12 @@ async fn build_turn_mcp_tool_definitions_inner(
                 }
                 .into();
             }
-            if let Ok(value) = serde_json::to_string(&statuses) {
-                if let Err(error) = storage
+            if let Ok(value) = serde_json::to_string(&statuses)
+                && let Err(error) = storage
                     .set_value(session_id, DISCOVERY_STATUS_KV_KEY, &value)
                     .await
-                {
-                    tracing::warn!(%error, "Failed to record MCP discovery readiness");
-                }
+            {
+                tracing::warn!(%error, "Failed to record MCP discovery readiness");
             }
         } else if let Err(error) = storage
             .delete_value(session_id, DISCOVERY_STATUS_KV_KEY)

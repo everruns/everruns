@@ -176,7 +176,7 @@ fn key(
     identity: &str,
     token: Option<&str>,
 ) -> Result<Key> {
-    let mut value = serde_json::to_value(&(
+    let mut value = serde_json::to_value((
         context.org_id,
         context.session,
         name,
