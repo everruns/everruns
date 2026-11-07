@@ -187,3 +187,119 @@ async fn the_last_listed_record_is_reserved_from_kv_store() {
     let key = format!("{}docs", everruns_core::MCP_LAST_TOOLS_KV_PREFIX);
     assert!(everruns_core::host::session_services::capabilities::is_internal_session_kv_key(&key));
 }
+
+#[tokio::test]
+async fn readiness_keeps_fast_peer_when_first_server_is_pending() {
+    struct MixedEgress(CatalogPreviewEgress);
+    #[async_trait::async_trait]
+    impl EgressService for MixedEgress {
+        async fn send(
+            &self,
+            request: everruns_core::EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+            if request.url.contains("slow") {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            self.0.send(request).await
+        }
+        async fn send_stream(
+            &self,
+            request: everruns_core::EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+            let response = self.send(request).await?;
+            Ok(everruns_core::EgressStreamResponse {
+                status: response.status,
+                headers: response.headers,
+                body: Box::pin(futures::stream::iter(vec![Ok(response.body)])),
+            })
+        }
+    }
+    let egress = Arc::new(MixedEgress(CatalogPreviewEgress::default()));
+    let session = SessionId::new();
+    let servers = ScopedMcpServers::from([
+        (
+            "a_slow".into(),
+            ScopedMcpServer {
+                url: "http://8.8.8.8/slow".into(),
+                ..server(false)
+            },
+        ),
+        ("z_fast".into(), server(false)),
+    ]);
+    let readiness = super::super::scoped_mcp::Readiness::new(
+        everruns_core::DEFAULT_ORG_ID,
+        session,
+        egress.clone(),
+        std::time::Duration::from_millis(100),
+    );
+    let storage = InMemorySessionStorageStore::new();
+    let tools = build_turn_mcp_tool_definitions_inner(
+        &StorageBackend::test_database(),
+        everruns_core::DEFAULT_ORG_ID,
+        &servers,
+        session,
+        None,
+        egress.as_ref(),
+        Some(&storage),
+        Some(&readiness),
+    )
+    .await
+    .unwrap();
+    assert!(tools.iter().any(|t| t.name().starts_with("mcp_z_fast_")));
+    assert!(tools.iter().all(|t| !t.name().starts_with("mcp_a_slow_")));
+    assert_eq!(*readiness.pending.lock().unwrap(), vec!["a_slow"]);
+    let snapshot = storage
+        .get_value(session, super::super::deferred::DISCOVERY_STATUS_KV_KEY)
+        .await
+        .unwrap()
+        .unwrap();
+    let snapshot: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+    assert_eq!(snapshot["a_slow"]["status"], "pending");
+    assert_eq!(snapshot["z_fast"]["status"], "ready");
+}
+
+#[tokio::test]
+async fn readiness_bounds_last_known_catalog_restoration() {
+    let session = SessionId::new();
+    let storage = InMemorySessionStorageStore::new();
+    let servers = ScopedMcpServers::from([("docs".into(), server(false))]);
+    let tool = everruns_core::deferred_mcp_server_definition("docs", None);
+    let mut definitions = vec![tool.clone(); everruns_core::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS];
+    storage
+        .set_value(
+            session,
+            &format!("{}docs", everruns_core::MCP_LAST_TOOLS_KV_PREFIX),
+            &serde_json::to_string(&vec![tool]).unwrap(),
+        )
+        .await
+        .unwrap();
+    let error = keep_last_listed_tools(
+        &storage,
+        session,
+        &servers,
+        &["docs".into()],
+        &mut definitions,
+        true,
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("aggregate catalog bounds"));
+    assert_eq!(
+        definitions.len(),
+        everruns_core::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS
+    );
+}
+
+#[test]
+fn discovery_snapshot_namespace_is_reserved_and_cannot_alias_server_tools() {
+    assert!(
+        everruns_core::host::session_services::is_internal_session_kv_key(DISCOVERY_STATUS_KV_KEY)
+    );
+    let suffix = DISCOVERY_STATUS_KV_KEY
+        .strip_prefix(everruns_core::MCP_LAST_TOOLS_KV_PREFIX)
+        .unwrap();
+    assert_ne!(
+        suffix,
+        everruns_core::mcp_server::sanitize_mcp_server_name(suffix)
+    );
+}

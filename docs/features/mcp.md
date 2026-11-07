@@ -409,3 +409,24 @@ To give Claude Code, Codex, Cursor or Gemini CLI the MCP server plus skills for 
 - [URL mode elicitation](/features/mcp-url-elicitation/), tool calls that need a person
 - [Capabilities](/features/capabilities/), how virtual capabilities fit the capability system
 - [Slack Integration](/capabilities/slack/), publishing an Agent through a messaging endpoint
+
+## Optional Platform discovery readiness budget
+
+Set `EVERRUNS_MCP_DISCOVERY_READINESS_MS=250` on the Platform server to limit
+how long turn preparation waits for scoped MCP HTTP discovery. Without this
+setting, discovery retains its blocking behavior. The setting applies to both
+in-process and remote worker turn preparation; it does not change previews,
+org catalog refreshes, or tool-call timeouts.
+
+Discovery that exceeds the budget continues in bounded background jobs. A
+later turn can pick up its tools after resolving the current credentials again.
+Pending servers do not count as failed connections. Deferred servers still wait
+until the session reveals them. The chat-only MCP server listing includes an
+optional `discovery` field reporting the last turn's `pending`, `ready`, `failed`,
+or `authentication_required` state, separately from the viewer's sign-in state.
+
+This is an HTTP-discovery wait budget, not a timeout for database or credential
+resolution. Background results are local to the Platform process and are
+short-lived; restarting or routing the next turn to another replica may require
+another discovery. Successful catalog results still follow their existing
+identity-scoped cache policy once a turn picks them up.

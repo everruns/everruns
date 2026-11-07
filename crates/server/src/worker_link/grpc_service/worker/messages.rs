@@ -264,7 +264,7 @@ impl WorkerServiceImpl {
                 vec![]
             } else {
                 // Deferred servers stay placeholders until the session reveals them.
-                match crate::domains::mcp_servers::deferred::build_turn_mcp_tool_definitions(
+                match crate::domains::mcp_servers::deferred::build_ready_turn_mcp_tool_definitions(
                     &self.db,
                     req.org_id,
                     &effective,
@@ -272,7 +272,7 @@ impl WorkerServiceImpl {
                     bound_resolver
                         .as_ref()
                         .or(self.connection_resolver.as_ref()),
-                    self.mcp_server_service.egress_service().as_ref(),
+                    self.mcp_server_service.egress_service(),
                     self.session_storage_store.as_deref(),
                 )
                 .await

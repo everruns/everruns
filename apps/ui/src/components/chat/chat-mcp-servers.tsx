@@ -47,6 +47,33 @@ function SignInBadge({ server }: { server: ChatMcpServer }) {
   }
 }
 
+function DiscoveryBadge({ server }: { server: ChatMcpServer }) {
+  const ui = useUiTranslations();
+  const title = ui("Discovery state at the last turn");
+  switch (server.discovery) {
+    case "pending":
+      return (
+        <Badge variant="outline" title={title}>
+          {ui("Discovery pending")}
+        </Badge>
+      );
+    case "authentication_required":
+      return (
+        <Badge variant="outline" title={title}>
+          {ui("Tools need sign-in")}
+        </Badge>
+      );
+    case "failed":
+      return (
+        <Badge variant="destructive" title={title}>
+          {ui("Tool discovery failed")}
+        </Badge>
+      );
+    default:
+      return null;
+  }
+}
+
 /** The chat-only servers of one session, each with a remove action. */
 export function ChatMcpServersList({
   sessionId,
@@ -78,6 +105,7 @@ export function ChatMcpServersList({
                 <span className="truncate font-mono text-sm">{server.name}</span>
                 {server.catalog_name && <Badge variant="secondary">{ui("Catalog")}</Badge>}
                 <SignInBadge server={server} />
+                <DiscoveryBadge server={server} />
               </div>
               <div className="truncate text-xs text-muted-foreground">{host(server.url)}</div>
             </div>

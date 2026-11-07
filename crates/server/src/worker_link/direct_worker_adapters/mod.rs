@@ -20,7 +20,7 @@ mod user_mcp;
 use crate::background::tool_result_timeout;
 use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
 use crate::domains::mcp_servers::McpServerService;
-use crate::domains::mcp_servers::deferred::build_turn_mcp_tool_definitions;
+use crate::domains::mcp_servers::deferred::build_ready_turn_mcp_tool_definitions;
 use crate::domains::mcp_servers::scoped_mcp::validate_effective_mcp_servers;
 use crate::domains::sessions::record::{Session, SessionStatus};
 use crate::domains::{agents::record::Agent, harnesses::record::Harness, sessions::SessionService};
@@ -1045,13 +1045,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
                         everruns_core::host::DirectEgressService::for_runtime_traffic_from_env(),
                     )
                 });
-                match build_turn_mcp_tool_definitions(
+                match build_ready_turn_mcp_tool_definitions(
                     &self.db,
                     org_id,
                     &effective,
                     session.id,
                     self.connection_resolver.as_ref(),
-                    egress.as_ref(),
+                    egress,
                     self.storage_store.as_deref(),
                 )
                 .await

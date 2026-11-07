@@ -1,5 +1,9 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  "Discovery state at the last turn": "Стан виявлення під час останнього ходу",
+  "Discovery pending": "Виявлення очікується",
+  "Tools need sign-in": "Для інструментів потрібен вхід",
+  "Tool discovery failed": "Не вдалося виявити інструменти",
   Discard: "Відкинути",
   "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.":
     "Сховище відновлення недоступне. Залиште цю вкладку відкритою та скопіюйте ненадісланий текст перед виходом.",

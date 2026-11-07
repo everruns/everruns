@@ -28,11 +28,14 @@ use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 use crate::domains::mcp_servers::McpServerResolved;
-use crate::domains::mcp_servers::service::{
-    McpServerService, fetch_mcp_tools, fetch_mcp_tools_with_cache_hints,
-};
+#[cfg(test)]
+use crate::domains::mcp_servers::service::fetch_mcp_tools;
+use crate::domains::mcp_servers::service::{McpServerService, fetch_mcp_tools_with_cache_hints};
 use crate::errors::BadRequestError;
 use crate::storage::{McpServiceToolCacheRow, StorageBackend, UpsertMcpServiceToolCache};
+
+mod readiness;
+pub(crate) use readiness::{Readiness, Snapshot as ReadinessSnapshot, config_digest};
 
 const SCOPED_TOOL_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const USER_TOOL_CACHE_MAX_ENTRIES: usize = 1_024;
@@ -719,6 +722,7 @@ async fn discover_catalog_tools(
     context: ScopedMcpCacheContext,
     connection_resolver: &Arc<dyn UserConnectionResolver>,
     egress_service: &dyn EgressService,
+    readiness: Option<&Readiness>,
 ) -> Result<Option<Vec<everruns_core::McpToolDefinition>>> {
     if server.acts_as.is_none() {
         return Ok(None);
@@ -731,6 +735,9 @@ async fn discover_catalog_tools(
         .await
         .map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))?;
     let Some(credential) = credential else {
+        if let Some(readiness) = readiness {
+            let _ = readiness.authentication_required(server_name);
+        }
         for acts_as in server.acts_as.resolution_order() {
             if let Some(identity) = cache_identity(org_id, preset_id, *acts_as, context) {
                 invalidate_identity_cache(db, identity).await?;
@@ -763,7 +770,11 @@ async fn discover_catalog_tools(
             return Ok(None);
         }
         CacheLookup::Stale(stale) => {
-            match fetch_mcp_tools_with_cache_hints(
+            match readiness::fetch(
+                readiness,
+                server_name,
+                server,
+                &format!("{identity:?}"),
                 egress_service,
                 &server.url,
                 Some(&token),
@@ -787,6 +798,12 @@ async fn discover_catalog_tools(
                     }
                     return Ok(Some(result.tools));
                 }
+                Err(error)
+                    if error.is::<readiness::Pending>()
+                        || error.is::<readiness::AuthenticationRequired>() =>
+                {
+                    return Err(error);
+                }
                 Err(error) => {
                     tracing::warn!(
                         server_name,
@@ -800,7 +817,11 @@ async fn discover_catalog_tools(
         CacheLookup::Miss => {}
     }
 
-    let result = fetch_mcp_tools_with_cache_hints(
+    let result = readiness::fetch(
+        readiness,
+        server_name,
+        server,
+        &format!("{identity:?}"),
         egress_service,
         &server.url,
         Some(&token),
@@ -905,6 +926,30 @@ pub(crate) async fn build_materialized_scoped_mcp_tool_definitions_reporting(
     egress_service: &dyn EgressService,
     failed: &mut Vec<String>,
 ) -> Result<Vec<ToolDefinition>> {
+    build_materialized_scoped_mcp_tool_definitions_ready(
+        db,
+        org_id,
+        servers,
+        session_id,
+        connection_resolver,
+        egress_service,
+        failed,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn build_materialized_scoped_mcp_tool_definitions_ready(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+    session_id: Option<SessionId>,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: &dyn EgressService,
+    failed: &mut Vec<String>,
+    readiness: Option<&Readiness>,
+) -> Result<Vec<ToolDefinition>> {
     let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
     // Saved risk labels of the catalog presets, in one query, keyed by the
     // attachment name the definitions are published under.
@@ -969,6 +1014,13 @@ pub(crate) async fn build_materialized_scoped_mcp_tool_definitions_reporting(
                 None => None,
             };
         }
+        if let Some(readiness) = readiness {
+            readiness.observe(
+                name,
+                server,
+                cache_context.and_then(|context| context.user_id),
+            );
+        }
         let runtime_identity_attachment =
             !server.acts_as.is_none() && source.preset.is_some() && session_id.is_some();
         if !runtime_identity_attachment {
@@ -980,6 +1032,7 @@ pub(crate) async fn build_materialized_scoped_mcp_tool_definitions_reporting(
                     connection_resolver,
                     egress_service,
                     failed,
+                    readiness,
                 )
                 .await?,
             );
@@ -1019,11 +1072,18 @@ pub(crate) async fn build_materialized_scoped_mcp_tool_definitions_reporting(
             cache_context,
             connection_resolver,
             egress_service,
+            readiness,
         )
         .await;
         let tools = match tools {
             Ok(Some(tools)) => tools,
             Ok(None) => continue,
+            Err(error)
+                if error.is::<readiness::Pending>()
+                    || error.is::<readiness::AuthenticationRequired>() =>
+            {
+                continue;
+            }
             Err(error) => {
                 tracing::warn!(
                     server_name = %name,
@@ -1064,12 +1124,14 @@ pub async fn build_scoped_mcp_tool_definitions(
         connection_resolver,
         egress_service,
         &mut Vec::new(),
+        None,
     )
     .await
 }
 
 /// [`build_scoped_mcp_tool_definitions`] with saved risk labels, keyed by the
 /// scoped server name. Servers whose listing failed are named in `failed`.
+#[allow(clippy::too_many_arguments)]
 async fn build_labeled_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
     labels: &HashMap<String, McpToolLabels>,
@@ -1077,6 +1139,7 @@ async fn build_labeled_scoped_mcp_tool_definitions(
     connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
     egress_service: &dyn EgressService,
     failed: &mut Vec<String>,
+    readiness: Option<&Readiness>,
 ) -> Result<Vec<ToolDefinition>> {
     let mut definitions = Vec::new();
 
@@ -1109,6 +1172,9 @@ async fn build_labeled_scoped_mcp_tool_definitions(
             && !has_authorization_header
             && bearer_token.is_none()
         {
+            if let Some(readiness) = readiness {
+                let _ = readiness.authentication_required(name);
+            }
             tracing::debug!(
                 server_name = %name,
                 "Skipping scoped MCP tool discovery because no user connection token is available"
@@ -1116,7 +1182,29 @@ async fn build_labeled_scoped_mcp_tool_definitions(
             continue;
         }
 
-        let tools = match fetch_mcp_tools(
+        let identity = if readiness.is_some() {
+            match (
+                session_id,
+                connection_resolver,
+                server.oauth_provider_id.as_deref(),
+            ) {
+                (Some(session), Some(resolver), Some(provider)) => {
+                    let viewer = resolver.get_connection_user(session, provider).await?;
+                    if let Some(readiness) = readiness {
+                        readiness.observe(name, server, viewer);
+                    }
+                    format!("inline:{viewer:?}")
+                }
+                _ => "inline".to_owned(),
+            }
+        } else {
+            "inline".to_owned()
+        };
+        let tools = match readiness::fetch(
+            readiness,
+            name,
+            server,
+            &identity,
             egress_service,
             &server.url,
             bearer_token.as_deref(),
@@ -1124,7 +1212,13 @@ async fn build_labeled_scoped_mcp_tool_definitions(
         )
         .await
         {
-            Ok(tools) => tools,
+            Ok(result) => result.tools,
+            Err(error)
+                if error.is::<readiness::Pending>()
+                    || error.is::<readiness::AuthenticationRequired>() =>
+            {
+                continue;
+            }
             Err(error) => {
                 tracing::warn!(
                     server_name = %name,
