@@ -45,6 +45,23 @@ describe("ChatMcpServersList", () => {
     expect(screen.getByText("notes.example.com")).toBeInTheDocument();
   });
 
+  it.each([
+    ["pending", "Discovery pending"],
+    ["authentication_required", "Tools need sign-in"],
+    ["failed", "Tool discovery failed"],
+  ])("shows %s discovery separately from sign-in", (discovery, label) => {
+    loaded([{ ...servers[0], connection: "connected", discovery }]);
+    render(<ChatMcpServersList sessionId="session_1" />);
+    expect(screen.getByText("Signed in")).toBeInTheDocument();
+    expect(screen.getByText(label)).toHaveAttribute("title", "Discovery state at the last turn");
+  });
+
+  it("does not show a pending badge for ready tools", () => {
+    loaded([{ ...servers[1], discovery: "ready" }]);
+    render(<ChatMcpServersList sessionId="session_1" />);
+    expect(screen.queryByTitle("Discovery state at the last turn")).not.toBeInTheDocument();
+  });
+
   it("removes a server by name", () => {
     loaded(servers);
     render(<ChatMcpServersList sessionId="session_1" />);

@@ -52,6 +52,9 @@ pub struct ChatMcpServer {
     pub catalog_name: Option<String>,
     /// Whether the person viewing has signed in to it.
     pub connection: UserMcpConnectionStatus,
+    /// Discovery state observed when preparing the most recent turn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discovery: Option<String>,
 }
 
 fn session_store(ctx: &Ctx) -> crate::storage::DbSessionStorageStore {
@@ -129,10 +132,61 @@ impl Command for ListChatMcpServers {
                 .filter(|record| record.source == SessionMcpServerSource::UserMcp)
                 .collect();
         records.sort_by(|a, b| a.name.cmp(&b.name));
+        let discovery: std::collections::HashMap<String, super::scoped_mcp::ReadinessSnapshot> =
+            session_store(ctx)
+                .get_value(session_id, super::deferred::DISCOVERY_STATUS_KV_KEY)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|value| serde_json::from_str(&value).ok())
+                .unwrap_or_default();
+        let viewer = match ctx.caller.user_id {
+            Some(user) => ctx
+                .db
+                .default_virtual_user(ctx.org_id(), user)
+                .await
+                .ok()
+                .map(|user| user.id.uuid()),
+            None => None,
+        };
         let mut servers = Vec::with_capacity(records.len());
         for record in records {
+            let connection = viewer_connection(ctx, &record).await?;
+            let effective = if discovery.contains_key(&record.name) {
+                super::scoped_mcp::materialize_scoped_mcp_servers(
+                    &ctx.db,
+                    ctx.org_id(),
+                    &everruns_core::ScopedMcpServers::from([(
+                        record.name.clone(),
+                        record.server.clone(),
+                    )]),
+                )
+                .await
+                .ok()
+            } else {
+                None
+            };
+            let status = effective
+                .as_ref()
+                .and_then(|servers| servers.get(&record.name))
+                .and_then(|server| {
+                    let snapshot = discovery.get(&record.name)?;
+                    if snapshot.config != super::scoped_mcp::config_digest(server) {
+                        return None;
+                    }
+                    if (server.auth_mode == everruns_core::McpServerAuthMode::OAuth
+                        || !server.acts_as.is_none())
+                        && (snapshot.viewer.is_none()
+                            || snapshot.viewer != viewer
+                            || !matches!(connection, UserMcpConnectionStatus::Connected))
+                    {
+                        return None;
+                    }
+                    Some(snapshot.status.clone())
+                });
             servers.push(ChatMcpServer {
-                connection: viewer_connection(ctx, &record).await?,
+                discovery: status,
+                connection,
                 catalog_name: record
                     .server
                     .preset

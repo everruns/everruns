@@ -1100,6 +1100,10 @@ fn apply_host_services(
         builder = builder.provider_stall_timeout(timeout);
     }
     #[cfg(feature = "mcp")]
+    if let Some(cache) = &services.mcp_discovery_cache {
+        builder = builder.shared_mcp_discovery_cache(cache.clone());
+    }
+    #[cfg(feature = "mcp")]
     if let Some(auth) = &services.mcp_auth {
         builder = builder.mcp_auth_provider(auth.clone());
     }

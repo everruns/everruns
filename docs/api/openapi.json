@@ -41168,6 +41168,13 @@
             "$ref": "#/components/schemas/UserMcpConnectionStatus",
             "description": "Whether the person viewing has signed in to it."
           },
+          "discovery": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Discovery state observed when preparing the most recent turn."
+          },
           "name": {
             "type": "string",
             "description": "Server name; also the tool prefix the agent sees."

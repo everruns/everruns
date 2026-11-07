@@ -14,6 +14,8 @@
 //!     (stale-while-revalidate), so a turn never blocks on `tools/list`.
 //!   - **Cold** (never fetched): the caller blocks on a single-flight refresh
 //!     shared across concurrent callers, so a burst of turns triggers one fetch.
+//!     With an interactive deadline, only the caller stops waiting; bounded
+//!     background discovery continues and later turns read the complete catalog.
 //!
 //! Unlike the server domain, every scoped server here is background-refreshable:
 //! the runtime's `McpAuthProvider` is re-invoked on each `discover`, so there is
@@ -27,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use everruns_contracts::tool_types::ToolDefinition;
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 use uuid::Uuid;
 
 /// How long cached tools are considered fresh. Matches the hosted server's
@@ -54,6 +56,15 @@ pub(crate) type CacheKey = (Uuid, String, [u8; 32]);
 pub(crate) enum DiscoveryFailure {
     Authentication,
     Transient,
+}
+
+/// Current discovery state. Pending is not a connection failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum McpDiscoveryStatus {
+    Pending,
+    Ready,
+    AuthenticationRequired,
+    Failed,
 }
 
 struct CacheEntry {
@@ -122,16 +133,27 @@ impl KeyedLocks {
 }
 
 /// In-memory, per-session MCP tool-discovery cache.
-pub(crate) struct McpDiscoveryCache {
+pub struct McpDiscoveryCache {
     entries: Mutex<HashMap<CacheKey, CacheEntry>>,
     locks: KeyedLocks,
     ttl: Duration,
     byte_budget: usize,
+    pub(crate) readiness_budget: Option<Duration>,
+    background_slots: Arc<Semaphore>,
+    background_queue: Arc<Semaphore>,
 }
 
 impl McpDiscoveryCache {
     pub(crate) fn new() -> Self {
         Self::with_ttl(TOOL_CACHE_TTL)
+    }
+
+    /// Create a shared discovery cache with an optional interactive wait budget.
+    pub fn with_readiness_budget(budget: Option<Duration>) -> Self {
+        Self {
+            readiness_budget: budget,
+            ..Self::new()
+        }
     }
 
     fn with_ttl(ttl: Duration) -> Self {
@@ -140,6 +162,9 @@ impl McpDiscoveryCache {
             locks: KeyedLocks::default(),
             ttl,
             byte_budget: MAX_CACHE_BYTES,
+            readiness_budget: None,
+            background_slots: Arc::new(Semaphore::new(16)),
+            background_queue: Arc::new(Semaphore::new(MAX_CACHE_ENTRIES)),
         }
     }
 
@@ -153,6 +178,19 @@ impl McpDiscoveryCache {
 
     fn entries(&self) -> std::sync::MutexGuard<'_, HashMap<CacheKey, CacheEntry>> {
         self.entries.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn status(&self, key: &CacheKey) -> McpDiscoveryStatus {
+        match self.entries().get(key) {
+            None => McpDiscoveryStatus::Pending,
+            Some(entry) => match entry.failure {
+                Some(DiscoveryFailure::Authentication) => {
+                    McpDiscoveryStatus::AuthenticationRequired
+                }
+                Some(DiscoveryFailure::Transient) => McpDiscoveryStatus::Failed,
+                None => McpDiscoveryStatus::Ready,
+            },
+        }
     }
 
     /// Drop every cached discovery for a session after its live capability set
@@ -302,10 +340,24 @@ impl McpDiscoveryCache {
     /// `refresh` performs the upstream fetch, returning `Ok(tools)` on success
     /// or a classified failure (the failure is the closure's to log). It may be
     /// called from a background task, so it must be `Send + Sync + 'static`.
+    #[cfg(test)]
     pub(crate) async fn resolve<F, Fut>(
         self: &Arc<Self>,
         key: CacheKey,
         refresh: F,
+    ) -> Vec<ToolDefinition>
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<ToolDefinition>, DiscoveryFailure>> + Send + 'static,
+    {
+        self.resolve_until(key, refresh, None).await
+    }
+
+    pub(crate) async fn resolve_until<F, Fut>(
+        self: &Arc<Self>,
+        key: CacheKey,
+        refresh: F,
+        deadline: Option<tokio::time::Instant>,
     ) -> Vec<ToolDefinition>
     where
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -317,7 +369,20 @@ impl McpDiscoveryCache {
                 self.spawn_background_refresh(key, refresh);
                 tools
             }
-            Freshness::Cold => self.refresh_coalesced(key, refresh).await,
+            Freshness::Cold => {
+                let Some(deadline) = deadline else {
+                    return self.refresh_coalesced(key, refresh).await;
+                };
+                // Spawn before waiting: expiry only releases the interactive caller.
+                // The complete, bounded discovery continues for a later turn.
+                self.spawn_background_refresh(key.clone(), refresh);
+                let lock = self.locks.lock_for(&key);
+                let _ = tokio::time::timeout_at(deadline, lock.lock()).await;
+                match self.classify(&key, Instant::now()) {
+                    Freshness::Fresh(tools) | Freshness::Stale(tools) => tools,
+                    Freshness::Cold => Vec::new(),
+                }
+            }
         }
     }
 
@@ -367,10 +432,45 @@ impl McpDiscoveryCache {
         let Ok(guard) = lock.clone().try_lock_owned() else {
             return; // a refresh is already in flight for this key
         };
+        let Ok(admission) = self.background_queue.clone().try_acquire_owned() else {
+            return;
+        };
         let cache = self.clone();
         tokio::spawn(async move {
-            let _guard = guard; // held for the refresh duration -> single-flight
-            let result = refresh().await;
+            let _admission = admission;
+            let _guard = guard; // held while queued and running -> single-flight
+            // Bound both the queue and active work across concurrent turns. Queue
+            // time counts toward the hard deadline, never extending it indefinitely.
+            let result = tokio::time::timeout(crate::mcp::MCP_DISCOVERY_DEADLINE, async {
+                let _slot = cache
+                    .background_slots
+                    .acquire()
+                    .await
+                    .expect("discovery semaphore is never closed");
+                let current = cache
+                    .locks
+                    .map
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&key)
+                    .is_some_and(|current| Arc::ptr_eq(current, &lock));
+                if !current {
+                    return Err(DiscoveryFailure::Transient);
+                }
+                refresh().await
+            })
+            .await
+            .unwrap_or(Err(DiscoveryFailure::Transient));
+            let result = result.and_then(|tools| {
+                if Self::cacheable(&tools) {
+                    Ok(tools)
+                } else {
+                    // Background completion has no direct caller to receive an
+                    // uncacheable catalog. Report failure instead of perpetual pending.
+                    tracing::warn!(server = %key.1, "MCP catalog exceeds background cache admission bounds");
+                    Err(DiscoveryFailure::Transient)
+                }
+            });
             cache.store_refresh(key, &lock, result);
         });
     }
@@ -416,6 +516,218 @@ mod tests {
 
     fn key() -> CacheKey {
         (Uuid::nil(), "docs".to_string(), [0; 32])
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn readiness_expiry_is_pending_and_later_turn_uses_complete_catalog() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let refresh = {
+            let calls = calls.clone();
+            move || {
+                let calls = calls.clone();
+                async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    Ok(vec![def("docs__ready")])
+                }
+            }
+        };
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(10);
+        assert!(
+            cache
+                .resolve_until(key(), refresh.clone(), Some(deadline))
+                .await
+                .is_empty()
+        );
+        assert_eq!(cache.status(&key()), McpDiscoveryStatus::Pending);
+        assert!(
+            cache
+                .resolve_until(key(), refresh.clone(), Some(deadline))
+                .await
+                .is_empty()
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        tokio::time::advance(Duration::from_secs(2)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(cache.status(&key()), McpDiscoveryStatus::Ready);
+        let tools = cache.resolve_until(key(), refresh, Some(deadline)).await;
+        assert_eq!(names(&tools), ["docs__ready"]);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn background_discovery_retains_failure_classification_and_hard_deadline() {
+        for (failure, expected) in [
+            (
+                DiscoveryFailure::Authentication,
+                McpDiscoveryStatus::AuthenticationRequired,
+            ),
+            (DiscoveryFailure::Transient, McpDiscoveryStatus::Failed),
+        ] {
+            let cache = Arc::new(McpDiscoveryCache::new());
+            cache
+                .resolve_until(
+                    key(),
+                    move || async move { Err(failure) },
+                    Some(tokio::time::Instant::now() + Duration::from_secs(1)),
+                )
+                .await;
+            assert_eq!(cache.status(&key()), expected);
+            cache.invalidate_session(Uuid::nil());
+            let recovered = cache
+                .resolve_until(
+                    key(),
+                    || async { Ok(vec![def("reconnected")]) },
+                    Some(tokio::time::Instant::now() + Duration::from_secs(1)),
+                )
+                .await;
+            assert_eq!(names(&recovered), ["reconnected"]);
+            assert_eq!(cache.status(&key()), McpDiscoveryStatus::Ready);
+        }
+        let cache = Arc::new(McpDiscoveryCache::new());
+        cache
+            .resolve_until(
+                key(),
+                std::future::pending,
+                Some(tokio::time::Instant::now() + Duration::from_millis(1)),
+            )
+            .await;
+        assert_eq!(cache.status(&key()), McpDiscoveryStatus::Pending);
+        tokio::time::advance(crate::mcp::MCP_DISCOVERY_DEADLINE).await;
+        tokio::task::yield_now().await;
+        assert_eq!(cache.status(&key()), McpDiscoveryStatus::Failed);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn invalidation_retires_background_readiness_result() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        cache
+            .resolve_until(
+                key(),
+                || async {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    Ok(vec![def("retired")])
+                },
+                Some(tokio::time::Instant::now() + Duration::from_millis(1)),
+            )
+            .await;
+        cache.invalidate_session(Uuid::nil());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(cache.status(&key()), McpDiscoveryStatus::Pending);
+        assert_eq!(
+            names(
+                &cache
+                    .resolve(key(), || async { Ok(vec![def("new")]) })
+                    .await
+            ),
+            ["new"]
+        );
+    }
+
+    #[tokio::test]
+    async fn uncacheable_background_catalog_is_failed_not_perpetually_pending() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let tools = cache
+            .resolve_until(
+                key(),
+                || async { Ok(vec![described_def("oversized", MAX_ENTRY_BYTES)]) },
+                Some(tokio::time::Instant::now() + Duration::from_secs(10)),
+            )
+            .await;
+        assert!(tools.is_empty());
+        assert_eq!(cache.status(&key()), McpDiscoveryStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn background_queue_completes_without_more_turns_and_bounds_active_work() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let release = Arc::new(Semaphore::new(0));
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let mut keys = Vec::new();
+        for index in 0..20 {
+            let key = (Uuid::nil(), format!("server{index}"), [0; 32]);
+            keys.push(key.clone());
+            let release = release.clone();
+            let active = active.clone();
+            let peak = peak.clone();
+            cache
+                .resolve_until(
+                    key,
+                    move || {
+                        let release = release.clone();
+                        let active = active.clone();
+                        let peak = peak.clone();
+                        async move {
+                            let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+                            peak.fetch_max(count, Ordering::SeqCst);
+                            release.acquire().await.unwrap().forget();
+                            active.fetch_sub(1, Ordering::SeqCst);
+                            Ok(vec![def("ready")])
+                        }
+                    },
+                    Some(tokio::time::Instant::now()),
+                )
+                .await;
+        }
+        for _ in 0..20 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(active.load(Ordering::SeqCst), 16);
+        release.add_permits(20);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while keys
+                .iter()
+                .any(|key| cache.status(key) != McpDiscoveryStatus::Ready)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(peak.load(Ordering::SeqCst), 16);
+    }
+
+    #[tokio::test]
+    async fn cancelling_interactive_wait_preserves_background_discovery() {
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let caller = {
+            let cache = cache.clone();
+            let started = started.clone();
+            let release = release.clone();
+            tokio::spawn(async move {
+                cache
+                    .resolve_until(
+                        key(),
+                        move || {
+                            let started = started.clone();
+                            let release = release.clone();
+                            async move {
+                                started.notify_one();
+                                release.notified().await;
+                                Ok(vec![def("ready_after_cancel")])
+                            }
+                        },
+                        Some(tokio::time::Instant::now() + Duration::from_secs(10)),
+                    )
+                    .await
+            })
+        };
+        started.notified().await;
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        release.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while cache.status(&key()) != McpDiscoveryStatus::Ready {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
     }
 
     /// A cold key fetches once and is served from cache on the next call.

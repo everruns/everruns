@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+- Define opt-in [interactive MCP readiness](integrations/runtime-mcp.md#interactive-readiness): one wait budget, bounded background discovery, shared cross-turn cache and explicit pending/error states.
+
 - Preserve legacy session deletion during rolling FK removal with a prerequisite
   cleanup trigger. Keep the successor migration immutable and verify missing-older
   migration adoption and the append-only purge guard. See

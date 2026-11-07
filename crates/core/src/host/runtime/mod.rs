@@ -57,6 +57,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 mod builder;
+use builder::hydrate_plugin_refs;
 mod input_message;
 use input_message::{message_from_input, message_from_input_with_id};
 mod commands;
@@ -211,6 +212,8 @@ pub struct InProcessRuntimeBuilder {
     seeded_files: Vec<(SessionId, InitialFile)>,
     #[cfg(feature = "mcp")]
     mcp_auth_provider: Option<Arc<dyn crate::mcp::McpAuthProvider>>,
+    #[cfg(feature = "mcp")]
+    mcp_discovery_cache: Option<Arc<crate::host::McpDiscoveryCache>>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
     reasoning_effort_handle: Option<crate::tool_context::ReasoningEffortHandle>,
@@ -265,6 +268,8 @@ impl InProcessRuntimeBuilder {
             seeded_files: Vec::new(),
             #[cfg(feature = "mcp")]
             mcp_auth_provider: None,
+            #[cfg(feature = "mcp")]
+            mcp_discovery_cache: None,
             provider_retry_config: None,
             provider_stall_timeout: None,
             reasoning_effort_handle: None,
@@ -641,7 +646,9 @@ impl InProcessRuntimeBuilder {
             session_reasoning_effort: self.session_reasoning_effort,
             budget_checker: self.budget_checker,
             #[cfg(feature = "mcp")]
-            mcp_discovery_cache: Arc::new(crate::host::mcp_cache::McpDiscoveryCache::new()),
+            mcp_discovery_cache: self
+                .mcp_discovery_cache
+                .unwrap_or_else(|| Arc::new(crate::host::McpDiscoveryCache::new())),
             plugin_warnings: self.plugin_warnings,
             parked_turns: ParkedTurns::default(),
             waits_on_person: self.waits_on_person,
@@ -1458,38 +1465,6 @@ fn effective_overlay(
             .chain(agent_layers)
             .chain([AgentConfigOverlay::from(session)]),
     )
-}
-
-/// Replace bare `plugin:{name}` refs (empty config) with the hydrated version
-/// (config = serialised `DeclarativeCapabilityDefinition`) so that the core
-/// capability resolution path can deserialise them without a registry entry.
-///
-/// Only replaces entries whose config is empty / `null`; entries that already
-/// carry a non-empty config are left unchanged so explicit overrides are honoured.
-fn hydrate_plugin_refs(
-    capabilities: &mut [everruns_contracts::CapabilityRef],
-    plugin_configs: &[everruns_contracts::CapabilityRef],
-) {
-    for cap in capabilities.iter_mut() {
-        let cap_id = cap.capability_id();
-        if !everruns_contracts::is_plugin_capability(cap_id) {
-            continue;
-        }
-        // Only replace if the config is missing / empty so explicit overrides are honoured.
-        let is_bare = cap.config_value().is_null()
-            || cap
-                .config_value()
-                .clone()
-                .as_object()
-                .map(|o| o.is_empty())
-                .unwrap_or(false);
-        if !is_bare {
-            continue;
-        }
-        if let Some(hydrated) = plugin_configs.iter().find(|c| c.capability_id() == cap_id) {
-            cap.set_config(hydrated.config_value().clone());
-        }
-    }
 }
 
 #[cfg(test)]

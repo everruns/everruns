@@ -1,5 +1,9 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "Discovery state at the last turn": "Discovery state at the last turn",
+  "Discovery pending": "Discovery pending",
+  "Tools need sign-in": "Tools need sign-in",
+  "Tool discovery failed": "Tool discovery failed",
   "Via MCP: {name} (self-declared)": "Via MCP: {name} (self-declared)",
   "Client ID": "Client ID",
   "Grant ID": "Grant ID",
