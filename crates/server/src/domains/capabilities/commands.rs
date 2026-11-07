@@ -181,6 +181,7 @@ impl Command for CreateDeclarativeCapability {
         let definition = normalize_definition(self.0.definition)?;
         validate_definition(&definition)?;
         validate_oauth_bindings(ctx, &definition).await?;
+        crate::domains::agents::check_high_risk_dependencies(ctx, &definition.dependencies).await?;
 
         if ctx
             .db
@@ -306,6 +307,11 @@ impl Command for UpdateDeclarativeCapabilityCmd {
             let definition = normalize_definition(definition)?;
             validate_definition(&definition)?;
             validate_oauth_bindings(ctx, &definition).await?;
+            // THREAT[TM-AGENT-005]: agents already configured with this
+            // capability pick up new dependencies on their next turn, so the
+            // assignment gate runs here, not only at agent assignment.
+            crate::domains::agents::check_high_risk_dependencies(ctx, &definition.dependencies)
+                .await?;
             if definition.name != existing.name
                 && ctx
                     .db
@@ -588,6 +594,10 @@ mod tests {
     use uuid::Uuid;
 
     fn test_ctx() -> Ctx {
+        test_ctx_with_role(OrgRole::Owner)
+    }
+
+    fn test_ctx_with_role(role: OrgRole) -> Ctx {
         let db = Arc::new(StorageBackend::test_database());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
@@ -595,7 +605,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
                 user_id: Some(Uuid::nil()),
-                role: OrgRole::Owner,
+                role,
                 is_platform_user: false,
                 is_internal: false,
                 read_only: false,
@@ -819,5 +829,92 @@ mod tests {
                 .as_deref(),
             Some(provider.as_str())
         );
+    }
+
+    // ---- TM-AGENT-005: dependencies are an assignment ----
+
+    fn with_dependencies(name: &str, dependencies: &[&str]) -> DeclarativeCapabilityDefinition {
+        DeclarativeCapabilityDefinition {
+            dependencies: dependencies.iter().map(|d| d.to_string()).collect(),
+            ..definition(name, None)
+        }
+    }
+
+    /// The same database, seen by a caller with another role.
+    fn as_role(ctx: &Ctx, role: OrgRole) -> Ctx {
+        let mut ctx = ctx.clone();
+        ctx.caller.role = role;
+        ctx
+    }
+
+    #[tokio::test]
+    async fn member_cannot_create_declarative_capability_with_high_risk_dependency() {
+        let admin = test_ctx_with_role(OrgRole::Admin);
+        let member = as_role(&admin, OrgRole::Member);
+
+        // The legacy alias resolves to the high-risk shell too.
+        let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("member_shell", &["virtual_bash"]),
+        })
+        .execute(&member)
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("bash"), "{}", error.message());
+
+        let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("member_fetch", &["web_fetch"]),
+        })
+        .execute(&member)
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("web_fetch"), "{}", error.message());
+        assert!(
+            member
+                .db
+                .get_declarative_capability_by_name(DEFAULT_ORG_ID, "member_fetch")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // Low-risk dependencies stay open to members.
+        CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("member_plain", &[]),
+        })
+        .execute(&member)
+        .await
+        .expect("member may create a capability without high-risk dependencies");
+    }
+
+    #[tokio::test]
+    async fn member_cannot_add_high_risk_dependency_on_update() {
+        let admin = test_ctx_with_role(OrgRole::Admin);
+        let member = as_role(&admin, OrgRole::Member);
+        let created = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("shared_pack", &[]),
+        })
+        .execute(&member)
+        .await
+        .unwrap();
+        let update = |deps: &[&str]| UpdateDeclarativeCapabilityCmd {
+            id: created.public_id.to_string(),
+            req: UpdateDeclarativeCapabilityRequest {
+                definition: Some(with_dependencies("shared_pack", deps)),
+                status: None,
+            },
+        };
+
+        let error = update(&["web_fetch"]).execute(&member).await.unwrap_err();
+        assert!(error.message().contains("web_fetch"), "{}", error.message());
+        let stored = member
+            .db
+            .get_declarative_capability_by_name(DEFAULT_ORG_ID, "shared_pack")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.definition["dependencies"], json!([]));
+
+        let updated = update(&["web_fetch"]).execute(&admin).await.unwrap();
+        assert_eq!(updated.definition.dependencies, vec!["web_fetch"]);
     }
 }
