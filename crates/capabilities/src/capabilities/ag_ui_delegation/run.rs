@@ -399,7 +399,7 @@ async fn build_client(
     let mut http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(CONNECT_TIMEOUT);
-    if !agent.allow_local_urls {
+    if !agent.local_urls_permitted() {
         let (url, addrs) = validate_url_dns_pinned(&agent.url)
             .await
             .map_err(|e| format!("AG-UI agent {} has unsafe url: {e}", agent.id))?;

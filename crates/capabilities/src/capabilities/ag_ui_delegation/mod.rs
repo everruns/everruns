@@ -37,6 +37,7 @@ use async_trait::async_trait;
 use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::ag_ui::Message;
+use everruns_core::deployment::DeploymentGrade;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, TASK_KIND_EXTERNAL_AG_UI, TaskLinks, TaskWakePolicy,
 };
@@ -337,14 +338,37 @@ pub(crate) struct AgUiAgentConfig {
 }
 
 impl AgUiAgentConfig {
+    /// `allow_local_urls` is a development escape hatch, honored only when the
+    /// process deployment grade is `dev`, exactly as for A2A delegation: this
+    /// client bypasses `EgressService`, so in a hosted grade the flag would
+    /// open loopback, private and cluster addresses from config alone.
+    fn local_urls_permitted(&self) -> bool {
+        self.local_urls_permitted_for_grade(DeploymentGrade::from_env())
+    }
+
+    fn local_urls_permitted_for_grade(&self, grade: DeploymentGrade) -> bool {
+        self.allow_local_urls && grade.is_dev()
+    }
+
     fn validate(&self) -> std::result::Result<(), String> {
+        self.validate_for_grade(DeploymentGrade::from_env())
+    }
+
+    fn validate_for_grade(&self, grade: DeploymentGrade) -> std::result::Result<(), String> {
         if self.id.trim().is_empty() {
             return Err("AG-UI agent id cannot be empty".to_string());
         }
         if self.name.trim().is_empty() {
             return Err(format!("AG-UI agent {} name cannot be empty", self.id));
         }
-        self.validate_url()?;
+        // THREAT[TM-AGENT-030]: the hatch is isolated to deployment grade dev.
+        if self.allow_local_urls && !grade.is_dev() {
+            return Err(format!(
+                "AG-UI agent {} allow_local_urls is only permitted when DEPLOYMENT_GRADE=dev",
+                self.id
+            ));
+        }
+        self.validate_url(grade)?;
         if let Some(secret) = &self.bearer_token_secret
             && (secret.is_empty()
                 || secret.len() > 128
@@ -375,10 +399,10 @@ impl AgUiAgentConfig {
     }
 
     /// Shape check of the endpoint. Private and metadata addresses are
-    /// refused unless `allow_local_urls`; the request itself re-checks with
-    /// DNS pinning (see `run::build_client`).
-    fn validate_url(&self) -> std::result::Result<(), String> {
-        if self.allow_local_urls {
+    /// refused unless `allow_local_urls` in a dev grade; the request itself
+    /// re-checks with DNS pinning (see `run::build_client`).
+    fn validate_url(&self, grade: DeploymentGrade) -> std::result::Result<(), String> {
+        if self.local_urls_permitted_for_grade(grade) {
             validate_http_url(&self.url)
                 .map_err(|e| format!("AG-UI agent {} has invalid url: {e}", self.id))
         } else {
