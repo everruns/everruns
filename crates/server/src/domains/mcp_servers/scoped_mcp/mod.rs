@@ -1298,8 +1298,11 @@ pub fn validate_capability_mcp_servers(
         validate_inline_identity_auth(name, server)?;
     }
     let scoped = everruns_core::capability_mcp_servers_to_scoped(servers);
-    // Contributions are trusted registration output and may carry their own
-    // OAuth client, so they are the documented exception to the catalog-preset rule.
+    // Contributions may carry their own OAuth client, so they are the documented
+    // exception to the catalog-preset rule. Plugin provider ids are server-assigned
+    // anchors (TM-PLUGIN-008); member-authored declarative definitions are
+    // additionally checked against the org's MCP servers (TM-MCP-015,
+    // `domains::capabilities::oauth_binding`).
     validate_scoped_mcp_servers_inner(&scoped, true)
 }
 fn validate_catalog_reference_shape(name: &str, server: &ScopedMcpServer) -> Result<()> {
