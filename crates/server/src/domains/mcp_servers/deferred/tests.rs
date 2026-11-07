@@ -303,3 +303,29 @@ fn discovery_snapshot_namespace_is_reserved_and_cannot_alias_server_tools() {
         everruns_core::mcp_server::sanitize_mcp_server_name(suffix)
     );
 }
+
+#[tokio::test]
+async fn blocking_turn_clears_previous_readiness_snapshot() {
+    let session = SessionId::new();
+    let storage = InMemorySessionStorageStore::new();
+    let servers = ScopedMcpServers::from([("docs".into(), server(false))]);
+    let egress = CatalogPreviewEgress::default();
+    for status in ["pending", "failed"] {
+        storage
+            .set_value(
+                session,
+                DISCOVERY_STATUS_KV_KEY,
+                &serde_json::json!({"docs": {"status": status}}).to_string(),
+            )
+            .await
+            .unwrap();
+        assert!(!turn(&servers, session, &storage, &egress).await.is_empty());
+        assert!(
+            storage
+                .get_value(session, DISCOVERY_STATUS_KV_KEY)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+}

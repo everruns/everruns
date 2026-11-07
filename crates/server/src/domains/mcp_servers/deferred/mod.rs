@@ -209,6 +209,13 @@ async fn build_turn_mcp_tool_definitions_inner(
                     tracing::warn!(%error, "Failed to record MCP discovery readiness");
                 }
             }
+        } else if let Err(error) = storage
+            .delete_value(session_id, DISCOVERY_STATUS_KV_KEY)
+            .await
+        {
+            // A blocking turn supersedes snapshots from a previously enabled
+            // readiness budget; otherwise old pending/failed badges persist.
+            tracing::warn!(%error, "Failed to clear disabled MCP discovery readiness");
         }
     }
     let mut metadata_servers = servers.clone();
