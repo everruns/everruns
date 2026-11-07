@@ -711,11 +711,23 @@ mod tests {
 
     impl TestNatsServer {
         pub(super) async fn start() -> Self {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            let port = listener.local_addr().unwrap().port();
-            drop(listener);
             let store = tempfile::tempdir().unwrap();
-            let process = Self::spawn(port, store.path());
+            // The probed port is free only until it is released, so a parallel
+            // test's socket can take it before the broker binds. That failed
+            // the 8c05bead main batch; retry such a lost race on a fresh port.
+            // (A Docker-assigned port would avoid the race, but it changes on
+            // `docker restart`, which `restart` relies on keeping.)
+            let mut attempt = 0;
+            let (process, port) = loop {
+                let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                let port = listener.local_addr().unwrap().port();
+                drop(listener);
+                match Self::spawn(port, store.path()) {
+                    Ok(process) => break (process, port),
+                    Err(error) if attempt < 4 && is_port_conflict(&error) => attempt += 1,
+                    Err(error) => panic!("isolated NATS container failed to start: {error}"),
+                }
+            };
             let mut broker = Self {
                 process,
                 store,
@@ -725,7 +737,9 @@ mod tests {
             broker
         }
 
-        fn spawn(port: u16, store: &std::path::Path) -> TestBroker {
+        /// Starts a broker on `port`. A Docker start that fails returns its
+        /// stderr so the caller can retry a port conflict.
+        fn spawn(port: u16, store: &std::path::Path) -> Result<TestBroker, String> {
             let process = std::process::Command::new("nats-server")
                 .args(["-js", "-a", "127.0.0.1", "-p", &port.to_string(), "-sd"])
                 .arg(store)
@@ -733,7 +747,7 @@ mod tests {
                 .stderr(std::process::Stdio::null())
                 .spawn();
             match process {
-                Ok(child) => TestBroker::Native(child),
+                Ok(child) => Ok(TestBroker::Native(child)),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                     // Hosted CI already supplies Docker. Bind only loopback,
                     // mount no host paths and remove only this random-owned
@@ -754,11 +768,14 @@ mod tests {
                         ])
                         .output()
                         .expect("tests require native nats-server or Docker");
-                    assert!(
-                        output.status.success(),
-                        "isolated NATS container failed to start"
-                    );
-                    TestBroker::Container(name)
+                    if !output.status.success() {
+                        // A container that lost its port race may still exist.
+                        let _ = std::process::Command::new("docker")
+                            .args(["rm", "--force", "--volumes", &name])
+                            .output();
+                        return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());
+                    }
+                    Ok(TestBroker::Container(name))
                 }
                 Err(error) => panic!("could not start isolated NATS: {error}"),
             }
@@ -800,7 +817,8 @@ mod tests {
                 TestBroker::Native(process) => {
                     process.kill().unwrap();
                     process.wait().unwrap();
-                    self.process = Self::spawn(self.port, self.store.path());
+                    self.process = Self::spawn(self.port, self.store.path())
+                        .expect("native brokers do not fail to spawn");
                 }
                 TestBroker::Container(name) => {
                     let output = std::process::Command::new("docker")
@@ -833,6 +851,11 @@ mod tests {
         }
     }
 
+    /// Docker's wording when the host port is already bound or allocated.
+    fn is_port_conflict(stderr: &str) -> bool {
+        stderr.contains("port is already allocated") || stderr.contains("address already in use")
+    }
+
     impl Drop for TestNatsServer {
         fn drop(&mut self) {
             match &mut self.process {
@@ -846,6 +869,27 @@ mod tests {
                         .output();
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_taken_broker_port_is_reported_as_a_retryable_conflict() {
+        let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = taken.local_addr().unwrap().port();
+        let store = tempfile::tempdir().unwrap();
+        match TestNatsServer::spawn(port, store.path()) {
+            // Native nats-server exits on its own after failing to bind.
+            Ok(TestBroker::Native(mut child)) => {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            Ok(TestBroker::Container(name)) => {
+                let _ = std::process::Command::new("docker")
+                    .args(["rm", "--force", "--volumes", &name])
+                    .output();
+                panic!("Docker started a broker on a port that is already bound");
+            }
+            Err(error) => assert!(is_port_conflict(&error), "{error}"),
         }
     }
 
