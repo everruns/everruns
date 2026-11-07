@@ -1,23 +1,26 @@
 // Session trace index repository: keeps `session_trace_*` caught up with events.
 //
-// Decision: projection runs right after a turn's last event is written
-// (spawned after the writing transaction commits, never on the write's own
-// latency) and again before every trace read, both through
-// `catch_up_session_trace`. A per-session
+// Decision: projection runs when a turn ends, from the events the listener
+// feed already delivered (`SessionTraceListener` through
+// `project_session_trace_events`), and before every trace read through
+// `catch_up_session_trace`, which reads the events itself. Re-reading a
+// turn's events at its end cost about 30 ms of database time per turn in the
+// stress bench, most of it decoding `llm.generation` payloads. A per-session
 // watermark makes the passes idempotent: each event is applied exactly once,
 // whichever pass gets there first, and a pass that fails or is skipped is made
 // up by the next one. The background backfill uses the same entry point for
 // sessions written before the index existed.
 //
-// Decision: the session's state row is the lock. A write-path pass skips a
-// session another pass holds (`SKIP LOCKED`); a read waits for it, so a reader
-// always sees every committed event.
+// Decision: the session's state row is the lock. The backfill skips a
+// session another pass holds (`SKIP LOCKED`); a read and a feed pass wait for
+// it, so a reader always sees every committed event.
 //
 // Decision: the upper bound of a pass is `event_sequences.next_sequence - 1`,
 // read before the events. Allocating a sequence updates that row, so a writer
 // holding sequence N blocks writers of later sequences until it commits; every
 // sequence at or below the committed head is therefore readable.
 
+pub mod from_events;
 pub mod projection;
 pub mod reads;
 pub mod rows;
@@ -30,7 +33,7 @@ use super::Database;
 use projection::{TRACE_EVENT_TYPES, TraceEvent, TraceWorkingSet, parse_uuid};
 use rows::{TraceCatchUp, TraceStepRow, TraceTurnRow};
 
-/// Events one write-path pass projects; a session behind by more is left to
+/// Events a feed pass reads from storage; a session behind by more is left to
 /// the backfill and to the next read.
 pub const TRACE_WRITE_PATH_BUDGET: i64 = 2_000;
 /// Events one read-path or backfill pass projects before committing.
@@ -81,19 +84,60 @@ impl Database {
         )
     }
 
-    /// Project a session's trace in the background once the current
-    /// transaction commits. Never fails the caller: a skipped or failed pass is
-    /// made up by the next one.
-    pub fn schedule_session_trace_projection(&self, session_id: Uuid) {
-        let db = self.clone();
-        crate::storage::transaction::spawn_after_commit(async move {
-            if let Err(error) = db
-                .catch_up_session_trace(session_id, TRACE_WRITE_PATH_BUDGET, false)
-                .await
-            {
-                tracing::debug!(%session_id, %error, "session trace projection deferred");
+    /// Project a session's trace from events the listener feed delivered:
+    /// `events` are every trace event of the session from the first one this
+    /// replica saw, in sequence order, ending with the event that ends a turn.
+    /// Events at or below the watermark are skipped; trace events between the
+    /// watermark and the first delivered one (delivered elsewhere, or before
+    /// this replica took the session's partition) are read from storage.
+    ///
+    /// The feed delivers an event only once every lower sequence of its
+    /// session is committed, so the last event's sequence is a safe watermark.
+    pub async fn project_session_trace_events(
+        &self,
+        session_id: Uuid,
+        events: Vec<TraceEvent>,
+    ) -> Result<()> {
+        let (Some(first), Some(last)) = (events.first(), events.last()) else {
+            return Ok(());
+        };
+        let (first, last) = (first.sequence, last.sequence);
+        let mut tx = self.pool.begin_detached().await?;
+        sqlx::query(
+            "INSERT INTO session_trace_state (session_id) VALUES ($1) ON CONFLICT DO NOTHING",
+        )
+        .bind(session_id)
+        .execute(&mut *tx)
+        .await?;
+        let (projected, turn_count) = sqlx::query_as::<_, (i32, i32)>(
+            "SELECT projected_sequence, turn_count FROM session_trace_state \
+             WHERE session_id = $1 FOR UPDATE",
+        )
+        .bind(session_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if projected >= last {
+            everruns_durable::commit_transaction(tx).await?;
+            return Ok(());
+        }
+        let mut applied = Vec::new();
+        if projected < first - 1 {
+            let gap = load_event_slices(
+                &mut tx,
+                session_id,
+                projected,
+                first - 1,
+                TRACE_WRITE_PATH_BUDGET,
+            )
+            .await?;
+            if i64::try_from(gap.len()).unwrap_or(i64::MAX) >= TRACE_WRITE_PATH_BUDGET {
+                // Far behind: leave it to the next read and the backfill.
+                return Ok(());
             }
-        });
+            applied.extend(gap.into_iter().map(EventSlice::into_trace_event));
+        }
+        applied.extend(events.into_iter().filter(|e| e.sequence > projected));
+        apply_trace_events(tx, session_id, turn_count, applied, last).await
     }
 
     /// Bring a session's trace index up to date with its events, projecting at
@@ -153,67 +197,9 @@ impl Database {
 
         let events: Vec<TraceEvent> = events
             .into_iter()
-            .map(|e| TraceEvent {
-                sequence: e.sequence,
-                event_type: e.event_type,
-                ts: e.ts,
-                turn_id: e.turn_id.as_deref().and_then(parse_uuid),
-                data: e.data,
-            })
+            .map(EventSlice::into_trace_event)
             .collect();
-        let mut turn_ids: Vec<Uuid> = events
-            .iter()
-            .filter_map(|e| {
-                e.turn_id.or_else(|| {
-                    e.data
-                        .get("turn_id")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(parse_uuid)
-                })
-            })
-            .collect();
-        turn_ids.sort_unstable();
-        turn_ids.dedup();
-
-        let turns = sqlx::query_as::<_, TraceTurnRow>(concat!(
-            "SELECT ",
-            turn_columns!(),
-            " FROM session_trace_turns WHERE session_id = $1 AND turn_id = ANY($2)"
-        ))
-        .bind(session_id)
-        .bind(&turn_ids)
-        .fetch_all(&mut *tx)
-        .await?;
-        let turn_nos: Vec<i32> = turns.iter().map(|t| t.turn_no).collect();
-        let steps = sqlx::query_as::<_, TraceStepRow>(concat!(
-            "SELECT ",
-            step_columns!(),
-            " FROM session_trace_steps \
-             WHERE session_id = $1 AND turn_no = ANY($2) AND status = 'running'"
-        ))
-        .bind(session_id)
-        .bind(&turn_nos)
-        .fetch_all(&mut *tx)
-        .await?;
-
-        let mut working_set = TraceWorkingSet::new(turn_count, turns, steps);
-        for event in &events {
-            working_set.apply(event);
-        }
-        let (turn_count, turns, steps) = working_set.into_changes();
-        upsert_turns(&mut tx, session_id, &turns).await?;
-        upsert_steps(&mut tx, session_id, &steps).await?;
-        sqlx::query(
-            "UPDATE session_trace_state \
-             SET projected_sequence = $2, turn_count = $3, updated_at = NOW() \
-             WHERE session_id = $1",
-        )
-        .bind(session_id)
-        .bind(watermark)
-        .bind(turn_count)
-        .execute(&mut *tx)
-        .await?;
-        everruns_durable::commit_transaction(tx).await?;
+        apply_trace_events(tx, session_id, turn_count, events, watermark).await?;
 
         Ok(if partial {
             TraceCatchUp::Partial {
@@ -313,6 +299,83 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+}
+
+/// Apply `events` (oldest first) to the session's trace index, move its
+/// watermark to `watermark`, and commit.
+async fn apply_trace_events(
+    mut tx: Transaction<'static, Postgres>,
+    session_id: Uuid,
+    turn_count: i32,
+    events: Vec<TraceEvent>,
+    watermark: i32,
+) -> Result<()> {
+    let mut turn_ids: Vec<Uuid> = events
+        .iter()
+        .filter_map(|e| {
+            e.turn_id.or_else(|| {
+                e.data
+                    .get("turn_id")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(parse_uuid)
+            })
+        })
+        .collect();
+    turn_ids.sort_unstable();
+    turn_ids.dedup();
+
+    let turns = sqlx::query_as::<_, TraceTurnRow>(concat!(
+        "SELECT ",
+        turn_columns!(),
+        " FROM session_trace_turns WHERE session_id = $1 AND turn_id = ANY($2)"
+    ))
+    .bind(session_id)
+    .bind(&turn_ids)
+    .fetch_all(&mut *tx)
+    .await?;
+    let turn_nos: Vec<i32> = turns.iter().map(|t| t.turn_no).collect();
+    let steps = sqlx::query_as::<_, TraceStepRow>(concat!(
+        "SELECT ",
+        step_columns!(),
+        " FROM session_trace_steps \
+         WHERE session_id = $1 AND turn_no = ANY($2) AND status = 'running'"
+    ))
+    .bind(session_id)
+    .bind(&turn_nos)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut working_set = TraceWorkingSet::new(turn_count, turns, steps);
+    for event in &events {
+        working_set.apply(event);
+    }
+    let (turn_count, turns, steps) = working_set.into_changes();
+    upsert_turns(&mut tx, session_id, &turns).await?;
+    upsert_steps(&mut tx, session_id, &steps).await?;
+    sqlx::query(
+        "UPDATE session_trace_state \
+         SET projected_sequence = $2, turn_count = $3, updated_at = NOW() \
+         WHERE session_id = $1",
+    )
+    .bind(session_id)
+    .bind(watermark)
+    .bind(turn_count)
+    .execute(&mut *tx)
+    .await?;
+    everruns_durable::commit_transaction(tx).await?;
+    Ok(())
+}
+
+impl EventSlice {
+    fn into_trace_event(self) -> TraceEvent {
+        TraceEvent {
+            sequence: self.sequence,
+            event_type: self.event_type,
+            ts: self.ts,
+            turn_id: self.turn_id.as_deref().and_then(parse_uuid),
+            data: self.data,
+        }
     }
 }
 

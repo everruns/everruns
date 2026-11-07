@@ -10,7 +10,9 @@
 pub mod automatic_session_titles;
 pub mod coordination;
 pub mod run_summary;
+pub mod session_trace;
 pub mod turn_latency;
 
 pub use run_summary::RunSummaryService;
+pub use session_trace::SessionTraceListener;
 pub use turn_latency::TurnLatencyListener;

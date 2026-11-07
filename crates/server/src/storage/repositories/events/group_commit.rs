@@ -356,8 +356,6 @@ async fn try_group(db: &Database, group: &[Append]) -> Result<GroupOutcome> {
     if let Err(error) = tx.commit().await {
         return Ok(GroupOutcome::CommitFailed(error.into()));
     }
-    db.after_events_stored(&stored).await;
-
     let mut rows = stored.into_iter();
     let results = group
         .iter()

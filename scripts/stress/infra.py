@@ -133,13 +133,14 @@ class Daemon:
             self.popen.wait(timeout=10)
 
 
-def nats(root: str, port: int) -> Daemon:
+def nats(root: str, port: int, monitor_port: int) -> Daemon:
     binary = shutil.which("nats-server")
     if not binary:
         raise RuntimeError("nats-server not found: two servers need JetStream for shared event delivery")
     store = os.path.join(root, "nats")
     shutil.rmtree(store, ignore_errors=True)
-    return Daemon("nats", [binary, "-js", "-a", "127.0.0.1", "-p", str(port), "-sd", store],
+    # The monitoring port serves /jsz, which the bench reads for the replay buffer's size.
+    return Daemon("nats", [binary, "-js", "-a", "127.0.0.1", "-p", str(port), "-m", str(monitor_port), "-sd", store],
                   os.path.join(root, "nats.log"))
 
 

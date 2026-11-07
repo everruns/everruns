@@ -13,7 +13,7 @@
 //!   writes of a type it wants): coordination, A2A push, notifications, MCP
 //!   events, sandbox lifecycle, and listeners an embedder adds. Later (polled
 //!   every 2 s, larger pages): usage and budgets (both on `llm.generation`),
-//!   tracing exporters, titles, run summaries, turn latency, observer
+//!   tracing exporters, titles, run summaries, turn latency, session trace, observer
 //!   matching, approval audit, reporting facts. Each keeps its own cursor,
 //!   so a slow exporter never delays a coordination wake-up.
 //! - The poll is one probe per consumer for all partitions this replica
@@ -97,6 +97,7 @@ const LATER: &[&str] = &[
     "UsageTrackingListener",
     "CustomerTracing",
     "TurnLatencyListener",
+    "SessionTraceListener",
     "automatic_session_titles",
     "run_summary",
     "ObserverMatchListener",

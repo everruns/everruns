@@ -278,6 +278,13 @@ mod tests {
         db.increment_agent_usage(agent_id.uuid(), 10, 5, 0, 0, 0.0, 0.0, 0.0)
             .await
             .unwrap();
+        let delta = crate::storage::AgentUsageDelta {
+            input_tokens: 10,
+            ..Default::default()
+        };
+        db.add_agent_usage_batch(&[(agent_id.uuid(), delta)])
+            .await
+            .unwrap();
         assert!(
             tokio::time::timeout(std::time::Duration::from_millis(500), listener.recv())
                 .await

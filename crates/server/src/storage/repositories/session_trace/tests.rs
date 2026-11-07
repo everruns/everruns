@@ -318,10 +318,6 @@ async fn sessions_behind_are_listed_until_caught_up() {
             .unwrap()
             .contains(&session.uuid())
     );
-    // Let the write path's spawned pass finish first, or it can project the
-    // next event before the assertion below sees the session behind.
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
     // An event the trace ignores still moves the session ahead of its index.
     db.create_event(CreateEventRow {
         session_id: session,
@@ -363,4 +359,129 @@ async fn sessions_behind_are_listed_until_caught_up() {
             .unwrap()
             .contains(&session.uuid())
     );
+}
+
+type TurnShape = (i32, uuid::Uuid, String, i32, i32, i64, Option<String>);
+type StepShape = (
+    i32,
+    i32,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i32>,
+);
+
+async fn trace_shape(db: &StorageBackend, session: SessionId) -> (Vec<TurnShape>, Vec<StepShape>) {
+    let database = db.database();
+    let turns = database
+        .list_trace_turns(session.uuid(), 1, 100)
+        .await
+        .unwrap();
+    let mut steps = Vec::new();
+    for t in &turns {
+        for s in database
+            .list_trace_steps(session.uuid(), t.turn_no, 1, 100)
+            .await
+            .unwrap()
+        {
+            steps.push((
+                s.turn_no,
+                s.step_no,
+                s.kind,
+                s.status,
+                s.result,
+                s.narration,
+                s.target,
+                s.message_count,
+            ));
+        }
+    }
+    let turns = turns
+        .into_iter()
+        .map(|t| {
+            (
+                t.turn_no,
+                t.turn_id,
+                t.status,
+                t.step_count,
+                t.error_count,
+                t.input_tokens,
+                t.prompt_preview,
+            )
+        })
+        .collect();
+    (turns, steps)
+}
+
+/// Turns projected from the events the listener feed delivered come out the
+/// same as turns projected from storage, including a turn this replica never
+/// saw, which the projection reads from storage.
+#[tokio::test]
+async fn feed_delivered_turns_project_like_stored_ones() {
+    use crate::listeners::SessionTraceListener;
+    use everruns_core::EventListener;
+    use std::sync::Arc;
+
+    let db = Arc::new(StorageBackend::test_database());
+    let session = db.create_test_session().await;
+    for i in 0..3 {
+        db.create_events(turn_events(session, &format!("turn {i}"), i != 1))
+            .await
+            .unwrap();
+    }
+    let rows = db
+        .list_events(session, None, None, &[], &[], None, None)
+        .await
+        .unwrap();
+    let mut events: Vec<Event> = rows
+        .into_iter()
+        .map(crate::services::EventService::row_to_event)
+        .collect();
+    events.sort_by_key(|e| e.sequence);
+    let first_end = events
+        .iter()
+        .find(|e| e.event_type == "turn.completed")
+        .and_then(|e| e.sequence)
+        .unwrap();
+
+    // The first turn was delivered to another replica that never projected it.
+    let listener = SessionTraceListener::new(db.clone());
+    for event in events.iter().filter(|e| e.sequence > Some(first_end)) {
+        listener.on_event(event).await;
+    }
+    let (projected, latest): (i32, i32) = sqlx::query_as(
+        "SELECT st.projected_sequence, es.next_sequence - 1 FROM session_trace_state st \
+         JOIN event_sequences es USING (session_id) WHERE st.session_id = $1",
+    )
+    .bind(session.uuid())
+    .fetch_one(db.database().pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        projected, latest,
+        "the feed projected through the last turn"
+    );
+    let fed = trace_shape(&db, session).await;
+
+    let other = db.create_test_session().await;
+    let copies: Vec<CreateEventRow> = events
+        .iter()
+        .map(|e| CreateEventRow {
+            session_id: other,
+            ..row(e.clone())
+        })
+        .collect();
+    db.create_events(copies).await.unwrap();
+    db.database()
+        .catch_up_session_trace_fully(other.uuid())
+        .await
+        .unwrap();
+    let stored = trace_shape(&db, other).await;
+
+    assert_eq!(fed.0.len(), 3);
+    assert_eq!(fed.1.len(), 9);
+    // Turn ids are the events' own, so both sessions share them.
+    assert_eq!(fed, stored);
 }

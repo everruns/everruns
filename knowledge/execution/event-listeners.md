@@ -75,8 +75,12 @@ below makes them restart safe.
 - **Tiers.** Near (polled every 250 ms, woken at once by this replica's own
   writes): thread coordination, A2A push, notifications, MCP events,
   sandbox lifecycle, and listeners an embedder adds. Later (polled every 2 s,
-  pages of 1,000): usage, budgets, customer tracing, turn latency, titles, run
-  summaries, observer matching, approval audit, reporting facts. Each tier
+  pages of 1,000): usage, budgets, customer tracing, turn latency, session
+  trace, titles, run summaries, observer matching, approval audit, reporting
+  facts. Turn latency and the session trace keep each running turn in memory
+  and act on its last event, since the feed hands one replica every event of
+  a session in order; they read the turn back from storage only when they did
+  not see its start. Each tier
   has its own cursors, so a slow exporter never delays a coordination
   wake-up. Usage and budgets
   share the later tier because both read `llm.generation`, the largest event:
@@ -100,6 +104,7 @@ Effects under replay:
 | Reporting facts | Fact rows unique on a source key from the event (capability snapshots: the turn) |
 | MCP events | Carry the event id for receivers to dedupe |
 | A2A push, coordination, sandbox | Apply the current state, not a delta |
+| Session trace | Applies events past its watermark only |
 | Customer tracing, turn latency, titles, run summary | May repeat a span, a log line or a check after a crash |
 
 ## Cost

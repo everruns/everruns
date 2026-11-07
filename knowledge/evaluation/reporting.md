@@ -165,7 +165,10 @@ the largest share of a turn's rows. Snapshot rows are keyed per turn
 (`reporting_capability_usage_key`, migration `20261103210255`), so the turn's
 first call writes them and later calls insert nothing. `resolved` and `exposed`
 counts therefore count turns, not model calls. An event without a turn id keeps
-per-event keys.
+per-event keys. The engine also skips the event when a call's snapshot matches
+the last one it emitted for the turn (`SnapshotMemo` in the reason atom's
+observability), so a turn usually stores one snapshot; a tool exposed mid-turn
+changes the snapshot and is still recorded.
 
 The fact tables carry no foreign key to `organizations`. Each fact row paid a
 key check on insert, and the only hard delete of an organization is the

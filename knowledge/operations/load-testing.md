@@ -446,8 +446,19 @@ deadlock). Incidents are counted because the platform recovers from them: a
 turn whose lease is lost restarts from its log and still completes, so the
 turn counts alone read "0 failed" while hundreds of turns restarted (500 agents,
 2026-11-06).
+- **8k budget.** Every run also prints each per-turn cost against its budget
+  for 8,000 parallel agents on today's production (`metrics.BUDGET_8K`), and a
+  "fits 8k" verdict that holds only when every measured cost is under budget.
+  A budget is a production capacity run at 70%, divided by the 8k turn rate
+  (the hosted mix: a turn about every 36 s per agent, 222 turns a second,
+  6,900 running). The capacities live in `metrics.PROD`: database CPU,
+  statements, WAL syncs and bytes, server and worker CPU, worker memory per
+  running turn (RSS growth over the run's peak of running turns) and NATS
+  replay bytes per turn (JetStream `/jsz`). Update `PROD` when production
+  changes size; a cut that lowers its row is the proof it worked.
+
 `scripts/test-stress-bench.sh` covers sweep parsing, turn accounting, incident
-counting and the fsync shim without binaries.
+counting, the 8k budget and the fsync shim without binaries.
 
 What the bench cannot see: when PostgreSQL is the bottleneck, as it is on one
 machine, the server is never the side that falls behind, so failures that need

@@ -12,14 +12,26 @@
 //
 // This replaces the database trigger that was previously used
 // (see knowledge/foundations/architecture.md for rationale on no-trigger policy).
+//
+// Decision: agent totals are added up in memory and written once a second,
+// one statement for every agent with new usage. Every session of an agent
+// shares its row, so a per-call UPDATE made all of them queue on one row lock
+// (the second-largest statement in prod at 500 agents, and 50 ms of lock wait
+// per turn in the stress bench). The totals are a display figure;
+// `llm_generations` stays the per-call record. A process killed without a
+// flush loses at most the last second of an agent's totals, the same kind of
+// gap a crash between the generation insert and the per-call UPDATE left.
 
 use async_trait::async_trait;
 use everruns_core::{Event, EventData, EventListener, LLM_GENERATION};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use tracing::{error, instrument};
+use uuid::Uuid;
 
 use crate::storage::StorageBackend;
-use crate::storage::repositories::GenerationProvider;
+use crate::storage::repositories::{AgentUsageDelta, GenerationProvider};
 use everruns_contracts::typed_id::ProviderId;
 use everruns_core::host::openai_agents_api::GENERATION_PROVIDER_ID;
 
@@ -31,11 +43,61 @@ use everruns_core::host::openai_agents_api::GENERATION_PROVIDER_ID;
 /// - `agents` table (denormalized totals)
 pub struct UsageTrackingListener {
     db: Arc<StorageBackend>,
+    agent_totals: Arc<AgentTotals>,
 }
 
 impl UsageTrackingListener {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self {
+            agent_totals: Arc::new(AgentTotals {
+                db: db.clone(),
+                pending: parking_lot::Mutex::new(HashMap::new()),
+                flusher: OnceLock::new(),
+            }),
+            db,
+        }
+    }
+}
+
+/// How often added-up agent usage is written.
+const AGENT_TOTALS_FLUSH: Duration = Duration::from_secs(1);
+
+/// Agent usage not yet written to `agents`, by agent.
+struct AgentTotals {
+    db: Arc<StorageBackend>,
+    pending: parking_lot::Mutex<HashMap<Uuid, AgentUsageDelta>>,
+    flusher: OnceLock<()>,
+}
+
+impl AgentTotals {
+    fn add(self: &Arc<Self>, agent_id: Uuid, delta: AgentUsageDelta) {
+        self.pending.lock().entry(agent_id).or_default().add(&delta);
+        self.flusher.get_or_init(|| {
+            let totals = Arc::downgrade(self);
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(AGENT_TOTALS_FLUSH).await;
+                    let Some(totals) = totals.upgrade() else {
+                        return;
+                    };
+                    totals.flush().await;
+                }
+            });
+        });
+    }
+
+    async fn flush(&self) {
+        let batch: Vec<(Uuid, AgentUsageDelta)> = self.pending.lock().drain().collect();
+        if batch.is_empty() {
+            return;
+        }
+        if let Err(e) = self.db.add_agent_usage_batch(&batch).await {
+            error!(error = %e, agents = batch.len(), "Failed to update agent usage; retrying next flush");
+            let mut pending = self.pending.lock();
+            for (agent_id, delta) in batch {
+                pending.entry(agent_id).or_default().add(&delta);
+            }
+        }
     }
 }
 
@@ -180,24 +242,26 @@ impl EventListener for UsageTrackingListener {
             error!("Failed to update session usage: {}", e);
         }
 
-        // Update agent totals (skip if no agent)
-        if let Some(agent_id) = session.agent_id
-            && let Err(e) = self
-                .db
-                .increment_agent_usage(
-                    agent_id.uuid(),
+        // Agent totals (skip if no agent), written by the next flush.
+        if let Some(agent_id) = session.agent_id {
+            self.agent_totals.add(
+                agent_id.uuid(),
+                AgentUsageDelta {
                     input_tokens,
                     output_tokens,
                     cache_read_tokens,
                     cache_creation_tokens,
-                    actual_cost_amount,
-                    estimated_cost_amount,
-                    effective_cost_amount,
-                )
-                .await
-        {
-            error!("Failed to update agent usage: {}", e);
+                    actual_cost_usd: actual_cost_amount,
+                    estimated_cost_usd: estimated_cost_amount,
+                    cost_usd: effective_cost_amount,
+                },
+            );
         }
+    }
+
+    async fn flush(&self) -> Result<(), String> {
+        self.agent_totals.flush().await;
+        Ok(())
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
@@ -317,5 +381,88 @@ mod tests {
             .await;
 
         assert_eq!(recorded(&db, &session).await, (None, false));
+    }
+
+    async fn agent(db: &StorageBackend) -> everruns_contracts::typed_id::AgentId {
+        let id = everruns_contracts::typed_id::AgentId::new();
+        let harness = everruns_contracts::typed_id::HarnessId::from_uuid(Uuid::nil());
+        let mut definition = crate::platform_chat_agent::definition(harness, id);
+        // The built-in definition's name is unique per org; these are ordinary agents.
+        definition.name = format!("usage-{}", id.uuid().simple());
+        definition.is_built_in = false;
+        db.create_agent_with_id(1, id, definition)
+            .await
+            .unwrap()
+            .unwrap();
+        id
+    }
+
+    async fn agent_session(
+        db: &StorageBackend,
+        agent_id: everruns_contracts::typed_id::AgentId,
+    ) -> SessionRow {
+        db.create_session(CreateSessionRow {
+            org_id: 1,
+            owner_principal_id: PrincipalId::from_seed(1),
+            agent_id: Some(agent_id),
+            capabilities: serde_json::json!({}),
+            mcp_servers: serde_json::json!([]),
+            initial_files: serde_json::json!({}),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn agent_tokens(db: &StorageBackend, agent_id: Uuid) -> (i64, i64) {
+        sqlx::query_as("SELECT total_input_tokens, total_output_tokens FROM agents WHERE id = $1")
+            .bind(agent_id)
+            .fetch_one(db.pool())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn agent_totals_add_up_across_sessions_and_are_written_on_flush() {
+        let db = Arc::new(StorageBackend::test_database());
+        let agent_id = agent(&db).await;
+        let (first, second) = (
+            agent_session(&db, agent_id).await,
+            agent_session(&db, agent_id).await,
+        );
+        let listener = UsageTrackingListener::new(db.clone());
+
+        for session in [&first, &second, &second] {
+            listener.on_event(&generation(session, None)).await;
+        }
+        listener.flush().await.unwrap();
+
+        assert_eq!(agent_tokens(&db, agent_id.uuid()).await, (300, 60));
+        listener.flush().await.unwrap();
+        assert_eq!(
+            agent_tokens(&db, agent_id.uuid()).await,
+            (300, 60),
+            "a flush with nothing new adds nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_usage_batch_adds_to_each_agent() {
+        let db = StorageBackend::test_database();
+        let (a, b) = (agent(&db).await.uuid(), agent(&db).await.uuid());
+        let delta = |input| AgentUsageDelta {
+            input_tokens: input,
+            output_tokens: 1,
+            ..Default::default()
+        };
+
+        db.add_agent_usage_batch(&[(b, delta(7)), (a, delta(5))])
+            .await
+            .unwrap();
+        db.add_agent_usage_batch(&[(a, delta(10))]).await.unwrap();
+        db.add_agent_usage_batch(&[]).await.unwrap();
+
+        assert_eq!(agent_tokens(&db, a).await, (15, 2));
+        assert_eq!(agent_tokens(&db, b).await, (7, 1));
     }
 }

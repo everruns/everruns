@@ -300,6 +300,61 @@ pub fn capability_usage_snapshot_records(
     records
 }
 
+/// Turns whose last snapshot this process remembers.
+const SNAPSHOT_MEMO_TURNS: usize = 16_384;
+
+/// The last snapshot this process emitted for each recent turn, by hash.
+///
+/// Decision: a turn's model calls almost always see the same capabilities and
+/// tools, and reporting keeps one row per turn and record
+/// (`reporting_capability_usage_key`), so a repeated snapshot only cost an
+/// event of about 50 records per model call and a projection that inserts
+/// nothing. A call emits when its snapshot differs from the last one emitted
+/// for the turn here, which keeps tools exposed mid-turn. A turn this process
+/// does not remember (a restart, a turn moved to another worker) emits again,
+/// and the projection drops the repeat.
+#[derive(Default)]
+struct SnapshotMemo {
+    order: std::collections::VecDeque<(SessionId, crate::engine::typed_id::TurnId)>,
+    last: HashMap<(SessionId, crate::engine::typed_id::TurnId), u64>,
+}
+
+impl SnapshotMemo {
+    /// Record `hash` for the turn; whether it differs from the last one.
+    fn changed(&mut self, turn: (SessionId, crate::engine::typed_id::TurnId), hash: u64) -> bool {
+        match self.last.insert(turn, hash) {
+            Some(previous) => previous != hash,
+            None => {
+                self.order.push_back(turn);
+                if self.order.len() > SNAPSHOT_MEMO_TURNS
+                    && let Some(oldest) = self.order.pop_front()
+                {
+                    self.last.remove(&oldest);
+                }
+                true
+            }
+        }
+    }
+}
+
+fn snapshot_changed(
+    session_id: SessionId,
+    turn_id: crate::engine::typed_id::TurnId,
+    records: &[CapabilityUsageRecord],
+) -> bool {
+    use std::hash::{Hash, Hasher};
+    static MEMO: std::sync::OnceLock<std::sync::Mutex<SnapshotMemo>> = std::sync::OnceLock::new();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(records)
+        .unwrap_or_default()
+        .hash(&mut hasher);
+    let mut memo = MEMO
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    memo.changed((session_id, turn_id), hasher.finish())
+}
+
 pub(super) async fn emit_capability_usage_snapshot(
     emitter: &dyn EventEmitter,
     registry: &CapabilityRegistry,
@@ -310,7 +365,7 @@ pub(super) async fn emit_capability_usage_snapshot(
 ) {
     let records =
         capability_usage_snapshot_records(registry, resolved_capability_configs, tool_definitions);
-    if records.is_empty() {
+    if records.is_empty() || !snapshot_changed(session_id, context.turn_id, &records) {
         return;
     }
     if let Err(error) = emitter
@@ -332,6 +387,32 @@ pub(super) async fn emit_capability_usage_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_turn_emits_its_snapshot_again_only_when_it_changes() {
+        let mut memo = SnapshotMemo::default();
+        let turn = (SessionId::new(), crate::engine::typed_id::TurnId::new());
+        let other = (SessionId::new(), crate::engine::typed_id::TurnId::new());
+        assert!(memo.changed(turn, 1), "the turn's first call emits");
+        assert!(!memo.changed(turn, 1), "an unchanged snapshot does not");
+        assert!(memo.changed(turn, 2), "a tool exposed mid-turn does");
+        assert!(memo.changed(other, 2), "another turn emits its own");
+    }
+
+    #[test]
+    fn the_snapshot_memo_forgets_the_oldest_turns() {
+        let mut memo = SnapshotMemo::default();
+        let first = (SessionId::new(), crate::engine::typed_id::TurnId::new());
+        memo.changed(first, 1);
+        for _ in 0..SNAPSHOT_MEMO_TURNS {
+            memo.changed(
+                (SessionId::new(), crate::engine::typed_id::TurnId::new()),
+                1,
+            );
+        }
+        assert_eq!(memo.last.len(), SNAPSHOT_MEMO_TURNS);
+        assert!(memo.changed(first, 1), "a forgotten turn emits again");
+    }
     use crate::engine::llm_conversions::llm_call_config_builder_from_agent;
     use crate::runtime_agent::RuntimeAgent;
     use everruns_contracts::model::ReasoningEffort;

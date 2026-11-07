@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-07
+
+- The stress bench grades every run against a per-turn budget for 8k agents on
+  today's production. Agent token totals are written once a second, turn
+  latency and the session trace are computed from the listener feed instead
+  of rereading each turn, and the hottest tables dropped their keys on
+  `sessions` and `organizations`.
+
 ## 2026-11-06
 
 - Hosted container-tool live tests require observations from the execution environment;
