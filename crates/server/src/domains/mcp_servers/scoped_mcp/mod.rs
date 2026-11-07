@@ -1494,8 +1494,6 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 #[cfg(test)]
 mod cache_tests;
 #[cfg(test)]
-pub(super) mod tests;
-#[cfg(test)]
-pub(crate) use tests::CatalogPreviewEgress;
+pub(crate) mod tests;
 #[cfg(test)]
 mod timeout_tests;

@@ -2,8 +2,8 @@
 //! only the outbound MCP boundary is a gated fixture. No LLM is needed.
 use super::{seed_harness_for_platform_store, test_adapters};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::mcp_servers::scoped_mcp::CatalogPreviewEgress;
 use crate::domains::mcp_servers::scoped_mcp::Readiness;
+use crate::domains::mcp_servers::scoped_mcp::tests::CatalogPreviewEgress;
 use crate::domains::mcp_servers::session_servers::ListChatMcpServers;
 use crate::storage::{DbSessionStorageStore, test_database::test_session_row};
 use everruns_core::{
