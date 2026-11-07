@@ -4,8 +4,8 @@ description: Interactive hosts can limit waiting for cold MCP discovery, keep pe
 date: 2026-11-07
 kind: improvement
 significance: minor
-products: [framework, platform]
-surfaces: [agent, api, code]
+products: [framework, platform, yolop]
+surfaces: [agent, api, code, cli]
 links:
   docs: [/framework/host-services/, /features/mcp/]
 ---
@@ -27,3 +27,17 @@ from failed or authentication-required discovery. Complete catalogs become
 available on later turns; partial catalogs are never exposed. Background work
 retains bounded concurrency, memory and deadlines. Deferred servers still wait
 for reveal, and the default remains blocking cold discovery.
+
+## Update 2026-11-07
+
+Yolop supports the same opt-in startup budget:
+
+```sh
+yolop --mcp-readiness-ms 250
+```
+
+Accepts `0..60000` milliseconds; omitted means blocking discovery. `/mcp` shows
+pending discovery, ready, authentication required and discovery failed states.
+The flag is unavailable with `--acp`.
+Explicit context and tool-list queries still wait for full discovery. After
+external OAuth login, run `/mcp reload` in the existing session.
