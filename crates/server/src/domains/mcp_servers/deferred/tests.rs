@@ -190,17 +190,26 @@ async fn the_last_listed_record_is_reserved_from_kv_store() {
 
 #[tokio::test]
 async fn readiness_keeps_fast_peer_when_first_server_is_pending() {
-    struct MixedEgress(CatalogPreviewEgress);
+    struct MixedEgress {
+        delegate: CatalogPreviewEgress,
+        slow_gate: tokio::sync::Semaphore,
+    }
     #[async_trait::async_trait]
     impl EgressService for MixedEgress {
         async fn send(
             &self,
             request: everruns_core::EgressRequest,
         ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
-            if request.url.contains("slow") {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let listing = serde_json::from_slice::<serde_json::Value>(&request.body).unwrap()["method"]
+                == "tools/list";
+            if listing && request.url.contains("slow") {
+                self.slow_gate
+                    .acquire()
+                    .await
+                    .expect("gate remains open")
+                    .forget();
             }
-            self.0.send(request).await
+            self.delegate.send(request).await
         }
         async fn send_stream(
             &self,
@@ -214,7 +223,12 @@ async fn readiness_keeps_fast_peer_when_first_server_is_pending() {
             })
         }
     }
-    let egress = Arc::new(MixedEgress(CatalogPreviewEgress::default()));
+    let db = StorageBackend::test_database();
+    let storage = InMemorySessionStorageStore::new();
+    let egress = Arc::new(MixedEgress {
+        delegate: CatalogPreviewEgress::default(),
+        slow_gate: tokio::sync::Semaphore::new(0),
+    });
     let session = SessionId::new();
     let servers = ScopedMcpServers::from([
         (
@@ -232,9 +246,8 @@ async fn readiness_keeps_fast_peer_when_first_server_is_pending() {
         egress.clone(),
         std::time::Duration::from_millis(100),
     );
-    let storage = InMemorySessionStorageStore::new();
     let tools = build_turn_mcp_tool_definitions_inner(
-        &StorageBackend::test_database(),
+        &db,
         everruns_core::DEFAULT_ORG_ID,
         &servers,
         session,
@@ -256,6 +269,7 @@ async fn readiness_keeps_fast_peer_when_first_server_is_pending() {
     let snapshot: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
     assert_eq!(snapshot["a_slow"]["status"], "pending");
     assert_eq!(snapshot["z_fast"]["status"], "ready");
+    egress.slow_gate.add_permits(1);
 }
 
 #[tokio::test]
