@@ -277,3 +277,65 @@ async fn a_turn_whose_events_this_replica_never_saw_is_replayed_from_storage() {
         }]
     );
 }
+
+/// The feed's shape: every event of the turn arrives here in order, so the
+/// breakdown comes from memory, and a redelivered event is counted once.
+#[tokio::test]
+async fn a_turn_seen_here_is_summarized_from_memory() {
+    use crate::storage::StorageBackend;
+    use everruns_contracts::typed_id::TurnId;
+
+    let listener = TurnLatencyListener::new(Arc::new(StorageBackend::test_database()));
+    let session = SessionId::new();
+    let turn = TurnId::new();
+    let event = |sequence: i32, event_type: &str, ms: i64, data: serde_json::Value| {
+        let mut event = Event::new(
+            session,
+            EventContext::empty(),
+            everruns_core::events::deserialize_event_data(event_type, data),
+        );
+        event.event_type = event_type.to_string();
+        event.ts = at(ms);
+        event.context.turn_id = Some(turn);
+        event.sequence = Some(sequence);
+        event
+    };
+    let generation = serde_json::json!({
+        "messages": [],
+        "output": {},
+        "metadata": { "model": "llmsim", "success": true, "duration_ms": 2_000 }
+    });
+    let empty = serde_json::json!({});
+
+    let mut seen = Vec::new();
+    for e in [
+        event(1, TURN_STARTED, 0, empty.clone()),
+        event(2, REASON_STARTED, 100, empty.clone()),
+        event(3, LLM_GENERATION, 2_100, generation.clone()),
+        event(3, LLM_GENERATION, 2_100, generation),
+        event(4, REASON_COMPLETED, 2_150, empty.clone()),
+        event(5, TURN_COMPLETED, 2_200, empty.clone()),
+    ] {
+        seen.push(listener.observe(&e));
+    }
+
+    let Some(Observed::Finished(gaps, latency)) = seen.pop() else {
+        panic!("the turn ends with a breakdown: {seen:?}");
+    };
+    assert!(seen.iter().all(|o| *o == Observed::Pending));
+    assert_eq!(
+        gaps,
+        vec![PhaseGap {
+            phase: "reason",
+            ms: 100
+        }]
+    );
+    assert_eq!((latency.llm_ms, latency.llm_calls), (2_000, 1));
+    assert_eq!((latency.turn_ms, latency.overhead_ms), (2_200, 200));
+
+    // The end of a turn whose start arrived elsewhere goes to storage.
+    assert_eq!(
+        listener.observe(&event(9, TURN_COMPLETED, 9_000, empty)),
+        Observed::Unseen
+    );
+}

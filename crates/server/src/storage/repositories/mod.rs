@@ -138,7 +138,10 @@ pub use sessions::rows::*;
 mod session_trace;
 pub use session_trace::reads::*;
 pub use session_trace::rows::*;
-pub use session_trace::{TRACE_PASS_BUDGET, projection as session_trace_projection};
+pub use session_trace::{
+    TRACE_PASS_BUDGET, from_events as session_trace_from_events,
+    projection as session_trace_projection,
+};
 mod skills;
 pub use skills::rows::*;
 mod user_connections;

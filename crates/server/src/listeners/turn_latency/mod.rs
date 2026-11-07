@@ -26,8 +26,18 @@
 // sees a whole turn: in-memory clocks reported partial turns, with model time
 // missing and counted as overhead. One indexed read per finished turn, off the
 // write path (listeners run in their own task).
+//
+// Decision: the listener feed made the replay the exception. The feed hands
+// every event of a session, in order, to the one replica holding the
+// session's partition, so the listener keeps each running turn's clock in
+// memory and reads storage only for a turn whose start it did not see (a
+// partition that moved mid-turn, or a restart). The replay read the turn's
+// stored events, `llm.generation` payloads included, once per turn: about
+// 20 ms of database time per turn in the stress bench.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -40,6 +50,7 @@ use everruns_core::{
 use crate::metrics_names as names;
 use crate::services::EventService;
 use crate::storage::StorageBackend;
+use everruns_contracts::typed_id::{SessionId, TurnId};
 
 /// The events a turn's breakdown is replayed from.
 const TURN_EVENT_TYPES: [&str; 8] = [
@@ -276,14 +287,123 @@ pub(crate) fn summarize(
     (gaps, clock.finish(outcome, ended_at))
 }
 
+/// A clock untouched this long belongs to a turn whose end will not come here
+/// (its partition moved, or it never ended), and is dropped.
+const STALE_CLOCK: Duration = Duration::from_secs(60 * 60);
+/// How often stale clocks are looked for.
+const SWEEP_EVERY: Duration = Duration::from_secs(60);
+
+/// One session's running turn, as the feed delivered it here.
+#[derive(Debug)]
+struct SessionClock {
+    turn_id: Option<TurnId>,
+    clock: TurnClock,
+    gaps: Vec<PhaseGap>,
+    /// Highest sequence observed, so a redelivered event is not counted twice.
+    last_sequence: i32,
+    touched: Instant,
+}
+
+impl SessionClock {
+    fn new() -> Self {
+        Self {
+            turn_id: None,
+            clock: TurnClock::default(),
+            gaps: Vec::new(),
+            last_sequence: 0,
+            touched: Instant::now(),
+        }
+    }
+}
+
+/// What one event told the in-memory clocks.
+#[derive(Debug, PartialEq)]
+enum Observed {
+    /// Not the end of a turn.
+    Pending,
+    /// The end of a turn whose every event was seen here.
+    Finished(Vec<PhaseGap>, TurnLatency),
+    /// The end of a turn whose start was not seen here.
+    Unseen,
+}
+
 /// Logs `turn latency` and records the turn histograms for every finished turn.
 pub struct TurnLatencyListener {
     db: Arc<StorageBackend>,
+    clocks: parking_lot::Mutex<HashMap<SessionId, SessionClock>>,
+    last_sweep: parking_lot::Mutex<Instant>,
 }
 
 impl TurnLatencyListener {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self {
+            db,
+            clocks: parking_lot::Mutex::new(HashMap::new()),
+            last_sweep: parking_lot::Mutex::new(Instant::now()),
+        }
+    }
+
+    /// Feed one event to its session's clock.
+    fn observe(&self, event: &Event) -> Observed {
+        self.sweep();
+        let obs = Observation::from_event(event);
+        let turn_id = event.context.turn_id;
+        let mut clocks = self.clocks.lock();
+        let entry = clocks
+            .entry(event.session_id)
+            .or_insert_with(SessionClock::new);
+        if let Some(sequence) = event.sequence {
+            if sequence <= entry.last_sequence {
+                return Observed::Pending;
+            }
+            entry.last_sequence = sequence;
+        }
+        entry.touched = Instant::now();
+
+        if let Some(outcome) = terminal_outcome(&event.event_type) {
+            let seen = entry.turn_id.is_some() && entry.turn_id == turn_id;
+            let finished = seen
+                .then(|| entry.clock.finish(outcome, event.ts))
+                .flatten();
+            let gaps = std::mem::take(&mut entry.gaps);
+            clocks.remove(&event.session_id);
+            return match finished {
+                Some(latency) => Observed::Finished(gaps, latency),
+                None => Observed::Unseen,
+            };
+        }
+        match obs.event_type {
+            TURN_STARTED => {
+                entry.turn_id = turn_id;
+                entry.gaps.clear();
+                entry.clock.observe(&obs);
+            }
+            // Before the turn starts it sets the input time; during it, a
+            // steering message changes nothing (`TurnClock::observe`).
+            INPUT_MESSAGE => {
+                entry.clock.observe(&obs);
+            }
+            _ if entry.turn_id.is_some() && entry.turn_id == turn_id => {
+                if let Some(gap) = entry.clock.observe(&obs) {
+                    entry.gaps.push(gap);
+                }
+            }
+            _ => {}
+        }
+        Observed::Pending
+    }
+
+    fn sweep(&self) {
+        {
+            let mut last = self.last_sweep.lock();
+            if last.elapsed() < SWEEP_EVERY {
+                return;
+            }
+            *last = Instant::now();
+        }
+        self.clocks
+            .lock()
+            .retain(|_, clock| clock.touched.elapsed() < STALE_CLOCK);
     }
 
     /// The phase gaps and breakdown of the turn `event` ends, replayed from
@@ -316,8 +436,15 @@ fn secs(ms: u64) -> f64 {
 #[async_trait]
 impl EventListener for TurnLatencyListener {
     async fn on_event(&self, event: &Event) {
-        let Some((gaps, l)) = self.replay(event).await else {
-            return;
+        let (gaps, l) = match self.observe(event) {
+            Observed::Pending => return,
+            Observed::Finished(gaps, latency) => (gaps, latency),
+            Observed::Unseen => {
+                let Some(replayed) = self.replay(event).await else {
+                    return;
+                };
+                replayed
+            }
         };
         for gap in gaps {
             metrics::histogram!(names::TURN_PHASE_GAP_DURATION, "phase" => gap.phase)
@@ -358,7 +485,9 @@ impl EventListener for TurnLatencyListener {
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
-        Some(vec![TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED])
+        let mut types = TURN_EVENT_TYPES.to_vec();
+        types.extend([TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED]);
+        Some(types)
     }
 
     fn name(&self) -> &'static str {

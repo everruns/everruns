@@ -72,11 +72,13 @@ one step the inspector shows.
   (see [Tool narration](../execution/tool-narration.md)), result from the first characters
   of the result or the error. Narration and answer previews are capped (about 2 KB); the
   full text is one detail read away.
-- **Written right after the events**, by a pure Rust projection
-  (`crates/server/src/storage/repositories/session_trace/`). Both event insert paths
-  schedule a projection pass once the writing transaction commits, only when a batch holds a
-  type the trace reads, so the event write itself pays nothing. Every trace read first catches
-  its session up, so a reader always sees every committed event. The projection is a fold:
+- **Written when each turn ends**, by a pure Rust projection
+  (`crates/server/src/storage/repositories/session_trace/`). The listener feed already
+  delivers every event to one replica per session; `SessionTraceListener` buffers the
+  turn's trace events and projects them at its end without reading them back, so neither the
+  event write nor the database pays a second read (the read cost about 30 ms of database time
+  per turn at 500 agents). Every trace read first catches its session up, so a reader always
+  sees every committed event. The projection is a fold:
   events in, row upserts out; deltas never reach it. Doing it in Rust rather than in a
   trigger keeps the rules in one tested function that the backfill and a future journal
   reuse.
@@ -218,7 +220,7 @@ tool calls and one with nested sub-agents:
 - Overview plus the last 20 turns: server p95 under 150 ms, response under 250 KB.
 - Any turn by number, including the 10K-step turn: server p95 under 150 ms.
 - Step detail: server p95 under 100 ms for payloads under the truncation limit.
-- Event insert overhead from the projection: none on the write itself; the pass runs after commit.
+- Event insert overhead from the projection: none; the pass runs from the listener feed.
 - Browser: first trace render under 1 s on a mid-range laptop; scrolling stays at 60 fps with
   every loaded turn expanded; memory stays flat while scrolling the whole session.
 - Projection parity: indexing a session incrementally and rebuilding it from its events give
