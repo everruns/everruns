@@ -589,7 +589,7 @@ mod tests {
         cache
             .resolve_until(
                 key(),
-                || std::future::pending(),
+                std::future::pending,
                 Some(tokio::time::Instant::now() + Duration::from_millis(1)),
             )
             .await;
