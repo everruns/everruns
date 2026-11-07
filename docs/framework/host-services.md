@@ -196,6 +196,35 @@ letters, digits, `_`, `.`, `-` or `:`, when a value is longer than 512 bytes or
 holds control characters, or when there are more than nine entries. Providers
 and request capture see these values, so never put a secret in them.
 
+## MCP readiness
+
+Cold MCP discovery waits for complete tool catalogs by default. Interactive
+hosts can opt into a short readiness budget with the `mcp` feature enabled:
+
+```rust
+use std::time::Duration;
+use everruns::hosting::services::HostServices;
+
+let services = HostServices::new()
+    .mcp_readiness_budget(Duration::from_millis(250));
+# let _ = services;
+```
+
+The budget applies once to the whole eager discovery pass, not separately to
+every server. Expiry does not turn a pending connection into an error or expose
+partial catalogs. Discovery continues with bounded concurrency, queue size,
+response size and its existing hard deadline. Completed tools are available
+on subsequent turns, including when an Engine rebuilds its runtime between
+turns. Unrevealed deferred servers still connect only when revealed.
+
+With this option enabled, `session.mcp_discovery_statuses().await` reports
+`Pending`, `Ready`, `AuthenticationRequired`, or `Failed` for eager and revealed
+servers. It does not initiate discovery. `Pending` also covers servers whose
+discovery has not started. Authentication failures retain their reconnect hold;
+transient failures retain the existing retry cooldown. The shared cache remains
+scoped by session and attachment configuration. Reuse the same `HostServices`
+value for runtimes that should share completion state.
+
 ## Budgets, MCP credentials and observers
 
 ```rust

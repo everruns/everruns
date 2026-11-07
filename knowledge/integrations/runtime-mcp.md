@@ -420,10 +420,22 @@ Remaining follow-up:
 
 The host discovery cache distinguishes typed HTTP authentication rejections
 from transient transport failures. A 401 or 403 clears that attachment's stale
-tools and pauses discovery until invalidation, a new runtime, or a changed
-configuration. Configuration identities are canonical hashes, including static
+tools and pauses discovery until invalidation, a new cache, or a changed
+configuration. Opt-in shared host services retain that hold across runtime rebuilds. Configuration identities are canonical hashes, including static
 credential headers without retaining them in cache keys. Transient failures
 preserve previously discovered tools and permit retry after a short cooldown.
 Both successful and negative entries share the bounded cache and single-flight
 locks. A reload retires in-flight refresh identities so old credentials cannot
 restore a failed entry after invalidation.
+
+## Interactive readiness
+
+Interactive Framework hosts may opt into one short wait budget for eager MCP
+catalog discovery. Expiry is pending, not failure: bounded background discovery
+continues and complete catalogs join subsequent turns. Host services share the
+cache across coherent runtime rebuilds, keyed by session and complete attachment
+configuration. Reload invalidates this shared cache and fences old completions.
+The default remains blocking cold discovery. Deferred reveal, catalog bounds,
+authentication holds and transient retry cooldowns retain their contracts.
+Readiness inspection is read-only and separates pending, ready, authentication
+required and failed states. See the [host-services API](../../docs/framework/host-services.md#mcp-readiness).

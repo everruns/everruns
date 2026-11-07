@@ -159,6 +159,8 @@ pub struct HostServices {
     pub(crate) request_metadata: RequestMetadata,
     #[cfg(feature = "mcp")]
     pub(crate) mcp_auth: Option<Arc<dyn McpAuthProvider>>,
+    #[cfg(feature = "mcp")]
+    pub(crate) mcp_discovery_cache: Option<Arc<everruns_core::host::McpDiscoveryCache>>,
 }
 
 #[derive(Clone)]
@@ -169,6 +171,16 @@ pub(crate) struct HostCapability {
 }
 
 impl HostServices {
+    /// Limit interactive waiting for cold MCP discovery; unfinished servers
+    /// continue connecting and contribute tools on later turns.
+    #[cfg(feature = "mcp")]
+    pub fn mcp_readiness_budget(mut self, budget: Duration) -> Self {
+        self.mcp_discovery_cache = Some(Arc::new(
+            everruns_core::host::McpDiscoveryCache::with_readiness_budget(Some(budget)),
+        ));
+        self
+    }
+
     /// Empty services; the Framework defaults apply to everything left unset.
     pub fn new() -> Self {
         Self::default()

@@ -12102,6 +12102,8 @@ export interface components {
       catalog_name?: string | null;
       /** @description Whether the person viewing has signed in to it. */
       connection: components["schemas"]["UserMcpConnectionStatus"];
+      /** @description Discovery state observed when preparing the most recent turn. */
+      discovery?: string | null;
       /** @description Server name; also the tool prefix the agent sees. */
       name: string;
       /** @description Endpoint URL, for display. */

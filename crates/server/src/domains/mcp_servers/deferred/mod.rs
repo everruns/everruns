@@ -25,12 +25,16 @@ use anyhow::Result;
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::session_services::SessionStorageStore;
 
-use super::scoped_mcp::build_materialized_scoped_mcp_tool_definitions_reporting;
+use super::scoped_mcp::build_materialized_scoped_mcp_tool_definitions_ready;
 use crate::kernel_imports::{
     EgressService, ScopedMcpServers, contracts::tool_types::ToolDefinition,
     contracts::typed_id::SessionId,
 };
 use crate::storage::StorageBackend;
+
+// The reserved mcp_tools namespace prevents model writes. A second colon
+// cannot collide with a server's sanitized last-known-tools key.
+pub(crate) const DISCOVERY_STATUS_KV_KEY: &str = "mcp_tools:discovery:status";
 
 /// The turn's MCP tool definitions: listed tools for eager and revealed
 /// servers, one placeholder per deferred server not yet revealed. Without
@@ -45,6 +49,55 @@ pub async fn build_turn_mcp_tool_definitions(
     egress_service: &dyn EgressService,
     storage: Option<&dyn SessionStorageStore>,
 ) -> Result<Vec<ToolDefinition>> {
+    build_turn_mcp_tool_definitions_inner(
+        db,
+        org_id,
+        servers,
+        session_id,
+        connection_resolver,
+        egress_service,
+        storage,
+        None,
+    )
+    .await
+}
+
+/// Platform opt-in readiness budget. The default keeps blocking discovery.
+pub async fn build_ready_turn_mcp_tool_definitions(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+    session_id: SessionId,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: Arc<dyn EgressService>,
+    storage: Option<&dyn SessionStorageStore>,
+) -> Result<Vec<ToolDefinition>> {
+    let readiness =
+        super::scoped_mcp::Readiness::from_env(org_id, session_id, egress_service.clone());
+    build_turn_mcp_tool_definitions_inner(
+        db,
+        org_id,
+        servers,
+        session_id,
+        connection_resolver,
+        egress_service.as_ref(),
+        storage,
+        readiness.as_ref(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn build_turn_mcp_tool_definitions_inner(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+    session_id: SessionId,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: &dyn EgressService,
+    storage: Option<&dyn SessionStorageStore>,
+    readiness: Option<&super::scoped_mcp::Readiness>,
+) -> Result<Vec<ToolDefinition>> {
     let revealed = match storage {
         Some(storage) if servers.values().any(|server| server.deferred) => {
             everruns_core::revealed_mcp_servers(storage, session_id).await
@@ -53,18 +106,112 @@ pub async fn build_turn_mcp_tool_definitions(
     };
     let (listed, deferred) = everruns_core::partition_deferred_mcp_servers(servers, &revealed);
     let mut failed = Vec::new();
-    let mut definitions = build_materialized_scoped_mcp_tool_definitions_reporting(
-        db,
-        org_id,
-        &listed,
-        Some(session_id),
-        connection_resolver,
-        egress_service,
-        &mut failed,
-    )
-    .await?;
+    let mut definitions = if readiness.is_some() {
+        use futures::StreamExt;
+        // Owned inputs and erased future types keep this Send through both
+        // async_trait worker adapters, without higher-ranked iterator borrows.
+        type Discovery<'a> =
+            futures::future::BoxFuture<'a, Result<(Vec<ToolDefinition>, Vec<String>)>>;
+        let mut discoveries: Vec<Discovery<'_>> = Vec::with_capacity(listed.len());
+        for (name, server) in listed.clone() {
+            discoveries.push(Box::pin(async move {
+                let one = ScopedMcpServers::from([(name, server)]);
+                let mut failed = Vec::new();
+                let tools = build_materialized_scoped_mcp_tool_definitions_ready(
+                    db,
+                    org_id,
+                    &one,
+                    Some(session_id),
+                    connection_resolver,
+                    egress_service,
+                    &mut failed,
+                    readiness,
+                )
+                .await?;
+                Ok((tools, failed))
+            }));
+        }
+        let results = futures::stream::iter(discoveries).buffered(16);
+        futures::pin_mut!(results);
+        let mut definitions = Vec::new();
+        let mut bytes = 0usize;
+        while let Some(result) = results.next().await {
+            let (tools, errors) = result?;
+            append_bounded(&mut definitions, &mut bytes, tools)?;
+            failed.extend(errors);
+        }
+        definitions
+    } else {
+        build_materialized_scoped_mcp_tool_definitions_ready(
+            db,
+            org_id,
+            &listed,
+            Some(session_id),
+            connection_resolver,
+            egress_service,
+            &mut failed,
+            readiness,
+        )
+        .await?
+    };
     if let Some(storage) = storage {
-        keep_last_listed_tools(storage, session_id, &listed, &failed, &mut definitions).await;
+        let pending = readiness
+            .map(|r| r.pending.lock().unwrap_or_else(|e| e.into_inner()).clone())
+            .unwrap_or_default();
+        // Pending is neither failure nor a successful empty list. Do not
+        // overwrite the previous catalog, or restore it without current auth.
+        let completed: ScopedMcpServers = listed
+            .iter()
+            .filter(|(name, _)| !pending.contains(name))
+            .map(|(name, server)| (name.clone(), server.clone()))
+            .collect();
+        keep_last_listed_tools(
+            storage,
+            session_id,
+            &completed,
+            &failed,
+            &mut definitions,
+            readiness.is_some(),
+        )
+        .await?;
+        if let Some(readiness) = readiness {
+            let authentication_required = readiness
+                .authentication_required
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let mut statuses = readiness
+                .snapshots
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            for (name, snapshot) in &mut statuses {
+                snapshot.status = if pending.contains(name) {
+                    "pending"
+                } else if authentication_required.contains(name) {
+                    "authentication_required"
+                } else if failed.contains(name) {
+                    "failed"
+                } else {
+                    "ready"
+                }
+                .into();
+            }
+            if let Ok(value) = serde_json::to_string(&statuses)
+                && let Err(error) = storage
+                    .set_value(session_id, DISCOVERY_STATUS_KV_KEY, &value)
+                    .await
+            {
+                tracing::warn!(%error, "Failed to record MCP discovery readiness");
+            }
+        } else if let Err(error) = storage
+            .delete_value(session_id, DISCOVERY_STATUS_KV_KEY)
+            .await
+        {
+            // A blocking turn supersedes snapshots from a previously enabled
+            // readiness budget; otherwise old pending/failed badges persist.
+            tracing::warn!(%error, "Failed to clear disabled MCP discovery readiness");
+        }
     }
     let mut metadata_servers = servers.clone();
     for name in deferred {
@@ -86,7 +233,41 @@ pub async fn build_turn_mcp_tool_definitions(
         ));
     }
     super::scoped_mcp::attach_server_search_metadata(&mut definitions, &metadata_servers);
+    if readiness.is_some() {
+        catalog_bytes(&definitions)?;
+    }
     Ok(definitions)
+}
+
+fn catalog_bytes(definitions: &[ToolDefinition]) -> Result<usize> {
+    if definitions.len() > everruns_core::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS {
+        anyhow::bail!("MCP session discovery exceeded aggregate catalog bounds");
+    }
+    let mut bytes = 0usize;
+    for tool in definitions {
+        bytes = bytes.saturating_add(serde_json::to_vec(tool)?.len());
+        if bytes > everruns_core::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES {
+            anyhow::bail!("MCP session discovery exceeded aggregate catalog bounds");
+        }
+    }
+    Ok(bytes)
+}
+
+fn append_bounded(
+    definitions: &mut Vec<ToolDefinition>,
+    bytes: &mut usize,
+    tools: Vec<ToolDefinition>,
+) -> Result<()> {
+    for tool in tools {
+        *bytes = bytes.saturating_add(serde_json::to_vec(&tool)?.len());
+        if definitions.len() >= everruns_core::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS
+            || *bytes > everruns_core::mcp::MCP_SESSION_DISCOVERY_MAX_BYTES
+        {
+            anyhow::bail!("MCP session discovery exceeded aggregate catalog bounds");
+        }
+        definitions.push(tool);
+    }
+    Ok(())
 }
 
 /// Hash of the record this process last wrote per (session, server prefix),
@@ -106,7 +287,13 @@ async fn keep_last_listed_tools(
     listed: &ScopedMcpServers,
     failed: &[String],
     definitions: &mut Vec<ToolDefinition>,
-) {
+    bounded: bool,
+) -> Result<()> {
+    let mut bytes = if bounded {
+        catalog_bytes(definitions)?
+    } else {
+        0
+    };
     let mut by_prefix: HashMap<String, Vec<ToolDefinition>> = HashMap::new();
     for definition in definitions.iter() {
         if let Some((prefix, _)) = everruns_core::mcp_server::parse_mcp_tool_name(definition.name())
@@ -136,7 +323,11 @@ async fn keep_last_listed_tools(
                 tools = kept.len(),
                 "MCP tool listing failed; keeping the tools it listed last"
             );
-            definitions.extend(kept);
+            if bounded {
+                append_bounded(definitions, &mut bytes, kept)?;
+            } else {
+                definitions.extend(kept);
+            }
             continue;
         }
         let tools = by_prefix.remove(&prefix).unwrap_or_default();
@@ -168,6 +359,7 @@ async fn keep_last_listed_tools(
             }
         }
     }
+    Ok(())
 }
 
 async fn effective_server_description(

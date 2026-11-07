@@ -2,6 +2,27 @@
 use super::*;
 
 impl InProcessRuntimeBuilder {
+    /// Bound interactive waiting for cold MCP discovery. Unset preserves blocking
+    /// discovery. Expiry leaves discovery running for subsequent turns.
+    #[cfg(feature = "mcp")]
+    pub fn mcp_readiness_budget(mut self, budget: std::time::Duration) -> Self {
+        self.mcp_discovery_cache = Some(Arc::new(
+            crate::host::McpDiscoveryCache::with_readiness_budget(Some(budget)),
+        ));
+        self
+    }
+
+    /// Preserve discovery across short-lived runtimes belonging to one host.
+    /// Cache keys include session and attachment configuration, never server name alone.
+    #[cfg(feature = "mcp")]
+    pub fn shared_mcp_discovery_cache(
+        mut self,
+        cache: Arc<crate::host::McpDiscoveryCache>,
+    ) -> Self {
+        self.mcp_discovery_cache = Some(cache);
+        self
+    }
+
     /// Share a live, turn-scoped reasoning-effort override with this runtime.
     ///
     /// The Reason step re-reads the handle before each model call, so a change
@@ -117,5 +138,37 @@ impl InProcessRuntimeBuilder {
     pub fn model_spec(mut self, model: everruns_contracts::model_spec::ModelSpec) -> Self {
         self.model_spec = Some(model);
         self
+    }
+}
+
+/// Replace bare `plugin:{name}` refs (empty config) with the hydrated version
+/// (config = serialised `DeclarativeCapabilityDefinition`) so that the core
+/// capability resolution path can deserialise them without a registry entry.
+///
+/// Only replaces entries whose config is empty / `null`; entries that already
+/// carry a non-empty config are left unchanged so explicit overrides are honoured.
+pub(super) fn hydrate_plugin_refs(
+    capabilities: &mut [everruns_contracts::CapabilityRef],
+    plugin_configs: &[everruns_contracts::CapabilityRef],
+) {
+    for cap in capabilities.iter_mut() {
+        let cap_id = cap.capability_id();
+        if !everruns_contracts::is_plugin_capability(cap_id) {
+            continue;
+        }
+        // Only replace if the config is missing / empty so explicit overrides are honoured.
+        let is_bare = cap.config_value().is_null()
+            || cap
+                .config_value()
+                .clone()
+                .as_object()
+                .map(|o| o.is_empty())
+                .unwrap_or(false);
+        if !is_bare {
+            continue;
+        }
+        if let Some(hydrated) = plugin_configs.iter().find(|c| c.capability_id() == cap_id) {
+            cap.set_config(hydrated.config_value().clone());
+        }
     }
 }
