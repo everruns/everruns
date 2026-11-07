@@ -244,6 +244,29 @@ def top_statements(pg, turns_done: int, limit: int = 12) -> list[dict]:
     return out
 
 
+def write_statements(pg, turns_done: int, path: str) -> None:
+    """Every statement since the load began, per turn, as TSV: what a cut has
+    to account for. WAL bytes per statement show which ones write."""
+    n = max(1, turns_done)
+    rows = pg.psql("stress", (
+        "SELECT calls, total_exec_time, rows, wal_bytes, regexp_replace(query, '\\s+', ' ', 'g') "
+        "FROM pg_stat_statements ORDER BY calls DESC"))
+    with open(path, "w") as f:
+        f.write("calls_per_turn\tms_per_turn\trows_per_turn\twal_kb_per_turn\tquery\n")
+        for calls, ms, returned, wal, query in rows:
+            f.write(f"{float(calls) / n:.2f}\t{float(ms) / n:.3f}\t{float(returned) / n:.2f}\t"
+                    f"{float(wal) / 1024 / n:.2f}\t{query}\n")
+    # Row writes per table: with the schema's foreign keys, this says which
+    # inserts make the key-share lookups in the statement list.
+    rows = pg.psql("stress", (
+        "SELECT relname, n_tup_ins, n_tup_upd, n_tup_hot_upd, n_tup_del FROM pg_stat_user_tables "
+        "WHERE n_tup_ins + n_tup_upd + n_tup_del > 0 ORDER BY n_tup_ins + n_tup_upd + n_tup_del DESC"))
+    with open(os.path.join(os.path.dirname(path), "tables.tsv"), "w") as f:
+        f.write("inserts_per_turn\tupdates_per_turn\thot_updates_per_turn\tdeletes_per_turn\ttable\n")
+        for name, ins, upd, hot, dele in rows:
+            f.write(f"{int(ins) / n:.2f}\t{int(upd) / n:.2f}\t{int(hot) / n:.2f}\t{int(dele) / n:.2f}\t{name}\n")
+
+
 def background(idle_before: dict, idle_after: dict, seconds: float) -> dict:
     """Counter rates with no load: lease renewals, sweeps and pollers of every process."""
     return {k: (idle_after[k] - idle_before[k]) / max(1e-6, seconds) for k in idle_before}

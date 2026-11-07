@@ -210,9 +210,9 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
         time.sleep(a.idle_seconds)
         before = metrics.counters(pg, procs)
         rate = metrics.background(idle, before, a.idle_seconds)
-        # Reset so the top statements cover only the load, then re-read the
+        # Reset so the statement and table counts cover only the load, then re-read the
         # counters the reset zeroed.
-        pg.psql("stress", "SELECT pg_stat_statements_reset()")
+        pg.psql("stress", "SELECT pg_stat_statements_reset(), pg_stat_reset()")
         before = metrics.counters(pg, procs)
         nats_before = metrics.nats_stream(nats_monitor_port)
         sampler = metrics.Sampler(pg, procs)
@@ -249,6 +249,7 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
             "top_statements": metrics.top_statements(pg, summary["turns"]),
             **load,
         }
+        metrics.write_statements(pg, summary["turns"], os.path.join(out_dir, "statements.tsv"))
     finally:
         topo.stop()
         pg.stop()
