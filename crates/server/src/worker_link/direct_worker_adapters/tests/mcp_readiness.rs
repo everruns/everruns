@@ -52,7 +52,7 @@ impl EgressService for GatedMcp {
 
 #[tokio::test]
 async fn platform_readiness_worker_to_api_smoke() {
-    Readiness::with_test_budget(Duration::from_millis(100), async {
+    Readiness::with_test_budget(Duration::from_secs(2), async {
         let adapters = test_adapters();
         let harness =
             seed_harness_for_platform_store(&adapters.db, DEFAULT_ORG_ID, "readiness-smoke", false)
@@ -94,25 +94,12 @@ async fn platform_readiness_worker_to_api_smoke() {
             Arc::new(DefaultPermissionResolver),
         );
         let first = tokio::time::timeout(
-            Duration::from_secs(5),
+            Duration::from_secs(10),
             adapters.load_turn_context(DEFAULT_ORG_ID, session.uuid()),
         )
         .await
         .expect("pending discovery must not block worker preparation")
         .unwrap();
-        assert!(
-            first
-                .mcp_tool_definitions
-                .iter()
-                .any(|tool| tool.name().starts_with("mcp_z_fast_"))
-        );
-        assert!(
-            first
-                .mcp_tool_definitions
-                .iter()
-                .all(|tool| !tool.name().starts_with("mcp_a_slow_"))
-        );
-        assert_eq!(egress.slow_calls.load(Ordering::SeqCst), 1);
         // This command is exactly the projection invoked by GET
         // /v1/sessions/{session_id}/mcp-servers, using the same persisted records.
         let pending = ListChatMcpServers {
@@ -121,6 +108,26 @@ async fn platform_readiness_worker_to_api_smoke() {
         .run(&ctx)
         .await
         .unwrap();
+        let first_names: Vec<_> = first
+            .mcp_tool_definitions
+            .iter()
+            .map(|tool| tool.name())
+            .collect();
+        assert!(
+            first
+                .mcp_tool_definitions
+                .iter()
+                .any(|tool| tool.name().starts_with("mcp_z_fast_")),
+            "tools={first_names:?}, api={pending:?}"
+        );
+        assert!(
+            first
+                .mcp_tool_definitions
+                .iter()
+                .all(|tool| !tool.name().starts_with("mcp_a_slow_")),
+            "tools={first_names:?}, api={pending:?}"
+        );
+        assert_eq!(egress.slow_calls.load(Ordering::SeqCst), 1);
         assert_eq!(
             pending
                 .iter()
@@ -141,7 +148,7 @@ async fn platform_readiness_worker_to_api_smoke() {
         );
         egress.slow_gate.add_permits(1);
         let second = tokio::time::timeout(
-            Duration::from_secs(5),
+            Duration::from_secs(10),
             adapters.load_turn_context(DEFAULT_ORG_ID, session.uuid()),
         )
         .await

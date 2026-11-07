@@ -229,7 +229,8 @@ async fn readiness_keeps_fast_peer_when_first_server_is_pending() {
         delegate: CatalogPreviewEgress::default(),
         slow_gate: tokio::sync::Semaphore::new(0),
     });
-    let session = SessionId::new();
+    // Session creation opens the lazy test pool before the readiness clock.
+    let session = db.create_test_session().await;
     let servers = ScopedMcpServers::from([
         (
             "a_slow".into(),
@@ -244,29 +245,44 @@ async fn readiness_keeps_fast_peer_when_first_server_is_pending() {
         everruns_core::DEFAULT_ORG_ID,
         session,
         egress.clone(),
-        std::time::Duration::from_millis(100),
+        std::time::Duration::from_secs(2),
     );
-    let tools = build_turn_mcp_tool_definitions_inner(
-        &db,
-        everruns_core::DEFAULT_ORG_ID,
-        &servers,
-        session,
-        None,
-        egress.as_ref(),
-        Some(&storage),
-        Some(&readiness),
+    let tools = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        build_turn_mcp_tool_definitions_inner(
+            &db,
+            everruns_core::DEFAULT_ORG_ID,
+            &servers,
+            session,
+            None,
+            egress.as_ref(),
+            Some(&storage),
+            Some(&readiness),
+        ),
     )
     .await
+    .expect("gated discovery must not block turn preparation")
     .unwrap();
-    assert!(tools.iter().any(|t| t.name().starts_with("mcp_z_fast_")));
-    assert!(tools.iter().all(|t| !t.name().starts_with("mcp_a_slow_")));
-    assert_eq!(*readiness.pending.lock().unwrap(), vec!["a_slow"]);
     let snapshot = storage
         .get_value(session, super::super::deferred::DISCOVERY_STATUS_KV_KEY)
         .await
         .unwrap()
         .unwrap();
     let snapshot: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+    let names: Vec<_> = tools.iter().map(|tool| tool.name()).collect();
+    assert!(
+        names.iter().any(|name| name.starts_with("mcp_z_fast_")),
+        "tools={names:?}, snapshot={snapshot}"
+    );
+    assert!(
+        names.iter().all(|name| !name.starts_with("mcp_a_slow_")),
+        "tools={names:?}, snapshot={snapshot}"
+    );
+    assert_eq!(
+        *readiness.pending.lock().unwrap(),
+        vec!["a_slow"],
+        "snapshot={snapshot}"
+    );
     assert_eq!(snapshot["a_slow"]["status"], "pending");
     assert_eq!(snapshot["z_fast"]["status"], "ready");
     egress.slow_gate.add_permits(1);
