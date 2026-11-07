@@ -103,7 +103,7 @@ pub fn routes(state: ApiState) -> Router {
 
 /// Strip MIME parameters (`; charset=...`) and lowercase the bare media type
 /// so callers tolerate common header variations.
-fn normalize_content_type(content_type: &str) -> String {
+pub(crate) fn normalize_content_type(content_type: &str) -> String {
     content_type
         .split(';')
         .next()
@@ -382,18 +382,42 @@ pub async fn get_image(
         })?
         .ok_or((StatusCode::NOT_FOUND, "Image not found".to_string()))?;
 
+    let (content_type, disposition) = served_image_headers(&row.content_type, &row.filename);
     let response = Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, row.content_type)
-        .header(
-            header::CONTENT_DISPOSITION,
-            format!("inline; filename=\"{}\"", row.filename),
-        )
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_DISPOSITION, disposition)
         .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::CONTENT_SECURITY_POLICY, "sandbox")
         .body(Body::from(row.data))
         .unwrap();
 
     Ok(response)
+}
+
+/// The `Content-Type` and `Content-Disposition` an image row is served with.
+///
+/// Decision: only the raster allowlist renders inline, compared after
+/// normalizing (a stored `image/SVG+xml` once passed a case-sensitive check
+/// and rendered as an SVG document on the app origin). Anything else, such as
+/// a legacy row, is served as an inert download. The caller also sends
+/// `Content-Security-Policy: sandbox` so even an allowed type opened directly
+/// runs no script (TM-API-033).
+fn served_image_headers(stored_type: &str, filename: &str) -> (String, String) {
+    let filename: String = filename
+        .chars()
+        .filter(|c| !c.is_control() && *c != '"' && *c != '\\')
+        .collect();
+    let normalized = normalize_content_type(stored_type);
+    if ALLOWED_CONTENT_TYPES.contains(&normalized.as_str()) {
+        (normalized, format!("inline; filename=\"{filename}\""))
+    } else {
+        (
+            "application/octet-stream".to_string(),
+            format!("attachment; filename=\"{filename}\""),
+        )
+    }
 }
 
 /// GET /v1/images/{image_id}/thumbnail - Get image thumbnail
@@ -443,6 +467,8 @@ pub async fn get_thumbnail(
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, thumbnail_content_type)
         .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::CONTENT_SECURITY_POLICY, "sandbox")
         .body(Body::from(thumbnail_data))
         .unwrap();
 
@@ -495,6 +521,30 @@ pub async fn delete_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn served_image_headers_render_only_allowlisted_rasters_inline() {
+        assert_eq!(
+            served_image_headers("image/PNG; charset=binary", "a.png"),
+            (
+                "image/png".to_string(),
+                "inline; filename=\"a.png\"".to_string()
+            )
+        );
+        for stored in [
+            "image/SVG+xml",
+            "image/svg+xml",
+            "text/html",
+            "image/x-icon",
+            "",
+        ] {
+            let (content_type, disposition) = served_image_headers(stored, "x.svg");
+            assert_eq!(content_type, "application/octet-stream", "{stored}");
+            assert!(disposition.starts_with("attachment;"), "{stored}");
+        }
+        let (_, disposition) = served_image_headers("image/png", "a\"; x=\r\n.png");
+        assert_eq!(disposition, "inline; filename=\"a; x=.png\"");
+    }
 
     #[test]
     fn test_is_valid_content_type() {

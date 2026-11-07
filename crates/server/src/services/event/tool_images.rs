@@ -25,15 +25,25 @@ use everruns_core::events::EventData;
 /// Same bound as an uploaded image.
 const MAX_OFFLOAD_BYTES: usize = 100 * 1024 * 1024;
 
-/// Whether `part` is an inline raster image this module would move.
-fn inline_raster(part: &ContentPart) -> Option<(&str, &str)> {
+/// Whether `part` is an inline raster image this module would move, with its
+/// normalized media type.
+///
+/// Only types on the uploaded-image allowlist move, compared after the same
+/// normalization uploads get (lowercase, parameters stripped). A tool controls
+/// this string: a case-sensitive `image/svg` check let `image/SVG+xml` through,
+/// and the stored row then rendered as an SVG document on the app origin
+/// (TM-API-033). Anything else stays inline in the event.
+fn inline_raster(part: &ContentPart) -> Option<(&str, String)> {
     match part {
         ContentPart::Image(ImageContentPart {
             url: None,
             base64: Some(data),
             media_type: Some(media_type),
-        }) if media_type.starts_with("image/") && !media_type.starts_with("image/svg") => {
-            Some((data.as_str(), media_type.as_str()))
+        }) => {
+            let normalized = crate::api::images::normalize_content_type(media_type);
+            crate::api::images::ALLOWED_CONTENT_TYPES
+                .contains(&normalized.as_str())
+                .then_some((data.as_str(), normalized))
         }
         _ => None,
     }
@@ -67,11 +77,7 @@ pub(super) async fn offload(db: &StorageBackend, org_id: i64, data: &mut EventDa
         if bytes.len() > MAX_OFFLOAD_BYTES {
             continue;
         }
-        let extension = media_type
-            .trim_start_matches("image/")
-            .split(['+', ';'])
-            .next()
-            .unwrap_or("img");
+        let extension = media_type.trim_start_matches("image/");
         let filename = format!("{tool_name}-{index}.{extension}");
         let stored = db
             .create_image(
@@ -79,7 +85,7 @@ pub(super) async fn offload(db: &StorageBackend, org_id: i64, data: &mut EventDa
                 CreateImageRow {
                     org_id,
                     filename: filename.clone(),
-                    content_type: media_type.to_string(),
+                    content_type: media_type.clone(),
                     size_bytes: bytes.len() as i64,
                     data: bytes,
                     thumbnail_data: None,
@@ -128,6 +134,21 @@ mod tests {
 
         assert!(has_inline_images(&completed(vec![png])));
         assert!(!has_inline_images(&completed(vec![pdf, svg, linked])));
+        // Media types compare case-insensitively; only the raster allowlist moves.
+        for media_type in [
+            "image/SVG+xml",
+            "IMAGE/SVG+XML",
+            "image/x-icon",
+            "image/bmp",
+        ] {
+            let part = ContentPart::Image(ImageContentPart::from_base64("aGk=", media_type));
+            assert!(!has_inline_images(&completed(vec![part])), "{media_type}");
+        }
+        let upper = ContentPart::Image(ImageContentPart::from_base64("aGk=", "Image/PNG; x=1"));
+        assert_eq!(
+            inline_raster(&upper).map(|(_, media_type)| media_type),
+            Some("image/png".to_string())
+        );
         assert!(!has_inline_images(&completed(vec![ContentPart::text(
             "ok"
         )])));
