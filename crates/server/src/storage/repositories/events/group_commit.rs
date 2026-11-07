@@ -5,10 +5,11 @@
 //!   used to be one transaction each: lock the session's sequence row, check
 //!   the lease, insert, commit. Every commit waits for a WAL flush, and at 500
 //!   parallel agents those flushes were the wall (production, 2026-10-29).
-//!   Here appends wait on a queue, and one transaction stores everything
-//!   queued: one lock statement, one fence check, one insert, one commit for
-//!   many appends. Each caller is answered after that commit, so an answered
-//!   append is as durable as before.
+//!   Here appends wait on a queue, and one autocommitted statement stores
+//!   everything queued: locks, fence checks, sequence reservation and insert
+//!   in one round trip and one commit for many appends
+//!   (`store_in_one_statement`). Each caller is answered after that commit,
+//!   so an answered append is as durable as before.
 //! - No timer. A lane commits as soon as its previous commit returns, taking
 //!   whatever arrived meanwhile. Alone, an append costs what it did plus an
 //!   in-process hand-off; under load it waits for at most the commit already
@@ -20,10 +21,13 @@
 //!   them. Replicas need no coordination: each groups what it receives.
 //! - Fences are checked together, and an append whose lease is gone is
 //!   answered "lease lost" and left out; the others still commit.
-//! - Any other failure before the commit (a bad payload, a deadlock) fails
-//!   the group, which then runs append by append, so the error reaches only
-//!   the append that caused it. A failed commit is not retried: its outcome is
-//!   unknown, and each caller gets the error as a lone append's caller did.
+//! - Any error the database reports (a bad payload, a deadlock) fails the
+//!   group with nothing stored, and it then runs append by append, so the
+//!   error reaches only the append that caused it. A connection lost
+//!   mid-statement is not retried: its outcome is unknown, and each caller
+//!   gets the error as a lone append's caller did.
+//! - An append to a session without an `event_sequences` row yet (its first
+//!   event) runs alone, after the group, in group order.
 //! - Inside a command transaction the append keeps running on that
 //!   transaction (`storage::transaction`), never on a lane.
 //! - `EVENT_GROUP_COMMIT=off` turns grouping off (bench comparisons).
@@ -36,9 +40,10 @@ use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use super::rows::{CreateEventRow, EventRow};
-use super::{ActorLeaseFenceRejected, MAX_EVENT_BATCH, batch_insert_query, order_batch_rows};
+use super::{ActorLeaseFenceRejected, MAX_EVENT_BATCH};
 use crate::storage::repositories::Database;
 use everruns_contracts::typed_id::SessionId;
+use everruns_server_macros::sql;
 
 /// Appends one group may take.
 const MAX_GROUP_APPENDS: usize = 64;
@@ -203,30 +208,41 @@ async fn commit_group(db: &Database, group: Vec<Append>) {
     if group.is_empty() {
         return;
     }
-    if group.len() == 1 {
-        let append = group.into_iter().next().expect("one append");
-        let result = db.append_alone(append.inputs, &append.check).await;
-        let _ = append.reply.send(result);
-        return;
-    }
-    match try_group(db, &group).await {
-        Ok(GroupOutcome::Stored { results }) => {
-            for (append, result) in group.into_iter().zip(results) {
+    match store_in_one_statement(db, &group).await {
+        Ok(verdicts) => {
+            // Appends to a session with no sequence row yet go alone, in
+            // group order: the single append creates the row.
+            let mut unsequenced = Vec::new();
+            for (append, verdict) in group.into_iter().zip(verdicts) {
+                match verdict {
+                    Verdict::Stored(rows) => {
+                        let _ = append.reply.send(Ok(rows));
+                    }
+                    Verdict::Lost(session) => {
+                        let _ = append.reply.send(Err(append.check.rejected(session)));
+                    }
+                    Verdict::Unsequenced => unsequenced.push(append),
+                }
+            }
+            for append in unsequenced {
+                let result = db.append_alone(append.inputs, &append.check).await;
                 let _ = append.reply.send(result);
             }
         }
-        Ok(GroupOutcome::CommitFailed(error)) => {
+        Err(StatementError::Unknown(error)) => {
             let message = format!("{error:#}");
             for append in group {
                 let _ = append.reply.send(Err(anyhow::anyhow!(message.clone())));
             }
         }
-        Err(error) => {
-            tracing::warn!(
-                appends = group.len(),
-                error = %format!("{error:#}"),
-                "grouped event append failed; storing each append alone"
-            );
+        Err(StatementError::NotStored(error)) => {
+            if group.len() > 1 {
+                tracing::warn!(
+                    appends = group.len(),
+                    error = %format!("{error:#}"),
+                    "grouped event append failed; storing each append alone"
+                );
+            }
             for append in group {
                 let result = db.append_alone(append.inputs, &append.check).await;
                 let _ = append.reply.send(result);
@@ -235,137 +251,258 @@ async fn commit_group(db: &Database, group: Vec<Append>) {
     }
 }
 
-enum GroupOutcome {
-    /// One result per append, in group order.
-    Stored { results: Vec<Result<Vec<EventRow>>> },
-    /// The commit itself failed; whether it landed is unknown.
-    CommitFailed(anyhow::Error),
+/// What became of one append of a group.
+enum Verdict {
+    /// Stored; its rows, in input order.
+    Stored(Vec<EventRow>),
+    /// Refused: this session's lease (or detached call) is not the
+    /// append's. Nothing of it was written.
+    Lost(Uuid),
+    /// A session it writes to has no `event_sequences` row yet; nothing of
+    /// it was written.
+    Unsequenced,
 }
 
-/// One transaction for the whole group. `Err` means nothing was committed
-/// and every append may run again alone.
-async fn try_group(db: &Database, group: &[Append]) -> Result<GroupOutcome> {
-    let per_append: Vec<Vec<Uuid>> = group.iter().map(Append::sessions).collect();
-    let mut sessions: Vec<Uuid> = per_append.iter().flatten().copied().collect();
-    sessions.sort();
-    sessions.dedup();
+enum StatementError {
+    /// The database refused the statement or it never ran: nothing landed,
+    /// and every append may run again alone.
+    NotStored(anyhow::Error),
+    /// The connection failed mid-statement: whether it landed is unknown.
+    Unknown(anyhow::Error),
+}
 
-    let mut tx = db.pool.begin().await?;
-    // The single append's create-or-lock, for every session of the group, in
-    // session id order (see `Database::create_events_checked`).
-    sqlx::query(
-        "INSERT INTO event_sequences (session_id, next_sequence, updated_at) \
-         SELECT id, 1, NOW() FROM UNNEST($1::uuid[]) AS id ORDER BY id \
-         ON CONFLICT (session_id) DO UPDATE SET next_sequence = event_sequences.next_sequence",
-    )
-    .bind(&sessions)
-    .execute(&mut *tx)
-    .await?;
-
-    // Every (append, session) pair's claim, checked in one statement per kind.
-    let mut lease_idx = Vec::new();
-    let mut lease_session = Vec::new();
-    let mut lease_holder = Vec::new();
-    let mut lease_fence = Vec::new();
-    let mut detached_idx = Vec::new();
-    let mut detached_session = Vec::new();
-    let mut detached_holder = Vec::new();
-    let mut detached_call = Vec::new();
-    for (index, (append, sessions)) in group.iter().zip(&per_append).enumerate() {
-        for session in sessions {
+/// The whole group as one autocommitted statement: lock the sessions'
+/// sequence rows, check every append's lease, reserve sequences for the
+/// accepted ones and insert their events.
+///
+/// Decision: one statement, not a transaction of four (lock, fence check,
+/// insert, plus BEGIN and COMMIT). That was six statements per append in the
+/// stress bench, the sixth a foreign-key check on `sessions`: the lock was a
+/// no-op upsert of `event_sequences`, so the reservation updated a row
+/// version this transaction had written, and PostgreSQL re-checks a foreign
+/// key in that case. Here the lock is `FOR NO KEY UPDATE` and the row is
+/// updated once.
+///
+/// Lock order stays the one every writer uses: a session's `event_sequences`
+/// row before its actor row (or detached call row). The fence checks join
+/// `locked`, so an actor row is locked only once its session's sequence row
+/// already is; across sessions both go in session id order.
+/// A session with no sequence row is left to the single append, which
+/// creates it; a `FOR NO KEY UPDATE` cannot lock a row its snapshot does not
+/// see.
+async fn store_in_one_statement(
+    db: &Database,
+    group: &[Append],
+) -> Result<Vec<Verdict>, StatementError> {
+    let mut claim_idx = Vec::new();
+    let mut claim_session = Vec::new();
+    let mut claim_holder = Vec::new();
+    let mut claim_fence: Vec<Option<i64>> = Vec::new();
+    let mut claim_call: Vec<Option<String>> = Vec::new();
+    for (index, append) in group.iter().enumerate() {
+        for session in append.sessions() {
+            claim_idx.push(index as i32);
+            claim_session.push(session);
             match &append.check {
                 AppendCheck::Lease { holder, fence } => {
-                    lease_idx.push(index as i32);
-                    lease_session.push(*session);
-                    lease_holder.push(holder.clone());
-                    lease_fence.push(*fence);
+                    claim_holder.push(holder.clone());
+                    claim_fence.push(Some(*fence));
+                    claim_call.push(None);
                 }
                 AppendCheck::Detached {
                     holder,
                     tool_call_id,
                 } => {
-                    detached_idx.push(index as i32);
-                    detached_session.push(*session);
-                    detached_holder.push(holder.clone());
-                    detached_call.push(tool_call_id.clone());
+                    claim_holder.push(holder.clone());
+                    claim_fence.push(None);
+                    claim_call.push(Some(tool_call_id.clone()));
                 }
             }
         }
     }
-    let mut held: Vec<(i32, Uuid)> = Vec::new();
-    if !lease_idx.is_empty() {
-        held.extend(
-            sqlx::query_as::<_, (i32, Uuid)>(
-                "SELECT c.idx, a.session_id \
-                 FROM UNNEST($1::int[], $2::uuid[], $3::text[], $4::bigint[]) \
-                      AS c(idx, session_id, holder, fence) \
-                 JOIN session_actors a ON a.session_id = c.session_id \
-                  AND a.lease_holder = c.holder AND a.lease_fence = c.fence \
-                  AND a.lease_expires_at > NOW() \
-                 ORDER BY a.session_id FOR SHARE OF a",
-            )
-            .bind(&lease_idx)
-            .bind(&lease_session)
-            .bind(&lease_holder)
-            .bind(&lease_fence)
-            .fetch_all(&mut *tx)
-            .await?,
-        );
-    }
-    if !detached_idx.is_empty() {
-        held.extend(
-            sqlx::query_as::<_, (i32, Uuid)>(
-                "SELECT c.idx, d.session_id \
-                 FROM UNNEST($1::int[], $2::uuid[], $3::text[], $4::text[]) \
-                      AS c(idx, session_id, holder, tool_call_id) \
-                 JOIN detached_tool_calls d ON d.session_id = c.session_id \
-                  AND d.holder = c.holder AND d.tool_call_id = c.tool_call_id \
-                  AND d.expires_at > NOW() \
-                 ORDER BY d.session_id FOR SHARE OF d",
-            )
-            .bind(&detached_idx)
-            .bind(&detached_session)
-            .bind(&detached_holder)
-            .bind(&detached_call)
-            .fetch_all(&mut *tx)
-            .await?,
-        );
-    }
 
-    // Accepted appends' events, in group order, as one insert.
-    let mut verdicts: Vec<Option<Uuid>> = Vec::with_capacity(group.len());
-    let mut accepted: Vec<CreateEventRow> = Vec::new();
-    for (index, sessions) in per_append.iter().enumerate() {
-        let lost = sessions
-            .iter()
-            .find(|session| !held.contains(&(index as i32, **session)))
-            .copied();
-        if lost.is_none() {
-            accepted.extend(group[index].inputs.iter().cloned());
-        }
-        verdicts.push(lost);
-    }
-    let mut stored = Vec::with_capacity(accepted.len());
-    for chunk in accepted.chunks(MAX_EVENT_BATCH) {
-        let rows = batch_insert_query(chunk)
-            .build_query_as::<EventRow>()
-            .fetch_all(&mut *tx)
-            .await?;
-        stored.extend(order_batch_rows(chunk, rows)?);
-    }
-    if let Err(error) = tx.commit().await {
-        return Ok(GroupOutcome::CommitFailed(error.into()));
-    }
-    let mut rows = stored.into_iter();
-    let results = group
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "WITH input (ord, idx, session_id, event_type, ts, context, data, metadata, tags) AS (",
+    );
+    let inputs = group
         .iter()
-        .zip(verdicts)
-        .map(|(append, lost)| match lost {
-            Some(session) => Err(append.check.rejected(session)),
-            None => Ok(rows.by_ref().take(append.inputs.len()).collect()),
+        .enumerate()
+        .flat_map(|(index, append)| append.inputs.iter().map(move |input| (index, input)));
+    qb.push_values(inputs.enumerate(), |mut row, (ord, (index, input))| {
+        row.push_bind(ord as i64)
+            .push_unseparated("::BIGINT")
+            .push_bind(index as i32)
+            .push_unseparated("::INTEGER")
+            .push_bind(input.session_id.uuid())
+            .push_unseparated("::UUID")
+            .push_bind(&input.event_type)
+            .push_unseparated("::TEXT")
+            .push_bind(input.ts)
+            .push_unseparated("::TIMESTAMPTZ")
+            .push_bind(&input.context)
+            .push_unseparated("::JSONB")
+            .push_bind(&input.data)
+            .push_unseparated("::JSONB")
+            .push_bind(&input.metadata)
+            .push_unseparated("::JSONB")
+            .push_bind(&input.tags)
+            .push_unseparated("::TEXT[]");
+    });
+    qb.push("), claims AS (SELECT * FROM UNNEST(");
+    qb.push_bind(&claim_idx);
+    qb.push("::INTEGER[], ");
+    qb.push_bind(&claim_session);
+    qb.push("::UUID[], ");
+    qb.push_bind(&claim_holder);
+    qb.push("::TEXT[], ");
+    qb.push_bind(&claim_fence);
+    qb.push("::BIGINT[], ");
+    qb.push_bind(&claim_call);
+    qb.push("::TEXT[]) AS c(idx, session_id, holder, fence, tool_call_id))");
+    qb.push(sql!(
+        r#"
+        , locked AS MATERIALIZED (
+            SELECT es.session_id FROM event_sequences es
+            WHERE es.session_id IN (SELECT session_id FROM claims)
+            ORDER BY es.session_id
+            FOR NO KEY UPDATE
+        ),
+        held_lease AS MATERIALIZED (
+            SELECT c.idx, a.session_id
+            FROM claims c
+            JOIN locked l ON l.session_id = c.session_id
+            JOIN session_actors a ON a.session_id = c.session_id
+             AND c.fence IS NOT NULL
+             AND a.lease_holder = c.holder AND a.lease_fence = c.fence
+             AND a.lease_expires_at > NOW()
+            ORDER BY a.session_id
+            FOR SHARE OF a
+        ),
+        held_detached AS MATERIALIZED (
+            SELECT c.idx, d.session_id
+            FROM claims c
+            JOIN locked l ON l.session_id = c.session_id
+            JOIN detached_tool_calls d ON d.session_id = c.session_id
+             AND c.tool_call_id IS NOT NULL
+             AND d.holder = c.holder AND d.tool_call_id = c.tool_call_id
+             AND d.expires_at > NOW()
+            ORDER BY d.session_id
+            FOR SHARE OF d
+        ),
+        held AS (
+            SELECT idx, session_id FROM held_lease
+            UNION
+            SELECT idx, session_id FROM held_detached
+        ),
+        verdict AS MATERIALIZED (
+            SELECT c.idx,
+                   bool_and(l.session_id IS NOT NULL) AS sequenced,
+                   bool_and(h.idx IS NOT NULL) AS held,
+                   (min(c.session_id::TEXT) FILTER (WHERE h.idx IS NULL))::UUID AS lost
+            FROM claims c
+            LEFT JOIN locked l ON l.session_id = c.session_id
+            LEFT JOIN held h ON h.idx = c.idx AND h.session_id = c.session_id
+            GROUP BY c.idx
+        ),
+        keep AS (
+            SELECT i.* FROM input i JOIN verdict v ON v.idx = i.idx
+            WHERE v.sequenced AND v.held
+        ),
+        counts AS (
+            SELECT session_id, COUNT(*)::INTEGER AS n FROM keep GROUP BY session_id
+        ),
+        reserved AS (
+            UPDATE event_sequences es
+            SET next_sequence = es.next_sequence + counts.n, updated_at = NOW()
+            FROM counts
+            WHERE es.session_id = counts.session_id
+            RETURNING es.session_id, es.next_sequence
+        ),
+        planned AS MATERIALIZED (
+            SELECT k.ord, k.idx, k.session_id,
+                   r.next_sequence - c.n - 1
+                       + (ROW_NUMBER() OVER (PARTITION BY k.session_id ORDER BY k.ord))::INTEGER
+                       AS sequence,
+                   k.event_type, k.ts, k.context, k.data, k.metadata, k.tags
+            FROM keep k
+            JOIN counts c USING (session_id)
+            JOIN reserved r USING (session_id)
+        ),
+        ins AS (
+            INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
+            SELECT session_id, sequence, event_type, ts, context, data, metadata, tags
+            FROM planned ORDER BY ord
+            RETURNING {EventRow}
+        )
+        SELECT v.idx AS append_idx, v.sequenced AS append_sequenced, v.lost AS append_lost,
+               ins.*
+        FROM verdict v
+        LEFT JOIN planned p ON p.idx = v.idx
+        LEFT JOIN ins ON ins.session_id = p.session_id AND ins.sequence = p.sequence
+        ORDER BY v.idx, p.ord
+        "#
+    ));
+
+    let rows = match qb.build().fetch_all(&db.pool).await {
+        Ok(rows) => rows,
+        Err(error) => {
+            return Err(match error {
+                sqlx::Error::Database(_) | sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed => {
+                    StatementError::NotStored(error.into())
+                }
+                other => StatementError::Unknown(other.into()),
+            });
+        }
+    };
+    read_verdicts(group, rows).map_err(StatementError::Unknown)
+}
+
+/// One verdict per append from [`store_in_one_statement`]'s rows: one row
+/// per stored event, and one bare row per append that stored nothing.
+fn read_verdicts(group: &[Append], rows: Vec<sqlx::postgres::PgRow>) -> Result<Vec<Verdict>> {
+    use sqlx::{FromRow, Row};
+    let mut verdicts: Vec<Option<Verdict>> = (0..group.len()).map(|_| None).collect();
+    for row in rows {
+        let index: i32 = row.try_get("append_idx")?;
+        let index = usize::try_from(index)?;
+        anyhow::ensure!(
+            index < group.len(),
+            "verdict for an append not in the group"
+        );
+        let sequenced: bool = row.try_get("append_sequenced")?;
+        let lost: Option<Uuid> = row.try_get("append_lost")?;
+        let id: Option<Uuid> = row.try_get("id")?;
+        let verdict = &mut verdicts[index];
+        match (id, sequenced, lost) {
+            (Some(_), _, _) => {
+                let event = EventRow::from_row(&row)?;
+                match verdict {
+                    Some(Verdict::Stored(rows)) => rows.push(event),
+                    _ => *verdict = Some(Verdict::Stored(vec![event])),
+                }
+            }
+            (None, false, _) => *verdict = Some(Verdict::Unsequenced),
+            (None, true, Some(session)) => *verdict = Some(Verdict::Lost(session)),
+            (None, true, None) => anyhow::bail!("an accepted append stored no events"),
+        }
+    }
+    verdicts
+        .into_iter()
+        .zip(group)
+        .map(|(verdict, append)| match verdict {
+            Some(Verdict::Stored(rows)) => {
+                anyhow::ensure!(
+                    rows.len() == append.inputs.len(),
+                    "stored {} events of an append of {}",
+                    rows.len(),
+                    append.inputs.len()
+                );
+                Ok(Verdict::Stored(rows))
+            }
+            Some(other) => Ok(other),
+            None => anyhow::bail!("no verdict for an append"),
         })
-        .collect();
-    Ok(GroupOutcome::Stored { results })
+        .collect()
 }
 
 #[cfg(test)]
@@ -378,8 +515,20 @@ mod tests {
     const ORG: i64 = 2;
     const TTL: Duration = Duration::from_secs(30);
 
-    /// A session whose actor `holder` leases; returns it and the fence.
+    /// A session whose actor `holder` leases; returns it and the fence. Its
+    /// first event (`session.created`, sequence 1) is already stored, as
+    /// intake does before any lease.
     async fn leased(db: &StorageBackend, holder: &str) -> (SessionId, i64) {
+        let (id, fence) = leased_without_events(db, holder).await;
+        db.database()
+            .create_event(row(id, "session.created"))
+            .await
+            .unwrap();
+        (id, fence)
+    }
+
+    /// [`leased`] before any event: the session has no sequence row yet.
+    async fn leased_without_events(db: &StorageBackend, holder: &str) -> (SessionId, i64) {
         let id = db.create_session(test_session_row(ORG)).await.unwrap().id;
         db.mark_session_actor_runnable(id, ORG, 1).await.unwrap();
         let lease = db.lease_session_actors(holder, 1, TTL, 32).await.unwrap();
@@ -455,19 +604,25 @@ mod tests {
         let stored_a = ra.await.unwrap().unwrap();
         assert_eq!(
             stored_a.iter().map(|r| r.sequence).collect::<Vec<_>>(),
-            vec![1, 2],
+            vec![2, 3],
             "an append gets its own rows back, in order"
         );
         assert_eq!(rb.await.unwrap().unwrap().len(), 1);
         assert!(rejected(&rc.await.unwrap()));
-        assert_eq!(ra2.await.unwrap().unwrap()[0].sequence, 3);
+        assert_eq!(ra2.await.unwrap().unwrap()[0].sequence, 4);
         assert_eq!(
             types(&db, a).await,
-            ["turn.started", "reason.started", "tool.completed"]
+            [
+                "session.created",
+                "turn.started",
+                "reason.started",
+                "tool.completed"
+            ]
         );
-        assert_eq!(types(&db, b).await, ["turn.started"]);
-        assert!(
-            types(&db, c).await.is_empty(),
+        assert_eq!(types(&db, b).await, ["session.created", "turn.started"]);
+        assert_eq!(
+            types(&db, c).await,
+            ["session.created"],
             "the stale append wrote nothing"
         );
     }
@@ -486,8 +641,8 @@ mod tests {
         assert_eq!(ra.await.unwrap().unwrap().len(), 1);
         let error = rb.await.unwrap().expect_err("the bad payload fails");
         assert!(!rejected(&Err(error)), "a storage error, not a lost lease");
-        assert_eq!(types(&db, a).await, ["turn.started"]);
-        assert!(types(&db, b).await.is_empty());
+        assert_eq!(types(&db, a).await, ["session.created", "turn.started"]);
+        assert_eq!(types(&db, b).await, ["session.created"]);
     }
 
     #[tokio::test]
@@ -510,7 +665,7 @@ mod tests {
             rejected(&rd.await.unwrap()),
             "no detached call row holds it"
         );
-        assert_eq!(types(&db, a).await, ["turn.started"]);
+        assert_eq!(types(&db, a).await, ["session.created", "turn.started"]);
     }
 
     #[tokio::test]
@@ -535,7 +690,102 @@ mod tests {
             done.unwrap();
         }
         for (id, _) in sessions {
-            assert_eq!(types(&db, id).await, ["step.0", "step.1", "step.2"]);
+            assert_eq!(
+                types(&db, id).await,
+                ["session.created", "step.0", "step.1", "step.2"]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_first_event_goes_alone_and_the_rest_of_its_group_still_lands() {
+        let db = StorageBackend::test_database();
+        let (fresh, ff) = leased_without_events(&db, "w1").await;
+        let (old, fo) = leased(&db, "w1").await;
+        let (gf, rf) = append(vec![row(fresh, "turn.started")], "w1", ff);
+        let (go, ro) = append(vec![row(old, "turn.started")], "w1", fo);
+        let (gf2, rf2) = append(vec![row(fresh, "reason.started")], "w1", ff);
+        commit_group(db.database(), vec![gf, go, gf2]).await;
+
+        assert_eq!(rf.await.unwrap().unwrap()[0].sequence, 1);
+        assert_eq!(rf2.await.unwrap().unwrap()[0].sequence, 2);
+        assert_eq!(ro.await.unwrap().unwrap()[0].sequence, 2);
+        assert_eq!(types(&db, fresh).await, ["turn.started", "reason.started"]);
+
+        // Without a lease, a first event is refused like any other.
+        let (stale, fs) = leased_without_events(&db, "w1").await;
+        let (gs, rs) = append(vec![row(stale, "turn.started")], "w1", fs + 1);
+        commit_group(db.database(), vec![gs]).await;
+        assert!(rejected(&rs.await.unwrap()));
+        assert!(types(&db, stale).await.is_empty());
+    }
+
+    /// Fenced appends grouped in one statement, message intake (unfenced,
+    /// sequence row then actor row) and lease renewals, all on the same
+    /// sessions at once: nothing deadlocks, and every session's sequences stay
+    /// gap-free.
+    #[tokio::test]
+    async fn grouped_appends_intake_and_renewals_do_not_deadlock() {
+        let db = StorageBackend::test_database();
+        let mut sessions = Vec::new();
+        for _ in 0..8 {
+            sessions.push(leased(&db, "w1").await);
+        }
+        let mut work = tokio::task::JoinSet::new();
+        for (id, fence) in sessions.clone() {
+            let fenced = db.clone();
+            work.spawn(async move {
+                for n in 0..5 {
+                    fenced
+                        .create_events_fenced(vec![row(id, &format!("step.{n}"))], "w1", fence)
+                        .await
+                        .unwrap();
+                }
+            });
+            let intake = db.clone();
+            work.spawn(async move {
+                for _ in 0..5 {
+                    intake
+                        .database()
+                        .create_event(row(id, "input.message"))
+                        .await
+                        .unwrap();
+                    intake
+                        .mark_session_actor_runnable(id, ORG, 1)
+                        .await
+                        .unwrap();
+                }
+            });
+        }
+        let renewals = db.clone();
+        let leases: Vec<crate::storage::ActorLeaseRenewalItem> = sessions
+            .iter()
+            .map(|(id, fence)| crate::storage::ActorLeaseRenewalItem {
+                session_id: *id,
+                fence: *fence,
+                consumed_seq: 0,
+            })
+            .collect();
+        work.spawn(async move {
+            for _ in 0..5 {
+                renewals
+                    .renew_session_actor_leases("w1", TTL, &leases)
+                    .await
+                    .unwrap();
+            }
+        });
+        while let Some(done) = work.join_next().await {
+            done.unwrap();
+        }
+        for (id, _) in sessions {
+            let sequences: Vec<i32> = sqlx::query_scalar(
+                "SELECT sequence FROM events WHERE session_id = $1 ORDER BY sequence",
+            )
+            .bind(id)
+            .fetch_all(db.database().pool())
+            .await
+            .unwrap();
+            assert_eq!(sequences, (1..=11).collect::<Vec<i32>>());
         }
     }
 }

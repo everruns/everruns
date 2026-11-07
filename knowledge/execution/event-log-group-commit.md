@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: Event log group commit
-description: Fenced event appends from many workers share one PostgreSQL transaction and one WAL flush, answered only after it commits.
+description: Fenced event appends from many workers share one PostgreSQL statement, commit and WAL flush, answered only after it commits.
 tags:
   - execution
   - performance
@@ -23,11 +23,11 @@ appends per second.
 
 ## Contract
 
-1. **Same durability.** A caller is answered only after the transaction that
+1. **Same durability.** A caller is answered only after the statement that
    holds its events commits.
 2. **Same fence.** An append lands only while its holder holds the lease (or
    the detached call) on every session it writes to, checked under
-   `FOR SHARE` in the transaction that inserts it.
+   `FOR SHARE` in the statement that inserts it.
 3. **Isolation.** An append whose lease is gone is refused alone; the others
    in its group still commit. Any other failure before the commit reaches only
    the append that caused it.
@@ -42,19 +42,31 @@ appends per second.
 - Each server process has a few lanes (`EVENT_GROUP_COMMIT_LANES`, default 4).
   A session always maps to the same lane. A lane takes the first queued
   append and everything else queued behind it (up to 64 appends and 1,000
-  events), and stores them in one transaction: one create-or-lock statement
-  for every session, in session id order; one fence check per kind (lease,
-  detached call) for every (append, session) pair; one insert for the
-  accepted appends; one commit. Then it answers each caller.
+  events), and stores them in one autocommitted statement: lock every
+  session's `event_sequences` row (`FOR NO KEY UPDATE`, session id order),
+  check every (append, session) pair's fence (`FOR SHARE`, joined to those
+  locked rows), reserve sequences for the accepted appends, insert their
+  events. Then it answers each caller.
+- One statement, not a transaction. As a transaction an append cost six
+  statements in the stress bench (BEGIN, a no-op upsert as the lock, the fence
+  check, the insert, COMMIT, and a foreign-key check on `sessions` that
+  PostgreSQL runs when a row version written by the same transaction is
+  updated again). As one statement it costs one, and the sequence row is
+  updated once (2026-11-07: 307 to 237 statements per turn at 100 agents).
+- A session without an `event_sequences` row yet (no event so far) cannot be
+  locked by the statement; its appends run alone after the group, in order,
+  through the single append, which creates the row.
 - The lane commits as soon as its previous commit returns. Alone, an append
   costs what it did plus an in-process hand-off. Under load an append waits
   for at most the commit in flight, and groups grow by themselves.
-- If the shared transaction fails before its commit (a payload PostgreSQL
-  refuses, a deadlock), the group runs again append by append, so the error
-  lands on its cause. A failed commit is not retried, because its outcome is
-  unknown; each caller gets the error, as a lone append's caller did.
-- Locks are taken in session id order in every lane and every replica, as the
-  single append did, so lanes and replicas cannot deadlock on them. Server
+- If PostgreSQL refuses the statement (a payload it rejects, a deadlock),
+  nothing of it landed, and the group runs again append by append, so the
+  error lands on its cause. A connection lost mid-statement is not retried,
+  because its outcome is unknown; each caller gets the error, as a lone
+  append's caller did.
+- Locks are taken as every other writer takes them: a session's sequence row
+  before its actor row, sessions in id order, in every lane and replica, so
+  lanes, replicas and message intake cannot deadlock on them. Server
   replicas need no coordination: each groups what it receives.
 - An append inside a command transaction, or one larger than a group, runs
   alone on the caller's connection.
@@ -70,6 +82,8 @@ round trips and connections of each append.
   waits drop; overhead per model call at 100 agents does not regress.
 - Repository tests: a group stores every live append and refuses a stale one;
   a failing append fails alone; detached appends are checked against their
-  call; concurrent appends through the lanes land in order
-  (`group_commit::tests`). The existing fenced-append tests
+  call; concurrent appends through the lanes land in order; a session's first
+  event goes alone while the rest of its group lands; grouped appends, intake
+  and lease renewals on the same sessions do not deadlock and leave gap-free
+  sequences (`group_commit::tests`). The existing fenced-append tests
   (`session_actors/tests.rs`) run through the same path.

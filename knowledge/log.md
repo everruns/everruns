@@ -12,6 +12,8 @@
   latency and the session trace are computed from the listener feed instead
   of rereading each turn, and the hottest tables dropped their keys on
   `sessions` and `organizations`.
+- Grouped event appends are one statement instead of a transaction of five,
+  which also ends a foreign-key check per append (event-log-group-commit).
 
 ## 2026-11-06
 

@@ -435,6 +435,9 @@ stays the final check after a deploy.
   `--sweep pg:KEY=a,b` (PostgreSQL settings) and `--sweep arg:NAME=a,b` (bench
   arguments such as `servers` or `fsync-delay-ms`). Repeated axes form a grid.
   Results go to `target/stress/<time>/results.jsonl` and a Markdown table.
+  Each point also writes `statements.tsv` (every statement, per turn, with its
+  WAL) and `tables.tsv` (row writes per table, per turn): a cut is checked
+  against what it was meant to remove, not just the totals.
 
 Each run is one machine, so absolute throughput tracks its cores, not
 production's. Compare per-turn costs and the ratios between points, and keep
