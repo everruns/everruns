@@ -57,6 +57,8 @@ pub struct UpdateMemory {
     pub sync_status: Option<String>,
     pub last_synced_at: Option<Option<DateTime<Utc>>>,
     pub last_sync_error: Option<Option<String>>,
+    /// Whose external connection syncs the source; `Some(..)` rebinds it.
+    pub resolved_owner_user_id: Option<Option<Uuid>>,
 }
 
 #[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
