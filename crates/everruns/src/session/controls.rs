@@ -859,16 +859,30 @@ impl Session {
         self.edit_mcp(name.trim().to_string(), None).await
     }
 
+    /// Current eager/revealed MCP discovery state, without starting discovery.
+    /// Pending servers may contribute tools on the next turn.
+    #[cfg(feature = "mcp")]
+    pub async fn mcp_discovery_statuses(
+        &self,
+    ) -> Result<Vec<(String, crate::McpDiscoveryStatus)>, SessionControlError> {
+        self.control_runtime()
+            .await?
+            .runtime()
+            .mcp_discovery_statuses(self.session_id())
+            .await
+            .map_err(|error| SessionControlError::Rejected(error.to_string()))
+    }
+
     /// Rediscover this session's MCP tools, requesting credentials from the
     /// host's MCP auth provider again, for example after an auth refresh.
-    /// On coherent hosting every activation and query discovers afresh.
     pub async fn refresh_mcp(&self) -> Result<(), SessionControlError> {
-        if let ControlRuntime::Live(runtime) = self.control_runtime().await? {
-            #[cfg(feature = "mcp")]
-            runtime.invalidate_mcp_discovery(self.session_id());
-            #[cfg(not(feature = "mcp"))]
-            let _ = runtime;
-        }
+        let runtime = self.control_runtime().await?;
+        #[cfg(feature = "mcp")]
+        runtime
+            .runtime()
+            .invalidate_mcp_discovery(self.session_id());
+        #[cfg(not(feature = "mcp"))]
+        let _ = runtime;
         Ok(())
     }
 
@@ -910,15 +924,15 @@ impl Session {
         }
         // THREAT[TM-TOOL-065]: definitions may carry credentials, so they are
         // never committed to coherent authority configuration.
-        if let ControlRuntime::Live(runtime) = &runtime {
+        if let ControlRuntime::Live(_) = &runtime {
             // The live record first, then the Engine-held edit that every
             // rebuild re-applies.
             store.add_session(record).await?;
-            #[cfg(feature = "mcp")]
-            runtime.invalidate_mcp_discovery(self.session_id());
-            #[cfg(not(feature = "mcp"))]
-            let _ = runtime;
         }
+        #[cfg(feature = "mcp")]
+        runtime
+            .runtime()
+            .invalidate_mcp_discovery(self.session_id());
         live.mcp
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

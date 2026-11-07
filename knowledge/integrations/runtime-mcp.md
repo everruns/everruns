@@ -427,3 +427,15 @@ preserve previously discovered tools and permit retry after a short cooldown.
 Both successful and negative entries share the bounded cache and single-flight
 locks. A reload retires in-flight refresh identities so old credentials cannot
 restore a failed entry after invalidation.
+
+## Interactive readiness
+
+Interactive Framework hosts may opt into one short wait budget for eager MCP
+catalog discovery. Expiry is pending, not failure: bounded background discovery
+continues and complete catalogs join subsequent turns. Host services share the
+cache across coherent runtime rebuilds, keyed by session and complete attachment
+configuration. Reload invalidates this shared cache and fences old completions.
+The default remains blocking cold discovery. Deferred reveal, catalog bounds,
+authentication holds and transient retry cooldowns retain their contracts.
+Readiness inspection is read-only and separates pending, ready, authentication
+required and failed states. See the [host-services API](../../docs/framework/host-services.md#mcp-readiness).

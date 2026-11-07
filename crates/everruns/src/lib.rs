@@ -523,3 +523,7 @@ pub use everruns_contracts::runtime::causal::{CausalContext, CausalLink};
 pub use everruns_core::dreaming::{
     DreamBudget, DreamCommitMode, DreamDestination, DreamTrigger, DreamTriggerMode, DreamingConfig,
 };
+
+/// MCP discovery readiness reported by a session.
+#[cfg(feature = "mcp")]
+pub use everruns_core::host::McpDiscoveryStatus;

@@ -211,6 +211,8 @@ pub struct InProcessRuntimeBuilder {
     seeded_files: Vec<(SessionId, InitialFile)>,
     #[cfg(feature = "mcp")]
     mcp_auth_provider: Option<Arc<dyn crate::mcp::McpAuthProvider>>,
+    #[cfg(feature = "mcp")]
+    mcp_discovery_cache: Option<Arc<crate::host::McpDiscoveryCache>>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
     reasoning_effort_handle: Option<crate::tool_context::ReasoningEffortHandle>,
@@ -265,6 +267,8 @@ impl InProcessRuntimeBuilder {
             seeded_files: Vec::new(),
             #[cfg(feature = "mcp")]
             mcp_auth_provider: None,
+            #[cfg(feature = "mcp")]
+            mcp_discovery_cache: None,
             provider_retry_config: None,
             provider_stall_timeout: None,
             reasoning_effort_handle: None,
@@ -641,7 +645,9 @@ impl InProcessRuntimeBuilder {
             session_reasoning_effort: self.session_reasoning_effort,
             budget_checker: self.budget_checker,
             #[cfg(feature = "mcp")]
-            mcp_discovery_cache: Arc::new(crate::host::mcp_cache::McpDiscoveryCache::new()),
+            mcp_discovery_cache: self
+                .mcp_discovery_cache
+                .unwrap_or_else(|| Arc::new(crate::host::McpDiscoveryCache::new())),
             plugin_warnings: self.plugin_warnings,
             parked_turns: ParkedTurns::default(),
             waits_on_person: self.waits_on_person,
