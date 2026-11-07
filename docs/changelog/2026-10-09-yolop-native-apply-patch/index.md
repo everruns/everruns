@@ -9,7 +9,7 @@ surfaces: [cli, agent]
 release: "0.20.0"
 links:
   docs: ["https://github.com/everruns/yolop/blob/main/docs/features/tools.md"]
-  prs: [everruns/yolop#827]
+  prs: [everruns/yolop#827, everruns/yolop#922]
 ---
 
 A new opt-in capability, `native_edit_tools`, gives OpenAI models Codex's
@@ -27,3 +27,13 @@ the system prompt prefers well-known CLIs such as `git` and `gh` over
 improvised scripts.
 
 See [Tools](https://github.com/everruns/yolop/blob/main/docs/features/tools.md) and [#827](https://github.com/everruns/yolop/pull/827).
+
+## Update 2026-11-07
+
+Native `apply_patch` now preserves the original bytes of untouched lines in files
+with mixed LF and CRLF endings, including context matched with whitespace
+flexibility. A final line without a newline stays unterminated when untouched,
+and moving a file without editing it keeps its bytes unchanged. Added lines use
+CRLF when the original file contains CRLF, otherwise LF. Appending after an
+unterminated line adds the separator needed for the new line. See
+[#922](https://github.com/everruns/yolop/pull/922).
