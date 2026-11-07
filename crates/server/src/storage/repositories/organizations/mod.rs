@@ -525,6 +525,15 @@ impl Database {
         Ok(row.0)
     }
 
+    /// The user's memberships, earliest-joined first.
+    ///
+    /// The first row is the default org wherever a caller names none (MCP
+    /// OAuth / JWT without `x-org-id` or the org cookie, login cookie minting).
+    /// There is no stored default-org preference in the schema, so the default
+    /// must come from something the user controls: the order they joined.
+    /// Ordering by org name let any org admin who got a user into their org
+    /// (an org named `!!!` sorts first) capture that user's default tenant
+    /// (TM-AUTHZ-027). `org_id` breaks ties for a deterministic order.
     pub async fn list_user_organizations(
         &self,
         user_id: Uuid,
@@ -535,7 +544,7 @@ impl Database {
             FROM organizations o
             JOIN organization_members om ON o.org_id = om.org_id
             WHERE om.user_id = $1
-            ORDER BY o.name
+            ORDER BY om.created_at, o.org_id
             "#,
         )
         .bind(user_id)
