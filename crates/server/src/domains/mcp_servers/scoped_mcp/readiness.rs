@@ -73,6 +73,11 @@ pub(crate) fn config_digest(server: &ScopedMcpServer) -> String {
     ))
 }
 
+#[cfg(test)]
+tokio::task_local! {
+    static TEST_READINESS_BUDGET: Duration;
+}
+
 pub(crate) struct Readiness {
     org_id: i64,
     session: SessionId,
@@ -89,6 +94,10 @@ impl Readiness {
         session: SessionId,
         egress: Arc<dyn EgressService>,
     ) -> Option<Self> {
+        #[cfg(test)]
+        if let Ok(budget) = TEST_READINESS_BUDGET.try_with(|budget| *budget) {
+            return Some(Self::new(org_id, session, egress, budget));
+        }
         let millis = std::env::var("EVERRUNS_MCP_DISCOVERY_READINESS_MS")
             .ok()?
             .parse::<u64>()
@@ -99,6 +108,15 @@ impl Readiness {
             egress,
             Duration::from_millis(millis),
         ))
+    }
+
+    /// Exercise the real worker loading path without mutating process-wide env.
+    #[cfg(test)]
+    pub(crate) async fn with_test_budget<F: std::future::Future>(
+        budget: Duration,
+        work: F,
+    ) -> F::Output {
+        TEST_READINESS_BUDGET.scope(budget, work).await
     }
 
     pub(crate) fn new(

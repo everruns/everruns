@@ -1496,4 +1496,6 @@ mod cache_tests;
 #[cfg(test)]
 pub(super) mod tests;
 #[cfg(test)]
+pub(crate) use tests::CatalogPreviewEgress;
+#[cfg(test)]
 mod timeout_tests;
