@@ -147,6 +147,30 @@ pub struct UnreconciledGeneration {
     pub provider_response_id: String,
 }
 
+/// Usage to add to one agent's denormalized totals.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct AgentUsageDelta {
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub actual_cost_usd: f64,
+    pub estimated_cost_usd: f64,
+    pub cost_usd: f64,
+}
+
+impl AgentUsageDelta {
+    pub fn add(&mut self, other: &AgentUsageDelta) {
+        self.input_tokens += other.input_tokens;
+        self.output_tokens += other.output_tokens;
+        self.cache_read_tokens += other.cache_read_tokens;
+        self.cache_creation_tokens += other.cache_creation_tokens;
+        self.actual_cost_usd += other.actual_cost_usd;
+        self.estimated_cost_usd += other.estimated_cost_usd;
+        self.cost_usd += other.cost_usd;
+    }
+}
+
 /// Which provider account served one inference call, as recorded on its
 /// `llm_generations` row.
 ///

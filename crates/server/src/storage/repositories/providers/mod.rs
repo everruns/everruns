@@ -759,6 +759,59 @@ impl Database {
         Ok(())
     }
 
+    /// Add usage to many agents' denormalized totals in one statement.
+    ///
+    /// Rows are locked in id order first: two replicas flushing overlapping
+    /// agents would otherwise take the row locks in join order and deadlock.
+    pub async fn add_agent_usage_batch(&self, deltas: &[(Uuid, AgentUsageDelta)]) -> Result<()> {
+        if deltas.is_empty() {
+            return Ok(());
+        }
+        let mut sorted: Vec<&(Uuid, AgentUsageDelta)> = deltas.iter().collect();
+        sorted.sort_by_key(|(id, _)| *id);
+        let ids: Vec<Uuid> = sorted.iter().map(|(id, _)| *id).collect();
+        let col =
+            |f: fn(&AgentUsageDelta) -> i64| sorted.iter().map(|(_, d)| f(d)).collect::<Vec<i64>>();
+        let money =
+            |f: fn(&AgentUsageDelta) -> f64| sorted.iter().map(|(_, d)| f(d)).collect::<Vec<f64>>();
+        sqlx::query(
+            r#"
+            WITH d AS (
+                SELECT * FROM UNNEST(
+                    $1::uuid[], $2::bigint[], $3::bigint[], $4::bigint[], $5::bigint[],
+                    $6::float8[], $7::float8[], $8::float8[]
+                ) AS d(id, input, output, cache_read, cache_creation, actual, estimated, cost)
+            ), locked AS (
+                SELECT a.id FROM agents a WHERE a.id IN (SELECT id FROM d)
+                ORDER BY a.id
+                FOR NO KEY UPDATE
+            )
+            UPDATE agents a
+            SET
+                total_input_tokens = a.total_input_tokens + d.input,
+                total_output_tokens = a.total_output_tokens + d.output,
+                total_cache_read_tokens = a.total_cache_read_tokens + d.cache_read,
+                total_cache_creation_tokens = a.total_cache_creation_tokens + d.cache_creation,
+                total_actual_cost_usd = a.total_actual_cost_usd + d.actual,
+                total_estimated_cost_usd = a.total_estimated_cost_usd + d.estimated,
+                total_cost_usd = a.total_cost_usd + d.cost
+            FROM d
+            WHERE a.id = d.id AND a.id IN (SELECT id FROM locked)
+            "#,
+        )
+        .bind(&ids)
+        .bind(col(|d| d.input_tokens))
+        .bind(col(|d| d.output_tokens))
+        .bind(col(|d| d.cache_read_tokens))
+        .bind(col(|d| d.cache_creation_tokens))
+        .bind(money(|d| d.actual_cost_usd))
+        .bind(money(|d| d.estimated_cost_usd))
+        .bind(money(|d| d.cost_usd))
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn increment_agent_usage(
         &self,

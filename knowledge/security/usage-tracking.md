@@ -160,8 +160,15 @@ LLM Response → llm.generation event → Listeners:
   2. Rate into usage_ledger when budgets/metering apply
   3. INSERT into llm_generations (LLM analytics projection)
   4. UPDATE sessions totals
-  5. UPDATE agents totals
+  5. Add to the agent's totals in memory; one UPDATE a second writes every
+     agent with new usage
 ```
+
+Agent totals are batched because every session of an agent shares its row:
+a per-call UPDATE queued all of them on one row lock (50 ms of lock wait per
+turn at 500 agents). A process killed between flushes loses at most the last
+second of an agent's display totals; `llm_generations` stays the per-call
+record.
 
 A generation without usage is normally not recorded. The exception is an OpenAI
 Agents API turn billed before the provider reported its usage: it is recorded
