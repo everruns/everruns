@@ -2,6 +2,11 @@
 
 ## 2026-11-07
 
+- Preserve legacy session deletion during rolling FK removal with a prerequisite
+  cleanup trigger. Keep the successor migration immutable and verify missing-older
+  migration adoption and the append-only purge guard. See
+  [running instances](operations/migrations.md#running-instances).
+
 - The stress bench grades every run against a per-turn budget for 8k agents on
   today's production. Agent token totals are written once a second, turn
   latency and the session trace are computed from the listener feed instead
