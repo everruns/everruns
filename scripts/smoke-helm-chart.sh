@@ -37,7 +37,10 @@ install() {
   helm upgrade --install "$REL" "$CHART" -n "$NS" --create-namespace \
     --set image.tag="$TAG" --set postgresql.enabled=true --set auth.adminEmail="$EMAIL" "$@"
 }
-secrets() { kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data}' | sha256sum; }
+secrets() {
+  { kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data}'
+    kubectl -n "$NS" get secret "$REL-everruns-internal" -o jsonpath='{.data}'; } | sha256sum
+}
 wait_ready() {
   for deploy in server worker ui proxy; do
     kubectl -n "$NS" rollout status "deploy/$REL-everruns-$deploy" --timeout 600s \
@@ -49,23 +52,36 @@ step "Install"
 install || fail "helm install failed"
 wait_ready
 
-step "Reach it through the proxy and sign in"
-kubectl -n "$NS" port-forward "svc/$REL-everruns" 19300:9300 >/dev/null 2>&1 &
-pf_pid=$!
-for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:19300/health >/dev/null 2>&1 && break; sleep 1; done
-curl -fsS http://127.0.0.1:19300/health || fail "/health through the proxy failed"
-echo
-curl -fsS -o /dev/null http://127.0.0.1:19300/ || fail "the UI did not answer through the proxy"
-password="$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.AUTH_ADMIN_PASSWORD}' | base64 -d)"
-curl -fsS -X POST http://127.0.0.1:19300/api/v1/auth/login -H 'content-type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$password\"}" | grep -q access_token || fail "admin sign-in failed"
-kill "$pf_pid"; pf_pid=""
+sign_in() {
+  kubectl -n "$NS" port-forward "svc/$REL-everruns" 19300:9300 >/dev/null 2>&1 &
+  pf_pid=$!
+  for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:19300/health >/dev/null 2>&1 && break; sleep 1; done
+  curl -fsS http://127.0.0.1:19300/health || fail "/health through the proxy failed"
+  echo
+  curl -fsS -o /dev/null http://127.0.0.1:19300/ || fail "the UI did not answer through the proxy"
+  password="$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.AUTH_ADMIN_PASSWORD}' | base64 -d)"
+  curl -fsS -X POST http://127.0.0.1:19300/api/v1/auth/login -H 'content-type: application/json' \
+    -d "{\"email\":\"$EMAIL\",\"password\":\"$password\"}" | grep -q access_token || fail "admin sign-in failed"
+  kill "$pf_pid"; pf_pid=""
+}
 
-step "Upgrade keeps the generated secrets"
+step "Reach it through the proxy and sign in"
+sign_in
+
+step "Upgrade to the hosted service's shape keeps the generated secrets"
+# Two servers rolled one at a time, password-protected NATS and Valkey,
+# network policies (kind's network plugin enforces them) and the egress proxy.
 before="$(secrets)"
-install --set worker.replicas=2 || fail "helm upgrade failed"
+install --set worker.replicas=2 --set server.replicas=2 --set valkey.enabled=true \
+  --set networkPolicy.enabled=true --set egressProxy.enabled=true || fail "helm upgrade failed"
 wait_ready
+kubectl -n "$NS" rollout status "deploy/$REL-everruns-egress-proxy" --timeout 300s || fail "egress proxy did not become ready"
+[ "$(kubectl -n "$NS" get deploy "$REL-everruns-server" -o jsonpath='{.status.readyReplicas}')" = "2" ] \
+  || fail "two servers are not ready"
 [ "$before" = "$(secrets)" ] || fail "helm upgrade changed the generated secrets"
+
+step "Sign in through two servers behind network policies"
+sign_in
 
 step "Uninstall keeps them, and a reinstall uses them"
 helm uninstall "$REL" -n "$NS" || fail "helm uninstall failed"

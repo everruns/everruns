@@ -1,5 +1,4 @@
-# Everruns Helm chart values. The server runs as one replica by design; scale
-# workers instead. Docs: https://everruns.com/docs/getting-started/kubernetes/
+# Everruns Helm chart values. Docs: https://everruns.com/docs/getting-started/kubernetes/
 
 image:
   registry: ghcr.io/everruns
@@ -62,7 +61,8 @@ postgresql:
     requests: { cpu: 100m, memory: 256Mi }
 
 nats:
-  # Bundled NATS with JetStream for live event delivery. Set url to use your own.
+  # Bundled NATS with JetStream for live event delivery, with a generated
+  # password. Set url to use your own. Required with more than one server.
   enabled: true
   url: ""
   image: nats:2-alpine
@@ -73,8 +73,9 @@ nats:
     requests: { cpu: 50m, memory: 64Mi }
 
 valkey:
-  # Optional. Without it rate limits are kept in the server's memory, which is
-  # enough for the single server replica.
+  # Shared rate limits, with a generated password. Optional with one server
+  # (it keeps them in memory); required with more, or each server would allow
+  # the full limit.
   enabled: false
   url: ""
   image: valkey/valkey:8-alpine
@@ -82,6 +83,11 @@ valkey:
     requests: { cpu: 50m, memory: 64Mi }
 
 server:
+  # 1 replaces the server with Recreate on upgrade (a short outage). 2 or more
+  # roll one at a time with no outage, and need NATS and Valkey.
+  replicas: 1
+  # Default with more than one replica: a soft spread over nodes.
+  topologySpreadConstraints: []
   # The server drains on SIGTERM: 5 s linger, up to 20 s for requests (SSE
   # streams end with a shutdown event), up to 5 s for worker gRPC calls.
   # SERVER_SHUTDOWN_DELAY_SECS / SERVER_SHUTDOWN_GRACE_SECS change the first
@@ -101,11 +107,17 @@ worker:
   replicas: 1
   resources:
     requests: { cpu: 250m, memory: 512Mi }
+    # The memory limit sets how many turns a worker admits (it reads its
+    # cgroup limit; about 2 MiB per turn).
     limits: { memory: 2Gi }
-  # The worker hands running turns off at their next step on SIGTERM and gives
-  # other tasks WORKER_SHUTDOWN_GRACE_SECS (default 25) to finish; keep this
-  # above that.
-  terminationGracePeriodSeconds: 60
+  # On SIGTERM a worker hands running turns off at their next step and gives
+  # other tasks this long to finish (WORKER_SHUTDOWN_GRACE_SECS).
+  shutdownGraceSeconds: 120
+  # Keep above shutdownGraceSeconds.
+  terminationGracePeriodSeconds: 150
+  # Background tasks per worker (MAX_CONCURRENT_TASKS); empty keeps the
+  # worker's default.
+  maxConcurrentTasks: ""
   # Voluntary disruptions (node drains, consolidation) stop at most one worker
   # at a time.
   podDisruptionBudget:
@@ -122,10 +134,12 @@ worker:
     enabled: false
     minReplicas: 1
     maxReplicas: 10
-    # Queued plus running tasks per worker.
+    # Demand per worker: claimable and running background tasks, waiting
+    # chat turns, and running chat turns at 1/25 each.
     tasksPerWorker: 15
 
 ui:
+  replicas: 1
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }
@@ -137,6 +151,7 @@ ui:
 # Caddy routes /api, /mcp, OAuth and agent-readable documents to the server and
 # everything else to the UI, the same routes as the Docker Compose setup.
 proxy:
+  replicas: 1
   image: caddy:2-alpine
   service:
     type: ClusterIP
@@ -144,6 +159,9 @@ proxy:
     annotations: {}
   resources:
     requests: { cpu: 50m, memory: 64Mi }
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
 
 ingress:
   enabled: false
@@ -157,3 +175,68 @@ ingress:
 otel:
   # OTLP endpoint for traces and metrics, such as http://otel-collector:4317.
   endpoint: ""
+
+# Prometheus metrics on their own server port instead of the API's /metrics.
+metrics:
+  enabled: false
+  port: 9090
+  # A Prometheus Operator ServiceMonitor for the server.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+
+# Where session files and other blobs are kept. PostgreSQL by default; S3 or
+# an S3-compatible store (MinIO, R2) keeps large files out of the database.
+storage:
+  s3:
+    enabled: false
+    bucket: ""
+    region: ""
+    prefix: ""
+    # For S3-compatible stores.
+    endpoint: ""
+    forcePathStyle: false
+    # A Secret with STORAGE_S3_ACCESS_KEY_ID and STORAGE_S3_SECRET_ACCESS_KEY.
+    # Leave empty to use the pod's cloud identity (serviceAccount below).
+    existingSecret: ""
+
+# The server's ServiceAccount, for cloud identity such as EKS IRSA or GKE
+# Workload Identity (S3 access without keys).
+serviceAccount:
+  create: false
+  # With create, defaults to <release>-everruns-server. Without, an existing
+  # ServiceAccount to use; empty uses the namespace default.
+  name: ""
+  annotations: {}
+
+# NetworkPolicies: each component accepts traffic only from the components
+# that call it. Needs a network plugin that enforces them.
+networkPolicy:
+  enabled: false
+  # Namespace KEDA runs in, allowed to read queue depth from the bundled
+  # PostgreSQL when worker autoscaling is on.
+  kedaNamespace: keda
+  # Extra ingress rules for the server, such as an in-cluster client.
+  extraServerIngress: []
+
+# Tenant egress proxy: agent tool, integration and MCP traffic leaves through
+# it, so it can get its own address (schedule it on nodes with their own NAT)
+# and per-org caps. Platform calls still go direct.
+egressProxy:
+  enabled: false
+  replicas: 2
+  # Per-org caps, unset means no cap.
+  orgLimits:
+    requestsPerMinute: ""
+    requestsPerMinutePerHost: ""
+    concurrency: ""
+    bytesPerDay: ""
+  globalRequestsPerMinutePerHost: ""
+  resources:
+    requests: { cpu: 100m, memory: 64Mi }
+    limits: { memory: 512Mi }
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
