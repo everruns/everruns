@@ -10,11 +10,12 @@ use crate::capabilities::{
 use crate::execution_loading::{AgentStore, HarnessStore, SessionStore};
 use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::message_filter::MessageQuery;
-use crate::message_retriever::MessageRetriever;
+use crate::message_retriever::{MessageHistory, MessageRetriever};
 use crate::provider_resolution::ProviderStore;
 use crate::runtime_context::{
-    AssembledTurnContext, ResolvedModelExecution, ResolvedTurnContextInput, TurnContextRequest,
-    TurnContextResolver, assemble_resolved_turn_context, resolve_snapshot_capabilities,
+    AssembledTurnContext, HistoryFloor, ResolvedModelExecution, ResolvedTurnContextInput,
+    TurnContextRequest, TurnContextResolver, assemble_resolved_turn_context,
+    resolve_snapshot_capabilities,
 };
 use crate::session_files::SessionFileSystem;
 use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
@@ -140,6 +141,7 @@ impl TurnContextResolver for StoreTurnContextResolver {
             self.session_storage.clone(),
             request.allow_provider_managed_reduction,
             AssemblyMode::RequireMessages,
+            None,
         )
         .await?;
         // Native web search is decided per turn against the organization's
@@ -201,6 +203,7 @@ pub async fn assemble_turn_context(
         session_storage,
         true,
         AssemblyMode::RequireMessages,
+        None,
     )
     .await
 }
@@ -236,6 +239,7 @@ pub async fn inspect_turn_context(
         session_storage,
         true,
         AssemblyMode::AllowEmptyMessages,
+        None,
     )
     .await
 }
@@ -267,6 +271,7 @@ pub(crate) async fn inspect_turn_context_for_session(
         session_storage,
         true,
         AssemblyMode::AllowEmptyMessages,
+        None,
     )
     .await
 }
@@ -283,6 +288,34 @@ pub async fn assemble_turn_context_from_snapshot(
     file_store: Option<Arc<dyn SessionFileSystem>>,
     session_storage: Option<Arc<dyn crate::session_services::SessionStorageStore>>,
 ) -> Result<AssembledTurnContext> {
+    assemble_turn_context_after(
+        snapshot,
+        message_retriever,
+        provider_store,
+        capability_registry,
+        driver_registry,
+        mcp_tool_definitions,
+        file_store,
+        session_storage,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+/// [`assemble_turn_context_from_snapshot`], loading only the history after
+/// `floor` when it is set and the turn's input lies after it.
+pub(crate) async fn assemble_turn_context_after(
+    snapshot: ResolvedExecutionSnapshot,
+    message_retriever: &dyn MessageRetriever,
+    provider_store: &dyn ProviderStore,
+    capability_registry: &CapabilityRegistry,
+    driver_registry: &DriverRegistry,
+    mcp_tool_definitions: &[ToolDefinition],
+    file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn crate::session_services::SessionStorageStore>>,
+    floor: Option<HistoryFloor>,
+) -> Result<AssembledTurnContext> {
     assemble_from_snapshot(
         snapshot,
         message_retriever,
@@ -294,8 +327,33 @@ pub async fn assemble_turn_context_from_snapshot(
         session_storage,
         true,
         AssemblyMode::RequireMessages,
+        floor,
     )
     .await
+}
+
+/// The filtered history for `query`: after `floor` when that suffix holds
+/// the turn's input, otherwise all of it. Returns the floor used.
+async fn load_history(
+    message_retriever: &dyn MessageRetriever,
+    query: MessageQuery,
+    floor: Option<HistoryFloor>,
+) -> Result<(MessageHistory, Option<i64>)> {
+    if let Some(floor) = floor {
+        let after = query.after_sequence.map_or(floor.after_sequence, |after| {
+            after.max(floor.after_sequence)
+        });
+        let history = message_retriever
+            .load_filtered_history(query.clone().after_sequence(after))
+            .await?;
+        let has_input = floor
+            .input_message_id
+            .is_none_or(|id| history.messages.iter().any(|message| message.id == id));
+        if !history.messages.is_empty() && has_input {
+            return Ok((history, Some(after)));
+        }
+    }
+    Ok((message_retriever.load_filtered_history(query).await?, None))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -310,6 +368,7 @@ async fn assemble_from_snapshot(
     session_storage: Option<Arc<dyn crate::session_services::SessionStorageStore>>,
     allow_provider_managed_reduction: bool,
     mode: AssemblyMode,
+    floor: Option<HistoryFloor>,
 ) -> Result<AssembledTurnContext> {
     let resolved = resolve_snapshot_capabilities(&snapshot, capability_registry);
     let filters = collect_message_filters_only(
@@ -318,7 +377,8 @@ async fn assemble_from_snapshot(
     );
     let mut query = MessageQuery::new(snapshot.session_id);
     filters.apply_message_filters(&mut query);
-    let initial_history = message_retriever.load_filtered_history(query).await?;
+    let (initial_history, mut message_floor) =
+        load_history(message_retriever, query, floor).await?;
     let mut messages = initial_history.messages.clone();
     filters.apply_post_load_filters(&mut messages);
     if messages.is_empty() && mode == AssemblyMode::RequireMessages {
@@ -370,7 +430,9 @@ async fn assemble_from_snapshot(
         );
         let mut query = MessageQuery::new(snapshot.session_id);
         filters.apply_message_filters(&mut query);
-        let mut history = message_retriever.load_filtered_history(query).await?;
+        let (mut history, floor_used) =
+            load_history(message_retriever, query, message_floor.and(floor)).await?;
+        message_floor = floor_used;
         filters.apply_post_load_filters(&mut history.messages);
         history
     } else {
@@ -382,7 +444,7 @@ async fn assemble_from_snapshot(
         messages
     };
 
-    assemble_resolved_turn_context(
+    let mut assembled = assemble_resolved_turn_context(
         ResolvedTurnContextInput {
             snapshot,
             messages,
@@ -395,7 +457,9 @@ async fn assemble_from_snapshot(
         file_store,
         session_storage,
     )
-    .await
+    .await?;
+    assembled.message_floor = message_floor;
+    Ok(assembled)
 }
 
 fn validate_requested_topology(
@@ -519,3 +583,7 @@ mod tests {
         assert_eq!(resolved_id, None);
     }
 }
+
+#[cfg(test)]
+#[path = "history_floor_tests.rs"]
+mod history_floor_tests;

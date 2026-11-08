@@ -22,7 +22,7 @@ use crate::runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 use crate::session::ExecutionSession;
 use crate::session_files::SessionFileSystem;
 use crate::tool_types::ToolDefinition;
-use crate::typed_id::{ModelId, SessionId};
+use crate::typed_id::{MessageId, ModelId, SessionId};
 use crate::{AgentCapabilityConfig, ResolvedExecutionSnapshot};
 
 /// Narrow host seam used by callers that cannot preassemble a context before
@@ -114,6 +114,10 @@ pub struct AssembledTurnContext {
     pub messages: Vec<RuntimeMessage>,
     /// Highest canonical history sequence represented by `messages`.
     pub message_source_sequence: Option<i64>,
+    /// `messages` hold only the history after this sequence, which a
+    /// compaction checkpoint replaces (see [`HistoryFloor`]); `None` when
+    /// they hold all of it.
+    pub message_floor: Option<i64>,
     /// Fully assembled runtime agent for this turn.
     pub runtime_agent: RuntimeAgent,
     /// Credential-safe model identity and opaque ready driver.
@@ -230,6 +234,7 @@ pub async fn assemble_resolved_turn_context(
         resolved_capability_configs,
         messages,
         message_source_sequence,
+        message_floor: None,
         runtime_agent,
         model,
         resolved_model_id,
@@ -237,6 +242,18 @@ pub async fn assemble_resolved_turn_context(
         compaction_policy,
         embedder_metadata,
     })
+}
+
+/// Where a host's newest compaction checkpoint begins, so context assembly
+/// can skip the history it replaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryFloor {
+    /// Load only messages after this canonical sequence.
+    pub after_sequence: i64,
+    /// The turn's input message. If it is not after the floor (a checkpoint
+    /// taken mid-turn covers it), assembly loads the whole history, since
+    /// the input's controls and hints are read from it.
+    pub input_message_id: Option<MessageId>,
 }
 
 /// Resolve capabilities and reconstruct the effective overlay represented by

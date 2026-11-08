@@ -136,6 +136,81 @@ async fn full_projection_caps_examined_lifecycle_envelopes() {
 }
 
 #[tokio::test]
+async fn a_suffix_projection_reads_only_the_suffix() {
+    // The full replay is over the bound; the suffix after a checkpoint is not.
+    let history = EventHistory::new(Arc::new(LifecycleHeavyReader));
+    let after = (MAX_EVENT_HISTORY_REPLAY - 10) as i64;
+    let projected = history
+        .project_after(SessionId::new(), Some(after))
+        .await
+        .expect("a short suffix stays within the replay bound");
+    assert!(projected.is_empty());
+}
+
+#[tokio::test]
+async fn a_tail_read_reads_only_the_tail() {
+    // The whole log is over the replay bound; its last window is not.
+    let high = (MAX_EVENT_HISTORY_REPLAY + 1) as i32;
+    let tail = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |events| {
+        events
+            .first()
+            .and_then(|e| e.sequence)
+            .is_some_and(|s| s < high - 300)
+    })
+    .await
+    .expect("a tail read stops once it has enough");
+    let sequences: Vec<i32> = tail.iter().filter_map(|e| e.sequence).collect();
+    assert_eq!(sequences.last(), Some(&high));
+    assert!(
+        sequences.windows(2).all(|w| w[1] == w[0] + 1),
+        "in order, no gaps"
+    );
+    assert_eq!(sequences.len(), 256 + 512, "two windows");
+    // Never enough: the bound still holds.
+    let error = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |_| false)
+        .await
+        .expect_err("an unbounded tail read is refused");
+    assert!(matches!(error, EventLogError::InvalidRead { .. }));
+}
+
+#[tokio::test]
+async fn history_after_a_sequence_keeps_its_source_sequence() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    for text in ["one", "two", "three"] {
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(RuntimeMessage::user(text)),
+        ))
+        .await
+        .expect("append input message");
+    }
+    let history = EventHistory::new(log);
+    let suffix = history
+        .load_filtered_history(MessageQuery::new(session_id).after_sequence(1))
+        .await
+        .expect("read suffix");
+    assert_eq!(suffix.messages.len(), 2);
+    assert_eq!(suffix.source_sequence, Some(3));
+    // Nothing after the boundary: the newest message still names the source.
+    let empty = history
+        .load_filtered_history(MessageQuery::new(session_id).after_sequence(3))
+        .await
+        .expect("read empty suffix");
+    assert!(empty.messages.is_empty());
+    assert_eq!(empty.source_sequence, Some(3));
+    // A boundary past the log's end (a checkpoint claiming more history than
+    // the log holds) reads as nothing after it, not as an error.
+    let beyond = history
+        .load_filtered_history(MessageQuery::new(session_id).after_sequence(10_000))
+        .await
+        .expect("read past the end");
+    assert!(beyond.messages.is_empty());
+    assert_eq!(beyond.source_sequence, Some(3));
+}
+
+#[tokio::test]
 async fn exact_message_boundary_ignores_trailing_lifecycle_events() {
     let session_id = SessionId::new();
     let log = Arc::new(InMemoryEventLog::new());

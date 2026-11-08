@@ -84,6 +84,17 @@ pub trait CompactionCheckpointStore: Send + Sync {
     /// Install a checkpoint only if no newer source boundary is canonical.
     async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool>;
 
+    /// Source sequence of the session's newest checkpoint for any provider,
+    /// model or format, when the store can tell cheaply.
+    ///
+    /// Context assembly then loads only the history after it, which the
+    /// checkpoint replaces, and the reason phase reloads the whole history
+    /// only when the checkpoint it restores is older (another model, say).
+    /// `None`, the default, keeps assembly loading the whole history.
+    async fn latest_source_sequence(&self, _session_id: SessionId) -> Result<Option<i64>> {
+        Ok(None)
+    }
+
     /// Latest pressure snapshot where proactive native compaction was attempted.
     ///
     /// This process-lifetime watermark prevents an ineffective or failed

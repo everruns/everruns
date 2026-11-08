@@ -521,6 +521,14 @@ pub trait EventReader: Send + Sync {
     /// Read one page. The first page fixes a snapshot high-watermark; continuations
     /// cannot observe concurrent appends and therefore neither skip nor duplicate.
     async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError>;
+
+    /// The session's last durable sequence (`0` for an empty log), when the
+    /// reader knows it without reading from the start. Lookups that concern
+    /// the latest turn read back from it. `None`, the default, makes them
+    /// learn it from a first page instead.
+    async fn last_sequence(&self, _session_id: SessionId) -> Result<Option<i32>, EventLogError> {
+        Ok(None)
+    }
 }
 
 /// A coherent canonical event log.
@@ -975,8 +983,11 @@ impl EventLog for InMemoryEventLog {
 
 #[cfg(feature = "host")]
 mod jsonl;
+#[path = "events/tail.rs"]
+mod tail;
 #[cfg(feature = "host")]
 pub use jsonl::JsonlEventLog;
+pub(crate) use tail::read_tail_until;
 
 #[derive(Clone)]
 struct ProjectedMessage {
@@ -1143,12 +1154,40 @@ impl EventHistory {
     }
 
     async fn project(&self, session_id: SessionId) -> Result<Vec<ProjectedMessage>, EventLogError> {
+        self.project_after(session_id, None).await
+    }
+
+    /// Project the messages after `after` (all when `None`). The read starts
+    /// there, so a suffix after a compaction checkpoint costs the suffix, and
+    /// only its envelopes count toward [`MAX_EVENT_HISTORY_REPLAY`].
+    async fn project_after(
+        &self,
+        session_id: SessionId,
+        after: Option<i64>,
+    ) -> Result<Vec<ProjectedMessage>, EventLogError> {
         let limit = EventReadLimit::default();
         let mut request = EventReadRequest::new(session_id, limit);
+        if let Some(after) = after.filter(|after| *after > 0) {
+            let after = i32::try_from(after).map_err(|_| EventLogError::InvalidRead {
+                detail: format!("history read after {after} is out of range"),
+            })?;
+            request = request.with_cursor(EventCursor::after(session_id, after)?);
+        }
         let mut projected = Vec::new();
         let mut examined = 0usize;
+        let mut first = after.is_some_and(|after| after > 0);
         loop {
-            let page = self.reader.read_page(request).await?;
+            let page = match self.reader.read_page(request).await {
+                Ok(page) => page,
+                // A start past the log's end (a checkpoint that claims more
+                // history than this log holds) has nothing after it; the
+                // caller then falls back to the whole history.
+                Err(
+                    EventLogError::IncompatibleCursor { .. } | EventLogError::ExpiredCursor { .. },
+                ) if first => return Ok(Vec::new()),
+                Err(error) => return Err(error),
+            };
+            first = false;
             examined = examined.saturating_add(page.events.len());
             if examined > MAX_EVENT_HISTORY_REPLAY {
                 return Err(EventLogError::InvalidRead {
@@ -1180,43 +1219,61 @@ impl EventHistory {
     }
 
     async fn filtered(&self, query: &MessageQuery) -> Result<Vec<ProjectedMessage>, EventLogError> {
-        let mut projected = self.project(query.session_id).await?;
-        if let Some(after) = query.after_sequence {
-            projected.retain(|item| i64::from(item.sequence) > after);
-        }
-        for filter in &query.filters {
-            match filter {
-                MessageFilter::TimeRange { from, to } => projected.retain(|item| {
-                    from.is_none_or(|from| item.message.created_at >= from)
-                        && to.is_none_or(|to| item.message.created_at <= to)
-                }),
-                MessageFilter::EventTypes(types) => {
-                    projected.retain(|item| types.contains(&item.event_type))
-                }
-                MessageFilter::ToolName(name) => {
-                    projected.retain(|item| item.tool_name.as_ref() == Some(name))
-                }
-                MessageFilter::Search(search) => {
-                    let search = search.to_lowercase();
-                    projected.retain(|item| {
-                        item.message
-                            .text()
-                            .is_some_and(|text| text.to_lowercase().contains(&search))
-                    });
-                }
-                MessageFilter::ExcludeIds(ids) => {
-                    projected.retain(|item| !ids.contains(&item.event_id))
-                }
-                MessageFilter::IncludeIds(ids) => {
-                    projected.retain(|item| ids.contains(&item.event_id))
-                }
-                MessageFilter::Custom(predicate) => {
-                    projected.retain(|item| predicate(&item.message))
-                }
-            }
-        }
-        Ok(projected)
+        let projected = self
+            .project_after(query.session_id, query.after_sequence)
+            .await?;
+        Ok(apply_filters(projected, query))
     }
+}
+
+fn apply_filters(
+    mut projected: Vec<ProjectedMessage>,
+    query: &MessageQuery,
+) -> Vec<ProjectedMessage> {
+    if let Some(after) = query.after_sequence {
+        projected.retain(|item| i64::from(item.sequence) > after);
+    }
+    for filter in &query.filters {
+        match filter {
+            MessageFilter::TimeRange { from, to } => projected.retain(|item| {
+                from.is_none_or(|from| item.message.created_at >= from)
+                    && to.is_none_or(|to| item.message.created_at <= to)
+            }),
+            MessageFilter::EventTypes(types) => {
+                projected.retain(|item| types.contains(&item.event_type))
+            }
+            MessageFilter::ToolName(name) => {
+                projected.retain(|item| item.tool_name.as_ref() == Some(name))
+            }
+            MessageFilter::Search(search) => {
+                let search = search.to_lowercase();
+                projected.retain(|item| {
+                    item.message
+                        .text()
+                        .is_some_and(|text| text.to_lowercase().contains(&search))
+                });
+            }
+            MessageFilter::ExcludeIds(ids) => {
+                projected.retain(|item| !ids.contains(&item.event_id))
+            }
+            MessageFilter::IncludeIds(ids) => projected.retain(|item| ids.contains(&item.event_id)),
+            MessageFilter::Custom(predicate) => projected.retain(|item| predicate(&item.message)),
+        }
+    }
+    projected
+}
+
+/// Window bounds, the excluded-messages notice and injections, after filtering.
+fn finish_messages(projected: Vec<ProjectedMessage>, query: &MessageQuery) -> Vec<RuntimeMessage> {
+    let mut messages = projected
+        .into_iter()
+        .map(|item| item.message)
+        .collect::<Vec<_>>();
+    let count_before_limit = messages.len();
+    query.apply_window_bounds(&mut messages);
+    query.prepend_excluded_notice(&mut messages, count_before_limit);
+    query.apply_injections(&mut messages);
+    messages
 }
 
 fn event_projects_message(event: &Event) -> bool {
@@ -1235,13 +1292,15 @@ impl MessageRetriever for EventHistory {
         session_id: SessionId,
         message_id: MessageId,
     ) -> CoreResult<Option<RuntimeMessage>> {
-        Ok(self
-            .project(session_id)
-            .await
-            .map_err(core_event_error)?
-            .into_iter()
-            .find(|item| item.message.id == message_id)
-            .map(|item| item.message))
+        // Callers ask for recent messages (a turn's input), so read from
+        // the end: a long session's history is not replayed to find one.
+        let found = |event: &Event| message_from_event(event).filter(|m| m.id == message_id);
+        let events = read_tail_until(self.reader.as_ref(), session_id, |events| {
+            events.iter().any(|event| found(event).is_some())
+        })
+        .await
+        .map_err(core_event_error)?;
+        Ok(events.iter().rev().find_map(found))
     }
 
     async fn load(&self, session_id: SessionId) -> CoreResult<Vec<RuntimeMessage>> {
@@ -1255,29 +1314,30 @@ impl MessageRetriever for EventHistory {
     }
 
     async fn load_filtered(&self, query: MessageQuery) -> CoreResult<Vec<RuntimeMessage>> {
-        let mut messages = self
-            .filtered(&query)
-            .await
-            .map_err(core_event_error)?
-            .into_iter()
-            .map(|item| item.message)
-            .collect::<Vec<_>>();
-        let count_before_limit = messages.len();
-        query.apply_window_bounds(&mut messages);
-        query.prepend_excluded_notice(&mut messages, count_before_limit);
-        query.apply_injections(&mut messages);
-        Ok(messages)
+        let projected = self.filtered(&query).await.map_err(core_event_error)?;
+        Ok(finish_messages(projected, &query))
     }
 
     async fn load_filtered_history(&self, query: MessageQuery) -> CoreResult<MessageHistory> {
-        let source_sequence = self
-            .project(query.session_id)
+        // One projection serves both the messages and the source sequence;
+        // with `after_sequence` it covers only the suffix.
+        let projected = self
+            .project_after(query.session_id, query.after_sequence)
             .await
-            .map_err(core_event_error)?
-            .last()
-            .map(|item| i64::from(item.sequence));
+            .map_err(core_event_error)?;
+        let mut source_sequence = projected.last().map(|item| i64::from(item.sequence));
+        if source_sequence.is_none() && query.after_sequence.is_some() {
+            // No message after the boundary: the newest one is before it.
+            source_sequence = self
+                .project(query.session_id)
+                .await
+                .map_err(core_event_error)?
+                .last()
+                .map(|item| i64::from(item.sequence));
+        }
+        let messages = finish_messages(apply_filters(projected, &query), &query);
         Ok(MessageHistory {
-            messages: self.load_filtered(query).await?,
+            messages,
             source_sequence,
         })
     }

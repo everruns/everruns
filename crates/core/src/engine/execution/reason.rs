@@ -61,6 +61,7 @@ mod phase;
 mod provider_managed_compaction;
 mod reasoning_updates;
 mod request_controls;
+mod restore_history;
 mod stream_state;
 mod tool_changes;
 mod transcript;
@@ -338,6 +339,7 @@ impl ReasonAtom {
             .unwrap_or(!assembled.runtime_agent.communication.is_explicit());
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
+        let assembled_message_floor = assembled.message_floor;
         let model_with_provider = assembled.model;
         let provider_managed = model_with_provider
             .provider_managed_reduction_option
@@ -385,50 +387,26 @@ impl ReasonAtom {
             ) && chat_driver.supports_compact()
         });
 
-        let checkpoint_format = super::provider_checkpoint::format_version(provider_managed);
-        if (compaction_policy.is_some() || provider_managed)
-            && let Some(store) = self.compaction_checkpoint_store.as_ref()
-            && let Some(checkpoint) = store
-                .get_latest_format(
-                    session_id,
-                    model_with_provider.provider_type.as_str(),
-                    &model_with_provider.model,
-                    checkpoint_format,
-                )
-                .await?
-            && super::provider_checkpoint::is_restorable(
-                &checkpoint,
-                chat_driver.as_ref(),
-                model_with_provider.provider_type.as_str(),
-                &model_with_provider.model,
-                provider_managed,
-                native_reasoning_compaction,
-            )
+        if let Some(restored) = restore_history::restore(restore_history::Request {
+            session_id,
+            store: self.compaction_checkpoint_store.as_ref(),
+            retriever: self.message_retriever.as_ref(),
+            registry: &self.capability_registry,
+            capability_configs: &resolved_capability_configs,
+            driver: chat_driver.as_ref(),
+            provider_type: model_with_provider.provider_type.as_str(),
+            model: &model_with_provider.model,
+            compaction: compaction_policy.is_some() || provider_managed,
+            provider_managed,
+            native_reasoning_compaction,
+            message_floor: assembled_message_floor,
+        })
+        .await?
         {
-            let filters = crate::engine::capabilities::collect_message_filters_only_with_context(
-                &resolved_capability_configs,
-                &self.capability_registry,
-                provider_managed,
-            );
-            let mut query = crate::engine::MessageQuery::new(session_id)
-                .after_sequence(checkpoint.source_sequence);
-            filters.apply_message_filters(&mut query);
-            let history = self.message_retriever.load_filtered_history(query).await?;
-            messages = history.messages;
-            checkpoint_suffix_message_count = messages.len();
-            filters.apply_post_load_filters(&mut messages);
-            if let crate::engine::CompactionCheckpointPayload::Summary { text } =
-                &checkpoint.payload
-            {
-                messages.insert(
-                    0,
-                    RuntimeMessage::system(format!(
-                        "[CONVERSATION_SUMMARY]\n{text}\n[/CONVERSATION_SUMMARY]"
-                    )),
-                );
-            }
-            message_source_sequence = history.source_sequence.or(message_source_sequence);
-            restored_checkpoint = Some(checkpoint);
+            messages = restored.messages;
+            message_source_sequence = restored.source_sequence.or(message_source_sequence);
+            checkpoint_suffix_message_count = restored.suffix_message_count;
+            restored_checkpoint = restored.checkpoint;
         }
 
         let controls = resolve_request_controls(
