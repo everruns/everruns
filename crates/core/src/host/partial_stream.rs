@@ -6,10 +6,10 @@
 //! under its message id. Same contract as the server's `PgPartialStreamStore`.
 //!
 //! Decisions:
-//! - A forward scan of the session, bounded like the other replays by
-//!   [`MAX_EVENT_HISTORY_REPLAY`]. The log has no reverse or by-type read, and
-//!   every reason step already replays the session's history to build its
-//!   transcript, so this adds a scan of the same size, not a new order.
+//! - A read back from the log's end until the turn's `turn.started` is in
+//!   view: every reason step asks, so a forward scan would make each step
+//!   cost the session's whole history. A log without the turn's start (it
+//!   never began here) is read whole, bounded like the other replays.
 //! - Deltas are ephemeral and never reach the log, so `accumulated` is empty
 //!   here unless a log chooses to keep them; recovery then restarts the call.
 
@@ -20,7 +20,7 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::reasoning_updates::ReasoningState;
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
-use super::events::{EventLog, EventReadLimit, EventReadRequest, MAX_EVENT_HISTORY_REPLAY};
+use super::events::{EventLog, read_tail_until};
 use crate::durability::{PartialStreamState, PartialStreamStore};
 use crate::events::EventData;
 
@@ -58,70 +58,55 @@ impl PartialStreamStore for EventLogPartialStreamStore {
     ) -> Result<Option<PartialStreamState>> {
         let turn_id = TurnId::parse(turn_id)
             .map_err(|error| AgentLoopError::store(format!("partial stream turn id: {error}")))?;
-        let limit = EventReadLimit::default();
-        let mut request = EventReadRequest::new(session_id, limit);
+        // The turn's events all follow its `turn.started`: read back from
+        // the end until it is in view, so a long session costs one turn.
+        let events = read_tail_until(self.log.as_ref(), session_id, |events| {
+            events.iter().any(|event| {
+                matches!(&event.data, EventData::TurnStarted(data) if data.turn_id == turn_id)
+            })
+        })
+        .await
+        .map_err(|error| AgentLoopError::store(error.to_string()))?;
         let mut latest: Option<OpenStream> = None;
-        let mut examined = 0usize;
-        loop {
-            let page = self
-                .log
-                .read_page(request)
-                .await
-                .map_err(|error| AgentLoopError::store(error.to_string()))?;
-            examined = examined.saturating_add(page.events.len());
-            for event in page
-                .events
-                .iter()
-                .filter(|event| event.context.turn_id == Some(turn_id))
-            {
-                match &event.data {
-                    EventData::OutputMessageStarted(data) => {
-                        latest = Some(OpenStream {
-                            message_id: data.message_id,
-                            reasoning_state: data.reasoning_state.clone(),
-                            accumulated: String::new(),
-                            settled: false,
-                            closed: false,
-                        });
-                    }
-                    EventData::OutputMessageDelta(data) => {
-                        if let Some(open) =
-                            latest.as_mut().filter(|o| o.message_id == data.message_id)
-                        {
-                            open.accumulated.clone_from(&data.accumulated);
-                        }
-                    }
-                    EventData::OutputMessageCompleted(data) => {
-                        if let Some(open) =
-                            latest.as_mut().filter(|o| o.message_id == data.message.id)
-                        {
-                            open.closed = true;
-                        }
-                    }
-                    EventData::OutputMessageReplaced(data) => {
-                        if let Some(open) =
-                            latest.as_mut().filter(|o| o.message_id == data.message_id)
-                        {
-                            open.closed = true;
-                        }
-                    }
-                    EventData::ReasonCompleted(_) => {
-                        if let Some(open) = latest.as_mut() {
-                            open.settled = true;
-                        }
-                    }
-                    _ => {}
+        for event in events
+            .iter()
+            .filter(|event| event.context.turn_id == Some(turn_id))
+        {
+            match &event.data {
+                EventData::OutputMessageStarted(data) => {
+                    latest = Some(OpenStream {
+                        message_id: data.message_id,
+                        reasoning_state: data.reasoning_state.clone(),
+                        accumulated: String::new(),
+                        settled: false,
+                        closed: false,
+                    });
                 }
+                EventData::OutputMessageDelta(data) => {
+                    if let Some(open) = latest.as_mut().filter(|o| o.message_id == data.message_id)
+                    {
+                        open.accumulated.clone_from(&data.accumulated);
+                    }
+                }
+                EventData::OutputMessageCompleted(data) => {
+                    if let Some(open) = latest.as_mut().filter(|o| o.message_id == data.message.id)
+                    {
+                        open.closed = true;
+                    }
+                }
+                EventData::OutputMessageReplaced(data) => {
+                    if let Some(open) = latest.as_mut().filter(|o| o.message_id == data.message_id)
+                    {
+                        open.closed = true;
+                    }
+                }
+                EventData::ReasonCompleted(_) => {
+                    if let Some(open) = latest.as_mut() {
+                        open.settled = true;
+                    }
+                }
+                _ => {}
             }
-            if examined > MAX_EVENT_HISTORY_REPLAY {
-                return Err(AgentLoopError::store(format!(
-                    "partial-stream scan exceeds the {MAX_EVENT_HISTORY_REPLAY}-event bound"
-                )));
-            }
-            let Some(cursor) = page.next_cursor else {
-                break;
-            };
-            request = EventReadRequest::from_cursor(cursor, limit);
         }
         Ok(latest
             .filter(|open| !open.closed)

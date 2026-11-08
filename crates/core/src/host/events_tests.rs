@@ -148,6 +148,32 @@ async fn a_suffix_projection_reads_only_the_suffix() {
 }
 
 #[tokio::test]
+async fn a_tail_read_reads_only_the_tail() {
+    // The whole log is over the replay bound; its last window is not.
+    let high = (MAX_EVENT_HISTORY_REPLAY + 1) as i32;
+    let tail = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |events| {
+        events
+            .first()
+            .and_then(|e| e.sequence)
+            .is_some_and(|s| s < high - 300)
+    })
+    .await
+    .expect("a tail read stops once it has enough");
+    let sequences: Vec<i32> = tail.iter().filter_map(|e| e.sequence).collect();
+    assert_eq!(sequences.last(), Some(&high));
+    assert!(
+        sequences.windows(2).all(|w| w[1] == w[0] + 1),
+        "in order, no gaps"
+    );
+    assert_eq!(sequences.len(), 256 + 512, "two windows");
+    // Never enough: the bound still holds.
+    let error = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |_| false)
+        .await
+        .expect_err("an unbounded tail read is refused");
+    assert!(matches!(error, EventLogError::InvalidRead { .. }));
+}
+
+#[tokio::test]
 async fn history_after_a_sequence_keeps_its_source_sequence() {
     let session_id = SessionId::new();
     let log = Arc::new(InMemoryEventLog::new());
@@ -174,6 +200,14 @@ async fn history_after_a_sequence_keeps_its_source_sequence() {
         .expect("read empty suffix");
     assert!(empty.messages.is_empty());
     assert_eq!(empty.source_sequence, Some(3));
+    // A boundary past the log's end (a checkpoint claiming more history than
+    // the log holds) reads as nothing after it, not as an error.
+    let beyond = history
+        .load_filtered_history(MessageQuery::new(session_id).after_sequence(10_000))
+        .await
+        .expect("read past the end");
+    assert!(beyond.messages.is_empty());
+    assert_eq!(beyond.source_sequence, Some(3));
 }
 
 #[tokio::test]
