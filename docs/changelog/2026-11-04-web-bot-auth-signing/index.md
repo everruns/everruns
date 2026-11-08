@@ -8,13 +8,13 @@ significance: notable
 products: [platform]
 surfaces: [operations]
 links:
-  docs: [/sre/request-signing/]
+  docs: [/features/request-signing/]
 ---
 
 Request signing used a format that Web Bot Auth verifiers reject, so signed
 agent requests were never recognized. Requests from `web_fetch` and `curl` in
 the shell are now signed by the egress layer to the current IETF
-[Web Bot Auth](/sre/request-signing/) draft. They cover the method, host and
+[Web Bot Auth](/features/request-signing/) draft. They cover the method, host and
 path, and name your deployment's origin in `Signature-Agent`. The key
 directory at `/.well-known/http-message-signatures-directory` is signed per
 key, which Cloudflare requires before you can register it as a verified bot.
