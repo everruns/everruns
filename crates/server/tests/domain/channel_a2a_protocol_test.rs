@@ -584,3 +584,153 @@ async fn send_message_registers_push_config_and_0_3_names_work() {
     assert_eq!(deleted["result"], Value::Null, "{deleted}");
     assert!(deleted.get("error").is_none(), "{deleted}");
 }
+
+/// An endpoint that admits two mTLS client certificates through the trusted
+/// proxy, so two callers share it.
+async fn create_mtls_a2a_channel(server: &TestServer) -> String {
+    let agent_id = create_agent(server).await;
+    let endpoint: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/channels"),
+            json!({
+                "channel_type": "a2a",
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "{{a2a.text}}",
+                    // Unused once channel auth is set; the config still requires it.
+                    "api_key_hash": hex::encode(Sha256::digest(b"unused")),
+                    "api_key_prefix": "evra2a_unused",
+                    "auth": {
+                        "mode": "mtls",
+                        "provider": {
+                            "type": "mtls",
+                            "header_name": "x-client-cert",
+                            "allowed_values": ["cert-alice", "cert-bob"],
+                            "proxy_secret_header": "x-proxy-secret",
+                            "proxy_secret": "proxy-secret-value"
+                        }
+                    }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let id = endpoint["id"].as_str().unwrap().to_string();
+    server
+        .post(
+            &format!("/v1/agents/{agent_id}/channels/{id}/publish"),
+            json!({}),
+        )
+        .await
+        .assert_success();
+    id
+}
+
+async fn mtls_call(server: &TestServer, channel: &str, cert: &str, body: Value) -> Value {
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/channels/{channel}/a2a"),
+            vec![
+                ("content-type", "application/json"),
+                ("A2A-Version", "1.0"),
+                ("x-client-cert", cert),
+                ("x-proxy-secret", "proxy-secret-value"),
+            ],
+            serde_json::to_vec(&body).unwrap(),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json()
+}
+
+fn v1_rpc(method: &str, params: Value) -> Value {
+    json!({ "jsonrpc": "2.0", "id": method, "method": method, "params": params })
+}
+
+/// Regression (TM-A2A-019): callers a channel's auth tells apart cannot see,
+/// continue or cancel each other's tasks, even on a `shared` endpoint.
+#[tokio::test]
+async fn verified_callers_on_one_channel_only_reach_their_own_tasks() {
+    let server = TestServer::in_memory().await;
+    let channel = create_mtls_a2a_channel(&server).await;
+
+    let sent = mtls_call(
+        &server,
+        &channel,
+        "cert-alice",
+        v1_send("alice-1", json!({})),
+    )
+    .await;
+    let alice_task = sent["result"]["task"]["id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{sent}"))
+        .to_string();
+    let bob_sent = mtls_call(&server, &channel, "cert-bob", v1_send("bob-1", json!({}))).await;
+    let bob_task = bob_sent["result"]["task"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(
+        alice_task, bob_task,
+        "a shared endpoint must not merge callers"
+    );
+
+    // Alice sees her task only.
+    let alice_list = mtls_call(
+        &server,
+        &channel,
+        "cert-alice",
+        v1_rpc("ListTasks", json!({})),
+    )
+    .await;
+    let ids: Vec<&str> = alice_list["result"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, [alice_task.as_str()], "{alice_list}");
+    let got = mtls_call(
+        &server,
+        &channel,
+        "cert-alice",
+        v1_rpc("GetTask", json!({ "id": alice_task })),
+    )
+    .await;
+    assert_eq!(got["result"]["id"], alice_task.as_str(), "{got}");
+
+    // Bob cannot read, cancel, continue or find Alice's task.
+    for (method, params) in [
+        ("GetTask", json!({ "id": alice_task })),
+        ("CancelTask", json!({ "id": alice_task })),
+    ] {
+        let res = mtls_call(&server, &channel, "cert-bob", v1_rpc(method, params)).await;
+        assert_eq!(res["error"]["code"], -32001, "{method}: {res}");
+    }
+    let continued = mtls_call(
+        &server,
+        &channel,
+        "cert-bob",
+        v1_send(
+            "bob-2",
+            json!({ "message": {
+                "role": "ROLE_USER",
+                "messageId": "m-bob-2",
+                "taskId": alice_task,
+                "parts": [{ "text": "hello" }]
+            }}),
+        ),
+    )
+    .await;
+    assert_eq!(continued["error"]["code"], -32001, "{continued}");
+    let by_context = mtls_call(
+        &server,
+        &channel,
+        "cert-bob",
+        v1_rpc("ListTasks", json!({ "contextId": alice_task })),
+    )
+    .await;
+    assert_eq!(by_context["result"]["tasks"], json!([]), "{by_context}");
+}

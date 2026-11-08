@@ -196,10 +196,12 @@ async fn list_page(
             (session.into_iter().collect::<Vec<_>>(), total, None)
         }
         None => {
-            let tags = [
+            let mut tags = vec![
                 format!("app:{}", auth.app_public_id),
                 format!("app_channel:{}", auth.channel_public_id),
             ];
+            // TM-A2A-019: a verified caller lists only its own tasks.
+            tags.extend(auth.caller_tag.clone());
             let activities = query.status.map_or(&[][..], |(_, activities)| activities);
             let (rows, total) = state
                 .db
