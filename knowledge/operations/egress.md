@@ -151,7 +151,7 @@ Bashkit no longer sign on their own. The server publishes the matching signed
 key directory at `/.well-known/http-message-signatures-directory`. Format
 choices that track the verifier ecosystem (string `Signature-Agent`, covered
 components) are recorded at the top of that file. Operator setup:
-[Request Signing](../../docs/sre/request-signing.md).
+[Request Signing](../../docs/features/request-signing.md).
 
 ## Future Egress Gateway
 

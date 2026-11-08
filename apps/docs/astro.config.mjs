@@ -108,7 +108,9 @@ export default defineConfig({
     "/how-to/migrate-to-0-18/": "/framework/upgrade-notes/",
     "/advanced/agent-blueprints/": "/framework/agent-blueprints/",
     "/advanced/read-tools/": "/built-ins/read-tools/",
-    "/advanced/request-signing/": "/sre/request-signing/",
+    "/advanced/request-signing/": "/features/request-signing/",
+    // Request signing is a feature site owners read about, not only an ops task.
+    "/sre/request-signing/": "/features/request-signing/",
     // The memory model design note moved to knowledge/; the shipped
     // behavior it describes is on the memory scopes page.
     "/advanced/memory-model/": "/features/memory-scopes/",
@@ -453,7 +455,6 @@ export default defineConfig({
                     { label: "System Doctor", slug: "sre/system-doctor" },
                     { label: "Custom Agent Workers", slug: "how-to/custom-agent-workers" },
                     { label: "Cloudflare Agent", slug: "how-to/cloudflare-agent" },
-                    { label: "Request Signing", slug: "sre/request-signing" },
                     {
                       label: "Runbooks",
                       items: [{ autogenerate: { directory: "sre/runbooks" } }],
