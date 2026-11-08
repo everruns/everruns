@@ -589,6 +589,137 @@ pub fn check_duplicate_web_search(
     ]
 }
 
+/// Display name for a capability id, falling back to the id itself.
+fn capability_name(
+    registry: &everruns_contracts::runtime::capabilities::CapabilityRegistry,
+    id: &str,
+) -> String {
+    registry
+        .get(id)
+        .map(|c| c.name().to_string())
+        .unwrap_or_else(|| id.to_string())
+}
+
+fn is_empty_config(config: &serde_json::Value) -> bool {
+    match config {
+        serde_json::Value::Null => true,
+        serde_json::Value::Object(map) => map.is_empty(),
+        _ => false,
+    }
+}
+
+/// Rule `capabilities.repeats_harness`: the agent lists a capability its
+/// harness already provides. With the same settings the copy does nothing.
+/// With no settings it is worse than nothing: capability configs override by
+/// id and replace the whole config (`config_layer::merge_capabilities`), so
+/// an empty copy silently swaps the harness's tuned settings for defaults.
+/// A copy with its own non-empty settings is a deliberate override and is
+/// left alone. `harness` is the effective (inherited) harness set.
+pub fn check_repeats_harness(
+    agent: &[AgentCapabilityConfig],
+    harness: &[AgentCapabilityConfig],
+    registry: &everruns_contracts::runtime::capabilities::CapabilityRegistry,
+) -> Vec<Finding> {
+    let mut same = Vec::new();
+    let mut reset = Vec::new();
+    for capability in agent {
+        let id = capability.capability_id();
+        let Some(inherited) = harness.iter().find(|h| h.capability_id() == id) else {
+            continue;
+        };
+        if capability.config_value() == inherited.config_value()
+            || (is_empty_config(capability.config_value())
+                && is_empty_config(inherited.config_value()))
+        {
+            same.push(capability_name(registry, id));
+        } else if is_empty_config(capability.config_value()) {
+            reset.push(capability_name(registry, id));
+        }
+    }
+    let mut findings = Vec::new();
+    if !same.is_empty() {
+        findings.push(
+            Finding::builtin(
+                "capabilities.repeats_harness",
+                FindingSeverity::Suggestion,
+                FindingCategory::Structure,
+                format!(
+                    "{} already come from the harness. Remove them from the agent; \
+                     listing them twice changes nothing.",
+                    same.join(", ")
+                ),
+            )
+            .at("capabilities", None),
+        );
+    }
+    if !reset.is_empty() {
+        findings.push(
+            Finding::builtin(
+                "capabilities.repeats_harness",
+                FindingSeverity::Warning,
+                FindingCategory::Effectiveness,
+                format!(
+                    "{} also come from the harness with its own settings. The agent's copy has \
+                     no settings, so it replaces the harness's settings with the defaults. \
+                     Remove it from the agent to keep the harness's settings.",
+                    reset.join(", ")
+                ),
+            )
+            .at("capabilities", None),
+        );
+    }
+    findings
+}
+
+/// Rule `harness.missing_workspace`: the agent sits on a harness without a
+/// workspace (Conversation, Base, or a custom one without files) and adds
+/// Worker's workspace pieces by hand. Hand-picking them misses the rest of
+/// the kit (saved tool output, long context, skills, todo), so the agent
+/// should run on Worker instead. Driven by the shared Worker preset so the
+/// rule follows the preset. Two pieces, not one: a chat agent that only
+/// wants files or web search is a reasonable choice.
+pub fn check_workspace_on_chat_harness(
+    agent: &[AgentCapabilityConfig],
+    harness: &[AgentCapabilityConfig],
+    registry: &everruns_contracts::runtime::capabilities::CapabilityRegistry,
+) -> Vec<Finding> {
+    if harness
+        .iter()
+        .any(|c| c.capability_id() == "session_file_system")
+    {
+        return Vec::new();
+    }
+    let worker_kit: Vec<_> =
+        everruns_contracts::capability::BuiltInHarnessPreset::Worker.local_capabilities();
+    let mut added: Vec<String> = Vec::new();
+    for capability in agent {
+        let id = capability.capability_id();
+        if worker_kit.iter().any(|w| w.capability_id() == id) {
+            let name = capability_name(registry, id);
+            if !added.contains(&name) {
+                added.push(name);
+            }
+        }
+    }
+    if added.len() < 2 {
+        return Vec::new();
+    }
+    vec![
+        Finding::builtin(
+            "harness.missing_workspace",
+            FindingSeverity::Suggestion,
+            FindingCategory::Effectiveness,
+            format!(
+                "This agent adds {} by hand, which are part of the Worker harness. Switch it to \
+                 Worker and remove them from the agent: Worker also saves large tool output, \
+                 keeps long histories searchable, and brings skills and a todo list.",
+                added.join(", ")
+            ),
+        )
+        .at("harness_id", None),
+    ]
+}
+
 // ============================================================================
 // Org-configurable rules (knowledge/evaluation/agent-checks.md, phase 4)
 // ============================================================================
@@ -679,6 +810,18 @@ pub fn builtin_rule_catalog() -> &'static [BuiltinRuleInfo] {
             default_severity: Warning,
             category: Cost,
             description: "More than one capability or tool searches the web.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "capabilities.repeats_harness",
+            default_severity: Suggestion,
+            category: Structure,
+            description: "Agent lists a capability its harness already provides.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "harness.missing_workspace",
+            default_severity: Suggestion,
+            category: Effectiveness,
+            description: "Agent adds Worker's workspace pieces to a harness without files.",
         },
     ]
 }
@@ -1130,5 +1273,109 @@ mod tests {
             "Web search, mcp_exa__web_search and mcp_docs__search_web all search the web, so the \
              model has to guess which one to use. Keep one."
         );
+    }
+
+    fn with_config(r#ref: &str, config: serde_json::Value) -> AgentCapabilityConfig {
+        AgentCapabilityConfig::with_config(r#ref, config)
+    }
+
+    fn empty_registry() -> everruns_contracts::runtime::capabilities::CapabilityRegistry {
+        everruns_contracts::runtime::capabilities::CapabilityRegistry::new()
+    }
+
+    #[test]
+    fn capability_repeated_from_the_harness_is_flagged() {
+        let harness = [capability("current_time"), capability("ask_user")];
+        let agent = [capability("current_time"), capability("web_fetch")];
+        let findings = check_repeats_harness(&agent, &harness, &empty_registry());
+        assert_eq!(rule_ids(&findings), vec!["capabilities.repeats_harness"]);
+        assert_eq!(findings[0].severity, FindingSeverity::Suggestion);
+        assert!(findings[0].message.contains("current_time"));
+        assert!(!findings[0].message.contains("web_fetch"));
+    }
+
+    #[test]
+    fn empty_copy_that_resets_harness_settings_is_a_warning() {
+        let tuned = serde_json::json!({"strategy": "auto", "budget_percent": 0.85});
+        let harness = [with_config("compaction", tuned.clone())];
+        let findings = check_repeats_harness(
+            &[with_config("compaction", serde_json::json!({}))],
+            &harness,
+            &empty_registry(),
+        );
+        assert_eq!(rule_ids(&findings), vec!["capabilities.repeats_harness"]);
+        assert_eq!(findings[0].severity, FindingSeverity::Warning);
+        assert!(findings[0].message.contains("defaults"));
+        // Identical settings are plain duplication.
+        let same = check_repeats_harness(
+            &[with_config("compaction", tuned)],
+            &harness,
+            &empty_registry(),
+        );
+        assert_eq!(same[0].severity, FindingSeverity::Suggestion);
+    }
+
+    #[test]
+    fn deliberate_override_of_harness_settings_is_not_flagged() {
+        let harness = [with_config(
+            "compaction",
+            serde_json::json!({"strategy": "auto"}),
+        )];
+        let agent = [with_config(
+            "compaction",
+            serde_json::json!({"strategy": "observation_masking"}),
+        )];
+        assert!(check_repeats_harness(&agent, &harness, &empty_registry()).is_empty());
+        assert!(check_repeats_harness(&agent, &[], &empty_registry()).is_empty());
+    }
+
+    #[test]
+    fn worker_pieces_on_a_harness_without_files_suggest_worker() {
+        let conversation = everruns_contracts::capability::BuiltInHarnessPreset::Conversation
+            .effective_capabilities();
+        // The shape Ecosystem Watch had: chat harness plus hand-added workspace.
+        let agent = [
+            capability("current_time"),
+            capability("web_search"),
+            capability("tool_output_distillation"),
+            capability("session_file_system"),
+        ];
+        let findings = check_workspace_on_chat_harness(&agent, &conversation, &empty_registry());
+        assert_eq!(rule_ids(&findings), vec!["harness.missing_workspace"]);
+        let message = &findings[0].message;
+        assert!(message.contains("tool_output_distillation"));
+        assert!(message.contains("session_file_system"));
+        assert!(!message.contains("current_time"));
+    }
+
+    #[test]
+    fn one_worker_piece_or_a_workspace_harness_is_not_flagged() {
+        let conversation = everruns_contracts::capability::BuiltInHarnessPreset::Conversation
+            .effective_capabilities();
+        assert!(
+            check_workspace_on_chat_harness(
+                &[capability("web_search")],
+                &conversation,
+                &empty_registry()
+            )
+            .is_empty()
+        );
+        let worker =
+            everruns_contracts::capability::BuiltInHarnessPreset::Worker.effective_capabilities();
+        assert!(
+            check_workspace_on_chat_harness(
+                &[capability("skills"), capability("subagents")],
+                &worker,
+                &empty_registry()
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn new_rules_are_in_the_catalog() {
+        let ids: Vec<_> = builtin_rule_catalog().iter().map(|r| r.rule_id).collect();
+        assert!(ids.contains(&"capabilities.repeats_harness"));
+        assert!(ids.contains(&"harness.missing_workspace"));
     }
 }

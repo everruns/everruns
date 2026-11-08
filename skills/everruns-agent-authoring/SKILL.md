@@ -26,7 +26,12 @@ definition and manager context before editing; preserve unrelated configuration.
 Inspect available harnesses, capabilities, models, skills, and MCP catalog
 entries through resources or discovered list/get commands. A harness supplies
 the base environment; an agent overlays behavior and configuration. Reuse a
-suitable harness and add capabilities only for required actions. Choose a model
+suitable harness and add capabilities only for required actions. Conversation
+is plain chat with no files; an agent that researches, keeps notes, runs on a
+schedule, or holds one long session belongs on Worker, which already includes
+files, saved tool output, compaction and web search. Do not re-add a capability
+the harness provides: an empty copy replaces the harness's settings with
+defaults. Preview the agent and resolve its findings before saving. Choose a model
 available in the target organization and preserve the user's explicit choice.
 
 MCP catalog entries are presets, not automatically active tools. Discover the
