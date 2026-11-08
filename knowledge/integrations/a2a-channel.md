@@ -160,6 +160,16 @@ that session, in either session mode. An unknown `taskId` is `-32001`; an
 unknown `contextId` is ignored and the message starts a new context. Only a
 session bound to the calling channel can be continued (TM-A2A-012).
 
+#### Callers sharing a channel
+
+A channel whose auth identifies each caller (OIDC, Google OIDC, OAuth2
+introspection, or mTLS with several allowed certificates) can admit many
+callers. Their tasks are bound to the caller: each new session carries the
+caller's tag, a caller never joins another caller's shared conversation, and
+list, get, cancel, continue, subscribe and push-config only reach the caller's
+own sessions (TM-A2A-019). Channels with a single credential (API key, HTTP
+Basic) keep one channel-wide task space, as there is only one caller.
+
 ```json
 {
   "jsonrpc": "2.0",

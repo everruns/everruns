@@ -6,7 +6,10 @@ metadata:
   labels: {{- include "everruns.labels" . | nindent 4 }}
     app.kubernetes.io/component: ui
 spec:
-  replicas: 1
+  replicas: {{ .Values.ui.replicas }}
+  # Start the replacement before stopping the old pod.
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector:
     matchLabels: {{- include "everruns.selector" (list . "ui") | nindent 6 }}
   template:
@@ -30,8 +33,9 @@ spec:
             - { name: UI_SERVER_API_URL, value: {{ printf "http://%s:9000/api" (include "everruns.name" (list . "server")) | quote }} }
             {{- with .Values.ui.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}
           readinessProbe:
-            tcpSocket: { port: http }
+            httpGet: { path: /login, port: http }
             periodSeconds: 10
+            timeoutSeconds: 8
           resources: {{- toYaml .Values.ui.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false

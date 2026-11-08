@@ -77,7 +77,11 @@ spec:
       containers:
         - name: nats
           image: {{ .Values.nats.image }}
-          args: [--jetstream, --store_dir, /data, -m, "8222"]
+          # Kubernetes expands $(NATS_PASSWORD) from env.
+          args: [--jetstream, --store_dir, /data, -m, "8222", --user, everruns, --pass, "$(NATS_PASSWORD)"]
+          env:
+            - name: NATS_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "everruns.internalSecretName" . }}, key: NATS_PASSWORD } }
           ports:
             - { name: client, containerPort: 4222 }
             - { name: monitor, containerPort: 8222 }
@@ -131,11 +135,14 @@ spec:
         - name: valkey
           image: {{ .Values.valkey.image }}
           # Rate-limit counters only; nothing worth persisting.
-          args: [--save, "", --appendonly, "no"]
+          args: [--save, "", --appendonly, "no", --requirepass, "$(VALKEY_PASSWORD)"]
+          env:
+            - name: VALKEY_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "everruns.internalSecretName" . }}, key: VALKEY_PASSWORD } }
           ports:
             - { name: valkey, containerPort: 6379 }
           readinessProbe:
-            exec: { command: [valkey-cli, ping] }
+            exec: { command: [sh, -c, 'valkey-cli -a "$VALKEY_PASSWORD" --no-auth-warning ping | grep -q PONG'] }
             periodSeconds: 5
           resources: {{- toYaml .Values.valkey.resources | nindent 12 }}
 ---

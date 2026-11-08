@@ -33,6 +33,29 @@ render --set database.url=postgres://u:p@db:5432/everruns --set auth.mode=full -
   --set worker.autoscaling.enabled=true --set valkey.enabled=true --set nats.enabled=false
 render --set database.existingSecret=db --set secrets.existingSecret=everruns --set auth.mode=none --set deploymentGrade=dev \
   --set ingress.enabled=true --set ingress.host=everruns.example.com --set providerKeys.existingSecret=keys
+# Everything the hosted service runs: several servers, network policies, the
+# egress proxy, metrics, S3 and cloud identity.
+everything=(--set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set server.replicas=2
+  --set valkey.enabled=true --set worker.autoscaling.enabled=true --set networkPolicy.enabled=true
+  --set egressProxy.enabled=true --set metrics.enabled=true --set metrics.serviceMonitor.enabled=true
+  --set storage.s3.enabled=true --set storage.s3.bucket=files --set serviceAccount.create=true
+  --set ui.replicas=2 --set proxy.replicas=2)
+render "${everything[@]}"
+
+echo "==> rendered shapes say what they should"
+out="$(helm template check "$CHART" "${everything[@]}")"
+grep -q 'name: check-everruns-server-grpc' <<<"$out" || fail "no headless gRPC Service"
+grep -q 'value: "check-everruns-server-grpc:9001"' <<<"$out" || fail "workers do not use the headless gRPC Service"
+grep -q 'maxUnavailable: 0, maxSurge: 1' <<<"$out" || fail "several servers do not roll"
+grep -q 'FROM session_actors' <<<"$out" || fail "worker autoscaling ignores chat turns"
+grep -q 'kind: PodDisruptionBudget' <<<"$out" || fail "no PodDisruptionBudget"
+grep -q '@check-everruns-valkey:6379' <<<"$out" || fail "Valkey URL missing"
+grep -q 'everruns-egress-proxy"' <<<"$out" || fail "egress proxy not rendered"
+grep -q 'name: METRICS_ADDR' <<<"$out" || fail "metrics address missing"
+grep -q 'value: s3' <<<"$out" || fail "S3 storage missing"
+one="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com)"
+grep -q 'type: Recreate' <<<"$one" || fail "a single server must be replaced with Recreate"
+if grep -q 'kind: NetworkPolicy' <<<"$one"; then fail "network policies render when off"; fi
 
 echo "==> refuses unsupported shapes"
 refuses() {
@@ -46,6 +69,10 @@ refuses() {
 refuses "set database.url" --set auth.adminEmail=admin@example.com
 refuses "set auth.adminEmail" --set postgresql.enabled=true
 refuses "needs deploymentGrade dev" --set postgresql.enabled=true --set auth.mode=none
+refuses "needs Valkey" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set server.replicas=2
+refuses "needs NATS" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set server.replicas=2 \
+  --set valkey.enabled=true --set nats.enabled=false
+refuses "needs storage.s3.bucket" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set storage.s3.enabled=true
 refuses "cannot be used with auth.mode full" --set postgresql.enabled=true --set auth.mode=full \
   --set auth.adminEmail=admin@example.com --set seedDefaultProviderKeys=true
 

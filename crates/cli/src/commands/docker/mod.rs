@@ -10,8 +10,8 @@
 
 mod checks;
 mod public;
-mod settings;
-mod signin;
+pub(crate) mod settings;
+pub(crate) mod signin;
 
 use std::io::IsTerminal;
 use std::net::TcpListener;
@@ -157,7 +157,7 @@ pub enum AuthChoice {
 }
 
 impl AuthChoice {
-    fn server_mode(self) -> &'static str {
+    pub(crate) fn server_mode(self) -> &'static str {
         match self {
             Self::Single => "admin",
             Self::None => "none",
@@ -165,7 +165,7 @@ impl AuthChoice {
         }
     }
 
-    fn from_server_mode(mode: &str) -> Option<Self> {
+    pub(crate) fn from_server_mode(mode: &str) -> Option<Self> {
         match mode {
             "admin" => Some(Self::Single),
             "none" => Some(Self::None),
@@ -184,13 +184,13 @@ impl AuthChoice {
 
     /// Whether the instance's default provider key may be shared with every
     /// user: only when no one can sign themselves up.
-    fn shares_default_keys(self) -> bool {
+    pub(crate) fn shares_default_keys(self) -> bool {
         !matches!(self, Self::Accounts)
     }
 
     /// The server refuses no-sign-in outside the dev grade, which also turns
     /// on experimental features. That fits a throwaway local playground.
-    fn deployment_grade(self) -> &'static str {
+    pub(crate) fn deployment_grade(self) -> &'static str {
         match self {
             Self::None => "dev",
             Self::Single | Self::Accounts => "prod",
@@ -216,9 +216,10 @@ pub enum LlmProvider {
 }
 
 impl LlmProvider {
-    const ALL: [LlmProvider; 4] = [Self::Openai, Self::Anthropic, Self::Gemini, Self::Skip];
+    pub(crate) const ALL: [LlmProvider; 4] =
+        [Self::Openai, Self::Anthropic, Self::Gemini, Self::Skip];
 
-    fn key_env(self) -> Option<&'static str> {
+    pub(crate) fn key_env(self) -> Option<&'static str> {
         match self {
             Self::Openai => Some("OPENAI_API_KEY"),
             Self::Anthropic => Some("ANTHROPIC_API_KEY"),
@@ -237,7 +238,7 @@ impl LlmProvider {
         }
     }
 
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Openai => "openai",
             Self::Anthropic => "anthropic",
@@ -246,7 +247,7 @@ impl LlmProvider {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Openai => "OpenAI",
             Self::Anthropic => "Anthropic",
@@ -255,7 +256,7 @@ impl LlmProvider {
         }
     }
 
-    fn env_key(self) -> Option<String> {
+    pub(crate) fn env_key(self) -> Option<String> {
         self.key_env()
             .and_then(|k| std::env::var(k).ok())
             .filter(|v| !v.trim().is_empty())
@@ -281,13 +282,13 @@ pub async fn run(command: DockerCommand) -> Result<()> {
 
 /// How `up` may talk to the person running it.
 #[derive(Clone, Copy)]
-struct Asker {
-    interactive: bool,
-    yes: bool,
+pub(crate) struct Asker {
+    pub(crate) interactive: bool,
+    pub(crate) yes: bool,
 }
 
 impl Asker {
-    fn can_ask(self) -> bool {
+    pub(crate) fn can_ask(self) -> bool {
         self.interactive && !self.yes
     }
 }
@@ -454,6 +455,7 @@ async fn up(args: UpArgs) -> Result<()> {
         auth,
         email: &email,
         password: s.value(settings::ADMIN_PASSWORD).unwrap_or_default(),
+        password_hint: "put the new one in AUTH_ADMIN_PASSWORD in the instance's .env",
     };
     let switch = if asker.yes {
         signin::SwitchPolicy::Always
@@ -688,7 +690,7 @@ async fn wait_healthy(docker: &str, inst: &Instance, port: u16) -> Result<Health
     }
 }
 
-fn ask_auth(asker: Asker) -> Result<AuthChoice> {
+pub(crate) fn ask_auth(asker: Asker) -> Result<AuthChoice> {
     if !asker.can_ask() {
         return no_prompt(asker, "--auth", AuthChoice::Single);
     }
@@ -703,7 +705,7 @@ fn ask_auth(asker: Asker) -> Result<AuthChoice> {
     Ok(options[pick])
 }
 
-fn default_email() -> String {
+pub(crate) fn default_email() -> String {
     Command::new("git")
         .args(["config", "--get", "user.email"])
         .stderr(Stdio::null())
@@ -715,7 +717,7 @@ fn default_email() -> String {
         .unwrap_or_else(|| "admin@example.com".to_string())
 }
 
-fn ask_email(asker: Asker) -> Result<String> {
+pub(crate) fn ask_email(asker: Asker) -> Result<String> {
     let default = default_email();
     if !asker.can_ask() {
         return no_prompt(asker, "--admin-email", default);
@@ -734,7 +736,7 @@ fn ask_email(asker: Asker) -> Result<String> {
         .context("Failed to read the answer")
 }
 
-fn ask_provider(asker: Asker) -> Result<LlmProvider> {
+pub(crate) fn ask_provider(asker: Asker) -> Result<LlmProvider> {
     // A key already in the shell is the obvious default.
     let detected = LlmProvider::ALL.into_iter().find(|p| p.env_key().is_some());
     if !asker.can_ask() {
@@ -780,7 +782,7 @@ fn set_provider(s: &mut Settings, provider: LlmProvider, asker: Asker) -> Result
 }
 
 /// No one to ask: `--yes` takes the default, otherwise name the flag.
-fn no_prompt<T>(asker: Asker, flag: &str, default: T) -> Result<T> {
+pub(crate) fn no_prompt<T>(asker: Asker, flag: &str, default: T) -> Result<T> {
     if asker.yes {
         Ok(default)
     } else {
@@ -1069,7 +1071,7 @@ fn display_version(health: &Health, tag: &str) -> String {
 }
 
 /// `vX.Y.Z` as numbers; anything else (such as `latest`) is not comparable.
-fn release(tag: &str) -> Option<(u64, u64, u64)> {
+pub(crate) fn release(tag: &str) -> Option<(u64, u64, u64)> {
     let mut parts = tag.strip_prefix('v').unwrap_or(tag).splitn(3, '.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
@@ -1077,7 +1079,7 @@ fn release(tag: &str) -> Option<(u64, u64, u64)> {
     Some((major, minor, patch))
 }
 
-fn is_downgrade(current: &str, target: &str) -> bool {
+pub(crate) fn is_downgrade(current: &str, target: &str) -> bool {
     matches!((release(current), release(target)), (Some(c), Some(t)) if t < c)
 }
 
@@ -1253,7 +1255,7 @@ fn remove_project(docker: &str, inst: &Instance) -> Result<()> {
 }
 
 /// Drop the instance's CLI profile, so nothing points at a server that is gone.
-fn forget_profile(profile: &str) -> Result<bool> {
+pub(crate) fn forget_profile(profile: &str) -> Result<bool> {
     let mut store = crate::auth::CredentialStore::load().unwrap_or_default();
     if !store.remove_profile(profile) {
         return Ok(false);
@@ -1267,7 +1269,7 @@ fn forget_profile(profile: &str) -> Result<bool> {
 
 /// Ask whether to go ahead despite `reason`; without a terminal only `flag`
 /// says yes.
-fn confirm(asker: Asker, reason: &str, flag: &str) -> Result<bool> {
+pub(crate) fn confirm(asker: Asker, reason: &str, flag: &str) -> Result<bool> {
     if asker.yes {
         return Ok(true);
     }

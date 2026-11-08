@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Local Setup and Kubernetes"
-description: "One command, everruns docker up, runs the self-hosted Platform on a person's machine through Docker Compose; Kubernetes gets an official Helm chart, not an operator."
+description: "One command, everruns docker up, runs the self-hosted Platform on a person's machine through Docker Compose; Kubernetes gets an official Helm chart, not an operator, and everruns k8s up to install it."
 tags:
   - everruns
   - operations
@@ -11,7 +11,8 @@ tags:
 # Local Setup and Kubernetes
 
 Status: accepted (2026-10-24). `everruns docker` shipped, including `upgrade`
-and `reset`, and the Helm chart (`charts/everruns`).
+and `reset`, and the Helm chart (`charts/everruns`). `everruns k8s` added
+2026-11-08.
 
 ## Goal
 
@@ -72,8 +73,9 @@ Deployment cannot express. Everruns needs none today:
 - PostgreSQL is the only stateful part; managed databases or CloudNativePG own
   its lifecycle better than anything written here.
 - The server applies migrations itself at start, under an advisory lock.
-- The server runs as one replica by design (per-process session SQL store and
-  mounts); workers scale on queue depth, which KEDA does without custom code.
+- Servers scale as plain replicas (leases and shared state live in PostgreSQL,
+  live events in NATS, rate limits in Valkey); workers scale on demand, which
+  KEDA does without custom code.
 - Agents and sessions live in the database behind the API with change history;
   mirroring them as custom resources would make a second source of truth.
 
@@ -83,17 +85,41 @@ release, so it runs that release's images; from a checkout it runs `latest`.
 
 | Decision | Why |
 |---|---|
-| Server fixed at one replica, `Recreate` | Per-process session state; the old pod stops before the new one migrates. |
-| Workers scale with KEDA's PostgreSQL trigger on `durable_task_queue` | Queue depth straight from the database, no metrics stack to install. |
+| `server.replicas`: 1 uses `Recreate`, 2+ roll with maxUnavailable 0, a PDB and a soft node spread | One replica stays cheap and simple. The hosted service runs two, which proved the server multi-replica safe (schedule leases, shared session store, sticky sessions in the database). Migrations take an advisory lock and only go forward, so the old pod serves while the new one migrates. |
+| Several servers need NATS and Valkey (render fails without) | Without NATS a stream on one server misses events another writes; without Valkey each server allows the full rate limit. |
+| Workers dial a headless `-server-grpc` Service | They resolve every server and balance per call; through a ClusterIP one long-lived connection pins all calls to one server. |
+| Workers scale with KEDA's PostgreSQL trigger on the hosted service's query: default-queue tasks from the last hour, running chat turns at 1/25, turns waiting over 5 s | Demand straight from the database, no metrics stack. Counting only `durable_task_queue` never saw chat load, and stale rows of other queues pinned it at maximum (2026-10-25, 2026-10-29). |
+| Worker drain 120 s, kill timeout 150 s | Same as the hosted service: running turns hand off at their next step, so a short grace cut long steps. |
 | Caddy in front, its Caddyfile a copy of the Compose one (CI checks they match) | Ingress controllers cannot express the `Accept: text/markdown` rewrite; one route table for both setups. |
 | External PostgreSQL by default; `postgresql.enabled` is a single pod for trying it | Backups, failover and upgrades belong to a managed database or a PostgreSQL operator. |
-| Bundled NATS on, Valkey off | NATS carries live events as in Compose; one server keeps rate limits in memory. |
+| Bundled NATS on, Valkey off, both with generated passwords | NATS carries live events as in Compose; one server keeps rate limits in memory. Passwords live in `<release>-internal`, generated and kept like the other secrets, so `secrets.existingSecret` users need nothing new. |
+| Opt-in parity with the hosted service: `networkPolicy`, `egressProxy`, `metrics`, `storage.s3`, `serviceAccount` | Same component split, egress proxy and metrics port the hosted service runs. Off by default: NetworkPolicy needs an enforcing network plugin, the rest needs cloud setup. AWS-only parts (ALB, Karpenter pools, CloudWatch shipping) stay in the hosted service's repository. |
 | Secrets generated once, read back with `lookup`, kept on uninstall | Regenerating the encryption key on `helm upgrade` would make stored secrets unreadable. |
 | Bad combinations fail at render time | `none` outside dev, no database, no admin email, shared keys with open signup: the server would refuse them at start anyway. |
 
 CI (`helm-chart.yml`) lints and renders the chart and installs it on kind,
-then signs in through the proxy and checks the secrets survive an upgrade and
-a reinstall.
+then signs in through the proxy, upgrades to the hosted service's shape (two
+servers, Valkey, network policies, egress proxy) and signs in again, and checks
+the secrets survive the upgrade and a reinstall.
+
+### `everruns k8s`
+
+The same contract as `everruns docker up`, for a cluster: one command, a few
+questions, a healthy install and a CLI signed in to it
+(`crates/cli/src/commands/k8s/`).
+
+| Decision | Why |
+|---|---|
+| Shell out to `kubectl` and `helm` | They know the kubeconfig, contexts and cloud sign-in plugins; no Kubernetes client crate. `EVERRUNS_KUBECTL` / `EVERRUNS_HELM` swap them. |
+| Confirm the context and namespace on the first run and whenever they change (`--yes` for scripts) | A cluster is often shared or remote; installing into the wrong one is the main way this hurts someone. |
+| The release is the record | `up` reads `helm get values` and asks only what it lacks, so `--set` values survive later runs. The chart keeps secrets in the cluster; values go to helm on stdin. The local record (`everruns/k8s/<name>/instance.json`) holds only the context, namespace, chart, port and non-secret answers, so a reinstall after `uninstall` asks nothing but an external database URL. |
+| `up` never moves the chart version; `upgrade` does, after a `pg_dump` of a bundled database to this machine | Same as Docker: a new chart runs migrations, which only go forward. An external database is the person's to back up. |
+| Without a public URL, a port-forward on a fixed local port | The CLI profile (`k8s`, or `k8s-<name>`) points at it; `port-forward` keeps it open, `open` adds the browser. |
+| `uninstall` keeps secrets and volumes; `reset` deletes them after the name is typed | Same split as Docker's `stop` and `reset`. |
+
+CI (`helm-chart.yml`, `cli-up`) runs `scripts/smoke-everruns-k8s.sh` on kind:
+no-prompt install, CLI sign-in, a rerun, `--set` kept, uninstall and
+reinstall with the same secrets, and reset.
 
 Revisit an operator if many teams run many instances per cluster and want to
 declare them as objects. Agent sandboxes as pods would be a sandbox provider,

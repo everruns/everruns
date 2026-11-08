@@ -103,6 +103,12 @@ pub enum Commands {
         command: commands::docker::DockerCommand,
     },
 
+    /// Run Everruns in a Kubernetes cluster with the Helm chart
+    K8s {
+        #[command(subcommand)]
+        command: commands::k8s::K8sCommand,
+    },
+
     /// Send a message and stream the response
     Chat {
         /// Message text to send
@@ -210,6 +216,12 @@ async fn run() -> anyhow::Result<()> {
             };
             return Box::pin(commands::docker::run(command)).await;
         }
+        Commands::K8s { .. } => {
+            let Commands::K8s { command } = cli.command else {
+                unreachable!()
+            };
+            return Box::pin(commands::k8s::run(command)).await;
+        }
         _ => {}
     }
 
@@ -295,7 +307,8 @@ async fn run() -> anyhow::Result<()> {
         | Commands::Logout
         | Commands::Status
         | Commands::Orgs { .. }
-        | Commands::Docker { .. } => {
+        | Commands::Docker { .. }
+        | Commands::K8s { .. } => {
             unreachable!()
         }
     }

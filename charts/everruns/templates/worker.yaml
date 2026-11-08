@@ -34,9 +34,17 @@ spec:
           image: {{ include "everruns.image" (list . "worker") }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            - { name: SERVER_GRPC_ADDRESS, value: {{ printf "%s:9001" (include "everruns.name" (list . "server")) | quote }} }
+            # The headless Service: the worker resolves every server replica
+            # (again every 10 s) and balances calls across them.
+            - { name: SERVER_GRPC_ADDRESS, value: {{ printf "%s-grpc:9001" (include "everruns.name" (list . "server")) | quote }} }
             - name: WORKER_GRPC_AUTH_TOKEN
               valueFrom: { secretKeyRef: { name: {{ $secret }}, key: WORKER_GRPC_AUTH_TOKEN } }
+            - { name: WORKER_SHUTDOWN_GRACE_SECS, value: {{ .Values.worker.shutdownGraceSeconds | quote }} }
+            {{- with .Values.worker.maxConcurrentTasks }}
+            - { name: MAX_CONCURRENT_TASKS, value: {{ . | quote }} }
+            {{- end }}
+            {{- include "everruns.valkeyEnv" . | nindent 12 }}
+            {{- include "everruns.egressProxyEnv" . | nindent 12 }}
             {{- with .Values.otel.endpoint }}
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
             {{- end }}
@@ -60,7 +68,20 @@ spec:
 {{- if .Values.worker.autoscaling.enabled }}
 {{- $db := include "everruns.databaseSecret" . | fromYaml }}
 ---
-# Queue depth read straight from PostgreSQL, so scaling needs no metrics stack.
+# Demand read straight from PostgreSQL, so scaling needs no metrics stack.
+#
+# Decisions (the same query the hosted service scales on):
+# - Background tasks: claimed, plus claimable now on the default queue. Rows
+#   another queue or an unregistered activity type would leave pending forever
+#   are not demand, so only rows that became visible in the last hour count;
+#   a claimable row is taken in seconds.
+# - Chat turns are not queue rows; session actors carry them. A running turn
+#   counts 1/25 of a task, since a worker runs hundreds before its CPU runs
+#   out. A turn waiting over 5 s for a worker counts 1: the workers are full
+#   or braking. Actors parked on a detached tool call are not waiting.
+# - CPU is not a signal: workers mostly wait on models and tools.
+# - Scale up fast, down slowly: a stopping worker drains its turns, and
+#   flapping would cut user-visible work.
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
 metadata:
@@ -86,6 +107,10 @@ spec:
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - { type: Pods, value: 2, periodSeconds: 30 }
         scaleDown:
           stabilizationWindowSeconds: 300
           policies:
@@ -97,9 +122,19 @@ spec:
       metadata:
         targetQueryValue: {{ .Values.worker.autoscaling.tasksPerWorker | quote }}
         query: >-
-          SELECT COUNT(*) FROM durable_task_queue
-          WHERE status = 'claimed'
-          OR (status = 'pending' AND visible_at <= NOW() AND attempt < max_attempts)
+          SELECT (SELECT COUNT(*) FROM durable_task_queue
+                  WHERE status = 'claimed'
+                  OR (status = 'pending' AND queue IS NULL AND attempt < max_attempts
+                      AND visible_at <= NOW() AND visible_at > NOW() - INTERVAL '1 hour'))
+               + (SELECT COUNT(*) FROM session_actors
+                  WHERE lease_holder IS NOT NULL AND lease_expires_at > NOW()) / 25
+               + (SELECT COUNT(*) FROM session_actors a
+                  WHERE a.runnable_since IS NOT NULL
+                    AND a.runnable_since <= NOW() - INTERVAL '5 seconds'
+                    AND a.runnable_since > NOW() - INTERVAL '1 hour'
+                    AND (a.lease_holder IS NULL OR a.lease_expires_at <= NOW())
+                    AND NOT EXISTS (SELECT 1 FROM detached_tool_calls d
+                                    WHERE d.session_id = a.session_id))
 {{- end }}
 {{- if .Values.worker.podDisruptionBudget.enabled }}
 ---

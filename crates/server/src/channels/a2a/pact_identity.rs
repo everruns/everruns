@@ -37,13 +37,19 @@ impl PersonalAgentUser {
     /// Routing tag binding a conversation to this user, so a `contextId` from
     /// one user (or another personal agent) never continues in another's.
     pub fn session_tag(&self) -> String {
-        let digest = Sha256::new()
-            .chain_update(self.issuer.as_bytes())
-            .chain_update([0u8])
-            .chain_update(self.subject.as_bytes())
-            .finalize();
-        format!("a2a_caller:{}", &hex::encode(digest)[..32])
+        caller_session_tag(&self.issuer, &self.subject)
     }
+}
+
+/// Session tag naming one authenticated A2A caller. PACT users and callers a
+/// channel's own auth verifies share the format (TM-A2A-016, TM-A2A-019).
+pub(super) fn caller_session_tag(issuer: &str, subject: &str) -> String {
+    let digest = Sha256::new()
+        .chain_update(issuer.as_bytes())
+        .chain_update([0u8])
+        .chain_update(subject.as_bytes())
+        .finalize();
+    format!("a2a_caller:{}", &hex::encode(digest)[..32])
 }
 
 /// Verify the request's personal-agent JWT against the endpoint's registered

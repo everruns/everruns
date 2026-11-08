@@ -41,7 +41,7 @@ impl Command for CreateSchedule {
         let target_type = q::parse_target_type(&req.target.target_type)?;
         req.cron_expression = q::normalize_cron_expression(&req.cron_expression)?;
         let next_trigger_at = if req.enabled {
-            q::calculate_next_trigger(&req.cron_expression)?
+            q::calculate_next_trigger(&req.cron_expression, &req.timezone)?
         } else {
             None
         };
@@ -197,6 +197,27 @@ impl Command for UpdateScheduleCmd {
                 .as_ref()
                 .map(|target| target.target_type.as_str()),
         )?;
+        // A new cron or timezone moves the next trigger; recompute it so the
+        // change takes effect now rather than after one more fire at the old time.
+        let next_trigger_at = if req.cron_expression.is_some() || req.timezone.is_some() {
+            let current = store
+                .get_schedule(self.schedule_id)
+                .await
+                .map_err(q::map_store_error)?;
+            let enabled = req.enabled.unwrap_or(current.enabled);
+            if enabled {
+                let cron = req
+                    .cron_expression
+                    .as_deref()
+                    .unwrap_or(&current.cron_expression);
+                let timezone = req.timezone.as_deref().unwrap_or(&current.timezone);
+                UpdateField::from_option(q::calculate_next_trigger(cron, timezone)?)
+            } else {
+                UpdateField::Unchanged
+            }
+        } else {
+            UpdateField::Unchanged
+        };
 
         store
             .update_schedule(
@@ -222,7 +243,7 @@ impl Command for UpdateScheduleCmd {
                     retry_policy: req
                         .retry_policy
                         .map_or(UpdateField::Unchanged, UpdateField::from_option),
-                    next_trigger_at: UpdateField::Unchanged,
+                    next_trigger_at,
                 },
             )
             .await
@@ -334,7 +355,7 @@ impl Command for ResumeSchedule {
             .get_schedule(self.schedule_id)
             .await
             .map_err(q::map_store_error)?;
-        let next_trigger = q::calculate_next_trigger(&current.cron_expression)?;
+        let next_trigger = q::calculate_next_trigger(&current.cron_expression, &current.timezone)?;
 
         store
             .update_schedule(

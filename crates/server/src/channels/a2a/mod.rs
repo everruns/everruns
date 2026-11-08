@@ -477,6 +477,9 @@ struct AuthorizedA2a {
     app_public_id: String,
     channel_public_id: crate::records::AgentChannelId,
     session_mode: everruns_core::channel::SessionBinding,
+    /// Session tag of the verified caller (see `verified_caller_tag`). When
+    /// set, only sessions carrying it are visible to this request.
+    caller_tag: Option<String>,
 }
 
 async fn authenticate_request(
@@ -524,13 +527,19 @@ async fn authenticate_request(
         return Err(not_found());
     };
 
+    // THREAT[TM-A2A-019]: a channel whose auth proves who is calling (OIDC,
+    // OAuth2 introspection, mTLS with several allowed certificates) can admit
+    // many callers. Their tasks are bound to the verified caller, so one
+    // caller cannot list, read, continue or cancel another's. Key, Basic and
+    // shared-secret channels have a single credential and stay channel-wide.
+    let mut caller_tag = None;
     if let Some(auth) = channel.auth.as_ref() {
         if auth.mode == crate::domains::agent_channels::record::ChannelAuthMode::ApiKey {
             verify_a2a_api_key(headers, &config.api_key_hash)?;
         } else {
-            state
+            let principal = state
                 .auth_verifier
-                .verify(
+                .verify_principal(
                     auth,
                     headers,
                     LegacyChannelAuth {
@@ -540,6 +549,7 @@ async fn authenticate_request(
                 )
                 .await
                 .map_err(a2a_auth_error_response)?;
+            caller_tag = verified_caller_tag(auth, principal.as_ref(), headers);
         }
     } else {
         verify_a2a_api_key(headers, &config.api_key_hash)?;
@@ -655,7 +665,33 @@ async fn authenticate_request(
         app_public_id: app.public_id.to_string(),
         channel_public_id: channel_id_typed,
         session_mode: config.session_mode,
+        caller_tag,
     })
+}
+
+/// The session tag naming the verified caller, when the channel's auth
+/// identifies one. mTLS proves only the certificate value the proxy passed,
+/// which `verify_principal` has already checked against the allow list.
+fn verified_caller_tag(
+    auth: &crate::domains::agent_channels::record::ChannelAuthConfig,
+    principal: Option<&crate::api::channel_auth::ChannelAuthPrincipal>,
+    headers: &HeaderMap,
+) -> Option<String> {
+    if let Some(principal) = principal {
+        return Some(pact_identity::caller_session_tag(
+            &principal.issuer,
+            &principal.subject,
+        ));
+    }
+    if let Some(crate::domains::agent_channels::record::ChannelAuthProviderConfig::Mtls {
+        header_name,
+        ..
+    }) = auth.provider.as_ref()
+    {
+        let cert = headers.get(header_name)?.to_str().ok()?;
+        return Some(pact_identity::caller_session_tag("mtls", cert));
+    }
+    None
 }
 
 fn verify_a2a_api_key(
@@ -688,7 +724,12 @@ fn session_belongs_to_a2a_channel(
 ) -> bool {
     let app_tag = format!("app:{}", auth.app_public_id);
     let channel_tag = format!("app_channel:{}", auth.channel_public_id);
-    session.tags.iter().any(|t| t == &app_tag) && session.tags.iter().any(|t| t == &channel_tag)
+    session.tags.iter().any(|t| t == &app_tag)
+        && session.tags.iter().any(|t| t == &channel_tag)
+        && auth
+            .caller_tag
+            .as_ref()
+            .is_none_or(|caller| session.tags.iter().any(|t| t == caller))
 }
 
 /// Pull the joined text from `params.message.parts`, plus the `role`,
@@ -860,7 +901,7 @@ async fn handle_message_send(
             context_id: parsed_msg.context_id,
             role: parsed_msg.role,
             continue_session,
-            caller_tag: None,
+            caller_tag: auth.caller_tag.clone(),
             runtime_subject: None,
         },
         request_id,
@@ -1237,7 +1278,7 @@ async fn handle_message_stream(
             context_id: parsed_msg.context_id,
             role: parsed_msg.role,
             continue_session,
-            caller_tag: None,
+            caller_tag: auth.caller_tag.clone(),
             runtime_subject: None,
         },
         request_id,

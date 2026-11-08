@@ -26,8 +26,18 @@ definition and manager context before editing; preserve unrelated configuration.
 Inspect available harnesses, capabilities, models, skills, and MCP catalog
 entries through resources or discovered list/get commands. A harness supplies
 the base environment; an agent overlays behavior and configuration. Reuse a
-suitable harness and add capabilities only for required actions. Choose a model
+suitable harness and add capabilities only for required actions. Conversation
+is plain chat with no files; an agent that researches, keeps notes, runs on a
+schedule, or holds one long session belongs on Worker, which already includes
+files, saved tool output, compaction and web search. Do not re-add a capability
+the harness provides: an empty copy replaces the harness's settings with
+defaults. Preview the agent and resolve its findings before saving. Choose a model
 available in the target organization and preserve the user's explicit choice.
+
+Before writing a new definition, list the agent examples (`everruns agents
+examples list`) and start from the closest one with `everruns agents examples
+adopt <name>` when it fits; an example already pairs a prompt with the
+capabilities it needs. Adapt it rather than copying parts of it by hand.
 
 MCP catalog entries are presets, not automatically active tools. Discover the
 agent MCP attachment commands before adding a server. Select `actsAs` according
@@ -58,6 +68,19 @@ For an update, carry the manager-context revision you read and a concrete
 `--reason` describing the requested change. Read back the stored definition and,
 where available, preview its effective harness and capability composition.
 Configuration saved successfully is not evidence that the behavior works.
+
+## Deploying to a channel
+
+A channel (Slack, a webhook, public chat, an API key) is how people reach the
+agent; discover the channel commands and connect one only when asked. For
+Slack, start from the `slack-team-assistant` example. Keep the **Reactions**
+capability: it makes the agent react 👀 when it starts on a Slack message and
+✅ once it has answered, so people see it got the message. Connecting the
+agent's first Slack channel turns it on. Change how the agent reacts in its
+instructions ("Don't react to messages", "Use 🫡 instead of 👀") only when the
+person asks; do not restate the default. Add the **Slack** capability when the
+agent should also act in the workspace: update its own messages, share files,
+or look people up.
 
 ## Verify the behavior
 

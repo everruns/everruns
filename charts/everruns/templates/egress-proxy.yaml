@@ -1,0 +1,118 @@
+{{- if .Values.egressProxy.enabled }}
+{{- $name := include "everruns.name" (list . "egress-proxy") }}
+# Tenant egress proxy: agent tool, integration and MCP traffic leaves through
+# it instead of straight from the server and workers, so it can get its own
+# address (a node pool with its own NAT), per-org caps and per-org byte counts.
+# Platform calls (LLM providers, email) still go direct. It ships in the server
+# image. Usage is logged; per-org caps come from egressProxy.orgLimits.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress-proxy
+spec:
+  replicas: {{ .Values.egressProxy.replicas }}
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "egress-proxy") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "egress-proxy") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      # SIGTERM flushes counted usage before exit.
+      terminationGracePeriodSeconds: 20
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+      {{- if gt (int .Values.egressProxy.replicas) 1 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "everruns.selector" (list . "egress-proxy") | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: egress-proxy
+          image: {{ include "everruns.image" (list . "server") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/app/everruns-egress-proxy"]
+          ports:
+            - { name: proxy, containerPort: 4750 }
+            - { name: health, containerPort: 4751 }
+          env:
+            - name: EVERRUNS_EGRESS_PROXY_SECRET
+              valueFrom: { secretKeyRef: { name: {{ include "everruns.internalSecretName" . }}, key: EVERRUNS_EGRESS_PROXY_SECRET } }
+            # Each pod enforces its share of the caps.
+            - { name: EGRESS_PROXY_REPLICAS, value: {{ .Values.egressProxy.replicas | quote }} }
+            {{- with .Values.egressProxy.orgLimits }}
+            {{- with .requestsPerMinute }}
+            - { name: EGRESS_PROXY_ORG_RPM, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .requestsPerMinutePerHost }}
+            - { name: EGRESS_PROXY_ORG_HOST_RPM, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .concurrency }}
+            - { name: EGRESS_PROXY_ORG_CONCURRENCY, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .bytesPerDay }}
+            - { name: EGRESS_PROXY_ORG_BYTES_PER_DAY, value: {{ . | quote }} }
+            {{- end }}
+            {{- end }}
+            {{- with .Values.egressProxy.globalRequestsPerMinutePerHost }}
+            - { name: EGRESS_PROXY_GLOBAL_PER_HOST_RPM, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.egressProxy.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: health }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+            periodSeconds: 15
+            failureThreshold: 4
+          resources: {{- toYaml .Values.egressProxy.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      {{- with .Values.egressProxy.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.egressProxy.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.egressProxy.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress-proxy
+spec:
+  selector: {{- include "everruns.selector" (list . "egress-proxy") | nindent 4 }}
+  ports:
+    - { name: proxy, port: 4750, targetPort: proxy }
+{{- if gt (int .Values.egressProxy.replicas) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress-proxy
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "egress-proxy") | nindent 6 }}
+{{- end }}
+{{- end }}

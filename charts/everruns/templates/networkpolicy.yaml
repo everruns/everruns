@@ -1,0 +1,179 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- /*
+Decision: the same split the hosted service enforces. Each component accepts
+traffic only from the components that call it. Off by default because some
+network plugins ignore NetworkPolicy, which would make it look enforced when
+it is not. Egress stays open except for the egress proxy, whose job is to be
+the one path tenant traffic takes, so it alone is kept off private ranges.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.fullname" . }}-default-deny
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ .Chart.Name }}
+  policyTypes: [Ingress]
+---
+# The proxy is the way in: from the ingress controller, load balancer or
+# port-forward, which the chart cannot name.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "proxy") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "proxy") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 9300 }
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "server") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "server") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # HTTP API: the proxy, and the UI's server-side rendering.
+    - from:
+        {{- include "everruns.peer" (list . "proxy") | nindent 8 }}
+        {{- include "everruns.peer" (list . "ui") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 9000 }
+    # gRPC: workers only.
+    - from:
+        {{- include "everruns.peer" (list . "worker") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 9001 }
+    {{- if .Values.metrics.enabled }}
+    # Prometheus runs wherever the cluster keeps it.
+    - ports:
+        - { protocol: TCP, port: {{ .Values.metrics.port }} }
+    {{- end }}
+    {{- with .Values.networkPolicy.extraServerIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "ui") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "ui") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "everruns.peer" (list . "proxy") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 9305 }
+{{- if and .Values.nats.enabled (not .Values.nats.url) }}
+---
+# Only the server joins the event bus.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "nats") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "nats") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "everruns.peer" (list . "server") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 4222 }
+{{- end }}
+{{- if and .Values.valkey.enabled (not .Values.valkey.url) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "valkey") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "valkey") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "everruns.peer" (list . "server") | nindent 8 }}
+        {{- include "everruns.peer" (list . "worker") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 6379 }
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+---
+# Workers reach the database through the server, never directly. KEDA's
+# operator reads queue depth from it when autoscaling is on.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "postgresql") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "postgresql") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "everruns.peer" (list . "server") | nindent 8 }}
+        {{- if .Values.worker.autoscaling.enabled }}
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.kedaNamespace }} }
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+{{- end }}
+{{- if .Values.egressProxy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "egress-proxy") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "egress-proxy") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- include "everruns.peer" (list . "server") | nindent 8 }}
+        {{- include "everruns.peer" (list . "worker") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 4750 }
+  # Defense in depth for the proxy's own address check: even if it were
+  # bypassed, the proxy cannot open a connection into the cluster, the node
+  # network, link-local (instance metadata) or CGNAT space. DNS is allowed.
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+{{- end }}
+{{- end }}

@@ -1,6 +1,21 @@
 {{- $name := include "everruns.name" (list . "server") }}
 {{- $secret := include "everruns.secretName" . }}
 {{- $db := include "everruns.databaseSecret" . | fromYaml }}
+{{- $replicas := int .Values.server.replicas }}
+{{- $sa := include "everruns.serverServiceAccount" . }}
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $sa }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  {{- with .Values.serviceAccount.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: false
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,12 +23,20 @@ metadata:
   labels: {{- include "everruns.labels" . | nindent 4 }}
     app.kubernetes.io/component: server
 spec:
-  # One replica by design: the server keeps per-process session state, and it
-  # applies database migrations on start under an advisory lock. Recreate
-  # stops the old pod before the new one migrates.
-  replicas: 1
+  # Decision: the server is safe to run as several replicas (schedules claim
+  # with leases, the session store and channel deliveries are shared, sticky
+  # sessions live in the database), as the hosted service does with two. With
+  # one replica, Recreate stops the old pod before the new one migrates. With
+  # more, they roll one at a time so the API never goes down; migrations take
+  # an advisory lock and only go forward, so the old pod keeps serving while
+  # the new one applies them.
+  replicas: {{ $replicas }}
   strategy:
+    {{- if gt $replicas 1 }}
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+    {{- else }}
     type: Recreate
+    {{- end }}
   selector:
     matchLabels: {{- include "everruns.selector" (list . "server") | nindent 6 }}
   template:
@@ -24,12 +47,26 @@ spec:
         {{- with .Values.server.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
     spec:
       automountServiceAccountToken: false
+      {{- with $sa }}
+      serviceAccountName: {{ . }}
+      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
         runAsNonRoot: true
+      {{- if and (gt $replicas 1) (not .Values.server.topologySpreadConstraints) }}
+      # Spread replicas over nodes, so one node going away leaves a server.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "everruns.selector" (list . "server") | nindent 14 }}
+      {{- else if .Values.server.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- toYaml .Values.server.topologySpreadConstraints | nindent 8 }}
+      {{- end }}
       containers:
         - name: server
           image: {{ include "everruns.image" (list . "server") }}
@@ -37,15 +74,15 @@ spec:
           ports:
             - { name: http, containerPort: 9000 }
             - { name: grpc, containerPort: 9001 }
+            {{- if .Values.metrics.enabled }}
+            - { name: metrics, containerPort: {{ .Values.metrics.port }} }
+            {{- end }}
           env:
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ $db.name }}, key: {{ $db.key }} } }
-            {{- with include "everruns.natsUrl" . }}
-            - { name: NATS_URL, value: {{ . | quote }} }
-            {{- end }}
-            {{- with include "everruns.valkeyUrl" . }}
-            - { name: VALKEY_URL, value: {{ . | quote }} }
-            {{- end }}
+            {{- include "everruns.natsEnv" . | nindent 12 }}
+            {{- include "everruns.valkeyEnv" . | nindent 12 }}
+            {{- include "everruns.egressProxyEnv" . | nindent 12 }}
             - { name: AUTH_MODE, value: {{ .Values.auth.mode | quote }} }
             - { name: DEPLOYMENT_GRADE, value: {{ .Values.deploymentGrade | quote }} }
             - { name: AUTH_ADMIN_EMAIL, value: {{ .Values.auth.adminEmail | quote }} }
@@ -64,6 +101,33 @@ spec:
             {{- end }}
             {{- with .Values.otel.endpoint }}
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
+            {{- end }}
+            {{- if .Values.metrics.enabled }}
+            # /metrics on its own port instead of the API's.
+            - { name: METRICS_ADDR, value: {{ printf "0.0.0.0:%d" (int .Values.metrics.port) | quote }} }
+            {{- end }}
+            {{- with .Values.storage.s3 }}
+            {{- if .enabled }}
+            # Session files and other blobs in object storage instead of PostgreSQL.
+            - { name: STORAGE_BLOB_BACKEND, value: s3 }
+            - { name: STORAGE_S3_BUCKET, value: {{ .bucket | quote }} }
+            {{- with .region }}
+            - { name: STORAGE_S3_REGION, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .prefix }}
+            - { name: STORAGE_S3_PREFIX, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .endpoint }}
+            - { name: STORAGE_S3_ENDPOINT, value: {{ . | quote }} }
+            {{- end }}
+            - { name: STORAGE_S3_FORCE_PATH_STYLE, value: {{ .forcePathStyle | quote }} }
+            {{- with .existingSecret }}
+            {{- range list "STORAGE_S3_ACCESS_KEY_ID" "STORAGE_S3_SECRET_ACCESS_KEY" }}
+            - name: {{ . }}
+              valueFrom: { secretKeyRef: { name: {{ $.Values.storage.s3.existingSecret }}, key: {{ . }} } }
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- with .Values.server.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}
           {{- with .Values.server.extraEnvFrom }}
@@ -106,3 +170,63 @@ spec:
   ports:
     - { name: http, port: 9000, targetPort: http }
     - { name: grpc, port: 9001, targetPort: grpc }
+---
+# Headless: DNS returns every ready server pod, and workers balance each gRPC
+# call across them. Through the ClusterIP Service above, a worker's one
+# long-lived connection would pin all its calls to a single server.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-grpc
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  clusterIP: None
+  selector: {{- include "everruns.selector" (list . "server") | nindent 4 }}
+  ports:
+    - { name: grpc, port: 9001, targetPort: grpc }
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-metrics
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server-metrics
+spec:
+  selector: {{- include "everruns.selector" (list . "server") | nindent 4 }}
+  ports:
+    - { name: metrics, port: {{ .Values.metrics.port }}, targetPort: metrics }
+{{- if .Values.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: server-metrics
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+{{- end }}
+{{- end }}
+{{- if gt $replicas 1 }}
+---
+# Node drains and consolidation take one server at a time.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "server") | nindent 6 }}
+{{- end }}

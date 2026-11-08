@@ -5,7 +5,7 @@
 // Advisory only, on-demand: the Analyze action triggers these; they never
 // run implicitly with preview.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -74,7 +74,22 @@ impl std::error::Error for AnalysisAdmissionError {}
 /// Permit that holds one global analysis concurrency slot until dropped. The
 /// inner `OwnedSemaphorePermit` releases the slot via its own `Drop`; the field
 /// is held only for that side effect.
-pub struct AnalysisPermit(#[allow(dead_code)] OwnedSemaphorePermit);
+pub struct AnalysisPermit {
+    _slot: OwnedSemaphorePermit,
+    _org_run: Option<RunningOrg>,
+}
+
+/// Marks an org as having a health check in flight; dropping it frees the org.
+struct RunningOrg(i64);
+
+impl Drop for RunningOrg {
+    fn drop(&mut self) {
+        HEALTH_CHECK_RUNNING_ORGS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&self.0);
+    }
+}
 
 /// Enforce cheap abuse controls before issuing paid utility-LLM calls.
 ///
@@ -117,26 +132,45 @@ pub fn acquire_builder_permit(caller: &Caller) -> Result<AnalysisPermit, Analysi
 /// and one judge call per case, all on the deployment utility key. It gets its
 /// own, smaller budget, charged in `AgentHealthCheckService::trigger` so REST,
 /// the command endpoint, MCP and the Platform shell share it (TM-DOS-055).
+///
+/// Decision (2026-11-08): 4 runs at once per process, at most 1 of them per
+/// org, so one org cannot hold every slot and starve the others.
 const MAX_HEALTH_CHECKS_PER_ORG_WINDOW: usize = 10;
 const MAX_HEALTH_CHECKS_PER_CALLER_WINDOW: usize = 4;
-const MAX_CONCURRENT_HEALTH_CHECKS: usize = 2;
+const MAX_CONCURRENT_HEALTH_CHECKS: usize = 4;
 static HEALTH_CHECK_CONCURRENCY: LazyLock<Arc<Semaphore>> =
     LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_HEALTH_CHECKS)));
 static HEALTH_CHECK_RATE_LIMITS: LazyLock<Mutex<AnalysisRateLimits>> =
     LazyLock::new(|| Mutex::new(AnalysisRateLimits::default()));
+/// Orgs with a health check in flight on this process.
+static HEALTH_CHECK_RUNNING_ORGS: LazyLock<Mutex<HashSet<i64>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Admission for one agent health check run. Hold the permit until the
-/// background run ends: it is the global concurrency slot.
+/// background run ends: it is the global concurrency slot and the org's
+/// single running slot.
 pub fn acquire_health_check_permit(
     caller: &Caller,
 ) -> Result<AnalysisPermit, AnalysisAdmissionError> {
-    acquire_permit(
+    // Held across admission so two requests from one org cannot both pass.
+    let mut running = HEALTH_CHECK_RUNNING_ORGS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if running.contains(&caller.org_id) {
+        return Err(AnalysisAdmissionError::Busy {
+            retry_after_seconds: 30,
+        });
+    }
+    let mut permit = acquire_permit(
         caller,
         &HEALTH_CHECK_RATE_LIMITS,
         &HEALTH_CHECK_CONCURRENCY,
         MAX_HEALTH_CHECKS_PER_ORG_WINDOW,
         MAX_HEALTH_CHECKS_PER_CALLER_WINDOW,
-    )
+    )?;
+    running.insert(caller.org_id);
+    permit._org_run = Some(RunningOrg(caller.org_id));
+    Ok(permit)
 }
 
 fn acquire_permit(
@@ -201,7 +235,10 @@ fn acquire_permit(
         .or_default()
         .push_back(now);
 
-    Ok(AnalysisPermit(permit))
+    Ok(AnalysisPermit {
+        _slot: permit,
+        _org_run: None,
+    })
 }
 
 /// Drop window events older than `ANALYSIS_RATE_WINDOW`, removing entries that
@@ -722,38 +759,57 @@ mod tests {
     }
 
     #[test]
-    fn health_check_admission_caps_concurrency_and_caller_window() {
+    fn health_check_admission_allows_one_run_per_org_and_caps_caller_window() {
         // Only this test draws on the health-check budget, so the process-wide
-        // statics start empty here. A fresh org keeps the window isolated.
-        let org_id = 9_100_000 + i64::from(std::process::id() % 1000);
-        let caller = |user: u128| Caller {
+        // statics start empty here. Fresh orgs keep the windows isolated.
+        let base = 9_100_000 + i64::from(std::process::id() % 1000) * 10;
+        let caller = |org_id: i64, user: u128| Caller {
             org_id,
-            org_public_id: format!("org_{user:032x}"),
+            org_public_id: format!("org_{org_id:032x}"),
             user_id: Some(uuid::Uuid::from_u128(user)),
             role: crate::kernel_imports::OrgRole::Admin,
             is_platform_user: false,
             is_internal: false,
             read_only: false,
         };
-        let alice = caller(1);
+        let alice = caller(base, 1);
 
+        // One run per org: a second, even from another member, is busy.
         let first = acquire_health_check_permit(&alice).expect("first run admitted");
-        let second = acquire_health_check_permit(&alice).expect("second run admitted");
         assert!(matches!(
             acquire_health_check_permit(&alice),
             Err(AnalysisAdmissionError::Busy { .. })
         ));
+        assert!(matches!(
+            acquire_health_check_permit(&caller(base, 2)),
+            Err(AnalysisAdmissionError::Busy { .. })
+        ));
+
+        // Other orgs fill the remaining process-wide slots, then it is busy.
+        let others: Vec<_> = (1..MAX_CONCURRENT_HEALTH_CHECKS as i64)
+            .map(|n| {
+                acquire_health_check_permit(&caller(base + n, 100 + n as u128)).expect("other org")
+            })
+            .collect();
+        let extra_org = base + MAX_CONCURRENT_HEALTH_CHECKS as i64;
+        assert!(matches!(
+            acquire_health_check_permit(&caller(extra_org, 200)),
+            Err(AnalysisAdmissionError::Busy { .. })
+        ));
+        drop(others);
+
+        // A rejected run did not use up the caller window.
         drop(first);
-        let third = acquire_health_check_permit(&alice).expect("slot freed by the ended run");
-        drop((second, third));
-        let fourth = acquire_health_check_permit(&alice).expect("fourth run in the window");
-        drop(fourth);
+        for _ in 1..MAX_HEALTH_CHECKS_PER_CALLER_WINDOW {
+            drop(acquire_health_check_permit(&alice).expect("run in the window"));
+        }
         assert!(matches!(
             acquire_health_check_permit(&alice),
             Err(AnalysisAdmissionError::RateLimited { .. })
         ));
         // Another member of the same org still has headroom.
-        drop(acquire_health_check_permit(&caller(2)).expect("other caller admitted"));
+        drop(acquire_health_check_permit(&caller(base, 2)).expect("other caller admitted"));
+        drop(acquire_health_check_permit(&caller(extra_org, 200)).expect("slot freed"));
     }
 
     #[test]

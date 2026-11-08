@@ -205,7 +205,11 @@ pub async fn ensure_schedule<S: Schedules + ?Sized>(
                         .retry_policy
                         .clone()
                         .map_or(UpdateField::Clear, UpdateField::Set),
-                    next_trigger_at: UpdateField::Set(next_after(&expression, Utc::now())?),
+                    next_trigger_at: UpdateField::Set(next_trigger_after(
+                        &expression,
+                        &spec.timezone,
+                        Utc::now(),
+                    )?),
                     ..Default::default()
                 },
             )
@@ -228,7 +232,7 @@ pub async fn ensure_schedule<S: Schedules + ?Sized>(
             catch_up_missed: spec.catch_up_missed,
             max_catch_up: spec.max_catch_up,
             retry_policy: spec.retry_policy.clone(),
-            next_trigger_at: Some(next_after(&expression, Utc::now())?),
+            next_trigger_at: Some(next_trigger_after(&expression, &spec.timezone, Utc::now())?),
         })
         .await
     {
@@ -276,8 +280,18 @@ fn is_unique_violation(error: &str) -> bool {
 }
 
 /// When a schedule with `expression` next fires after `now`.
-pub(super) fn next_after(
+/// Next trigger strictly after `now` for a schedule's cadence (a cron
+/// expression or `@every <secs>s`), reading the cron's wall-clock fields in
+/// `timezone` (an IANA name; empty means UTC). `@every` periods ignore the
+/// timezone.
+///
+/// Decision: the timezone is applied here, at the one place every schedule's
+/// next trigger is computed (create, update, ensure, and the scheduler's
+/// advance after each fire). Computing in UTC fired an `America/Chicago`
+/// `0 10 * * *` schedule at 10:00 UTC (prod, 2026-11-08).
+pub fn next_trigger_after(
     expression: &str,
+    timezone: &str,
     now: DateTime<Utc>,
 ) -> Result<DateTime<Utc>, SchedulerError> {
     if let Some(period) = parse_every(expression) {
@@ -286,10 +300,22 @@ pub(super) fn next_after(
         return Ok(now + period);
     }
     use std::str::FromStr;
-    cron::Schedule::from_str(expression)
-        .map_err(|e| SchedulerError::CronError(e.to_string()))?
-        .after(&now)
-        .next()
+    let schedule = cron::Schedule::from_str(expression)
+        .map_err(|e| SchedulerError::CronError(e.to_string()))?;
+    let timezone = timezone.trim();
+    let tz = if timezone.is_empty() {
+        chrono_tz::UTC
+    } else {
+        chrono_tz::Tz::from_str(timezone).map_err(|e| {
+            SchedulerError::CronError(format!("invalid IANA timezone '{timezone}': {e}"))
+        })?
+    };
+    // Around a DST fall-back the wall-time iterator can first yield the
+    // other offset's already-past instant; a trigger must strictly advance.
+    schedule
+        .after(&now.with_timezone(&tz))
+        .map(|next| next.with_timezone(&Utc))
+        .find(|next| *next > now)
         .ok_or_else(|| SchedulerError::CronError("no upcoming occurrence".to_string()))
 }
 
@@ -345,12 +371,48 @@ mod tests {
     fn next_after_handles_both_cadences() {
         let now = Utc::now();
         assert_eq!(
-            next_after("@every 90s", now).unwrap(),
+            next_trigger_after("@every 90s", "America/Chicago", now).unwrap(),
             now + chrono::Duration::seconds(90)
         );
-        let cron_next = next_after("0 * * * * * *", now).unwrap();
+        let cron_next = next_trigger_after("0 * * * * * *", "UTC", now).unwrap();
         assert!(cron_next > now && cron_next <= now + chrono::Duration::seconds(60));
-        assert!(next_after("not cron", now).is_err());
+        assert!(next_trigger_after("not cron", "UTC", now).is_err());
+        assert!(next_trigger_after("0 * * * * * *", "Mars/Olympus", now).is_err());
+    }
+
+    #[test]
+    fn cron_is_read_in_the_schedule_timezone() {
+        use chrono::TimeZone;
+        // 10:00 every day. Chicago is UTC-6 in November (CST).
+        let now = Utc.with_ymd_and_hms(2026, 11, 8, 9, 0, 0).unwrap();
+        assert_eq!(
+            next_trigger_after("0 0 10 * * * *", "America/Chicago", now).unwrap(),
+            Utc.with_ymd_and_hms(2026, 11, 8, 16, 0, 0).unwrap(),
+        );
+        assert_eq!(
+            next_trigger_after("0 0 10 * * * *", "UTC", now).unwrap(),
+            Utc.with_ymd_and_hms(2026, 11, 8, 10, 0, 0).unwrap(),
+        );
+        assert_eq!(
+            next_trigger_after("0 0 10 * * * *", "", now).unwrap(),
+            Utc.with_ymd_and_hms(2026, 11, 8, 10, 0, 0).unwrap(),
+            "an empty timezone means UTC"
+        );
+        // Summer: CDT is UTC-5.
+        let july = Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap();
+        assert_eq!(
+            next_trigger_after("0 0 10 * * * *", "America/Chicago", july).unwrap(),
+            Utc.with_ymd_and_hms(2026, 7, 1, 15, 0, 0).unwrap(),
+        );
+    }
+
+    #[test]
+    fn fall_back_hour_still_advances() {
+        use chrono::TimeZone;
+        // 2026-11-01 01:30 happens twice in Chicago (CDT 06:30Z, CST 07:30Z).
+        let after_first = Utc.with_ymd_and_hms(2026, 11, 1, 6, 30, 0).unwrap();
+        let next = next_trigger_after("0 30 1 * * * *", "America/Chicago", after_first).unwrap();
+        assert!(next > after_first);
     }
 
     #[tokio::test]

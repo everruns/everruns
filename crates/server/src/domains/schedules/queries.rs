@@ -52,13 +52,15 @@ pub fn parse_execution_status(value: &str) -> Result<ScheduleExecutionStatus, Co
     }
 }
 
+/// Next trigger for `cron_expression` read in `timezone` (IANA; empty = UTC).
 pub fn calculate_next_trigger(
     cron_expression: &str,
+    timezone: &str,
 ) -> Result<Option<DateTime<Utc>>, CommandError> {
     let normalized = normalize_cron_expression(cron_expression)?;
-    let schedule = cron::Schedule::from_str(&normalized)
-        .map_err(|e| CommandError::bad_request(format!("Invalid cron expression: {e}")))?;
-    Ok(schedule.upcoming(Utc).next())
+    everruns_durable::next_trigger_after(&normalized, timezone, Utc::now())
+        .map(Some)
+        .map_err(|e| CommandError::bad_request(format!("Invalid schedule: {e}")))
 }
 
 pub fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
