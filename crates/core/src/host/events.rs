@@ -983,6 +983,7 @@ impl EventLog for InMemoryEventLog {
 
 #[cfg(feature = "host")]
 mod jsonl;
+#[path = "events/tail.rs"]
 mod tail;
 #[cfg(feature = "host")]
 pub use jsonl::JsonlEventLog;
