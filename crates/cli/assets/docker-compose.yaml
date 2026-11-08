@@ -383,20 +383,6 @@ configs:
         }
       }
 
-  # Tailscale Serve: HTTPS on 443, open to the internet (Funnel), to Caddy.
-  # $${TS_CERT_DOMAIN} is filled in by the container with this node's name.
-  tailscale_serve:
-    content: |
-      {
-        "TCP": { "443": { "HTTPS": true } },
-        "Web": {
-          "$${TS_CERT_DOMAIN}:443": {
-            "Handlers": { "/": { "Proxy": "http://caddy:9300" } }
-          }
-        },
-        "AllowFunnel": { "$${TS_CERT_DOMAIN}:443": true }
-      }
-
   prometheus_scrape_config:
     content: |
       global:
@@ -410,6 +396,20 @@ configs:
             - targets: ["server:9000"]
               labels:
                 service: everruns-server
+
+  # Tailscale Serve: HTTPS on 443, open to the internet (Funnel), to Caddy.
+  # $${TS_CERT_DOMAIN} is filled in by the container with this node's name.
+  tailscale_serve:
+    content: |
+      {
+        "TCP": { "443": { "HTTPS": true } },
+        "Web": {
+          "$${TS_CERT_DOMAIN}:443": {
+            "Handlers": { "/": { "Proxy": "http://caddy:9300" } }
+          }
+        },
+        "AllowFunnel": { "$${TS_CERT_DOMAIN}:443": true }
+      }
 
 volumes:
   postgres_data:
