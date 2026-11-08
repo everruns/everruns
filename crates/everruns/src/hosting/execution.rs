@@ -97,6 +97,7 @@ pub(crate) async fn run(
         epoch: epoch.clone(),
     });
     let renew_poke = epoch.renew_poke();
+    let hand_off = epoch.hand_off();
     let hosts = Arc::new(FrameworkHosts {
         engine: engine.clone(),
         runtime,
@@ -108,6 +109,9 @@ pub(crate) async fn run(
     let mut driver = SessionActorDriver::new(hosts, store, config);
     if let Some(poke) = renew_poke {
         driver = driver.with_renew_poke(poke);
+    }
+    if let Some(hand_off) = hand_off {
+        driver = driver.with_hand_off(hand_off);
     }
     everruns_contracts::durable_retry::scope(retries, Box::pin(driver.run_actor(activation.actor)))
         .await;
