@@ -265,7 +265,7 @@ mod tests {
             .create_observer(
                 org_id,
                 crate::storage::CreateObserverRow {
-                    public_id: format!("obs_{}", uuid::Uuid::now_v7().simple()),
+                    public_id: format!("observer_{}", uuid::Uuid::now_v7().simple()),
                     name: "cached".into(),
                     description: None,
                     match_config: serde_json::json!({}),
