@@ -77,6 +77,20 @@ impl EventReader for SnapshotLog {
             ))
             .await
     }
+
+    async fn last_sequence(
+        &self,
+        session_id: SessionId,
+    ) -> std::result::Result<Option<i32>, EventLogError> {
+        if session_id != self.session {
+            return Ok(None);
+        }
+        Ok(self
+            .inner
+            .last_sequence(session_id)
+            .await?
+            .map(|last| last.min(self.through)))
+    }
 }
 #[async_trait]
 impl EventLog for SnapshotLog {
@@ -150,6 +164,16 @@ impl EventReader for InputFilterLog {
             };
             return EventPage::new(events, next, high);
         }
+    }
+
+    // Tail lookups (the turn's input, an open model stream) read back from
+    // the log's end; without this they read every page from the start, and
+    // a long session's turns slowed with its length.
+    async fn last_sequence(
+        &self,
+        session_id: SessionId,
+    ) -> std::result::Result<Option<i32>, EventLogError> {
+        self.inner.last_sequence(session_id).await
     }
 }
 #[async_trait]
