@@ -1,8 +1,8 @@
 // Fields that never change once a row exists, cached per backend.
 //
 // Decision: every turn, several event listeners and worker reads load a whole
-// session row only for its org or parent session, and resolve an agent's
-// public id again. Those fields are set at insert and never updated, so
+// session row only for its org, agent or parent session, and resolve an
+// agent's public id again. Those fields are set at insert and never updated, so
 // caching them needs no invalidation and stays correct across replicas. Only
 // found rows are cached; the TTL just bounds memory and keeps deleted rows
 // from lingering.
@@ -67,6 +67,17 @@ impl StorageBackend {
         };
         self.identity.sessions.insert(id, lineage).await;
         Ok(Some(lineage))
+    }
+
+    /// The session's org, from the same cache. Listeners ask for it on nearly
+    /// every event (reporting, sandbox capabilities). Like the rest of the
+    /// lineage, a deleted session's org can still be served until its entry
+    /// expires; callers that must see a deletion read the row.
+    pub async fn session_org_id(&self, id: SessionId) -> Result<Option<i64>> {
+        Ok(self
+            .session_lineage(id)
+            .await?
+            .map(|lineage| lineage.org_id))
     }
 
     pub(super) async fn cached_agent_public_id(&self, org_id: i64, id: AgentId) -> Option<String> {

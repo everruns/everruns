@@ -46,7 +46,7 @@ impl EventListener for ReportingProjectionListener {
 
     async fn on_event(&self, event: &Event) {
         let id = event.id.uuid();
-        let org_id = match self.db.get_session_organization_id(event.session_id).await {
+        let org_id = match self.db.session_org_id(event.session_id).await {
             Ok(Some(org_id)) => org_id,
             Ok(None) => return,
             Err(error) => {

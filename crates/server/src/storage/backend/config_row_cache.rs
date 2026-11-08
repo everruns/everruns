@@ -31,6 +31,12 @@
 // connected, so a legacy channel is refused once the notification lands
 // (knowledge/security/worker-assignment-read-scope.md). Reads on a
 // transaction (`worker_ingress_minimum_version_on`) stay uncached.
+//
+// Decision: an organization's active observers ride it too
+// (`observers:<org_id>`). The observer listener matches every turn and
+// session event against them, about 4.5 reads per turn, while nearly every
+// organization has none and the rest change them by hand. The empty list is
+// cached as well.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -42,7 +48,9 @@ use moka::sync::Cache;
 use uuid::Uuid;
 
 use super::StorageBackend;
-use crate::storage::{AgentCapabilityRow, AgentRow, HarnessCapabilityRow, HarnessRow, ProviderRow};
+use crate::storage::{
+    AgentCapabilityRow, AgentRow, HarnessCapabilityRow, HarnessRow, ObserverRow, ProviderRow,
+};
 
 const CAPACITY: u64 = 20_000;
 /// Bounds memory and a row written with notifications somehow off; exactness
@@ -62,6 +70,8 @@ struct Inner {
     harnesses: Cache<Uuid, HarnessRow>,
     harness_capabilities: Cache<Uuid, Vec<HarnessCapabilityRow>>,
     providers: Cache<Uuid, ProviderRow>,
+    /// Each organization's active observers, keyed by org id.
+    active_observers: Cache<i64, Vec<ObserverRow>>,
     /// The worker ingress protection floor; `None` inside is "no floor".
     ingress_floor: Cache<(), Option<i32>>,
     /// The invalidation listener is connected and listening.
@@ -70,7 +80,11 @@ struct Inner {
     generation: AtomicU64,
 }
 
-fn cache<V: Clone + Send + Sync + 'static>() -> Cache<Uuid, V> {
+fn cache<K, V>() -> Cache<K, V>
+where
+    K: std::hash::Hash + Eq + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
     Cache::builder()
         .max_capacity(CAPACITY)
         .time_to_live(TTL)
@@ -85,6 +99,7 @@ impl Default for ConfigRowCache {
             harnesses: cache(),
             harness_capabilities: cache(),
             providers: cache(),
+            active_observers: cache(),
             ingress_floor: Cache::builder().max_capacity(1).time_to_live(TTL).build(),
             live: AtomicBool::new(false),
             generation: AtomicU64::new(0),
@@ -98,17 +113,23 @@ pub enum ConfigRowChange {
     Agent(Uuid),
     Harness(Uuid),
     Provider(Uuid),
+    /// An organization's observers.
+    Observers(i64),
     WorkerIngressFloor,
 }
 
 impl ConfigRowChange {
-    /// `agent:<uuid>`, `harness:<uuid>`, `provider:<uuid>` or
-    /// `worker_ingress_floor`; anything else is `None`.
+    /// `agent:<uuid>`, `harness:<uuid>`, `provider:<uuid>`,
+    /// `observers:<org_id>` or `worker_ingress_floor`; anything else is
+    /// `None`.
     pub fn parse(payload: &str) -> Option<Self> {
         if payload == "worker_ingress_floor" {
             return Some(Self::WorkerIngressFloor);
         }
         let (kind, id) = payload.split_once(':')?;
+        if kind == "observers" {
+            return id.parse().ok().map(Self::Observers);
+        }
         let id = id.parse().ok()?;
         match kind {
             "agent" => Some(Self::Agent(id)),
@@ -146,6 +167,7 @@ impl ConfigRowCache {
                 self.0.harness_capabilities.invalidate(&id);
             }
             ConfigRowChange::Provider(id) => self.0.providers.invalidate(&id),
+            ConfigRowChange::Observers(org_id) => self.0.active_observers.invalidate(&org_id),
             ConfigRowChange::WorkerIngressFloor => self.0.ingress_floor.invalidate_all(),
         }
     }
@@ -157,6 +179,7 @@ impl ConfigRowCache {
         self.0.harnesses.invalidate_all();
         self.0.harness_capabilities.invalidate_all();
         self.0.providers.invalidate_all();
+        self.0.active_observers.invalidate_all();
         self.0.ingress_floor.invalidate_all();
     }
 
@@ -181,13 +204,14 @@ impl ConfigRowCache {
     }
 
     /// Serve `id` from `entries`, or load and keep it.
-    async fn read_through<V, F>(
+    async fn read_through<K, V, F>(
         &self,
-        entries: &Cache<Uuid, V>,
-        id: Uuid,
+        entries: &Cache<K, V>,
+        id: K,
         load: F,
     ) -> Result<Option<V>>
     where
+        K: std::hash::Hash + Eq + Send + Sync + 'static,
         V: Clone + Send + Sync + 'static,
         F: std::future::Future<Output = Result<Option<V>>>,
     {
@@ -216,6 +240,18 @@ impl StorageBackend {
     /// The cache the invalidation listener keeps exact.
     pub fn config_row_cache(&self) -> &ConfigRowCache {
         &self.config_rows
+    }
+
+    /// An organization's active observers, from memory while the cache is
+    /// exact.
+    pub async fn cached_active_observers(&self, org_id: i64) -> Result<Vec<ObserverRow>> {
+        let cache = &self.config_rows;
+        Ok(cache
+            .read_through(&cache.0.active_observers, org_id, async {
+                self.db.list_active_observers(org_id).await.map(Some)
+            })
+            .await?
+            .unwrap_or_default())
     }
 
     /// An agent's configuration row, from memory while the cache is exact.
@@ -333,6 +369,11 @@ mod tests {
             ConfigRowChange::parse("worker_ingress_floor"),
             Some(ConfigRowChange::WorkerIngressFloor)
         );
+        assert_eq!(
+            ConfigRowChange::parse("observers:42"),
+            Some(ConfigRowChange::Observers(42))
+        );
+        assert_eq!(ConfigRowChange::parse("observers:nope"), None);
         assert_eq!(ConfigRowChange::parse("agent:nope"), None);
         assert_eq!(ConfigRowChange::parse(&format!("model:{id}")), None);
     }

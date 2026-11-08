@@ -12,7 +12,9 @@
 // turn (`begin_phase`), so nothing is shared across phases or turns except
 // through the turn's own reads (`turn_reads`). It serves setup only:
 // once the phase's start event goes out it empties and stops memoizing, so the
-// model call, tools, and anything after them read fresh state. Entries also
+// model call, tools, and anything after them read fresh state. The session is
+// the exception: in a leased turn, reads after setup get the session the turn
+// holds (`session_with`). Entries also
 // expire after `FRESH_FOR`, for hosts that never emit a start event (activity
 // scheduling). Session writes made through the host drop the session entry.
 // Errors are never memoized.
@@ -277,12 +279,38 @@ impl PhaseReads {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<ExecutionSession>> {
-        self.read_through(sessions, (org_id, id), || {
-            self.turn_read(turn_sessions, (org_id, id), || {
-                adapters.get_session(org_id, id)
-            })
-        })
-        .await
+        self.session_with((org_id, id), || adapters.get_session(org_id, id))
+            .await
+    }
+
+    /// A session read: the phase memo and the turn's reads during setup, and
+    /// after it the session the turn holds.
+    ///
+    /// Decision: once a phase has started, its session reads (act scheduling,
+    /// pause hints, the session capability, ...) are answered from the
+    /// session the turn already holds. The worker holding the lease is the
+    /// session's owner for the turn and the turn's configuration is pinned
+    /// anyway; before this, each of those reads was a control-plane round
+    /// trip and a session-row query (about 7 per turn). The worker's own
+    /// writes keep the turn's copy current (`session_status_written`,
+    /// `invalidate_session`), so only a read after such a write, or of a
+    /// session the turn never read, reaches the control plane. Usage totals
+    /// in it are as of the turn's first read.
+    async fn session_with<F, Fut>(&self, key: Key, fetch: F) -> Result<Option<ExecutionSession>>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<Option<ExecutionSession>>>,
+    {
+        if let Some(turn) = self.turn_after_setup() {
+            if let Some(session) = turn.get(turn_sessions, &key) {
+                return Ok(session);
+            }
+            let session = fetch().await?;
+            turn.put(turn_sessions, key, session.clone());
+            return Ok(session);
+        }
+        self.read_through(sessions, key, || self.turn_read(turn_sessions, key, fetch))
+            .await
     }
 
     /// The batched turn context a reason phase executes from.
@@ -486,6 +514,12 @@ impl PhaseReads {
                 "phase setup"
             );
         }
+    }
+
+    /// The turn's slot, once the phase has started.
+    fn turn_after_setup(&self) -> Option<TurnSlot> {
+        let turn = self.turn.clone()?;
+        self.with_state(|s| s.setup_done).then_some(turn)
     }
 
     /// The turn's slot, while setup runs.
@@ -749,18 +783,16 @@ mod tests {
             .await
     }
 
-    /// Read `key` as `session` does: through the memo, then the turn.
+    /// Read `key` as `session` does.
     async fn read_in_turn(
         reads: &PhaseReads,
         key: Key,
         calls: &AtomicU32,
     ) -> Result<Option<ExecutionSession>> {
         reads
-            .read_through(sessions, key, || {
-                reads.turn_read(turn_sessions, key, || async {
-                    calls.fetch_add(1, Ordering::SeqCst);
-                    Ok(Some(session()))
-                })
+            .session_with(key, || async {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(Some(session()))
             })
             .await
     }
@@ -781,15 +813,49 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(act.with_state(|s| s.from_turn), 1);
 
-        // Once the phase started, reads go to the store again.
+        // Once the phase started, the turn's session still answers.
         act.note_event(crate::core::ACT_STARTED);
         read_in_turn(&act, key, &calls).await.unwrap();
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
 
-        // A session write drops the turn's copy.
+        // A session write drops the turn's copy: the next read, during setup
+        // or after it, fetches once and keeps it again.
         let next = PhaseReads::new().with_turn(turn);
         next.invalidate_session(key.0, key.1);
         read_in_turn(&next, key, &calls).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        next.note_event(crate::core::REASON_STARTED);
+        next.invalidate_session(key.0, key.1);
+        read_in_turn(&next, key, &calls).await.unwrap();
+        read_in_turn(&next, key, &calls).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn after_setup_a_status_write_is_seen_without_a_fetch() {
+        use everruns_contracts::runtime::session::SessionExecutionState;
+        let turn = TurnSlot::default();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+        let reason = PhaseReads::new().with_turn(turn);
+        read_in_turn(&reason, key, &calls).await.unwrap();
+        reason.note_event(crate::core::REASON_STARTED);
+
+        reason.session_status_written(key.0, key.1, SessionExecutionState::WaitingForToolResults);
+        let got = read_in_turn(&reason, key, &calls).await.unwrap().unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(got.status, SessionExecutionState::WaitingForToolResults);
+    }
+
+    #[tokio::test]
+    async fn without_a_turn_reads_after_setup_stay_fresh() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+        read_in_turn(&reads, key, &calls).await.unwrap();
+        reads.note_event(crate::core::REASON_STARTED);
+        read_in_turn(&reads, key, &calls).await.unwrap();
+        read_in_turn(&reads, key, &calls).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 3);
     }
 

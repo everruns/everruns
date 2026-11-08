@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-08
+
+- The worker holding a session's lease answers the turn's later session reads
+  from its own copy, and event listeners take a session's org and an org's
+  active observers from memory (observers kept exact by a trigger). About 20
+  fewer statements per turn ([event listeners](execution/event-listeners.md#session-reads)).
+
 ## 2026-11-07
 
 - Define opt-in [interactive MCP readiness](integrations/runtime-mcp.md#interactive-readiness): one wait budget, bounded background discovery, shared cross-turn cache and explicit pending/error states.

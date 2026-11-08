@@ -23,7 +23,7 @@ pub async fn effective_session_capabilities(
     session_id: SessionId,
 ) -> anyhow::Result<Option<Vec<everruns_contracts::CapabilityRef>>> {
     let Some(org_id) = db
-        .get_session_organization_id(session_id)
+        .session_org_id(session_id)
         .await
         .context("failed to resolve session org")?
     else {
