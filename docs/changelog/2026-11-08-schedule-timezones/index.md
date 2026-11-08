@@ -1,6 +1,6 @@
 ---
 title: Schedules fire in their own timezone
-description: A schedule set to a timezone such as America/Chicago now runs at that local time, including across daylight saving changes, instead of the same clock time in UTC.
+description: A schedule set to a timezone such as America/Chicago now runs at that local time, across daylight saving changes, instead of that time in UTC.
 date: 2026-11-08
 kind: fix
 significance: minor
