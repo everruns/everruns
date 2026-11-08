@@ -79,6 +79,9 @@ impl EventReader for ReadLog {
     ) -> std::result::Result<EventPage, EventLogError> {
         if let Some(cursor) = request.cursor() {
             self.starts.lock().unwrap().push(cursor.after_sequence());
+        } else if request.limit().get() == 1 {
+            // A probe for the log's end (tail reads), not a scan.
+            self.starts.lock().unwrap().push(-1);
         } else {
             self.starts.lock().unwrap().push(0);
         }
@@ -169,6 +172,18 @@ async fn later_turns_load_only_the_history_after_the_checkpoint() {
             .iter()
             .any(|start| *start >= newest),
         "no read started at the checkpoint (sequence {newest})"
+    );
+    // Once a checkpoint exists, a turn reads nothing from the log's start.
+    log.starts.lock().unwrap().clear();
+    let result = runtime
+        .run_text_turn(session, "one more")
+        .await
+        .expect("turn runs");
+    assert!(result.success, "{:?}", result.error);
+    let starts = log.starts.lock().unwrap().clone();
+    assert!(
+        !starts.contains(&0),
+        "a turn after the checkpoint scanned the whole log: {starts:?}"
     );
 }
 
