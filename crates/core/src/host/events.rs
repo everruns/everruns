@@ -1164,8 +1164,19 @@ impl EventHistory {
         }
         let mut projected = Vec::new();
         let mut examined = 0usize;
+        let mut first = after.is_some_and(|after| after > 0);
         loop {
-            let page = self.reader.read_page(request).await?;
+            let page = match self.reader.read_page(request).await {
+                Ok(page) => page,
+                // A start past the log's end (a checkpoint that claims more
+                // history than this log holds) has nothing after it; the
+                // caller then falls back to the whole history.
+                Err(
+                    EventLogError::IncompatibleCursor { .. } | EventLogError::ExpiredCursor { .. },
+                ) if first => return Ok(Vec::new()),
+                Err(error) => return Err(error),
+            };
+            first = false;
             examined = examined.saturating_add(page.events.len());
             if examined > MAX_EVENT_HISTORY_REPLAY {
                 return Err(EventLogError::InvalidRead {
@@ -1254,6 +1265,62 @@ fn finish_messages(projected: Vec<ProjectedMessage>, query: &MessageQuery) -> Ve
     messages
 }
 
+/// Read `session_id`'s log from its end, a window at a time, until `enough`
+/// holds for the events read so far; return them in sequence order.
+///
+/// The log has no reverse read, so this pins one snapshot and reads forward
+/// within each window, doubling it each time. A lookup that concerns the
+/// latest turn costs the turn, not the session's history. At most
+/// [`MAX_EVENT_HISTORY_REPLAY`] envelopes are examined.
+pub(crate) async fn read_tail_until(
+    reader: &dyn EventReader,
+    session_id: SessionId,
+    enough: impl Fn(&[Event]) -> bool,
+) -> Result<Vec<Event>, EventLogError> {
+    let first = reader
+        .read_page(EventReadRequest::new(session_id, EventReadLimit::new(1)?))
+        .await?;
+    let high = first.snapshot_high_watermark();
+    let mut tail: Vec<Event> = Vec::new();
+    let (mut hi, mut window) = (high, 256i32);
+    while hi > 0 {
+        let lo = hi.saturating_sub(window).max(0);
+        let mut chunk = Vec::new();
+        let mut request = EventReadRequest::from_cursor(
+            EventCursor::continuation(session_id, lo, high)?,
+            EventReadLimit::default(),
+        );
+        'window: loop {
+            let page = reader.read_page(request).await?;
+            for event in page.events {
+                if event.sequence.is_some_and(|sequence| sequence > hi) {
+                    break 'window;
+                }
+                chunk.push(event);
+            }
+            match page.next_cursor {
+                Some(cursor) => {
+                    request = EventReadRequest::from_cursor(cursor, EventReadLimit::default())
+                }
+                None => break,
+            }
+        }
+        chunk.append(&mut tail);
+        tail = chunk;
+        if tail.len() > MAX_EVENT_HISTORY_REPLAY {
+            return Err(EventLogError::InvalidRead {
+                detail: format!("tail read examined more than {MAX_EVENT_HISTORY_REPLAY} events"),
+            });
+        }
+        if enough(&tail) {
+            break;
+        }
+        hi = lo;
+        window = window.saturating_mul(2);
+    }
+    Ok(tail)
+}
+
 fn event_projects_message(event: &Event) -> bool {
     matches!(
         &event.data,
@@ -1270,13 +1337,15 @@ impl MessageRetriever for EventHistory {
         session_id: SessionId,
         message_id: MessageId,
     ) -> CoreResult<Option<RuntimeMessage>> {
-        Ok(self
-            .project(session_id)
-            .await
-            .map_err(core_event_error)?
-            .into_iter()
-            .find(|item| item.message.id == message_id)
-            .map(|item| item.message))
+        // Callers ask for recent messages (a turn's input), so read from
+        // the end: a long session's history is not replayed to find one.
+        let found = |event: &Event| message_from_event(event).filter(|m| m.id == message_id);
+        let events = read_tail_until(self.reader.as_ref(), session_id, |events| {
+            events.iter().any(|event| found(event).is_some())
+        })
+        .await
+        .map_err(core_event_error)?;
+        Ok(events.iter().rev().find_map(found))
     }
 
     async fn load(&self, session_id: SessionId) -> CoreResult<Vec<RuntimeMessage>> {
