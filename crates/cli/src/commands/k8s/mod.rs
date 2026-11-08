@@ -204,8 +204,8 @@ pub async fn run(command: K8sCommand) -> Result<()> {
             component,
             no_follow,
         } => logs(&instance, component.as_deref(), no_follow),
-        K8sCommand::Open(args) => open(&args),
-        K8sCommand::PortForward(args) => port_forward(&args),
+        K8sCommand::Open(args) => open(&args).await,
+        K8sCommand::PortForward(args) => port_forward(&args).await,
         K8sCommand::Doctor(args) => doctor(&args),
         K8sCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
         K8sCommand::Uninstall(args) => uninstall(&args),
@@ -947,35 +947,69 @@ fn logs(args: &InstanceArgs, component: Option<&str>, no_follow: bool) -> Result
 }
 
 /// Keep `kubectl port-forward` open in the foreground until Ctrl+C.
-fn forward_foreground(target: &Target, port: u16) -> Result<()> {
+///
+/// Decision: the CLI waits on kubectl and stops it on SIGINT or SIGTERM. A
+/// terminal's Ctrl+C reaches both anyway, but a script or service manager that
+/// stops only this process would otherwise leave kubectl holding the port,
+/// forwarding to a pod that may be gone.
+async fn forward_foreground(target: &Target, port: u16) -> Result<()> {
     eprintln!(
         "Everruns at {} (Ctrl+C to stop the port-forward)",
         local_url(port)
     );
-    let status = target
-        .kubectl()
-        .args([
-            "port-forward",
-            &format!("svc/{}", target.fullname()),
-            &format!("{port}:9300"),
-        ])
-        .stdout(Stdio::null())
-        .status()
-        .context("Failed to run kubectl port-forward")?;
+    let mut cmd = tokio::process::Command::from(target.kubectl());
+    cmd.args([
+        "port-forward",
+        &format!("svc/{}", target.fullname()),
+        &format!("{port}:9300"),
+    ])
+    .stdout(Stdio::null())
+    .kill_on_drop(true);
+    let mut child = cmd.spawn().context("Failed to run kubectl port-forward")?;
+    let status = tokio::select! {
+        status = child.wait() => status.context("Failed to run kubectl port-forward")?,
+        () = stop_signal() => {
+            let _ = child.kill().await;
+            return Ok(());
+        }
+    };
     if !status.success() {
         bail!("`kubectl port-forward` stopped; is local port {port} free and the install running?");
     }
     Ok(())
 }
 
-fn port_forward(args: &InstanceArgs) -> Result<()> {
+/// Resolves on Ctrl+C, or on SIGTERM where there is one.
+async fn stop_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = term.recv() => {}
+                }
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+async fn port_forward(args: &InstanceArgs) -> Result<()> {
     let Some((_, record)) = existing(args)? else {
         return Ok(());
     };
-    forward_foreground(&record.target(), record.port)
+    forward_foreground(&record.target(), record.port).await
 }
 
-fn open(args: &InstanceArgs) -> Result<()> {
+async fn open(args: &InstanceArgs) -> Result<()> {
     let Some((_, record)) = existing(args)? else {
         return Ok(());
     };
@@ -996,7 +1030,7 @@ fn open(args: &InstanceArgs) -> Result<()> {
             eprintln!("Open {opener} in your browser.");
         }
     });
-    forward_foreground(&target, record.port)
+    forward_foreground(&target, record.port).await
 }
 
 fn doctor(args: &InstanceArgs) -> Result<()> {
