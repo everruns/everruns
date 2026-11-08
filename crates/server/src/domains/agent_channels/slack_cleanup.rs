@@ -114,6 +114,7 @@ async fn remove_channel_app_locked(
             for key in [
                 "provisioned_app",
                 "bot_token",
+                "app_token",
                 "signing_secret",
                 "webhook_verified_at",
                 "first_message_received_at",

@@ -64,7 +64,7 @@ export type {
   ConversationStarter,
 } from "./agent-types";
 import type { SlackChannelConfig } from "./slack-api-types";
-export type { SlackChannelConfig, SlackResponsePolicy } from "./slack-api-types";
+export type { SlackChannelConfig, SlackConnection, SlackResponsePolicy } from "./slack-api-types";
 import type { DriverId } from "./provider-driver-types";
 import type {
   ChannelStatus,

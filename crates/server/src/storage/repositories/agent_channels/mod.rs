@@ -12,6 +12,7 @@
 
 pub(super) mod conversion;
 pub(super) mod rows;
+pub(super) mod slack_socket;
 use rows::*;
 
 use super::super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};

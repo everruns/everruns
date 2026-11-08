@@ -26,3 +26,4 @@ pub mod install;
 mod manager_connect;
 pub mod provisioning;
 pub(crate) mod scheduled;
+pub(crate) mod socket_mode;

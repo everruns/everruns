@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   SlackConnectionStatus,
@@ -159,5 +159,40 @@ describe("Slack connection guidance", () => {
       "Could not load the Slack app manifest",
     );
     expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
+  });
+  it("treats an app-level token, not a signing secret, as Socket Mode credentials", () => {
+    render(
+      withQueries(
+        <SlackConnectionStatus
+          channel={channel({
+            session_strategy: "per_thread",
+            connection: "socket_mode",
+            app_token_configured: true,
+            bot_token_configured: true,
+            webhook_verified_at: "2026-11-08T00:00:00Z",
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+    expect(screen.getByText(/Everruns is connected to Slack/)).toBeInTheDocument();
+    cleanup();
+    render(
+      withQueries(
+        <SlackConnectionStatus channel={channel({ ...configured, connection: "socket_mode" })} />,
+      ),
+    );
+    expect(screen.getByText("Not connected")).toBeInTheDocument();
+  });
+  it("allows Socket Mode app creation on localhost", async () => {
+    (getSlackChannelManifest as jest.Mock).mockResolvedValue({
+      manifest_yaml: "settings:\n  socket_mode_enabled: true",
+      create_url: "https://api.slack.com/apps?new_app=1",
+    });
+    renderManual(channel({ session_strategy: "per_thread", connection: "socket_mode" }));
+    const create = screen.getByRole("button", { name: "Create Slack app" });
+    await waitFor(() => expect(create).toBeEnabled());
+    expect(screen.queryByText(/PUBLIC_APP_URL/)).not.toBeInTheDocument();
+    expect(screen.getByText(/generate an app-level token/)).toBeInTheDocument();
   });
 });

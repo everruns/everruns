@@ -4,7 +4,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useId, useState } from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -43,6 +43,7 @@ import type {
   ScheduleChannelConfig,
   VoiceChannelConfig,
   SessionStrategy,
+  SlackConnection,
   SlackResponsePolicy,
   WebhookChannelConfig,
 } from "@/lib/api/types";
@@ -68,8 +69,8 @@ import {
   getInvocationSessionModeDisplayName,
 } from "@/lib/channel-display";
 import { generateChannelToken } from "@/lib/channel-tokens";
-import { slackAppUrl } from "@/components/slack/slack-workspaces";
-import { SlackWorkspaceChoice, SlackWorkspaceName, useSlackInstall } from "./slack-install";
+import { SlackWorkspaceChoice, useSlackInstall } from "./slack-install";
+import * as SocketMode from "./slack-socket-mode";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
 import { SlackInstallError } from "@/components/slack/slack-install-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -107,6 +108,8 @@ export type ChannelFormState = {
   chatMemberEmail: string;
   chatInvites: string;
   enabled: boolean;
+  slackConnection: SlackConnection;
+  slackAppToken: string;
   slackSigningSecret: string;
   slackBotToken: string;
   slackTeamId: string;
@@ -176,6 +179,8 @@ export function getDefaultChannelFormState(
   const base: ChannelFormState = {
     kind,
     enabled: channel?.enabled ?? true,
+    slackConnection: SocketMode.defaultSlackConnection(),
+    slackAppToken: "",
     slackSigningSecret: "",
     slackBotToken: "",
     slackTeamId: "",
@@ -368,13 +373,13 @@ export function getDefaultChannelFormState(
     return {
       ...base,
       kind: "slack",
+      slackConnection: config.connection || "request_url",
+      slackAppToken: secretValue(config.app_token, config.app_token_configured),
       slackSigningSecret: secretValue(config.signing_secret, config.signing_secret_configured),
       slackBotToken: secretValue(config.bot_token, config.bot_token_configured),
       slackTeamId: config.team_id || "",
       slackChannelId: config.channel_id || "",
-      slackCredentialsConfigured: Boolean(
-        config.signing_secret_configured || config.bot_token_configured,
-      ),
+      slackCredentialsConfigured: Boolean(config.signing_secret_configured || config.bot_token_configured || config.app_token_configured), // prettier-ignore
       slackAppId: config.slack_app_id || "",
       slackAgentSurfaceEnabled: config.agent_surface_enabled ?? false,
       slackSessionStrategy: config.session_strategy || "per_thread",
@@ -614,7 +619,11 @@ export function ChannelForm({
   const ui = useUiTranslations();
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
-  const slackInstallAvailable = slackInstallCapability?.connected === true;
+  // One-click install ends on Slack's HTTPS redirect, which Socket Mode setups usually lack.
+  const slackInstallAvailable =
+    slackInstallCapability?.connected === true &&
+    (state.slackConnection === "request_url" ||
+      SocketMode.defaultSlackConnection() === "request_url");
   const slackFormId = useId();
   const [manualSlackOpen, setManualSlackOpen] = useState(false);
   const openManualSlack = useCallback(() => setManualSlackOpen(true), []);
@@ -1271,29 +1280,18 @@ export function ChannelForm({
           >
             <div className="space-y-4">
               {channel && <SlackConnectionStatus channel={channel} />}
+              <SocketMode.SlackConnectionChoice
+                idPrefix={slackFormId}
+                value={state.slackConnection}
+                onChange={(value) => update("slackConnection", value)}
+              />
               {slackLive && (
-                <div className="space-y-3 border p-4">
-                  <div className="space-y-1">
-                    {!channel && <p className="text-sm font-medium">{ui("Installed in Slack")}</p>}
-                    <p className="text-xs text-muted-foreground">
-                      {ui("This agent has its own Slack app in workspace")}{" "}
-                      <SlackWorkspaceName teamId={state.slackTeamId} />
-                      {ui(". Mention it in a channel")}
-                      {state.slackAgentSurfaceEnabled
-                        ? ui(", or open it from Slack’s Agents menu.")
-                        : "."}
-                    </p>
-                  </div>
-                  <a
-                    className={buttonVariants({ variant: "outline", size: "sm" })}
-                    href={slackAppUrl(state.slackAppId, state.slackTeamId)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <Slack className="size-4" />
-                    {ui("Open in Slack")}
-                  </a>
-                </div>
+                <SocketMode.SlackInstalledCard
+                  showTitle={!channel}
+                  appId={state.slackAppId}
+                  teamId={state.slackTeamId}
+                  agentSurfaceEnabled={state.slackAgentSurfaceEnabled}
+                />
               )}
               {!slackLive && slackCanAdd && slackInstallCapability?.supported && (
                 <SlackWorkspaceChoice
@@ -1405,28 +1403,20 @@ export function ChannelForm({
                 <CollapsibleContent className="space-y-4 pt-4">
                   {manualSlackOpen && channel && <SlackManualSetup channel={channel} />}
                   <p className="text-xs text-muted-foreground">
-                    {ui(
-                      "These fields are optional when saving. Slack requests are rejected until a signing secret is set; a bot token is needed to send replies.",
-                    )}
+                    <SocketMode.SlackSecretsNote connection={state.slackConnection} />
                     {mode === "edit" && " Leave secret fields blank to keep the saved credentials."}
                   </p>
                   <FieldGrid>
-                    <div className="space-y-2">
-                      <Label htmlFor={`${slackFormId}_signing_secret`}>
-                        {ui("Signing secret")}
-                      </Label>
-                      <Input
-                        id={`${slackFormId}_signing_secret`}
-                        type="password"
-                        value={state.slackSigningSecret}
-                        onChange={(event) => update("slackSigningSecret", event.target.value)}
-                        placeholder={
-                          mode === "edit"
-                            ? ui("Leave blank to keep existing secret")
-                            : ui("Slack signing secret")
-                        }
-                      />
-                    </div>
+                    <SocketMode.SlackSecretField
+                      idPrefix={slackFormId}
+                      connection={state.slackConnection}
+                      mode={mode}
+                      appId={state.slackAppId}
+                      appToken={state.slackAppToken}
+                      signingSecret={state.slackSigningSecret}
+                      onAppTokenChange={(value) => update("slackAppToken", value)}
+                      onSigningSecretChange={(value) => update("slackSigningSecret", value)}
+                    />
                     <div className="space-y-2">
                       <Label htmlFor={`${slackFormId}_bot_token`}>{ui("Bot token")}</Label>
                       <Input

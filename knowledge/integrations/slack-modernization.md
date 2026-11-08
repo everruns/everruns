@@ -146,6 +146,22 @@ whether installing creates an endpoint or fills in one the operator made first, 
 the per-install team binding is enforced on inbound events. Neither is a modelling
 question any more.
 
+**Socket Mode is a per-channel choice of transport, not a second integration.** A
+self-hosted instance on a laptop has no public HTTPS address, and Slack's Events API
+needs one. Socket Mode lets Everruns connect out instead, so each channel's config
+carries `connection` (`request_url` or `socket_mode`) and, for Socket Mode, an
+app-level `xapp-` token. The API server holds the sockets (`channels/slack/socket_mode.rs`)
+and feeds each envelope into the same handlers the HTTP routes use: events through the
+channel host under a path marker the HTTP routes never set, which is what lets them skip
+signature verification, and clicks through the block-action handler. Every server
+replica holds its own connection per channel; Slack delivers each envelope to one of
+them, and the existing event dedupe covers retries. An accepted connection is recorded
+as the same delivery evidence a verified Request URL challenge records, so the channel
+status reads the same for both. Slack has no API to mint an app-level token and its
+install redirect must be HTTPS, so a laptop setup costs two pastes per agent (bot and
+app token); the UI defaults new channels to Socket Mode when the page itself is not on
+public HTTPS.
+
 ## Sources
 
 Slack platform behavior was verified against

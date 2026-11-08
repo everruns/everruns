@@ -1,3 +1,9 @@
+// These cases cover a server reachable over public HTTPS, where Request URL is the default;
+// jsdom serves from http://localhost, which would otherwise pick Socket Mode.
+jest.mock("@/components/agents/channels/slack-socket-mode", () => ({
+  ...jest.requireActual("@/components/agents/channels/slack-socket-mode"),
+  defaultSlackConnection: () => "request_url",
+}));
 jest.mock("@/components/budgets/budget-panel", () => ({
   BudgetPanel: ({ title }: { title?: string }) => (title ? <div>{title}</div> : null),
 }));

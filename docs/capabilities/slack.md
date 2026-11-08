@@ -17,18 +17,31 @@ Everruns connects an Agent to Slack in two parts:
 
 - **Conversational agents in Slack**: Users interact with the Agent in channels, threads, direct messages, or Slack's agent pane.
 - **Session routing**: Conversations map to sessions by thread, channel, or user.
-- **Secure webhooks**: Everruns verifies requests with Slack's signing secret.
+- **No public address needed**: with Socket Mode, Everruns connects out to Slack; with a Request URL, it verifies each request with Slack's signing secret.
 - **Async responses**: Everruns acknowledges Slack immediately and posts the Agent's response when it is ready.
 - **Per-channel Slack bots**: Each Slack channel has its own Slack app, credentials, identity, and lifecycle.
 
 ## Before You Start
 
 - Create an active Agent.
-- Give Everruns a public HTTPS origin. Set `PUBLIC_APP_URL` to that origin and restart Everruns.
+- Decide how Slack reaches Everruns; see [Socket Mode or Request URL](#socket-mode-or-request-url).
 - Ask a Slack workspace administrator for permission to install an app.
 - An organization administrator connects your Slack workspace once; see [Connect a Slack Workspace](#connect-a-slack-workspace).
 
-Slack cannot verify `localhost`. On your own computer, `everruns docker up --tunnel tailscale` gives the instance a stable public HTTPS address and sets `PUBLIC_APP_URL` for you; see [Give it a public address](/getting-started/run-locally/#give-it-a-public-address).
+## Socket Mode or Request URL
+
+Each Slack channel picks how Slack delivers messages, under **How Slack reaches Everruns** in the channel editor:
+
+- **Socket Mode**: Everruns opens a connection out to Slack and receives messages over it. It needs no public address, so it works on your own computer behind a home router or a firewall. The channel needs an app-level token (`xapp-...`) in addition to the bot token. New channels default to Socket Mode when the Everruns page is not served over public HTTPS.
+- **Request URL**: Slack sends each message to Everruns over HTTPS. Set `PUBLIC_APP_URL` to a public HTTPS origin and restart Everruns. On your own computer, `everruns docker up --tunnel tailscale` gives the instance a stable public address and sets `PUBLIC_APP_URL` for you; see [Give it a public address](/getting-started/run-locally/#give-it-a-public-address).
+
+Slack offers no API to create an app-level token, so Socket Mode always takes one paste per agent:
+
+1. Open the channel's Slack app in [Slack API Apps](https://api.slack.com/apps). The channel editor links to it once the app exists.
+2. Under **Basic Information** > **App-Level Tokens**, select **Generate Token and Scopes**, add the `connections:write` scope, and generate it.
+3. Paste the token into the channel's **App-level token** field and save.
+
+The channel shows **Connected** once Slack accepts the connection. Each API server keeps one connection per channel (Slack hands each message to one of them) and reconnects on its own after a restart or a network drop. **Add to Slack** finishes on a Slack redirect, which needs a public HTTPS address; without one, use **Create Slack app** under **Configure manually** and paste the bot token too.
 
 ## Connect a Slack Workspace
 
@@ -123,6 +136,7 @@ Use this flow only when you cannot use **Add to Slack** or **Create Slack app**.
 6. Paste the channel Request URL into Slack's **Request URL** field.
 7. Install the Slack app to your workspace.
 8. Copy the signing secret and bot token into the channel's **Configure manually** fields.
+   For Socket Mode, skip step 6: turn on **Socket Mode** under **Settings** instead, and copy an app-level token in place of the signing secret.
 9. Save the channel.
 
 ## Existing Installs
@@ -133,7 +147,9 @@ Existing Slack installs that use `/v1/apps/{app_id}/…` URLs continue to work. 
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `signing_secret` | Before use | Slack app signing secret for HMAC-SHA256 verification. It can be empty while you create the channel, but the channel rejects all Slack requests until it is set. |
+| `connection` | No | `request_url` by default, or `socket_mode`. See [Socket Mode or Request URL](#socket-mode-or-request-url). |
+| `app_token` | For Socket Mode | App-level token (`xapp-...`) with the `connections:write` scope. Write-only: reads report `app_token_configured`. |
+| `signing_secret` | Before use | For Request URL. Slack app signing secret for HMAC-SHA256 verification. It can be empty while you create the channel, but the channel rejects all Slack requests until it is set. |
 | `bot_token` | Before use | Bot User OAuth Token (`xoxb-...`) for sending responses. It can be empty while you create the channel. |
 | `channel_id` | No | Restrict the channel to one channel, such as `C0123456789`. |
 | `team_id` | No | Slack workspace ID. |
