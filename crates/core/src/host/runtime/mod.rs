@@ -1250,7 +1250,18 @@ impl RuntimeHostAdapter for InProcessRuntime {
         // Platform projection: stored records stop here; execution receives
         // the canonical resolved value (EVE-872).
         let snapshot = ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), &session)?;
-        let messages = self.event_history.load(session_id).await?;
+        let messages = match self
+            .compaction_checkpoint_store
+            .latest_source_sequence(session_id)
+            .await?
+        {
+            Some(checkpoint) => {
+                self.event_history
+                    .load_since_checkpoint(session_id, checkpoint)
+                    .await?
+            }
+            None => self.event_history.load(session_id).await?,
+        };
 
         // Discover session MCP tools for the LLM (knowledge/integrations/runtime-mcp.md D4).
         #[cfg(feature = "mcp")]

@@ -1146,6 +1146,48 @@ impl EventHistory {
         self.project_after(session_id, None).await
     }
 
+    /// The messages a turn resolves with: those after `checkpoint` (the
+    /// newest compaction checkpoint's source), widened to start at the
+    /// latest turn's input when the checkpoint is newer than it.
+    ///
+    /// Decision: a turn reads only its input and what follows it (causal
+    /// context), and the completion review sees the history the model sees,
+    /// which a checkpoint already replaced. Loading the whole session here
+    /// made each turn cost the session's length. A log with no turn started
+    /// yet loads whole.
+    pub(crate) async fn load_since_checkpoint(
+        &self,
+        session_id: SessionId,
+        checkpoint: i64,
+    ) -> CoreResult<Vec<RuntimeMessage>> {
+        let latest_input = |events: &[Event]| {
+            let input = events.iter().rev().find_map(|event| match &event.data {
+                EventData::TurnStarted(data) => Some(data.input_message_id),
+                _ => None,
+            })?;
+            events.iter().find_map(|event| match &event.data {
+                EventData::InputMessage(data) if data.message.id == input => event.sequence,
+                _ => None,
+            })
+        };
+        let tail = read_tail_until(self.reader.as_ref(), session_id, |events| {
+            latest_input(events).is_some()
+        })
+        .await
+        .map_err(core_event_error)?;
+        let Some(input_sequence) = latest_input(&tail) else {
+            return self.load(session_id).await;
+        };
+        let after = checkpoint.min(i64::from(input_sequence) - 1);
+        Ok(self
+            .project_after(session_id, Some(after))
+            .await
+            .map_err(core_event_error)?
+            .into_iter()
+            .map(|item| item.message)
+            .collect())
+    }
+
     /// Project the messages after `after` (all when `None`). The read starts
     /// there, so a suffix after a compaction checkpoint costs the suffix, and
     /// only its envelopes count toward [`MAX_EVENT_HISTORY_REPLAY`].
