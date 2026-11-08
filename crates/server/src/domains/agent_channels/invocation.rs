@@ -134,14 +134,19 @@ pub(crate) fn cron_min_interval_seconds(
     min_interval
 }
 
+/// Next trigger for a schedule's cron, read in its IANA `timezone`.
 pub(crate) fn calculate_schedule_next_trigger(
     cron_expression: &str,
+    timezone: &str,
 ) -> Result<Option<DateTime<Utc>>, CommandError> {
     let normalized = normalize_cron_expression(cron_expression)?;
-    let schedule = cron::Schedule::from_str(&normalized).map_err(|e| {
-        CommandError::bad_request(format!("Invalid cron expression '{cron_expression}': {e}"))
-    })?;
-    Ok(schedule.upcoming(Utc).next())
+    everruns_durable::next_trigger_after(&normalized, timezone, Utc::now())
+        .map(Some)
+        .map_err(|e| {
+            CommandError::bad_request(format!(
+                "Invalid schedule '{cron_expression}' in timezone '{timezone}': {e}"
+            ))
+        })
 }
 
 /// Hash a plaintext A2A execution key using SHA-256.

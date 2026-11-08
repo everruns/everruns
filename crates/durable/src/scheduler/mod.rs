@@ -15,6 +15,7 @@ mod ensure;
 
 pub use ensure::{
     Cadence, EnsureOutcome, ScheduleSpec, disable_schedule, ensure_schedule, find_schedule,
+    next_trigger_after,
 };
 
 use std::sync::Arc;
@@ -415,13 +416,12 @@ impl DurableScheduler {
     }
 
     /// Calculate the next trigger time from the schedule's cadence (a cron
-    /// expression or `@every <secs>s`). Times are UTC; `timezone` is not
-    /// applied.
+    /// expression or `@every <secs>s`), read in the schedule's `timezone`.
     fn calculate_next_trigger(
         &self,
         schedule: &ScheduleRow,
     ) -> Result<DateTime<Utc>, SchedulerError> {
-        ensure::next_after(&schedule.cron_expression, Utc::now())
+        next_trigger_after(&schedule.cron_expression, &schedule.timezone, Utc::now())
     }
 
     /// Send heartbeat to register this instance is alive
@@ -480,6 +480,50 @@ mod tests {
         // Check that next_trigger_at was updated
         let updated = store.get_schedule(schedule_id).await.unwrap();
         assert!(updated.next_trigger_at.unwrap() > Utc::now());
+    }
+
+    /// Regression: a fired schedule advanced its next trigger in UTC, so an
+    /// `America/Chicago` 10:00 schedule fired at 10:00 UTC (prod, 2026-11-08).
+    #[tokio::test]
+    async fn a_fired_schedule_advances_in_its_timezone() {
+        use chrono::Timelike;
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let schedule_id = store
+            .create_schedule(CreateScheduleRow {
+                name: "chicago-morning".to_string(),
+                description: None,
+                cron_expression: "0 0 10 * * * *".to_string(),
+                timezone: "America/Chicago".to_string(),
+                target_type: ScheduleTargetType::Workflow,
+                target_name: "test-workflow".to_string(),
+                target_input: Value::Object(Default::default()),
+                enabled: true,
+                max_concurrent: None,
+                catch_up_missed: false,
+                max_catch_up: None,
+                retry_policy: None,
+                next_trigger_at: Some(Utc::now() - chrono::Duration::seconds(10)),
+            })
+            .await
+            .unwrap();
+
+        DurableScheduler::with_defaults(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            "test-scheduler-tz".to_string(),
+        )
+        .process_due_schedules()
+        .await
+        .unwrap();
+
+        let next = store
+            .get_schedule(schedule_id)
+            .await
+            .unwrap()
+            .next_trigger_at
+            .unwrap();
+        let local = next.with_timezone(&chrono_tz::America::Chicago);
+        assert_eq!((local.hour(), local.minute()), (10, 0), "{next}");
+        assert_ne!(next.hour(), 10, "must not fire at 10:00 UTC: {next}");
     }
 
     #[tokio::test]

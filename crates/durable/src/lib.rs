@@ -127,7 +127,7 @@ pub use reliability::{
 };
 pub use scheduler::{
     Cadence, DurableScheduler, EnsureOutcome, ScheduleSpec, SchedulerConfig, SchedulerError,
-    disable_schedule, ensure_schedule, find_schedule,
+    disable_schedule, ensure_schedule, find_schedule, next_trigger_after,
 };
 // `ScheduleUpdate` fields are `UpdateField`s, so the type stays nameable here.
 pub use update_field::UpdateField;
