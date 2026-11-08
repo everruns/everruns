@@ -336,6 +336,7 @@ everruns_core::report_throttle::ReportThrottle	struct
 everruns_core::report_throttle::ReportThrottle::admit_at	function
 everruns_core::runtime_context	module
 everruns_core::runtime_context::AssembledTurnContext	struct
+everruns_core::runtime_context::HistoryFloor	struct
 everruns_core::runtime_context::ResolvedModelExecution	struct
 everruns_core::runtime_context::ResolvedRuntimeCapabilities	struct
 everruns_core::runtime_context::ResolvedTurnContextInput	struct
