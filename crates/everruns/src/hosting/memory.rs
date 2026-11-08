@@ -522,6 +522,14 @@ impl EventReader for Ports {
         self.scope(request.session_id()).map_err(log_error)?;
         self.session.log.read_page(request).await
     }
+
+    async fn last_sequence(
+        &self,
+        session_id: SessionId,
+    ) -> std::result::Result<Option<i32>, EventLogError> {
+        self.scope(session_id).map_err(log_error)?;
+        self.session.log.last_sequence(session_id).await
+    }
 }
 #[async_trait]
 impl EventLog for Ports {
@@ -886,6 +894,44 @@ mod resolver_tests {
                 .create_registered(SessionId::new(), &unknown)
                 .await
                 .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tail_tests {
+    use super::*;
+
+    /// The authority's reader and Engine's log wrappers report where the log
+    /// ends, so tail lookups (a turn's input, an open model stream) read back
+    /// from it instead of paging a long session in from its start.
+    #[tokio::test]
+    async fn readers_report_the_log_end() {
+        let profile = MemoryHosting::default();
+        let id = SessionId::new();
+        let binding = SessionBinding {
+            framework: 1,
+            behavior: AgentBuild::new("tail", "v1"),
+            harness: None,
+            environment: None,
+            metadata: json!(null),
+        };
+        profile.create(id, &binding).await.unwrap();
+        let receipt = profile
+            .admit(id, RuntimeMessage::user("hi"), false)
+            .await
+            .unwrap();
+        let log = profile.reader(id).event_log;
+        assert_eq!(log.last_sequence(id).await.unwrap(), Some(receipt.sequence));
+        let filtered = super::super::query::InputFilterLog::new(log.clone(), Default::default());
+        assert_eq!(
+            filtered.last_sequence(id).await.unwrap(),
+            Some(receipt.sequence)
+        );
+        let snapshot = super::super::query::SnapshotLog::new(log, id, receipt.sequence - 1);
+        assert_eq!(
+            snapshot.last_sequence(id).await.unwrap(),
+            Some(receipt.sequence - 1)
         );
     }
 }
