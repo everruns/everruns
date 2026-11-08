@@ -1,6 +1,6 @@
 ---
 title: Kubernetes
-description: Install the self-hosted Everruns Platform on Kubernetes with the official Helm chart, using your own PostgreSQL and secrets kept across upgrades.
+description: Install the self-hosted Everruns Platform on Kubernetes with one CLI command or the official Helm chart, using your own PostgreSQL and secrets kept across upgrades.
 sidebar:
   label: "Self-hosted: Kubernetes"
 appliesTo: [platform]
@@ -17,7 +17,47 @@ chart as an OCI chart that runs that release's images.
   run by an operator like CloudNativePG
 - About 2 GB of memory for the Everruns pods
 
-## Install
+## Install with the CLI
+
+With the [CLI](/features/cli/), `kubectl` and `helm` installed, one command
+installs Everruns into the cluster `kubectl` points at:
+
+```bash
+everruns k8s up
+```
+
+It shows the cluster context and namespace (`everruns` by default) and asks
+before installing. Then it asks who signs in, the admin email, your PostgreSQL
+URL (or a single PostgreSQL pod for trying it out), an optional public URL for
+an Ingress, and an LLM provider key, which it takes from `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY` or `GEMINI_API_KEY` when set. It checks the cluster first
+(Kubernetes version, permissions in the namespace, a default StorageClass when
+it needs volumes, KEDA when worker autoscaling is on), installs this CLI
+version's chart, waits for the pods, and signs the CLI in as profile `k8s`.
+
+Every question has a flag, so it also runs in scripts and CI:
+
+```bash
+everruns k8s up --yes --context my-cluster \
+  --database-url "$DATABASE_URL" --admin-email you@example.com \
+  --public-url https://everruns.example.com --ingress-class nginx \
+  --set server.replicas=2 --set valkey.enabled=true
+```
+
+`--set` and `--values` pass chart values through, and later runs keep them.
+Running `up` again repairs the install without asking again and never changes
+the chart version; `everruns k8s upgrade` does that, and backs up a bundled
+database to this machine first. Nothing secret is written to this machine: the
+chart keeps its secrets in the cluster and Helm keeps the values.
+
+Without a public URL, `everruns k8s port-forward` keeps the install reachable
+at `http://localhost:9300` for the browser and the CLI, and `everruns k8s open`
+opens it. `status`, `logs [server|worker|ui|proxy]` and `doctor` show what it
+is doing; `uninstall` removes the workloads and keeps the data; `reset`
+deletes everything after you type the install's name. All commands:
+[`everruns k8s`](/reference/cli/k8s/).
+
+## Install with Helm
 
 ```bash
 helm install everruns oci://ghcr.io/everruns/charts/everruns \

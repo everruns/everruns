@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Local Setup and Kubernetes"
-description: "One command, everruns docker up, runs the self-hosted Platform on a person's machine through Docker Compose; Kubernetes gets an official Helm chart, not an operator."
+description: "One command, everruns docker up, runs the self-hosted Platform on a person's machine through Docker Compose; Kubernetes gets an official Helm chart, not an operator, and everruns k8s up to install it."
 tags:
   - everruns
   - operations
@@ -11,7 +11,8 @@ tags:
 # Local Setup and Kubernetes
 
 Status: accepted (2026-10-24). `everruns docker` shipped, including `upgrade`
-and `reset`, and the Helm chart (`charts/everruns`).
+and `reset`, and the Helm chart (`charts/everruns`). `everruns k8s` added
+2026-11-08.
 
 ## Goal
 
@@ -99,6 +100,25 @@ CI (`helm-chart.yml`) lints and renders the chart and installs it on kind,
 then signs in through the proxy, upgrades to the hosted service's shape (two
 servers, Valkey, network policies, egress proxy) and signs in again, and checks
 the secrets survive the upgrade and a reinstall.
+
+### `everruns k8s`
+
+The same contract as `everruns docker up`, for a cluster: one command, a few
+questions, a healthy install and a CLI signed in to it
+(`crates/cli/src/commands/k8s/`).
+
+| Decision | Why |
+|---|---|
+| Shell out to `kubectl` and `helm` | They know the kubeconfig, contexts and cloud sign-in plugins; no Kubernetes client crate. `EVERRUNS_KUBECTL` / `EVERRUNS_HELM` swap them. |
+| Confirm the context and namespace on the first run and whenever they change (`--yes` for scripts) | A cluster is often shared or remote; installing into the wrong one is the main way this hurts someone. |
+| The release is the record | `up` reads `helm get values` and asks only what it lacks, so `--set` values survive later runs. The chart keeps secrets in the cluster; values go to helm on stdin. The local record (`everruns/k8s/<name>/instance.json`) holds only the context, namespace, chart, port and non-secret answers, so a reinstall after `uninstall` asks nothing but an external database URL. |
+| `up` never moves the chart version; `upgrade` does, after a `pg_dump` of a bundled database to this machine | Same as Docker: a new chart runs migrations, which only go forward. An external database is the person's to back up. |
+| Without a public URL, a port-forward on a fixed local port | The CLI profile (`k8s`, or `k8s-<name>`) points at it; `port-forward` keeps it open, `open` adds the browser. |
+| `uninstall` keeps secrets and volumes; `reset` deletes them after the name is typed | Same split as Docker's `stop` and `reset`. |
+
+CI (`helm-chart.yml`, `cli-up`) runs `scripts/smoke-everruns-k8s.sh` on kind:
+no-prompt install, CLI sign-in, a rerun, `--set` kept, uninstall and
+reinstall with the same secrets, and reset.
 
 Revisit an operator if many teams run many instances per cluster and want to
 declare them as objects. Agent sandboxes as pods would be a sandbox provider,

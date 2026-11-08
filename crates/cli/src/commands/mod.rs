@@ -16,6 +16,7 @@ pub mod chat;
 pub mod connections;
 pub mod docker;
 pub mod files;
+pub mod k8s;
 pub mod login;
 pub mod logout;
 pub mod orgs;
