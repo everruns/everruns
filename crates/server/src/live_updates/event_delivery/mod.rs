@@ -297,13 +297,17 @@ impl NatsEventDelivery {
             .subscribe(subject)
             .await
             .context("Failed to subscribe to NATS")?;
-        // The broker handles a connection's messages in order, so once this
-        // round trip returns it has the subscription: an event published
-        // after `subscribe` returns reaches it.
-        self.client
-            .flush()
-            .await
-            .context("Failed to confirm NATS subscription")?;
+        // The broker handles a connection's messages in order, so once a
+        // round trip after the subscription returns, the broker has it and an
+        // event published after `subscribe` returns reaches it. `flush` only
+        // writes the socket; a request nobody answers comes back as "no
+        // responders" from the broker itself.
+        let barrier = format!("_EVERRUNS.subscribed.{}", Uuid::new_v4());
+        match self.client.request(barrier, bytes::Bytes::new()).await {
+            Ok(_) => {}
+            Err(error) if error.kind() == async_nats::RequestErrorKind::NoResponders => {}
+            Err(error) => return Err(error).context("Failed to confirm NATS subscription"),
+        }
         Ok(EventSubscription::Nats(Box::new(subscriber)))
     }
 
