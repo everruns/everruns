@@ -28,7 +28,7 @@ Everruns connects an Agent to Slack in two parts:
 - Ask a Slack workspace administrator for permission to install an app.
 - An organization administrator connects your Slack workspace once; see [Connect a Slack Workspace](#connect-a-slack-workspace).
 
-Slack cannot verify `localhost`. For local development, expose Everruns through a public HTTPS tunnel before you create the Slack app.
+Slack cannot verify `localhost`. On your own computer, `everruns docker up --tunnel tailscale` gives the instance a stable public HTTPS address and sets `PUBLIC_APP_URL` for you; see [Give it a public address](/getting-started/run-locally/#give-it-a-public-address).
 
 ## Connect a Slack Workspace
 

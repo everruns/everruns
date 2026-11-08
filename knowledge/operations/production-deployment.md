@@ -162,7 +162,7 @@ Canonical references:
 
 Concrete config examples:
 - [`local/Caddyfile`](../../local/Caddyfile)
-- [`examples/docker-compose-full.yaml`](../../examples/docker-compose-full.yaml)
+- [`infra/docker-compose/docker-compose.yaml`](../../infra/docker-compose/docker-compose.yaml)
 
 ## Security Minimums
 

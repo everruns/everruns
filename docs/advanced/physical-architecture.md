@@ -98,7 +98,7 @@ A reverse proxy (or platform ingress that enforces the same routes) is mandatory
 | `/health` | Control plane | Health check target |
 | Everything else | UI | If UI is deployed; otherwise 404 |
 
-TLS terminates at the proxy. Worker gRPC traffic stays on the private network, never expose port 9001 publicly. See [`local/Caddyfile`](https://github.com/everruns/everruns/blob/main/local/Caddyfile) and [`examples/docker-compose-full.yaml`](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml) for working configurations.
+TLS terminates at the proxy. Worker gRPC traffic stays on the private network, never expose port 9001 publicly. See [`local/Caddyfile`](https://github.com/everruns/everruns/blob/main/local/Caddyfile) and [`infra/docker-compose/docker-compose.yaml`](https://github.com/everruns/everruns/blob/main/infra/docker-compose/docker-compose.yaml) for working configurations.
 
 ## Outbound traffic
 

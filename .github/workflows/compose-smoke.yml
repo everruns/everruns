@@ -25,7 +25,7 @@ on:
     types: [completed]
   pull_request:
     paths:
-      - 'examples/docker-compose-full.yaml'
+      - 'infra/docker-compose/docker-compose.yaml'
       - 'docs/getting-started/docker-compose.md'
       - 'scripts/smoke-docker-compose.sh'
       - '.github/workflows/compose-smoke.yml'

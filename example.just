@@ -1,6 +1,6 @@
 # Example docker-compose commands
 
-# Start example docker-compose-full (checks local compose not running)
+# Start example Docker Compose stack (checks local compose not running)
 # Optional: specify image tag (e.g., `just example start v0.1.0`)
 start tag="latest":
     #!/usr/bin/env bash
@@ -44,43 +44,43 @@ start tag="latest":
     fi
 
     echo "✅ Local docker compose not running, starting example full stack..."
-    cd examples
-    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml up --pull always -d
+    cd infra/docker-compose
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose.yaml up --pull always -d
     echo "✅ Example full stack started!"
     echo "   - UI: http://localhost:${EXAMPLE_PROXY_PORT}"
     echo "   - VictoriaMetrics: http://localhost:${VICTORIAMETRICS_PORT:-8428}/vmui"
 
-# Stop example docker-compose-full
+# Stop example Docker Compose stack
 stop:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/lib/common.sh
     apply_port_prefix_defaults
     export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
-    cd examples
-    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml down
+    cd infra/docker-compose
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose.yaml down
 
-# Reset example docker-compose-full (removes volumes)
+# Reset example Docker Compose stack (removes volumes)
 reset:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/lib/common.sh
     apply_port_prefix_defaults
     export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
-    cd examples
-    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml down -v
+    cd infra/docker-compose
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose.yaml down -v
 
-# Follow logs from example docker-compose-full
+# Follow logs from example Docker Compose stack
 logs *args:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/lib/common.sh
     apply_port_prefix_defaults
     export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
-    cd examples
-    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml logs -f {{args}}
+    cd infra/docker-compose
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose.yaml logs -f {{args}}
 
-# Pull latest images for example docker-compose-full
+# Pull latest images for example Docker Compose stack
 # Optional: specify image tag (e.g., `just example pull v0.1.0`)
 pull tag="latest":
     #!/usr/bin/env bash
@@ -89,5 +89,5 @@ pull tag="latest":
     apply_port_prefix_defaults
     export EVERRUNS_TAG={{tag}}
     export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
-    cd examples
-    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml pull
+    cd infra/docker-compose
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose.yaml pull

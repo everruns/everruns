@@ -11,7 +11,7 @@ COMPOSE_PROFILES=scale,metrics \
 EXAMPLE_PROXY_BIND=127.0.0.1 \
 EXAMPLE_PROXY_PORT=19300 \
 VICTORIAMETRICS_PORT=127.0.0.1:18428 \
-  docker compose -f "$ROOT/examples/docker-compose-full.yaml" config --format json |
+  docker compose -f "$ROOT/infra/docker-compose/docker-compose.yaml" config --format json |
   python3 -c '
 import json, sys
 services = json.load(sys.stdin)["services"]
@@ -32,7 +32,7 @@ AUTH_JWT_SECRET=compose-config-test \
 SECRETS_ENCRYPTION_KEY=compose-config-test \
 WORKER_GRPC_AUTH_TOKEN=compose-config-test \
 SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV= \
-  docker compose -f "$ROOT/examples/docker-compose-full.yaml" config --format json |
+  docker compose -f "$ROOT/infra/docker-compose/docker-compose.yaml" config --format json |
   python3 -c '
 import json, sys
 server = json.load(sys.stdin)["services"]["server"]

@@ -16,7 +16,7 @@ use base64::Engine;
 use rand::RngExt;
 
 /// The compose file this CLI release runs: a copy of
-/// [the documented example](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml),
+/// [the documented example](https://github.com/everruns/everruns/blob/main/infra/docker-compose/docker-compose.yaml),
 /// kept identical by a test so the guide
 /// and the CLI start the same, tested stack.
 pub const COMPOSE_FILE: &str = include_str!("../../../assets/docker-compose.yaml");
@@ -34,6 +34,14 @@ pub const DEPLOYMENT_GRADE: &str = "DEPLOYMENT_GRADE";
 pub const SEED_PROVIDER_KEYS: &str = "SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV";
 /// Which provider question was answered, so "skip" is not asked again.
 pub const LLM_PROVIDER: &str = "EVERRUNS_LLM_PROVIDER";
+/// The public origin, passed to the server as is.
+pub const PUBLIC_URL: &str = "PUBLIC_APP_URL";
+/// Which `--tunnel` was chosen (`none`, `tailscale`, ...), read only by the CLI.
+pub const TUNNEL: &str = "EVERRUNS_TUNNEL";
+pub const COMPOSE_PROFILES: &str = "COMPOSE_PROFILES";
+pub const TS_AUTHKEY: &str = "TS_AUTHKEY";
+pub const CLOUDFLARE_TUNNEL_TOKEN: &str = "CLOUDFLARE_TUNNEL_TOKEN";
+pub const NGROK_AUTHTOKEN: &str = "NGROK_AUTHTOKEN";
 
 /// Every variable the compose file interpolates that `up` manages. A value of
 /// the same name in the caller's shell would override `.env` inside Compose,
@@ -53,7 +61,11 @@ pub const MANAGED_KEYS: &[&str] = &[
     "DEFAULT_OPENAI_API_KEY",
     "DEFAULT_ANTHROPIC_API_KEY",
     "DEFAULT_GEMINI_API_KEY",
-    "COMPOSE_PROFILES",
+    COMPOSE_PROFILES,
+    PUBLIC_URL,
+    TS_AUTHKEY,
+    CLOUDFLARE_TUNNEL_TOKEN,
+    NGROK_AUTHTOKEN,
     "VICTORIAMETRICS_PORT",
 ];
 
@@ -318,7 +330,7 @@ mod tests {
         // Only checkable inside the repository; a packaged crate has no examples/.
         let documented = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/docker-compose-full.yaml"
+            "/../../infra/docker-compose/docker-compose.yaml"
         );
         let Ok(text) = fs::read_to_string(documented) else {
             return;
@@ -326,7 +338,7 @@ mod tests {
         assert_eq!(
             text, COMPOSE_FILE,
             "crates/cli/assets/docker-compose.yaml must stay a copy of \
-             examples/docker-compose-full.yaml: cp examples/docker-compose-full.yaml \
+             infra/docker-compose/docker-compose.yaml: cp infra/docker-compose/docker-compose.yaml \
              crates/cli/assets/docker-compose.yaml"
         );
     }
@@ -343,6 +355,10 @@ mod tests {
             PORT,
             BIND,
             IMAGE_TAG,
+            PUBLIC_URL,
+            TS_AUTHKEY,
+            CLOUDFLARE_TUNNEL_TOKEN,
+            NGROK_AUTHTOKEN,
         ] {
             assert!(
                 COMPOSE_FILE.contains(&format!("${{{key}")),

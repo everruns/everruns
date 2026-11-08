@@ -21,7 +21,7 @@ these steps for you. On a cluster, use the [Helm chart](/getting-started/kuberne
 ```bash
 # Create directory and download docker-compose file
 mkdir everruns && cd everruns
-curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
+curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/infra/docker-compose/docker-compose.yaml
 ```
 
 ### 2. Generate Secrets
@@ -192,7 +192,7 @@ To verify startup and UI login without a key, run
 `node scripts/e2e-compose-openrouter.mjs --setup-only`; this does **not** verify
 inference, agent creation, or agent execution. Set `EVERRUNS_TAG` to pin published
 images, or set `COMPOSE_E2E_FILE` to your local
-[Compose file](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml)
+[Compose file](https://github.com/everruns/everruns/blob/main/infra/docker-compose/docker-compose.yaml)
 to test a configuration change. See `node scripts/e2e-compose-openrouter.mjs --help` for options.
 
 ### Start a Session
@@ -228,6 +228,16 @@ server, one worker, the UI and Caddy. Two optional
 |---------|------|
 | `scale` | `worker-2` and `worker-3` |
 | `metrics` | VictoriaMetrics at http://localhost:8428/vmui |
+| `tailscale` | A public `*.ts.net` address through Tailscale Funnel (`TS_AUTHKEY`) |
+| `cloudflare` | A Cloudflare named tunnel (`CLOUDFLARE_TUNNEL_TOKEN`); its hostname points at `http://caddy:9300` |
+| `cloudflare-quick` | A Cloudflare quick tunnel: a random address that changes on every restart |
+| `ngrok` | Your ngrok static domain (`NGROK_AUTHTOKEN`, `PUBLIC_APP_URL`) |
+
+With a tunnel, or your own reverse proxy, set `PUBLIC_APP_URL` in `.env` to the
+public HTTPS origin, such as `https://agents.example.com`: Slack Request URLs,
+OAuth callbacks and links use it. Never give a public address to an instance
+with `AUTH_MODE=none`. [`everruns docker up --tunnel`](/getting-started/run-locally/#give-it-a-public-address)
+sets all of this up for you.
 
 Set them in `.env` as `COMPOSE_PROFILES=scale,metrics` (as above), or per
 command: `docker compose --profile metrics up -d`. Profiles need Docker
