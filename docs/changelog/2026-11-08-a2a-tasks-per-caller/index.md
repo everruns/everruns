@@ -10,7 +10,7 @@ links:
   docs: [/features/a2a/]
 ---
 
-An A2A endpoint secured with OIDC, Google sign-in, OAuth2 introspection or
+An [A2A endpoint](/features/a2a/) secured with OIDC, Google sign-in, OAuth2 introspection or
 mTLS can let many callers in, for example everyone at `acme.com`. Until now
 they shared one task space: any of them could list, read, continue or cancel
 another caller's tasks.
