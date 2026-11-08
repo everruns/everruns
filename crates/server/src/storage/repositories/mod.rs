@@ -370,7 +370,7 @@ fn pool_options(session_settings: &'static [&'static str]) -> PgPoolOptions {
     options.after_connect(move |conn, _| {
         Box::pin(async move {
             for setting in session_settings {
-                sqlx::query(setting).execute(&mut *conn).await?;
+                sqlx::query(*setting).execute(&mut *conn).await?;
             }
             Ok(())
         })

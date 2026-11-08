@@ -38,6 +38,12 @@ async fn make_runnable(db: &StorageBackend, conn: &mut PgConnection) {
     .expect("insert runnable actor");
 }
 
+async fn via_postgres(conn: &mut PgConnection) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT public.task_wakeups_via_postgres()")
+        .fetch_one(conn)
+        .await
+}
+
 async fn next_payload(listener: &mut PgListener) -> String {
     tokio::time::timeout(Duration::from_secs(5), listener.recv())
         .await
@@ -71,10 +77,6 @@ async fn a_connection_marked_for_nats_makes_an_actor_runnable_without_a_notify()
 #[tokio::test]
 async fn only_the_nats_mark_turns_postgres_wakeups_off() {
     let db = StorageBackend::test_database();
-    let via_postgres = |conn: &mut PgConnection| {
-        sqlx::query_scalar::<_, bool>("SELECT public.task_wakeups_via_postgres()").fetch_one(conn)
-    };
-
     let mut unmarked = connection(&db, false).await;
     assert!(via_postgres(&mut unmarked).await.expect("unmarked"));
 
