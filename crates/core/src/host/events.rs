@@ -521,6 +521,14 @@ pub trait EventReader: Send + Sync {
     /// Read one page. The first page fixes a snapshot high-watermark; continuations
     /// cannot observe concurrent appends and therefore neither skip nor duplicate.
     async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError>;
+
+    /// The session's last durable sequence (`0` for an empty log), when the
+    /// reader knows it without reading from the start. Lookups that concern
+    /// the latest turn read back from it. `None`, the default, makes them
+    /// learn it from a first page instead.
+    async fn last_sequence(&self, _session_id: SessionId) -> Result<Option<i32>, EventLogError> {
+        Ok(None)
+    }
 }
 
 /// A coherent canonical event log.
@@ -1319,10 +1327,13 @@ pub(crate) async fn read_tail_until(
     session_id: SessionId,
     enough: impl Fn(&[Event]) -> bool,
 ) -> Result<Vec<Event>, EventLogError> {
-    let first = reader
-        .read_page(EventReadRequest::new(session_id, EventReadLimit::new(1)?))
-        .await?;
-    let high = first.snapshot_high_watermark();
+    let high = match reader.last_sequence(session_id).await? {
+        Some(high) => high,
+        None => reader
+            .read_page(EventReadRequest::new(session_id, EventReadLimit::new(1)?))
+            .await?
+            .snapshot_high_watermark(),
+    };
     let mut tail: Vec<Event> = Vec::new();
     let (mut hi, mut window) = (high, 256i32);
     while hi > 0 {
