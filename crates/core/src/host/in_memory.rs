@@ -101,6 +101,17 @@ impl CompactionCheckpointStore for InMemoryCompactionCheckpointStore {
         Ok(true)
     }
 
+    async fn latest_source_sequence(&self, session_id: SessionId) -> Result<Option<i64>> {
+        Ok(self
+            .checkpoints
+            .read()
+            .await
+            .values()
+            .filter(|checkpoint| checkpoint.session_id == session_id)
+            .map(|checkpoint| checkpoint.source_sequence)
+            .max())
+    }
+
     async fn get_proactive_attempt(
         &self,
         session_id: SessionId,

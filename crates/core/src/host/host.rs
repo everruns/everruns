@@ -1210,7 +1210,19 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         atom = atom.with_schedule_store(schedule_store);
     }
 
-    let mut assembled = crate::host::runtime_context::assemble_turn_context_from_snapshot(
+    // A host whose checkpoint store knows its newest checkpoint lets the
+    // turn load only the history after it.
+    let floor = match adapter.compaction_checkpoint_store() {
+        Some(store) => store
+            .latest_source_sequence(input.context.session_id)
+            .await?
+            .map(|after_sequence| crate::HistoryFloor {
+                after_sequence,
+                input_message_id: Some(input.context.input_message_id),
+            }),
+        None => None,
+    };
+    let mut assembled = crate::host::runtime_context::assemble_turn_context_after(
         turn_inputs.snapshot,
         adapter.message_store().as_ref(),
         adapter.provider_store(org_id).as_ref(),
@@ -1222,6 +1234,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         // prompt-assembly time (EVE-977). `None` when the adapter has no store;
         // the capability then contributes nothing.
         adapter.storage_store(org_id),
+        floor,
     )
     .await?;
     let input = ReasonInput {

@@ -338,6 +338,7 @@ impl ReasonAtom {
             .unwrap_or(!assembled.runtime_agent.communication.is_explicit());
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
+        let message_floor = assembled.message_floor;
         let model_with_provider = assembled.model;
         let provider_managed = model_with_provider
             .provider_managed_reduction_option
@@ -429,6 +430,22 @@ impl ReasonAtom {
             }
             message_source_sequence = history.source_sequence.or(message_source_sequence);
             restored_checkpoint = Some(checkpoint);
+        }
+        // Assembly loaded only the history after the newest checkpoint (see
+        // `HistoryFloor`). With no checkpoint to restore for this model, the
+        // model needs all of it.
+        if message_floor.is_some() && restored_checkpoint.is_none() {
+            let filters = crate::engine::capabilities::collect_message_filters_only_with_context(
+                &resolved_capability_configs,
+                &self.capability_registry,
+                provider_managed,
+            );
+            let mut query = crate::engine::MessageQuery::new(session_id);
+            filters.apply_message_filters(&mut query);
+            let mut history = self.message_retriever.load_filtered_history(query).await?;
+            filters.apply_post_load_filters(&mut history.messages);
+            messages = transcript::order_native_results(history.messages);
+            message_source_sequence = history.source_sequence.or(message_source_sequence);
         }
 
         let controls = resolve_request_controls(
