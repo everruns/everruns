@@ -15,8 +15,9 @@
 // the turn on this worker, the way the agent definition already is: an edit
 // made while the turn runs applies from the next turn. Session writes made
 // through the worker (title, status) drop the session's entries, as they do
-// for the phase memo. Only setup reads go through it; once a phase has started,
-// reads go to the store as before.
+// for the phase memo. Setup reads go through it; once a phase has started,
+// only session reads still do (the lease holder owns the session for the
+// turn), and the rest go to the store as before.
 //
 // Decision: entries end with the turn (the leased turn ends or parks), and a
 // turn that never reaches that (a crash, a lease lost to another worker) ages out

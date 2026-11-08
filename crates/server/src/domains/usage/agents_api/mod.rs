@@ -128,7 +128,8 @@ pub(crate) async fn record_pending(
     event: &Event,
     data: &LlmGenerationData,
 ) -> Result<bool> {
-    let Some(session) = db.get_session_unscoped(event.session_id).await? else {
+    // Only the org and agent, both fixed once set: served from memory.
+    let Some(session) = db.session_lineage(event.session_id).await? else {
         return Ok(false);
     };
     let Some(pending) = pending_generation(event, data, session.org_id) else {

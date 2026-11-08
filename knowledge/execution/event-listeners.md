@@ -129,6 +129,19 @@ writes no longer enqueue reporting outbox rows. Capability snapshot facts are
 keyed per turn, so a turn's later model calls write none
 (`knowledge/evaluation/reporting.md`).
 
+## Session reads
+
+Listeners run on nearly every event, so what they read about the session comes
+from memory where it can stay exact. The org, parent, workspace and agent are
+set when a session is created and never change, so the reporting, sandbox
+capability and late-usage paths take them from the per-server lineage cache (`crates/server/src/storage/backend/identity_cache.rs`). The
+observer listener takes an org's active observers from the configuration row
+cache, which a trigger on `observers` keeps exact across servers
+(`config_row_cache.rs`), and reads the session row only when the org has
+observers to match. At 100 agents on the stress bench that removed about 18
+statements per turn: 6.5 org lookups, 6.7 session-row reads and 4.5 observer
+reads (`knowledge/operations/load-testing.md`).
+
 ## Success bar
 
 - Overhead per model call at 100 parallel agents on the stress bench does not

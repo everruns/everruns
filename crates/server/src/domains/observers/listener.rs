@@ -31,14 +31,18 @@ impl ObserverMatchListener {
     }
 
     async fn handle_slice(&self, event: &Event, slice: Slice) -> anyhow::Result<()> {
-        // Need org + session attributes to match. One unscoped lookup.
-        let Some(session) = self.db.get_session_unscoped(event.session_id).await? else {
+        // The org and its active observers come from memory; most orgs have
+        // none, so the session row (tags, harness) is read only to match.
+        let Some(lineage) = self.db.session_lineage(event.session_id).await? else {
             return Ok(());
         };
-        let observers = self.db.list_active_observers(session.org_id).await?;
+        let observers = self.db.cached_active_observers(lineage.org_id).await?;
         if observers.is_empty() {
             return Ok(());
         }
+        let Some(session) = self.db.get_session_unscoped(event.session_id).await? else {
+            return Ok(());
+        };
         let facts = SessionFacts {
             session_id: event.session_id.uuid(),
             agent_id: session.agent_id.map(|a| a.uuid()),

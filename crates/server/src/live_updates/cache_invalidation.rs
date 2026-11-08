@@ -249,6 +249,58 @@ mod tests {
         assert!(seen, "the edited provider is read back");
     }
 
+    // The observer listener reads an org's active observers from memory on
+    // every event; adding or pausing one must reach it.
+    #[tokio::test]
+    async fn an_observer_added_or_paused_is_read_back() {
+        let db = StorageBackend::test_database();
+        listening(&db).await;
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let ours = |rows: &[crate::storage::ObserverRow], id| rows.iter().any(|o| o.id == id);
+        // Warm the cache before the observer exists.
+        let before = db.cached_active_observers(org_id).await.unwrap();
+
+        let observer = db
+            .database()
+            .create_observer(
+                org_id,
+                crate::storage::CreateObserverRow {
+                    public_id: format!("observer_{}", uuid::Uuid::now_v7().simple()),
+                    name: "cached".into(),
+                    description: None,
+                    match_config: serde_json::json!({}),
+                    sampling_rate: 1.0,
+                    scorers: serde_json::json!([]),
+                    alert: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!ours(&before, observer.id));
+        let seen = eventually(|| async {
+            ours(
+                &db.cached_active_observers(org_id).await.unwrap(),
+                observer.id,
+            )
+        })
+        .await;
+        assert!(seen, "the new observer is read back");
+
+        sqlx::query("UPDATE observers SET status = 'paused' WHERE id = $1")
+            .bind(observer.id)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let seen = eventually(|| async {
+            !ours(
+                &db.cached_active_observers(org_id).await.unwrap(),
+                observer.id,
+            )
+        })
+        .await;
+        assert!(seen, "the paused observer is dropped");
+    }
+
     // Usage counters move on every model call; they must not churn the cache,
     // while a configuration edit of the same row does notify.
     #[tokio::test]
