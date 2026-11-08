@@ -894,7 +894,10 @@ pub(crate) async fn resolve_org_for_user(
                 let explicit_org = header_org.or(cookie_org);
 
                 // When no explicit org is present (e.g. MCP OAuth Bearer tokens),
-                // fall back to the user's first organization.
+                // fall back to the user's first organization. Backends load
+                // memberships via `list_user_organizations`, earliest-joined
+                // first, never alphabetical: an org name is attacker-chosen
+                // (TM-AUTHZ-027).
                 if explicit_org.is_none() {
                     let org = user
                         .organizations

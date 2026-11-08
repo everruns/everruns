@@ -2,6 +2,7 @@
 title: "Scheduled runs no longer send the whole session to the model"
 description: "A recurring schedule's run now sees its task, the latest summary and its own recent runs, so a schedule in a long session stays cheap on every fire."
 date: 2026-11-01
+release: "0.51.0"
 kind: improvement
 significance: notable
 products: [platform, cloud]

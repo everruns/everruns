@@ -62,19 +62,67 @@ impl GrpcAdapter {
             .await
             .map_err(grpc_status_to_error)?
             .into_inner();
+        decode_command_response(response)
+    }
+}
 
-        match response
-            .result
-            .ok_or_else(|| grpc_missing_field("No command result in response"))?
-        {
-            proto::execute_command_response::Result::OkJson(ok_json) => {
-                let value = serde_json::from_slice(&ok_json).map_err(|error| {
-                    AgentLoopError::store(format!("Failed to decode command response: {error}"))
-                })?;
-                Ok(Ok(value))
-            }
-            proto::execute_command_response::Result::Error(error) => Ok(Err(error)),
+impl GrpcAdapter {
+    /// Run a domain command as the management user of one turn.
+    ///
+    /// The server resolves the caller from `(session, input_message)` via the
+    /// recorded runtime invocation, exactly as for Platform commands, and
+    /// refuses when that turn has no management-authorized principal (a
+    /// channel, consumer or anonymous turn). Used for writes a turn's principal
+    /// must be allowed to make, such as saving a script (TM-TOOL-067).
+    pub(crate) async fn execute_invocation_command(
+        &self,
+        surface: &str,
+        name: &str,
+        params: serde_json::Value,
+        session: SessionId,
+        input_message: uuid::Uuid,
+        reason: &str,
+    ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
+        let org_id = self.require_org(surface)?;
+        let mut client = self.client.inner.client();
+        let response = client
+            .execute_command(proto::ExecuteCommandRequest {
+                runtime_view: false,
+                input_message_id: Some(uuid_to_proto(input_message)),
+                platform_session_id: Some(uuid_to_proto(session.uuid())),
+                acting_for_session_id: None,
+                name: name.to_string(),
+                api_version: COMMAND_API_VERSION_V1.to_string(),
+                params_json: serde_json::to_vec(&params).map_err(|error| {
+                    AgentLoopError::store(format!("JSON serialization failed: {error}"))
+                })?,
+                org_id,
+                user_id: None,
+                // A bound write is an agent change: its history records why.
+                reason: Some(reason.to_string()),
+                ..Default::default()
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        decode_command_response(response)
+    }
+}
+
+fn decode_command_response(
+    response: proto::ExecuteCommandResponse,
+) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
+    match response
+        .result
+        .ok_or_else(|| grpc_missing_field("No command result in response"))?
+    {
+        proto::execute_command_response::Result::OkJson(ok_json) => {
+            let value = serde_json::from_slice(&ok_json).map_err(|error| {
+                AgentLoopError::store(format!("Failed to decode command response: {error}"))
+            })?;
+            Ok(Ok(value))
         }
+        proto::execute_command_response::Result::Error(error) => Ok(Err(error)),
     }
 }
 

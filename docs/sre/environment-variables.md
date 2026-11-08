@@ -21,7 +21,7 @@ a working default; each row links to the section that documents it.
 | [`VALKEY_URL`](#valkey_url) | API | No | Rate limits are per instance. |
 | [`NATS_URL`](#nats_url) | API and workers | With more than one control-plane instance | PostgreSQL `NOTIFY` and in-memory broadcast (one instance only). |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
-| [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_REQUEST_TIMEOUT_SECS`](#worker_grpc_request_timeout_secs), [`WORKER_ACTOR_STALL_TIMEOUT_SECS`](#worker_actor_stall_timeout_secs), [`WORKER_TOOL_DETACH_AFTER_SECS`](#worker_tool_detach_after_secs), [`MAX_DETACHED_TOOL_CALLS`](#max_detached_tool_calls), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`; 120 s per worker call; a stalled session is let go after 5 minutes; a tool call running past 30 s frees its turn's slot. |
+| [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_REQUEST_TIMEOUT_SECS`](#worker_grpc_request_timeout_secs), [`WORKER_ACTOR_STALL_TIMEOUT_SECS`](#worker_actor_stall_timeout_secs), [`WORKER_TOOL_DETACH_AFTER_SECS`](#worker_tool_detach_after_secs), [`WORKER_MAX_RUNNING_TURNS`](#worker_max_running_turns), [`WORKER_MEMORY_LIMIT_MIB`](#worker_memory_limit_mib), [`WORKER_MAX_RUNTIME_LAG_MS`](#worker_max_runtime_lag_ms), [`MAX_DETACHED_TOOL_CALLS`](#max_detached_tool_calls), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`; 120 s per worker call; a stalled session is let go after 5 minutes; turns admitted by memory and runtime lag; a tool call running past 5 minutes parks its turn. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
 | [`SLACK_MANAGER_APP_CLIENT_ID`](#slack-manager-app), [`SLACK_MANAGER_APP_CLIENT_SECRET`](#slack-manager-app) | API | No | Organizations connect Slack workspaces by pasting a configuration token. |
@@ -809,24 +809,82 @@ WORKER_ACTOR_STALL_TIMEOUT_SECS=300
 
 How long, in seconds, a server-side tool call may run inside its turn. A call
 still running after that keeps running on the worker, and its turn gives back
-the worker's execution slot and session lease until the call finishes. `0`
-keeps every call inside its turn.
+its memory and session lease until the call finishes. `0` keeps every call
+inside its turn.
 
 | Property | Value |
 |----------|-------|
 | **Required** | No (worker only) |
-| **Default** | `30` |
+| **Default** | `300` |
 
 **Example:**
 
 ```bash
-WORKER_TOOL_DETACH_AFTER_SECS=30
+WORKER_TOOL_DETACH_AFTER_SECS=300
+```
+
+### WORKER_MAX_RUNNING_TURNS
+
+Most session turns one worker runs at once. Turns spend most of their time
+waiting on the model and on tools, so they do not use the worker's task slots
+(`MAX_CONCURRENT_TASKS`). Unset or `0` derives it from the memory limit: 85% of
+it over about 2 MiB per turn, between 100 and 10000, or 2000 when the limit is
+unknown. A 6 GiB worker runs up to about 2600 turns.
+
+Before that ceiling, a worker running at least 32 turns stops taking new ones
+while its resident memory is over 85% of its limit, or while its async runtime
+lags (see `WORKER_MAX_RUNTIME_LAG_MS`). Running turns are never stopped.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | From the memory limit |
+
+**Example:**
+
+```bash
+WORKER_MAX_RUNNING_TURNS=2000
+```
+
+### WORKER_MEMORY_LIMIT_MIB
+
+The memory, in MiB, that `WORKER_MAX_RUNNING_TURNS` and the memory brake are
+measured against. Unset, the worker reads its cgroup limit (Kubernetes and
+Docker memory limits); without one there is no memory brake.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | The cgroup memory limit |
+
+**Example:**
+
+```bash
+WORKER_MEMORY_LIMIT_MIB=6144
+```
+
+### WORKER_MAX_RUNTIME_LAG_MS
+
+How late, in milliseconds, the worker's async runtime may run a timer (a moving
+average) before the worker stops taking new turns. CPU-heavy turns, such as
+in-process interpreters and large prompts, show up here first. `0` turns the
+brake off.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `25` |
+
+**Example:**
+
+```bash
+WORKER_MAX_RUNTIME_LAG_MS=25
 ```
 
 ### MAX_DETACHED_TOOL_CALLS
 
-Most tool calls one worker keeps running after their turns gave back their
-slots. Past it a long call stays inside its turn and holds its slot.
+Most tool calls one worker keeps running after their turns parked. Past it a
+long call stays inside its turn.
 
 | Property | Value |
 |----------|-------|

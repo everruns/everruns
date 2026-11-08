@@ -318,3 +318,62 @@ async fn listing_and_removing_require_session_permissions() {
     );
     assert!(fixture.has(fixture.session, "notes").await);
 }
+
+#[tokio::test]
+async fn discovery_snapshot_is_hidden_after_attachment_changes_or_removal() {
+    let fixture = Fixture::new().await;
+    let snapshot = super::super::scoped_mcp::ReadinessSnapshot {
+        config: super::super::scoped_mcp::config_digest(&plain("https://notes.example.com/mcp")),
+        viewer: None,
+        status: "pending".into(),
+    };
+    fixture
+        .store()
+        .set_value(
+            fixture.session,
+            super::super::deferred::DISCOVERY_STATUS_KV_KEY,
+            &serde_json::to_string(&std::collections::HashMap::from([("notes", snapshot)]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let listed = fixture.list(&fixture.ctx(), fixture.session).await.unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|s| s.name == "notes")
+            .unwrap()
+            .discovery
+            .as_deref(),
+        Some("pending")
+    );
+    fixture
+        .put(
+            fixture.session,
+            "notes",
+            plain("https://changed.example.com/mcp"),
+            user_mcp(),
+        )
+        .await;
+    let listed = fixture.list(&fixture.ctx(), fixture.session).await.unwrap();
+    assert!(
+        listed
+            .iter()
+            .find(|s| s.name == "notes")
+            .unwrap()
+            .discovery
+            .is_none()
+    );
+    fixture
+        .remove(&fixture.ctx(), fixture.session, "notes")
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .list(&fixture.ctx(), fixture.session)
+            .await
+            .unwrap()
+            .iter()
+            .all(|s| s.name != "notes")
+    );
+}

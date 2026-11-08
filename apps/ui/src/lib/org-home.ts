@@ -42,6 +42,7 @@ const AGENT_ACTION: Record<AttentionItem["kind"], string> = {
   model: "Pick model",
   permission: "Reconnect",
   connection: "Reconnect",
+  health: "Review",
   "public-access": "Review",
   setup: "Finish setup",
 };
@@ -108,7 +109,8 @@ export function homeAttentionItems(inputs: HomeInputs): HomeAttentionItem[] {
       body: item.body,
       subject: item.agentName,
       href: issue?.href ?? `/agents/${item.agentId}`,
-      action: AGENT_ACTION[item.kind],
+      // A model issue opens its Health entry, which offers the sync.
+      action: item.kind === "model" && issue ? "Review" : AGENT_ACTION[item.kind],
       since: issue?.first_detected_at,
     });
   }

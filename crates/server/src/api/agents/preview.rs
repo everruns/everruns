@@ -33,6 +33,7 @@ pub async fn preview_agent(
         capabilities: req.capabilities,
         tools: req.tools,
         mcp_servers: req.mcp_servers,
+        agent_id: req.agent_id,
     }
     .run(&state.ctx(&org))
     .await?;

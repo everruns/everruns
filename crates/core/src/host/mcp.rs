@@ -152,6 +152,21 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
         .collect()
 }
 
+pub(crate) fn discovery_statuses(
+    cache: &McpDiscoveryCache,
+    session: Uuid,
+    servers: &ScopedMcpServers,
+) -> Vec<(String, crate::host::McpDiscoveryStatus)> {
+    resolve_servers(servers)
+        .into_iter()
+        .filter(|server| server.tool_discovery)
+        .map(|server| {
+            let status = cache.status(&(session, server.name.clone(), server.configuration));
+            (server.name, status)
+        })
+        .collect()
+}
+
 /// Map a scoped server to a transport endpoint. Returns `None` (and logs) for
 /// servers this build cannot serve — e.g. a stdio server when the `mcp-stdio`
 /// feature is off, keeping stdio out of hosted builds.
@@ -202,6 +217,9 @@ pub(crate) async fn discover_tool_definitions(
     session_uuid: Uuid,
     servers: &ScopedMcpServers,
 ) -> Vec<ToolDefinition> {
+    let deadline = cache
+        .readiness_budget
+        .map(|budget| tokio::time::Instant::now() + budget.min(crate::mcp::MCP_DISCOVERY_DEADLINE));
     let discoveries = resolve_servers(servers)
         .into_iter()
         .filter(|resolved| resolved.tool_discovery)
@@ -213,7 +231,7 @@ pub(crate) async fn discover_tool_definitions(
                 let name = resolved.name.clone();
                 let connection = resolved.connection.clone();
                 cache
-                    .resolve(key, move || {
+                    .resolve_until(key, move || {
                         let client = client.clone();
                         let connection = connection.clone();
                         let name = name.clone();
@@ -235,7 +253,7 @@ pub(crate) async fn discover_tool_definitions(
                                 }
                             }
                         }
-                    })
+                    }, deadline)
                     .await
             }
         });
@@ -471,6 +489,7 @@ mod tests {
     struct DiscoveryEgress {
         requests: std::sync::atomic::AtomicUsize,
         status: std::sync::atomic::AtomicU16,
+        slow_gate: Option<Arc<tokio::sync::Semaphore>>,
     }
 
     #[async_trait::async_trait]
@@ -481,6 +500,11 @@ mod tests {
         ) -> crate::EgressResult<crate::EgressResponse> {
             self.requests
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if request.url.ends_with("/slow")
+                && let Some(gate) = &self.slow_gate
+            {
+                gate.acquire().await.unwrap().forget();
+            }
             let id = serde_json::from_slice::<serde_json::Value>(&request.body)
                 .ok()
                 .and_then(|body| body.get("id").cloned());
@@ -506,12 +530,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn readiness_keeps_fast_tools_and_admits_late_tools_in_stable_order() {
+        use std::sync::atomic::{AtomicU16, AtomicUsize};
+        use std::time::Duration;
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let egress = Arc::new(DiscoveryEgress {
+            requests: AtomicUsize::new(0),
+            status: AtomicU16::new(200),
+            slow_gate: Some(gate.clone()),
+        });
+        let client = Arc::new(McpClient::new(egress, Arc::new(crate::mcp::NoAuthProvider)));
+        let cache = Arc::new(McpDiscoveryCache::with_readiness_budget(Some(
+            Duration::from_millis(20),
+        )));
+        let mut servers = servers_with(
+            "a_slow",
+            ScopedMcpServer {
+                url: "https://93.184.216.34/slow".into(),
+                ..Default::default()
+            },
+        );
+        servers.insert(
+            "z_fast".into(),
+            ScopedMcpServer {
+                url: "https://93.184.216.34/fast".into(),
+                ..Default::default()
+            },
+        );
+        let session = Uuid::new_v4();
+        let first = tokio::time::timeout(
+            Duration::from_secs(1),
+            discover_tool_definitions(&cache, client.clone(), session, &servers),
+        )
+        .await
+        .expect("slow server must not hold discovery");
+        assert_eq!(
+            first.iter().map(|tool| tool.name()).collect::<Vec<_>>(),
+            ["mcp_z_fast__ping"]
+        );
+        assert_eq!(
+            discovery_statuses(&cache, session, &servers),
+            vec![
+                ("a_slow".into(), crate::host::McpDiscoveryStatus::Pending),
+                ("z_fast".into(), crate::host::McpDiscoveryStatus::Ready),
+            ]
+        );
+        gate.add_permits(8);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while discovery_statuses(&cache, session, &servers)
+                .iter()
+                .any(|(_, status)| *status != crate::host::McpDiscoveryStatus::Ready)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let second = discover_tool_definitions(&cache, client, session, &servers).await;
+        assert_eq!(
+            second.iter().map(|tool| tool.name()).collect::<Vec<_>>(),
+            ["mcp_a_slow__ping", "mcp_z_fast__ping"]
+        );
+    }
+
+    #[tokio::test]
     async fn rejected_http_discovery_stays_paused_until_reload_or_new_credentials() {
         use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
         for status in [401, 403] {
             let egress = Arc::new(DiscoveryEgress {
                 requests: AtomicUsize::new(0),
                 status: AtomicU16::new(status),
+                slow_gate: None,
             });
             let client = Arc::new(McpClient::new(
                 egress.clone(),
@@ -706,6 +795,7 @@ mod tests {
             let egress = Arc::new(DiscoveryEgress {
                 requests: AtomicUsize::new(0),
                 status: AtomicU16::new(200),
+                slow_gate: None,
             });
             let client = Arc::new(McpClient::new(
                 egress.clone(),

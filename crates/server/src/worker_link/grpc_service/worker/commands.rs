@@ -7,6 +7,13 @@
 use super::support::*;
 use crate::worker_link::grpc_service::*;
 
+/// Commands that create, replace or remove an agent's saved scripts.
+const AGENT_SCRIPT_WRITES: &[&str] = &[
+    "create_agent_script",
+    "update_agent_script",
+    "delete_agent_script",
+];
+
 impl WorkerServiceImpl {
     pub(crate) async fn handle_execute_command(
         &self,
@@ -74,6 +81,18 @@ impl WorkerServiceImpl {
                     )),
                 }));
             }
+        }
+
+        // A saved script is code that later runs in org members' sessions and
+        // in triggers. The worker writes it for a turn, so the write must be
+        // bound to that turn (`platform_session_id` + `input_message_id`) and
+        // run as its management user under AGENT_MANAGE, below. Unbound, it
+        // would run as `Caller::internal`, which skips the policy and let any
+        // channel, consumer or anonymous turn replace a script (TM-TOOL-067).
+        if AGENT_SCRIPT_WRITES.contains(&req.name.as_str()) && req.platform_session_id.is_none() {
+            return Err(Status::permission_denied(
+                "Saved-script writes require a management-authorized invocation",
+            ));
         }
 
         // gRPC ExecuteCommand is the auth boundary for worker-driven platform

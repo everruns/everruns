@@ -20,7 +20,8 @@ pub use profiles::{
     cache_write_1h_surcharge_usd, estimate_cost_breakdown_usd, estimate_cost_usd,
     estimate_cost_usd_for_speed, get_model_profile, get_model_profile_by_key,
     get_model_profile_key, get_model_service_kind, get_model_vendor, profile_entries_for_provider,
-    profiles_for_provider, selected_profiles, selected_profiles_for_provider,
+    profiles_for_provider, provider_model_id, selected_profiles, selected_profiles_for_provider,
+    vendor_qualified_ids,
 };
 pub use types::{
     CLEAR_AT_PARAMETER, CostTier, DecisionModelProfile, GifLimits, INLINE_TOOL_ADDITIONS_PARAMETER,

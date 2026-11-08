@@ -197,6 +197,7 @@ everruns agents analyze [OPTIONS]
 
 | Flag | Description |
 |---|---|
+| `--agent-id <AGENT_ID>` | Saved agent this draft edits, for checks that depend on its channels. |
 | `--capabilities <CAPABILITIES>` |  |
 | `--harness-id <HARNESS_ID>` |  |
 | `--initial-files <INITIAL_FILES>` |  |
@@ -399,6 +400,7 @@ everruns agents preview [OPTIONS]
 
 | Flag | Description |
 |---|---|
+| `--agent-id <AGENT_ID>` | Saved agent this draft edits. |
 | `--capabilities <CAPABILITIES>` |  |
 | `--harness-id <HARNESS_ID>` |  |
 | `--initial-files <INITIAL_FILES>` |  |

@@ -170,6 +170,42 @@ describe("needs attention", () => {
   });
 });
 
+describe("health issue actions", () => {
+  const models = new Map([["model_off", { enabled: false, display_name: "gpt-4.1" }]]);
+
+  it("offers a model fix, not Reconnect, for an agent's model issue", () => {
+    const items = attentionItems({
+      agents: [agent({ default_model_id: "model_off" } as Partial<Agent>)],
+      exposures: [],
+      healthIssues: [
+        issue({
+          id: "model_issue",
+          code: "agent.model_unavailable",
+          channel_id: null,
+          missing_scopes: [],
+        }),
+      ],
+      models,
+    });
+    // The server's issue replaces the local "disabled" item: one entry.
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("model");
+    expect(items[0].healthIssueId).toBe("model_issue");
+  });
+
+  it("does not call an agent issue without a channel a connection", () => {
+    const [item] = attentionItems({
+      agents: [agent()],
+      exposures: [],
+      healthIssues: [
+        issue({ code: "agent.unattended_spend", channel_id: null, missing_scopes: [] }),
+      ],
+      models,
+    });
+    expect(item.kind).toBe("health");
+  });
+});
+
 describe("agent now", () => {
   it("prefers archived, then paused channels, then running", () => {
     expect(agentNow(agent({ status: "archived" }), activity()).label).toBe("Archived");

@@ -89,6 +89,17 @@
 //   took over a second) while no fold or scan reads them. They are
 //   observability records, never a turn's input or state. `head_sequence`
 //   is still the log's, so the cursor and the fence see every event.
+// - A lease call takes nothing while the request pool has no free connection
+//   (`request_pool_exhausted`) and none frees up within
+//   `LEASE_POOL_WAIT`: a momentary burst (or a small test pool) is not
+//   saturation, so only a pool that stays full turns leases away. Workers no longer cap their running turns by a
+//   small slot count (they admit turns by memory and runtime lag), so the
+//   database pool is where too many turns at once would show first: every
+//   running turn's writes would queue behind new turns' setup reads. Leasing
+//   nothing then makes new turns wait their turn in the runnable index, where
+//   waiting costs nothing, and lets the running ones finish. The worker's
+//   lease loop polls again within a second, so a short burst costs pickup
+//   latency only.
 
 mod capability_admission;
 mod detached;
@@ -125,6 +136,30 @@ const MAX_ACTOR_LEASE_SCAN: i64 = 1000;
 /// Shortest and longest lease a caller may ask for.
 pub const MIN_ACTOR_LEASE_TTL: Duration = Duration::from_secs(1);
 pub const MAX_ACTOR_LEASE_TTL: Duration = Duration::from_secs(300);
+/// Whether every connection the request pool may open is open and in use.
+/// See the header: a lease call then takes nothing. A pool still below its
+/// size cap opens a connection on demand, so only a full one counts.
+pub(crate) fn request_pool_exhausted(pool: &sqlx::PgPool) -> bool {
+    pool.num_idle() == 0 && pool.size() >= pool.options().get_max_connections()
+}
+
+/// How long a lease call waits for a connection of a full request pool before
+/// it takes nothing. See the header.
+const LEASE_POOL_WAIT: Duration = Duration::from_millis(100);
+
+/// Whether the request pool stays full for `LEASE_POOL_WAIT`. The connection
+/// a successful wait gets goes straight back to the pool for the lease's own
+/// statements.
+async fn request_pool_saturated(pool: &sqlx::PgPool) -> bool {
+    if !request_pool_exhausted(pool) {
+        return false;
+    }
+    !matches!(
+        tokio::time::timeout(LEASE_POOL_WAIT, pool.acquire()).await,
+        Ok(Ok(_))
+    )
+}
+
 /// Journal page size when the caller passes none.
 pub const DEFAULT_ACTOR_JOURNAL_LIMIT: i64 = 500;
 /// Largest journal page one read returns.
@@ -447,6 +482,10 @@ impl Database {
         if limit == 0 {
             return Ok(Vec::new());
         }
+        if request_pool_saturated(self.pool.raw()).await {
+            tracing::debug!(holder, "Request pool stayed full; leasing no actors");
+            return Ok(Vec::new());
+        }
         let scan = (limit * ACTOR_LEASE_SCAN_FACTOR).min(MAX_ACTOR_LEASE_SCAN);
         // Turns whose detached calls' holders stopped renewing them resume
         // here, on the lease poll every worker runs (`detached`).
@@ -533,6 +572,19 @@ impl Database {
                 FROM UNNEST($3::uuid[], $4::int8[], $5::int8[])
                      AS l(session_id, fence, consumed_seq)
                 GROUP BY session_id, fence
+            ), locked AS (
+                -- Lock the rows in session_id order before updating them. An
+                -- UPDATE takes its row locks in join order, while the event
+                -- append's fence check (`events::group_commit`) and other
+                -- batches take theirs in session_id order; two transactions
+                -- locking shared rows in different orders deadlock, and
+                -- PostgreSQL then fails one of them (the stress bench lost
+                -- hundreds of leases this way at 500 agents).
+                SELECT a.session_id FROM session_actors a
+                WHERE a.session_id IN (SELECT session_id FROM wanted)
+                  AND a.lease_holder = $1
+                ORDER BY a.session_id
+                FOR NO KEY UPDATE
             ), renewed AS (
                 UPDATE session_actors a SET
                     lease_expires_at = NOW() + $2::float8 * INTERVAL '1 millisecond',
@@ -540,6 +592,7 @@ impl Database {
                     consumed_seq = GREATEST(a.consumed_seq, w.consumed_seq)
                 FROM wanted w
                 WHERE a.session_id = w.session_id
+                  AND a.session_id IN (SELECT session_id FROM locked)
                   AND a.lease_holder = $1 AND a.lease_fence = w.fence
                   -- As for one renewal: a renewal a crash loses only makes
                   -- the lease look older, and the fence guards every write.

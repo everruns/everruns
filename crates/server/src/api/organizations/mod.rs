@@ -757,7 +757,14 @@ pub async fn list_members(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// POST /v1/orgs/:org/members - Add a member (Admin+)
+/// POST /v1/orgs/:org/members - Add an existing user directly (platform admin only)
+///
+/// Org admins bring people in through invitations (`api/org_invitations.rs`),
+/// which require the invitee to accept with a verified matching email. A direct
+/// add skips that consent, so an org admin could otherwise pull any user (by
+/// UUID, visible to co-members) into an org they control and steer the
+/// victim's tooling into it. Only platform admins (`AuthUser::is_admin`, e.g.
+/// the builtin admin or `AUTH_MODE=none`) keep the direct path (TM-AUTHZ-027).
 pub async fn add_member(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -766,6 +773,13 @@ pub async fn add_member(
     headers: HeaderMap,
     Json(req): Json<AddMemberRequest>,
 ) -> Result<(StatusCode, Json<MemberResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if !user.is_admin() {
+        return Err(ErrorResponse::new(
+            "Adding an existing user directly requires platform admin; send an invitation instead",
+        )
+        .into_response(StatusCode::FORBIDDEN));
+    }
+
     // Parse and validate role
     let role: OrgRole = req.role.parse().map_err(|_| {
         ErrorResponse::new("Invalid role. Must be 'owner', 'admin', or 'member'")

@@ -154,3 +154,73 @@ async fn a_stale_fence_in_a_batch_is_lost() {
             .is_empty()
     );
 }
+
+/// An event append's fence check share-locks lease rows in session_id order
+/// and holds them until its transaction commits (`events::group_commit`). A
+/// renewal batch over the same rows has to lock in that order too: one that
+/// took some rows first and then waited for a row the append holds, while the
+/// append waited for one of those, would deadlock, and PostgreSQL would fail
+/// one side (the stress bench lost hundreds of leases this way).
+#[tokio::test]
+async fn a_renewal_batch_and_an_append_fence_check_do_not_deadlock() {
+    let db = StorageBackend::test_database();
+    for _ in 0..20 {
+        runnable(&db).await;
+    }
+    let mut leases = db
+        .lease_session_actors("worker-a", 20, TTL, DEFAULT_ACTOR_LEASES_PER_ORG)
+        .await
+        .expect("lease")
+        .into_iter()
+        .map(|row| (row.session_id, row.fence))
+        .collect::<Vec<_>>();
+    assert_eq!(leases.len(), 20);
+    leases.sort_by_key(|(id, _)| id.uuid());
+    let (first, _) = leases[0];
+    let rest: Vec<uuid::Uuid> = leases[1..].iter().map(|(id, _)| id.uuid()).collect();
+
+    // The append's transaction holds the lowest row...
+    let pool = db.database().pool.clone();
+    let mut append = pool.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM session_actors WHERE session_id = $1 FOR SHARE")
+        .bind(first)
+        .execute(&mut *append)
+        .await
+        .unwrap();
+
+    // ...while a batch renews every lease, highest first.
+    let items: Vec<_> = leases
+        .iter()
+        .rev()
+        .map(|(id, fence)| item(*id, *fence, 1))
+        .collect();
+    let renewer = db.clone();
+    let renewal = tokio::spawn(async move {
+        renewer
+            .renew_session_actor_leases("worker-a", TTL, &items)
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // The append then locks the rest, in order, and commits.
+    sqlx::query(
+        "SELECT 1 FROM session_actors WHERE session_id = ANY($1) \
+         ORDER BY session_id FOR SHARE",
+    )
+    .bind(&rest)
+    .execute(&mut *append)
+    .await
+    .expect("the append's fence check must not deadlock");
+    append.commit().await.unwrap();
+
+    let outcomes = tokio::time::timeout(Duration::from_secs(10), renewal)
+        .await
+        .expect("the batch finishes once the append commits")
+        .unwrap()
+        .expect("the batch must not deadlock");
+    assert!(
+        outcomes
+            .iter()
+            .all(|outcome| matches!(outcome, ActorLeaseRenewalOutcome::Renewed(_)))
+    );
+}

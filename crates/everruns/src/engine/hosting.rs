@@ -44,6 +44,14 @@ impl EngineBuilder {
         self
     }
 
+    /// Resolve builds that were not registered at startup (see
+    /// [`AgentResolver`](crate::hosting::AgentResolver)). Registered builds
+    /// win; a resolved build is retained for the Engine's lifetime.
+    pub fn resolver(mut self, resolver: impl crate::hosting::AgentResolver) -> Self {
+        self.resolver = Some(Arc::new(resolver));
+        self
+    }
+
     /// Register behavior together with its immutable Harness definition.
     pub fn register_with_harness(
         mut self,
@@ -517,6 +525,37 @@ impl Engine {
                     environment: lead.environment.clone(),
                 })
             })
+            .or_else(|| {
+                // A host that builds behavior on demand (from a definition it
+                // retains with the session) resolves builds it never
+                // registered. The result is retained like a registration, so
+                // the build keeps naming one immutable behavior.
+                let resolver = self.inner.resolver.as_ref()?;
+                drop(registry);
+                let agent = resolver.resolve(build)?;
+                // A resolved Agent that needs a workspace runs in its own
+                // default Environment, under a reference every process of
+                // the host derives the same way.
+                let environment = agent.requires_hosted_workspace().then(|| {
+                    let factory: Arc<dyn crate::hosting::EnvironmentFactory> =
+                        Arc::new(agent.environment_factory());
+                    (RESOLVED_ENVIRONMENT.to_owned(), factory)
+                });
+                let registration = Registration {
+                    agent,
+                    harness: None,
+                    environment,
+                };
+                Some(
+                    self.inner
+                        .registry
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .entry(build.clone())
+                        .or_insert(registration)
+                        .clone(),
+                )
+            })
             .ok_or_else(|| AgentLoopError::config("retained agent build is unavailable"))
     }
 
@@ -725,6 +764,9 @@ impl Engine {
         }
     }
 }
+
+/// The Environment reference of a resolved Agent that needs a workspace.
+const RESOLVED_ENVIRONMENT: &str = "agent-default";
 
 /// The immutable binding a registered build creates. An Agent cannot choose a
 /// second authority beneath the Engine profile.

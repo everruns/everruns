@@ -389,6 +389,11 @@ impl Command for UpdateMemoryCmd {
                         .map(|(_, _, _, sync_status)| sync_status.clone()),
                     last_synced_at: source_update.as_ref().map(|_| None),
                     last_sync_error: source_update.as_ref().map(|_| None),
+                    // THREAT[TM-AUTHZ-011]: a source edit must not keep syncing
+                    // with the previous owner's GitHub connection. Rebind the
+                    // sync owner to the caller who chose the new source, as
+                    // Knowledge Indexes do; metadata edits leave it alone.
+                    resolved_owner_user_id: source_update.as_ref().map(|_| ctx.caller.user_id),
                 },
             )
             .await?
@@ -933,5 +938,118 @@ mod tests {
                 }
             ));
         }
+    }
+
+    // ---- TM-AUTHZ-011: the sync owner follows the source ----
+
+    fn ctx_with_user(db: Arc<StorageBackend>, user_id: uuid::Uuid) -> Ctx {
+        Ctx::minimal_for_test(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: everruns_core::organization::org_public_id_from_internal(
+                    DEFAULT_ORG_ID,
+                ),
+                user_id: Some(user_id),
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+                read_only: false,
+            },
+            db,
+            None,
+        )
+    }
+
+    fn git_source(url: &str) -> CreateMemorySourceRequest {
+        CreateMemorySourceRequest::Git(GitMemorySourceRequest {
+            url: url.into(),
+            branch: None,
+            root_folder: None,
+            sync_interval_secs: None,
+        })
+    }
+
+    async fn sync_owner(ctx: &Ctx, memory_id: &str) -> Option<uuid::Uuid> {
+        ctx.db
+            .get_memory_by_public_id(DEFAULT_ORG_ID, memory_id)
+            .await
+            .expect("get memory")
+            .expect("memory row")
+            .resolved_owner_user_id
+    }
+
+    #[tokio::test]
+    async fn source_update_rebinds_sync_owner_to_caller() {
+        let db = Arc::new(StorageBackend::test_database());
+        let creator_id = uuid::Uuid::new_v4();
+        let updater_id = uuid::Uuid::new_v4();
+        let creator = ctx_with_user(db.clone(), creator_id);
+        let updater = ctx_with_user(db, updater_id);
+
+        let created = CreateMemory {
+            name: "Private Repo".into(),
+            description: None,
+            source: Some(git_source("https://example.com/owner/private.git")),
+        }
+        .run(&creator)
+        .await
+        .expect("create git memory");
+        assert_eq!(
+            sync_owner(&creator, &created.id.to_string()).await,
+            Some(creator_id)
+        );
+
+        UpdateMemoryCmd {
+            memory_id: created.id.to_string(),
+            request: UpdateMemoryRequest {
+                name: None,
+                description: UpdateField::Unchanged,
+                source: Some(git_source("https://example.com/owner/other.git")),
+            },
+        }
+        .run(&updater)
+        .await
+        .expect("update source");
+
+        assert_eq!(
+            sync_owner(&updater, &created.id.to_string()).await,
+            Some(updater_id),
+            "a new source must sync with the editor's connection, not the creator's"
+        );
+    }
+
+    #[tokio::test]
+    async fn metadata_update_preserves_sync_owner() {
+        let db = Arc::new(StorageBackend::test_database());
+        let creator_id = uuid::Uuid::new_v4();
+        let updater_id = uuid::Uuid::new_v4();
+        let creator = ctx_with_user(db.clone(), creator_id);
+        let updater = ctx_with_user(db, updater_id);
+
+        let created = CreateMemory {
+            name: "Stable Repo".into(),
+            description: None,
+            source: Some(git_source("https://example.com/owner/stable.git")),
+        }
+        .run(&creator)
+        .await
+        .expect("create git memory");
+
+        UpdateMemoryCmd {
+            memory_id: created.id.to_string(),
+            request: UpdateMemoryRequest {
+                name: Some("Stable Repo v2".into()),
+                description: UpdateField::Set("renamed".into()),
+                source: None,
+            },
+        }
+        .run(&updater)
+        .await
+        .expect("update metadata");
+
+        assert_eq!(
+            sync_owner(&updater, &created.id.to_string()).await,
+            Some(creator_id)
+        );
     }
 }

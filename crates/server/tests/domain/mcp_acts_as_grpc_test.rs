@@ -21,6 +21,7 @@ use everruns_server::{EventDelivery, setup::seed};
 use everruns_test_support::{MockMcpOAuthServer, MockMcpProtocolEra};
 use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
@@ -256,6 +257,39 @@ impl ActsAsArrangement {
     }
 
     async fn expired_identity_grant(&self, access_token: &str, refresh_token: &str) {
+        let server = self
+            .db
+            .get_mcp_server(DEFAULT_ORG_ID, self.server_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let settings = server.settings;
+        let oauth = &settings["oauth"];
+        // Seed the current persisted envelope. oauth_client owns this fixed
+        // binding tuple; an unwrapped secret is a legacy grant, not a refreshable one.
+        let binding = json!([
+            server.url,
+            oauth["issuer"],
+            oauth["authorization_endpoint"],
+            oauth["token_endpoint"],
+            oauth["client_id"],
+            oauth["resource"]
+        ]);
+        let record = json!({
+            "refresh_token": refresh_token,
+            "resource": oauth["resource"],
+            "config_hash": hex::encode(Sha256::digest(serde_json::to_vec(&binding).unwrap()))
+        });
+        self.expired_identity_grant_record(access_token, refresh_token, &record.to_string())
+            .await;
+    }
+
+    async fn expired_identity_grant_record(
+        &self,
+        access_token: &str,
+        refresh_token: &str,
+        record: &str,
+    ) {
         self.mock
             .seed_oauth_grant(access_token, refresh_token, Some(self.mock.mcp_url()));
         self.db
@@ -266,9 +300,7 @@ impl ActsAsArrangement {
                 provider_user_id: None,
                 provider_username: Some("acts-as-identity".to_string()),
                 access_token_encrypted: Some(self.encryption.encrypt_string(access_token).unwrap()),
-                refresh_token_encrypted: Some(
-                    self.encryption.encrypt_string(refresh_token).unwrap(),
-                ),
+                refresh_token_encrypted: Some(self.encryption.encrypt_string(record).unwrap()),
                 scopes: Some("read,write".to_string()),
                 expires_at: Some(Utc::now() - chrono::Duration::minutes(5)),
                 installation_id: None,
@@ -494,8 +526,8 @@ async fn concurrent_service_calls_share_one_refresh_over_the_public_grpc_path() 
         invoke_executor(&second, "refresh-2")
     );
 
-    assert!(first_result.error.is_none());
-    assert!(second_result.error.is_none());
+    assert!(first_result.error.is_none(), "{:?}", first_result.error);
+    assert!(second_result.error.is_none(), "{:?}", second_result.error);
     assert_eq!(fixture.mock.refresh_request_count(), 1);
     let headers = fixture.mock.authorization_headers();
     assert_eq!(headers.len(), 2);
@@ -506,6 +538,29 @@ async fn concurrent_service_calls_share_one_refresh_over_the_public_grpc_path() 
     );
     let _ = shutdown.send(());
     server.await.unwrap();
+}
+
+#[tokio::test]
+async fn expired_legacy_service_grant_requires_reconnection_without_refresh_over_grpc() {
+    let fixture = ActsAsArrangement::new(true).await;
+    fixture.mock.require_valid_access_tokens();
+    fixture
+        .expired_identity_grant_record("expired-access", "legacy-refresh", "legacy-refresh")
+        .await;
+    let session_id = fixture.attended_session(McpServerActsAs::Service).await;
+
+    let result = invoke(&fixture, session_id).await;
+
+    let required = result
+        .connection_required
+        .expect("legacy grant needs reconnect");
+    assert_eq!(required.provider, fixture.provider);
+    assert_eq!(
+        required.subject,
+        Some(everruns_contracts::tool_types::ConnectionRequiredSubject::Agent)
+    );
+    assert_eq!(fixture.mock.refresh_request_count(), 0);
+    assert!(fixture.mock.mcp_requests().is_empty());
 }
 
 #[tokio::test]

@@ -106,6 +106,14 @@ A migration runs while the previous release still serves traffic: deploys roll, 
 new instance migrates before the old ones stop. Every migration must therefore be safe for the
 code that is already running against it.
 
+The session-delete compatibility prerequisite `20261107040228` deliberately sorts
+before the already-merged FK removal `20261107040229`. It restores the predecessor's
+child cleanup through an invoker trigger before cascades disappear, without changing
+the successor's SQL or checksum. This is a corrective ordering exception to ordinary
+creation-time versions. SQLx also installs the missing prerequisite on databases
+that already applied its successor; regressions cover both orders, cascaded child
+sessions, unrelated rows and the unchanged append-only purge guard.
+
 Additive DDL is not automatically safe. sqlx caches prepared statements per connection, and
 PostgreSQL refuses to re-plan a cached statement whose result columns changed ("cached plan must
 not change result type", SQLSTATE `0A000`). A query that selects or returns `*` changes its

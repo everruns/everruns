@@ -435,13 +435,39 @@ stays the final check after a deploy.
   `--sweep pg:KEY=a,b` (PostgreSQL settings) and `--sweep arg:NAME=a,b` (bench
   arguments such as `servers` or `fsync-delay-ms`). Repeated axes form a grid.
   Results go to `target/stress/<time>/results.jsonl` and a Markdown table.
+  Each point also writes `statements.tsv` (every statement, per turn, with its
+  WAL) and `tables.tsv` (row writes per table, per turn): a cut is checked
+  against what it was meant to remove, not just the totals.
 
 Each run is one machine, so absolute throughput tracks its cores, not
 production's. Compare per-turn costs and the ratios between points, and keep
 `cpus`, `fsync_delay_ms`, the mix and the revision with each result. The bench
-exits non-zero when a turn fails or a driver reports errors.
-`scripts/test-stress-bench.sh` covers sweep parsing, turn accounting and the
-fsync shim without binaries.
+exits non-zero when a turn fails or is sealed, a driver reports errors, or a
+server or worker log shows an incident (`metrics.INCIDENTS`: a lost lease, a
+failed lease renewal, a sealed turn, a dropped gRPC connection or a database
+deadlock). Incidents are counted because the platform recovers from them: a
+turn whose lease is lost restarts from its log and still completes, so the
+turn counts alone read "0 failed" while hundreds of turns restarted (500 agents,
+2026-11-06).
+- **8k budget.** Every run also prints each per-turn cost against its budget
+  for 8,000 parallel agents on today's production (`metrics.BUDGET_8K`), and a
+  "fits 8k" verdict that holds only when every measured cost is under budget.
+  A budget is a production capacity run at 70%, divided by the 8k turn rate
+  (the hosted mix: a turn about every 36 s per agent, 222 turns a second,
+  6,900 running). The capacities live in `metrics.PROD`: database CPU,
+  statements, WAL syncs and bytes, server and worker CPU, worker memory per
+  running turn (RSS growth over the run's peak of running turns) and NATS
+  replay bytes per turn (JetStream `/jsz`). Update `PROD` when production
+  changes size; a cut that lowers its row is the proof it worked.
+
+`scripts/test-stress-bench.sh` covers sweep parsing, turn accounting, incident
+counting, the 8k budget and the fsync shim without binaries.
+
+What the bench cannot see: when PostgreSQL is the bottleneck, as it is on one
+machine, the server is never the side that falls behind, so failures that need
+a fast database and a lagging server (the gRPC `too_many_data_frames` GOAWAY of
+2026-11-06) reproduce only in production or in a targeted unit test that stalls
+the server (`worker_link::grpc_service::http2`).
 
 ## Chaos Harness
 

@@ -32,6 +32,33 @@ pub(super) async fn check_high_risk_caps(
     Ok(())
 }
 
+/// A declarative capability's `dependencies` are assigned to every agent and
+/// session that uses it, and per-turn hydration re-reads them. Writing them is
+/// therefore an assignment: a non-Admin may not add a high-risk capability,
+/// directly, through another declarative capability, or through a built-in's
+/// own dependencies (TM-AGENT-005).
+pub(crate) async fn check_high_risk_dependencies(
+    ctx: &Ctx,
+    dependencies: &[String],
+) -> Result<(), CommandError> {
+    if dependencies.is_empty() || ctx.caller.role.has_permission(OrgRole::Admin) {
+        return Ok(());
+    }
+    let caps: Vec<AgentCapabilityConfig> = dependencies
+        .iter()
+        .map(|id| AgentCapabilityConfig::new(id.as_str()))
+        .collect();
+    // Declarative dependencies expand through their persisted definitions.
+    check_high_risk_caps(ctx, &caps).await?;
+    // Built-in dependencies (and aliases) expand through the registry.
+    let resolved = everruns_core::capabilities::resolve_capability_configs(
+        &caps,
+        ctx.capability_service.registry(),
+    )
+    .map_err(|error| CommandError::bad_request(error.to_string()))?;
+    check_high_risk_caps(ctx, &resolved).await
+}
+
 /// Selecting a harness assigns its inherited capabilities too.
 // THREAT[TM-AGENT-005]: parent chains and dependencies cannot bypass assignment checks.
 pub(crate) async fn check_harness_assignment(

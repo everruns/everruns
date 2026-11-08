@@ -2,6 +2,7 @@
 title: Schedules advance during repeated daylight-saving hours
 description: Recurring session schedules ignore past UTC candidates during repeated daylight-saving hours, preventing immediate repeated executions.
 date: 2026-11-01
+release: "0.51.0"
 kind: fix
 significance: notable
 products: [platform, cloud]

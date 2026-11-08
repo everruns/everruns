@@ -16,6 +16,11 @@ const GENERATION_TIMEOUT: Duration = Duration::from_secs(60);
 const GENERATION_MAX_TOKENS: u32 = 3_000;
 /// Cap on generated cases regardless of what the model returns.
 pub const MAX_CASES: usize = 6;
+/// Maximum escaped user-message payload for the generation call, matching the
+/// Analyze checkers' `MAX_CHECKER_INPUT_BYTES`. A system prompt may be up to
+/// 1 MiB; refusing larger input keeps one trigger from buying a huge paid call
+/// on the deployment utility key.
+pub const MAX_GENERATION_INPUT_BYTES: usize = 128 * 1024;
 
 const SYSTEM: &str = "You design a small behavioral smoke test for an AI agent. Given the agent's \
     description, system prompt, and available tools, write a handful of realistic user messages \
@@ -36,14 +41,13 @@ struct GeneratedCase {
     rubric: String,
 }
 
-/// Generate smoke-test cases. Returns an error if the model is unreachable or
-/// produces no usable cases.
-pub async fn generate_cases(
-    service: Arc<dyn UtilityLlmService>,
+/// The generation call's user message, or an error when it exceeds
+/// [`MAX_GENERATION_INPUT_BYTES`]. `trigger` calls this before admitting a run.
+pub(crate) fn generation_input(
     description: Option<&str>,
     resolved_system_prompt: &str,
     tool_listing: &str,
-) -> Result<Vec<HealthCheckCase>, String> {
+) -> Result<String, String> {
     // THREAT[TM-LLM]: agent config is untrusted; passed as data and the output
     // is parsed into a fixed shape, so a steered generator can at worst produce
     // odd-but-bounded test cases (which then just run against the agent).
@@ -54,6 +58,25 @@ pub async fn generate_cases(
         super::xml_escape(resolved_system_prompt),
         super::xml_escape(tool_listing),
     );
+    if user.len() > MAX_GENERATION_INPUT_BYTES {
+        return Err(
+            "agent config is too large for a health check; reduce the system prompt or tool \
+             descriptions"
+                .to_string(),
+        );
+    }
+    Ok(user)
+}
+
+/// Generate smoke-test cases. Returns an error if the model is unreachable or
+/// produces no usable cases.
+pub async fn generate_cases(
+    service: Arc<dyn UtilityLlmService>,
+    description: Option<&str>,
+    resolved_system_prompt: &str,
+    tool_listing: &str,
+) -> Result<Vec<HealthCheckCase>, String> {
+    let user = generation_input(description, resolved_system_prompt, tool_listing)?;
 
     let request = UtilityLlmRequest::new(vec![
         Message::text(MessageRole::System, SYSTEM.to_string()),
@@ -109,6 +132,22 @@ mod tests {
         // The blank user_message case is dropped.
         assert_eq!(cases.len(), 1);
         assert_eq!(cases[0].name, "greeting");
+    }
+
+    #[tokio::test]
+    async fn oversized_config_is_refused_before_the_llm_call() {
+        let huge = "x".repeat(MAX_GENERATION_INPUT_BYTES);
+        assert!(generation_input(None, &huge, "- none").is_err());
+        // Escaping counts: `<` grows four-fold, so a smaller prompt can overflow.
+        let angles = "<".repeat(MAX_GENERATION_INPUT_BYTES / 3);
+        assert!(generation_input(None, &angles, "- none").is_err());
+        assert!(generation_input(Some("bot"), "You are support.", "- none").is_ok());
+        // A stub that would succeed is never reached.
+        let mock = mock_llm(r#"[{"name":"a","user_message":"Hi","rubric":"ok"}]"#);
+        let err = generate_cases(mock, None, &huge, "- none")
+            .await
+            .unwrap_err();
+        assert!(err.contains("too large"), "{err}");
     }
 
     #[tokio::test]

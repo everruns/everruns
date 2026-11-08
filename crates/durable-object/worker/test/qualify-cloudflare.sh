@@ -48,10 +48,13 @@ JS
 CREATED=true
 # The Workers inventory can lag a successful first upload. Retry only that
 # known lookup failure; uploading the same binding/migration is idempotent.
+# The secret ships with the first version (--secrets-file): a separate
+# `secret bulk` afterwards creates a second version, and requests that land
+# before it is live fail with "authority service secret is not configured".
 DEPLOYED=false
 for attempt in 1 2 3; do
   attempt_log="$RUN_DIR/deploy-$attempt.log"
-  if WRANGLER_SEND_METRICS=false node "$WRANGLER" deploy --config "$TEST_DIR/qualification.json" --name "$WORKER_NAME" --minify >"$attempt_log" 2>&1; then
+  if WRANGLER_SEND_METRICS=false node "$WRANGLER" deploy --config "$TEST_DIR/qualification.json" --name "$WORKER_NAME" --minify --secrets-file "$RUN_DIR/secrets.json" >"$attempt_log" 2>&1; then
     cat "$attempt_log" >>"$RUN_DIR/deploy.log"
     DEPLOYED=true
     break
@@ -61,7 +64,6 @@ for attempt in 1 2 3; do
   sleep 1
 done
 if [[ "$DEPLOYED" != true ]]; then cat "$RUN_DIR/deploy.log"; exit 1; fi
-WRANGLER_SEND_METRICS=false node "$WRANGLER" secret bulk "$RUN_DIR/secrets.json" --config "$TEST_DIR/qualification.json" --name "$WORKER_NAME" >"$RUN_DIR/secrets.log" 2>&1
 rm -f "$RUN_DIR/secrets.json"
 DO_QUALIFY_URL="$(node --input-type=module - "$RUN_DIR/deploy.log" <<'JS'
 import {readFileSync} from 'node:fs';const match=readFileSync(process.argv[2],'utf8').match(/https:\/\/[a-zA-Z0-9.-]+\.workers\.dev/);if(!match)process.exit(1);console.log(match[0]);

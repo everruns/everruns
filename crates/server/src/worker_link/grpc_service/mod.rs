@@ -8,6 +8,8 @@
 
 pub mod assignment_scope;
 pub mod authority;
+mod http2;
+pub use http2::grpc_server_builder;
 pub mod journal_capability;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
@@ -20,6 +22,8 @@ mod tests;
 mod tests_platform_command_surface;
 #[cfg(test)]
 mod tests_provider_services;
+#[cfg(test)]
+mod tests_saved_script_writes;
 #[cfg(test)]
 mod tests_sqldb_sharing;
 #[cfg(test)]

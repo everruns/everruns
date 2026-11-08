@@ -4,6 +4,31 @@
 use super::*;
 
 impl InProcessRuntime {
+    /// Inspect current eager/revealed MCP readiness without starting discovery.
+    #[cfg(feature = "mcp")]
+    pub async fn mcp_discovery_statuses(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Vec<(String, crate::host::McpDiscoveryStatus)>> {
+        let session = self
+            .session_store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
+        let agent = match session.agent_id {
+            Some(id) => self.agent_store.get_agent(id).await?,
+            None => None,
+        };
+        let servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+        let revealed = crate::revealed_mcp_servers(self.storage_store.as_ref(), session_id).await;
+        let (listed, _) = crate::partition_deferred_mcp_servers(&servers, &revealed);
+        Ok(crate::host::mcp::discovery_statuses(
+            &self.mcp_discovery_cache,
+            session_id.uuid(),
+            &listed,
+        ))
+    }
+
     /// The implementation a canonical id or alias resolves to on this runtime.
     ///
     /// Lets a host that registers capabilities after composition tell its own

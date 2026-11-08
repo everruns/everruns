@@ -769,6 +769,13 @@
       },
       "description": "Run advisory checks (built-in rules + LLM analysis) against an agent shape.",
       "properties": {
+        "agent_id": {
+          "description": "Saved agent this draft edits, for checks that depend on its channels.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "capabilities": {
           "items": {
             "$ref": "#/$defs/AgentCapabilityConfig"
@@ -16839,6 +16846,14 @@
         "PreviewAgentRequest": {
           "description": "Request to preview the final agent shape with capabilities applied",
           "properties": {
+            "agent_id": {
+              "description": "Saved agent this draft edits, for checks that depend on its channels\nand harness (for example, a Slack channel without Reactions).",
+              "example": "agent_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capabilities": {
               "description": "Capabilities to apply with per-agent configuration.",
               "example": [
@@ -17567,6 +17582,13 @@
       },
       "description": "Preview the final agent shape with capabilities applied.",
       "properties": {
+        "agent_id": {
+          "description": "Saved agent this draft edits. Enables checks that depend on the agent's\nchannels and harness, which the draft itself does not carry.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "capabilities": {
           "items": {
             "$ref": "#/$defs/AgentCapabilityConfig"

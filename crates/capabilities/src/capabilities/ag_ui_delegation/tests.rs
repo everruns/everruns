@@ -111,7 +111,18 @@ fn finished(run_id: &str) -> Value {
     json!({ "type": "RUN_FINISHED", "threadId": "t", "runId": run_id })
 }
 
+/// Local mock agents need `allow_local_urls`; that hatch is gated to
+/// `DEPLOYMENT_GRADE=dev`. Set once for the test process, as A2A's tests do;
+/// the refusal in other grades is covered via `validate_for_grade`.
+fn ensure_dev_deployment_grade() {
+    static INIT: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    INIT.get_or_init(|| {
+        unsafe { std::env::set_var("DEPLOYMENT_GRADE", "dev") };
+    });
+}
+
 fn agent_config(url: &str, extra: Value) -> Value {
+    ensure_dev_deployment_grade();
     let mut agent = json!({
         "id": "partner",
         "name": "Partner Agent",
@@ -612,6 +623,7 @@ async fn background_spawn_requires_a_task_registry() {
 
 #[test]
 fn config_validation_refuses_unsafe_urls_credential_headers_and_bad_secret_names() {
+    ensure_dev_deployment_grade();
     let cap = AgUiDelegationCapability;
     let one = |agent: Value| json!({ "agents": [agent] });
     let base = || json!({ "id": "a", "name": "A", "url": "https://agent.example.com/run" });
@@ -747,4 +759,30 @@ async fn capability_contract() {
         "{prompt}"
     );
     assert!(prompt.contains("message_task"));
+}
+
+#[test]
+fn allow_local_urls_is_refused_outside_dev_grade() {
+    let agent: AgUiAgentConfig = serde_json::from_value(json!({
+        "id": "a", "name": "A", "url": "http://127.0.0.1:8080/run", "allow_local_urls": true
+    }))
+    .unwrap();
+    for grade in [
+        DeploymentGrade::Prod,
+        DeploymentGrade::Preview,
+        DeploymentGrade::Poc,
+    ] {
+        assert!(!agent.local_urls_permitted_for_grade(grade), "{grade:?}");
+        let err = agent.validate_for_grade(grade).unwrap_err();
+        assert!(err.contains("DEPLOYMENT_GRADE=dev"), "{grade:?}: {err}");
+    }
+    assert!(agent.local_urls_permitted_for_grade(DeploymentGrade::Dev));
+    assert!(agent.validate_for_grade(DeploymentGrade::Dev).is_ok());
+
+    // Without the flag a public URL validates in every grade.
+    let public: AgUiAgentConfig = serde_json::from_value(json!({
+        "id": "b", "name": "B", "url": "https://agent.example.com/run"
+    }))
+    .unwrap();
+    assert!(public.validate_for_grade(DeploymentGrade::Prod).is_ok());
 }

@@ -11,10 +11,18 @@
 //!   when it reads reactions back.
 //! - With no `message_id`, the tool reacts to the message the agent is
 //!   answering, the common "👀 looking" and "✅ done" acknowledgement.
+//! - The 👀/✅ acknowledgement is a default in this capability's instructions,
+//!   not a platform auto-reaction, so the agent's own instructions (or a
+//!   person asking) can change or drop it. It applies to Slack messages only
+//!   for now: Everruns chat already shows live progress, and a Slack channel
+//!   thread shows nothing until the reply. The instruction text stays the
+//!   same for every session (prompt cache); the model tells Slack messages
+//!   apart by the `[via Slack]` marker the model view puts on them.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use async_trait::async_trait;
 use everruns_contracts::tool_types::ToolHints;
+use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
@@ -28,6 +36,8 @@ pub const REACTIONS_CAPABILITY_ID: &str = "reactions";
 /// Placeholder actor id the tool writes; the server reads it as "the agent
 /// answering this session".
 pub const AGENT_REACTION_ACTOR_ID: &str = "agent";
+/// Model-view marker on a message that reached the agent from Slack.
+pub const VIA_SLACK_MARKER: &str = "[via Slack]";
 
 /// When a person's reaction reaches the agent.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,8 +107,14 @@ impl Capability for ReactionsCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "You can react to messages with `react`. Use it sparingly, as a person would: 👀 when you start on a longer request, ✅ when it is done. People's reactions to your messages arrive as notes labeled \"[Reactions, not typed messages]\"; they are feedback, not new requests.",
+            "You can react to messages with `react`, as a person would. When a message reached you from Slack (marked `[via Slack]`), react 👀 as you start working on it and ✅ once you have answered it, so people can see you got it; follow your own instructions instead if they say how, or whether, to react. People's reactions to your messages arrive as notes labeled \"[Reactions, not typed messages]\"; they are feedback, not new requests.",
         )
+    }
+
+    fn model_view_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn everruns_core::capabilities::ModelViewProvider>> {
+        Some(std::sync::Arc::new(ViaSlackModelView))
     }
 
     fn config_schema(&self) -> Option<Value> {
@@ -133,6 +149,49 @@ impl Capability for ReactionsCapability {
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(ReactTool)]
+    }
+}
+
+/// Marks user messages that came from Slack, in the prompt-facing view only,
+/// so the Slack acknowledgement default can apply without a per-session
+/// prompt. Only a fixed marker enters the text, never message metadata.
+struct ViaSlackModelView;
+
+impl everruns_core::capabilities::ModelViewProvider for ViaSlackModelView {
+    fn apply_model_view(
+        &self,
+        mut messages: Vec<RuntimeMessage>,
+        _config: &Value,
+        _context: &everruns_core::capabilities::ModelViewContext<'_>,
+    ) -> Vec<RuntimeMessage> {
+        for message in &mut messages {
+            let from_slack = message.role == RuntimeMessageRole::User
+                && message
+                    .external_actor
+                    .as_ref()
+                    .is_some_and(|actor| actor.source == "slack");
+            if !from_slack {
+                continue;
+            }
+            if let Some(ContentPart::Text(text)) = message
+                .content
+                .iter_mut()
+                .find(|part| matches!(part, ContentPart::Text(_)))
+            {
+                text.text = format!("{VIA_SLACK_MARKER} {}", text.text);
+            } else {
+                message
+                    .content
+                    .insert(0, ContentPart::text(VIA_SLACK_MARKER));
+            }
+        }
+        messages
+    }
+
+    // Before the Slack capability's message reference (110), so a message
+    // reads `[slack channel=...] [via Slack] ...` when both are enabled.
+    fn priority(&self) -> i32 {
+        105
     }
 }
 
@@ -284,6 +343,67 @@ mod tests {
             ReactionDelivery::Off
         );
         assert_eq!(cap.tools().len(), 1);
+    }
+
+    fn view(messages: Vec<RuntimeMessage>) -> Vec<RuntimeMessage> {
+        ReactionsCapability
+            .model_view_provider()
+            .expect("Slack messages need a marker")
+            .apply_model_view(
+                messages,
+                &json!({}),
+                &everruns_core::capabilities::ModelViewContext {
+                    session_id: everruns_contracts::typed_id::SessionId::new(),
+                    prior_usage: None,
+                    provider_managed_reduction: false,
+                },
+            )
+    }
+
+    fn from(source: &str, text: &str) -> RuntimeMessage {
+        let mut message = RuntimeMessage::user(text);
+        message.external_actor = Some(everruns_core::message::ExternalActor {
+            actor_id: "U123".into(),
+            actor_name: Some("Mike".into()),
+            source: source.into(),
+            metadata: None,
+        });
+        message
+    }
+
+    #[test]
+    fn marks_only_slack_messages_in_the_model_view() {
+        let slack = from("slack", "Can you check the build?");
+        let input = vec![
+            slack.clone(),
+            from("discord", "hi"),
+            RuntimeMessage::user("typed in Everruns chat"),
+        ];
+        let out = view(input.clone());
+        assert_eq!(
+            out[0].text().unwrap(),
+            "[via Slack] Can you check the build?"
+        );
+        assert_eq!(out[1].content, input[1].content);
+        assert_eq!(out[2].content, input[2].content);
+        // Stored text is untouched.
+        assert_eq!(slack.text().unwrap(), "Can you check the build?");
+    }
+
+    #[test]
+    fn marks_slack_messages_without_text() {
+        let mut message = from("slack", "x");
+        message.content.clear();
+        let out = view(vec![message]);
+        assert!(matches!(&out[0].content[0], ContentPart::Text(t) if t.text == VIA_SLACK_MARKER));
+    }
+
+    #[test]
+    fn instructions_scope_the_acknowledgement_to_slack_and_let_the_agent_override_it() {
+        let prompt = ReactionsCapability.system_prompt_addition().unwrap();
+        assert!(prompt.contains(VIA_SLACK_MARKER));
+        assert!(prompt.contains("👀") && prompt.contains("✅"));
+        assert!(prompt.contains("follow your own instructions instead"));
     }
 
     #[test]

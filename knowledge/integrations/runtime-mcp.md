@@ -170,6 +170,16 @@ is the issuer), the token is bound to the server with a `resource` indicator
 supplies only the callback leg, a loopback listener for a CLI, a redirect
 route for the control plane. Persistence is the `McpTokenStore` trait.
 
+The validated resource is part of the stored grant, not a value rediscovered at
+refresh time. Code exchange, encrypted or file persistence, refresh-token rotation,
+and process restart retain its exact spelling. Metadata absence at initial login
+uses the configured MCP URL after the same validation. Legacy records without a
+resource remain readable and their existing access token can run until refresh is
+needed; refresh then requires a new login, without contacting the token endpoint.
+The web host also binds the authorization round trip and refresh grant to the
+server URL and OAuth configuration. Changed settings require reconnecting, rather
+than sending an old grant to a new endpoint or assigning it another audience.
+
 Outbound login can negotiate Client ID Metadata Documents (CIMD) through
 `prepare_login_with_options`. A host-supplied configured or saved registration
 wins; otherwise an explicitly advertised CIMD capability selects the host's
@@ -292,6 +302,12 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 ## Testing strategy (goal 9)
 
+OAuth protocol, callback, and credential-resolver changes select the worker gRPC
+identity contracts in PR CI. Refresh fixtures use the current bound grant envelope;
+legacy records separately prove reconnection is required before any network request.
+The selection lives in [focused CI](../../.github/scripts/ci/focused.py), with the
+boundary exercised by [gRPC tests](../../crates/server/tests/domain/mcp_acts_as_grpc_test.rs).
+
 - **`everruns-core` (`mcp` feature) unit/integration**: against a `wiremock` HTTP MCP server,
   `tools/list`, `tools/call`, SSE vs plain JSON, image extraction, error
   mapping, and SSRF blocks (localhost/private/metadata/IPv6). With `mcp-stdio`
@@ -404,10 +420,22 @@ Remaining follow-up:
 
 The host discovery cache distinguishes typed HTTP authentication rejections
 from transient transport failures. A 401 or 403 clears that attachment's stale
-tools and pauses discovery until invalidation, a new runtime, or a changed
-configuration. Configuration identities are canonical hashes, including static
+tools and pauses discovery until invalidation, a new cache, or a changed
+configuration. Opt-in shared host services retain that hold across runtime rebuilds. Configuration identities are canonical hashes, including static
 credential headers without retaining them in cache keys. Transient failures
 preserve previously discovered tools and permit retry after a short cooldown.
 Both successful and negative entries share the bounded cache and single-flight
 locks. A reload retires in-flight refresh identities so old credentials cannot
 restore a failed entry after invalidation.
+
+## Interactive readiness
+
+Interactive Framework hosts may opt into one short wait budget for eager MCP
+catalog discovery. Expiry is pending, not failure: bounded background discovery
+continues and complete catalogs join subsequent turns. Host services share the
+cache across coherent runtime rebuilds, keyed by session and complete attachment
+configuration. Reload invalidates this shared cache and fences old completions.
+The default remains blocking cold discovery. Deferred reveal, catalog bounds,
+authentication holds and transient retry cooldowns retain their contracts.
+Readiness inspection is read-only and separates pending, ready, authentication
+required and failed states. See the [host-services API](../../docs/framework/host-services.md#mcp-readiness).

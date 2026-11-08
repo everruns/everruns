@@ -1004,6 +1004,10 @@ server tools: model-decided, executed inside the response, never dispatched by t
 - **Containers**: `code_interpreter` and `shell` use OpenAI's auto container, which is not the
   session sandbox. They stay unpriced in the estimate because OpenAI bills per container
   session, and one container serves calls across turns.
+- **Live proof**: container-tool tests request an observation from the actual execution
+  environment, not a familiar answer the model can supply from memory. A completed hosted
+  call and its usage count remain mandatory; missing calls are never retried as transport
+  failures. See [hosted-tool tests](../../crates/llm-tests/tests/provider_live/openai_hosted_tools.rs).
 - **MCP approvals**: an `mcp_approval_request` item is the one hosted interaction that needs a
   person. The driver surfaces it as a synthetic `openai_mcp_approval` tool call with no tool
   definition; ActAtom routes it down the client-side path (`act_hooks::runs_on_server`), so the

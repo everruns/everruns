@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: Detached tool calls
-description: Long server-side tool calls leave their turn, so the turn parks and frees its worker slot, lease and memory while the tool works.
+description: Long server-side tool calls leave their turn, so the turn parks and frees its place on the worker, its lease and memory while the tool works.
 tags:
   - execution
   - tools
@@ -20,20 +20,23 @@ approvals and `ask_user` parked a turn. Every server-side call (a sandbox build,
 - the session lease, renewed every few seconds,
 - the turn in memory: agent config, tool surface, history, write-behind buffers.
 
-Model streaming already gave its slot back ([`model_wait`](../../crates/core/src/engine/execution/model_wait.rs)).
-Tool waits did not, so 50 sessions waiting on a 20-minute build filled a worker. AWS Infinity
+Model streaming already gave its slot back; tool waits did not, so 50 sessions waiting on a
+20-minute build filled a worker. Since 2026-11-05 turns take no execution slot at all (turn
+admission counts memory and runtime lag, see
+[durable execution engine](../operations/durable-execution-engine.md)), so a turn waiting on a
+tool costs its memory and lease renewals, and detaching is for calls that run for minutes. AWS Infinity
 suspends at every tool call, so a waiting agent costs it nothing; this closes most of that gap.
 
 ## Decision
 
-A server-side call still running after `WORKER_TOOL_DETACH_AFTER_SECS` (default 30, `0` turns
+A server-side call still running after `WORKER_TOOL_DETACH_AFTER_SECS` (default 300, `0` turns
 detaching off) is **detached**:
 
-1. The call keeps running on the same worker, outside the slot budget. Only the tool's own
+1. The call keeps running on the same worker, outside its running turns. Only the tool's own
    future stays, with the rest of the call (output limits, distillation, the call's
    `tool.completed`).
 2. The act parks the turn (`durable_retry::parked`). Its log already holds `tool.started`, so the
-   actor releases the lease and the slot and drops the turn's memory. No `act.completed` is
+   actor releases the lease and drops the turn's memory. No `act.completed` is
    written for that act; the call's `tool.completed` settles it.
 3. When the call finishes, its `tool.completed` is appended under the call's record, and
    completing the last record of the session makes its actor runnable.
@@ -41,20 +44,22 @@ detaching off) is **detached**:
    the path a turn parked on client tools already takes. There is no new resume code.
 
 Calls that finish within the threshold run as before, with no extra writes. The threshold is
-high because each detach costs a re-lease and a turn setup when the turn resumes.
+high because each detach costs a re-lease and a turn setup when the turn resumes, while a held
+turn costs only memory. It was 30 s while a waiting call also held one of the worker's 20
+execution slots; 300 s (2026-11-05) leaves detaching to calls that run for minutes.
 
 ### What can detach
 
 See `may_detach` in [`tool_detach.rs`](../../crates/core/src/engine/execution/tool_detach.rs).
 A call must run on the server, must not be `cpu_bound` (an in-process interpreter really uses
-the worker's CPU, which the slot cap must keep counting), and must not shape its turn
+the worker's CPU, which turn admission must keep seeing as runtime lag), and must not shape its turn
 (`stays_direct`, native-only tools such as `spawn_agent` and `ask_user`). An act that also has
 client-side calls never detaches. There is no per-tool opt-in.
 
 Hosts opt in through task-locals. The worker provides a detacher around each leased turn, and
 only the act of that turn's own loop sees it; tools the act runs inline do not, so a child turn
 (a subagent) never detaches into its parent's park. The in-process runtime (serve, embedded
-`Engine`) has no slot budget and provides none, so its calls keep running inline.
+`Engine`) has no turn admission and provides none, so its calls keep running inline.
 
 `MAX_DETACHED_TOOL_CALLS` (default 1000) bounds the calls one worker holds. Past it a call stays
 with its turn.
@@ -95,7 +100,7 @@ cancel alike, so concurrent completions agree on which one was last.
 
 | | before | detached |
 |---|---|---|
-| slot per waiting call | 1 of 50 | 0 |
+| place among running turns | 1 | 0 |
 | lease renewals while waiting | every few s per session | one batch per worker |
 | turn state in memory | full | the tool's future only |
 | crash mid-wait | rerun or `interrupted` | same, one TTL later |

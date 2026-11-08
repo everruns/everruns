@@ -703,17 +703,22 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 everruns_integrations::bashkit::tools_in_shell::UnlabeledToolRatingsOff,
             ));
         }
-        if let Some(capability) = tools_in_shell
-            && let Some(store) = self.adapters.saved_script_store(org_id, session_id)
-        {
-            extensions.insert(Arc::new(
-                everruns_contracts::runtime::saved_scripts::SavedScripts {
-                    store,
-                    can_save: everruns_integrations::bashkit::tools_in_shell::manage_scripts(
-                        capability.config_value(),
-                    ),
-                },
-            ));
+        // Unbound here; the act rebinds it to the turn so a save runs as that
+        // turn's management user (`PlatformExecutionScope::bind`, TM-TOOL-067).
+        let saved_scripts = tools_in_shell.and_then(|capability| {
+            self.adapters
+                .saved_script_store(org_id, session_id)
+                .map(
+                    |store| everruns_contracts::runtime::saved_scripts::SavedScripts {
+                        store,
+                        can_save: everruns_integrations::bashkit::tools_in_shell::manage_scripts(
+                            capability.config_value(),
+                        ),
+                    },
+                )
+        });
+        if let Some(saved) = &saved_scripts {
+            extensions.insert(Arc::new(saved.clone()));
         }
         // Lets integration tools (github_checkout_pull_request) run in the
         // session's managed sandbox without depending on its crate.
@@ -726,6 +731,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 store: platform_store.clone(),
                 has_catalog: has_platform_capability,
                 user_mcp,
+                saved_scripts,
             }),
         )));
         extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
@@ -984,9 +990,20 @@ struct PlatformExecutionScope {
     store: Arc<dyn everruns_capabilities::PlatformStore>,
     has_catalog: bool,
     user_mcp: Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>>,
+    saved_scripts: Option<everruns_contracts::runtime::saved_scripts::SavedScripts>,
 }
 impl crate::core::tool_context::ExecutionServices for PlatformExecutionScope {
     fn bind(&self, context: &mut crate::core::tool_context::ToolContext, id: Uuid) {
+        if let Some(saved) = &self.saved_scripts
+            && let Some(store) = saved.store.for_execution(id)
+        {
+            context.extensions.insert(Arc::new(
+                everruns_contracts::runtime::saved_scripts::SavedScripts {
+                    store,
+                    can_save: saved.can_save,
+                },
+            ));
+        }
         if let Some(invoker) = &self.user_mcp {
             everruns_capabilities::capabilities::install_user_mcp_store(
                 &mut context.extensions,

@@ -58,6 +58,33 @@ class Sweep(unittest.TestCase):
         self.assertEqual(worker.env, {"K": "v"})
 
 
+class Sealed(unittest.TestCase):
+    def test_a_sealed_turn_is_a_failed_turn(self):
+        (turn,) = metrics.turns([["c", "input.message", "6000", "0"], ["c", "turn.started", "6100", "0"],
+                                 ["c", "turn.sealed", "6200", "0"]])
+        self.assertFalse(turn["ok"])
+        self.assertEqual(metrics.turn_summary([turn])["failed_turns"], 1)
+
+
+class Incidents(unittest.TestCase):
+    def test_lost_work_in_any_log_is_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            worker, server = os.path.join(d, "worker-0.log"), os.path.join(d, "server-0.log")
+            with open(worker, "w") as f:
+                f.write("\x1b[33m WARN\x1b[0m lease: Actor lease lost; stopping the turn\n")
+                f.write("ERROR turn: Sealing a session turn that keeps failing without progress\n")
+                f.write("WARN x: error=h2 protocol error: GoAway(b\"too_many_data_frames\", ENHANCE_YOUR_CALM, Remote)\n")
+                f.write("INFO everything fine\n")
+            with open(server, "w") as f:
+                f.write("ERROR renew: error returned from database: deadlock detected at line 1130\n")
+            counts = metrics.incidents([worker, server, os.path.join(d, "missing.log")])
+        self.assertEqual(counts["lease_lost"], 1)
+        self.assertEqual(counts["turn_sealed"], 1)
+        self.assertEqual(counts["grpc_goaway"], 1)
+        self.assertEqual(counts["db_deadlock"], 1)
+        self.assertEqual(sum(counts.values()), 4)
+
+
 class Turns(unittest.TestCase):
     ROWS = [
         # session a: one turn, two model calls (300 ms) and a tool (100 ms) in a 1 s turn.
@@ -109,6 +136,45 @@ class Turns(unittest.TestCase):
         sum(i * i for i in range(300000))
         self.assertGreater(metrics.proc_cpu_seconds(os.getpid()), 0)
         self.assertEqual(metrics.proc_cpu_seconds(2 ** 22 + 7), 0.0)
+
+
+class Children(unittest.TestCase):
+    def test_child_processes_are_found_by_parent_pid(self):
+        # PostgreSQL backends start their own sessions, so the parent pid is
+        # the only link back to the postmaster.
+        child = subprocess.Popen([sys.executable, "-c", "import os, time; os.setsid(); time.sleep(5)"])
+        try:
+            time.sleep(0.3)
+            self.assertIn(child.pid, metrics.child_pids(os.getpid()))
+        finally:
+            child.kill()
+            child.wait()
+
+
+class Budget(unittest.TestCase):
+    def test_peak_running_turns_counts_overlap(self):
+        ts = [{"start": 0, "turn": 10}, {"start": 5, "turn": 10}, {"start": 12, "turn": 1}, {"start": 20, "turn": 1}]
+        self.assertEqual(metrics.peak_running_turns(ts), 2)
+
+    def test_budget_fits_only_when_every_measured_cost_is_under(self):
+        under = {key: limit / 2 for key, limit, _ in metrics.BUDGET_8K.values()}
+        self.assertTrue(metrics.budget(under)["fits"])
+        over = dict(under, statements_per_turn=308)
+        b = metrics.budget(over)
+        self.assertFalse(b["fits"])
+        self.assertEqual(b["rows"]["db_statements"]["x_over"], 10.3)
+
+    def test_unmeasured_costs_do_not_decide(self):
+        b = metrics.budget({"statements_per_turn": 20})
+        self.assertTrue(b["fits"])
+        self.assertIsNone(b["rows"]["nats_replay"]["value"])
+        self.assertFalse(metrics.budget({})["fits"])
+
+    def test_budget_table_has_one_row_per_point(self):
+        r = {"label": "baseline", "budget_8k": metrics.budget({"statements_per_turn": 308})}
+        lines = stress.budget_table([r]).splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertIn("308 (10.3x)", lines[3])
 
 
 class FsyncShim(unittest.TestCase):

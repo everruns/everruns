@@ -2,6 +2,7 @@
 title: Session trace explains failed turns and model calls
 description: The session trace names why a turn failed, shows model call retries, and its inspector now shows a failed model call's full error with a link to the provider.
 date: 2026-11-01
+release: "0.51.0"
 kind: fix
 significance: minor
 products: [platform, cloud]

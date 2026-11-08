@@ -479,9 +479,112 @@ mod tests {
             expires_at: Some(Utc::now() + Duration::seconds(expires_in_seconds)),
             scope: None,
             token_endpoint: Some("https://auth.example.com/token".to_string()),
+            resource: Some("https://mcp.example.com/".to_string()),
             client_id: Some("client-1".to_string()),
             client_secret: None,
         }
+    }
+
+    #[tokio::test]
+    async fn resource_survives_login_restart_and_rotating_refresh_without_metadata() {
+        for (published, advertised) in [
+            (false, None),
+            (true, None),
+            (true, Some("https://mcp.example.com/audience")),
+        ] {
+            let resource = advertised.unwrap_or("https://mcp.example.com/mcp");
+            let metadata = serde_json::json!({"resource": advertised,
+                "authorization_servers": ["https://auth.example.com"]})
+            .to_string();
+            let egress = FakeEgress::with(vec![
+                (
+                    "https://mcp.example.com/.well-known/oauth-protected-resource/mcp",
+                    if published { 200 } else { 404 },
+                    &metadata,
+                ),
+                (
+                    "https://auth.example.com/.well-known/oauth-authorization-server",
+                    200,
+                    AS_METADATA,
+                ),
+                (
+                    "https://mcp.example.com/.well-known/oauth-authorization-server",
+                    200,
+                    AS_METADATA,
+                ),
+                (
+                    "https://auth.example.com/token",
+                    200,
+                    r#"{"access_token":"access","refresh_token":"rotated","expires_in":0,"resource":"https://untrusted.example/"}"#,
+                ),
+            ]);
+            let prepared = prepare_login(
+                egress.as_ref(),
+                "https://mcp.example.com/mcp",
+                "http://127.0.0.1/callback",
+                "test",
+                Some(RegisteredClient {
+                    client_id: "client".into(),
+                    client_secret: None,
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+            let url = url::Url::parse(&prepared.authorization_url).unwrap();
+            assert_eq!(
+                url.query_pairs()
+                    .find(|(key, _)| key == "resource")
+                    .unwrap()
+                    .1,
+                resource
+            );
+            let tokens = complete_login(egress.as_ref(), &prepared, "code", &prepared.state, None)
+                .await
+                .unwrap();
+            // Recreate the provider and store from persisted bytes on each restart.
+            let mut persisted = serde_json::to_vec(&tokens).unwrap();
+            for _ in 0..2 {
+                let restored: TokenSet = serde_json::from_slice(&persisted).unwrap();
+                let store = InMemoryTokenStore::seeded("server", restored);
+                let provider = OAuthAuthProvider::new(store, egress.clone());
+                provider
+                    .authorization(&auth_request("server"))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                persisted =
+                    serde_json::to_vec(&provider.store.load("server").await.unwrap().unwrap())
+                        .unwrap();
+            }
+            let sent = egress.sent.lock().unwrap();
+            let posts: Vec<_> = sent.iter().filter(|r| r.method == "POST").collect();
+            assert_eq!(posts.len(), 3);
+            for post in posts {
+                let form: BTreeMap<String, String> =
+                    serde_urlencoded::from_bytes(&post.body).unwrap();
+                assert_eq!(form.get("resource").map(String::as_str), Some(resource));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_tokens_require_reauthorization_without_sending_refresh() {
+        let mut json = serde_json::to_value(token_set(-1, Some("old"))).unwrap();
+        json.as_object_mut().unwrap().remove("resource");
+        let legacy: TokenSet = serde_json::from_value(json).unwrap();
+        let egress = FakeEgress::with(vec![]);
+        let provider =
+            OAuthAuthProvider::new(InMemoryTokenStore::seeded("server", legacy), egress.clone());
+        let error = provider
+            .authorization(&auth_request("server"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<OAuthError>(),
+            Some(OAuthError::ReauthorizationRequired)
+        ));
+        assert!(egress.sent.lock().unwrap().is_empty());
     }
 
     const PROTECTED_RESOURCE: &str = r#"{

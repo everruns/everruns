@@ -2,6 +2,7 @@
 title: Sessions go idle after their turn when workers restart
 description: A session whose turn finished while rolling deploys restarted its workers no longer stays active, and sessions already stuck that way are resumed and idled.
 date: 2026-11-01
+release: "0.51.0"
 kind: fix
 significance: notable
 products: [platform, cloud]

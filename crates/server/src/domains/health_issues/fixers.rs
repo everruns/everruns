@@ -22,6 +22,11 @@
 //!   manual steps remain.
 //! - Pausing a runaway schedule is the same action the finding offers under
 //!   `/actions`, declared here so the Health card shows it as a fix too.
+//! - A model missing from its provider's last model list offers that
+//!   provider's model sync. The list can be old, and the sync is what tells
+//!   "listed after all" (the issue resolves) from "really gone" (it stays) from
+//!   "the provider cannot be reached" (the sync's own error is returned, such
+//!   as a rejected key).
 //! - Each run is recorded once per episode in `finding_actions`, so an issue
 //!   shows who fixed it and when.
 use super::{
@@ -47,6 +52,8 @@ pub const SLACK_ADD_PERMISSIONS: &str = "slack.add_permissions";
 pub const SLACK_RECONNECT: &str = "slack.reconnect";
 /// Pause a schedule whose runs keep ending the same way.
 pub const SCHEDULE_PAUSE: &str = "schedule.pause";
+/// Read a provider's model list again, for a model missing from the last one.
+pub const MODELS_SYNC: &str = "models.sync";
 
 const SLACK_API: &str = "https://slack.com/api";
 const SLACK_AUTH_FAILURES: &[&str] = &[
@@ -224,6 +231,9 @@ pub async fn fixers_for(ctx: &Ctx, row: &HealthIssueRow) -> Result<Vec<IssueFixe
             })
             .collect());
     }
+    if super::model_health::owns(&row.code) {
+        return Ok(model_sync_fixer(ctx, row).await?.into_iter().collect());
+    }
     if row.code != "slack.permissions" {
         return Ok(Vec::new());
     }
@@ -318,6 +328,10 @@ pub(super) async fn run_fixer(
                 (None, false)
             }
             SLACK_ADD_PERMISSIONS | SLACK_RECONNECT => slack_fix(ctx, &row, slack_api).await?,
+            MODELS_SYNC => {
+                sync_models(ctx, &row).await?;
+                (None, false)
+            }
             _ => {
                 return Err(CommandError::conflict(
                     "That fix is not available for this issue",
@@ -349,6 +363,76 @@ pub(super) async fn run_fixer(
             returns_automatically,
             issue,
         })
+    }
+}
+
+/// The provider a model issue's listing finding is about, when it is one.
+fn listing_provider(row: &HealthIssueRow) -> Option<(Uuid, String)> {
+    let evidence = row.evidence.as_ref()?;
+    if evidence["reason"].as_str() != Some("no_longer_listed") {
+        return None;
+    }
+    let provider_id = evidence["provider_id"].as_str()?.parse().ok()?;
+    let name = evidence["provider"].as_str().unwrap_or("the provider");
+    Some((provider_id, name.to_string()))
+}
+
+async fn model_sync_fixer(
+    ctx: &Ctx,
+    row: &HealthIssueRow,
+) -> Result<Option<IssueFixer>, CommandError> {
+    let Some((provider_id, name)) = listing_provider(row) else {
+        return Ok(None);
+    };
+    let Some(provider) = ctx.db.get_provider(ctx.org_id(), provider_id).await? else {
+        return Ok(None);
+    };
+    let unavailable_reason = if ctx.model_sync_service.is_none() {
+        Some(
+            "This deployment cannot sync models from here. Use Sync models on the provider's page."
+                .into(),
+        )
+    } else if !provider.api_key_set && provider.provider_type != "chatgpt" {
+        Some(format!(
+            "{name} has no API key, so its model list cannot be read. Add one on the provider's page."
+        ))
+    } else {
+        None
+    };
+    Ok(Some(IssueFixer {
+        kind: MODELS_SYNC.into(),
+        label: format!("Sync {name} models"),
+        steps: vec![
+            format!("Everruns reads {name}'s current model list."),
+            format!("If {name} still offers the model, the issue clears."),
+            format!(
+                "If {name} cannot be reached, for example because it rejects the key, you see its error."
+            ),
+        ],
+        effect: "in_place".into(),
+        undoable: false,
+        needs_provider_admin: false,
+        unavailable_reason,
+    }))
+}
+
+async fn sync_models(ctx: &Ctx, row: &HealthIssueRow) -> Result<(), CommandError> {
+    let (provider_id, name) = listing_provider(row)
+        .ok_or_else(|| CommandError::conflict("That fix is not available for this issue"))?;
+    let sync = ctx
+        .model_sync_service
+        .as_ref()
+        .ok_or_else(|| CommandError::conflict("This deployment cannot sync models from here"))?;
+    // The sync rechecks the organization's models, which resolves the issue
+    // when the provider lists the model.
+    match sync.sync_provider(ctx.org_id(), provider_id).await {
+        Ok(crate::domains::models::SyncResult::Failed { error }) => Err(CommandError::conflict(
+            format!("{name} could not be reached: {error}"),
+        )),
+        Ok(_) => Ok(()),
+        Err(error) => Err(CommandError::conflict(format!(
+            "{name}'s models could not be synced: {error}"
+        ))),
     }
 }
 

@@ -2,6 +2,7 @@
 title: Observers score conversations and tool calls, and alert on drops
 description: Observers now grade whole conversations and single tool calls, open a health issue when the pass rate drops, and show live quality on Evals pages.
 date: 2026-11-02
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud]

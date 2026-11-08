@@ -2,6 +2,7 @@
 title: Session Cost tab shows spend by category and over time
 description: The session Cost tab splits spend into uncached prompt, cache reads, cache writes and output, and charts it per day or per turn.
 date: 2026-11-01
+release: "0.51.0"
 kind: improvement
 significance: minor
 products: [platform, cloud]

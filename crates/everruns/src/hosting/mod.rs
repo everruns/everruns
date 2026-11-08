@@ -8,9 +8,6 @@
 #[cfg(all(feature = "hosting-conformance", not(target_arch = "wasm32")))]
 pub mod conformance;
 mod request_metadata;
-/// Experimental: an Agent's runtime over host-owned backends, outside Engine.
-#[cfg(feature = "external-runtime")]
-pub mod runtime;
 pub mod services;
 pub mod spi;
 
@@ -75,6 +72,29 @@ where
 {
     async fn open(&self, session: SessionId) -> Result<crate::Environment> {
         self(session).await
+    }
+}
+
+/// Builds behavior for a build key the host did not register at startup.
+///
+/// For hosts whose sessions carry their own agent definition (a manifest the
+/// client sent at creation, retained by the authority with the session): the
+/// build key names that definition and the host code that runs it, and the
+/// resolver rebuilds the Agent on whichever process activates the session.
+/// It must return the same behavior for the same key every time, and `None`
+/// for a key it does not know (the session is then suspended as
+/// `MissingBuild`, as for an unregistered build). Experimental.
+pub trait AgentResolver: Send + Sync + 'static {
+    /// The Agent `build` names, or `None` when this process cannot build it.
+    fn resolve(&self, build: &AgentBuild) -> Option<crate::Agent>;
+}
+
+impl<F> AgentResolver for F
+where
+    F: Fn(&AgentBuild) -> Option<crate::Agent> + Send + Sync + 'static,
+{
+    fn resolve(&self, build: &AgentBuild) -> Option<crate::Agent> {
+        self(build)
     }
 }
 
@@ -599,6 +619,14 @@ pub trait SessionEpoch: Send + Sync + 'static {
     /// Optional local hint for prompt control observation. Remote ownership
     /// still observes commands on renewal; hints carry no authority.
     fn renew_poke(&self) -> Option<Arc<tokio::sync::Notify>> {
+        None
+    }
+    /// Optional drain flag for this epoch's driver: once set, the running
+    /// turn stops at its next step boundary and the lease is handed back
+    /// (`SessionActorStore::hand_off_actor`) with the session still runnable,
+    /// so another process resumes it at once. Hosts that move sessions
+    /// between authorities set it before moving one with an open turn.
+    fn hand_off(&self) -> Option<Arc<std::sync::atomic::AtomicBool>> {
         None
     }
     /// Retain a timer obligation under the current epoch. Its activation is

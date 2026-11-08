@@ -337,6 +337,7 @@ async fn discover_for_test(
         context,
         resolver,
         egress,
+        None,
     )
     .await
     .unwrap()

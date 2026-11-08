@@ -2,6 +2,7 @@
 title: Test whole conversations with simulated users and tool fixtures
 description: Eval cases can let a model play the user from a persona and goal, and give the agent tools with canned responses, testing a whole conversation.
 date: 2026-11-01
+release: "0.51.0"
 kind: feature
 significance: major
 products: [platform, cloud]

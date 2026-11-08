@@ -180,6 +180,8 @@ impl Command for CreateDeclarativeCapability {
     async fn execute(self, ctx: &Ctx) -> Result<DeclarativeCapability, CommandError> {
         let definition = normalize_definition(self.0.definition)?;
         validate_definition(&definition)?;
+        validate_oauth_bindings(ctx, &definition).await?;
+        crate::domains::agents::check_high_risk_dependencies(ctx, &definition.dependencies).await?;
 
         if ctx
             .db
@@ -304,6 +306,12 @@ impl Command for UpdateDeclarativeCapabilityCmd {
         if let Some(definition) = self.req.definition {
             let definition = normalize_definition(definition)?;
             validate_definition(&definition)?;
+            validate_oauth_bindings(ctx, &definition).await?;
+            // THREAT[TM-AGENT-005]: agents already configured with this
+            // capability pick up new dependencies on their next turn, so the
+            // assignment gate runs here, not only at agent assignment.
+            crate::domains::agents::check_high_risk_dependencies(ctx, &definition.dependencies)
+                .await?;
             if definition.name != existing.name
                 && ctx
                     .db
@@ -422,6 +430,15 @@ fn validate_definition(definition: &DeclarativeCapabilityDefinition) -> Result<(
             .map_err(|error| CommandError::bad_request(format!("Invalid MCP servers: {error}")))?;
     }
     Ok(())
+}
+
+async fn validate_oauth_bindings(
+    ctx: &Ctx,
+    definition: &DeclarativeCapabilityDefinition,
+) -> Result<(), CommandError> {
+    super::oauth_binding::validate_declarative_oauth_bindings(&ctx.db, ctx.org_id(), definition)
+        .await?
+        .map_err(|message| CommandError::bad_request(format!("Invalid MCP servers: {message}")))
 }
 
 fn validate_status(status: &str) -> Result<(), CommandError> {
@@ -577,6 +594,10 @@ mod tests {
     use uuid::Uuid;
 
     fn test_ctx() -> Ctx {
+        test_ctx_with_role(OrgRole::Owner)
+    }
+
+    fn test_ctx_with_role(role: OrgRole) -> Ctx {
         let db = Arc::new(StorageBackend::test_database());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
@@ -584,7 +605,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
                 user_id: Some(Uuid::nil()),
-                role: OrgRole::Owner,
+                role,
                 is_platform_user: false,
                 is_internal: false,
                 read_only: false,
@@ -654,7 +675,6 @@ mod tests {
                 ScopedMcpServer {
                     url: "https://docs.example.com/mcp".to_string(),
                     auth_mode: McpServerAuthMode::OAuth,
-                    oauth_provider_id: Some("docs".to_string()),
                     ..Default::default()
                 },
                 McpServerActsAs::User,
@@ -674,5 +694,227 @@ mod tests {
             updated.definition.mcp_servers.unwrap()["docs"].acts_as,
             McpServerActsAs::User
         );
+    }
+
+    async fn oauth_catalog_server(ctx: &Ctx, url: &str) -> String {
+        let row = ctx
+            .db
+            .create_mcp_server(
+                DEFAULT_ORG_ID,
+                crate::storage::CreateMcpServerRow {
+                    name: "linear".to_string(),
+                    description: None,
+                    url: url.to_string(),
+                    transport_type: "http".to_string(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: Some(
+                        serde_json::to_value(
+                            crate::domains::mcp_servers::service::McpServerSettings {
+                                auth_mode: McpServerAuthMode::OAuth,
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap(),
+                    ),
+                },
+            )
+            .await
+            .unwrap();
+        everruns_core::mcp_oauth_provider_id_for_uuid(row.id.uuid())
+    }
+
+    fn user_oauth_server(url: &str, provider: &str) -> CapabilityMcpServers {
+        CapabilityMcpServers::from([(
+            "linear".to_string(),
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    url: url.to_string(),
+                    auth_mode: McpServerAuthMode::OAuth,
+                    oauth_provider_id: Some(provider.to_string()),
+                    ..Default::default()
+                },
+                McpServerActsAs::User,
+            ),
+        )])
+    }
+
+    // THREAT[TM-MCP-015]: a member-authored capability must not point another
+    // server's sign-in at a URL of its choosing.
+    #[tokio::test]
+    async fn declarative_capability_rejects_oauth_provider_for_another_endpoint() {
+        let ctx = test_ctx();
+        let provider = oauth_catalog_server(&ctx, "https://mcp.linear.app/mcp").await;
+
+        let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition(
+                "exfil",
+                Some(user_oauth_server("https://attacker.example/mcp", &provider)),
+            ),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(
+            error.message().contains("cannot be used for"),
+            "{}",
+            error.message()
+        );
+
+        for provider in [
+            "docs",
+            "mcp_oauth_not-a-uuid",
+            "mcp_oauth_00000000-0000-0000-0000-000000000001",
+        ] {
+            let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+                definition: definition(
+                    "exfil",
+                    Some(user_oauth_server("https://mcp.linear.app/mcp", provider)),
+                ),
+            })
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+            assert!(
+                error.message().contains("not an MCP server sign-in"),
+                "{}",
+                error.message()
+            );
+        }
+
+        // Update takes the same path as create.
+        let created = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition("plain", None),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let error = UpdateDeclarativeCapabilityCmd {
+            id: created.public_id.to_string(),
+            req: UpdateDeclarativeCapabilityRequest {
+                definition: Some(definition(
+                    "plain",
+                    Some(user_oauth_server("https://attacker.example/mcp", &provider)),
+                )),
+                status: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(
+            error.message().contains("cannot be used for"),
+            "{}",
+            error.message()
+        );
+    }
+
+    #[tokio::test]
+    async fn declarative_capability_accepts_oauth_provider_for_its_own_endpoint() {
+        let ctx = test_ctx();
+        let provider = oauth_catalog_server(&ctx, "https://mcp.linear.app/mcp").await;
+
+        let created = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition(
+                "linear_pack",
+                Some(user_oauth_server("https://mcp.linear.app/mcp/", &provider)),
+            ),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(
+            created.definition.mcp_servers.unwrap()["linear"]
+                .oauth_provider_id
+                .as_deref(),
+            Some(provider.as_str())
+        );
+    }
+
+    // ---- TM-AGENT-005: dependencies are an assignment ----
+
+    fn with_dependencies(name: &str, dependencies: &[&str]) -> DeclarativeCapabilityDefinition {
+        DeclarativeCapabilityDefinition {
+            dependencies: dependencies.iter().map(|d| d.to_string()).collect(),
+            ..definition(name, None)
+        }
+    }
+
+    /// The same database, seen by a caller with another role.
+    fn as_role(ctx: &Ctx, role: OrgRole) -> Ctx {
+        let mut ctx = ctx.clone();
+        ctx.caller.role = role;
+        ctx
+    }
+
+    #[tokio::test]
+    async fn member_cannot_create_declarative_capability_with_high_risk_dependency() {
+        let admin = test_ctx_with_role(OrgRole::Admin);
+        let member = as_role(&admin, OrgRole::Member);
+
+        // The legacy alias resolves to the high-risk shell too.
+        let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("member_shell", &["virtual_bash"]),
+        })
+        .execute(&member)
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("bash"), "{}", error.message());
+
+        let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("member_fetch", &["web_fetch"]),
+        })
+        .execute(&member)
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("web_fetch"), "{}", error.message());
+        assert!(
+            member
+                .db
+                .get_declarative_capability_by_name(DEFAULT_ORG_ID, "member_fetch")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // Low-risk dependencies stay open to members.
+        CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("member_plain", &[]),
+        })
+        .execute(&member)
+        .await
+        .expect("member may create a capability without high-risk dependencies");
+    }
+
+    #[tokio::test]
+    async fn member_cannot_add_high_risk_dependency_on_update() {
+        let admin = test_ctx_with_role(OrgRole::Admin);
+        let member = as_role(&admin, OrgRole::Member);
+        let created = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: with_dependencies("shared_pack", &[]),
+        })
+        .execute(&member)
+        .await
+        .unwrap();
+        let update = |deps: &[&str]| UpdateDeclarativeCapabilityCmd {
+            id: created.public_id.to_string(),
+            req: UpdateDeclarativeCapabilityRequest {
+                definition: Some(with_dependencies("shared_pack", deps)),
+                status: None,
+            },
+        };
+
+        let error = update(&["web_fetch"]).execute(&member).await.unwrap_err();
+        assert!(error.message().contains("web_fetch"), "{}", error.message());
+        let stored = member
+            .db
+            .get_declarative_capability_by_name(DEFAULT_ORG_ID, "shared_pack")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.definition["dependencies"], json!([]));
+
+        let updated = update(&["web_fetch"]).execute(&admin).await.unwrap();
+        assert_eq!(updated.definition.dependencies, vec!["web_fetch"]);
     }
 }

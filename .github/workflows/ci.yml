@@ -2236,7 +2236,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || (needs.changes.outputs.provider_live == 'true' && needs.changes.outputs.offline == 'true')) && needs.changes.outputs.skip_slow_rust != 'true'
-    timeout-minutes: 30
+    # 45, not 30: this job only restores `integration-v2`, and the domain shard
+    # that saves it runs concurrently. After an eviction the build is cold
+    # (29m45s on the 2026-11-07 batch for 411c3927), which overran 30 and
+    # cancelled the batch. Warm builds take ~10m.
+    timeout-minutes: 45
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
     steps:

@@ -975,6 +975,10 @@ pub struct AnalyzeAgent {
     pub tools: Vec<ToolDefinition>,
     #[serde(default)]
     pub mcp_servers: ScopedMcpServers,
+    /// Saved agent this draft edits, for checks that depend on its channels.
+    #[serde(default)]
+    #[schema(value_type = Option<String>)]
+    pub agent_id: Option<AgentId>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -1030,6 +1034,7 @@ impl Command for AnalyzeAgent {
             capabilities: self.capabilities,
             tools: self.tools,
             mcp_servers: self.mcp_servers,
+            agent_id: self.agent_id,
         }
         .execute(ctx)
         .await?;

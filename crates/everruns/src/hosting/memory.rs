@@ -110,6 +110,7 @@ struct Control {
     suspended: bool,
     open: Option<TurnId>,
     pending: Vec<crate::ToolCall>,
+    human_waits: everruns_core::human_wait::HumanWaitState,
     finalizing: HashSet<TurnId>,
     records: HashMap<String, Value>,
     pending_inputs: std::collections::VecDeque<i64>,
@@ -355,7 +356,7 @@ impl Ports {
     }
     async fn append(
         &self,
-        request: EventRequest,
+        mut request: EventRequest,
         expected: Option<Option<i32>>,
     ) -> std::result::Result<Event, EventLogError> {
         self.scope(request.session_id).map_err(log_error)?;
@@ -380,6 +381,7 @@ impl Ports {
             }
             return Err(log_error("conflicting turn terminal outcome"));
         }
+        state.human_waits.annotate(&mut request);
         let event = match expected {
             None => self.session.log.append(request).await?,
             Some(expected) => {
@@ -389,6 +391,7 @@ impl Ports {
                     .await?
             }
         };
+        state.human_waits.observe(&event);
         if matches!(event.data, EventData::TurnStarted(_)) {
             state.open = turn;
             state.open_input = event.context.input_message_id;
@@ -828,5 +831,61 @@ impl CompactionCheckpointStore for Ports {
             .compaction_checkpoint_store
             .record_proactive_attempt(id, provider, model, attempt)
             .await
+    }
+}
+
+#[cfg(test)]
+mod resolver_tests {
+    use super::*;
+
+    /// A build the host never registered runs once its resolver knows it,
+    /// and a build it does not know is refused at creation.
+    #[tokio::test]
+    async fn an_unregistered_build_runs_through_the_resolver() {
+        let profile = MemoryHosting::default();
+        let engine = crate::Engine::builder()
+            .hosting(profile)
+            .resolver(|build: &AgentBuild| {
+                (build.agent == "from-definition").then(|| {
+                    crate::Agent::builder()
+                        .instructions("Answer.")
+                        .model(crate::Model::simulated("resolved"))
+                        .build()
+                        .unwrap()
+                })
+            })
+            .build();
+        let build = AgentBuild::new("from-definition", "host-v1");
+        let session = engine
+            .create_registered(SessionId::new(), &build)
+            .await
+            .unwrap();
+        let turn = session.send_and_wait("Hi").await.unwrap();
+        assert_eq!(turn.response, "resolved");
+        assert!(engine.has_agent_build(&build));
+        // A resolved Agent that needs a workspace gets its own default one.
+        let workspace = crate::Engine::builder()
+            .hosting(MemoryHosting::default())
+            .resolver(|_: &AgentBuild| {
+                crate::Agent::builder()
+                    .instructions("Answer.")
+                    .model(crate::Model::simulated("with files"))
+                    .file("notes.md", "hello")
+                    .build()
+                    .ok()
+            })
+            .build();
+        let files = workspace
+            .create_registered(SessionId::new(), &AgentBuild::new("files", "host-v1"))
+            .await
+            .unwrap();
+        assert_eq!(files.send_and_wait("Hi").await.unwrap().response, "with files");
+        let unknown = AgentBuild::new("unknown", "host-v1");
+        assert!(
+            engine
+                .create_registered(SessionId::new(), &unknown)
+                .await
+                .is_err()
+        );
     }
 }

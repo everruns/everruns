@@ -5,6 +5,18 @@ use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use tracing::warn;
 
+/// Rows of a session in tables without a foreign key to `sessions`, deleted
+/// with it. Trace steps before their turns.
+const UNKEYED_SESSION_ROWS: [&str; 7] = [
+    "DELETE FROM session_trace_steps WHERE session_id = ANY($1)",
+    "DELETE FROM session_trace_turns WHERE session_id = ANY($1)",
+    "DELETE FROM llm_generations WHERE session_id = ANY($1)",
+    "DELETE FROM notification_turn_requests WHERE session_id = ANY($1)",
+    "DELETE FROM runtime_invocations WHERE session_id = ANY($1)",
+    "DELETE FROM session_actor_lease_history WHERE session_id = ANY($1)",
+    "DELETE FROM events WHERE session_id = ANY($1)",
+];
+
 impl Database {
     /// Delete session by org and session id
     ///
@@ -80,6 +92,33 @@ impl Database {
         .execute(&mut *tx)
         .await?;
 
+        // These tables keep no key on their session (migration
+        // 20261107040229_drop_hot_path_foreign_keys), so their rows go here,
+        // for the session and every subagent session the delete cascades to.
+        let doomed: Vec<uuid::Uuid> = sqlx::query_scalar(
+            r#"
+            WITH RECURSIVE doomed(id) AS (
+                SELECT id FROM sessions WHERE org_id = $1 AND id = $2
+                UNION
+                SELECT s.id FROM sessions s
+                JOIN doomed d ON s.parent_session_id = d.id OR s.root_session_id = d.id
+            )
+            SELECT id FROM doomed
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
+        if !doomed.is_empty() {
+            for statement in UNKEYED_SESSION_ROWS {
+                sqlx::query(statement)
+                    .bind(&doomed)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+
         let result = sqlx::query(
             r#"
             DELETE FROM sessions
@@ -103,4 +142,283 @@ fn is_deadlock(err: &anyhow::Error) -> bool {
         .and_then(sqlx::Error::as_database_error)
         .and_then(|db| db.code())
         .is_some_and(|code| code == "40P01")
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::test_database::test_session_row;
+    use crate::storage::{CreateEventRow, StorageBackend};
+    use everruns_contracts::typed_id::SessionId;
+    use everruns_core::DEFAULT_ORG_ID;
+
+    async fn count(db: &StorageBackend, sql: &'static str, ids: &[uuid::Uuid]) -> i64 {
+        sqlx::query_scalar(sql)
+            .bind(ids)
+            .fetch_one(db.pool())
+            .await
+            .unwrap()
+    }
+
+    fn turn(session: SessionId, event_type: &str) -> CreateEventRow {
+        CreateEventRow {
+            session_id: session,
+            event_type: event_type.to_string(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({ "turn_id": uuid::Uuid::now_v7().to_string() }),
+            data: serde_json::json!({}),
+            metadata: None,
+            tags: None,
+        }
+    }
+
+    async fn traced_family(db: &StorageBackend) -> (SessionId, [uuid::Uuid; 2]) {
+        let parent = db.create_test_session().await;
+        let child = db
+            .create_session(crate::storage::CreateSessionRow {
+                parent_session_id: Some(parent),
+                ..test_session_row(DEFAULT_ORG_ID)
+            })
+            .await
+            .unwrap()
+            .id;
+        for session in [parent, child] {
+            db.create_events(vec![
+                turn(session, "turn.started"),
+                turn(session, "turn.completed"),
+            ])
+            .await
+            .unwrap();
+            db.database()
+                .catch_up_session_trace_fully(session.uuid())
+                .await
+                .unwrap();
+        }
+        (parent, [parent.uuid(), child.uuid()])
+    }
+
+    /// The predecessor has no explicit child cleanup; it locks the sequence and
+    /// deletes the parent, relying on database cascades for the rest.
+    async fn legacy_delete(db: &StorageBackend, parent: SessionId) {
+        let mut tx = db.database().pool.begin().await.unwrap();
+        sqlx::query("SET LOCAL app.session_purge = 'true'")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        sqlx::query("SELECT 1 FROM event_sequences WHERE session_id = $1 FOR UPDATE")
+            .bind(parent)
+            .fetch_optional(&mut *tx)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM sessions WHERE org_id = $1 AND id = $2")
+            .bind(DEFAULT_ORG_ID)
+            .bind(parent)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn legacy_session_delete_cleans_unkeyed_rows_during_rolling_upgrade() {
+        let db = StorageBackend::test_database();
+        let (parent, ids) = traced_family(&db).await;
+        let other = db.create_test_session().await;
+        db.create_events(vec![turn(other, "turn.started")])
+            .await
+            .unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM pg_constraint WHERE conname = 'events_session_id_fkey'"
+            )
+            .fetch_one(db.pool())
+            .await
+            .unwrap(),
+            0,
+            "keep the hot-path foreign key removed"
+        );
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM events WHERE session_id = ANY($1)",
+                &ids
+            )
+            .await,
+            4
+        );
+
+        legacy_delete(&db, parent).await;
+
+        for (table, statement) in [
+            (
+                "sessions",
+                "SELECT COUNT(*) FROM sessions WHERE id = ANY($1)",
+            ),
+            (
+                "events",
+                "SELECT COUNT(*) FROM events WHERE session_id = ANY($1)",
+            ),
+            (
+                "session_trace_turns",
+                "SELECT COUNT(*) FROM session_trace_turns WHERE session_id = ANY($1)",
+            ),
+            (
+                "session_trace_steps",
+                "SELECT COUNT(*) FROM session_trace_steps WHERE session_id = ANY($1)",
+            ),
+        ] {
+            let remaining: i64 = sqlx::query_scalar(statement)
+                .bind(ids.as_slice())
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+            assert_eq!(remaining, 0, "legacy delete left rows in {table}");
+        }
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM events WHERE session_id = ANY($1)",
+                &[other.uuid()]
+            )
+            .await,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_cleanup_keeps_the_append_only_guard() {
+        let db = StorageBackend::test_database();
+        let (parent, ids) = traced_family(&db).await;
+
+        let error = sqlx::query("DELETE FROM sessions WHERE org_id = $1 AND id = $2")
+            .bind(DEFAULT_ORG_ID)
+            .bind(parent)
+            .execute(db.pool())
+            .await
+            .expect_err("deleting events still requires the transaction purge flag");
+        assert!(error.to_string().contains("append-only"), "{error}");
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM events WHERE session_id = ANY($1)",
+                &ids
+            )
+            .await,
+            4
+        );
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM sessions WHERE id = ANY($1)",
+                &ids
+            )
+            .await,
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_prerequisite_applies_after_its_successor_without_rewriting_history() {
+        const PREDECESSOR: i64 = 20261107040228;
+        const SUCCESSOR: i64 = 20261107040229;
+        let db = StorageBackend::test_database();
+        let checksum: Vec<u8> = sqlx::query_scalar(
+            "SELECT checksum FROM _sqlx_migrations WHERE version = $1 AND success",
+        )
+        .bind(SUCCESSOR)
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        // This database is a private test copy. Recreate the already-upgraded
+        // state that existed before the missing prerequisite was published.
+        sqlx::query("DROP TRIGGER sessions_unkeyed_delete_compat ON sessions")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        sqlx::query("DROP FUNCTION public.cleanup_session_rows_for_legacy_delete()")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = $1")
+            .bind(PREDECESSOR)
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        crate::setup::migrations::run(db.pool()).await.unwrap();
+
+        let unchanged: Vec<u8> = sqlx::query_scalar(
+            "SELECT checksum FROM _sqlx_migrations WHERE version = $1 AND success",
+        )
+        .bind(SUCCESSOR)
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(unchanged, checksum);
+        let applied: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM _sqlx_migrations WHERE version = $1 AND success",
+        )
+        .bind(PREDECESSOR)
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(applied, 1);
+        let (parent, ids) = traced_family(&db).await;
+        legacy_delete(&db, parent).await;
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM events WHERE session_id = ANY($1)",
+                &ids
+            )
+            .await,
+            0
+        );
+    }
+
+    /// Events and trace rows keep no key on their session, so deleting a
+    /// session removes them itself, its subagent sessions' rows included.
+    #[tokio::test]
+    async fn deleting_a_session_removes_its_unkeyed_rows_and_its_subagents() {
+        let db = StorageBackend::test_database();
+        let parent = db.create_test_session().await;
+        let child = db
+            .create_session(crate::storage::CreateSessionRow {
+                parent_session_id: Some(parent),
+                ..test_session_row(DEFAULT_ORG_ID)
+            })
+            .await
+            .unwrap()
+            .id;
+        let ids = [parent.uuid(), child.uuid()];
+        for session in [parent, child] {
+            db.create_events(vec![
+                turn(session, "turn.started"),
+                turn(session, "turn.completed"),
+            ])
+            .await
+            .unwrap();
+            db.database()
+                .catch_up_session_trace_fully(session.uuid())
+                .await
+                .unwrap();
+        }
+        let events = "SELECT COUNT(*) FROM events WHERE session_id = ANY($1)";
+        let turns = "SELECT COUNT(*) FROM session_trace_turns WHERE session_id = ANY($1)";
+        assert_eq!(count(&db, events, &ids).await, 4);
+        assert_eq!(count(&db, turns, &ids).await, 2);
+
+        assert!(db.delete_session(DEFAULT_ORG_ID, parent).await.unwrap());
+
+        assert_eq!(count(&db, events, &ids).await, 0);
+        assert_eq!(count(&db, turns, &ids).await, 0);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM sessions WHERE id = ANY($1)",
+                &ids
+            )
+            .await,
+            0
+        );
+    }
 }

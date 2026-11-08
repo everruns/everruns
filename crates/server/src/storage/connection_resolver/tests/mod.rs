@@ -7,7 +7,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const INPUT_MESSAGE: Uuid = Uuid::from_u128(71);
 const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
+mod resource_binding;
 mod sandbox;
+use resource_binding::refresh_grant;
 
 struct FakeRefreshExchange {
     calls: AtomicUsize,
@@ -28,6 +30,10 @@ impl OAuthRefreshExchange for FakeRefreshExchange {
         request: OAuthRefreshRequest,
     ) -> std::result::Result<OAuthTokenResponse, OAuthRefreshError> {
         assert_eq!(request.refresh_token, "old-refresh");
+        assert!(matches!(
+            request.resource.as_deref(),
+            Some("https://mcp.resend.com/mcp" | "https://mcp.linear.app/mcp")
+        ));
         self.calls.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(self.delay).await;
         match self.result {
@@ -790,7 +796,11 @@ async fn resend_connection_after_sixteen_minutes_refreshes_without_reconnect() {
             provider_user_id: None,
             provider_username: Some("Resend".to_string()),
             access_token_encrypted: Some(encryption.encrypt_string("stale-access").unwrap()),
-            refresh_token_encrypted: Some(encryption.encrypt_string("old-refresh").unwrap()),
+            refresh_token_encrypted: Some(
+                encryption
+                    .encrypt_string(&refresh_grant("resend", "old-refresh"))
+                    .unwrap(),
+            ),
             scopes: None,
             expires_at: Some(Utc::now() - Duration::minutes(16)),
             installation_id: None,
@@ -834,10 +844,23 @@ async fn resend_connection_after_sixteen_minutes_refreshes_without_reconnect() {
         encryption
             .decrypt_to_string(updated.refresh_token_encrypted.as_deref().unwrap())
             .unwrap(),
-        "rotated-refresh"
+        refresh_grant("resend", "rotated-refresh")
     );
     assert_eq!(updated.scopes.as_deref(), Some("email.send"));
     assert!(updated.expires_at.is_some_and(|value| value > Utc::now()));
+    // Rebuild the resolver as after process restart; the DB owns the binding.
+    let restarted =
+        DbConnectionResolver::with_oauth_refresh(db, encryption, None, exchange.clone())
+            .bound_to_input_message(INPUT_MESSAGE);
+    assert_eq!(
+        restarted
+            .get_connection_token(session_id, &provider)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("fresh-access")
+    );
+    assert_eq!(exchange.calls.load(Ordering::SeqCst), 1);
 }
 #[tokio::test]
 async fn expired_identity_grant_refreshes_and_persists_rotated_grant() {
@@ -854,7 +877,10 @@ async fn expired_identity_grant_refreshes_and_persists_rotated_grant() {
                 fixture.encryption.encrypt_string("stale-access").unwrap(),
             ),
             refresh_token_encrypted: Some(
-                fixture.encryption.encrypt_string("old-refresh").unwrap(),
+                fixture
+                    .encryption
+                    .encrypt_string(&refresh_grant("linear", "old-refresh"))
+                    .unwrap(),
             ),
             scopes: None,
             expires_at: Some(Utc::now() - Duration::minutes(1)),
@@ -905,7 +931,7 @@ async fn expired_identity_grant_refreshes_and_persists_rotated_grant() {
             .encryption
             .decrypt_to_string(updated.refresh_token_encrypted.as_deref().unwrap())
             .unwrap(),
-        "rotated-refresh"
+        refresh_grant("linear", "rotated-refresh")
     );
     assert_eq!(updated.scopes.as_deref(), Some("email.send"));
     assert!(updated.expires_at.is_some_and(|value| value > Utc::now()));
@@ -926,7 +952,10 @@ async fn invalid_identity_refresh_grant_is_revoked_without_retry() {
                 fixture.encryption.encrypt_string("stale-access").unwrap(),
             ),
             refresh_token_encrypted: Some(
-                fixture.encryption.encrypt_string("old-refresh").unwrap(),
+                fixture
+                    .encryption
+                    .encrypt_string(&refresh_grant("linear", "old-refresh"))
+                    .unwrap(),
             ),
             scopes: None,
             expires_at: Some(Utc::now() - Duration::minutes(1)),
@@ -981,7 +1010,11 @@ async fn expired_session_grant_refreshes_and_persists_rotated_grant() {
         session_id,
         server_id,
         access_token_encrypted: encryption.encrypt_string("stale-access").unwrap(),
-        refresh_token_encrypted: Some(encryption.encrypt_string("old-refresh").unwrap()),
+        refresh_token_encrypted: Some(
+            encryption
+                .encrypt_string(&refresh_grant("resend", "old-refresh"))
+                .unwrap(),
+        ),
         expires_at_encrypted: Some(
             encryption
                 .encrypt_string(&(Utc::now() - Duration::minutes(1)).to_rfc3339())
@@ -1026,7 +1059,7 @@ async fn expired_session_grant_refreshes_and_persists_rotated_grant() {
         encryption
             .decrypt_to_string(updated.refresh_token_encrypted.as_deref().unwrap())
             .unwrap(),
-        "rotated-refresh"
+        refresh_grant("resend", "rotated-refresh")
     );
 }
 
@@ -1041,7 +1074,11 @@ async fn concurrent_expired_resolution_coalesces_refresh() {
         provider_user_id: None,
         provider_username: Some("Resend".to_string()),
         access_token_encrypted: Some(encryption.encrypt_string("stale-access").unwrap()),
-        refresh_token_encrypted: Some(encryption.encrypt_string("old-refresh").unwrap()),
+        refresh_token_encrypted: Some(
+            encryption
+                .encrypt_string(&refresh_grant("resend", "old-refresh"))
+                .unwrap(),
+        ),
         scopes: None,
         expires_at: Some(Utc::now() - Duration::minutes(1)),
         installation_id: None,
@@ -1090,7 +1127,11 @@ async fn expired_resolution_coalesces_refresh_across_replicas() {
         provider_user_id: None,
         provider_username: Some("Resend".to_string()),
         access_token_encrypted: Some(encryption.encrypt_string("stale-access").unwrap()),
-        refresh_token_encrypted: Some(encryption.encrypt_string("old-refresh").unwrap()),
+        refresh_token_encrypted: Some(
+            encryption
+                .encrypt_string(&refresh_grant("resend", "old-refresh"))
+                .unwrap(),
+        ),
         scopes: None,
         expires_at: Some(Utc::now() - Duration::minutes(1)),
         installation_id: None,
@@ -1137,7 +1178,9 @@ async fn failed_refresh_fails_closed_and_preserves_existing_grant() {
     let user_id = Uuid::now_v7();
     let (db, encryption, session_id, _server_id, provider) = setup(Some(user_id)).await;
     let original_access = encryption.encrypt_string("stale-access").unwrap();
-    let original_refresh = encryption.encrypt_string("old-refresh").unwrap();
+    let original_refresh = encryption
+        .encrypt_string(&refresh_grant("resend", "old-refresh"))
+        .unwrap();
     db.upsert_user_connection(CreateUserConnectionRow {
         user_id,
         provider: provider.clone(),

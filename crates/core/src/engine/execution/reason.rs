@@ -836,9 +836,7 @@ impl ReasonAtom {
             .map_err(durable_retry::retryable_start)?;
         }
 
-        // 14. Process stream, batching output.message.delta every 100ms. The
-        // host's execution slot is free while we wait on the model (model_wait).
-        let model_wait = super::model_wait::begin();
+        // 14. Process stream, batching output.message.delta every 100ms.
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let has_provider_executed_tools =
             hosted_tools::has_provider_executed_tools(&llm_config.driver_options);
@@ -1616,7 +1614,6 @@ impl ReasonAtom {
                 tripped,
             );
         };
-        drop(model_wait);
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);

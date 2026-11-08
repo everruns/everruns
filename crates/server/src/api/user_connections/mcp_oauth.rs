@@ -83,23 +83,23 @@ pub(super) async fn ensure_mcp_oauth_registration_via(
     } else {
         None
     };
-    if oauth.resource.is_none()
-        && let Some(resource) = resource_metadata
-            .as_ref()
-            .and_then(|metadata| metadata.resource.clone())
-    {
-        oauth.resource = Some(resource);
-    }
-    if let Some(resource) = oauth.resource.as_deref() {
-        // THREAT[TM-MCP-008]: validate discovered and preconfigured audiences
-        // before persisting them or involving the authorization server.
-        validate_oauth_resource(resource, &row.url).map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("OAuth protected resource blocked: {e}"),
-            )
-        })?;
-    }
+    let resource = oauth
+        .resource
+        .clone()
+        .or_else(|| {
+            resource_metadata
+                .as_ref()
+                .and_then(|metadata| metadata.resource.clone())
+        })
+        .unwrap_or_else(|| row.url.clone());
+    // THREAT[TM-MCP-008]: metadata absence must not remove audience binding.
+    validate_oauth_resource(&resource, &row.url).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("OAuth protected resource blocked: {e}"),
+        )
+    })?;
+    oauth.resource = Some(resource);
     let metadata = if !needs_server_discovery {
         OAuthServerMetadata {
             issuer: oauth.issuer.clone(),

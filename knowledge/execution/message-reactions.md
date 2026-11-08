@@ -94,7 +94,15 @@ The Reactions capability adds `react(emoji, message_id?, remove?)`. With no
 `message_id` it reacts to the message the agent is answering (the 👀 "looking"
 and ✅ "done" acknowledgement). Message ids appear in notes. The tool appends
 the same event a person's reaction does. No feature flag: adding the
-capability is the opt-in. Slack's `slack_add_reaction` stays for Slack
+capability is the opt-in. The 👀/✅ acknowledgement for Slack messages is a default in the
+capability's instructions, not a platform auto-reaction, so the agent's own
+instructions (and the person asking) stay in charge. It is Slack-only because
+Everruns chat already shows live progress; the instruction text stays fixed for
+the prompt cache and the capability's model view marks Slack messages
+`[via Slack]`. An agent's first Slack channel turns the capability on (an
+`update_agent` inside the channel command, so it lands in history; skipped for
+package-owned channels), and the `channels.slack_without_reactions` check
+suggests it otherwise. Slack's `slack_add_reaction` stays for Slack
 messages the session never stored (any message the agent can see by
 channel and timestamp).
 

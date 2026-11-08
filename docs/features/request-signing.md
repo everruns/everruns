@@ -2,7 +2,8 @@
 title: Request Signing
 description: How Everruns signs outbound HTTP requests with Ed25519 signatures per RFC 9421, enabling target servers to verify bot identity
 sidebar:
-  order: 30
+  label: Request Signing
+appliesTo: [platform, cloud]
 ---
 
 When an AI agent fetches web content, the receiving server has no way to distinguish it from an anonymous scraper. **Request signing** solves this by attaching a cryptographic signature to every outbound HTTP request, letting target servers verify who is making the request and choose to grant or deny access based on that identity.

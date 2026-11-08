@@ -271,6 +271,21 @@ people sent and the agent's replies.
 - When the agent reacts with the **Reactions** capability's `react` tool,
   the emoji also appears on the Slack message.
 
+### Acknowledging messages
+
+With the **Reactions** capability, an agent reacts 👀 when it starts working
+on a Slack message and ✅ once it has answered, so people in the thread can
+see it got the message before the reply arrives. This is a default in the
+capability's instructions, not an automatic reaction: the agent's own
+instructions win, so write "Don't react to messages" or "Use 🫡 instead of 👀"
+to change it. It applies to Slack messages only; Everruns chat already shows
+live progress.
+
+Connecting an agent's first Slack channel turns the Reactions capability on,
+recorded in the agent's history. Remove it in the agent's capabilities if you
+do not want reactions; adding another Slack channel does not turn it back on.
+Agent checks suggest it for an agent that answers Slack without it.
+
 Hearing reactions needs the `reactions:read` scope and the `reaction_added`
 and `reaction_removed` events, which the generated manifest includes. An app
 installed before them keeps working without reactions: update its manifest

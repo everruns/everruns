@@ -134,3 +134,79 @@ async fn compaction_checkpoints_follow_the_selected_branch() {
         "redo restores the branch's checkpoint"
     );
 }
+
+#[tokio::test]
+async fn human_wait_survives_sqlite_reopen_and_command_replay() {
+    use everruns_core::{
+        events::{ToolCallRequestedData, ToolCompletedData, TurnStartedData},
+        session_commands::SessionCommand,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("wait.db");
+    let hosting = SqliteHosting::open(&path).unwrap();
+    let session = SessionId::new();
+    hosting
+        .create(
+            session,
+            &SessionBinding {
+                framework: 1,
+                behavior: AgentBuild::new("waits", "v1"),
+                harness: None,
+                environment: None,
+                metadata: Value::Null,
+            },
+        )
+        .await
+        .unwrap();
+    let turn = TurnId::new();
+    let input = MessageId::new();
+    let context = EventContext::turn(turn, input);
+    let started_at = everruns_contracts::rt::utc_now() - chrono::Duration::seconds(30);
+    hosting.transaction(session, |tx,state| {
+        let mut start = EventRequest::new(session, context.clone(), TurnStartedData {
+            turn_id: turn, input_message_id: input, input_content: None,
+            agent_id: None, agent_name: None, agent_description: None, origin: None,
+        });
+        everruns_core::causal::attach_turn_trace(&mut start,"00-1234567890abcdef1234567890abcdef-1234567890abcdef-01");
+        append(tx,state,start,None)?;
+        let mut ask = EventRequest::new(session,context.clone(),ToolCallRequestedData::with_definitions(&[crate::ToolCall {
+            id:"q".into(), name:"ask_user".into(), arguments:json!({"questions":[],"expires_at":(everruns_contracts::rt::utc_now()+chrono::Duration::hours(1)).to_rfc3339()}),
+        }],&[]));
+        ask.ts=started_at;
+        append(tx,state,ask,None)?;
+        Ok(())
+    }).unwrap();
+    drop(hosting);
+    let hosting = SqliteHosting::open(&path).unwrap();
+    let command = SessionCommand::Resolve {
+        id: "answer-once".into(),
+        turn,
+        results: vec![ToolCompletedData::success(
+            "q".into(),
+            "ask_user".into(),
+            vec![everruns_core::message::ContentPart::tool_result_text(
+                &json!({"status":"declined","answered_by":"user","answers":[]}),
+            )],
+            None,
+        )],
+    };
+    hosting.execute_command(session, command.clone()).unwrap();
+    hosting.execute_command(session, command).unwrap();
+    let db = hosting.db.lock().unwrap();
+    let mut query = db
+        .prepare("SELECT value FROM framework_events WHERE session=? AND type='tool.completed'")
+        .unwrap();
+    let events: Vec<Event> = query
+        .query_map([session.to_string()], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(|row| decode(row.unwrap()).unwrap())
+        .collect();
+    assert_eq!(events.len(), 1);
+    let wait = &events[0].metadata.as_ref().unwrap()[everruns_core::human_wait::METADATA_KEY][0];
+    assert_eq!(wait["outcome"], "declined");
+    assert_eq!(wait["started_at"], json!(started_at));
+    assert_eq!(
+        wait["turn_traceparent"],
+        "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01"
+    );
+}

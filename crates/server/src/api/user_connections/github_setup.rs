@@ -70,6 +70,7 @@ pub(super) async fn github_authorize_inner(
         popup,
         code_verifier: String::new(),
         github_installation_id: None,
+        mcp_config_hash: None,
     };
     let url = GitHubAppService::new(config)
         .user_authorization_url(&pending.state)
@@ -209,6 +210,7 @@ pub async fn github_callback(
         let authorize = PendingOAuthState {
             state: new_setup_state(),
             github_installation_id: Some(installation_id),
+            mcp_config_hash: None,
             ..pending
         };
         let url = service

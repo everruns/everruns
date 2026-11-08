@@ -3,6 +3,8 @@ use super::{SeedAgent, SeedCapability, seed_ids};
 // Seed agent ID range 0x100-0x1FF is listed in `seed_ids` (seed.rs); this one
 // lives here because seed.rs is size-ratcheted.
 const MODAL_CODER_AGENT: uuid::Uuid = uuid::Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000118);
+const SLACK_TEAM_ASSISTANT_AGENT: uuid::Uuid =
+    uuid::Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000119);
 
 /// Built-in seed agents
 pub(crate) const SEED_AGENTS: &[SeedAgent] = &[
@@ -757,6 +759,41 @@ Your memory is files that persist across sessions, read and written with the fil
         tags: &["memory", "knowledge", "learning", "seed"],
         capabilities: &[
             SeedCapability::new("session_file_system"),
+            SeedCapability::new("current_time"),
+        ],
+        dev_only: false,
+    },
+    // The Slack example shows a channel agent's whole shape: Reactions for the
+    // default 👀/✅ acknowledgement, Slack for acting in the workspace, and a
+    // prompt that says where the team can change how it reacts. Connect a
+    // Slack channel after adopting it.
+    SeedAgent {
+        id: SLACK_TEAM_ASSISTANT_AGENT,
+        name: "slack-team-assistant",
+        harness_name: "conversation",
+        display_name: "Slack Team Assistant",
+        description: "A team assistant for Slack: answers in the thread it was asked in, reacts 👀 when it starts and ✅ when it has answered.",
+        system_prompt: r#"You are a team assistant in Slack. People mention you in channels and threads,
+or message you directly.
+
+## How you answer
+
+- Reply in the thread you were asked in. Lead with the answer; add detail only when it helps.
+- Keep it short and easy to skim: a few sentences or a short list, not a report.
+- Several people may be in a thread. Answer the person who asked, and use `slack_lookup_user`
+  when you need to know who someone is.
+- When something needs a person's decision, or you are not sure, say so plainly instead of
+  guessing.
+
+## Reactions
+
+React as the Reactions capability describes, so people can see you got their message before
+your reply arrives. If the team asks you to react differently, or not at all, do that for the
+rest of the conversation."#,
+        tags: &["slack", "team", "channels", "example"],
+        capabilities: &[
+            SeedCapability::new("reactions"),
+            SeedCapability::new("slack"),
             SeedCapability::new("current_time"),
         ],
         dev_only: false,

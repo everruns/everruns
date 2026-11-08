@@ -2,6 +2,7 @@
 title: The Inspector explains findings and groups similar ones
 description: Serious findings now come with a plain account of what happened and a next step, similar findings show as one row, and findings can be dismissed with a reason.
 date: 2026-11-02
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud]

@@ -75,8 +75,12 @@ below makes them restart safe.
 - **Tiers.** Near (polled every 250 ms, woken at once by this replica's own
   writes): thread coordination, A2A push, notifications, MCP events,
   sandbox lifecycle, and listeners an embedder adds. Later (polled every 2 s,
-  pages of 1,000): usage, budgets, customer tracing, turn latency, titles, run
-  summaries, observer matching, approval audit, reporting facts. Each tier
+  pages of 1,000): usage, budgets, customer tracing, turn latency, session
+  trace, titles, run summaries, observer matching, approval audit, reporting
+  facts. Turn latency and the session trace keep each running turn in memory
+  and act on its last event, since the feed hands one replica every event of
+  a session in order; they read the turn back from storage only when they did
+  not see its start. Each tier
   has its own cursors, so a slow exporter never delays a coordination
   wake-up. Usage and budgets
   share the later tier because both read `llm.generation`, the largest event:
@@ -100,6 +104,7 @@ Effects under replay:
 | Reporting facts | Fact rows unique on a source key from the event (capability snapshots: the turn) |
 | MCP events | Carry the event id for receivers to dedupe |
 | A2A push, coordination, sandbox | Apply the current state, not a delta |
+| Session trace | Applies events past its watermark only |
 | Customer tracing, turn latency, titles, run summary | May repeat a span, a log line or a check after a crash |
 
 ## Cost
@@ -123,6 +128,19 @@ Reporting facts are a later-tier listener (`ReportingProjection`); event
 writes no longer enqueue reporting outbox rows. Capability snapshot facts are
 keyed per turn, so a turn's later model calls write none
 (`knowledge/evaluation/reporting.md`).
+
+## Session reads
+
+Listeners run on nearly every event, so what they read about the session comes
+from memory where it can stay exact. The org, parent, workspace and agent are
+set when a session is created and never change, so the reporting, sandbox
+capability and late-usage paths take them from the per-server lineage cache (`crates/server/src/storage/backend/identity_cache.rs`). The
+observer listener takes an org's active observers from the configuration row
+cache, which a trigger on `observers` keeps exact across servers
+(`config_row_cache.rs`), and reads the session row only when the org has
+observers to match. At 100 agents on the stress bench that removed about 18
+statements per turn: 6.5 org lookups, 6.7 session-row reads and 4.5 observer
+reads (`knowledge/operations/load-testing.md`).
 
 ## Success bar
 

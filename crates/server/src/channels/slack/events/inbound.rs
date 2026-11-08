@@ -117,7 +117,12 @@ pub(crate) fn parse_slack_inbound_event(
         actor,
         text: event.text.clone().unwrap_or_default(),
         attachments,
-        dedup_key: event.ts.clone().unwrap_or_default(),
+        // `ts` is unique only within a Slack conversation.
+        dedup_key: match (&event.channel, &event.ts) {
+            (Some(channel), Some(ts)) => format!("{channel}:{ts}"),
+            (None, Some(ts)) => ts.clone(),
+            (_, None) => String::new(),
+        },
         thread_ref: Some(thread_ref.to_string()),
         routing_metadata,
         message_metadata: Default::default(),

@@ -1,6 +1,5 @@
 // PostgreSQL repository: Events (source of truth for messages)
 
-mod after_store;
 pub(crate) mod feed;
 pub(crate) mod group_commit;
 mod input_lookups;
@@ -203,7 +202,6 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -280,7 +278,6 @@ impl Database {
         .await?;
         tx.commit().await?;
 
-        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -319,7 +316,6 @@ impl Database {
             .fetch_all(&self.pool)
             .await?;
         let ordered = order_batch_rows(&inputs, rows)?;
-        self.after_events_stored(&ordered).await;
         Ok(ordered)
     }
 
@@ -457,7 +453,6 @@ impl Database {
             ordered.extend(order_batch_rows(chunk, rows)?);
         }
         tx.commit().await?;
-        self.after_events_stored(&ordered).await;
         Ok(ordered)
     }
 

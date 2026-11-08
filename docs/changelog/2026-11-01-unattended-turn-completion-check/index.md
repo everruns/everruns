@@ -2,6 +2,7 @@
 title: Trigger and schedule sessions finish work they announced
 description: When an unattended turn ends on an announcement without doing the work, the agent's own model reviews it and the turn continues, within a budget.
 date: 2026-11-01
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud]

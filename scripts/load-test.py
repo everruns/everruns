@@ -118,10 +118,10 @@ class Session:
             event, at = await asyncio.wait_for(self.events.get(), timeout)
             if first is None and event.endswith(".delta"):
                 first = at
-            failed |= event == "turn.failed"
+            failed |= event in ("turn.failed", "turn.sealed")
             if event == "session.idled":
                 if failed:
-                    raise RuntimeError("turn.failed")
+                    raise RuntimeError("turn failed or sealed")
                 ms = lambda t: (t - start) * 1000 if t else None
                 return {"post": ms(posted), "first": ms(first), "turn": ms(at)}
 

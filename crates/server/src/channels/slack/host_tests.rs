@@ -475,6 +475,75 @@ async fn mentions_only_lets_an_unmentioned_message_pass_by() {
     assert_eq!(slack.bindings().await, 1);
 }
 
+/// One channel @-mention as Slack delivers it: a `message` event from the
+/// `message.channels` subscription and an `app_mention`, both under one `ts`.
+fn mention(event_type: &str, ts: &str) -> Value {
+    let mut body = message("C1", ts, None);
+    body["event"]["type"] = json!(event_type);
+    body["event"]["text"] = json!("<@UBOT> run your first check");
+    body
+}
+
+async fn slack_with_policy(policy: SlackResponsePolicy) -> Slack {
+    let mut config = slack_config(SessionBinding::Conversation);
+    config.response_policy = policy;
+    let slack = Slack::new(config).await;
+    slack.state.bot_user_cache.insert(
+        slack.channel.public_id.to_string(),
+        Some("UBOT".to_string()),
+    );
+    slack
+}
+
+#[tokio::test]
+async fn a_mention_is_answered_once_whichever_of_its_two_events_comes_first() {
+    for policy in [
+        SlackResponsePolicy::MentionsOnly,
+        SlackResponsePolicy::RelevantMessages,
+        SlackResponsePolicy::AllMessages,
+    ] {
+        for order in [["message", "app_mention"], ["app_mention", "message"]] {
+            let slack = slack_with_policy(policy).await;
+            let first = slack.send(mention(order[0], "1.0")).await.unwrap();
+            session_of(&first);
+            let second = slack.send(mention(order[1], "1.0")).await.unwrap();
+            assert_eq!(second.body["duplicate"], true, "{policy:?} {order:?}");
+            assert_eq!(slack.bindings().await, 1, "{policy:?} {order:?}");
+            assert_eq!(
+                slack.runner.started.lock().unwrap().len(),
+                1,
+                "{policy:?} {order:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_declined_message_event_does_not_swallow_its_app_mention() {
+    // Without a bot user to match, the `message` half is declined; the
+    // `app_mention` that follows under the same `ts` must still be answered.
+    let slack = slack_with_policy(SlackResponsePolicy::MentionsOnly).await;
+    let mut plain = mention("message", "1.0");
+    plain["event"]["text"] = json!("<@USOMEONE> run your first check");
+    let declined = slack.send(plain).await.unwrap();
+    assert!(declined.body.get("session_id").is_none());
+    let mut app_mention = mention("app_mention", "1.0");
+    app_mention["event"]["text"] = json!("<@USOMEONE> run your first check");
+    session_of(&slack.send(app_mention.clone()).await.unwrap());
+    // A real platform retry of the admitted event is still dropped.
+    let retry = slack.send(app_mention).await.unwrap();
+    assert_eq!(retry.body["duplicate"], true);
+    assert_eq!(slack.runner.started.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn the_same_ts_in_another_channel_is_not_a_retry() {
+    let slack = Slack::new(slack_config(SessionBinding::Conversation)).await;
+    session_of(&slack.send(message("C1", "1.0", None)).await.unwrap());
+    session_of(&slack.send(message("C2", "1.0", None)).await.unwrap());
+    assert_eq!(slack.runner.started.lock().unwrap().len(), 2);
+}
+
 #[tokio::test]
 async fn a_pane_turn_streams_and_a_channel_turn_does_not() {
     let mut config = slack_config(SessionBinding::Thread);

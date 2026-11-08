@@ -10,6 +10,13 @@
     "http_path": "/v1/agents/analyze",
     "args": [
       {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Saved agent this draft edits, for checks that depend on its channels."
+      },
+      {
         "field": "capabilities",
         "long": "capabilities",
         "kind": "json",
@@ -1849,6 +1856,13 @@
     "method": "POST",
     "http_path": "/v1/agents/preview",
     "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Saved agent this draft edits."
+      },
       {
         "field": "capabilities",
         "long": "capabilities",

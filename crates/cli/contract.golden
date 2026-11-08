@@ -1,4 +1,4 @@
-agents analyze	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents analyze	--agent-id --capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
 agents avatar presets	--context-revision --reason
 agents avatar set	--agent --content-type --context-revision --image-base64 --preset --reason <agent_id>
 agents channels create	--agent-id! --channel-config --channel-type! --context-revision --enabled --reason
@@ -44,7 +44,7 @@ agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --reason --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
 agents pause	--agent --context-revision --reason <agent_id>
-agents preview	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents preview	--agent-id --capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
 agents resume	--agent --context-revision --reason <agent_id>
 agents scripts create	--agent-id! --body! --context-revision --description! --input-schema --name! --reason
 agents scripts delete	--agent-id! --context-revision --reason --script-id!

@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import collections
 import os
+import re
+import json
 import threading
 import time
+import urllib.request
 
 CLK_TCK = os.sysconf("SC_CLK_TCK")
 
@@ -28,7 +31,7 @@ def proc_cpu_seconds(pid: int, children: bool = False) -> float:
             fields = f.read().rsplit(")", 1)[1].split()
     except (FileNotFoundError, ProcessLookupError):
         return 0.0
-    # Fields after the comm: state is [0], utime [11], stime [12], cutime [13], cstime [14].
+    # Fields after the comm: state is [0], ppid [1], utime [11], stime [12], cutime [13], cstime [14].
     ticks = int(fields[11]) + int(fields[12])
     if children:
         ticks += int(fields[13]) + int(fields[14])
@@ -42,11 +45,36 @@ def child_pids(parent: int) -> list[int]:
             continue
         try:
             with open(f"/proc/{entry}/stat") as f:
-                if int(f.read().rsplit(")", 1)[1].split()[2]) == parent:
+                if int(f.read().rsplit(")", 1)[1].split()[1]) == parent:
                     out.append(int(entry))
         except (FileNotFoundError, ProcessLookupError, IndexError, ValueError):
             continue
     return out
+
+
+def rss_mib(pid: int) -> float:
+    try:
+        with open(f"/proc/{pid}/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024
+    except (FileNotFoundError, ProcessLookupError):
+        pass
+    return 0.0
+
+
+def nats_stream(monitor_port: int | None) -> dict[str, float]:
+    """Bytes and messages held in NATS JetStream streams (the live-event replay buffer)."""
+    if not monitor_port:
+        return {}
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{monitor_port}/jsz?streams=true", timeout=5) as r:
+            jsz = json.load(r)
+    except (OSError, ValueError):
+        return {}
+    streams = [s for a in jsz.get("account_details", []) for s in a.get("stream_detail", [])]
+    return {"nats_bytes": float(sum(s["state"]["bytes"] for s in streams)),
+            "nats_messages": float(sum(s["state"]["messages"] for s in streams))}
 
 
 def postgres_cpu_seconds(postmaster: int) -> float:
@@ -81,6 +109,7 @@ class Sampler(threading.Thread):
         self.waits: collections.Counter = collections.Counter()
         self.active: list[int] = []
         self.cpu: dict[str, list[float]] = collections.defaultdict(list)
+        self.rss: dict[str, list[float]] = collections.defaultdict(list)
 
     def run(self) -> None:
         last, last_t = None, time.monotonic()
@@ -98,6 +127,8 @@ class Sampler(threading.Thread):
             cpu = {"postgres": postgres_cpu_seconds(self.pg.postmaster_pid())}
             for role, pids in self.procs.items():
                 cpu[role] = sum(proc_cpu_seconds(p) for p in pids)
+            for role, pids in self.procs.items():
+                self.rss[role].append(sum(rss_mib(p) for p in pids))
             if last is not None:
                 for role, v in cpu.items():
                     self.cpu[role].append((v - last[role]) / max(1e-6, now - last_t))
@@ -113,6 +144,10 @@ class Sampler(threading.Thread):
             "db_waits": {k: round(v / n, 2) for k, v in self.waits.most_common(8)},
             # Peak over a 2 s moving window, so one sample's jitter does not set it.
             "cpu_peak_cores": {role: round(max(moving(v, 4), default=0), 2) for role, v in self.cpu.items()},
+            # Resident memory per role, summed over its processes: at the first
+            # sample (idle, after warm-up) and at the peak.
+            "rss_idle_mib": {role: round(v[0]) for role, v in self.rss.items() if v},
+            "rss_peak_mib": {role: round(max(v)) for role, v in self.rss.items() if v},
         }
 
 
@@ -121,7 +156,7 @@ def moving(values: list[float], width: int) -> list[float]:
 
 
 TURN_EVENTS = ("input.message", "turn.started", "llm.generation", "act.completed",
-               "turn.completed", "turn.failed", "turn.cancelled")
+               "turn.completed", "turn.failed", "turn.cancelled", "turn.sealed")
 
 
 def turn_rows(pg) -> list[list[str]]:
@@ -147,7 +182,7 @@ def turns(rows: list[list[str]]) -> list[dict]:
             cur["calls"] += 1
         elif cur and kind == "act.completed":
             cur["tool"] += d
-        elif cur and kind in ("turn.completed", "turn.failed", "turn.cancelled"):
+        elif cur and kind in ("turn.completed", "turn.failed", "turn.cancelled", "turn.sealed"):
             cur["turn"] = t - cur["start"]
             cur["ok"] = kind == "turn.completed"
             cur["overhead"] = cur["turn"] - cur["llm"] - cur["tool"]
@@ -183,6 +218,16 @@ def turn_summary(ts: list[dict]) -> dict:
     }
 
 
+def peak_running_turns(ts: list[dict]) -> int:
+    """Most turns in progress at the same moment."""
+    edges = sorted([(t["start"], 1) for t in ts] + [(t["start"] + t["turn"], -1) for t in ts])
+    running = peak = 0
+    for _, step in edges:
+        running += step
+        peak = max(peak, running)
+    return peak
+
+
 def top_statements(pg, turns_done: int, limit: int = 12) -> list[dict]:
     """The statements costing the most per turn, by calls, by time and by rows
     returned (history reads show up there), since the load began."""
@@ -197,6 +242,29 @@ def top_statements(pg, turns_done: int, limit: int = 12) -> list[dict]:
                         "ms_per_turn": round(float(ms) / n, 2),
                         "rows_per_turn": round(float(returned) / n, 1), "query": query})
     return out
+
+
+def write_statements(pg, turns_done: int, path: str) -> None:
+    """Every statement since the load began, per turn, as TSV: what a cut has
+    to account for. WAL bytes per statement show which ones write."""
+    n = max(1, turns_done)
+    rows = pg.psql("stress", (
+        "SELECT calls, total_exec_time, rows, wal_bytes, regexp_replace(query, '\\s+', ' ', 'g') "
+        "FROM pg_stat_statements ORDER BY calls DESC"))
+    with open(path, "w") as f:
+        f.write("calls_per_turn\tms_per_turn\trows_per_turn\twal_kb_per_turn\tquery\n")
+        for calls, ms, returned, wal, query in rows:
+            f.write(f"{float(calls) / n:.2f}\t{float(ms) / n:.3f}\t{float(returned) / n:.2f}\t"
+                    f"{float(wal) / 1024 / n:.2f}\t{query}\n")
+    # Row writes per table: with the schema's foreign keys, this says which
+    # inserts make the key-share lookups in the statement list.
+    rows = pg.psql("stress", (
+        "SELECT relname, n_tup_ins, n_tup_upd, n_tup_hot_upd, n_tup_del FROM pg_stat_user_tables "
+        "WHERE n_tup_ins + n_tup_upd + n_tup_del > 0 ORDER BY n_tup_ins + n_tup_upd + n_tup_del DESC"))
+    with open(os.path.join(os.path.dirname(path), "tables.tsv"), "w") as f:
+        f.write("inserts_per_turn\tupdates_per_turn\thot_updates_per_turn\tdeletes_per_turn\ttable\n")
+        for name, ins, upd, hot, dele in rows:
+            f.write(f"{int(ins) / n:.2f}\t{int(upd) / n:.2f}\t{int(hot) / n:.2f}\t{int(dele) / n:.2f}\t{name}\n")
 
 
 def background(idle_before: dict, idle_after: dict, seconds: float) -> dict:
@@ -222,3 +290,76 @@ def per_turn(before: dict, after: dict, turns_done: int, rate: dict | None = Non
         if k.startswith("cpu_"):
             out[f"{k}_ms_per_turn"] = round(1000 * d[k] / n, 1)
     return out
+
+
+# Log lines that mean the platform lost work or a connection, even when every
+# turn the driver watched finished: a turn whose lease is lost restarts from its
+# log, so the driver only sees it as slower. Each counts as an incident and
+# fails the run. Plain substrings, matched after ANSI colors are stripped.
+INCIDENTS = {
+    "lease_lost": "Actor lease lost",
+    "lease_renew_failed": "Actor lease renew failed",
+    "turn_sealed": "Sealing a session turn",
+    "grpc_goaway": "GoAway(",
+    "grpc_transport_error": "transport error",
+    "db_deadlock": "deadlock detected",
+}
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def incidents(log_paths: list[str]) -> dict[str, int]:
+    counts = {name: 0 for name in INCIDENTS}
+    for path in log_paths:
+        try:
+            f = open(path, errors="replace")
+        except OSError:
+            continue
+        with f:
+            for line in f:
+                line = ANSI.sub("", line)
+                for name, needle in INCIDENTS.items():
+                    if needle in line:
+                        counts[name] += 1
+    return counts
+
+
+# Per-turn budget for 8k parallel agents on today's production (2026-11-07):
+# capacity, run at 70% at most, divided by the turn rate. The load-test mix
+# runs a turn about every 36 s per agent (31 s turn + 5 s think), so 8k agents
+# are 222 turns/s with about 6,900 in progress. A run that keeps every cost
+# under its budget fits 8k without bigger machines. Local CPU stands in for
+# RDS/EKS vCPUs (db.m7g.large vCPUs are physical Graviton cores), so the CPU
+# rows are indicative; statements and WAL counts carry over exactly.
+TURNS_PER_S_8K = 8000 / 36
+RUNNING_TURNS_8K = 8000 * 31 / 36
+UTILIZATION = 0.7
+PROD = {
+    "db_vcpu": 2,            # RDS db.m7g.large
+    "db_iops": 3000,         # gp3 baseline, 40 GB
+    "db_wal_mib_s": 50,      # of gp3's 125 MiB/s, leaving the rest for data pages
+    "app_vcpu": 28,          # Karpenter pool limit 32, less ~4 for Caddy/NATS/UI/Valkey
+    "worker_mib": 3 * 6 * 1024 * 0.85,  # 3 workers x 6 GiB, admission brakes at 85% RSS
+    "nats_replay_mib": 600,  # of NATS's 1 GiB pod, for a 2-minute replay window
+}
+BUDGET_8K = {
+    # name: (result key, budget per turn, unit)
+    "db_cpu": ("cpu_postgres_ms_per_turn", 1000 * PROD["db_vcpu"] * UTILIZATION / TURNS_PER_S_8K, "ms"),
+    # ~0.2 ms of database CPU per statement today, so the CPU budget in statements.
+    "db_statements": ("statements_per_turn", 30, ""),
+    "db_wal_syncs": ("wal_syncs_per_turn", PROD["db_iops"] * UTILIZATION / TURNS_PER_S_8K, ""),
+    "db_wal": ("wal_kb_per_turn", 1024 * PROD["db_wal_mib_s"] / TURNS_PER_S_8K, "KB"),
+    "app_cpu": ("app_cpu_ms_per_turn", 1000 * PROD["app_vcpu"] * UTILIZATION / TURNS_PER_S_8K, "ms"),
+    "worker_memory": ("worker_mib_per_running_turn", PROD["worker_mib"] / RUNNING_TURNS_8K, "MiB"),
+    "nats_replay": ("nats_kb_per_turn", 1024 * PROD["nats_replay_mib"] / (120 * TURNS_PER_S_8K), "KB"),
+}
+
+
+def budget(result: dict) -> dict:
+    """Each per-turn cost against its 8k budget; `fits` is false when any measured cost is over."""
+    rows = {}
+    for name, (key, limit, unit) in BUDGET_8K.items():
+        value = result.get(key)
+        rows[name] = {"value": value, "budget": round(limit, 1), "unit": unit,
+                      "x_over": None if value is None else round(value / limit, 1)}
+    measured_rows = [r for r in rows.values() if r["value"] is not None]
+    return {"rows": rows, "fits": bool(measured_rows) and all(r["value"] <= r["budget"] for r in measured_rows)}

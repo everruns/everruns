@@ -112,6 +112,33 @@ pub fn acquire_builder_permit(caller: &Caller) -> Result<AnalysisPermit, Analysi
     )
 }
 
+/// A health check is the costliest paid run: one generation call over the
+/// whole agent config, up to `health_check::generate::MAX_CASES` real sessions
+/// and one judge call per case, all on the deployment utility key. It gets its
+/// own, smaller budget, charged in `AgentHealthCheckService::trigger` so REST,
+/// the command endpoint, MCP and the Platform shell share it (TM-DOS-055).
+const MAX_HEALTH_CHECKS_PER_ORG_WINDOW: usize = 10;
+const MAX_HEALTH_CHECKS_PER_CALLER_WINDOW: usize = 4;
+const MAX_CONCURRENT_HEALTH_CHECKS: usize = 2;
+static HEALTH_CHECK_CONCURRENCY: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_HEALTH_CHECKS)));
+static HEALTH_CHECK_RATE_LIMITS: LazyLock<Mutex<AnalysisRateLimits>> =
+    LazyLock::new(|| Mutex::new(AnalysisRateLimits::default()));
+
+/// Admission for one agent health check run. Hold the permit until the
+/// background run ends: it is the global concurrency slot.
+pub fn acquire_health_check_permit(
+    caller: &Caller,
+) -> Result<AnalysisPermit, AnalysisAdmissionError> {
+    acquire_permit(
+        caller,
+        &HEALTH_CHECK_RATE_LIMITS,
+        &HEALTH_CHECK_CONCURRENCY,
+        MAX_HEALTH_CHECKS_PER_ORG_WINDOW,
+        MAX_HEALTH_CHECKS_PER_CALLER_WINDOW,
+    )
+}
+
 fn acquire_permit(
     caller: &Caller,
     rate_limits: &Mutex<AnalysisRateLimits>,
@@ -692,6 +719,41 @@ mod tests {
         ]);
         let result = run_llm_checks(mock, PROMPT, PROMPT, &[]).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn health_check_admission_caps_concurrency_and_caller_window() {
+        // Only this test draws on the health-check budget, so the process-wide
+        // statics start empty here. A fresh org keeps the window isolated.
+        let org_id = 9_100_000 + i64::from(std::process::id() % 1000);
+        let caller = |user: u128| Caller {
+            org_id,
+            org_public_id: format!("org_{user:032x}"),
+            user_id: Some(uuid::Uuid::from_u128(user)),
+            role: crate::kernel_imports::OrgRole::Admin,
+            is_platform_user: false,
+            is_internal: false,
+            read_only: false,
+        };
+        let alice = caller(1);
+
+        let first = acquire_health_check_permit(&alice).expect("first run admitted");
+        let second = acquire_health_check_permit(&alice).expect("second run admitted");
+        assert!(matches!(
+            acquire_health_check_permit(&alice),
+            Err(AnalysisAdmissionError::Busy { .. })
+        ));
+        drop(first);
+        let third = acquire_health_check_permit(&alice).expect("slot freed by the ended run");
+        drop((second, third));
+        let fourth = acquire_health_check_permit(&alice).expect("fourth run in the window");
+        drop(fourth);
+        assert!(matches!(
+            acquire_health_check_permit(&alice),
+            Err(AnalysisAdmissionError::RateLimited { .. })
+        ));
+        // Another member of the same org still has headroom.
+        drop(acquire_health_check_permit(&caller(2)).expect("other caller admitted"));
     }
 
     #[test]

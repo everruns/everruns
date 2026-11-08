@@ -2,6 +2,7 @@
 title: The Eval Builder proposes cases for your agents
 description: Ask for eval cases drawn from an agent's instructions and its real sessions, then add the ones you want to a dataset with one click.
 date: 2026-11-02
+release: "0.51.0"
 kind: feature
 significance: notable
 products: [platform, cloud]

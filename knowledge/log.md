@@ -1,7 +1,41 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-08
+
+- The worker holding a session's lease answers the turn's later session reads
+  from its own copy, and event listeners take a session's org and an org's
+  active observers from memory (observers kept exact by a trigger). About 20
+  fewer statements per turn ([event listeners](execution/event-listeners.md#session-reads)).
+
+## 2026-11-07
+
+- Define opt-in [interactive MCP readiness](integrations/runtime-mcp.md#interactive-readiness): one wait budget, bounded background discovery, shared cross-turn cache and explicit pending/error states.
+
+- Preserve legacy session deletion during rolling FK removal with a prerequisite
+  cleanup trigger. Keep the successor migration immutable and verify missing-older
+  migration adoption and the append-only purge guard. See
+  [running instances](operations/migrations.md#running-instances).
+
+- The stress bench grades every run against a per-turn budget for 8k agents on
+  today's production. Agent token totals are written once a second, turn
+  latency and the session trace are computed from the listener feed instead
+  of rereading each turn, and the hottest tables dropped their keys on
+  `sessions` and `organizations`.
+- Grouped event appends are one statement instead of a transaction of five,
+  which also ends a foreign-key check per append (event-log-group-commit).
+
+## 2026-11-06
+
+- Hosted container-tool live tests require observations from the execution environment;
+  completed-call and usage-count assertions still reject answers without tool execution.
+
 ## 2026-11-05
 
+- MCP OAuth changes select worker gRPC identity contracts before merge, covering
+  current resource-bound refresh grants and legacy reconnection without network calls.
+- MCP OAuth retains validated resource binding across persistence and token
+  rotation. Legacy grants reauthorize at refresh; web grants reject changed
+  OAuth configuration before exchanging secrets.
 - Local compaction preserves source attribution, scoped user adoption, and claim status through repeated summaries; documented its semantic evaluation and model-dependent limits.
 
 ## 2026-11-03

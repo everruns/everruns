@@ -755,19 +755,6 @@ impl Agent {
         self.plugin_warnings.clone()
     }
 
-    #[cfg(feature = "external-runtime")]
-    pub(crate) async fn build_external_runtime(
-        &self,
-        backends: HostBackends,
-        session_id: SessionId,
-        event_sink: Option<Arc<dyn EventSink>>,
-    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
-        self.runtime_builder(backends, session_id, None, None, event_sink, None, None)
-            .await?
-            .build()
-            .await
-    }
-
     #[cfg(test)]
     pub(crate) async fn build_runtime_with_backends(
         &self,
@@ -1111,6 +1098,10 @@ fn apply_host_services(
     }
     if let Some(timeout) = services.stall_timeout {
         builder = builder.provider_stall_timeout(timeout);
+    }
+    #[cfg(feature = "mcp")]
+    if let Some(cache) = &services.mcp_discovery_cache {
+        builder = builder.shared_mcp_discovery_cache(cache.clone());
     }
     #[cfg(feature = "mcp")]
     if let Some(auth) = &services.mcp_auth {

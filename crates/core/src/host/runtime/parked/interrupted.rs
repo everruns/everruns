@@ -207,3 +207,7 @@ impl InProcessRuntime {
 fn no_interrupted_turn(session_id: SessionId) -> AgentLoopError {
     AgentLoopError::store(format!("session {session_id} has no interrupted turn"))
 }
+
+#[cfg(test)]
+#[path = "interrupted_tests.rs"]
+mod tests;

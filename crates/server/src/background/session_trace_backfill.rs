@@ -1,7 +1,7 @@
 // Session trace backfill: projects sessions whose trace index is behind.
 //
-// Decision: the write path projects new events as they land, so this job only
-// finds sessions written before the index existed, or whose write-path pass was
+// Decision: the listener feed projects each turn as it ends, so this job only
+// finds sessions written before the index existed, or whose feed pass was
 // skipped or failed. It takes the most recently written sessions first, so the
 // sessions people open next are indexed first, and spends a bounded number of
 // events per run so a large backlog drains over several runs instead of one

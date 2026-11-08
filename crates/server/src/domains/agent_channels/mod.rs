@@ -10,6 +10,7 @@ pub mod record;
 mod redaction;
 pub(crate) mod slack_cleanup;
 pub(crate) mod slack_evidence;
+mod slack_reactions;
 pub mod types;
 pub(crate) mod validation;
 mod validation_pact;
