@@ -30,6 +30,8 @@ pub struct Credentials<'a> {
     pub auth: AuthChoice,
     pub email: &'a str,
     pub password: &'a str,
+    /// Where the person changes the saved password, named when sign-in fails.
+    pub password_hint: &'a str,
 }
 
 /// Make `profile` a working sign-in to `api_url`, then decide whether it
@@ -112,7 +114,7 @@ fn decide_current(store: &CredentialStore, profile: &str, switch: SwitchPolicy) 
         SwitchPolicy::Never => false,
         SwitchPolicy::Ask => dialoguer::Confirm::new()
             .with_prompt(format!(
-                "Use the local instance for CLI commands? (now: profile '{other}')"
+                "Use this instance for CLI commands? (now: profile '{other}')"
             ))
             .default(true)
             .interact()
@@ -126,7 +128,7 @@ async fn me(http: &reqwest::Client, api_url: &str, token: &str) -> Result<Me> {
         .bearer_auth(token)
         .send()
         .await
-        .context("Failed to reach the local server")?;
+        .context("Failed to reach the server")?;
     if !resp.status().is_success() {
         bail!("the server refused the token ({})", resp.status());
     }
@@ -195,7 +197,7 @@ async fn ensure_organization(http: &reqwest::Client, api_url: &str, session: &st
         .json(&serde_json::json!({ "name": "Everruns" }))
         .send()
         .await
-        .context("Failed to reach the local server")?;
+        .context("Failed to reach the server")?;
     if !resp.status().is_success() {
         bail!("creating an organization failed ({})", resp.status());
     }
@@ -208,13 +210,13 @@ async fn login(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -
         .json(&serde_json::json!({ "email": creds.email, "password": creds.password }))
         .send()
         .await
-        .context("Failed to reach the local server")?;
+        .context("Failed to reach the server")?;
     if !resp.status().is_success() {
         bail!(
-            "signing in as {} failed ({}). If you changed the password in the UI, \
-             put the new one in AUTH_ADMIN_PASSWORD in the instance's .env",
+            "signing in as {} failed ({}). If you changed the password in the UI, {}",
             creds.email,
-            resp.status()
+            resp.status(),
+            creds.password_hint
         );
     }
     #[derive(Deserialize)]
@@ -231,7 +233,7 @@ async fn register(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>
         .json(&serde_json::json!({ "email": creds.email, "password": creds.password }))
         .send()
         .await
-        .context("Failed to reach the local server")?;
+        .context("Failed to reach the server")?;
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
         return Err(anyhow!("creating the admin account failed: {body}"));

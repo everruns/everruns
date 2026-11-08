@@ -193,6 +193,15 @@ history restore	--context-revision --entity-ref --expected-revision --fields... 
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason
+k8s doctor	--name
+k8s logs	--name --no-follow <component>
+k8s open	--name
+k8s port-forward	--name
+k8s reset	--name --yes/-y
+k8s status	--name
+k8s uninstall	--name
+k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --timeout --values/-f... --yes/-y
+k8s upgrade	--chart-version --name --no-backup --timeout --yes/-y
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
 knowledge files delete	--collection-id! --context-revision --path! --reason
