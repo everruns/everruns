@@ -114,6 +114,8 @@ mod renewal_batch_tests;
 mod sticky_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wakeup_tests;
 
 use super::Database;
 use crate::storage::EventRow;

@@ -353,8 +353,8 @@ const PING_AFTER_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
 /// connection that was in use moments ago is almost certainly alive, so only
 /// one idle past `PING_AFTER_IDLE` is checked; a failed ping drops it and the
 /// pool hands out another.
-fn pool_options() -> PgPoolOptions {
-    PgPoolOptions::new()
+fn pool_options(session_settings: &'static [&'static str]) -> PgPoolOptions {
+    let options = PgPoolOptions::new()
         .test_before_acquire(false)
         .before_acquire(|conn, meta| {
             Box::pin(async move {
@@ -363,7 +363,39 @@ fn pool_options() -> PgPoolOptions {
                 }
                 Ok(true)
             })
+        });
+    if session_settings.is_empty() {
+        return options;
+    }
+    options.after_connect(move |conn, _| {
+        Box::pin(async move {
+            for setting in session_settings {
+                sqlx::query(setting).execute(&mut *conn).await?;
+            }
+            Ok(())
         })
+    })
+}
+
+/// Marks a connection whose server sends task wake-ups over NATS, so the
+/// `task_available` triggers skip their NOTIFY (migration
+/// `20261108233430_task_wakeups_over_nats`): nobody LISTENs under NATS, and
+/// every notifying commit queues on one database-wide lock.
+const TASK_WAKEUPS_OVER_NATS: &str = "SET everruns.task_wakeups = 'nats'";
+const RELAXED_COMMIT: &str = "SET synchronous_commit = off";
+
+/// Session settings for the request and background pools, and for the
+/// relaxed pool. The NATS mark follows `NATS_URL`, the same switch that picks
+/// the NATS task broadcaster (`TaskBroadcaster::from_env`).
+fn session_settings() -> (&'static [&'static str], &'static [&'static str]) {
+    if std::env::var_os("NATS_URL").is_some() {
+        (
+            &[TASK_WAKEUPS_OVER_NATS],
+            &[TASK_WAKEUPS_OVER_NATS, RELAXED_COMMIT],
+        )
+    } else {
+        (&[], &[RELAXED_COMMIT])
+    }
 }
 
 impl Database {
@@ -432,7 +464,8 @@ impl Database {
         database_url: &str,
         config: DatabasePoolConfig,
     ) -> Result<Self> {
-        let pool = pool_options()
+        let (settings, relaxed_settings) = session_settings();
+        let pool = pool_options(settings)
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
             .acquire_timeout(config.acquire_timeout)
@@ -445,7 +478,7 @@ impl Database {
         let background_pool = if config.background_max_connections == 0 {
             pool.clone()
         } else {
-            pool_options()
+            pool_options(settings)
                 .max_connections(config.background_max_connections)
                 .min_connections(1)
                 .acquire_timeout(config.background_acquire_timeout)
@@ -456,19 +489,11 @@ impl Database {
         let relaxed_pool = if config.relaxed_max_connections == 0 {
             background_pool.clone()
         } else {
-            pool_options()
+            pool_options(relaxed_settings)
                 .max_connections(config.relaxed_max_connections)
                 .min_connections(0)
                 .acquire_timeout(config.background_acquire_timeout)
                 .idle_timeout(config.idle_timeout)
-                .after_connect(|conn, _| {
-                    Box::pin(async move {
-                        sqlx::query("SET synchronous_commit = off")
-                            .execute(conn)
-                            .await?;
-                        Ok(())
-                    })
-                })
                 .connect_lazy(database_url)?
         };
 

@@ -53,7 +53,9 @@ capacity target is 8,000 parallel agents.
 - Marking a session runnable returns its preferred worker when it is ready.
   The wake-up then names that worker (`session_actor@<worker>` on the
   `task_available` channel, from the turn backend under NATS and from the
-  `session_actors` trigger under PostgreSQL LISTEN), and the server's
+  `session_actors` trigger under PostgreSQL LISTEN; a server on NATS marks
+  its database connections so the trigger skips the unheard NOTIFY and its
+  database-wide commit lock), and the server's
   notification stream passes it only to that worker's subscriptions. Any
   other wake-up still goes to every worker. No worker change was needed.
 - A lost wake-up costs what it did before: the lease loop polls at least
