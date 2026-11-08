@@ -2,7 +2,7 @@
 //! task and notification broadcasters over PostgreSQL LISTEN/NOTIFY or
 //! NATS.
 
-// Event delivery abstraction (InMemory / NATS JetStream)
+// Event delivery abstraction (InMemory / NATS)
 pub mod event_delivery;
 
 // Shared NATS client connection and the NATS-backed task broadcaster

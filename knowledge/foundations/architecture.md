@@ -58,7 +58,7 @@ graph TB
 Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/live_updates/event_delivery.rs`), which picks a transport at startup:
 
 - **InMemory** (dev mode): Partitioned `broadcast::channel`, zero external dependencies
-- **NATS JetStream** (production): Per-session subjects with short-term retention for replay
+- **NATS** (production): plain publish/subscribe on one subject per session, nothing retained
 
 Events are classified as **ephemeral** or **durable**:
 
@@ -67,7 +67,7 @@ Events are classified as **ephemeral** or **durable**:
 | Ephemeral | `output.message.delta`, `reason.thinking.delta`, `tool.output.delta` | EventDelivery-only when the backend supports ephemeral skip; otherwise PostgreSQL + EventDelivery | EventDelivery only |
 | Durable | `llm.generation`, `output.message.completed`, `turn.started`, `tool.completed` | PostgreSQL | PG + EventDelivery |
 
-`EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. With NATS-backed delivery, ephemeral delta events skip PostgreSQL, reducing write pressure significantly. In-memory dev event delivery still persists events to PG. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content. A broker restart may remove the in-memory JetStream replay buffer while API processes remain connected. Event delivery must restore its missing stream on a new subscription or a definitive missing-stream publish rejection, without restarting the API. It must not retry ambiguous publish failures, change an existing stream policy, or turn deltas into database writes.
+`EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. With NATS-backed delivery, ephemeral delta events skip PostgreSQL, reducing write pressure significantly. In-memory dev event delivery still persists events to PG. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content. Since 2026-11 NATS keeps nothing: subscribers always started at new messages and replay came from PG, so the JetStream memory stream that held every event for an hour was never read, and at 8k agents it would have needed about 100 MB/s of broker memory. Plain NATS drops messages for a subscriber that falls behind, so an SSE stream that receives a durable event past the next sequence reads the gap from PG before sending it, and a quiet open turn still reads PG after a few seconds. Servers delete the old `EVENTS` stream at start and every 10 minutes, since a server of the earlier version recreates it during a rolling deploy; the subject is unchanged, so both versions deliver to each other meanwhile.
 
 NATS rejects a message over its `max_payload` (1 MiB by default). A durable `llm.generation` too large for it goes out live without its captured request body, then without its prompt messages and tool list, marked `live_payload_trimmed` in `metadata`; output and usage stay, and the stored row is complete. Other oversize events are not delivered live and log their size.
 
@@ -91,7 +91,7 @@ Reasoning:
 
 Production event routing therefore prefers:
 
-- NATS JetStream for event push delivery when `NATS_URL` is configured
+- NATS for event push delivery when `NATS_URL` is configured
 - no legacy PostgreSQL event wakeup listener when NATS event delivery is active
 - direct PostgreSQL listener connections only for the remaining PostgreSQL-backed push paths, such as notification SSE and task notification fallback
 

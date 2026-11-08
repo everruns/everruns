@@ -142,6 +142,14 @@ observers to match. At 100 agents on the stress bench that removed about 18
 statements per turn: 6.5 org lookups, 6.7 session-row reads and 4.5 observer
 reads (`knowledge/operations/load-testing.md`).
 
+The budget and sandbox listeners need more of the session: its harness,
+agent, capabilities, trigger, channel, source, delegation root and owner.
+Those change only by an explicit edit, so they are a configuration row of
+their own (`SessionConfigRow`), cached the same way. A trigger on `sessions`
+lists exactly those columns, so the status and counter updates of a turn
+never fire it, and an edit notifies `session:<id>` (migration
+`20261108203056`).
+
 ## Success bar
 
 - Overhead per model call at 100 parallel agents on the stress bench does not

@@ -128,7 +128,10 @@ impl BudgetService {
         agent_id: Option<&str>,
     ) -> Result<BudgetScope, anyhow::Error> {
         if let Ok(parsed_session_id) = SessionId::parse(session_id)
-            && let Some(session) = self.db.get_session(org_id, parsed_session_id).await?
+            && let Some(session) = self
+                .db
+                .get_session_config(org_id, parsed_session_id)
+                .await?
         {
             return self
                 .scope_from_session(&session, session_id, agent_id)
@@ -154,6 +157,17 @@ impl BudgetService {
             eval_run_subject_id: None,
             monitoring: false,
         })
+    }
+
+    /// A session's configuration columns when only its id is known.
+    async fn session_config_unscoped(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<SessionConfigRow>, anyhow::Error> {
+        let Some(org_id) = self.db.session_org_id(session_id).await? else {
+            return Ok(None);
+        };
+        self.db.get_session_config(org_id, session_id).await
     }
 
     /// Resolve the `agent` budget subject to the agent's `public_id`.
@@ -207,7 +221,7 @@ impl BudgetService {
 
     async fn scope_from_session(
         &self,
-        session: &SessionRow,
+        session: &SessionConfigRow,
         _session_subject_id: &str,
         agent_id_override: Option<&str>,
     ) -> Result<BudgetScope, anyhow::Error> {
@@ -358,8 +372,9 @@ impl BudgetService {
         finish_reasons: Option<&[String]>,
         cost_unknown_components: &[String],
     ) {
-        // Get session to find subject hierarchy
-        let session = match self.db.get_session_unscoped(source.session_id).await {
+        // Get session to find subject hierarchy (both reads are served from
+        // memory: the lineage never changes, the config row is kept exact).
+        let session = match self.session_config_unscoped(source.session_id).await {
             Ok(Some(s)) => s,
             Ok(None) => {
                 error!(
@@ -917,7 +932,7 @@ impl BudgetService {
             return Vec::new();
         };
         let mut sessions = vec![parsed.uuid()];
-        if let Ok(Some(session)) = self.db.get_session(org_id, parsed).await
+        if let Ok(Some(session)) = self.db.get_session_config(org_id, parsed).await
             && let Some(root) = session.root_session_id
         {
             sessions.push(root.uuid());

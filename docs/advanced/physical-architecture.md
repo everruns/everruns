@@ -50,7 +50,7 @@ Live session events (what a chat streams over SSE) are pushed from the instance 
 
 | Setup | `event_delivery` | Behavior |
 |-------|------------------|----------|
-| `NATS_URL` set and reachable | `nats` | Events reach every instance. Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through JetStream. Durable events still persist to PG, so SSE reconnection via `since_id` keeps working. |
+| `NATS_URL` set and reachable | `nats` | Events reach every instance. Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through NATS, which keeps nothing. Durable events still persist to PG, so SSE reconnection via `since_id` keeps working. |
 | One instance, no `NATS_URL` | `in_memory` | Events are pushed inside the one process. Every event, deltas included, is also written to PG. Correct for a single control-plane instance only. |
 | `NATS_URL` set but unreachable at startup, or `EXPECTED_INSTANCES` above 1 with no `NATS_URL` | `polling` | Each open stream polls PostgreSQL for new events (100 ms while busy, backing off to 1 s while quiet). Every event is written to PG. Streams stay correct across instances, at the cost of extra queries and latency. `/health` reports `status: degraded`, and the system doctor shows a warning. |
 

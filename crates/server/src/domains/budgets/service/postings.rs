@@ -324,7 +324,7 @@ impl BudgetService {
         let scope = match journal.session_id {
             Some(session_id) => match self
                 .db
-                .get_session_unscoped(SessionId::from_uuid(session_id))
+                .get_session_config(journal.org_id, SessionId::from_uuid(session_id))
                 .await?
             {
                 Some(session) => self
@@ -400,7 +400,7 @@ impl BudgetService {
             let session = match span.session_id {
                 Some(id) => self
                     .db
-                    .get_session_unscoped(SessionId::from_uuid(id))
+                    .get_session_config(span.org_id, SessionId::from_uuid(id))
                     .await
                     .ok()
                     .flatten(),

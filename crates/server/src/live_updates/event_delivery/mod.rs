@@ -3,7 +3,7 @@
 // Decision: Enum dispatch (same pattern as StorageBackend) over trait objects.
 // Two backends:
 //   - InMemory: broadcast::channel per session partition, for dev mode / single instance
-//   - Nats: NATS JetStream streams, for multi-instance production
+//   - Nats: NATS publish/subscribe, for multi-instance production
 //
 // Ephemeral events (deltas) skip PostgreSQL entirely and flow through this
 // layer only. Durable events are published here AND persisted to PG.
@@ -24,7 +24,7 @@ pub use polling::PollingEventDelivery;
 ///
 /// Follows the same enum dispatch pattern as `StorageBackend`.
 /// - `InMemory`: dev mode, single process, no external deps
-/// - `Nats`: production, multi-instance, NATS JetStream
+/// - `Nats`: production, multi-instance, NATS
 /// - `Polling`: several servers without a reachable NATS (degraded)
 #[derive(Clone)]
 pub enum EventDelivery {
@@ -32,7 +32,7 @@ pub enum EventDelivery {
     /// Works for single-instance deployments and dev mode only: a client sees
     /// only what its own process published.
     InMemory(Arc<InMemoryEventDelivery>),
-    /// NATS JetStream for multi-instance production deployments.
+    /// NATS for multi-instance production deployments.
     Nats(Arc<NatsEventDelivery>),
     /// Subscribers poll the event log in PostgreSQL (see `polling`).
     Polling(Arc<PollingEventDelivery>),
@@ -40,8 +40,8 @@ pub enum EventDelivery {
 
 impl EventDelivery {
     /// Whether this backend supports ephemeral-only delivery (skip PG).
-    /// Only NATS provides durable pub/sub with replay — InMemory events are
-    /// lost on restart, so we must persist everything to PG as fallback.
+    /// Only NATS reaches every server's subscribers; in-memory delivery
+    /// persists everything to PG as fallback.
     pub fn supports_ephemeral_skip(&self) -> bool {
         matches!(self, Self::Nats(_))
     }
@@ -85,7 +85,7 @@ impl EventDelivery {
                 Ok(nats) => {
                     info!(
                         url = %crate::live_updates::nats::redact_server_urls(&url),
-                        "Event delivery: NATS JetStream"
+                        "Event delivery: NATS"
                     );
                     Self::Nats(Arc::new(nats))
                 }
@@ -149,7 +149,7 @@ impl EventDelivery {
 /// Callers receive events via `recv()`.
 pub enum EventSubscription {
     InMemory(broadcast::Receiver<Event>),
-    Nats(Box<async_nats::jetstream::consumer::pull::Stream>),
+    Nats(Box<async_nats::Subscriber>),
     Polling(Box<polling::PollingSubscription>),
 }
 
@@ -168,31 +168,12 @@ impl EventSubscription {
                     Err(broadcast::error::RecvError::Closed) => return None,
                 }
             },
-            Self::Nats(stream) => loop {
+            Self::Nats(subscriber) => loop {
                 use futures::StreamExt;
-                match stream.next().await {
-                    Some(Ok(msg)) => {
-                        let event: Event = match serde_json::from_slice(&msg.payload) {
-                            Ok(e) => e,
-                            Err(e) => {
-                                // Ack the bad message so it's not redelivered, then continue
-                                warn!(error = %e, "Failed to deserialize NATS event, skipping");
-                                if let Err(ack_err) = msg.ack().await {
-                                    warn!(error = %ack_err, "Failed to ack malformed NATS message");
-                                }
-                                continue;
-                            }
-                        };
-                        if let Err(e) = msg.ack().await {
-                            warn!(error = %e, "Failed to ack NATS message");
-                        }
-                        return Some(event);
-                    }
-                    Some(Err(e)) => {
-                        warn!(error = %e, "NATS subscription error");
-                        return None;
-                    }
-                    None => return None,
+                let message = subscriber.next().await?;
+                match serde_json::from_slice(&message.payload) {
+                    Ok(event) => return Some(event),
+                    Err(e) => warn!(error = %e, "Failed to deserialize NATS event, skipping"),
                 }
             },
         }
@@ -260,169 +241,92 @@ impl InMemoryEventDelivery {
 }
 
 // ============================================================
-// NATS JetStream backend
+// NATS backend
 // ============================================================
 
-/// NATS stream name for session events.
-const NATS_STREAM_NAME: &str = "EVENTS";
 /// Subject prefix for session events: events.<session_id>
 const NATS_SUBJECT_PREFIX: &str = "events";
-const DEFAULT_NATS_EVENT_STREAM_MAX_BYTES: i64 = 1_073_741_824;
+/// The JetStream stream earlier versions kept every event in for an hour.
+const RETIRED_STREAM_NAME: &str = "EVENTS";
+/// How often a server removes that stream again, in case a server of an
+/// earlier version recreated it during a rolling deploy.
+const RETIRE_STREAM_EVERY: std::time::Duration = std::time::Duration::from_secs(600);
 
-fn parse_nats_event_stream_max_bytes(value: Option<&str>) -> Result<i64> {
-    let Some(value) = value else {
-        return Ok(DEFAULT_NATS_EVENT_STREAM_MAX_BYTES);
-    };
-    let bytes: i64 = value
-        .parse()
-        .context("NATS_EVENT_STREAM_MAX_BYTES must be a positive integer")?;
-    anyhow::ensure!(bytes > 0, "NATS_EVENT_STREAM_MAX_BYTES must be positive");
-    Ok(bytes)
-}
-
-/// NATS JetStream event delivery.
-/// Each session gets a subject: `events.<session_id>`.
-/// A single JetStream stream captures all subjects matching `events.>`.
+/// NATS event delivery: plain publish and subscribe, one subject per session
+/// (`events.<session_id>`).
+///
+/// Decision (fit 8k agents into today's prod): no JetStream. Subscribers
+/// always started at new messages and reconnecting streams replay from
+/// PostgreSQL, so the memory stream that kept every event, deltas included,
+/// for an hour was never read. At 8k agents it would have needed about
+/// 100 MB/s of NATS memory, and every publish and delivery waited for an ack.
+/// A server drops that stream when it starts and every
+/// [`RETIRE_STREAM_EVERY`] after, because an earlier server recreates it on
+/// its next publish while a rolling deploy runs. The subject is unchanged, so
+/// the two versions deliver to each other's subscribers during the deploy.
+///
+/// Plain NATS drops messages for a subscriber that falls too far behind. A
+/// durable event that arrives past the next sequence makes the SSE stream
+/// read the gap from PostgreSQL (`api::events::PushCursor`).
 pub struct NatsEventDelivery {
     client: async_nats::Client,
-    jetstream: async_nats::jetstream::Context,
-    stream_max_bytes: i64,
 }
 
 impl NatsEventDelivery {
     pub async fn connect(url: &str) -> Result<Self> {
-        let value = match std::env::var("NATS_EVENT_STREAM_MAX_BYTES") {
-            Ok(value) => Some(value),
-            Err(std::env::VarError::NotPresent) => None,
-            Err(error) => {
-                return Err(error).context("NATS_EVENT_STREAM_MAX_BYTES is not valid Unicode");
-            }
-        };
-        let stream_max_bytes = parse_nats_event_stream_max_bytes(value.as_deref())?;
-        Self::connect_with_stream_max_bytes(url, stream_max_bytes).await
-    }
-
-    async fn connect_with_stream_max_bytes(url: &str, stream_max_bytes: i64) -> Result<Self> {
         let client = crate::live_updates::nats::connect(url)
             .await
             .context("Failed to connect to NATS")?;
-
-        let jetstream = async_nats::jetstream::new(client.clone());
-
-        let delivery = Self {
-            client,
-            jetstream,
-            stream_max_bytes,
-        };
-        delivery.ensure_stream().await?;
-        info!("NATS JetStream stream '{}' ready", NATS_STREAM_NAME);
-        Ok(delivery)
-    }
-
-    // The replay buffer is memory-backed and disappears on a broker restart.
-    // Existing API clients reconnect independently, so initialization cannot be
-    // confined to API startup. Never rewrite an existing stream's policy here.
-    async fn ensure_stream(&self) -> Result<async_nats::jetstream::stream::Stream> {
-        let stream_config = async_nats::jetstream::stream::Config {
-            name: NATS_STREAM_NAME.to_string(),
-            subjects: vec![format!("{NATS_SUBJECT_PREFIX}.>")],
-            max_age: std::time::Duration::from_secs(3600), // 1 hour retention
-            storage: async_nats::jetstream::stream::StorageType::Memory,
-            num_replicas: 1,
-            discard: async_nats::jetstream::stream::DiscardPolicy::Old,
-            max_bytes: self.stream_max_bytes,
-            ..Default::default()
-        };
-
-        self.jetstream
-            .get_or_create_stream(stream_config)
-            .await
-            .context("Failed to ensure NATS JetStream event stream")
+        tokio::spawn(retire_replay_stream(client.clone()));
+        Ok(Self { client })
     }
 
     pub async fn publish(&self, event: &Event) -> Result<()> {
         let subject = format!("{}.{}", NATS_SUBJECT_PREFIX, event.session_id.uuid());
         let payload = live_payload(event, self.client.max_payload())?;
-
-        let ack = self
-            .jetstream
-            .publish(subject.clone(), payload.into())
+        self.client
+            .publish(subject, payload.into())
             .await
-            .context("Failed to publish event to NATS")?;
-        match ack.await {
-            Ok(_) => Ok(()),
-            Err(error)
-                if error.kind()
-                    == async_nats::jetstream::context::PublishErrorKind::StreamNotFound =>
-            {
-                // This rejection proves the event was not stored. Retry once
-                // after restoring the buffer; timeouts and other ambiguous
-                // failures must not be replayed, which could duplicate events.
-                self.ensure_stream().await?;
-                self.jetstream
-                    .publish(
-                        subject,
-                        live_payload(event, self.client.max_payload())?.into(),
-                    )
-                    .await
-                    .context("Failed to republish event to NATS")?
-                    .await
-                    .context("Failed to confirm recovered NATS publish")?;
-                info!("NATS event delivery recovered a missing stream");
-                Ok(())
-            }
-            Err(error) => Err(error).context("Failed to confirm NATS publish"),
-        }
+            .context("Failed to publish event to NATS")
     }
 
     pub async fn subscribe(&self, session_id: Uuid) -> Result<EventSubscription> {
         let subject = format!("{NATS_SUBJECT_PREFIX}.{session_id}");
-        // Create an ephemeral pull consumer for this SSE connection.
-        // DeliverPolicy::New means we only get events from now on.
-        // For reconnection replay, the SSE handler queries PG separately.
-        let config = async_nats::jetstream::consumer::pull::Config {
-            filter_subject: subject,
-            deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::New,
-            ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit,
-            ..Default::default()
-        };
-        // The stream was initialized at connect. Avoid a discovery round trip
-        // on every SSE connection; recover only a definite missing-stream
-        // rejection. A timeout may have created a consumer, so never retry it.
-        let consumer = match self
-            .jetstream
-            .create_consumer_on_stream(config.clone(), NATS_STREAM_NAME)
+        let subscriber = self
+            .client
+            .subscribe(subject)
             .await
-        {
-            Ok(consumer) => consumer,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    async_nats::jetstream::stream::ConsumerErrorKind::JetStream(ref error)
-                        if error.error_code()
-                            == async_nats::jetstream::ErrorCode::STREAM_NOT_FOUND
-                ) =>
-            {
-                self.ensure_stream().await?;
-                self.jetstream
-                    .create_consumer_on_stream(config, NATS_STREAM_NAME)
-                    .await
-                    .context("Failed to create recovered NATS consumer")?
-            }
-            Err(error) => return Err(error).context("Failed to create NATS consumer"),
-        };
-
-        let messages = consumer
-            .messages()
-            .await
-            .context("Failed to get NATS message stream")?;
-
-        Ok(EventSubscription::Nats(Box::new(messages)))
+            .context("Failed to subscribe to NATS")?;
+        // The broker handles a connection's messages in order, so once a
+        // round trip after the subscription returns, the broker has it and an
+        // event published after `subscribe` returns reaches it. `flush` only
+        // writes the socket; a request nobody answers comes back as "no
+        // responders" from the broker itself.
+        let barrier = format!("_EVERRUNS.subscribed.{}", Uuid::new_v4());
+        match self.client.request(barrier, bytes::Bytes::new()).await {
+            Ok(_) => {}
+            Err(error) if error.kind() == async_nats::RequestErrorKind::NoResponders => {}
+            Err(error) => return Err(error).context("Failed to confirm NATS subscription"),
+        }
+        Ok(EventSubscription::Nats(Box::new(subscriber)))
     }
 
     /// Shut down the NATS connection gracefully.
     pub async fn shutdown(&self) {
         let _ = self.client.drain().await;
+    }
+}
+
+/// Remove the JetStream stream earlier versions used, now and periodically.
+/// A broker without JetStream, or without the stream, has nothing to remove.
+async fn retire_replay_stream(client: async_nats::Client) {
+    let jetstream = async_nats::jetstream::new(client);
+    loop {
+        match jetstream.delete_stream(RETIRED_STREAM_NAME).await {
+            Ok(_) => info!("Removed the retired NATS JetStream event stream"),
+            Err(error) => debug!(error = %error, "No retired NATS event stream to remove"),
+        }
+        tokio::time::sleep(RETIRE_STREAM_EVERY).await;
     }
 }
 
@@ -523,24 +427,6 @@ mod tests {
             metadata: None,
             tags: None,
             sequence: None,
-        }
-    }
-
-    #[test]
-    fn nats_stream_budget_accepts_only_positive_byte_counts() {
-        assert_eq!(
-            parse_nats_event_stream_max_bytes(None).unwrap(),
-            DEFAULT_NATS_EVENT_STREAM_MAX_BYTES
-        );
-        assert_eq!(
-            parse_nats_event_stream_max_bytes(Some("536870912")).unwrap(),
-            536_870_912
-        );
-        for invalid in ["", "0", "-1", "1MiB", "9223372036854775808"] {
-            assert!(
-                parse_nats_event_stream_max_bytes(Some(invalid)).is_err(),
-                "{invalid}"
-            );
         }
     }
 
@@ -697,7 +583,7 @@ mod tests {
     }
 
     // Each test owns a loopback-only broker and store. Never point restart tests
-    // at an external broker: losing this memory stream is the failure under test.
+    // at an external broker.
     enum TestBroker {
         Native(std::process::Child),
         Container(String),
@@ -842,12 +728,6 @@ mod tests {
             })
             .await
             .expect("original client reconnects");
-            let error = delivery
-                .jetstream
-                .get_stream(NATS_STREAM_NAME)
-                .await
-                .expect_err("memory stream is absent after broker restart");
-            assert!(error.to_string().contains("stream not found"), "{error}");
         }
     }
 
@@ -894,156 +774,94 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nats_stream_budget_does_not_rewrite_an_existing_stream() {
-        let broker = TestNatsServer::start().await;
-        let original = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 32_768)
-            .await
-            .unwrap();
-        let next = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 16_384)
-            .await
-            .unwrap();
-        let stream = next.jetstream.get_stream(NATS_STREAM_NAME).await.unwrap();
-        assert_eq!(stream.cached_info().config.max_bytes, 32_768);
-        original.shutdown().await;
-        next.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn bounded_nats_stream_evicts_old_messages_and_recovers_after_restart() {
+    async fn nats_delivers_to_the_sessions_subscriber_across_a_broker_restart() {
         let mut broker = TestNatsServer::start().await;
-        let publisher = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 16_384)
-            .await
-            .unwrap();
+        let publisher = NatsEventDelivery::connect(&broker.url()).await.unwrap();
         let session = Uuid::new_v4();
-        for _ in 0..50 {
-            let mut event = make_test_event(session);
-            if let EventData::OutputMessageDelta(delta) = &mut event.data {
-                delta.accumulated = "x".repeat(1_024);
-            }
-            publisher.publish(&event).await.unwrap();
-        }
-        let info = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .unwrap()
-            .cached_info()
-            .clone();
-        assert_eq!(info.config.max_bytes, 16_384);
-        assert!(info.state.bytes <= 16_384);
-        assert!(
-            info.state.first_sequence > 1,
-            "old messages should be evicted"
-        );
         let mut subscriber = publisher.subscribe(session).await.unwrap();
-        let event = make_test_event(session);
-        publisher.publish(&event).await.unwrap();
+        let before = make_test_event(session);
+        publisher.publish(&before).await.unwrap();
         let received = tokio::time::timeout(std::time::Duration::from_secs(5), subscriber.recv())
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(received.id, event.id);
+        assert_eq!(received.id, before.id);
+
         broker.restart(&publisher).await;
-        publisher.publish(&make_test_event(session)).await.unwrap();
-        let recovered = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .unwrap();
-        assert_eq!(recovered.cached_info().config.max_bytes, 16_384);
+        // The client resubscribes on reconnect; a new subscription works too.
+        let mut fresh = publisher.subscribe(session).await.unwrap();
+        let after = make_test_event(session);
+        publisher.publish(&after).await.unwrap();
+        for subscription in [&mut subscriber, &mut fresh] {
+            let received =
+                tokio::time::timeout(std::time::Duration::from_secs(5), subscription.recv())
+                    .await
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(received.id, after.id);
+        }
         publisher.shutdown().await;
     }
 
+    // `subscribe` returns only once the broker has the subscription, so an
+    // event another server publishes right after it is not lost.
     #[tokio::test]
-    async fn nats_stream_restart_recovers_delta_publish_without_restarting_api() {
-        let mut broker = TestNatsServer::start().await;
-        let publisher = NatsEventDelivery::connect(&broker.url()).await.unwrap();
-        broker.restart(&publisher).await;
-
-        let event = make_test_event(Uuid::new_v4());
-        publisher
-            .publish(&event)
-            .await
-            .expect("first delta recovers missing stream");
-        let stream = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .unwrap();
-        assert_eq!(stream.cached_info().state.messages, 1, "no duplicate retry");
-        let mut subscriber = publisher.subscribe(event.session_id.uuid()).await.unwrap();
-        let next = make_test_event(event.session_id.uuid());
-        publisher.publish(&next).await.unwrap();
-        let received = tokio::time::timeout(std::time::Duration::from_secs(5), subscriber.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(received.id, next.id);
-        assert_eq!(received.event_type, "output.message.delta");
-        assert_eq!(
-            serde_json::to_value(received.data).unwrap(),
-            serde_json::to_value(next.data).unwrap()
-        );
-        publisher.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn nats_stream_restart_recovers_subscription_before_any_publish() {
-        let mut broker = TestNatsServer::start().await;
-        let publisher = NatsEventDelivery::connect(&broker.url()).await.unwrap();
-        broker.restart(&publisher).await;
-        let event = make_test_event(Uuid::new_v4());
-        let mut subscriber = publisher
-            .subscribe(event.session_id.uuid())
-            .await
-            .expect("SSE reconnect restores stream even before a new event");
-        publisher.publish(&event).await.unwrap();
-        let received = tokio::time::timeout(std::time::Duration::from_secs(5), subscriber.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(received.id, event.id);
-        assert!(
-            received.sequence.is_none(),
-            "ephemeral event stays ephemeral"
-        );
-        publisher.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn nats_stream_recovery_does_not_overwrite_existing_subject_policy() {
+    async fn an_event_published_from_another_server_right_after_subscribe_arrives() {
         let broker = TestNatsServer::start().await;
-        let publisher = NatsEventDelivery::connect(&broker.url()).await.unwrap();
-        let mut config = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .unwrap()
-            .cached_info()
-            .config
-            .clone();
-        config.subjects = vec!["other.>".to_owned()];
-        publisher.jetstream.update_stream(&config).await.unwrap();
-        let error = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            publisher.publish(&make_test_event(Uuid::new_v4())),
-        )
-        .await
-        .unwrap()
-        .unwrap_err();
-        assert!(format!("{error:#}").contains("no stream found for given subject"));
-        let stream = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
+        let subscriber_side = NatsEventDelivery::connect(&broker.url()).await.unwrap();
+        let publisher_side = NatsEventDelivery::connect(&broker.url()).await.unwrap();
+        for _ in 0..20 {
+            let session = Uuid::new_v4();
+            let mut subscription = subscriber_side.subscribe(session).await.unwrap();
+            let event = make_test_event(session);
+            publisher_side.publish(&event).await.unwrap();
+            let received =
+                tokio::time::timeout(std::time::Duration::from_secs(5), subscription.recv())
+                    .await
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(received.id, event.id);
+        }
+        subscriber_side.shutdown().await;
+        publisher_side.shutdown().await;
+    }
+
+    // The memory stream earlier versions kept every event in is removed, so
+    // live events no longer accumulate in the broker.
+    #[tokio::test]
+    async fn connecting_retires_the_jetstream_replay_buffer() {
+        let broker = TestNatsServer::start().await;
+        let legacy = async_nats::connect(broker.url()).await.unwrap();
+        let jetstream = async_nats::jetstream::new(legacy.clone());
+        jetstream
+            .create_stream(async_nats::jetstream::stream::Config {
+                name: RETIRED_STREAM_NAME.to_string(),
+                subjects: vec![format!("{NATS_SUBJECT_PREFIX}.>")],
+                storage: async_nats::jetstream::stream::StorageType::Memory,
+                ..Default::default()
+            })
             .await
             .unwrap();
-        assert_eq!(stream.cached_info().config.subjects, vec!["other.>"]);
-        assert_eq!(stream.cached_info().state.messages, 0);
+
+        let publisher = NatsEventDelivery::connect(&broker.url()).await.unwrap();
+        let retired = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while jetstream.get_stream(RETIRED_STREAM_NAME).await.is_ok() {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        assert!(retired.is_ok(), "the replay stream is removed");
+        publisher
+            .publish(&make_test_event(Uuid::new_v4()))
+            .await
+            .unwrap();
+        publisher.client.flush().await.unwrap();
+        assert!(jetstream.get_stream(RETIRED_STREAM_NAME).await.is_err());
         publisher.shutdown().await;
     }
 
     #[tokio::test]
-    async fn nats_stream_restart_restores_real_event_service_delta_and_durable_delivery() {
+    async fn nats_restart_keeps_real_event_service_delta_and_durable_delivery() {
         use crate::services::EventService;
         use crate::storage::StorageBackend;
         use everruns_core::{
@@ -1059,27 +877,12 @@ mod tests {
         broker.restart(&publisher).await;
 
         let data = make_test_event(session.uuid()).data;
-        let recovered = service
-            .emit(EventRequest::new(
-                session,
-                EventContext::empty(),
-                data.clone(),
-            ))
-            .await
-            .unwrap();
-        assert!(recovered.sequence.is_none());
-        let stream = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .expect("emit_ephemeral really published, not merely returned Ok");
-        assert_eq!(stream.cached_info().state.messages, 1);
-
         let mut subscriber = delivery.subscribe(session.uuid()).await.unwrap();
         let delta = service
             .emit(EventRequest::new(session, EventContext::empty(), data))
             .await
             .unwrap();
+        assert!(delta.sequence.is_none());
         let completed = service
             .emit(EventRequest::new(
                 session,
@@ -1111,85 +914,7 @@ mod tests {
         publisher.shutdown().await;
     }
 
-    #[tokio::test]
-    async fn nats_stream_recovery_does_not_retry_an_uncertain_ack_timeout() {
-        let broker = TestNatsServer::start().await;
-        let mut publisher = NatsEventDelivery::connect(&broker.url()).await.unwrap();
-        let mut config = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .unwrap()
-            .cached_info()
-            .config
-            .clone();
-        // The broker stores the message but withholds its ack. Retrying this
-        // timeout would duplicate an event that was already accepted.
-        config.no_ack = true;
-        publisher.jetstream.update_stream(&config).await.unwrap();
-        publisher
-            .jetstream
-            .set_timeout(std::time::Duration::from_millis(250));
-        let error = publisher
-            .publish(&make_test_event(Uuid::new_v4()))
-            .await
-            .unwrap_err();
-        let typed = error
-            .downcast_ref::<async_nats::jetstream::context::PublishError>()
-            .unwrap();
-        assert_eq!(
-            typed.kind(),
-            async_nats::jetstream::context::PublishErrorKind::TimedOut
-        );
-        let stream = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .unwrap();
-        assert_eq!(
-            stream.cached_info().state.messages,
-            1,
-            "no duplicate after uncertain ack"
-        );
-        assert!(
-            stream.cached_info().config.no_ack,
-            "existing policy unchanged"
-        );
-        publisher.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn nats_stream_restart_allows_concurrent_publishers_to_recover() {
-        let mut broker = TestNatsServer::start().await;
-        let publisher = Arc::new(NatsEventDelivery::connect(&broker.url()).await.unwrap());
-        broker.restart(&publisher).await;
-        let mut tasks = tokio::task::JoinSet::new();
-        for _ in 0..16 {
-            let publisher = publisher.clone();
-            tasks.spawn(async move {
-                publisher
-                    .publish(&make_test_event(Uuid::new_v4()))
-                    .await
-                    .unwrap();
-            });
-        }
-        while let Some(result) = tasks.join_next().await {
-            result.unwrap();
-        }
-        let stream = publisher
-            .jetstream
-            .get_stream(NATS_STREAM_NAME)
-            .await
-            .unwrap();
-        assert_eq!(
-            stream.cached_info().state.messages,
-            16,
-            "every delta exactly once"
-        );
-        publisher.shutdown().await;
-    }
-
-    /// End-to-end check of EVERRUNS-32 against the real JetStream server
+    /// End-to-end check of EVERRUNS-32 against the real NATS server
     /// named by `EVERRUNS_TEST_NATS_URL`; the weekly `Integration Live Sweep`
     /// starts one (feature `live-tests`).
     #[cfg(feature = "live-tests")]
@@ -1201,18 +926,7 @@ mod tests {
         let mut sub = nats.subscribe(event.session_id.uuid()).await.unwrap();
 
         // The untrimmed event is what failed in production.
-        let raw = nats
-            .jetstream
-            .publish(
-                format!("{NATS_SUBJECT_PREFIX}.{}", event.session_id.uuid()),
-                serde_json::to_vec(&event).unwrap().into(),
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(
-            raw.kind(),
-            async_nats::jetstream::context::PublishErrorKind::MaxPayloadExceeded
-        );
+        assert!(serde_json::to_vec(&event).unwrap().len() > nats.client.max_payload());
 
         nats.publish(&event).await.unwrap();
 

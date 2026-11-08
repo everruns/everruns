@@ -37,19 +37,28 @@
 // session event against them, about 4.5 reads per turn, while nearly every
 // organization has none and the rest change them by hand. The empty list is
 // cached as well.
+//
+// Decision: so do a session's configuration columns (`session:<id>`,
+// `SessionConfigRow`): harness, agent, capabilities, trigger, channel, source,
+// root and owner. The budget and sandbox listeners resolve them on nearly
+// every event, about 5 session-row reads per turn, and they change only by an
+// explicit edit. The trigger lists those columns, so a turn's status and
+// counter updates never fire it. Everything else on the session row moves
+// every turn and is not cached here.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
-use everruns_contracts::typed_id::{AgentId, HarnessId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use moka::sync::Cache;
 use uuid::Uuid;
 
 use super::StorageBackend;
 use crate::storage::{
     AgentCapabilityRow, AgentRow, HarnessCapabilityRow, HarnessRow, ObserverRow, ProviderRow,
+    SessionConfigRow,
 };
 
 const CAPACITY: u64 = 20_000;
@@ -72,6 +81,8 @@ struct Inner {
     providers: Cache<Uuid, ProviderRow>,
     /// Each organization's active observers, keyed by org id.
     active_observers: Cache<i64, Vec<ObserverRow>>,
+    /// Sessions' configuration columns, keyed by session id.
+    sessions: Cache<Uuid, SessionConfigRow>,
     /// The worker ingress protection floor; `None` inside is "no floor".
     ingress_floor: Cache<(), Option<i32>>,
     /// The invalidation listener is connected and listening.
@@ -100,6 +111,7 @@ impl Default for ConfigRowCache {
             harness_capabilities: cache(),
             providers: cache(),
             active_observers: cache(),
+            sessions: cache(),
             ingress_floor: Cache::builder().max_capacity(1).time_to_live(TTL).build(),
             live: AtomicBool::new(false),
             generation: AtomicU64::new(0),
@@ -115,11 +127,13 @@ pub enum ConfigRowChange {
     Provider(Uuid),
     /// An organization's observers.
     Observers(i64),
+    /// A session's configuration columns.
+    Session(Uuid),
     WorkerIngressFloor,
 }
 
 impl ConfigRowChange {
-    /// `agent:<uuid>`, `harness:<uuid>`, `provider:<uuid>`,
+    /// `agent:<uuid>`, `harness:<uuid>`, `provider:<uuid>`, `session:<uuid>`,
     /// `observers:<org_id>` or `worker_ingress_floor`; anything else is
     /// `None`.
     pub fn parse(payload: &str) -> Option<Self> {
@@ -135,6 +149,7 @@ impl ConfigRowChange {
             "agent" => Some(Self::Agent(id)),
             "harness" => Some(Self::Harness(id)),
             "provider" => Some(Self::Provider(id)),
+            "session" => Some(Self::Session(id)),
             _ => None,
         }
     }
@@ -168,6 +183,7 @@ impl ConfigRowCache {
             }
             ConfigRowChange::Provider(id) => self.0.providers.invalidate(&id),
             ConfigRowChange::Observers(org_id) => self.0.active_observers.invalidate(&org_id),
+            ConfigRowChange::Session(id) => self.0.sessions.invalidate(&id),
             ConfigRowChange::WorkerIngressFloor => self.0.ingress_floor.invalidate_all(),
         }
     }
@@ -180,6 +196,7 @@ impl ConfigRowCache {
         self.0.harness_capabilities.invalidate_all();
         self.0.providers.invalidate_all();
         self.0.active_observers.invalidate_all();
+        self.0.sessions.invalidate_all();
         self.0.ingress_floor.invalidate_all();
     }
 
@@ -252,6 +269,23 @@ impl StorageBackend {
             })
             .await?
             .unwrap_or_default())
+    }
+
+    /// A session's configuration columns, from memory while the cache is
+    /// exact. `None` when the session does not exist or is not in `org_id`.
+    pub async fn get_session_config(
+        &self,
+        org_id: i64,
+        id: SessionId,
+    ) -> Result<Option<SessionConfigRow>> {
+        let cache = &self.config_rows;
+        let row = cache
+            .read_through(&cache.0.sessions, id.uuid(), async {
+                self.db.get_session_config(id).await
+            })
+            .await?;
+        // Keyed by id alone: another org's session is not this org's.
+        Ok(row.filter(|row| row.org_id == org_id))
     }
 
     /// An agent's configuration row, from memory while the cache is exact.
@@ -374,6 +408,10 @@ mod tests {
             Some(ConfigRowChange::Observers(42))
         );
         assert_eq!(ConfigRowChange::parse("observers:nope"), None);
+        assert_eq!(
+            ConfigRowChange::parse(&format!("session:{id}")),
+            Some(ConfigRowChange::Session(id))
+        );
         assert_eq!(ConfigRowChange::parse("agent:nope"), None);
         assert_eq!(ConfigRowChange::parse(&format!("model:{id}")), None);
     }

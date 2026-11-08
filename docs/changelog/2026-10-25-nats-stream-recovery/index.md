@@ -18,3 +18,8 @@ completed messages remain available in durable session history.
 
 Token deltas remain ephemeral. The recovery does not rewrite an existing stream's
 subject policy or retry uncertain publish timeouts.
+
+Since November 2026 live delivery keeps no JetStream stream at all, so there
+is nothing to restore after a restart. Live streams that miss an event read
+it from durable session history; see
+[physical architecture](/advanced/physical-architecture/).

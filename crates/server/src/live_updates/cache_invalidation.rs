@@ -356,6 +356,71 @@ mod tests {
         assert_eq!(edit.payload(), format!("agent:{}", agent_id.uuid()));
     }
 
+    // A turn updates its session's status and counters many times; only an
+    // edit of the session's configuration columns notifies, and the edit is
+    // read back.
+    #[tokio::test]
+    async fn session_turn_updates_do_not_notify_but_configuration_edits_do() {
+        let db = StorageBackend::test_database();
+        listening(&db).await;
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let session_id = db.create_test_session().await;
+        let read = db
+            .get_session_config(org_id, session_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.capabilities, serde_json::json!([]));
+        assert!(
+            db.get_session_config(org_id + 1, session_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let url = db.database().test_database().unwrap().url().to_string();
+        let mut listener = sqlx::postgres::PgListener::connect(&url).await.unwrap();
+        listener
+            .listen(crate::storage::CONFIG_ROWS_CHANNEL)
+            .await
+            .unwrap();
+
+        sqlx::query(
+            "UPDATE sessions SET status = 'active', total_input_tokens = total_input_tokens + 1 \
+             WHERE id = $1",
+        )
+        .bind(session_id.uuid())
+        .execute(db.pool())
+        .await
+        .unwrap();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(500), listener.recv())
+                .await
+                .is_err(),
+            "a turn's session update sends no notification"
+        );
+
+        let capabilities = serde_json::json!([{ "ref": "web_fetch" }]);
+        sqlx::query("UPDATE sessions SET capabilities = $2 WHERE id = $1")
+            .bind(session_id.uuid())
+            .bind(&capabilities)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let edit = tokio::time::timeout(std::time::Duration::from_secs(10), listener.recv())
+            .await
+            .expect("the edit notifies")
+            .unwrap();
+        assert_eq!(edit.payload(), format!("session:{}", session_id.uuid()));
+        let seen = eventually(|| async {
+            db.get_session_config(org_id, session_id)
+                .await
+                .unwrap()
+                .is_some_and(|row| row.capabilities == capabilities)
+        })
+        .await;
+        assert!(seen, "the edited session configuration is read back");
+    }
+
     // A legacy worker must be refused once the floor commits, even though
     // every server had cached "no floor".
     #[tokio::test]
