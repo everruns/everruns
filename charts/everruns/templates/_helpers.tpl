@@ -56,20 +56,66 @@ key: DATABASE_URL
 {{- end -}}
 {{- end -}}
 
-{{- define "everruns.natsUrl" -}}
-{{- if .Values.nats.url -}}
-{{- .Values.nats.url -}}
-{{- else if .Values.nats.enabled -}}
-{{- printf "nats://%s:4222" (include "everruns.name" (list . "nats")) -}}
+{{/* Generated passwords for the bundled datastores and the egress proxy. */}}
+{{- define "everruns.internalSecretName" -}}
+{{- printf "%s-internal" (include "everruns.fullname" .) -}}
+{{- end -}}
+
+{{- define "everruns.hasNats" -}}
+{{- if or .Values.nats.url .Values.nats.enabled }}true{{ end -}}
+{{- end -}}
+
+{{- define "everruns.hasValkey" -}}
+{{- if or .Values.valkey.url .Values.valkey.enabled }}true{{ end -}}
+{{- end -}}
+
+{{/*
+Env entries for NATS_URL. The bundled NATS requires a password; Kubernetes
+expands $(NATS_PASSWORD) from the entry before it, so the password never
+appears in the manifest.
+*/}}
+{{- define "everruns.natsEnv" -}}
+{{- if .Values.nats.url }}
+- { name: NATS_URL, value: {{ .Values.nats.url | quote }} }
+{{- else if .Values.nats.enabled }}
+- name: NATS_PASSWORD
+  valueFrom: { secretKeyRef: { name: {{ include "everruns.internalSecretName" . }}, key: NATS_PASSWORD } }
+- { name: NATS_URL, value: {{ printf "nats://everruns:$(NATS_PASSWORD)@%s:4222" (include "everruns.name" (list . "nats")) | quote }} }
+{{- end }}
+{{- end -}}
+
+{{/* Env entries for VALKEY_URL, the same way. */}}
+{{- define "everruns.valkeyEnv" -}}
+{{- if .Values.valkey.url }}
+- { name: VALKEY_URL, value: {{ .Values.valkey.url | quote }} }
+{{- else if .Values.valkey.enabled }}
+- name: VALKEY_PASSWORD
+  valueFrom: { secretKeyRef: { name: {{ include "everruns.internalSecretName" . }}, key: VALKEY_PASSWORD } }
+- { name: VALKEY_URL, value: {{ printf "redis://:$(VALKEY_PASSWORD)@%s:6379" (include "everruns.name" (list . "valkey")) | quote }} }
+{{- end }}
+{{- end -}}
+
+{{/* Env entries that send tenant traffic through the egress proxy. */}}
+{{- define "everruns.egressProxyEnv" -}}
+{{- if .Values.egressProxy.enabled }}
+- { name: EVERRUNS_EGRESS_PROXY_URL, value: {{ printf "http://%s:4750" (include "everruns.name" (list . "egress-proxy")) | quote }} }
+- name: EVERRUNS_EGRESS_PROXY_SECRET
+  valueFrom: { secretKeyRef: { name: {{ include "everruns.internalSecretName" . }}, key: EVERRUNS_EGRESS_PROXY_SECRET } }
+{{- end }}
+{{- end -}}
+
+{{- define "everruns.serverServiceAccount" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- .Values.serviceAccount.name | default (include "everruns.name" (list . "server")) -}}
+{{- else -}}
+{{- .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "everruns.valkeyUrl" -}}
-{{- if .Values.valkey.url -}}
-{{- .Values.valkey.url -}}
-{{- else if .Values.valkey.enabled -}}
-{{- printf "redis://%s:6379" (include "everruns.name" (list . "valkey")) -}}
-{{- end -}}
+{{/* A NetworkPolicy peer for one component: pass (list $ "server"). */}}
+{{- define "everruns.peer" -}}
+- podSelector:
+    matchLabels: {{- include "everruns.selector" . | nindent 6 }}
 {{- end -}}
 
 {{/* Stop with a clear message before anything is created. */}}
@@ -89,5 +135,19 @@ key: DATABASE_URL
 {{- end -}}
 {{- if not (or .Values.postgresql.enabled .Values.database.url .Values.database.existingSecret) -}}
 {{- fail "set database.url or database.existingSecret, or postgresql.enabled=true to try the chart with a bundled database" -}}
+{{- end -}}
+{{- if gt (int .Values.server.replicas) 1 -}}
+{{- if not (include "everruns.hasNats" .) -}}
+{{- fail "server.replicas above 1 needs NATS (nats.enabled or nats.url): without it a live stream on one server misses events another server writes" -}}
+{{- end -}}
+{{- if not (include "everruns.hasValkey" .) -}}
+{{- fail "server.replicas above 1 needs Valkey (valkey.enabled or valkey.url): without it each server keeps its own rate limits, multiplying them" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.storage.s3.enabled (not .Values.storage.s3.bucket) -}}
+{{- fail "storage.s3.enabled needs storage.s3.bucket" -}}
+{{- end -}}
+{{- if and .Values.metrics.serviceMonitor.enabled (not .Values.metrics.enabled) -}}
+{{- fail "metrics.serviceMonitor.enabled needs metrics.enabled" -}}
 {{- end -}}
 {{- end -}}
