@@ -483,6 +483,17 @@ impl Database {
     }
 
     /// Get session without org scoping. For internal system use only (e.g. usage tracking).
+    /// A session's configuration columns ([`SessionConfigRow`]), by id alone.
+    pub async fn get_session_config(&self, id: SessionId) -> Result<Option<SessionConfigRow>> {
+        Ok(sqlx::query_as::<_, SessionConfigRow>(
+            "SELECT id, org_id, harness_id, agent_id, capabilities, trigger_id, channel_id, source, \
+             root_session_id, owner_principal_id, resolved_owner_user_id FROM sessions WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"

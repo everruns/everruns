@@ -559,7 +559,7 @@ impl ServerAppBuilder {
         );
 
         // =====================================================================
-        // Event delivery (NATS JetStream / in-memory)
+        // Event delivery (NATS / in-memory)
         // =====================================================================
         let event_delivery = if self.config.dev_mode {
             crate::live_updates::event_delivery::EventDelivery::in_memory()

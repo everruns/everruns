@@ -30,7 +30,7 @@ pub async fn effective_session_capabilities(
         return Ok(None);
     };
     let Some(session_row) = db
-        .get_session(org_id, session_id)
+        .get_session_config(org_id, session_id)
         .await
         .context("failed to load session")?
     else {

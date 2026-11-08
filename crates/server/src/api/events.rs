@@ -390,6 +390,19 @@ struct PushCursor {
 }
 
 impl PushCursor {
+    /// Whether `event` is a durable event past the next one this stream
+    /// expects, so push dropped or reordered something before it. Live
+    /// delivery is plain NATS publish/subscribe, which drops messages for a
+    /// subscriber that falls behind; the stream then reads the gap from PG
+    /// before sending `event`. A sequence a conflicting insert used up leaves
+    /// a real gap too, which costs one read.
+    fn skips(&self, event: &Event) -> bool {
+        matches!(
+            (self.delivered, event.sequence),
+            (Some(delivered), Some(sequence)) if sequence > delivered + 1
+        )
+    }
+
     /// Record a durable event; false when it was already sent. Ephemeral
     /// events (no sequence) always pass.
     fn advance(&mut self, event: &Event) -> bool {
@@ -406,6 +419,42 @@ impl PushCursor {
         self.turn_open = event.event_type != everruns_core::SESSION_IDLED;
         true
     }
+}
+
+/// Read the durable events after the cursor that push did not deliver, and
+/// render the ones this stream has not sent.
+async fn catch_up_from_pg(
+    event_service: &EventService,
+    session_id: Uuid,
+    push: &mut PushCursor,
+    filter_types: &[String],
+    exclude_types: &[String],
+    render: &SseRender,
+    retry: Duration,
+) -> Vec<Result<SseEvent, Infallible>> {
+    let missed = match event_service
+        .list(session_id, push.delivered, None, &[], &[], None, None)
+        .await
+    {
+        Ok(events) => events,
+        Err(e) => {
+            tracing::warn!(session_id = %session_id, error = %e, "SSE: catch-up read failed");
+            return Vec::new();
+        }
+    };
+    let mut frames = Vec::new();
+    for event in &missed {
+        if push.advance(event)
+            && event_passes_stream_filter(event, session_id, filter_types, exclude_types)
+            && let Some(frame) = render(event, retry)
+        {
+            frames.push(Ok(frame));
+        }
+    }
+    if !missed.is_empty() {
+        tracing::info!(session_id = %session_id, count = missed.len(), "SSE: caught up durable events push did not deliver");
+    }
+    frames
 }
 
 pub(crate) async fn session_event_sse(
@@ -660,16 +709,21 @@ pub(crate) async fn session_event_sse(
                     let mut state = state;
                     match woke {
                         Woke::Pushed(Some(event)) => {
+                            let ours = event.session_id.uuid() == session_id;
+                            // Push skipped an event: send the gap from PG first.
+                            let mut sse_events = if ours && state.push.skips(&event) {
+                                catch_up_from_pg(&event_service, session_id, &mut state.push, &state.filter_types, &state.exclude_types, &render, retry_duration).await
+                            } else {
+                                Vec::new()
+                            };
                             // Wrong session (partition collision), already sent by a
                             // catch-up read, or filtered out: skip.
-                            let send = event.session_id.uuid() == session_id
+                            let send = ours
                                 && state.push.advance(&event)
                                 && event_passes_stream_filter(&event, session_id, &state.filter_types, &state.exclude_types);
-                            let sse_events: Vec<Result<SseEvent, Infallible>> = if send {
-                                render(&event, retry_duration).map(Ok).into_iter().collect()
-                            } else {
-                                vec![]
-                            };
+                            if send {
+                                sse_events.extend(render(&event, retry_duration).map(Ok));
+                            }
                             Some((stream::iter(sse_events), state))
                         }
                         Woke::Pushed(None) => {
@@ -678,25 +732,7 @@ pub(crate) async fn session_event_sse(
                             None
                         }
                         Woke::Quiet => {
-                            let missed = match event_service.list(session_id, state.push.delivered, None, &[], &[], None, None).await {
-                                Ok(events) => events,
-                                Err(e) => {
-                                    tracing::warn!(session_id = %session_id, error = %e, "SSE: catch-up read failed");
-                                    vec![]
-                                }
-                            };
-                            let mut sse_events: Vec<Result<SseEvent, Infallible>> = Vec::new();
-                            for event in &missed {
-                                if state.push.advance(event)
-                                    && event_passes_stream_filter(event, session_id, &state.filter_types, &state.exclude_types)
-                                    && let Some(frame) = render(event, retry_duration)
-                                {
-                                    sse_events.push(Ok(frame));
-                                }
-                            }
-                            if !missed.is_empty() {
-                                tracing::info!(session_id = %session_id, count = missed.len(), "SSE: caught up durable events push did not deliver");
-                            }
+                            let sse_events = catch_up_from_pg(&event_service, session_id, &mut state.push, &state.filter_types, &state.exclude_types, &render, retry_duration).await;
                             Some((stream::iter(sse_events), state))
                         }
                         Woke::Cycle => Some((stream::iter(vec![]), StreamState {
@@ -966,6 +1002,21 @@ mod tests {
         assert!(cursor.advance(&durable(session, "session.idled", 9)));
         assert!(!cursor.turn_open);
         assert_eq!(cursor.delivered, Some(9));
+    }
+
+    #[test]
+    fn push_cursor_notices_a_skipped_durable_event() {
+        let session = Uuid::new_v4();
+        let mut cursor = PushCursor::default();
+        assert!(
+            !cursor.skips(&durable(session, "turn.started", 7)),
+            "a stream with no cursor cannot tell"
+        );
+        assert!(cursor.advance(&durable(session, "turn.started", 7)));
+        assert!(!cursor.skips(&durable(session, "tool.started", 8)));
+        assert!(!cursor.skips(&test_event(session, "output.message.delta")));
+        assert!(cursor.skips(&durable(session, "tool.completed", 9)));
+        assert!(!cursor.skips(&durable(session, "turn.started", 7)));
     }
 
     #[test]

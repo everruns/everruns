@@ -6,6 +6,13 @@
   from its own copy, and event listeners take a session's org and an org's
   active observers from memory (observers kept exact by a trigger). About 20
   fewer statements per turn ([event listeners](execution/event-listeners.md#session-reads)).
+- The budget and sandbox listeners read a session's configuration columns
+  from memory, kept exact by a trigger that ignores a turn's status and
+  counter updates ([event listeners](execution/event-listeners.md#session-reads)).
+- Live session events use plain NATS publish/subscribe; the JetStream stream
+  that kept every event for an hour is gone, and an SSE stream that sees a
+  durable event past the next sequence reads the gap from PostgreSQL
+  ([architecture](foundations/architecture.md#event-delivery)).
 
 ## 2026-11-07
 

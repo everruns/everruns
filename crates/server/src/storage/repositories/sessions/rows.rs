@@ -199,6 +199,26 @@ pub struct SessionRow {
     pub archived_at: Option<DateTime<Utc>>,
 }
 
+/// The columns of a session that configure what runs and who pays, which
+/// change only by an explicit edit. The budget and sandbox listeners read
+/// them on nearly every event, so a copy is kept in memory and dropped when a
+/// trigger reports one of them changed
+/// (`StorageBackend::get_session_config`).
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionConfigRow {
+    pub id: SessionId,
+    pub org_id: i64,
+    pub harness_id: Option<HarnessId>,
+    pub agent_id: Option<AgentId>,
+    pub capabilities: serde_json::Value,
+    pub trigger_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub source: String,
+    pub root_session_id: Option<SessionId>,
+    pub owner_principal_id: PrincipalId,
+    pub resolved_owner_user_id: Option<Uuid>,
+}
+
 /// One bucket of a facet rail dimension.
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionFacetBucket {
