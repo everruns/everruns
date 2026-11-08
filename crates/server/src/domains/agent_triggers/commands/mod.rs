@@ -83,7 +83,16 @@ fn agent_trigger_max_per_org() -> i64 {
 // Config validation / normalization
 // ============================================================================
 
-fn validate_schedule_config(cron_expression: &str, message: &str) -> Result<String, CommandError> {
+fn validate_schedule_config(
+    cron_expression: &str,
+    timezone: &str,
+    message: &str,
+) -> Result<String, CommandError> {
+    if !timezone.trim().is_empty() && timezone.trim().parse::<chrono_tz::Tz>().is_err() {
+        return Err(CommandError::bad_request(format!(
+            "Invalid IANA timezone '{timezone}'"
+        )));
+    }
     if message.trim().is_empty() {
         return Err(CommandError::bad_request(
             "Agent trigger requires a non-empty message",
@@ -234,7 +243,10 @@ pub(crate) async fn sync_agent_trigger_binding(
         trigger_row.id, agent.name
     );
     let next_trigger_at = if enabled {
-        UpdateField::from_option(calculate_schedule_next_trigger(&cron_expression)?)
+        UpdateField::from_option(calculate_schedule_next_trigger(
+            &cron_expression,
+            &config.timezone,
+        )?)
     } else {
         UpdateField::Clear
     };
@@ -328,7 +340,7 @@ fn new_schedule_row(
         max_catch_up: Some(1),
         retry_policy: None,
         next_trigger_at: if enabled {
-            calculate_schedule_next_trigger(cron_expression)?
+            calculate_schedule_next_trigger(cron_expression, &config.timezone)?
         } else {
             None
         },
@@ -447,7 +459,8 @@ impl Command for CreateAgentTrigger {
                 let cron_expression = req.cron_expression.as_deref().ok_or_else(|| {
                     CommandError::bad_request("Schedule trigger requires cron_expression")
                 })?;
-                let normalized_cron = validate_schedule_config(cron_expression, &req.message)?;
+                let normalized_cron =
+                    validate_schedule_config(cron_expression, &req.timezone, &req.message)?;
                 if req.enabled {
                     let count = count_enabled_triggers(ctx).await?;
                     let max = agent_trigger_max_per_org();
@@ -794,8 +807,11 @@ impl Command for UpdateAgentTriggerCmd {
                         "A schedule that runs in a channel conversation cannot run a saved script",
                     ));
                 }
-                config.cron_expression =
-                    validate_schedule_config(&config.cron_expression, &config.message)?;
+                config.cron_expression = validate_schedule_config(
+                    &config.cron_expression,
+                    &config.timezone,
+                    &config.message,
+                )?;
                 (build_schedule_config_value(&config)?, None)
             }
             AgentTriggerType::Webhook => {
