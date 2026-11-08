@@ -21,7 +21,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_SRC="${1:-$ROOT/examples/docker-compose-full.yaml}"
+COMPOSE_SRC="${1:-$ROOT/infra/docker-compose/docker-compose.yaml}"
 PORT="${EXAMPLE_PROXY_PORT:-9300}"
 BASE="http://localhost:$PORT"
 # Seeded LlmSim model id (crates/server/src/setup/seed/models.rs, LLMSIM_DEFAULT).

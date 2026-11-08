@@ -145,6 +145,39 @@ profile:
 everruns docker up --name demo   # profile 'local-demo', next free port
 ```
 
+## Give it a public address
+
+Slack, webhook channels, GitHub triggers and OAuth callbacks need an address
+the internet can reach. `--tunnel` adds one, running as one more container in
+the stack, so it starts and stops with everything else and nothing is
+installed on your computer:
+
+```bash
+TS_AUTHKEY=tskey-auth-... everruns docker up --tunnel tailscale
+```
+
+| Tunnel | Address | You need |
+|---|---|---|
+| `tailscale` (recommended) | Stable, `https://everruns.<tailnet>.ts.net` | A free Tailscale account and an [auth key](https://login.tailscale.com/admin/settings/keys). Allow Funnel in the [tailnet policy](https://tailscale.com/kb/1223/funnel) and turn on HTTPS certificates. |
+| `cloudflare --public-url https://agents.example.com` | Stable, your hostname | A domain on Cloudflare and a tunnel token (`CLOUDFLARE_TUNNEL_TOKEN`). Point the tunnel's public hostname at `http://caddy:9300`. |
+| `cloudflare` | Random `*.trycloudflare.com`, **changes on every restart** | Nothing. For a quick try only: Slack apps and OAuth callbacks stop working when it changes. |
+| `ngrok --public-url https://<name>.ngrok-free.app` | Your ngrok static domain | An ngrok account and `NGROK_AUTHTOKEN`. The free plan shows browsers a warning page first. |
+
+The token is read from the environment, or asked for once, and kept in the
+instance's `.env`. `up` waits for the address, passes it to the server as
+`PUBLIC_APP_URL`, and checks that it answers. `everruns docker status` shows it.
+
+Already have a reverse proxy or a domain pointing at this machine? Pass the
+address alone:
+
+```bash
+everruns docker up --public-url https://agents.example.com
+```
+
+`--tunnel none` turns a tunnel off and `--public-url ''` removes the address.
+A public address needs sign-in: `up` refuses `--tunnel` and `--public-url`
+together with `--auth none`, where anyone who reaches the instance is admin.
+
 ## Use another container CLI
 
 `EVERRUNS_DOCKER=podman everruns docker up` runs Podman's Docker-compatible

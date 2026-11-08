@@ -358,7 +358,7 @@ jobs:
               - 'skills/**'
               - 'plugins/**'
               - 'local/Caddyfile'
-              - 'examples/docker-compose-full.yaml'
+              - 'infra/docker-compose/docker-compose.yaml'
               - 'justfile'
               - '.github/workflows/ci.yml'
             knowledge:

@@ -56,7 +56,7 @@ check_prefixed_ports() {
 }
 
 check_example_ports() {
-  local compose_file="$PROJECT_ROOT/examples/docker-compose-full.yaml"
+  local compose_file="$PROJECT_ROOT/infra/docker-compose/docker-compose.yaml"
 
   if rg -q '^    container_name:' "$compose_file"; then
     echo "FAIL: example compose should not hardcode container_name" >&2
@@ -102,7 +102,7 @@ check(json.load(sys.stdin))
 
   local example_caddyfile
   example_caddyfile="$(mktemp)"
-  python3 - <<'PY' "$PROJECT_ROOT/examples/docker-compose-full.yaml" "$example_caddyfile"
+  python3 - <<'PY' "$PROJECT_ROOT/infra/docker-compose/docker-compose.yaml" "$example_caddyfile"
 from pathlib import Path
 import re
 import sys

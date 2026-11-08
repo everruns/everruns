@@ -27,13 +27,21 @@
 #      DEFAULT_OPENROUTER_API_KEY=sk-or-... # Optional: OpenRouter inference key
 #
 #   3. Start everything:
-#      docker compose -f docker-compose-full.yaml up -d
+#      docker compose -f docker-compose.yaml up -d
 #
 #      The default set is the lean stack (one worker, no metrics). Add profiles
 #      for the full shape, on the command line or as COMPOSE_PROFILES in .env:
-#        scale    two more workers (worker-2, worker-3)
-#        metrics  VictoriaMetrics
-#      COMPOSE_PROFILES=scale,metrics docker compose -f docker-compose-full.yaml up -d
+#        scale             two more workers (worker-2, worker-3)
+#        metrics           VictoriaMetrics
+#        tailscale         public HTTPS address through Tailscale Funnel (TS_AUTHKEY)
+#        cloudflare        Cloudflare named tunnel (CLOUDFLARE_TUNNEL_TOKEN)
+#        cloudflare-quick  Cloudflare quick tunnel: random address, changes on restart
+#        ngrok             ngrok static domain (NGROK_AUTHTOKEN, PUBLIC_APP_URL)
+#      With a tunnel or your own reverse proxy, set PUBLIC_APP_URL to the public
+#      HTTPS origin (Slack Request URLs, OAuth callbacks and links use it), and
+#      never combine a public address with AUTH_MODE=none.
+#      `everruns docker up --tunnel ...` does all of this for you.
+#      COMPOSE_PROFILES=scale,metrics docker compose -f docker-compose.yaml up -d
 #
 #   4. Open UI at: http://localhost:9300
 #   5. VictoriaMetrics UI (`metrics` profile): http://localhost:8428/vmui
@@ -116,6 +124,9 @@ services:
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       AUTH_MODE: ${AUTH_MODE:-admin}
+      # Public origin people and webhooks reach (https://agents.example.com).
+      # Empty means http://localhost:9300.
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       # AUTH_MODE=none is refused outside the dev grade.
       DEPLOYMENT_GRADE: ${DEPLOYMENT_GRADE:-prod}
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set when AUTH_MODE is admin/full}
@@ -201,6 +212,58 @@ services:
     depends_on:
       - server
       - ui
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Public address (optional): one tunnel in front of Caddy, chosen by profile.
+  # Each needs PUBLIC_APP_URL set to the address it serves; see the header.
+  # ==========================================================================
+  tailscale:
+    profiles: [tailscale]
+    image: tailscale/tailscale:v1.104
+    hostname: ${TS_HOSTNAME:-everruns}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+    configs:
+      - source: tailscale_serve
+        target: /config/serve.json
+    depends_on:
+      - caddy
+    restart: unless-stopped
+
+  cloudflared:
+    profiles: [cloudflare]
+    image: cloudflare/cloudflared:2026.10.7
+    # Point the tunnel's public hostname at http://caddy:9300 in Cloudflare.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - caddy
+    restart: unless-stopped
+
+  cloudflared-quick:
+    profiles: [cloudflare-quick]
+    image: cloudflare/cloudflared:2026.10.7
+    # Prints a random https://*.trycloudflare.com address; it changes on restart.
+    command: tunnel --no-autoupdate --url http://caddy:9300
+    depends_on:
+      - caddy
+    restart: unless-stopped
+
+  ngrok:
+    profiles: [ngrok]
+    image: ngrok/ngrok:3-alpine
+    command: http caddy:9300 --url ${PUBLIC_APP_URL:-}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    depends_on:
+      - caddy
     restart: unless-stopped
 
   # ==========================================================================
@@ -320,6 +383,20 @@ configs:
         }
       }
 
+  # Tailscale Serve: HTTPS on 443, open to the internet (Funnel), to Caddy.
+  # $${TS_CERT_DOMAIN} is filled in by the container with this node's name.
+  tailscale_serve:
+    content: |
+      {
+        "TCP": { "443": { "HTTPS": true } },
+        "Web": {
+          "$${TS_CERT_DOMAIN}:443": {
+            "Handlers": { "/": { "Proxy": "http://caddy:9300" } }
+          }
+        },
+        "AllowFunnel": { "$${TS_CERT_DOMAIN}:443": true }
+      }
+
   prometheus_scrape_config:
     content: |
       global:
@@ -339,3 +416,4 @@ volumes:
   valkey_data:
   nats_data:
   victoriametrics_data:
+  tailscale_state:

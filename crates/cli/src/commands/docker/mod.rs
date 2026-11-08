@@ -9,6 +9,7 @@
 //! and it asks for the instance name first.
 
 mod checks;
+mod public;
 mod settings;
 mod signin;
 
@@ -131,6 +132,18 @@ pub struct UpArgs {
     /// Do not open the browser
     #[arg(long)]
     pub no_open: bool,
+
+    /// Public HTTPS address people and webhooks use, such as
+    /// https://agents.example.com. Passed to the server as PUBLIC_APP_URL;
+    /// an empty value removes it
+    #[arg(long, value_name = "URL")]
+    pub public_url: Option<String>,
+
+    /// Give the instance a public address through a tunnel that runs with the
+    /// stack: tailscale (free stable *.ts.net), cloudflare (named with
+    /// --public-url, else a quick one whose address changes), ngrok, or none
+    #[arg(long, value_enum)]
+    pub tunnel: Option<public::TunnelChoice>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -363,6 +376,26 @@ async fn up(args: UpArgs) -> Result<()> {
     };
     s.set(settings::PORT, &port.to_string());
 
+    // Public address. Decided after sign-in, which it depends on.
+    let public_plan = public::plan(
+        &s,
+        args.tunnel,
+        args.public_url.as_deref(),
+        auth == AuthChoice::None,
+    )?;
+    public::ensure_token(&mut s, &public_plan, asker.can_ask())?;
+    public::apply(&mut s, &public_plan);
+    if public_plan
+        .url
+        .as_deref()
+        .is_some_and(|u| u.starts_with("http://"))
+    {
+        eprintln!(
+            "Note: {} is plain http. Slack and OAuth callbacks need https.",
+            public_plan.url.as_deref().unwrap_or_default()
+        );
+    }
+
     // Image tag.
     let cli_tag = format!("v{}", env!("CARGO_PKG_VERSION"));
     let tag = match &args.image_tag {
@@ -392,6 +425,26 @@ async fn up(args: UpArgs) -> Result<()> {
         .context("Failed to run docker compose")?;
     if !status.success() {
         bail!("`docker compose up` failed; see the output above");
+    }
+    stop_other_tunnels(&docker, &inst, &running, public_plan.service);
+
+    // A tunnel that picks its own address reports it once up; the server is
+    // then recreated with it, which Compose does for a changed variable.
+    let mut public_url = public_plan.url.clone();
+    if let Some(service) = public_plan.service.filter(|t| t.discovers_url) {
+        let found = public::discover_url(|| compose(&docker, &inst), service).await?;
+        if public_url.as_deref() != Some(found.as_str()) {
+            s.set(settings::PUBLIC_URL, &found);
+            s.save(&inst.env_path())?;
+            let status = compose(&docker, &inst)
+                .args(["up", "--detach", "server"])
+                .status()
+                .context("Failed to run docker compose")?;
+            if !status.success() {
+                bail!("restarting the server with the public address failed");
+            }
+        }
+        public_url = Some(found);
     }
 
     let health = wait_healthy(&docker, &inst, port).await?;
@@ -432,6 +485,26 @@ async fn up(args: UpArgs) -> Result<()> {
             "  Sign in: {email} (password in {})",
             inst.env_path().display()
         ),
+    }
+    if let Some(public_url) = &public_url {
+        if public::reachable(public_url).await {
+            eprintln!("  Public address: {public_url}");
+        } else {
+            eprintln!(
+                "  Public address: {public_url} (not answering yet; {})",
+                public::unreachable_hint(public_plan.tunnel)
+            );
+        }
+        if public_plan
+            .service
+            .is_some_and(|t| t.profile == "cloudflare-quick")
+        {
+            eprintln!(
+                "  This quick tunnel's address changes whenever it restarts; run \
+                 `everruns docker up{}` again to pick up the new one.",
+                name_flag(&inst.name)
+            );
+        }
     }
     if signed_in.current {
         eprintln!(
@@ -488,6 +561,24 @@ fn compose(docker: &str, inst: &Instance) -> Command {
         cmd.env_remove(key);
     }
     cmd
+}
+
+/// Stop and remove tunnels that are no longer chosen. Compose leaves a
+/// service whose profile was turned off running, since it is not an orphan.
+fn stop_other_tunnels(
+    docker: &str,
+    inst: &Instance,
+    running: &[String],
+    keep: Option<public::TunnelService>,
+) {
+    for tunnel in public::TUNNEL_SERVICES {
+        if Some(tunnel) != keep && running.iter().any(|s| s == tunnel.service) {
+            let _ = compose(docker, inst)
+                .args(["rm", "--stop", "--force", tunnel.service])
+                .stdout(Stdio::null())
+                .status();
+        }
+    }
 }
 
 fn running_services(docker: &str, inst: &Instance) -> Vec<String> {
@@ -764,6 +855,14 @@ async fn status(args: &InstanceArgs) -> Result<()> {
 
     println!("Instance: {}", inst.name);
     println!("URL:      http://localhost:{port}");
+    if let Some(public_url) = s.value(settings::PUBLIC_URL) {
+        let via = s
+            .value(settings::TUNNEL)
+            .filter(|t| *t != "none")
+            .map(|t| format!(" (through {t})"))
+            .unwrap_or_default();
+        println!("Public:   {public_url}{via}");
+    }
     println!("Health:   {health}");
     println!(
         "Version:  {}",

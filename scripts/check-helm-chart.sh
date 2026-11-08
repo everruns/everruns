@@ -10,8 +10,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART="$ROOT/charts/everruns"
 fail() { echo "::error title=helm chart::$*" >&2; exit 1; }
 
-echo "==> Caddyfile matches examples/docker-compose-full.yaml"
-python3 - "$ROOT/examples/docker-compose-full.yaml" "$CHART/files/Caddyfile" <<'PY'
+echo "==> Caddyfile matches infra/docker-compose/docker-compose.yaml"
+python3 - "$ROOT/infra/docker-compose/docker-compose.yaml" "$CHART/files/Caddyfile" <<'PY'
 import re, sys
 compose, chart = (open(p).read() for p in sys.argv[1:])
 m = re.search(r"\n  caddyfile:\n    content: \|\n(.*?)\n  prometheus_scrape_config:", compose, re.S)

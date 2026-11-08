@@ -261,7 +261,7 @@ at the discovery documents, and `Accept: text/markdown` answered with
 
 The bundled [local proxy](https://github.com/everruns/everruns/blob/main/local/Caddyfile),
 [Railway proxy](https://github.com/everruns/everruns/blob/main/infra/railway/caddy/Caddyfile), and
-[Docker Compose stack](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml)
+[Docker Compose stack](https://github.com/everruns/everruns/blob/main/infra/docker-compose/docker-compose.yaml)
 already include it. For a custom proxy,
 add these rules next to wherever `/.well-known/*` is routed:
 

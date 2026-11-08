@@ -3,7 +3,7 @@
 This directory documents the Everruns Railway template shape and keeps a
 maintainable Caddy ingress config for repo-backed deployments. Railway does not
 run Docker Compose directly, so the live template maps
-`examples/docker-compose-full.yaml` into individual Railway services.
+`infra/docker-compose/docker-compose.yaml` into individual Railway services.
 
 Current validated Everruns image tag:
 

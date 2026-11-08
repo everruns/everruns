@@ -239,7 +239,7 @@ try {
   }, 250);
   report.compose_source =
     process.env.COMPOSE_E2E_FILE ||
-    "https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml";
+    "https://raw.githubusercontent.com/everruns/everruns/main/infra/docker-compose/docker-compose.yaml";
   log(`Download Compose: ${report.compose_source}`);
   const compose = process.env.COMPOSE_E2E_FILE
     ? await readFile(resolve(process.env.COMPOSE_E2E_FILE))

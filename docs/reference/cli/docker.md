@@ -39,6 +39,8 @@ everruns docker up [OPTIONS]
 | `--image-tag <IMAGE_TAG>` | Image tag to run, such as v0.48.0 or latest (default: this CLI's version) |
 | `-y`, `--yes` | Accept the default for every question. |
 | `--no-open` | Do not open the browser. |
+| `--public-url <URL>` | Public HTTPS address people and webhooks use, such as https://agents.example.com. Passed to the server as PUBLIC_APP_URL; an empty value removes it. |
+| `--tunnel <TUNNEL>` | Give the instance a public address through a tunnel that runs with the stack: tailscale (free stable *.ts.net), cloudflare (named with --public-url, else a quick one whose address changes), ngrok, or none. One of `none`, `tailscale`, `cloudflare`, `ngrok`. |
 
 
 ## docker status
