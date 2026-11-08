@@ -310,7 +310,7 @@ pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_s
 pub use provider_resolution::ProviderStore;
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
-    AssembledTurnContext, ResolvedModelExecution, ResolvedRuntimeCapabilities,
+    AssembledTurnContext, HistoryFloor, ResolvedModelExecution, ResolvedRuntimeCapabilities,
     ResolvedTurnContextInput, TurnContextRequest, TurnContextResolver,
     assemble_resolved_turn_context, resolve_runtime_capabilities, resolve_snapshot_capabilities,
 };
