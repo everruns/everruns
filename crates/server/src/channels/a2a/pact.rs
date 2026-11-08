@@ -161,6 +161,7 @@ async fn admit(
             app_public_id: app.public_id.to_string(),
             channel_public_id: channel.public_id,
             session_mode: config.session_mode,
+            caller_tag: Some(user.session_tag()),
         },
         user,
         channel_internal_id: channel.internal_id,
