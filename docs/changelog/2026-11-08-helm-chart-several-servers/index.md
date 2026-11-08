@@ -1,6 +1,6 @@
 ---
 title: Upgrade a Kubernetes install without downtime
-description: The Helm chart runs several API servers rolled one at a time, scales workers on chat load, and adds network policies, S3 file storage, metrics and the egress proxy.
+description: The Helm chart rolls several API servers one at a time, scales workers on chat load, and adds network policies, S3 storage, metrics and an egress proxy.
 date: 2026-11-08
 kind: improvement
 significance: notable
