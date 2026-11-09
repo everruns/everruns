@@ -799,6 +799,21 @@ stress` bench) checked in CI, so a later step can't silently undo it.
 | 10 | **Prove on EKS + operations.** Load Testing org, ramp to 75k agents with the llmsim mix and production-shaped conditions: cross-zone latency, realistic turn durations (including 30 s averages), cold caches, long histories, heavy streaming, S3 throttling, loss of a node and of a fraction of executors. Cell inspector CLI ("where is session X and what is it doing"), per-cell SLO dashboards, runbooks for leader loss, a stuck move and a drain. | 75k agents at the stated cost per agent and turn overhead, with spare capacity and recovery backlog measured, not just peak | 8, 9 |
 | 11 | **Stages 2 and 3 features, then the v1 → v2 org move** (session import format, cutover of in-flight turns). | Each feature lands with its own bench line | 10 |
 
+### Step 0 measurements (2026-11-09)
+
+- **funout `0a0c0ec`**, one 3-node cell on a 4-core container, 40 chat
+  sessions x 5 000 turns, 0.2 s think: 120 turns/s, p50 per turn flat
+  across the run (91 to 113 ms per tenth; one tenth at 171 ms overlapped a
+  local compile), about 400 MB resident per node.
+- **Engine hosting today** (`cargo bench -p everruns --bench long_session`,
+  `MemoryHosting`, llmsim with 150-token answers in an 8k window and
+  compaction on): 22 authority writes per turn, and the time per turn grows
+  with session length, about 100x by turn 500. Proactive compaction for a
+  provider without native compaction trims the prompt in memory and saves no
+  checkpoint, so every turn reloads the whole history, and every
+  `llm.generation` event carries the untrimmed prompt. Step 1 must give
+  that path a durable history floor before the long-session gate can hold.
+
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share
 the turn driver, so cells need the host bundle (step 2), not a finished
