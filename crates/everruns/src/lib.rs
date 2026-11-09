@@ -101,6 +101,45 @@ pub mod conversation {
 }
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;
+/// Phrasing helpers for application-authored tool narration
+/// ([`FunctionTool::narrate`], `#[everruns::tool(narrate = …)]`, and
+/// `capability::Handler::narrate`). They bound and redact model-supplied
+/// argument values and localize the built-in verbs the same way the
+/// engine's own tools do.
+///
+/// ```
+/// use everruns::{FunctionTool, narration};
+/// use serde_json::json;
+///
+/// let lookup = FunctionTool::new(
+///     "lookup_record",
+///     "Look up one record by exact id.",
+///     json!({ "type": "object", "properties": { "id": { "type": "string" } } }),
+///     |args: serde_json::Value| async move { Ok::<_, String>(args) },
+/// )
+/// .narrate(|call| {
+///     // Decline (keep the generic fallback) when the id is missing.
+///     narration::safe_arg_str(call.arguments(), &["id"])?;
+///     Some(narration::narrate_labeled_action(
+///         call.arguments(),
+///         call.phase(),
+///         call.locale(),
+///         ("Looking up record", "Looked up record", "Could not look up record"),
+///         ("Шукаю запис", "Знайшов запис", "Не вдалося знайти запис"),
+///         &["id"],
+///     ))
+/// });
+/// # let _ = lookup;
+/// ```
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod narration {
+    pub use everruns_contracts::narration::{ToolNarration, ToolNarrationPhase};
+    pub use everruns_contracts::runtime::tool_narration::{
+        arg_str, narrate_labeled_action, narration_detail, safe_arg_str, truncate,
+    };
+}
+pub use narration::{ToolNarration, ToolNarrationPhase};
 mod default_workspace;
 mod engine;
 pub use events::{SessionEventCursor, SessionEventPage};

@@ -80,7 +80,8 @@
 
 use std::sync::Arc;
 
-use everruns_contracts::tool_types::ToolHints;
+use everruns_contracts::runtime::tool_narration::ToolNarrationContext;
+use everruns_contracts::tool_types::{ToolCall, ToolHints};
 use everruns_core::capabilities::Capability as CoreCapability;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool as CoreTool, ToolExecutionResult};
@@ -88,8 +89,8 @@ use serde_json::{Value, json};
 
 pub use everruns_contracts::capability::definition::{
     CallCancellation, CancellationSignal, Context, Definition, Deserialize, Error, ErrorVisibility,
-    Handler, Hints, JsonSchema, ProgressSink, Serialize, Tool, ToolSpec, async_trait, schemars,
-    serde, serde_json,
+    Handler, Hints, JsonSchema, ProgressSink, Serialize, Tool, ToolNarration, ToolNarrationPhase,
+    ToolSpec, async_trait, schemars, serde, serde_json,
 };
 
 /// Model tool definition budget requested by a capability.
@@ -168,6 +169,18 @@ impl CoreTool for CoreToolAdapter {
 
     fn hints(&self) -> ToolHints {
         hints_to_core(self.0.spec().hints())
+    }
+
+    fn narrate(
+        &self,
+        tool_call: &ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        self.0.narrate(
+            &ToolNarration::new(&tool_call.arguments, phase, locale).with_result(ctx.result),
+        )
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -391,6 +404,117 @@ mod tests {
             panic!("expected success, got {result:?}");
         };
         assert_eq!(value, json!({ "city": "Kyiv", "temperatures": [18, 21] }));
+    }
+
+    struct NarratedLookup;
+
+    #[async_trait]
+    impl Handler for NarratedLookup {
+        type Input = LookupInput;
+        type Output = LookupOutput;
+        type Error = Error;
+
+        fn name(&self) -> &str {
+            "narrated_lookup"
+        }
+
+        fn description(&self) -> &str {
+            "Look up a forecast with owned narration."
+        }
+
+        fn narrate(&self, narration: &ToolNarration<'_>) -> Option<String> {
+            let city = everruns_contracts::runtime::tool_narration::safe_arg_str(
+                narration.arguments(),
+                &["city"],
+            )?;
+            Some(match narration.phase() {
+                ToolNarrationPhase::Completed => format!("Checked the sky over {city}"),
+                _ => format!("Checking the sky over {city}"),
+            })
+        }
+
+        async fn execute(
+            &self,
+            input: Self::Input,
+            _context: Context,
+        ) -> Result<Self::Output, Self::Error> {
+            Ok(LookupOutput {
+                city: input.city,
+                temperatures: vec![],
+            })
+        }
+    }
+
+    fn narrate_started(tool: &CoreToolAdapter, arguments: Value) -> Option<String> {
+        tool.narrate(
+            &ToolCall {
+                id: "call_narrate".into(),
+                name: tool.name().into(),
+                arguments,
+            },
+            ToolNarrationPhase::Started,
+            None,
+            ToolNarrationContext::default(),
+        )
+    }
+
+    #[test]
+    fn handler_narration_override_reaches_the_core_tool_and_default_defers() {
+        let narrated = Definition::new("narrated", "Narrated", "Narration test.")
+            .tool(NarratedLookup)
+            .tool(Lookup);
+        let owned = CoreToolAdapter(narrated.tools()[0].clone());
+        let default = CoreToolAdapter(narrated.tools()[1].clone());
+
+        assert_eq!(
+            narrate_started(&owned, json!({ "city": "Kyiv" })).as_deref(),
+            Some("Checking the sky over Kyiv")
+        );
+        // The handler declines (no city), so the engine falls back.
+        assert_eq!(narrate_started(&owned, json!({})), None);
+        assert_eq!(narrate_started(&default, json!({ "city": "Kyiv" })), None);
+    }
+
+    async fn started_narration(capability: Definition, tool_name: &str) -> Option<String> {
+        let model = scripted_model(vec![
+            vec![ToolCall {
+                id: "call_narrated".into(),
+                name: tool_name.into(),
+                arguments: json!({ "city": "Kyiv" }),
+            }],
+            vec![],
+        ]);
+        let agent = Agent::builder()
+            .instructions("Use the lookup.")
+            .model(model)
+            .capability(capability)
+            .build()
+            .expect("valid agent");
+        let session = InMemoryEngine::new().create(agent);
+        let mut events = session.events();
+        let turn = session.run("Weather?").await.expect("turn runs");
+        assert!(turn.success, "turn should succeed: {:?}", turn.error);
+
+        while let Ok(Ok(Some(event))) = timeout(Duration::from_millis(50), events.recv()).await {
+            if matches!(event.kind, SessionEventKind::ToolStarted { .. }) {
+                return event.narration().map(str::to_string);
+            }
+        }
+        None
+    }
+
+    #[tokio::test]
+    async fn tool_started_event_carries_handler_narration_or_generic_fallback() {
+        let owned = started_narration(
+            Definition::new("narrated", "Narrated", "Narration test.").tool(NarratedLookup),
+            "narrated_lookup",
+        )
+        .await;
+        assert_eq!(owned.as_deref(), Some("Checking the sky over Kyiv"));
+
+        // No override: the engine's generic display-name narration.
+        let fallback = started_narration(lookup_capability(), "lookup_weather").await;
+        assert_eq!(fallback.as_deref(), Some("Running Lookup Weather"));
     }
 
     struct Failing;

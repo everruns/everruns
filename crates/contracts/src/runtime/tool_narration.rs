@@ -30,13 +30,10 @@ use crate::runtime::session_files::SessionFileSystem;
 use crate::runtime::session_path::WORKSPACE_PREFIX;
 use crate::runtime::tool_types::{ToolCall, ToolDefinition};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolNarrationPhase {
-    Started,
-    Waiting,
-    Completed,
-    Failed,
-}
+// The phase and the application-facing request live in the ungated
+// `narration` module so `capability::definition` can share them without the
+// runtime feature.
+pub use crate::narration::{ToolNarration, ToolNarrationPhase};
 
 /// Optional execution context for path-bearing tool narration.
 ///

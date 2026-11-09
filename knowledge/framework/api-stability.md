@@ -34,8 +34,10 @@ split and the marking convention so later changes stay deliberate.
   the host-integration hooks: per-tool approval (`crates/everruns/src/approval.rs`,
   `FunctionTool::needs_approval`, `AgentBuilder::approver`), the tool call
   context (`ToolCallContext`, `FunctionTool::with_context`), durable event
-  replay (`Session::events_after` / `events_from`), and `ask_user::AskContext`
-  with `AskUser::ask_in`.
+  replay (`Session::events_after` / `events_from`), tool narration
+  (`crates/everruns/src/lib.rs` `narration`, `FunctionTool::narrate`,
+  `#[everruns::tool(narrate = …)]`, `capability::Handler::narrate`), and
+  `ask_user::AskContext` with `AskUser::ask_in`.
 * **Unmarked** public items are provisional: treat as alpha until marked.
 
 ## Marking convention

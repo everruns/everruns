@@ -288,3 +288,46 @@ async fn context_tool_runs_detached_outside_a_turn() {
         other => panic!("expected success, got {other:?}"),
     }
 }
+
+/// Convert Celsius to Fahrenheit with owned narration.
+#[everruns::tool(narrate = |args: &NarratedConvertArgs, call: &crate::ToolNarration<'_>| {
+    Some(match call.phase() {
+        crate::ToolNarrationPhase::Completed => format!("Converted {} °C", args.celsius),
+        _ => format!("Converting {} °C", args.celsius),
+    })
+})]
+async fn narrated_convert(celsius: f64) -> f64 {
+    celsius * 1.8 + 32.0
+}
+
+fn narrate(
+    tool: &crate::FunctionTool,
+    arguments: Value,
+    phase: crate::ToolNarrationPhase,
+) -> Option<String> {
+    let call = ToolCall {
+        id: "call_narrate".into(),
+        name: tool.name().into(),
+        arguments,
+    };
+    CoreTool::narrate(tool, &call, phase, None, Default::default())
+}
+
+#[test]
+fn narrate_option_overrides_and_default_defers_to_the_fallback() {
+    use crate::ToolNarrationPhase::{Completed, Started};
+
+    let tool = narrated_convert();
+    assert_eq!(
+        narrate(&tool, json!({ "celsius": 21.5 }), Started).as_deref(),
+        Some("Converting 21.5 °C")
+    );
+    assert_eq!(
+        narrate(&tool, json!({ "celsius": 21.5 }), Completed).as_deref(),
+        Some("Converted 21.5 °C")
+    );
+    // Unparseable arguments keep the engine's generic narration.
+    assert_eq!(narrate(&tool, json!({ "celsius": "warm" }), Started), None);
+    // A tool without `narrate` never overrides the fallback.
+    assert_eq!(narrate(&add_one(), json!({ "n": 1 }), Started), None);
+}

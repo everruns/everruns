@@ -54,6 +54,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::narration::{ToolNarration, ToolNarrationPhase};
+use everruns_contracts::runtime::tool_narration::ToolNarrationContext;
+use everruns_contracts::tool_types::ToolCall;
 use everruns_core::capabilities::Capability;
 use everruns_core::tools::{Tool as CoreTool, ToolExecutionResult};
 use serde_json::Value;
@@ -161,6 +164,9 @@ type HandlerFn = Arc<
 
 /// Decides from a call's arguments whether it needs approval.
 pub(crate) type ApprovalPredicate = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
+
+/// Application-authored narration for one call; `None` keeps the fallback.
+type NarrateFn = Arc<dyn Fn(&ToolNarration<'_>) -> Option<String> + Send + Sync>;
 
 /// What a [`FunctionTool`] handler knows about the call it is serving.
 ///
@@ -339,6 +345,7 @@ pub struct FunctionTool {
     schema: Value,
     handler: HandlerFn,
     approval: Option<ApprovalPredicate>,
+    narrator: Option<NarrateFn>,
     idempotent: bool,
     concurrency_class: Option<String>,
 }
@@ -377,6 +384,7 @@ impl FunctionTool {
             schema: json_schema,
             handler,
             approval: None,
+            narrator: None,
             idempotent: false,
             concurrency_class: None,
         }
@@ -430,6 +438,7 @@ impl FunctionTool {
             schema: json_schema,
             handler,
             approval: None,
+            narrator: None,
             idempotent: false,
             concurrency_class: None,
         }
@@ -482,6 +491,49 @@ impl FunctionTool {
         self
     }
 
+    /// Narrate this tool's calls with application-owned wording.
+    ///
+    /// `narrator` runs for each lifecycle phase and returns the line clients
+    /// show, e.g. "Converting 21 °C". Returning `None` keeps the engine's
+    /// generic, localized fallback ("Running {name}: …"), which is also what
+    /// a tool without a narrator gets. Arguments are untrusted model output:
+    /// render only chosen, bounded fields and never secrets. Calling this
+    /// again replaces the earlier narrator.
+    ///
+    /// Stability: alpha — may change without a major bump; see
+    /// [`stability`](crate::stability).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use everruns::{FunctionTool, ToolNarrationPhase};
+    /// use serde_json::json;
+    ///
+    /// let convert = FunctionTool::new(
+    ///     "convert",
+    ///     "Convert Celsius to Fahrenheit.",
+    ///     json!({ "type": "object", "properties": { "celsius": { "type": "number" } } }),
+    ///     |args: serde_json::Value| async move {
+    ///         Ok::<_, String>(json!(args["celsius"].as_f64().unwrap_or(0.0) * 1.8 + 32.0))
+    ///     },
+    /// )
+    /// .narrate(|call| {
+    ///     let celsius = call.arguments()["celsius"].as_f64()?;
+    ///     Some(match call.phase() {
+    ///         ToolNarrationPhase::Completed => format!("Converted {celsius} °C"),
+    ///         _ => format!("Converting {celsius} °C"),
+    ///     })
+    /// });
+    /// # let _ = convert;
+    /// ```
+    pub fn narrate(
+        mut self,
+        narrator: impl Fn(&ToolNarration<'_>) -> Option<String> + Send + Sync + 'static,
+    ) -> Self {
+        self.narrator = Some(Arc::new(narrator));
+        self
+    }
+
     /// Serialize effects that share a session resource. Tools using the same
     /// class cannot overlap within a session, including parallel tool batches.
     pub fn concurrency_class(mut self, class: impl Into<String>) -> Self {
@@ -517,6 +569,7 @@ impl fmt::Debug for FunctionTool {
             .field("description", &self.description)
             .field("schema", &self.schema)
             .field("needs_approval", &self.approval.is_some())
+            .field("narrates", &self.narrator.is_some())
             .field("idempotent", &self.idempotent)
             .finish_non_exhaustive()
     }
@@ -547,6 +600,17 @@ impl CoreTool for FunctionTool {
         } else {
             hints
         }
+    }
+
+    fn narrate(
+        &self,
+        tool_call: &ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let narrator = self.narrator.as_ref()?;
+        narrator(&ToolNarration::new(&tool_call.arguments, phase, locale).with_result(ctx.result))
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
