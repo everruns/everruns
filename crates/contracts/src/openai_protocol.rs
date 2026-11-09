@@ -405,10 +405,9 @@ impl OpenAIProtocolChatDriver {
         tools
             .iter()
             .map(|tool| {
+                let parameters = tool.parameters_for_model();
                 let strict_parameters = normalize
-                    .then(|| {
-                        crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters())
-                    })
+                    .then(|| crate::tool_schema_compat::strict_openai_tool_schema(&parameters))
                     .flatten();
                 let strict = if normalize {
                     strict_parameters.is_some().then_some(true)
@@ -421,9 +420,7 @@ impl OpenAIProtocolChatDriver {
                         name: tool.name().to_string(),
                         description: tool.description().to_string(),
                         parameters: strict_parameters.unwrap_or_else(|| {
-                            crate::tool_schema_compat::sanitize_openai_tool_schema(
-                                tool.parameters(),
-                            )
+                            crate::tool_schema_compat::sanitize_openai_tool_schema(&parameters)
                         }),
                         strict,
                     },

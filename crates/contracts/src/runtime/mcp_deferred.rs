@@ -69,13 +69,14 @@ pub fn deferred_mcp_server_definition(
     let about = description
         .map(str::trim)
         .filter(|text| !text.is_empty())
-        .map(|text| format!(": {text}"))
+        .map(|text| format!(": {}", crate::mcp_metadata::visible_mcp_description(text)))
         .unwrap_or_default();
+    let display_name = crate::mcp_metadata::visible_mcp_description(server_name);
     ToolDefinition::Builtin(BuiltinTool {
         name: deferred_mcp_server_tool_name(server_name),
-        display_name: Some(server_name.to_string()),
+        display_name: Some(display_name.clone()),
         description: format!(
-            "MCP server `{server_name}`{about}. Its tools are not loaded yet. To use them, \
+            "MCP server `{display_name}`{about}. Its tools are not loaded yet. To use them, \
              search for this server with `tool_search`, or call this tool; they become \
              callable on your next step."
         ),

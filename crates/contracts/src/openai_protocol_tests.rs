@@ -849,3 +849,47 @@ async fn chat_strict_optional_nulls_round_trip_in_both_completion_modes() {
     }
     assert!(saw_call);
 }
+
+#[tokio::test]
+async fn mcp_annotation_projection_reaches_provider_wire_without_changing_call_values() {
+    let name = "mcp_docs__search";
+    let arguments = json!({"query\u{200b}": "value\u{202e}"});
+    let (server, provider) = mock_json_provider(json!({
+        "id": "mcp-projection", "choices": [{"message": {"role":"assistant",
+            "content": null, "tool_calls": [{"id":"call_1","type":"function",
+            "function":{"name":name,"arguments":arguments.to_string()}}]},
+            "finish_reason":"tool_calls"}]
+    }))
+    .await;
+    let schema = json!({"type":"object","description":"Find\u{202e}",
+        "properties":{"query\u{200b}":{"type":"string","description":"Query\u{200b}",
+            "enum":["value\u{202e}"]}}, "required":["query\u{200b}"],"additionalProperties":false});
+    let mut config = call_config();
+    config.tools = vec![
+        serde_json::from_value(
+            json!({"type":"builtin","name":name,"description":"Search","parameters":schema}),
+        )
+        .unwrap(),
+    ];
+    let response = provider
+        .chat_completion_non_streaming(vec![Message::text(MessageRole::User, "Search")], &config)
+        .await
+        .unwrap();
+    let requests = server.received_requests().await.unwrap();
+    let sent = requests[0].body_json::<Value>().unwrap();
+    let function = &sent["tools"][0]["function"];
+    assert_eq!(function["name"], name);
+    assert_eq!(function["parameters"]["description"], "Find[U+202E]");
+    assert_eq!(
+        function["parameters"]["properties"]["query\u{200b}"]["description"],
+        "Query[U+200B]"
+    );
+    assert_eq!(
+        function["parameters"]["properties"]["query\u{200b}"]["enum"],
+        json!(["value\u{202e}"])
+    );
+    assert_eq!(config.tools[0].parameters(), &schema);
+    let calls = response.tool_calls.unwrap();
+    assert_eq!(calls[0].name, name);
+    assert_eq!(calls[0].arguments, arguments);
+}

@@ -130,7 +130,7 @@ async fn rating(context: &ToolContext, definition: &ToolDefinition) -> Option<bo
     let request = DecisionRequest::new(json!({
         "tool": definition.name(),
         "description": definition.description(),
-        "input_schema": definition.parameters(),
+        "input_schema": definition.parameters_for_model(),
     }))
     .ask("changes", DecisionQuestion::noul(QUESTION))
     .with_metadata("purpose", "tools_in_shell.tool_rating");

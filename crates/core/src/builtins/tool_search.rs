@@ -916,7 +916,7 @@ impl ToolSearchTool {
                 json!({
                     "name": d.name(),
                     "description": d.description(),
-                    "parameters": d.full_parameters(),
+                    "parameters": d.full_parameters_for_model(),
                 })
             })
             .collect()

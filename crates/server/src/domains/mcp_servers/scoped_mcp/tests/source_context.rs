@@ -70,3 +70,42 @@ async fn listed_catalog_tool_search_uses_preset_description() {
     assert_eq!(deferred.len(), 1);
     assert!(deferred[0].server_match);
 }
+
+#[test]
+fn scoped_descriptions_mark_controls_without_mutating_source_context() {
+    let mut attachment = catalog_server("docs", McpServerActsAs::None);
+    attachment.description = Some("Source\u{202e} text".into());
+    attachment.capability_context = Some(everruns_core::mcp_server::McpCapabilityContext {
+        id: "retail".into(),
+        name: "Retail operations".into(),
+        description: "Warehouse\u{200b} records".into(),
+    });
+    let servers = ScopedMcpServers::from([("docs".to_string(), attachment)]);
+    let mut definitions = vec![everruns_core::deferred_mcp_server_definition("docs", None)];
+    let original_name = definitions[0].name().to_owned();
+    attach_server_search_metadata(&mut definitions, &servers);
+    let hints = definitions[0].hints();
+    assert_eq!(definitions[0].name(), original_name);
+    assert_eq!(hints.capability_id.as_deref(), Some("retail"));
+    assert_eq!(hints.capability_name.as_deref(), Some("Retail operations"));
+    assert_eq!(
+        hints.capability_description.as_deref(),
+        Some("Warehouse[U+200B] records")
+    );
+    assert_eq!(
+        hints.metadata.as_ref().unwrap()["mcp_server"]["description"],
+        "Source[U+202E] text"
+    );
+    assert_eq!(
+        servers["docs"].description.as_deref(),
+        Some("Source\u{202e} text")
+    );
+    assert_eq!(
+        servers["docs"]
+            .capability_context
+            .as_ref()
+            .unwrap()
+            .description,
+        "Warehouse\u{200b} records"
+    );
+}

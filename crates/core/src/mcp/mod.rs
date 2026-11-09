@@ -66,6 +66,7 @@ pub use elicitation::{
     ElicitationConsentStore, GrantedConsent, RelayUrlElicitations, StoredConsent, UrlElicitation,
     UrlElicitationHandler, UrlElicitationPending, consent_storage_key, validate_elicitation_url,
 };
+pub use everruns_contracts::mcp_metadata::visible_mcp_description;
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
 pub use form_elicitation::{
     FORM_ANSWER_TTL, FormAnswer, FormAnswerAction, FormAnswerStore, FormElicitation,

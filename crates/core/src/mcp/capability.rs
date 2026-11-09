@@ -12,6 +12,7 @@
 // - Tool execution is delegated to the MCP server via HTTP
 // - Tools are cached and refreshed periodically
 
+use super::visible_mcp_description;
 use crate::capabilities::Capability;
 use crate::capability_types::CapabilityStatus;
 use crate::mcp_server::{McpToolDefinition, McpToolLabel, mcp_tool_name};
@@ -121,7 +122,7 @@ impl McpCapability {
         }
         hints.metadata = Some(serde_json::json!({"mcp_server": {
             "name": self.server_name,
-            "description": self.description.as_deref().unwrap_or_default(),
+            "description": visible_mcp_description(self.description.as_deref().unwrap_or_default()),
         }}));
 
         ToolDefinition::Builtin(BuiltinTool {
@@ -131,9 +132,10 @@ impl McpCapability {
                     .title
                     .as_deref()
                     .filter(|title| !title.trim().is_empty())
-                    .map(crate::tool_narration::narration_detail)
+                    .map(visible_mcp_description)
+                    .map(|title| crate::tool_narration::narration_detail(&title))
                     .unwrap_or_else(|| {
-                        format!(
+                        visible_mcp_description(&format!(
                             "{}: {}",
                             self.server_name,
                             mcp_tool
@@ -142,13 +144,15 @@ impl McpCapability {
                                 .filter(|part| !part.is_empty())
                                 .collect::<Vec<_>>()
                                 .join(" ")
-                        )
+                        ))
                     }),
             ),
-            description: mcp_tool
-                .description
-                .clone()
-                .unwrap_or_else(|| format!("Tool from MCP server: {}", self.server_name)),
+            description: visible_mcp_description(
+                &mcp_tool
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| format!("Tool from MCP server: {}", self.server_name)),
+            ),
             parameters: mcp_tool.input_schema.clone(),
             policy: ToolPolicy::Auto,
             category: self.category().map(|s| s.to_string()),
@@ -176,7 +180,7 @@ impl Capability for McpCapability {
             .description
             .clone()
             .unwrap_or_else(|| format!("MCP Server providing {} tool(s)", self.tools.len()));
-        Box::leak(desc.into_boxed_str())
+        Box::leak(visible_mcp_description(&desc).into_boxed_str())
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -277,6 +281,74 @@ impl McpCapabilityIdExt for CapabilityId {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn descriptive_controls_are_visible_without_changing_wire_data() {
+        let text = "Find\u{202e} hidden\u{200b} text\u{2069}";
+        let schema = json!({
+            "type": "object", "description": text,
+            "properties": {"query\u{200b}": {
+                "type": "string", "title": text, "description": text,
+                "enum": [text], "default": text, "const": text
+            }},
+            "required": ["query\u{200b}"]
+        });
+        let original = McpToolDefinition {
+            name: "search\u{200b}".into(),
+            title: Some(text.into()),
+            description: Some(text.into()),
+            input_schema: schema.clone(),
+            annotations: None,
+        };
+        let capability = McpCapability::new(
+            Uuid::nil(),
+            "docs".into(),
+            Some(text.into()),
+            vec![original.clone()],
+        );
+        let definitions = capability.tool_definitions();
+        let ToolDefinition::Builtin(tool) = &definitions[0] else {
+            panic!("expected builtin")
+        };
+        let visible = "Find[U+202E] hidden[U+200B] text[U+2069]";
+        assert_eq!(tool.description, visible);
+        assert_eq!(tool.display_name.as_deref(), Some(visible));
+        assert_eq!(
+            tool.hints.metadata.as_ref().unwrap()["mcp_server"]["description"],
+            visible
+        );
+        assert_eq!(capability.description(), visible);
+        assert_eq!(tool.name, "mcp_docs__search\u{200b}");
+        assert_eq!(tool.parameters, schema);
+        let projected = definitions[0].parameters_for_model();
+        assert_eq!(projected["description"], visible);
+        assert_eq!(
+            projected["properties"]["query\u{200b}"]["description"],
+            visible
+        );
+        assert_eq!(
+            projected["properties"]["query\u{200b}"]["enum"],
+            schema["properties"]["query\u{200b}"]["enum"]
+        );
+        assert_eq!(
+            projected["properties"]["query\u{200b}"]["const"],
+            schema["properties"]["query\u{200b}"]["const"]
+        );
+        assert_eq!(
+            projected["properties"]["query\u{200b}"]["default"],
+            schema["properties"]["query\u{200b}"]["default"]
+        );
+        assert_eq!(capability.tools[0].description, original.description);
+        assert_eq!(capability.tools[0].title, original.title);
+        assert_eq!(capability.tools[0].input_schema, schema);
+        assert_eq!(capability.description.as_deref(), Some(text));
+        let mut without_title = capability.clone();
+        without_title.tools[0].title = None;
+        let fallback = without_title.tool_definitions();
+        assert_eq!(fallback[0].display_name(), Some("docs: search[U+200B]"));
+        assert_eq!(fallback[0].name(), tool.name);
+        assert_eq!(without_title.tools[0].name, original.name);
+    }
 
     #[test]
     fn capability_id_helpers_preserve_wire_identity_and_reject_invalid_namespaces() {

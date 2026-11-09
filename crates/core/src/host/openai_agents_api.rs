@@ -390,7 +390,7 @@ pub fn build_session_config(
         .map(|tool| AgentsApiTool::Function {
             name: tool.name().to_string(),
             description: tool.description().to_string(),
-            parameters: tool.full_parameters().clone(),
+            parameters: tool.full_parameters_for_model(),
             defer_loading: false,
         })
         .collect::<Vec<_>>();

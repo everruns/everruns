@@ -31,6 +31,21 @@ See `crates/contracts/src/runtime/mcp_server.rs` for the full `McpServer` struct
 | `url` | 2 KB | Valid HTTP/HTTPS URL |
 | `headers` | 100 entries | Maximum header entries |
 
+### Descriptive metadata presentation
+
+Model-facing tool and server descriptions, tool display titles, and deferred
+server descriptions visibly mark the explicit invisible/bidi control set in
+[`mcp_metadata.rs`](../../crates/contracts/src/mcp_metadata.rs). Provider request
+serialization and tool-search disclosure also project schema title/description
+annotations at recognized JSON Schema locations. Canonical registration and
+validation schemas, source metadata, identifiers, and invocation values remain
+unchanged, including enum/default/const/examples data and opaque extensions.
+Joiners, emoji sequences, combining marks, and other script characters are preserved.
+
+This is bounded metadata hygiene, not a prompt-injection defense. The schema pass
+is best effort with explicit depth and node limits; excess annotations and unknown
+extensions remain unchanged, not trusted. Ordinary malicious text is not filtered.
+
 ### Transport Types
 
 Supported transport types:

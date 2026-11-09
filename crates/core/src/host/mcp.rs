@@ -464,7 +464,8 @@ fn attach_server_search_metadata(definitions: &mut [ToolDefinition], servers: &S
         if let Some(context) = &server.capability_context {
             tool.hints.capability_id = Some(context.id.clone());
             tool.hints.capability_name = Some(context.name.clone());
-            tool.hints.capability_description = Some(context.description.clone());
+            tool.hints.capability_description =
+                Some(crate::mcp::visible_mcp_description(&context.description));
         }
         let metadata = tool
             .hints
@@ -474,7 +475,7 @@ fn attach_server_search_metadata(definitions: &mut [ToolDefinition], servers: &S
             metadata.insert(
                 "mcp_server".into(),
                 serde_json::json!({
-                    "name": name, "description": server.description.as_deref().unwrap_or_default(),
+                    "name": name, "description": crate::mcp::visible_mcp_description(server.description.as_deref().unwrap_or_default()),
                 }),
             );
         }
@@ -1163,11 +1164,11 @@ mod tests {
                 ScopedMcpServer {
                     url: "https://93.184.216.34/mcp".into(),
                     deferred,
-                    description: Some("Geothermal telemetry".into()),
+                    description: Some("Geothermal\u{202e} telemetry".into()),
                     capability_context: Some(crate::mcp_server::McpCapabilityContext {
                         id: "retail".into(),
                         name: "Retail operations".into(),
-                        description: "Cobalt warehouse".into(),
+                        description: "Cobalt\u{200b} warehouse".into(),
                     }),
                     ..Default::default()
                 },
@@ -1183,7 +1184,7 @@ mod tests {
             assert_eq!(definitions.len(), 1);
             assert_eq!(
                 definitions[0].hints().capability_description.as_deref(),
-                Some("Cobalt warehouse")
+                Some("Cobalt[U+200B] warehouse")
             );
             let index =
                 everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&definitions);
@@ -1195,7 +1196,7 @@ mod tests {
             }
             assert_eq!(
                 definitions[0].hints().metadata.as_ref().unwrap()["mcp_server"]["description"],
-                "Geothermal telemetry"
+                "Geothermal[U+202E] telemetry"
             );
             let requests = egress.requests.load(Ordering::SeqCst);
             servers
