@@ -1097,20 +1097,19 @@ What this says:
 - **A is the fastest and the one with the most unproven correctness.** C
   and D do not beat it on anything this workload needs: C trades zones for
   latency, D trades our storage engine for someone else's operations.
-- **B is the real alternative.** It gives up failover time (tens of
-  seconds instead of one) and some commit latency, and removes the storage
-  engine from what we must get right. It is also what a self-hosting
-  reader already operates. Today's 214 statements a turn come from data
-  plane v1's design, not from PostgreSQL: the SQLite authority runs the
-  same Engine turn in 5 waited writes.
+- **B looks simpler and is not.** PostgreSQL does not replicate itself, so
+  every cell would need a managed cluster or an operator. Capacity then
+  moves in whole database clusters that take many minutes to create and
+  are billed idle, and failover takes tens of seconds. It also keeps a
+  database at the center of each cell, which cells exist to remove.
 
-Decision rule, in keeping with a bench gate per step: before the cell port
-(step 5), port the SQLite authority to PostgreSQL (a few days, same
-conformance suite) and run the stress bench against it. If PostgreSQL per
-cell meets the per-turn budgets with headroom, cells start on B and A
-remains the upgrade for failover time. If it does not, A proceeds, and its
-first deliverables are the formal models and the deterministic simulation
-listed under Testing, before any feature work on it.
+**Decision (2026-11-09): A, own Raft storage, stays.** The point of cells
+is to be fast and to scale by adding cells, with no central database, and
+none of the alternatives keeps that. What the comparison changes is the
+order of the cell port (step 5): the proof of the storage engine comes
+first. The formal models, the deterministic simulation and the kill and
+partition tests listed under Testing are its first deliverables, before
+any feature work on cells.
 
 ## Limits and risks
 
