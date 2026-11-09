@@ -541,10 +541,13 @@ async fn pass(
         .map(|(session, rows)| async move {
             let last = rows.last().map(|row| row.sequence).unwrap_or(0);
             for row in rows {
-                let event = super::EventService::row_to_event(row);
+                // One shared copy for every listener: an `llm.generation`
+                // carries the whole request, and a copy per listener was a
+                // few percent of server CPU (profile, 2026-11-08).
+                let event = Arc::new(super::EventService::row_to_event(row));
                 for listener in &spec.listeners {
                     if spec.wants(listener.as_ref(), &event) {
-                        run_listener(listener.clone(), &event).await;
+                        run_listener(listener.clone(), event.clone()).await;
                     }
                 }
             }
@@ -571,9 +574,8 @@ async fn pass(
     Ok(Pass::Delivered { more: batch.more })
 }
 
-async fn run_listener(listener: Arc<dyn EventListener>, event: &Event) {
+async fn run_listener(listener: Arc<dyn EventListener>, event: Arc<Event>) {
     let name = listener.name();
-    let event = Arc::new(event.clone());
     let handle = tokio::spawn(async move { listener.on_event(&event).await });
     match tokio::time::timeout(LISTENER_TIMEOUT, handle).await {
         Ok(Ok(())) => {}
