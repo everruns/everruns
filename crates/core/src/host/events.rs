@@ -214,6 +214,7 @@ pub struct EventReadRequest {
     session_id: SessionId,
     cursor: Option<EventCursor>,
     limit: EventReadLimit,
+    types: Option<&'static [&'static str]>,
 }
 
 impl EventReadRequest {
@@ -223,6 +224,7 @@ impl EventReadRequest {
             session_id,
             cursor: None,
             limit,
+            types: None,
         }
     }
 
@@ -232,7 +234,26 @@ impl EventReadRequest {
             session_id: cursor.session_id,
             cursor: Some(cursor),
             limit,
+            types: None,
         }
+    }
+
+    /// Tell the reader only these event types are wanted.
+    ///
+    /// Decision: a hint, not a filter. A reader may skip other events (the
+    /// in-memory log does, so a projection never copies a turn's
+    /// `llm.generation` prompt), or return them; callers still match on
+    /// the types they need. The limit then counts the wanted events, and a
+    /// continuation resumes after the last one returned.
+    pub fn with_types(mut self, types: &'static [&'static str]) -> Self {
+        self.types = Some(types);
+        self
+    }
+
+    /// The event types the caller wants, when it said (see
+    /// [`Self::with_types`]).
+    pub fn types(&self) -> Option<&'static [&'static str]> {
+        self.types
     }
 
     /// Attach a cursor while retaining the explicitly selected session.
@@ -790,12 +811,16 @@ impl EventIndex {
         if snapshot == 0 {
             return EventPage::new(Vec::new(), None, 0);
         }
-        let mut selected = events
+        // Sequences ascend within a session: start at the cursor, not at
+        // the session's first event, so a page costs the page.
+        let start = events.partition_point(|event| event.sequence.is_some_and(|s| s <= after));
+        let mut selected = events[start..]
             .iter()
+            .take_while(|event| event.sequence.is_some_and(|sequence| sequence <= snapshot))
             .filter(|event| {
-                event
-                    .sequence
-                    .is_some_and(|sequence| sequence > after && sequence <= snapshot)
+                request
+                    .types
+                    .is_none_or(|types| types.contains(&event.event_type.as_str()))
             })
             .take(request.limit.get() + 1)
             .cloned()
@@ -947,13 +972,14 @@ impl EventHistory {
         Ok(!page.events.is_empty())
     }
 
+    /// Whether the log holds an event of one of `event_types`.
     pub(crate) async fn contains_event_type(
         &self,
         session_id: SessionId,
-        event_type: &str,
+        event_types: &'static [&'static str],
     ) -> Result<bool, EventLogError> {
         let limit = EventReadLimit::default();
-        let mut request = EventReadRequest::new(session_id, limit);
+        let mut request = EventReadRequest::new(session_id, limit).with_types(event_types);
         let mut seen = 0usize;
         loop {
             let page = self.reader.read_page(request).await?;
@@ -961,7 +987,7 @@ impl EventHistory {
             if page
                 .events
                 .iter()
-                .any(|event| event.event_type == event_type)
+                .any(|event| event_types.contains(&event.event_type.as_str()))
             {
                 return Ok(true);
             }
@@ -975,7 +1001,7 @@ impl EventHistory {
             let Some(cursor) = page.next_cursor else {
                 return Ok(false);
             };
-            request = EventReadRequest::from_cursor(cursor, limit);
+            request = EventReadRequest::from_cursor(cursor, limit).with_types(event_types);
         }
     }
 
@@ -991,7 +1017,8 @@ impl EventHistory {
     ) -> Result<EventHistoryPage, EventLogError> {
         let message_limit = request.limit.get();
         let first_raw_limit = EventReadLimit::new(message_limit.min(MAX_EVENT_PAGE_SIZE))?;
-        let mut raw_request = EventReadRequest::new(request.session_id, first_raw_limit);
+        let mut raw_request = EventReadRequest::new(request.session_id, first_raw_limit)
+            .with_types(MESSAGE_EVENT_TYPES);
         if let Some(cursor) = request.cursor {
             raw_request = raw_request.with_cursor(cursor);
         }
@@ -1025,7 +1052,8 @@ impl EventHistory {
                     let mut probe_request = EventReadRequest::from_cursor(
                         boundary_cursor.clone(),
                         EventReadLimit::default(),
-                    );
+                    )
+                    .with_types(MESSAGE_EVENT_TYPES);
                     loop {
                         let probe = self.reader.read_page(probe_request).await?;
                         examined = examined.saturating_add(probe.events.len());
@@ -1044,7 +1072,8 @@ impl EventHistory {
                             break;
                         };
                         probe_request =
-                            EventReadRequest::from_cursor(cursor, EventReadLimit::default());
+                            EventReadRequest::from_cursor(cursor, EventReadLimit::default())
+                                .with_types(MESSAGE_EVENT_TYPES);
                     }
                 }
                 return Ok(EventHistoryPage {
@@ -1065,7 +1094,8 @@ impl EventHistory {
             raw_request = EventReadRequest::from_cursor(
                 page.next_cursor.expect("checked continuation above"),
                 raw_limit,
-            );
+            )
+            .with_types(MESSAGE_EVENT_TYPES);
         }
     }
 
@@ -1082,7 +1112,7 @@ impl EventHistory {
         after: Option<i64>,
     ) -> Result<Vec<ProjectedMessage>, EventLogError> {
         let limit = EventReadLimit::default();
-        let mut request = EventReadRequest::new(session_id, limit);
+        let mut request = EventReadRequest::new(session_id, limit).with_types(MESSAGE_EVENT_TYPES);
         if let Some(after) = after.filter(|after| *after > 0) {
             let after = i32::try_from(after).map_err(|_| EventLogError::InvalidRead {
                 detail: format!("history read after {after} is out of range"),
@@ -1129,7 +1159,7 @@ impl EventHistory {
             let Some(cursor) = page.next_cursor else {
                 break;
             };
-            request = EventReadRequest::from_cursor(cursor, limit);
+            request = EventReadRequest::from_cursor(cursor, limit).with_types(MESSAGE_EVENT_TYPES);
         }
         Ok(projected)
     }
@@ -1192,6 +1222,13 @@ fn finish_messages(projected: Vec<ProjectedMessage>, query: &MessageQuery) -> Ve
     messages
 }
 
+/// The event types that project to a message (see [`message_from_event`]).
+pub(crate) const MESSAGE_EVENT_TYPES: &[&str] = &[
+    crate::events::INPUT_MESSAGE,
+    crate::events::OUTPUT_MESSAGE_COMPLETED,
+    crate::events::TOOL_COMPLETED,
+];
+
 fn event_projects_message(event: &Event) -> bool {
     matches!(
         &event.data,
@@ -1211,9 +1248,12 @@ impl MessageRetriever for EventHistory {
         // Callers ask for recent messages (a turn's input), so read from
         // the end: a long session's history is not replayed to find one.
         let found = |event: &Event| message_from_event(event).filter(|m| m.id == message_id);
-        let events = read_tail_until(self.reader.as_ref(), session_id, |events| {
-            events.iter().any(|event| found(event).is_some())
-        })
+        let events = read_tail_until(
+            self.reader.as_ref(),
+            session_id,
+            MESSAGE_EVENT_TYPES,
+            |events| events.iter().any(|event| found(event).is_some()),
+        )
         .await
         .map_err(core_event_error)?;
         Ok(events.iter().rev().find_map(found))

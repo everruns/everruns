@@ -148,11 +148,68 @@ async fn a_suffix_projection_reads_only_the_suffix() {
     assert!(projected.is_empty());
 }
 
+const DELTAS: &[&str] = &[crate::events::OUTPUT_MESSAGE_DELTA];
+
+#[tokio::test]
+async fn a_typed_read_skips_other_events_and_resumes_after_its_last() {
+    // A projection asks the in-memory log for message events only, so a
+    // turn's `llm.generation` (the whole prompt) is never copied for it.
+    let session_id = SessionId::new();
+    let log = InMemoryEventLog::new();
+    for n in 0..5 {
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(RuntimeMessage::user(format!("q{n}"))),
+        ))
+        .await
+        .unwrap();
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            SessionStartedData {
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                model_id: None,
+            },
+        ))
+        .await
+        .unwrap();
+    }
+    let request = EventReadRequest::new(session_id, EventReadLimit::new(2).unwrap())
+        .with_types(&[crate::events::INPUT_MESSAGE]);
+    let first = log.read_page(request).await.unwrap();
+    let sequences =
+        |page: &EventPage| -> Vec<i32> { page.events.iter().filter_map(|e| e.sequence).collect() };
+    assert_eq!(sequences(&first), vec![1, 3]);
+    let rest = log
+        .read_page(
+            EventReadRequest::from_cursor(
+                first.next_cursor.clone().unwrap(),
+                EventReadLimit::default(),
+            )
+            .with_types(&[crate::events::INPUT_MESSAGE]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sequences(&rest), vec![5, 7, 9]);
+    assert!(rest.next_cursor.is_none());
+    // A read after a cursor in the middle starts there.
+    let after = log
+        .read_page(EventReadRequest::from_cursor(
+            EventCursor::after(session_id, 6).unwrap(),
+            EventReadLimit::default(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(sequences(&after), vec![7, 8, 9, 10]);
+}
+
 #[tokio::test]
 async fn a_tail_read_reads_only_the_tail() {
     // The whole log is over the replay bound; its last window is not.
     let high = (MAX_EVENT_HISTORY_REPLAY + 1) as i32;
-    let tail = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |events| {
+    let tail = read_tail_until(&LifecycleHeavyReader, SessionId::new(), DELTAS, |events| {
         events
             .first()
             .and_then(|e| e.sequence)
@@ -168,7 +225,7 @@ async fn a_tail_read_reads_only_the_tail() {
     );
     assert_eq!(sequences.len(), 256 + 512, "two windows");
     // Never enough: the bound still holds.
-    let error = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |_| false)
+    let error = read_tail_until(&LifecycleHeavyReader, SessionId::new(), DELTAS, |_| false)
         .await
         .expect_err("an unbounded tail read is refused");
     assert!(matches!(error, EventLogError::InvalidRead { .. }));

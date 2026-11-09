@@ -746,7 +746,7 @@ impl InProcessRuntime {
     async fn ensure_session_started(&self, session: &ExecutionSession) -> Result<()> {
         if self
             .event_history
-            .contains_event_type(session.id, crate::events::SESSION_STARTED)
+            .contains_event_type(session.id, &[crate::events::SESSION_STARTED])
             .await
             .map_err(|error| AgentLoopError::store(error.to_string()))?
         {

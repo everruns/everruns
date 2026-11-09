@@ -13,6 +13,7 @@ use super::*;
 pub(crate) async fn read_tail_until(
     reader: &dyn EventReader,
     session_id: SessionId,
+    types: &'static [&'static str],
     enough: impl Fn(&[Event]) -> bool,
 ) -> Result<Vec<Event>, EventLogError> {
     let high = match reader.last_sequence(session_id).await? {
@@ -30,7 +31,8 @@ pub(crate) async fn read_tail_until(
         let mut request = EventReadRequest::from_cursor(
             EventCursor::continuation(session_id, lo, high)?,
             EventReadLimit::default(),
-        );
+        )
+        .with_types(types);
         'window: loop {
             let page = reader.read_page(request).await?;
             for event in page.events {
@@ -42,6 +44,7 @@ pub(crate) async fn read_tail_until(
             match page.next_cursor {
                 Some(cursor) => {
                     request = EventReadRequest::from_cursor(cursor, EventReadLimit::default())
+                        .with_types(types)
                 }
                 None => break,
             }
@@ -87,7 +90,8 @@ impl EventHistory {
                 _ => None,
             })
         };
-        let tail = read_tail_until(self.reader.as_ref(), session_id, |events| {
+        const TYPES: &[&str] = &[crate::events::TURN_STARTED, crate::events::INPUT_MESSAGE];
+        let tail = read_tail_until(self.reader.as_ref(), session_id, TYPES, |events| {
             latest_input(events).is_some()
         })
         .await
