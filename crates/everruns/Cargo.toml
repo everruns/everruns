@@ -61,6 +61,11 @@ name = "turn_backends"
 harness = false
 test = true
 
+[[bench]]
+name = "long_session"
+harness = false
+test = true
+
 [features]
 # Opt-in, native test harness for downstream SessionHosting implementations.
 hosting-conformance = ["builtins"]

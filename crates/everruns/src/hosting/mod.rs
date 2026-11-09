@@ -35,7 +35,7 @@ pub use everruns_core::session_commands::{
 };
 pub(crate) mod query;
 pub use admission::{Admission, AdmissionState, TurnAssignment};
-pub use memory::MemoryHosting;
+pub use memory::{AuthorityCounts, MemoryHosting};
 pub use query::SessionQuerySnapshot;
 #[cfg(feature = "local")]
 mod sqlite;

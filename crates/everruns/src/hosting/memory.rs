@@ -78,6 +78,44 @@ mod dreaming_tests {
 pub struct MemoryHosting {
     dreaming: Arc<everruns_core::engine::dreaming::store::InMemoryDreamingStore>,
     sessions: Arc<Mutex<HashMap<SessionId, Arc<MemorySession>>>>,
+    counts: Arc<AuthorityCounters>,
+}
+
+/// How many operations an execution epoch asked of the authority.
+///
+/// On a replicated authority (a data plane v2 cell) every one of these is a
+/// round trip to the leader, and every write also waits for a quorum, so
+/// writes per turn times that latency is the turn's overhead floor. Benches
+/// read it to hold that count down; it is diagnostic, not a contract.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AuthorityCounts {
+    /// Operations that change authority state (journal appends, records,
+    /// lease renewals and releases, claims, schedules).
+    pub writes: u64,
+    /// Operations that only read authority state.
+    pub reads: u64,
+}
+
+#[derive(Default)]
+struct AuthorityCounters {
+    writes: std::sync::atomic::AtomicU64,
+    reads: std::sync::atomic::AtomicU64,
+}
+
+#[derive(Clone, Copy)]
+enum Op {
+    Write,
+    Read,
+}
+
+impl AuthorityCounters {
+    fn count(&self, op: Op) {
+        let counter = match op {
+            Op::Write => &self.writes,
+            Op::Read => &self.reads,
+        };
+        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 struct MemorySession {
@@ -88,6 +126,7 @@ struct MemorySession {
     control: tokio::sync::Mutex<Control>,
     log: InMemoryEventLog,
     services: HostBackends,
+    counts: Arc<AuthorityCounters>,
 }
 
 #[derive(Default)]
@@ -122,6 +161,15 @@ struct Control {
 }
 
 impl MemoryHosting {
+    /// Authority operations the execution epochs of every session have made
+    /// so far (see [`AuthorityCounts`]).
+    pub fn authority_counts(&self) -> AuthorityCounts {
+        use std::sync::atomic::Ordering::Relaxed;
+        AuthorityCounts {
+            writes: self.counts.writes.load(Relaxed),
+            reads: self.counts.reads.load(Relaxed),
+        }
+    }
     fn new_session(&self, id: SessionId) -> Arc<MemorySession> {
         let mut services = HostBackends::in_memory();
         services.dreaming_store = self.dreaming.clone();
@@ -132,6 +180,7 @@ impl MemoryHosting {
             control: tokio::sync::Mutex::new(Control::default()),
             log: InMemoryEventLog::new(),
             services,
+            counts: self.counts.clone(),
         })
     }
     fn session(&self, id: SessionId) -> Arc<MemorySession> {
@@ -265,6 +314,7 @@ impl SessionHosting for MemoryHosting {
         ttl: Duration,
     ) -> Result<Option<SessionActivation>> {
         let session = self.session(id);
+        session.counts.count(Op::Write);
         let mut state = session.control.lock().await;
         let binding = state.binding(id)?;
         if state
@@ -425,6 +475,7 @@ impl SessionEpoch for Ports {
         Some(self.session.renew_poke.clone())
     }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
+        self.session.counts.count(Op::Write);
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
         state.wake_at = wake_at;
@@ -452,9 +503,11 @@ impl SessionEpoch for Ports {
         }
     }
     async fn record(&self, key: &str) -> Result<Option<Value>> {
+        self.session.counts.count(Op::Read);
         Ok(self.session.control.lock().await.records.get(key).cloned())
     }
     async fn records(&self, prefix: &str) -> Result<Vec<(String, Value)>> {
+        self.session.counts.count(Op::Read);
         let state = self.session.control.lock().await;
         let records: Vec<_> = state
             .records
@@ -471,6 +524,7 @@ impl SessionEpoch for Ports {
         Ok(records)
     }
     async fn commit(&self, key: &str, value: Value, absent: bool) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
         if absent && state.records.contains_key(key) {
@@ -501,6 +555,7 @@ impl SessionEpoch for Ports {
         Ok(true)
     }
     async fn suspend(&self, reason: &str) -> Result<()> {
+        self.session.counts.count(Op::Write);
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
         state.suspended = true;
@@ -519,6 +574,7 @@ impl EventReader for Ports {
         &self,
         request: EventReadRequest,
     ) -> std::result::Result<EventPage, EventLogError> {
+        self.session.counts.count(Op::Read);
         self.scope(request.session_id()).map_err(log_error)?;
         self.session.log.read_page(request).await
     }
@@ -527,6 +583,7 @@ impl EventReader for Ports {
         &self,
         session_id: SessionId,
     ) -> std::result::Result<Option<i32>, EventLogError> {
+        self.session.counts.count(Op::Read);
         self.scope(session_id).map_err(log_error)?;
         self.session.log.last_sequence(session_id).await
     }
@@ -534,6 +591,7 @@ impl EventReader for Ports {
 #[async_trait]
 impl EventLog for Ports {
     async fn append(&self, request: EventRequest) -> std::result::Result<Event, EventLogError> {
+        self.session.counts.count(Op::Write);
         Ports::append(self, request, None).await
     }
     async fn append_conditional(
@@ -541,6 +599,7 @@ impl EventLog for Ports {
         request: EventRequest,
         expected: Option<i32>,
     ) -> std::result::Result<Event, EventLogError> {
+        self.session.counts.count(Op::Write);
         Ports::append(self, request, Some(expected)).await
     }
     fn durability(&self) -> EventDurability {
@@ -581,6 +640,7 @@ impl SessionActorStore for Ports {
         ttl: Duration,
         consumed: i64,
     ) -> Result<Option<ActorRenewal>> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let mut state = self.session.control.lock().await;
         if !state.owns(holder, fence) {
@@ -601,6 +661,7 @@ impl SessionActorStore for Ports {
         fence: u64,
         consumed: i64,
     ) -> Result<ActorRelease> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let mut state = self.session.control.lock().await;
         if !state.owns(holder, fence) {
@@ -628,6 +689,7 @@ impl SessionActorStore for Ports {
         after: Option<i32>,
         limit: u32,
     ) -> Result<ActorJournal> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         let mut events = all_events(&self.session, after).await?;
         let head = events.last().and_then(|event| event.sequence);
@@ -656,6 +718,7 @@ impl SessionActorStore for Ports {
 #[async_trait]
 impl SessionStore for Ports {
     async fn get_session(&self, id: SessionId) -> Result<Option<ExecutionSession>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         let mut record = self.session.services.session_store.get_session(id).await?;
@@ -676,6 +739,7 @@ impl SessionStore for Ports {
 #[async_trait]
 impl RuntimeSessionStore for Ports {
     async fn add_session(&self, session: ExecutionSession) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(session.id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -689,6 +753,7 @@ impl RuntimeSessionStore for Ports {
 #[async_trait]
 impl SessionMutator for Ports {
     async fn update_session_title(&self, id: SessionId, title: String) -> Result<ExecutionSession> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -702,10 +767,12 @@ impl SessionMutator for Ports {
 #[async_trait]
 impl SessionStorageStore for Ports {
     async fn get_value(&self, id: SessionId, key: &str) -> Result<Option<String>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session.services.storage_store.get_value(id, key).await
     }
     async fn set_value(&self, id: SessionId, key: &str, value: &str) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -716,6 +783,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn take_value(&self, id: SessionId, key: &str) -> Result<Option<String>> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -726,6 +794,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn delete_value(&self, id: SessionId, key: &str) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -736,10 +805,12 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn list_keys(&self, id: SessionId) -> Result<Vec<KeyInfo>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session.services.storage_store.list_keys(id).await
     }
     async fn set_secret(&self, id: SessionId, key: &str, value: &str) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -750,6 +821,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn get_secret(&self, id: SessionId, key: &str) -> Result<Option<String>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -758,6 +830,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn delete_secret(&self, id: SessionId, key: &str) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -768,6 +841,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn list_secrets(&self, id: SessionId) -> Result<Vec<SecretInfo>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session.services.storage_store.list_secrets(id).await
     }
@@ -780,6 +854,7 @@ impl CompactionCheckpointStore for Ports {
         provider: &str,
         model: &str,
     ) -> Result<Option<CompactionCheckpoint>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -794,6 +869,7 @@ impl CompactionCheckpointStore for Ports {
         model: &str,
         format: u32,
     ) -> Result<Option<CompactionCheckpoint>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -802,6 +878,7 @@ impl CompactionCheckpointStore for Ports {
             .await
     }
     async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         self.scope(checkpoint.session_id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -817,6 +894,7 @@ impl CompactionCheckpointStore for Ports {
         provider: &str,
         model: &str,
     ) -> Result<Option<ProactiveCompactionAttempt>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -831,6 +909,7 @@ impl CompactionCheckpointStore for Ports {
         model: &str,
         attempt: ProactiveCompactionAttempt,
     ) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -924,7 +1003,10 @@ mod resolver_tests {
             .create_registered(SessionId::new(), &AgentBuild::new("files", "host-v1"))
             .await
             .unwrap();
-        assert_eq!(files.send_and_wait("Hi").await.unwrap().response, "with files");
+        assert_eq!(
+            files.send_and_wait("Hi").await.unwrap().response,
+            "with files"
+        );
         let unknown = AgentBuild::new("unknown", "host-v1");
         assert!(
             engine
