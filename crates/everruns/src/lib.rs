@@ -566,3 +566,7 @@ pub use everruns_core::dreaming::{
 /// MCP discovery readiness reported by a session.
 #[cfg(feature = "mcp")]
 pub use everruns_core::host::McpDiscoveryStatus;
+
+/// Per-server MCP readiness snapshot, change watch and probe results.
+#[cfg(feature = "mcp")]
+pub use everruns_core::host::{McpReadiness, McpReadinessWatch, McpServerReadiness};

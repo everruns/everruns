@@ -439,3 +439,36 @@ The default remains blocking cold discovery. Deferred reveal, catalog bounds,
 authentication holds and transient retry cooldowns retain their contracts.
 Readiness inspection is read-only and separates pending, ready, authentication
 required and failed states. See the [host-services API](../../docs/framework/host-services.md#mcp-readiness).
+
+## Host readiness API
+
+Embedding hosts (Yolop's `/mcp` view, reconnect and doctor) need per-server
+readiness without keeping their own projection of host state (EVE-1342). The
+discovery cache stays the only owner of that state; the session readiness API is
+a read of it, not a second model:
+
+- One entry per configured server that discovers tools, deferred or not.
+  Servers with tool discovery off have no readiness. Servers the runtime cannot
+  serve (ambiguous tool prefix, transport missing from the build) report failed
+  with a reason instead of disappearing silently.
+- Failure reasons are kept with the cache entry, bounded in size because the
+  upstream error text is server-influenced, along with the wall-clock time the
+  attempt completed. A failed refresh keeps the previous complete catalog, so a
+  failed server can still report tools.
+- A probe is a host action, not a turn. It skips cached freshness, the transient
+  cooldown and the authentication hold, and asks the auth provider again. It
+  uses the same per-key single-flight lock as turns. A probe that waited on an
+  attempt already in flight takes that attempt's result rather than calling the
+  server a second time. A probe may name an unrevealed deferred server: the user
+  asked for that connection. The catalog it gets warms the cache but does not
+  reveal the server.
+- A revision on the cache goes up whenever an attempt starts or finishes or a
+  session is invalidated. Hosts poll it or watch it. It is cache-wide, so a
+  change can come from another session that shares host services. Hosts re-read
+  readiness after each change and do not interpret the change itself.
+
+The API lives on the session, not on `HostServices`, because the servers
+configured for a session (harness, Agent, session and capability layers, plus
+reveal state) are only known per session. The readiness of a runtime rebuilt
+between activations depends on host services that own a shared cache.
+Implementation: `crates/core/src/host/mcp_readiness.rs`.
