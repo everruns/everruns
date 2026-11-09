@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: Data plane v2 file system
-description: Workspaces as versioned trees: roots and deltas in the cell, immutable nodes and contents in S3, one commit per Raft entry.
+description: "Workspaces as versioned trees: roots and deltas in the cell, immutable nodes and contents in S3, one commit per Raft entry."
 tags:
   - execution
   - data-plane-v2

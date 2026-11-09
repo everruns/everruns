@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: Control plane and data plane protocol
-description: The HTTPS and JSON contract between the control plane and a data plane: config stream, org admin, feed, spend allowances and org tokens.
+description: "The HTTPS and JSON contract between the control plane and a data plane: config stream, org admin, feed, spend allowances and org tokens."
 tags:
   - execution
   - data-plane-v2

@@ -1,7 +1,7 @@
 ---
 type: Specification
-title: Data plane v2: cells
-description: Cell-native execution for 75 000 agents: one control plane, today's workers as data plane v1, and Raft cells with S3 as data plane v2.
+title: "Data plane v2: cells"
+description: "Cell-native execution for 75 000 agents: one control plane, today's workers as data plane v1, and Raft cells with S3 as data plane v2."
 tags:
   - execution
   - data-plane-v2
