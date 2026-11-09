@@ -899,6 +899,14 @@ execution-critical protocol capabilities a session's journal uses, and
 Engine missing one releases the epoch without consuming input or
 suspending, so a capable executor takes the session.
 
+**Provider call attempts:** with steering (12 inputs over 3 turns, 15 ms
+apart against a model with latency), every `reason.started` has exactly one
+`llm.generation` (`hosted_sessions::with_steering_every_model_call_is_settled_exactly_once`).
+Open: `reason.started` now commits behind the model call, so an executor
+killed during a call can lose the call's only record and its usage. The
+fix is a durable attempt record that rides on the barrier before each call
+(`turn.started` or the step's tool results), not a waited write of its own.
+
 **Memory per idle session** (`cargo bench -p everruns --bench
 idle_sessions`, 20 000 sessions with one turn each, handles dropped,
 counted by a counting allocator): Engine kept 6.2 KB per idle session for

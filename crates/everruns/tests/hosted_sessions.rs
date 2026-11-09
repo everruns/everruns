@@ -1161,3 +1161,69 @@ async fn an_engine_lacking_a_required_protocol_capability_hands_the_session_back
     capable.activate(id).await.unwrap();
     assert!(!lacking.session_status(id).await.unwrap().runnable);
 }
+
+/// Data plane v2 step 1 gate: with steering, every provider call attempt is
+/// settled exactly once. Input admitted while a model call runs must neither
+/// lose that call's `llm.generation` (its usage) nor run it twice.
+#[tokio::test]
+async fn with_steering_every_model_call_is_settled_exactly_once() {
+    let engine = engine(
+        MemoryHosting::default(),
+        Agent::builder()
+            .instructions("Answer briefly.")
+            .model(Model::simulated_with_config(
+                everruns::LlmSimConfig::lorem(60).with_latency(),
+            ))
+            .build()
+            .unwrap(),
+    );
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    let mut sent = Vec::new();
+    for round in 0..3 {
+        sent.push(session.send(format!("start {round}")).await.unwrap());
+        for steer in 0..3 {
+            tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+            sent.push(
+                session
+                    .send(format!("steer {round}.{steer}"))
+                    .await
+                    .unwrap(),
+            );
+        }
+        for message in sent.drain(..) {
+            message.wait().await.unwrap();
+        }
+    }
+    let events = session.events_after(0).await.unwrap();
+    let exec = |event: &everruns::SessionEvent| {
+        event.canonical_json()["context"]["exec_id"]
+            .as_str()
+            .map(str::to_owned)
+    };
+    let mut started: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type() == "reason.started")
+        .map(exec)
+        .collect();
+    let mut settled: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type() == "llm.generation")
+        .map(exec)
+        .collect();
+    let steered = events
+        .iter()
+        .filter(|event| event.event_type() == "input.message")
+        .count();
+    assert_eq!(steered, 12);
+    assert!(
+        started.len() > 3,
+        "steering added model calls: {}",
+        started.len()
+    );
+    started.sort();
+    settled.sort();
+    assert_eq!(started, settled, "one settlement per model call");
+}
