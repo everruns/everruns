@@ -51,13 +51,16 @@ type Behind = everruns_contracts::rt::JoinHandle<Result<(), String>>;
 
 /// Progress markers that commit behind the work (see [`HostEventEmitter`]).
 ///
-/// Decision: only events the executor never reads back and needs no
-/// sequence for, ahead of a model call that overlaps their commit
-/// (`reason.started`: "thinking"; `output.message.started`: "answering").
+/// Decision: only events the executor never reads back before its next
+/// commit, and needs no sequence for, ahead of a model call that overlaps
+/// their commit: `reason.started` ("thinking"), `output.message.started`
+/// ("answering") and `context.compacted` (the step installs the compacted
+/// context in memory; a later step or turn reads the event only after a
+/// commit that waits for it).
 fn commits_behind(request: &EventRequest) -> bool {
     matches!(
         request.event_type.as_str(),
-        "reason.started" | "output.message.started"
+        "reason.started" | "output.message.started" | "context.compacted"
     )
 }
 
