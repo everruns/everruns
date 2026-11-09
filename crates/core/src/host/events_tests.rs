@@ -1,4 +1,5 @@
 use super::*;
+use crate::event_emitter::EventEmitter as _;
 use crate::events::{EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData};
 use everruns_contracts::typed_id::{HarnessId, TurnId};
 
