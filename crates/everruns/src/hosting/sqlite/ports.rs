@@ -200,7 +200,7 @@ impl SessionActorStore for Ports {
 
 /// One page of the active branch; abandoned events keep their sequences but
 /// are not context. Raw export reads the table directly.
-fn page(
+pub(super) fn page(
     tx: &Transaction<'_>,
     session: SessionId,
     state: &Control,

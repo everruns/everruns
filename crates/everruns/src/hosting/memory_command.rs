@@ -98,7 +98,10 @@ impl MemoryHosting {
             history: None,
         };
         let plan = session_commands::prepare(command, view)?;
-        if matches!(plan.control, ControlUpdate::SelectBranch { .. }) {
+        if matches!(
+            plan.control,
+            ControlUpdate::SelectBranch { .. } | ControlUpdate::DropBranch { .. }
+        ) {
             return Err(AgentLoopError::config(
                 "this session authority does not support conversation branch selection",
             ));
@@ -174,7 +177,7 @@ impl MemoryHosting {
                 state.holder = None;
                 state.expires = None;
             }
-            ControlUpdate::SelectBranch { .. } => {}
+            ControlUpdate::SelectBranch { .. } | ControlUpdate::DropBranch { .. } => {}
             ControlUpdate::Cancel { input, interrupt } => {
                 let position = state.inbox;
                 state.target_cancels.insert(input, position);

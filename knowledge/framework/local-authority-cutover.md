@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Local Authority Cutover and Legacy Lane Retirement Gate"
-description: "How legacy local/custom-backend Engine sessions move losslessly into the coherent SQLite authority, conversation branch selection (EVE-1305), the gap matrix against EVE-1298, and the gate for retiring the legacy facade actor."
+description: "How legacy local/custom-backend Engine sessions move losslessly into the coherent SQLite authority, conversation branch selection (EVE-1305) and checkpoints (EVE-1339), the gap matrix against EVE-1298, and the gate for retiring the legacy facade actor."
 tags:
   - everruns
   - framework
@@ -168,6 +168,48 @@ Decided in EVE-1305; this replaces the earlier `history.rewound` event proposal.
   record, so a retry with another lineage fails.
 - **Workspace.** Branch selection never changes files. Workspace restore keeps
   its own confirmed operation and snapshot policy.
+
+## Conversation checkpoints
+
+Decided in EVE-1339 so a host (Yolop's checkpoint commands and restore tool)
+drives checkpoints through [`Engine::checkpoints`](../../crates/everruns/src/checkpoints.rs)
+instead of keeping a parallel checkpoint store beside the journal.
+
+- **A checkpoint names a point, it copies nothing.** It retains the active
+  branch's ranges through the end of the last finished turn, so it can be
+  taken from a tool while its own turn runs. The authority builds it in one
+  transaction from the branch, its events and the input assignments, so a
+  concurrent append or branch change cannot leave it off its branch.
+- **Input membership comes from the assignment.** An input stays in only when
+  its `assignment/{input}` record names an included turn (steering included).
+  An input queued during one turn sits inside that turn's journal span but is
+  answered by a later one, so its position alone would wrongly keep it.
+  Unassigned admitted inputs stay out; seeded history (no admission) and
+  rejected inputs (already hidden) stay in. An input a cutover imported with
+  no turn has an admission receipt but is consumed history, not queued work;
+  the import marks it (`imported_input/{input}`) and it stays in. All events of the last turn,
+  including those appended after the checkpoint such as `session.idled`, are
+  looked up by turn id at restore.
+- **Restore is a branch selection.** It runs the same `SelectBranch` command,
+  with the same quiescence and revision checks. Branch mode retains the undone
+  tail for redo. Truncate mode sets `discard`, which drops the left branch from
+  the catalog in the same transaction instead of retaining it; its events stay
+  in the journal and raw export. Checkpoints no retained branch reaches are
+  hidden from every read and pruned only inside the transaction that commits
+  the next checkpoint. Never prune client side: `DropBranch` needs no
+  quiescence, so a separate lineage read, list and delete would race a tool
+  creating a checkpoint on newer turns and delete it. Truncating to a checkpoint from another branch drops the
+  whole current branch.
+- **Bounded branches.** A branch restore to a point a retained branch already
+  is reselects it. Otherwise each one adds a branch, up to the catalog limit;
+  `DropBranch` deletes a retained, inactive branch without quiescence, and
+  restore names (`restore-<uuid>`) never collide with caller branches.
+- **Session scoped.** Records live in the authority's per-session object store
+  and are only looked up through the session handle, so an id from another
+  session is not found. Previews return short excerpts with control and
+  bidirectional characters removed, safe for a terminal or a UI line.
+- **Scope.** Only branch-capable authorities (SQLite) implement the checkpoint
+  SPI; others refuse. Workspace files are not rewound.
 
 A lower-level Core host still exists for platform hosts; retiring the facade
 lane does not remove it, and is a separate claim from whether an application can

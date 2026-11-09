@@ -76,6 +76,7 @@ pub mod channel_auth {
 }
 #[cfg(feature = "channels")]
 pub mod channels;
+pub mod checkpoints;
 mod context;
 #[cfg(all(unix, feature = "control"))]
 pub mod control;

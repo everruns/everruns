@@ -313,6 +313,7 @@ fn select(revision: u64, ranges: Option<Vec<history::SequenceRange>>) -> Session
         expected_revision: revision,
         branch: "rewound".into(),
         ranges,
+        discard: false,
     }
 }
 
@@ -329,11 +330,15 @@ fn branch_selection_commits_canonical_ranges_at_the_next_revision_and_replays() 
         branch,
         ranges: selected,
         revision,
+        discard,
     } = &plan.control
     else {
         panic!("expected a branch selection");
     };
-    assert_eq!((branch.as_str(), *revision), ("rewound", 4));
+    assert_eq!(
+        (branch.as_str(), *revision, *discard),
+        ("rewound", 4, false)
+    );
     assert_eq!(selected, &[history::SequenceRange::new(1, 3)]);
     assert_eq!(plan.reply["revision"], 4);
 
@@ -424,4 +429,81 @@ fn branch_selection_conflicts_on_a_different_lineage_and_needs_known_branches() 
     let plan = prepare(select(3, None), active).unwrap();
     assert!(matches!(plan.control, ControlUpdate::None));
     assert_eq!(plan.reply["changed"], false);
+}
+
+/// EVE-1339: a truncating restore drops the active branch from the catalog
+/// instead of retaining it, so it neither grows the catalog nor shares a
+/// fingerprint with the retaining selection of the same identity.
+#[test]
+fn discarding_selection_replaces_the_active_branch_and_fingerprints_apart() {
+    let ranges = Some(vec![history::SequenceRange::new(1, 3)]);
+    let discarding = |ranges| SessionCommand::SelectBranch {
+        id: "rewind".into(),
+        expected_revision: 3,
+        branch: "rewound".into(),
+        ranges,
+        discard: true,
+    };
+    let mut full = branch_view();
+    full.history.as_mut().unwrap().branches = history::MAX_BRANCHES;
+    assert!(matches!(
+        prepare(select(3, ranges.clone()), full.clone()),
+        Err(CommandError::Capacity(_))
+    ));
+    let plan = prepare(discarding(ranges.clone()), full).unwrap();
+    assert!(matches!(
+        plan.control,
+        ControlUpdate::SelectBranch { discard: true, .. }
+    ));
+    assert_eq!(plan.fingerprint["discard"], true);
+    assert!(
+        select(3, ranges.clone())
+            .fingerprint()
+            .get("discard")
+            .is_none(),
+        "retaining selections keep their pre-existing fingerprint"
+    );
+    let mut retry = branch_view();
+    retry.previous = Some(CommandReceipt {
+        fingerprint: plan.fingerprint.clone(),
+        value: plan.reply.clone(),
+    });
+    assert!(
+        prepare(select(3, ranges), retry).is_err(),
+        "a retaining retry cannot replay a discarding command"
+    );
+}
+
+/// EVE-1339: deleting a retained branch bumps the revision, never touches
+/// the active branch and needs no quiescence.
+#[test]
+fn dropping_a_branch_removes_only_retained_inactive_branches() {
+    let drop = |branch: &str| SessionCommand::DropBranch {
+        id: "drop".into(),
+        expected_revision: 3,
+        branch: branch.into(),
+    };
+    let mut view = branch_view();
+    view.execution_active = true;
+    view.history.as_mut().unwrap().retained = Some(vec![history::SequenceRange::new(1, 3)]);
+    let plan = prepare(drop("old"), view.clone()).unwrap();
+    assert_eq!(plan.key.as_deref(), Some("history_branch_drop:drop"));
+    assert!(matches!(
+        plan.control,
+        ControlUpdate::DropBranch { ref branch, revision: 4 } if branch == "old"
+    ));
+    assert_eq!(plan.reply["branch"], history::DEFAULT_BRANCH);
+    assert!(
+        prepare(drop(history::DEFAULT_BRANCH), view.clone()).is_err(),
+        "the active branch cannot be deleted"
+    );
+    let mut stale = view.clone();
+    stale.history.as_mut().unwrap().revision = 4;
+    assert!(matches!(
+        prepare(drop("old"), stale),
+        Err(CommandError::Conflict(_))
+    ));
+    let mut missing = view;
+    missing.history.as_mut().unwrap().retained = None;
+    assert!(prepare(drop("old"), missing).is_err());
 }
