@@ -1110,6 +1110,7 @@ async fn save_from_flags(
 /// `create_agent` params from CLI flags. `--harness` takes a strict harness id
 /// (`harness_<32-hex>`) or an addressable name (e.g. `generic`), detected the
 /// same way as `sessions create --harness`.
+#[allow(clippy::too_many_arguments)]
 fn agent_params(
     agent_id: Option<&str>,
     name: String,
