@@ -102,6 +102,9 @@ pub(crate) struct Lease {
     /// Raised once a pending cancel targets this lease's turn.
     cancel: watch::Sender<bool>,
     target: Mutex<CancelTarget>,
+    /// The renewer is poked on every admission, so an in-turn inbox check
+    /// may rely on its renewals (see [`Lease::refresh`]).
+    pushed_inbox: bool,
 }
 
 /// What decides whether a pending cancel ends this lease's turn.
@@ -143,6 +146,7 @@ impl Lease {
                 pending: actor.cancel_inbox_seq,
                 turn_input: None,
             }),
+            pushed_inbox: false,
         }
     }
 
@@ -150,6 +154,26 @@ impl Lease {
     pub(crate) fn with_stall_timeout(mut self, timeout: Duration) -> Self {
         self.stall_timeout = timeout;
         self
+    }
+
+    /// The store pokes the renewer on every admission and cancellation.
+    pub(crate) fn with_pushed_inbox(mut self, pushed: bool) -> Self {
+        self.pushed_inbox = pushed;
+        self
+    }
+
+    /// Renew to learn the inbox, unless the store pushes it and the renewer
+    /// renewed within a renew period.
+    ///
+    /// Decision (data plane v2 step 1): each skipped renew is an authority
+    /// write a chat turn no longer waits on. An admission the poke has not
+    /// yet carried to the renewer is not lost: it stays past the cursor, the
+    /// release reports the session still runnable, and it runs next.
+    pub(crate) async fn refresh(&self) -> Result<()> {
+        if self.pushed_inbox && self.since_renewed() < self.ttl / 3 {
+            return Ok(());
+        }
+        self.renew().await
     }
 
     /// The holder entered a phase that writes nothing: start the bound.

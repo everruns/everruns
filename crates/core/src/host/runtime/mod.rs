@@ -208,6 +208,9 @@ pub struct InProcessRuntimeBuilder {
     harnesses: Vec<crate::host::builders::SeededHarness>,
     agents: Vec<AgentDefinition>,
     sessions: Vec<ExecutionSession>,
+    /// What the session store already holds for a seeded session, so an
+    /// unchanged record is not written again on every rebuild.
+    stored_sessions: std::collections::HashMap<SessionId, serde_json::Value>,
     default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
     #[cfg(feature = "mcp")]
@@ -264,6 +267,7 @@ impl InProcessRuntimeBuilder {
             harnesses: Vec::new(),
             agents: Vec::new(),
             sessions: Vec::new(),
+            stored_sessions: std::collections::HashMap::new(),
             default_session_id: None,
             seeded_files: Vec::new(),
             #[cfg(feature = "mcp")]
@@ -392,6 +396,15 @@ impl InProcessRuntimeBuilder {
     /// Seed a session into the runtime store.
     pub fn session(mut self, session: ExecutionSession) -> Self {
         self.sessions.push(session);
+        self
+    }
+
+    /// The record the session store already holds for a seeded session. A
+    /// seeded session equal to it is not written again.
+    pub fn stored_session(mut self, stored: &ExecutionSession) -> Self {
+        if let Ok(value) = serde_json::to_value(stored) {
+            self.stored_sessions.insert(stored.id, value);
+        }
         self
     }
 
@@ -571,6 +584,10 @@ impl InProcessRuntimeBuilder {
             backends.agent_store.add_agent(agent.clone()).await?;
         }
         for session in &self.sessions {
+            let stored = self.stored_sessions.get(&session.id);
+            if stored.is_some() && stored == serde_json::to_value(session).ok().as_ref() {
+                continue;
+            }
             backends.session_store.add_session(session.clone()).await?;
         }
 
@@ -729,7 +746,7 @@ impl InProcessRuntime {
     async fn ensure_session_started(&self, session: &ExecutionSession) -> Result<()> {
         if self
             .event_history
-            .contains_event_type(session.id, crate::events::SESSION_STARTED)
+            .contains_event_type(session.id, &[crate::events::SESSION_STARTED])
             .await
             .map_err(|error| AgentLoopError::store(error.to_string()))?
         {

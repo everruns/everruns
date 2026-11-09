@@ -1,4 +1,5 @@
 use super::*;
+use crate::event_emitter::EventEmitter as _;
 use crate::events::{EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData};
 use everruns_contracts::typed_id::{HarnessId, TurnId};
 
@@ -147,11 +148,109 @@ async fn a_suffix_projection_reads_only_the_suffix() {
     assert!(projected.is_empty());
 }
 
+const DELTAS: &[&str] = &[crate::events::OUTPUT_MESSAGE_DELTA];
+
+#[tokio::test]
+async fn a_typed_read_skips_other_events_and_resumes_after_its_last() {
+    // A projection asks the in-memory log for message events only, so a
+    // turn's `llm.generation` (the whole prompt) is never copied for it.
+    let session_id = SessionId::new();
+    let log = InMemoryEventLog::new();
+    for n in 0..5 {
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(RuntimeMessage::user(format!("q{n}"))),
+        ))
+        .await
+        .unwrap();
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            SessionStartedData {
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                model_id: None,
+            },
+        ))
+        .await
+        .unwrap();
+    }
+    let request = EventReadRequest::new(session_id, EventReadLimit::new(2).unwrap())
+        .with_types(&[crate::events::INPUT_MESSAGE]);
+    let first = log.read_page(request).await.unwrap();
+    let sequences =
+        |page: &EventPage| -> Vec<i32> { page.events.iter().filter_map(|e| e.sequence).collect() };
+    assert_eq!(sequences(&first), vec![1, 3]);
+    let rest = log
+        .read_page(
+            EventReadRequest::from_cursor(
+                first.next_cursor.clone().unwrap(),
+                EventReadLimit::default(),
+            )
+            .with_types(&[crate::events::INPUT_MESSAGE]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sequences(&rest), vec![5, 7, 9]);
+    assert!(rest.next_cursor.is_none());
+    // A rare type costs pages, not a scan of the whole session: a page
+    // examines a bounded run of other events, then continues after them.
+    let long = SessionId::new();
+    log.append(EventRequest::new(
+        long,
+        EventContext::empty(),
+        InputMessageData::new(RuntimeMessage::user("first")),
+    ))
+    .await
+    .unwrap();
+    for _ in 0..(MAX_EVENT_PAGE_SIZE + 10) {
+        log.append(EventRequest::new(
+            long,
+            EventContext::empty(),
+            SessionStartedData {
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                model_id: None,
+            },
+        ))
+        .await
+        .unwrap();
+    }
+    let first = log
+        .read_page(
+            EventReadRequest::new(long, EventReadLimit::new(2).unwrap())
+                .with_types(&[crate::events::INPUT_MESSAGE]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sequences(&first), vec![1]);
+    let cursor = first.next_cursor.clone().expect("the scan stopped early");
+    assert_eq!(cursor.after_sequence(), 1 + MAX_EVENT_PAGE_SIZE as i32);
+    let rest = log
+        .read_page(
+            EventReadRequest::from_cursor(cursor, EventReadLimit::new(2).unwrap())
+                .with_types(&[crate::events::INPUT_MESSAGE]),
+        )
+        .await
+        .unwrap();
+    assert!(rest.events.is_empty() && rest.next_cursor.is_none());
+    // A read after a cursor in the middle starts there.
+    let after = log
+        .read_page(EventReadRequest::from_cursor(
+            EventCursor::after(session_id, 6).unwrap(),
+            EventReadLimit::default(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(sequences(&after), vec![7, 8, 9, 10]);
+}
+
 #[tokio::test]
 async fn a_tail_read_reads_only_the_tail() {
     // The whole log is over the replay bound; its last window is not.
     let high = (MAX_EVENT_HISTORY_REPLAY + 1) as i32;
-    let tail = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |events| {
+    let tail = read_tail_until(&LifecycleHeavyReader, SessionId::new(), DELTAS, |events| {
         events
             .first()
             .and_then(|e| e.sequence)
@@ -167,7 +266,7 @@ async fn a_tail_read_reads_only_the_tail() {
     );
     assert_eq!(sequences.len(), 256 + 512, "two windows");
     // Never enough: the bound still holds.
-    let error = read_tail_until(&LifecycleHeavyReader, SessionId::new(), |_| false)
+    let error = read_tail_until(&LifecycleHeavyReader, SessionId::new(), DELTAS, |_| false)
         .await
         .expect_err("an unbounded tail read is refused");
     assert!(matches!(error, EventLogError::InvalidRead { .. }));
@@ -303,4 +402,293 @@ fn tool_completion_projection_keeps_scalar_json_as_text() {
         .and_then(|content| content.result.as_ref())
         .expect("projected result");
     assert_eq!(result, &serde_json::Value::String("123".into()));
+}
+
+/// Records what the live sink saw, in order.
+#[derive(Default)]
+struct SeenSink(std::sync::Mutex<Vec<Event>>);
+
+impl EventSink for SeenSink {
+    fn try_send(&self, event: Event) -> Result<(), EventSinkError> {
+        self.0.lock().unwrap().push(event);
+        Ok(())
+    }
+}
+
+impl SeenSink {
+    fn types(&self) -> Vec<String> {
+        let seen = self.0.lock().unwrap();
+        seen.iter().map(|event| event.event_type.clone()).collect()
+    }
+}
+
+async fn committed(log: &InMemoryEventLog, session_id: SessionId) -> usize {
+    log.read_page(EventReadRequest::new(
+        session_id,
+        EventReadLimit::new(100).unwrap(),
+    ))
+    .await
+    .unwrap()
+    .events
+    .len()
+}
+
+fn held_lifecycle(session_id: SessionId) -> EventRequest {
+    EventRequest::new(
+        session_id,
+        EventContext::empty(),
+        crate::events::SessionActivatedData {
+            turn_id: TurnId::new(),
+            input_message_id: MessageId::new(),
+        },
+    )
+}
+
+#[tokio::test]
+async fn committed_batches_hold_lifecycle_events_until_the_next_barrier() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    let held = emitter.emit(held_lifecycle(session_id)).await.unwrap();
+    assert_eq!(held.sequence, None, "a held event is provisional");
+    assert!(
+        sink.types().is_empty(),
+        "no listener sees an uncommitted event"
+    );
+    assert_eq!(committed(&log, session_id).await, 0);
+
+    let barrier = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(RuntimeMessage::user("hi")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        barrier.sequence,
+        Some(2),
+        "the barrier commits after what it carries"
+    );
+    assert_eq!(
+        sink.types(),
+        ["session.activated", "input.message"],
+        "the sink sees committed events in emission order"
+    );
+
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
+    emitter.flush().await.unwrap();
+    assert_eq!(committed(&log, session_id).await, 3);
+    assert_eq!(sink.types().len(), 3);
+}
+
+#[tokio::test]
+async fn committed_batches_commit_held_events_before_a_live_delta() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
+    let delta = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageDeltaData {
+                turn_id: TurnId::new(),
+                message_id: MessageId::new(),
+                delta: "h".into(),
+                accumulated: "h".into(),
+                phase: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert_eq!(delta.sequence, None);
+    emitter.flush().await.unwrap();
+    assert_eq!(committed(&log, session_id).await, 1);
+    assert_eq!(sink.types(), ["session.activated", "output.message.delta"]);
+}
+
+fn reason_started(session_id: SessionId) -> EventRequest {
+    EventRequest::new(
+        session_id,
+        EventContext::empty(),
+        crate::events::ReasonStartedData {
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            metadata: None,
+        },
+    )
+}
+
+#[tokio::test]
+async fn progress_markers_commit_behind_and_before_the_next_barrier() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
+    let marker = emitter.emit(reason_started(session_id)).await.unwrap();
+    assert_eq!(
+        marker.sequence, None,
+        "a marker committing behind is provisional"
+    );
+
+    let barrier = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(RuntimeMessage::user("hi")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        barrier.sequence,
+        Some(3),
+        "the barrier waits for the marker"
+    );
+    assert_eq!(
+        sink.types(),
+        ["session.activated", "reason.started", "input.message"],
+        "listeners see committed events in emission order"
+    );
+}
+
+/// A log whose batches running behind fail, as with a lost lease.
+struct RefusesBehind(InMemoryEventLog);
+
+#[async_trait::async_trait]
+impl EventReader for RefusesBehind {
+    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
+        self.0.read_page(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl EventLog for RefusesBehind {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        self.0.append(request).await
+    }
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        self.0.append_conditional(request, expected).await
+    }
+    async fn append_batch_behind(&self, _: Vec<EventRequest>) -> Result<Vec<Event>, EventLogError> {
+        Err(EventLogError::Backend {
+            detail: "refused".into(),
+        })
+    }
+    fn durability(&self) -> EventDurability {
+        self.0.durability()
+    }
+}
+
+#[tokio::test]
+async fn a_failed_commit_behind_fails_the_next_commit_and_reaches_no_listener() {
+    let session_id = SessionId::new();
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(
+        Arc::new(RefusesBehind(InMemoryEventLog::new())),
+        sink.clone(),
+    );
+    emitter.enable_committed_batches();
+
+    emitter.emit(reason_started(session_id)).await.unwrap();
+    let next = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(RuntimeMessage::user("hi")),
+        ))
+        .await;
+    assert!(next.is_err(), "the failure surfaces at the next commit");
+    assert!(sink.types().is_empty());
+}
+
+#[tokio::test]
+async fn abandoned_held_events_are_never_committed() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
+    emitter.abandon();
+    emitter.flush().await.unwrap();
+    assert_eq!(committed(&log, session_id).await, 0);
+    assert!(sink.types().is_empty());
+}
+
+#[tokio::test]
+async fn a_final_answer_rides_on_turn_completed_and_a_tool_call_does_not_wait() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    let calls = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant_with_tools(
+                "",
+                vec![everruns_contracts::tool_types::ToolCall {
+                    id: "call_1".into(),
+                    name: "search".into(),
+                    arguments: serde_json::json!({}),
+                }],
+            )),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        calls.sequence,
+        Some(1),
+        "no tool runs on an uncommitted call"
+    );
+
+    let answer = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("done")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(answer.sequence, None, "the final answer is held");
+    assert_eq!(committed(&log, session_id).await, 1);
+
+    let turn_id = TurnId::new();
+    let terminal = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            crate::events::TurnCompletedData {
+                turn_id,
+                ..Default::default()
+            },
+        ))
+        .await
+        .unwrap();
+    assert_eq!(terminal.sequence, Some(3), "a terminal event is never held");
+    assert_eq!(
+        sink.types(),
+        [
+            "output.message.completed",
+            "output.message.completed",
+            "turn.completed"
+        ]
+    );
 }

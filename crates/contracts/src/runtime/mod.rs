@@ -46,6 +46,7 @@ mod github_credential;
 pub mod harness_definition;
 pub mod hook_executor;
 pub mod image_services;
+pub mod input_context;
 pub mod leased_resource;
 pub mod llm_error_hook;
 pub mod localization;

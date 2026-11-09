@@ -2,6 +2,7 @@
 
 use crate::runtime::error::Result;
 use crate::runtime::events::{Event, EventRequest};
+use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -42,6 +43,15 @@ pub trait EventEmitter: Send + Sync {
     /// one is stored before `emit` returns, because resume reads a log without
     /// it as proof the call never ran.
     async fn emit(&self, request: EventRequest) -> Result<Event>;
+
+    /// Wait until every event `emit` already returned for `session_id` is
+    /// stored. A host that stores before `emit` returns has nothing to wait
+    /// for. The reason phase calls it before each provider call, so the
+    /// call's `reason.started` is in the log before the call is dispatched
+    /// (data plane v2: every provider call attempt recorded before dispatch).
+    async fn wait_stored(&self, _session_id: SessionId) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Blanket impl: `Arc<E>` delegates to the inner emitter.
@@ -63,6 +73,10 @@ impl<E: EventEmitter + ?Sized> EventEmitter for Arc<E> {
 
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         (**self).emit(request).await
+    }
+
+    async fn wait_stored(&self, session_id: SessionId) -> Result<()> {
+        (**self).wait_stored(session_id).await
     }
 }
 

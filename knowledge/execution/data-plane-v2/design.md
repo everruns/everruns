@@ -395,6 +395,12 @@ to Engine hosting; v2 adds them back with a small Engine hook (plan step 1).
   id (`since_id`); deltas missed while disconnected are not replayed, as
   today. If the node it lands on hasn't yet applied up to `since_id`, it
   waits until it has (or redirects); a cursor never moves backwards.
+- **Engine hook (step 1):** `SessionEpoch::live_deltas` hands an epoch's
+  deltas to the host as `LiveDelta { fence, attempt: (turn, stream), seq,
+  event }`. Until durable model-call attempts land, the stream is the
+  assistant message id (the tool call id for tool output, the atom
+  execution for thinking); a committed `output.message.completed`,
+  `tool.completed` or `reason.completed` closes it on the executor too.
 - **Moves and failures:** a move ends the stream with a `moved` event;
   the client reconnects and the edge re-resolves. If the stream node dies,
   the hash picks another live node and clients reconnect with `since_id`.
@@ -798,6 +804,127 @@ stress` bench) checked in CI, so a later step can't silently undo it.
 | 9 | **Disaster recovery:** log shipping, snapshots, point-in-time restore, restore drill in the weekly tier. | Loss window under 2 s; cell rebuild under 10 min | 5 |
 | 10 | **Prove on EKS + operations.** Load Testing org, ramp to 75k agents with the llmsim mix and production-shaped conditions: cross-zone latency, realistic turn durations (including 30 s averages), cold caches, long histories, heavy streaming, S3 throttling, loss of a node and of a fraction of executors. Cell inspector CLI ("where is session X and what is it doing"), per-cell SLO dashboards, runbooks for leader loss, a stuck move and a drain. | 75k agents at the stated cost per agent and turn overhead, with spare capacity and recovery backlog measured, not just peak | 8, 9 |
 | 11 | **Stages 2 and 3 features, then the v1 → v2 org move** (session import format, cutover of in-flight turns). | Each feature lands with its own bench line | 10 |
+
+### Step 0 measurements (2026-11-09)
+
+- **funout `0a0c0ec`**, one 3-node cell on a 4-core container, 40 chat
+  sessions x 5 000 turns, 0.2 s think: 120 turns/s, p50 per turn flat
+  across the run (91 to 113 ms per tenth; one tenth at 171 ms overlapped a
+  local compile), about 400 MB resident per node.
+- **Engine hosting today** (`cargo bench -p everruns --bench long_session`,
+  `MemoryHosting`, llmsim with 150-token answers in an 8k window and
+  compaction on): 22 authority writes per turn, and the time per turn grows
+  with session length, about 100x by turn 500. Proactive compaction for a
+  provider without native compaction trims the prompt in memory and saves no
+  checkpoint, so every turn reloads the whole history, and every
+  `llm.generation` event carries the untrimmed prompt. Step 1 must give
+  that path a durable history floor before the long-session gate can hold.
+  Fixed in step 1 (Trimmed checkpoints, checkpoint-aware loading, tail
+  reads from the latest `turn.started`): p50 per turn now stays near 60 ms
+  from turn 100 to 1 000.
+- **Where a plain chat turn's 22 writes go** (Engine on `MemoryHosting`):
+  9 journal appends, 4 lease renewals, 3 record commits, 2 wake schedules,
+  2 claims, 1 release and 1 session record rewritten by every activation.
+  Reads: 14 record reads, 11 session reads, 9 log pages, 4 storage key
+  listings, 4 log-end lookups, 3 journal tails. Committed batches (appends
+  to about 2), renewals that ride on batches, and one claim per activation
+  are what brings writes to 5 or fewer.
+
+### Step 1 measurements (2026-11-09)
+
+Same bench, 4 sessions x 1 000 turns: **9 authority writes per chat turn, 5
+waited** (claim, renew, the turn's opening batch, its closing batch,
+release), flat from the second tenth to the last. Where the other 13 went:
+
+- Gone. The separate turn-identity receipt (a fresh input's assignment is
+  its turn identity); the wake time stored again unchanged (the claim
+  returns it); and the session record rewritten by every activation (the
+  synthetic harness and agent definition take session-derived ids, which
+  also stops each turn from adding one more definition to the store).
+- Folded. Lifecycle records ride on the next barrier, and a turn's final
+  answer without tool calls rides with `turn.completed`. A terminal event
+  is never held: an epoch that ends without a release must not lose it.
+  A receipt the next holder can recompute rides on the next lease write:
+  the outcome on the release and, after a clean release, the fresh input's
+  assignment on the renew that reports its cancel.
+- Behind the work. `reason.started`, `output.message.started`,
+  `context.compacted` and `session.idled` commit in a background task,
+  chained per session, while the work goes on. Each is counted as a write
+  but not as a waited one.
+
+What keeps this safe: a listener sees an event only after its commit, in
+emission order; every later commit, tail read, steered input and lease
+release commits held and background events first; an answer that calls
+tools commits before any tool runs; a failed background commit fails the
+next commit that waits for it. A crash loses only events and receipts the
+next holder re-emits or recomputes from the log.
+
+**Long sessions (gate run, 40 sessions x 5 000 turns, 200 000 turns, 4
+cores):** p99 per turn stays within 10% (70 ms in the first tenth, 49 to
+78 ms after); throughput after the first compactions holds within 11%
+(1 043 turns/s in the second tenth, 929 to 1 032 after). One 20 000-turn
+session: 261 turns/s in the second tenth, 215 to 238 after, p99 6 to 7.5
+ms. Before the fixes below, the same run fell from 947 to 611 turns/s and
+the in-memory authority ran out of memory. What it took:
+
+- History reads name the event types they want, and the in-memory log
+  skips the rest and starts at the cursor. Each turn re-read the events
+  since the last compaction several times, copying every earlier turn's
+  `llm.generation` with its whole prompt (about 77 KB in an 8k window):
+  74 turns/s became 666 on 4 x 1 000.
+- No per-turn read scans the session: receipts are scanned by key range,
+  and a typed read examines a bounded run of other events per page.
+- The bench authority keeps `llm.generation` without its prompt, as a cell
+  keeps prompts in S3 (`--keep-prompts` keeps them): 230 KB retained per
+  turn became 33 KB. No turn reads a prompt back.
+
+**Per-turn revision:** the turn's first assignment receipt keeps
+`TurnRevision { behavior, framework }` (agent build and runtime format).
+An activation's binding is the authority's choice, so a session moves to
+a newer build at its next turn and Engine's session cache follows it; an
+activation that brings another revision to an unfinished turn suspends
+the session (`turn_revision_mismatch`) instead of finishing it under
+different code.
+
+**Execution context:** a trusted host admits input with
+`Session::send_as(id, input, InputContext { author, participants, grants })`
+(`SessionHosting::admit_as`); the authority keeps the context in the
+`input.message` event's host-written metadata, a retry under another
+context is a different command, and turn host code reads it with
+`Engine::input_context(session, input)`.
+
+**Protocol capabilities:** `SessionEpoch::requires` lists the
+execution-critical protocol capabilities a session's journal uses, and
+`hosting::PROTOCOL_CAPABILITIES` the ones an Engine knows (none yet). An
+Engine missing one releases the epoch without consuming input or
+suspending, so a capable executor takes the session.
+
+**Provider call attempts:** with steering (12 inputs over 3 turns, 15 ms
+apart against a model with latency), every `reason.started` has exactly one
+`llm.generation` (`hosted_sessions::with_steering_every_model_call_is_settled_exactly_once`).
+Every call is also recorded before it is dispatched: `reason.started` still
+commits behind the context assembly, and the reason phase waits for that
+commit (`EventEmitter::wait_stored`) only when the call goes out, so it
+adds no waited write and costs latency only when the commit is slower than
+the assembly. An executor killed during a call leaves `reason.started`
+without `reason.completed`: an explicit unresolved attempt, a call whose
+outcome and usage are unknown; the resumed turn calls again under a new
+execution id (`hosted_sessions::a_model_call_is_in_the_log_before_it_is_dispatched`,
+against an authority whose behind writes take 300 ms). The worker keeps
+its own write-behind queue and is unchanged.
+
+**Memory per idle session** (`cargo bench -p everruns --bench
+idle_sessions`, 20 000 sessions with one turn each, handles dropped,
+counted by a counting allocator): Engine kept 6.2 KB per idle session for
+good, a cache entry with a full Agent copy and the session's live
+controls. Hosted sessions now sit in a bounded cache (default 1 024,
+`EngineBuilder::session_cache_capacity`), least recently used dropped
+first and rebuilt from the authority on the next activation, query or
+resume: 1.3 KB per idle session, gated at 2 KB. Never dropped: a session
+with an open handle, a volatile session, and live controls held by a turn
+or carrying live MCP edits. Most of what is left is the default in-memory
+workspace's per-session Environment. The in-memory authority holds 37 KB
+per session; a cell keeps that on disk and in S3, not in the executor.
 
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share

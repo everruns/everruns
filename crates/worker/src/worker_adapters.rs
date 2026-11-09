@@ -154,6 +154,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     async fn load_message_history(&self, query: MessageQuery) -> Result<MessageHistory> {
         Ok(MessageHistory {
+            sequences: Default::default(),
             messages: self.load_messages(query.session_id.uuid()).await?,
             source_sequence: None,
         })

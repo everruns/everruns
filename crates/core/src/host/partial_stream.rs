@@ -60,7 +60,15 @@ impl PartialStreamStore for EventLogPartialStreamStore {
             .map_err(|error| AgentLoopError::store(format!("partial stream turn id: {error}")))?;
         // The turn's events all follow its `turn.started`: read back from
         // the end until it is in view, so a long session costs one turn.
-        let events = read_tail_until(self.log.as_ref(), session_id, |events| {
+        const TYPES: &[&str] = &[
+            crate::events::TURN_STARTED,
+            crate::events::OUTPUT_MESSAGE_STARTED,
+            crate::events::OUTPUT_MESSAGE_DELTA,
+            crate::events::OUTPUT_MESSAGE_COMPLETED,
+            crate::events::OUTPUT_MESSAGE_REPLACED,
+            crate::events::REASON_COMPLETED,
+        ];
+        let events = read_tail_until(self.log.as_ref(), session_id, TYPES, |events| {
             events.iter().any(|event| {
                 matches!(&event.data, EventData::TurnStarted(data) if data.turn_id == turn_id)
             })

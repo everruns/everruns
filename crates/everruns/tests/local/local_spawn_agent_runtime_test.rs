@@ -230,6 +230,7 @@ fn spawn_agent_sim(handoff_target_id: &str) -> LlmSimConfig {
         response_id: None,
         effort_capture: None,
         message_capture: None,
+        context_window: None,
     }
 }
 

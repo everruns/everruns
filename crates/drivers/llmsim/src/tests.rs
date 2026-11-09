@@ -430,6 +430,7 @@ async fn test_conditional_tool_calls() {
         response_id: None,
         effort_capture: None,
         message_capture: None,
+        context_window: None,
     };
 
     let driver = LlmSimDriver::new(config);
@@ -553,6 +554,7 @@ async fn test_empty_response() {
         response_id: None,
         effort_capture: None,
         message_capture: None,
+        context_window: None,
     };
 
     let driver = LlmSimDriver::new(config);

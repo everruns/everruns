@@ -857,3 +857,413 @@ mod causal;
 #[cfg(feature = "local")]
 #[path = "hosted_sessions/members.rs"]
 mod members;
+
+/// Data plane v2 step 1: an Engine keeps a bounded number of idle hosted
+/// sessions in memory; a dropped one is rebuilt from the authority.
+#[tokio::test]
+async fn idle_hosted_sessions_past_the_cache_capacity_reopen_from_the_authority() {
+    let profile = MemoryHosting::default();
+    let engine = Engine::builder()
+        .hosting(profile.clone())
+        .register(build(), agent())
+        .session_cache_capacity(2)
+        .build();
+    let held = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    assert!(held.send_and_wait("held open").await.unwrap().success);
+    let mut idle = Vec::new();
+    for _ in 0..6 {
+        let id = SessionId::new();
+        let session = engine.create_registered(id, &build()).await.unwrap();
+        assert!(session.send_and_wait("first").await.unwrap().success);
+        idle.push(id);
+    }
+    let cached = format!("{engine:?}");
+    assert!(
+        cached == "Engine { sessions: 2 }" || cached == "Engine { sessions: 3 }",
+        "the cache stays near its capacity: {cached}"
+    );
+    let completed = |events: Vec<everruns::SessionEvent>| {
+        events
+            .iter()
+            .filter(|event| event.event_type() == "output.message.completed")
+            .count()
+    };
+    let first = engine.resume(idle[0]).await.unwrap();
+    assert!(first.send_and_wait("second").await.unwrap().success);
+    assert_eq!(completed(first.events_after(0).await.unwrap()), 2);
+    // The open handle kept its session cached and working.
+    assert!(held.send_and_wait("again").await.unwrap().success);
+    assert_eq!(completed(held.events_after(0).await.unwrap()), 2);
+}
+
+/// Data plane v2 step 1: a host whose watchers are elsewhere gets the live
+/// token deltas, fenced to the epoch and the stream they belong to.
+#[tokio::test]
+async fn live_deltas_reach_the_host_fenced_to_epoch_and_stream() {
+    #[derive(Clone, Default)]
+    struct Collect(Arc<std::sync::Mutex<Vec<everruns::hosting::LiveDelta>>>);
+    impl everruns::hosting::LiveDeltaSink for Collect {
+        fn publish(&self, delta: everruns::hosting::LiveDelta) {
+            self.0.lock().unwrap().push(delta);
+        }
+    }
+    let deltas = Collect::default();
+    let profile = MemoryHosting::default().with_live_deltas(deltas.clone());
+    let engine = engine(profile, agent());
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build()).await.unwrap();
+    assert!(
+        session
+            .send_and_wait("stream please")
+            .await
+            .unwrap()
+            .success
+    );
+    let events = session.events_after(0).await.unwrap();
+    let completed = events
+        .iter()
+        .find(|event| event.event_type() == "output.message.completed")
+        .expect("an answer");
+    let deltas = deltas.0.lock().unwrap().clone();
+    assert!(!deltas.is_empty(), "the answer streamed");
+    for (index, delta) in deltas.iter().enumerate() {
+        assert_eq!(delta.session, id);
+        assert_eq!(delta.fence, 1, "the first epoch's fence");
+        assert_eq!(delta.seq, index as u64, "in order, none skipped");
+        assert_eq!(delta.event.event_type, "output.message.delta");
+        assert!(delta.event.sequence.is_none(), "never stored");
+        assert!(delta.attempt.turn.is_some());
+    }
+    let message = completed.canonical_json()["data"]["message"]["id"]
+        .as_str()
+        .expect("message id")
+        .to_string();
+    assert!(deltas.iter().all(|delta| delta.attempt.stream == message));
+}
+
+/// An authority that hands every activation a newer agent build, as one that
+/// moved the session to a new revision would.
+#[derive(Clone)]
+struct Rebind<H>(H, Arc<std::sync::Mutex<Option<AgentBuild>>>);
+#[async_trait::async_trait]
+impl<H: SessionHosting> SessionHosting for Rebind<H> {
+    async fn command(
+        &self,
+        session: SessionId,
+        command: everruns::hosting::spi::session_commands::SessionCommand,
+    ) -> everruns::hosting::spi::error::Result<serde_json::Value> {
+        self.0.command(session, command).await
+    }
+    async fn query_snapshot(
+        &self,
+        id: SessionId,
+    ) -> everruns_contracts::error::Result<everruns::hosting::SessionQuerySnapshot> {
+        self.0.query_snapshot(id).await
+    }
+    async fn status(
+        &self,
+        id: SessionId,
+    ) -> everruns_contracts::error::Result<everruns::hosting::HostingStatus> {
+        self.0.status(id).await
+    }
+    async fn receipt(
+        &self,
+        id: SessionId,
+        message: MessageId,
+    ) -> everruns_contracts::error::Result<Option<everruns::hosting::AdmissionReceipt>> {
+        self.0.receipt(id, message).await
+    }
+    fn reader(&self, id: SessionId) -> everruns_core::host::HostBackends {
+        self.0.reader(id)
+    }
+    async fn record(
+        &self,
+        id: SessionId,
+        key: &str,
+    ) -> everruns_contracts::error::Result<Option<serde_json::Value>> {
+        self.0.record(id, key).await
+    }
+    fn changes(&self, session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
+        self.0.changes(session)
+    }
+    fn process_scheduler(&self) -> bool {
+        self.0.process_scheduler()
+    }
+    async fn claim(
+        &self,
+        id: SessionId,
+        holder: &str,
+        ttl: std::time::Duration,
+    ) -> everruns_contracts::error::Result<Option<everruns::hosting::SessionActivation>> {
+        let mut activation = self.0.claim(id, holder, ttl).await?;
+        if let (Some(activation), Some(build)) = (&mut activation, self.1.lock().unwrap().clone()) {
+            activation.binding.behavior = build;
+        }
+        Ok(activation)
+    }
+}
+
+/// Data plane v2 step 1: a turn finishes with the agent build it started
+/// with. An activation that brings another one to an unfinished turn
+/// suspends the session instead of finishing it under different code.
+#[tokio::test]
+async fn an_unfinished_turn_never_resumes_under_another_agent_build() {
+    let profile = MemoryHosting::default();
+    let newer = AgentBuild::new("assistant", "test-v2");
+    let engine = Engine::builder()
+        .hosting(Rebind(
+            profile.clone(),
+            Arc::new(std::sync::Mutex::new(Some(newer.clone()))),
+        ))
+        .register(build(), agent())
+        .register(newer, agent())
+        .build();
+    let id = SessionId::new();
+    engine.create_registered(id, &build()).await.unwrap();
+    // Admitted straight at the authority, so no executor starts at once.
+    let input = everruns_contracts::runtime::message::RuntimeMessage::user("hello");
+    let message = input.id;
+    profile.admit(id, input, false).await.unwrap();
+    // An executor that started the turn under v1, then crashed.
+    let lease = std::time::Duration::from_millis(200);
+    let crashed = profile.claim(id, "crashed", lease).await.unwrap().unwrap();
+    let started = everruns::hosting::TurnAssignment {
+        turn_id: everruns::TurnId::new(),
+        steered: false,
+        revision: Some(everruns::hosting::TurnRevision {
+            behavior: build(),
+            framework: crashed.binding.framework,
+        }),
+    };
+    assert!(
+        crashed
+            .epoch
+            .commit(
+                &format!("assignment/{message}"),
+                serde_json::to_value(&started).unwrap(),
+                true,
+            )
+            .await
+            .unwrap()
+    );
+    tokio::time::sleep(lease * 2).await;
+    // The driver reports the refusal through the session, not the call.
+    let _ = engine.activate(id).await;
+    let status = engine.session_status(id).await.unwrap();
+    assert_eq!(
+        status.suspension_reason.as_deref(),
+        Some("turn_revision_mismatch")
+    );
+}
+
+/// A finished turn's session moves to the newer build for its next turn.
+#[tokio::test]
+async fn a_new_turn_runs_the_build_the_authority_moved_the_session_to() {
+    let newer = AgentBuild::new("assistant", "test-v2");
+    let moved = Arc::new(std::sync::Mutex::new(None));
+    let engine = Engine::builder()
+        .hosting(Rebind(MemoryHosting::default(), moved.clone()))
+        .register(build(), agent())
+        .register(
+            newer.clone(),
+            Agent::builder()
+                .instructions("Answer briefly.")
+                .model(Model::simulated("Hello from v2!"))
+                .build()
+                .unwrap(),
+        )
+        .build();
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    assert_eq!(
+        session.send_and_wait("hi").await.unwrap().response,
+        "Hello!"
+    );
+    *moved.lock().unwrap() = Some(newer);
+    assert_eq!(
+        session.send_and_wait("hi").await.unwrap().response,
+        "Hello from v2!"
+    );
+}
+
+/// Data plane v2 step 1: the trusted host that admits an input says who it
+/// acts for, and the context stays with the input for the turn's host code.
+#[tokio::test]
+async fn an_input_keeps_who_it_acts_for() {
+    let engine = engine(MemoryHosting::default(), agent());
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build()).await.unwrap();
+    let context = everruns::hosting::InputContext {
+        author: Some("principal_alice".into()),
+        participants: vec!["principal_alice".into(), "principal_bob".into()],
+        grants: vec!["mcp:alice-github".into()],
+    };
+    let message = MessageId::new();
+    let sent = session
+        .send_as(message, "hi", context.clone())
+        .await
+        .unwrap();
+    assert!(sent.wait().await.unwrap().success);
+    assert_eq!(
+        engine.input_context(id, message).await.unwrap(),
+        Some(context)
+    );
+    // An input admitted without one has none; a retry under another
+    // context is a different command.
+    let plain = MessageId::new();
+    assert!(
+        session
+            .send_with_id(plain, "hello")
+            .await
+            .unwrap()
+            .wait()
+            .await
+            .unwrap()
+            .success
+    );
+    assert_eq!(engine.input_context(id, plain).await.unwrap(), None);
+    assert!(
+        session
+            .send_as(message, "hi", everruns::hosting::InputContext::default())
+            .await
+            .is_err()
+    );
+}
+
+/// Data plane v2 step 1: an Engine that lacks an execution-critical protocol
+/// capability the session's journal uses hands the epoch back untouched,
+/// without suspending the session, so an executor that has it runs it.
+#[tokio::test]
+async fn an_engine_lacking_a_required_protocol_capability_hands_the_session_back() {
+    let profile = MemoryHosting::default().requiring(&["approval.v9"]);
+    let lacking = engine(profile.clone(), agent());
+    let id = SessionId::new();
+    lacking.create_registered(id, &build()).await.unwrap();
+    profile
+        .admit(
+            id,
+            everruns_contracts::runtime::message::RuntimeMessage::user("hello"),
+            false,
+        )
+        .await
+        .unwrap();
+    let refused = lacking.activate(id).await.unwrap_err();
+    assert!(refused.to_string().contains("approval.v9"), "{refused}");
+    let status = lacking.session_status(id).await.unwrap();
+    assert!(status.suspension_reason.is_none());
+    assert!(status.runnable, "the input waits for a capable executor");
+    let capable = engine(profile.requiring(&[]), agent());
+    capable.activate(id).await.unwrap();
+    assert!(!lacking.session_status(id).await.unwrap().runnable);
+}
+
+/// Data plane v2 step 1 gate: with steering, every provider call attempt is
+/// settled exactly once. Input admitted while a model call runs must neither
+/// lose that call's `llm.generation` (its usage) nor run it twice.
+#[tokio::test]
+async fn with_steering_every_model_call_is_settled_exactly_once() {
+    let engine = engine(
+        MemoryHosting::default(),
+        Agent::builder()
+            .instructions("Answer briefly.")
+            .model(Model::simulated_with_config(
+                everruns::LlmSimConfig::lorem(60).with_latency(),
+            ))
+            .build()
+            .unwrap(),
+    );
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    let mut sent = Vec::new();
+    for round in 0..3 {
+        sent.push(session.send(format!("start {round}")).await.unwrap());
+        for steer in 0..3 {
+            tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+            sent.push(
+                session
+                    .send(format!("steer {round}.{steer}"))
+                    .await
+                    .unwrap(),
+            );
+        }
+        for message in sent.drain(..) {
+            message.wait().await.unwrap();
+        }
+    }
+    let events = session.events_after(0).await.unwrap();
+    let exec = |event: &everruns::SessionEvent| {
+        event.canonical_json()["context"]["exec_id"]
+            .as_str()
+            .map(str::to_owned)
+    };
+    let mut started: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type() == "reason.started")
+        .map(exec)
+        .collect();
+    let mut settled: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type() == "llm.generation")
+        .map(exec)
+        .collect();
+    let steered = events
+        .iter()
+        .filter(|event| event.event_type() == "input.message")
+        .count();
+    assert_eq!(steered, 12);
+    assert!(
+        started.len() > 3,
+        "steering added model calls: {}",
+        started.len()
+    );
+    started.sort();
+    settled.sort();
+    assert_eq!(started, settled, "one settlement per model call");
+}
+
+/// Data plane v2 step 1: a provider call is recorded before it is
+/// dispatched. `reason.started` commits behind the context assembly, so on
+/// an authority whose behind writes are slow the call must wait for it;
+/// otherwise an executor killed during the call leaves no record of it.
+#[tokio::test]
+async fn a_model_call_is_in_the_log_before_it_is_dispatched() {
+    let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let engine = engine(
+        MemoryHosting::default().with_behind_latency(std::time::Duration::from_millis(300)),
+        Agent::builder()
+            .instructions("Answer briefly.")
+            .model(Model::simulated_with_config(
+                everruns::LlmSimConfig::fixed("done")
+                    .with_message_capture(calls.clone())
+                    .with_response_delay(std::time::Duration::from_secs(3600)),
+            ))
+            .build()
+            .unwrap(),
+    );
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    let _turn = session.send("hello").await.unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while calls.lock().unwrap().is_empty() {
+        assert!(std::time::Instant::now() < deadline, "no model call");
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    // The call is out: the authority already holds its record.
+    let events = session.events_after(0).await.unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type() == "reason.started"),
+        "dispatched before its reason.started was stored: {:?}",
+        events.iter().map(|e| e.event_type()).collect::<Vec<_>>()
+    );
+}

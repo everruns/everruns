@@ -621,7 +621,21 @@ impl Session {
         message_id: MessageId,
         input: impl Into<InputMessage>,
     ) -> Result<SentMessage, RunError> {
-        self.admit_with_id(message_id, input.into(), false).await
+        self.admit_with_id(message_id, input.into(), false, None)
+            .await
+    }
+
+    /// [`send_with_id`](Self::send_with_id) on behalf of verified identities
+    /// the turn acts for (see [`crate::hosting::InputContext`]). For trusted
+    /// hosts only: the context is taken as verified. Stability: experimental.
+    pub async fn send_as(
+        &self,
+        message_id: MessageId,
+        input: impl Into<InputMessage>,
+        context: crate::hosting::InputContext,
+    ) -> Result<SentMessage, RunError> {
+        self.admit_with_id(message_id, input.into(), false, Some(context))
+            .await
     }
 
     async fn admit_with_id(
@@ -629,6 +643,7 @@ impl Session {
         message_id: MessageId,
         input: InputMessage,
         cancelled: bool,
+        context: Option<crate::hosting::InputContext>,
     ) -> Result<SentMessage, RunError> {
         let profile =
             self.inner.execution.hosting().ok_or_else(|| {
@@ -648,7 +663,9 @@ impl Session {
             .receipt(self.session_id(), message_id)
             .await?
             .is_some();
-        let receipt = profile.admit(self.session_id(), message, cancelled).await?;
+        let receipt = profile
+            .admit_as(self.session_id(), message, cancelled, context)
+            .await?;
         // Admission commits outside the runtime emitter. Publish its canonical
         // envelope before activating, just as runtime events publish after commit.
         if !already_accepted {
@@ -991,6 +1008,7 @@ impl Session {
                     cancel
                         .as_ref()
                         .is_some_and(crate::CancellationToken::is_cancelled),
+                    None,
                 )
                 .await;
         }
@@ -1247,6 +1265,7 @@ impl SentMessage {
             TurnHandleSource::Local { turn_id, .. } => Ok(Some(crate::hosting::TurnAssignment {
                 turn_id: *turn_id,
                 steered: self.disposition == SendDisposition::Steered,
+                revision: None,
             })),
         }
     }

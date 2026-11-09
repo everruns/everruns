@@ -44,6 +44,14 @@ impl EngineBuilder {
         self
     }
 
+    /// Resolve builds that were not registered at startup (see
+    /// [`AgentResolver`](crate::hosting::AgentResolver)). Registered builds
+    /// win; a resolved build is retained for the Engine's lifetime.
+    pub fn resolver(mut self, resolver: impl crate::hosting::AgentResolver) -> Self {
+        self.resolver = Some(Arc::new(resolver));
+        self
+    }
+
     /// Register behavior together with its immutable Harness definition.
     pub fn register_with_harness(
         mut self,
@@ -517,6 +525,37 @@ impl Engine {
                     environment: lead.environment.clone(),
                 })
             })
+            .or_else(|| {
+                // A host that builds behavior on demand (from a definition it
+                // retains with the session) resolves builds it never
+                // registered. The result is retained like a registration, so
+                // the build keeps naming one immutable behavior.
+                let resolver = self.inner.resolver.as_ref()?;
+                drop(registry);
+                let agent = resolver.resolve(build)?;
+                // A resolved Agent that needs a workspace runs in its own
+                // default Environment, under a reference every process of
+                // the host derives the same way.
+                let environment = agent.requires_hosted_workspace().then(|| {
+                    let factory: Arc<dyn crate::hosting::EnvironmentFactory> =
+                        Arc::new(agent.environment_factory());
+                    (RESOLVED_ENVIRONMENT.to_owned(), factory)
+                });
+                let registration = Registration {
+                    agent,
+                    harness: None,
+                    environment,
+                };
+                Some(
+                    self.inner
+                        .registry
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .entry(build.clone())
+                        .or_insert(registration)
+                        .clone(),
+                )
+            })
             .ok_or_else(|| AgentLoopError::config("retained agent build is unavailable"))
     }
 
@@ -580,14 +619,27 @@ impl Engine {
             .sessions
             .lock()
             .unwrap_or_else(|p| p.into_inner());
+        let used = self.inner.session_cache.tick();
         if let Some(existing) = sessions.get_mut(&session) {
             if existing.durable_binding.as_ref() != Some(&binding) {
-                return Err(AgentLoopError::config(
-                    "session cache binding conflicts with authority",
-                ));
+                // Decision: an authority moves a session to a newer revision
+                // (agent build, runtime format and its Harness) for new
+                // turns (data plane v2 step 1; an unfinished turn keeps its
+                // own, see `TurnRevision`). What the session was created
+                // with, its Environment and metadata, never changes.
+                let same_session = existing.durable_binding.as_ref().is_some_and(|cached| {
+                    cached.environment == binding.environment && cached.metadata == binding.metadata
+                });
+                if !same_session {
+                    return Err(AgentLoopError::config(
+                        "session cache binding conflicts with authority",
+                    ));
+                }
+                existing.durable_binding = Some(binding);
             }
             existing.agent = Some(registration.agent);
             existing.harness = registration.harness;
+            existing.used = used;
         } else {
             sessions.insert(
                 session,
@@ -599,10 +651,53 @@ impl Engine {
                     durable_binding: Some(binding),
                     provisional: false,
                     creation: None,
+                    used,
                 },
             );
         }
+        if self.inner.session_cache.trim(&mut sessions) {
+            // Lock order: sessions, then live controls.
+            super::session_cache::trim_live_controls(
+                &mut self
+                    .inner
+                    .live_controls
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner()),
+                &sessions,
+            );
+        }
         Ok(())
+    }
+
+    /// Who an admitted input acts for, as the trusted host that admitted it
+    /// said ([`Session::send_as`]); `None` for an input admitted without
+    /// one, or not admitted. Host code that resolves per-person access for a
+    /// turn (a person's own MCP connections) reads it for the turn's input.
+    /// Stability: experimental.
+    pub async fn input_context(
+        &self,
+        session: SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+    ) -> Result<Option<crate::hosting::InputContext>> {
+        use everruns_core::host::{EventCursor, EventReadLimit, EventReadRequest};
+        let profile = self.profile()?;
+        let Some(receipt) = profile.receipt(session, message).await? else {
+            return Ok(None);
+        };
+        let store = |error: &dyn std::fmt::Display| AgentLoopError::store(error.to_string());
+        let page = profile
+            .reader(session)
+            .event_log
+            .read_page(EventReadRequest::from_cursor(
+                EventCursor::continuation(session, receipt.sequence - 1, receipt.sequence)
+                    .map_err(|e| store(&e))?,
+                EventReadLimit::new(1).map_err(|e| store(&e))?,
+            ))
+            .await
+            .map_err(|e| store(&e))?;
+        Ok(page.events.first().and_then(|event| {
+            crate::hosting::InputContext::from_event_metadata(event.metadata.as_ref())
+        }))
     }
 
     pub(crate) async fn resume_hosted(&self, session: SessionId) -> Result<Session> {
@@ -631,6 +726,7 @@ impl Engine {
                     durable_binding: Some(status.binding),
                     provisional: false,
                     creation: None,
+                    used: 0,
                 });
         }
         if let Some(state) = self.state(session) {
@@ -663,6 +759,14 @@ impl Engine {
         );
         let mut ran = false;
         loop {
+            // After a run, ask before claiming: a claim is an authority write,
+            // and most runs leave nothing to claim (data plane v2 step 1).
+            if ran {
+                let status = profile.status(session).await?;
+                if status.suspended || (!status.runnable && status.wake_at.is_none()) {
+                    return Ok(());
+                }
+            }
             let Some(activation) = profile
                 .claim(session, &config.holder, config.lease_ttl)
                 .await?
@@ -686,6 +790,32 @@ impl Engine {
                 return Err(AgentLoopError::config(
                     "activation belongs to another session",
                 ));
+            }
+            let missing: Vec<String> = activation
+                .epoch
+                .requires()
+                .into_iter()
+                .filter(|capability| {
+                    !crate::hosting::PROTOCOL_CAPABILITIES.contains(&capability.as_str())
+                })
+                .collect();
+            if !missing.is_empty() {
+                // Hand the epoch back untouched and unsuspended: an executor
+                // that knows these capabilities runs the session.
+                activation
+                    .epoch
+                    .actor_store()
+                    .release_actor(
+                        session,
+                        &config.holder,
+                        activation.actor.fence,
+                        activation.actor.consumed_seq,
+                    )
+                    .await?;
+                return Err(AgentLoopError::config(format!(
+                    "session requires protocol capabilities this Engine lacks: {}",
+                    missing.join(", ")
+                )));
             }
             let compatibility = self.binding_compatibility(&activation.binding)?;
             if !compatibility.is_available() {
@@ -725,6 +855,9 @@ impl Engine {
         }
     }
 }
+
+/// The Environment reference of a resolved Agent that needs a workspace.
+const RESOLVED_ENVIRONMENT: &str = "agent-default";
 
 /// The immutable binding a registered build creates. An Agent cannot choose a
 /// second authority beneath the Engine profile.
@@ -804,6 +937,7 @@ impl Engine {
                     }),
                     provisional: true,
                     creation: Some(Arc::new(OnceCell::new())),
+                    used: 0,
                 },
             );
         let handle = Session::new(self.binding(session), None, self.inner.observers.clone());

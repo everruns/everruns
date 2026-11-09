@@ -78,6 +78,56 @@ mod dreaming_tests {
 pub struct MemoryHosting {
     dreaming: Arc<everruns_core::engine::dreaming::store::InMemoryDreamingStore>,
     sessions: Arc<Mutex<HashMap<SessionId, Arc<MemorySession>>>>,
+    counts: Arc<AuthorityCounters>,
+    drop_prompts: bool,
+    behind_latency: Option<std::time::Duration>,
+    live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
+    requires: Vec<String>,
+}
+
+/// How many operations an execution epoch asked of the authority.
+///
+/// On a replicated authority (a data plane v2 cell) every one of these is a
+/// round trip to the leader, and every write also waits for a quorum, so
+/// writes per turn times that latency is the turn's overhead floor. Benches
+/// read it to hold that count down; it is diagnostic, not a contract.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AuthorityCounts {
+    /// Operations that change authority state (journal appends, records,
+    /// lease renewals and releases, claims, schedules).
+    pub writes: u64,
+    /// The writes among them that ran behind the work and that no caller
+    /// waited on, so they add to the leader's load but not to the turn's
+    /// latency floor (`writes - behind` waited round trips).
+    pub behind: u64,
+    /// Operations that only read authority state.
+    pub reads: u64,
+}
+
+#[derive(Default)]
+struct AuthorityCounters {
+    writes: std::sync::atomic::AtomicU64,
+    behind: std::sync::atomic::AtomicU64,
+    reads: std::sync::atomic::AtomicU64,
+}
+
+#[derive(Clone, Copy)]
+enum Op {
+    Write,
+    /// A write already counted, that its caller does not wait on.
+    Behind,
+    Read,
+}
+
+impl AuthorityCounters {
+    fn count(&self, op: Op) {
+        let counter = match op {
+            Op::Write => &self.writes,
+            Op::Behind => &self.behind,
+            Op::Read => &self.reads,
+        };
+        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 struct MemorySession {
@@ -88,6 +138,9 @@ struct MemorySession {
     control: tokio::sync::Mutex<Control>,
     log: InMemoryEventLog,
     services: HostBackends,
+    counts: Arc<AuthorityCounters>,
+    drop_prompts: bool,
+    behind_latency: Option<std::time::Duration>,
 }
 
 #[derive(Default)]
@@ -109,10 +162,15 @@ struct Control {
     runnable: bool,
     suspended: bool,
     open: Option<TurnId>,
+    /// Sequence of the latest `turn.started`, where an actor's tail read
+    /// starts, so it does not scan the log from its beginning.
+    last_turn_started: Option<i32>,
     pending: Vec<crate::ToolCall>,
     human_waits: everruns_core::human_wait::HumanWaitState,
     finalizing: HashSet<TurnId>,
-    records: HashMap<String, Value>,
+    /// Ordered, so a prefix scan reads only its range: a session keeps a
+    /// receipt or two per turn, and a turn scans prefixes.
+    records: std::collections::BTreeMap<String, Value>,
     pending_inputs: std::collections::VecDeque<i64>,
     commands: HashMap<String, super::spi::session_commands::CommandReceipt>,
     open_input: Option<MessageId>,
@@ -122,6 +180,53 @@ struct Control {
 }
 
 impl MemoryHosting {
+    /// Keep `llm.generation` events without the prompt they carry (its
+    /// messages and captured request body); the rest of the event stays.
+    ///
+    /// Decision: a data plane v2 cell keeps full prompts in S3 objects, off
+    /// the replicated authority, and no turn reads them back. This lets a
+    /// long run on this authority hold what a cell holds, so a 200 000-turn
+    /// bench fits in memory. Listeners see the event as stored. Applies to
+    /// sessions created after the call.
+    pub fn without_prompts(mut self) -> Self {
+        self.drop_prompts = true;
+        self
+    }
+
+    /// Delay every write that runs behind the work by `latency` before it
+    /// commits, as a replicated authority's quorum round trip would. Lets a
+    /// test see what reaches the log only after the work moved on. Applies
+    /// to sessions created after the call.
+    pub fn with_behind_latency(mut self, latency: std::time::Duration) -> Self {
+        self.behind_latency = Some(latency);
+        self
+    }
+
+    /// Send every epoch's live deltas to `sink`, as a host whose watchers
+    /// are in another process would (see [`super::LiveDelta`]).
+    pub fn with_live_deltas(mut self, sink: impl super::LiveDeltaSink) -> Self {
+        self.live_deltas = Some(Arc::new(sink));
+        self
+    }
+
+    /// Report `capabilities` as execution-critical protocol capabilities
+    /// every session requires ([`super::SessionEpoch::requires`]), as an
+    /// authority whose journals use newer event types would.
+    pub fn requiring(mut self, capabilities: &[&str]) -> Self {
+        self.requires = capabilities.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
+    /// Authority operations the execution epochs of every session have made
+    /// so far (see [`AuthorityCounts`]).
+    pub fn authority_counts(&self) -> AuthorityCounts {
+        use std::sync::atomic::Ordering::Relaxed;
+        AuthorityCounts {
+            writes: self.counts.writes.load(Relaxed),
+            behind: self.counts.behind.load(Relaxed),
+            reads: self.counts.reads.load(Relaxed),
+        }
+    }
     fn new_session(&self, id: SessionId) -> Arc<MemorySession> {
         let mut services = HostBackends::in_memory();
         services.dreaming_store = self.dreaming.clone();
@@ -132,6 +237,9 @@ impl MemoryHosting {
             control: tokio::sync::Mutex::new(Control::default()),
             log: InMemoryEventLog::new(),
             services,
+            counts: self.counts.clone(),
+            drop_prompts: self.drop_prompts,
+            behind_latency: self.behind_latency,
         })
     }
     fn session(&self, id: SessionId) -> Arc<MemorySession> {
@@ -146,6 +254,10 @@ impl MemoryHosting {
         Ports {
             session: self.session(id),
             fence: Arc::new(RwLock::new(None)),
+            claimed_wake_at: None,
+            riding: Arc::default(),
+            live_deltas: None,
+            requires: self.requires.clone(),
         }
     }
 }
@@ -220,6 +332,7 @@ impl SessionHosting for MemoryHosting {
     }
     async fn status(&self, id: SessionId) -> Result<HostingStatus> {
         let session = self.session(id);
+        session.counts.count(Op::Read);
         let state = session.control.lock().await;
         Ok(HostingStatus {
             executing: state.holder.is_some()
@@ -265,6 +378,7 @@ impl SessionHosting for MemoryHosting {
         ttl: Duration,
     ) -> Result<Option<SessionActivation>> {
         let session = self.session(id);
+        session.counts.count(Op::Write);
         let mut state = session.control.lock().await;
         let binding = state.binding(id)?;
         if state
@@ -303,8 +417,12 @@ impl SessionHosting for MemoryHosting {
             binding,
             actor,
             epoch: Arc::new(Ports {
+                claimed_wake_at: Some(state.wake_at),
+                riding: Arc::default(),
                 session: session.clone(),
                 fence: Arc::new(RwLock::new(Some(ActorFence::new(id, holder, state.fence)))),
+                live_deltas: self.live_deltas.clone(),
+                requires: self.requires.clone(),
             }),
         }))
     }
@@ -317,6 +435,40 @@ impl SessionHosting for MemoryHosting {
 struct Ports {
     session: Arc<MemorySession>,
     fence: Arc<RwLock<Option<ActorFence>>>,
+    claimed_wake_at: Option<Option<i64>>,
+    /// Receipts that commit with this epoch's next renew or release.
+    riding: Arc<std::sync::Mutex<Vec<(String, Value)>>>,
+    live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
+    requires: Vec<String>,
+}
+
+/// Insert one receipt, with its effect on the control state; `false` when
+/// `absent` and the key exists.
+fn apply_record(state: &mut Control, key: &str, value: Value, absent: bool) -> Result<bool> {
+    if absent && state.records.contains_key(key) {
+        return Ok(false);
+    }
+    if let Some(input) = key
+        .strip_prefix("assignment/")
+        .and_then(|key| key.parse::<MessageId>().ok())
+        && let Some(position) = state.target_cancels.get(&input).copied()
+    {
+        let assignment: super::TurnAssignment = serde_json::from_value(value.clone())
+            .map_err(|_| AgentLoopError::store("invalid turn assignment"))?;
+        if state.open.is_none() || state.open == Some(assignment.turn_id) {
+            state.cancel = Some(position);
+            state.cancel_reported = false;
+            state.runnable = true;
+        }
+    }
+    if let Some(turn) = key
+        .strip_prefix("outcome/")
+        .and_then(|key| key.parse::<TurnId>().ok())
+    {
+        state.finalizing.remove(&turn);
+    }
+    state.records.insert(key.to_owned(), value);
+    Ok(true)
 }
 
 fn core_error(error: impl std::fmt::Display) -> AgentLoopError {
@@ -329,6 +481,16 @@ fn log_error(error: impl std::fmt::Display) -> EventLogError {
 }
 
 impl Ports {
+    /// Commit the receipts riding on a lease write, under its ownership
+    /// check. Returns whether any committed.
+    fn apply_riding(&self, state: &mut Control) -> Result<bool> {
+        let riding = std::mem::take(&mut *self.riding.lock().unwrap_or_else(|p| p.into_inner()));
+        let mut any = false;
+        for (key, value) in riding {
+            any |= apply_record(state, &key, value, true)?;
+        }
+        Ok(any)
+    }
     fn check(&self, state: &Control) -> Result<()> {
         // THREAT[TM-DURABLE-012]: callers hold the authority gate while checking
         // ownership and committing; lease expiry fences delayed writers too.
@@ -356,13 +518,27 @@ impl Ports {
     }
     async fn append(
         &self,
+        request: EventRequest,
+        expected: Option<Option<i32>>,
+    ) -> std::result::Result<Event, EventLogError> {
+        let mut state = self.session.control.lock().await;
+        self.append_locked(&mut state, request, expected).await
+    }
+    async fn append_locked(
+        &self,
+        state: &mut Control,
         mut request: EventRequest,
         expected: Option<Option<i32>>,
     ) -> std::result::Result<Event, EventLogError> {
         self.scope(request.session_id).map_err(log_error)?;
-        let mut state = self.session.control.lock().await;
+        if self.session.drop_prompts
+            && let EventData::LlmGeneration(data) = &mut request.data
+        {
+            data.messages = Vec::new();
+            data.request_body = None;
+        }
         if !request.is_dreaming_metadata() {
-            self.check(&state).map_err(log_error)?;
+            self.check(state).map_err(log_error)?;
         } else {
             state.binding(self.session.id).map_err(log_error)?;
         }
@@ -393,6 +569,7 @@ impl Ports {
         };
         state.human_waits.observe(&event);
         if matches!(event.data, EventData::TurnStarted(_)) {
+            state.last_turn_started = event.sequence;
             state.open = turn;
             state.open_input = event.context.input_message_id;
         }
@@ -424,7 +601,20 @@ impl SessionEpoch for Ports {
     fn renew_poke(&self) -> Option<Arc<tokio::sync::Notify>> {
         Some(self.session.renew_poke.clone())
     }
+    fn pushes_admissions(&self) -> bool {
+        true
+    }
+    fn live_deltas(&self) -> Option<Arc<dyn super::LiveDeltaSink>> {
+        self.live_deltas.clone()
+    }
+    fn requires(&self) -> Vec<String> {
+        self.requires.clone()
+    }
+    fn claimed_wake_at(&self) -> Option<Option<i64>> {
+        self.claimed_wake_at
+    }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
+        self.session.counts.count(Op::Write);
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
         state.wake_at = wake_at;
@@ -452,14 +642,16 @@ impl SessionEpoch for Ports {
         }
     }
     async fn record(&self, key: &str) -> Result<Option<Value>> {
+        self.session.counts.count(Op::Read);
         Ok(self.session.control.lock().await.records.get(key).cloned())
     }
     async fn records(&self, prefix: &str) -> Result<Vec<(String, Value)>> {
+        self.session.counts.count(Op::Read);
         let state = self.session.control.lock().await;
         let records: Vec<_> = state
             .records
-            .iter()
-            .filter(|(key, _)| key.starts_with(prefix))
+            .range(prefix.to_owned()..)
+            .take_while(|(key, _)| key.starts_with(prefix))
             .take(4097)
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
@@ -471,36 +663,25 @@ impl SessionEpoch for Ports {
         Ok(records)
     }
     async fn commit(&self, key: &str, value: Value, absent: bool) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
-        if absent && state.records.contains_key(key) {
-            return Ok(false);
-        }
-        if let Some(input) = key
-            .strip_prefix("assignment/")
-            .and_then(|key| key.parse::<MessageId>().ok())
-            && let Some(position) = state.target_cancels.get(&input).copied()
-        {
-            let assignment: super::TurnAssignment = serde_json::from_value(value.clone())
-                .map_err(|_| AgentLoopError::store("invalid turn assignment"))?;
-            if state.open.is_none() || state.open == Some(assignment.turn_id) {
-                state.cancel = Some(position);
-                state.cancel_reported = false;
-                state.runnable = true;
-            }
-        }
-        if let Some(turn) = key
-            .strip_prefix("outcome/")
-            .and_then(|key| key.parse::<TurnId>().ok())
-        {
-            state.finalizing.remove(&turn);
-        }
-        state.records.insert(key.to_owned(), value);
+        let committed = apply_record(&mut state, key, value, absent)?;
         drop(state);
-        self.session.changed.notify_waiters();
-        Ok(true)
+        if committed {
+            self.session.changed.notify_waiters();
+        }
+        Ok(committed)
+    }
+    async fn commit_with_lease(&self, key: &str, value: Value) -> Result<()> {
+        self.riding
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push((key.to_owned(), value));
+        Ok(())
     }
     async fn suspend(&self, reason: &str) -> Result<()> {
+        self.session.counts.count(Op::Write);
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
         state.suspended = true;
@@ -519,6 +700,7 @@ impl EventReader for Ports {
         &self,
         request: EventReadRequest,
     ) -> std::result::Result<EventPage, EventLogError> {
+        self.session.counts.count(Op::Read);
         self.scope(request.session_id()).map_err(log_error)?;
         self.session.log.read_page(request).await
     }
@@ -527,6 +709,7 @@ impl EventReader for Ports {
         &self,
         session_id: SessionId,
     ) -> std::result::Result<Option<i32>, EventLogError> {
+        self.session.counts.count(Op::Read);
         self.scope(session_id).map_err(log_error)?;
         self.session.log.last_sequence(session_id).await
     }
@@ -534,6 +717,7 @@ impl EventReader for Ports {
 #[async_trait]
 impl EventLog for Ports {
     async fn append(&self, request: EventRequest) -> std::result::Result<Event, EventLogError> {
+        self.session.counts.count(Op::Write);
         Ports::append(self, request, None).await
     }
     async fn append_conditional(
@@ -541,14 +725,54 @@ impl EventLog for Ports {
         request: EventRequest,
         expected: Option<i32>,
     ) -> std::result::Result<Event, EventLogError> {
+        self.session.counts.count(Op::Write);
         Ports::append(self, request, Some(expected)).await
+    }
+    /// One authority write: the batch commits under one ownership check.
+    async fn append_batch(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
+        self.session.counts.count(Op::Write);
+        self.commit_batch(requests).await
+    }
+    /// The same write, counted as one nothing waits on.
+    async fn append_batch_behind(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
+        self.session.counts.count(Op::Write);
+        self.session.counts.count(Op::Behind);
+        if let Some(latency) = self.session.behind_latency {
+            everruns_contracts::rt::sleep(latency).await;
+        }
+        self.commit_batch(requests).await
     }
     fn durability(&self) -> EventDurability {
         EventDurability::Volatile
     }
 }
 
-async fn all_events(session: &MemorySession, after: Option<i32>) -> Result<Vec<Event>> {
+impl Ports {
+    async fn commit_batch(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
+        let mut state = self.session.control.lock().await;
+        let mut events = Vec::with_capacity(requests.len());
+        for request in requests {
+            events.push(self.append_locked(&mut state, request, None).await?);
+        }
+        Ok(events)
+    }
+}
+
+/// Up to `limit` events after `after`, read page by page.
+async fn events_after(
+    session: &MemorySession,
+    after: Option<i32>,
+    limit: usize,
+) -> Result<Vec<Event>> {
     let mut events = Vec::new();
     let mut request = EventReadRequest::from_cursor(
         EventCursor::after(session.id, after.unwrap_or(0)).map_err(core_error)?,
@@ -557,10 +781,9 @@ async fn all_events(session: &MemorySession, after: Option<i32>) -> Result<Vec<E
     loop {
         let page = session.log.read_page(request).await.map_err(core_error)?;
         events.extend(page.events);
-        if events.len() > 100_000 {
-            return Err(AgentLoopError::store(
-                "session journal recovery limit exceeded",
-            ));
+        if events.len() >= limit {
+            events.truncate(limit);
+            return Ok(events);
         }
         match page.next_cursor {
             Some(cursor) => {
@@ -581,18 +804,25 @@ impl SessionActorStore for Ports {
         ttl: Duration,
         consumed: i64,
     ) -> Result<Option<ActorRenewal>> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let mut state = self.session.control.lock().await;
         if !state.owns(holder, fence) {
             return Ok(None);
         }
+        let receipts = self.apply_riding(&mut state)?;
         state.consumed = state.consumed.max(consumed);
         state.expires = Some(Instant::now() + ttl);
         state.cancel_reported = state.cancel.is_some();
-        Ok(Some(ActorRenewal {
+        let renewal = ActorRenewal {
             inbox_seq: state.inbox,
             cancel_inbox_seq: state.cancel,
-        }))
+        };
+        drop(state);
+        if receipts {
+            self.session.changed.notify_waiters();
+        }
+        Ok(Some(renewal))
     }
     async fn release_actor(
         &self,
@@ -601,11 +831,13 @@ impl SessionActorStore for Ports {
         fence: u64,
         consumed: i64,
     ) -> Result<ActorRelease> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let mut state = self.session.control.lock().await;
         if !state.owns(holder, fence) {
             return Ok(ActorRelease::LeaseLost);
         }
+        let receipts = self.apply_riding(&mut state)?;
         state.consumed = state.consumed.max(consumed);
         state.holder = None;
         state.expires = None;
@@ -618,9 +850,12 @@ impl SessionActorStore for Ports {
             state.cancel = None;
         }
         state.cancel_reported = false;
-        Ok(ActorRelease::Released {
-            still_runnable: state.runnable,
-        })
+        let still_runnable = state.runnable;
+        drop(state);
+        if receipts {
+            self.session.changed.notify_waiters();
+        }
+        Ok(ActorRelease::Released { still_runnable })
     }
     async fn read_actor_journal(
         &self,
@@ -628,21 +863,32 @@ impl SessionActorStore for Ports {
         after: Option<i32>,
         limit: u32,
     ) -> Result<ActorJournal> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
-        let mut events = all_events(&self.session, after).await?;
-        let head = events.last().and_then(|event| event.sequence);
-        if after.is_none()
-            && let Some(start) = events
-                .iter()
-                .rposition(|event| matches!(event.data, EventData::TurnStarted(_)))
-        {
-            events.drain(..start);
-        }
         let limit = if limit == 0 {
             256
         } else {
             limit.min(1024) as usize
         };
+        // With no cursor the tail starts at the latest `turn.started`.
+        let after = match after {
+            Some(after) => Some(after),
+            None => self
+                .session
+                .control
+                .lock()
+                .await
+                .last_turn_started
+                .map(|sequence| sequence - 1),
+        };
+        // Read one event past the limit to learn whether more follow.
+        let mut events = events_after(&self.session, after, limit + 1).await?;
+        let head = self
+            .session
+            .log
+            .last_sequence(id)
+            .await
+            .map_err(core_error)?;
         let has_more = events.len() > limit;
         events.truncate(limit);
         Ok(ActorJournal {
@@ -656,6 +902,7 @@ impl SessionActorStore for Ports {
 #[async_trait]
 impl SessionStore for Ports {
     async fn get_session(&self, id: SessionId) -> Result<Option<ExecutionSession>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         let mut record = self.session.services.session_store.get_session(id).await?;
@@ -676,6 +923,7 @@ impl SessionStore for Ports {
 #[async_trait]
 impl RuntimeSessionStore for Ports {
     async fn add_session(&self, session: ExecutionSession) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(session.id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -689,6 +937,7 @@ impl RuntimeSessionStore for Ports {
 #[async_trait]
 impl SessionMutator for Ports {
     async fn update_session_title(&self, id: SessionId, title: String) -> Result<ExecutionSession> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -702,10 +951,12 @@ impl SessionMutator for Ports {
 #[async_trait]
 impl SessionStorageStore for Ports {
     async fn get_value(&self, id: SessionId, key: &str) -> Result<Option<String>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session.services.storage_store.get_value(id, key).await
     }
     async fn set_value(&self, id: SessionId, key: &str, value: &str) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -716,6 +967,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn take_value(&self, id: SessionId, key: &str) -> Result<Option<String>> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -726,6 +978,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn delete_value(&self, id: SessionId, key: &str) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -736,10 +989,12 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn list_keys(&self, id: SessionId) -> Result<Vec<KeyInfo>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session.services.storage_store.list_keys(id).await
     }
     async fn set_secret(&self, id: SessionId, key: &str, value: &str) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -750,6 +1005,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn get_secret(&self, id: SessionId, key: &str) -> Result<Option<String>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -758,6 +1014,7 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn delete_secret(&self, id: SessionId, key: &str) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -768,18 +1025,31 @@ impl SessionStorageStore for Ports {
             .await
     }
     async fn list_secrets(&self, id: SessionId) -> Result<Vec<SecretInfo>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session.services.storage_store.list_secrets(id).await
     }
 }
 #[async_trait]
 impl CompactionCheckpointStore for Ports {
+    // Context assembly loads only the history after the newest checkpoint;
+    // without this every turn read the whole log.
+    async fn latest_source_sequence(&self, id: SessionId) -> Result<Option<i64>> {
+        self.session.counts.count(Op::Read);
+        self.scope(id)?;
+        self.session
+            .services
+            .compaction_checkpoint_store
+            .latest_source_sequence(id)
+            .await
+    }
     async fn get_latest(
         &self,
         id: SessionId,
         provider: &str,
         model: &str,
     ) -> Result<Option<CompactionCheckpoint>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -794,6 +1064,7 @@ impl CompactionCheckpointStore for Ports {
         model: &str,
         format: u32,
     ) -> Result<Option<CompactionCheckpoint>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -802,6 +1073,7 @@ impl CompactionCheckpointStore for Ports {
             .await
     }
     async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool> {
+        self.session.counts.count(Op::Write);
         self.scope(checkpoint.session_id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -817,6 +1089,7 @@ impl CompactionCheckpointStore for Ports {
         provider: &str,
         model: &str,
     ) -> Result<Option<ProactiveCompactionAttempt>> {
+        self.session.counts.count(Op::Read);
         self.scope(id)?;
         self.session
             .services
@@ -831,6 +1104,7 @@ impl CompactionCheckpointStore for Ports {
         model: &str,
         attempt: ProactiveCompactionAttempt,
     ) -> Result<()> {
+        self.session.counts.count(Op::Write);
         self.scope(id)?;
         let state = self.session.control.lock().await;
         self.check(&state)?;
@@ -875,6 +1149,132 @@ mod tail_tests {
         assert_eq!(
             snapshot.last_sequence(id).await.unwrap(),
             Some(receipt.sequence - 1)
+        );
+    }
+}
+
+#[cfg(test)]
+mod resolver_tests {
+    use super::*;
+
+    /// A build the host never registered runs once its resolver knows it,
+    /// and a build it does not know is refused at creation.
+    #[tokio::test]
+    async fn an_unregistered_build_runs_through_the_resolver() {
+        let profile = MemoryHosting::default();
+        let engine = crate::Engine::builder()
+            .hosting(profile)
+            .resolver(|build: &AgentBuild| {
+                (build.agent == "from-definition").then(|| {
+                    crate::Agent::builder()
+                        .instructions("Answer.")
+                        .model(crate::Model::simulated("resolved"))
+                        .build()
+                        .unwrap()
+                })
+            })
+            .build();
+        let build = AgentBuild::new("from-definition", "host-v1");
+        let session = engine
+            .create_registered(SessionId::new(), &build)
+            .await
+            .unwrap();
+        let turn = session.send_and_wait("Hi").await.unwrap();
+        assert_eq!(turn.response, "resolved");
+        assert!(engine.has_agent_build(&build));
+        // A resolved Agent that needs a workspace gets its own default one.
+        let workspace = crate::Engine::builder()
+            .hosting(MemoryHosting::default())
+            .resolver(|_: &AgentBuild| {
+                crate::Agent::builder()
+                    .instructions("Answer.")
+                    .model(crate::Model::simulated("with files"))
+                    .file("notes.md", "hello")
+                    .build()
+                    .ok()
+            })
+            .build();
+        let files = workspace
+            .create_registered(SessionId::new(), &AgentBuild::new("files", "host-v1"))
+            .await
+            .unwrap();
+        assert_eq!(
+            files.send_and_wait("Hi").await.unwrap().response,
+            "with files"
+        );
+        let unknown = AgentBuild::new("unknown", "host-v1");
+        assert!(
+            engine
+                .create_registered(SessionId::new(), &unknown)
+                .await
+                .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod trim_floor_tests {
+    use super::*;
+
+    /// A session on a provider without native compaction keeps trimming its
+    /// prompt. Once the history passes a few budgets a durable floor appears,
+    /// and later turns load (and record) only what follows it, so the prompt
+    /// stops growing with the session.
+    #[tokio::test]
+    async fn trimming_sessions_load_a_bounded_suffix() {
+        let profile = MemoryHosting::default();
+        let build = AgentBuild::new("trim-floor", "v1");
+        let agent = crate::Agent::builder()
+            .instructions("You are concise.")
+            .model(crate::Model::simulated_with_config(
+                crate::LlmSimConfig::lorem(150).with_context_window(2_000),
+            ))
+            .capability(crate::CompactionConfig::new())
+            .build()
+            .unwrap();
+        let engine = crate::Engine::builder()
+            .hosting(profile.clone())
+            .register(build.clone(), agent)
+            .build();
+        let session = engine
+            .create_registered(SessionId::new(), &build)
+            .await
+            .unwrap();
+        let id = session.session_id();
+        for _ in 0..60 {
+            session.send_and_wait("hi").await.unwrap();
+        }
+        let floor = profile
+            .ports(id)
+            .get_latest(id, "llmsim", "llmsim-model")
+            .await
+            .unwrap()
+            .expect("a trim floor");
+        assert!(matches!(
+            floor.payload,
+            everruns_core::CompactionCheckpointPayload::Trimmed
+        ));
+        let mut prompts = Vec::new();
+        let log = profile.reader(id).event_log;
+        let mut request = EventReadRequest::new(id, EventReadLimit::default());
+        loop {
+            let page = log.read_page(request).await.unwrap();
+            for event in &page.events {
+                if let EventData::LlmGeneration(data) = &event.data {
+                    prompts.push(data.messages.len());
+                }
+            }
+            match page.next_cursor {
+                Some(cursor) => {
+                    request = EventReadRequest::from_cursor(cursor, EventReadLimit::default())
+                }
+                None => break,
+            }
+        }
+        let largest = *prompts.iter().max().unwrap();
+        assert!(
+            *prompts.last().unwrap() < largest,
+            "the floor shortened later prompts: {prompts:?}"
         );
     }
 }

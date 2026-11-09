@@ -191,6 +191,7 @@ impl MessageRetriever for TestMessageRetriever {
             .map(|messages| messages.len() as i64)
             .unwrap_or(0);
         Ok(MessageHistory {
+            sequences: Default::default(),
             messages: self.load_filtered(query).await?,
             source_sequence: Some(source_sequence),
         })

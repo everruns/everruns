@@ -962,10 +962,7 @@ impl MessageRetriever for GrpcAdapter {
             query.apply_injections(&mut messages);
         }
 
-        Ok(MessageHistory {
-            messages,
-            source_sequence,
-        })
+        Ok(MessageHistory::new(messages, source_sequence))
     }
 }
 

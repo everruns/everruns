@@ -25,7 +25,8 @@ pub(crate) async fn run(
     activation: SessionActivation,
     config: SessionActorConfig,
 ) -> Result<()> {
-    let epoch = activation.epoch;
+    let epoch: Arc<dyn SessionEpoch> =
+        Arc::new(super::epoch_cache::EpochCache::new(activation.epoch));
     expire_waits(engine, session, epoch.as_ref()).await?;
     let rejected = epoch
         .records("rejected/")
@@ -63,6 +64,15 @@ pub(crate) async fn run(
         .prepare_activation(engine, session, &environment, backends)
         .await?;
     let live = engine.hosted_live_controls(session).await?;
+    let event_sink: Arc<dyn everruns_core::host::events::EventSink> = match epoch.live_deltas() {
+        Some(deltas) => Arc::new(super::live_deltas::LiveDeltaTee::new(
+            handle.inner.event_bus.clone(),
+            deltas,
+            session,
+            activation.actor.fence,
+        )),
+        None => handle.inner.event_bus.clone(),
+    };
     let runtime = match everruns_contracts::rt::timeout(
         config.lease_ttl,
         agent.build_runtime_with_event_sink(
@@ -70,7 +80,7 @@ pub(crate) async fn run(
             session,
             Some(environment),
             harness.as_ref(),
-            handle.inner.event_bus.clone(),
+            event_sink,
             state.clone(),
             Some(live.as_ref()),
         ),
@@ -90,13 +100,22 @@ pub(crate) async fn run(
             ));
         }
     };
-    let store = epoch.actor_store();
+    // Lifecycle events ride on the next event a reader waits for (data plane
+    // v2 step 1): one authority write per batch instead of one per event.
+    let emitter = runtime.host_event_emitter();
+    emitter.enable_committed_batches();
+    let store: Arc<dyn SessionActorStore> = Arc::new(super::settled_store::SettledStore {
+        inner: epoch.actor_store(),
+        emitter: emitter.clone(),
+    });
     let retries = Arc::new(super::retry::ProviderRetries {
         engine: engine.clone(),
         session,
         epoch: epoch.clone(),
     });
     let renew_poke = epoch.renew_poke();
+    let pushes_admissions = renew_poke.is_some() && epoch.pushes_admissions();
+    let hand_off = epoch.hand_off();
     let hosts = Arc::new(FrameworkHosts {
         engine: engine.clone(),
         runtime,
@@ -104,15 +123,35 @@ pub(crate) async fn run(
         agent,
         state,
         session,
+        after_release: activation.actor.attempts == 1,
+        revision: super::TurnRevision {
+            behavior: activation.binding.behavior.clone(),
+            framework: activation.binding.framework,
+        },
     });
     let mut driver = SessionActorDriver::new(hosts, store, config);
     if let Some(poke) = renew_poke {
         driver = driver.with_renew_poke(poke);
     }
+    if let Some(hand_off) = hand_off {
+        driver = driver.with_hand_off(hand_off);
+    }
+    if pushes_admissions {
+        driver = driver.with_pushed_inbox();
+    }
     everruns_contracts::durable_retry::scope(retries, Box::pin(driver.run_actor(activation.actor)))
         .await;
+    // Held events left by an epoch that ended between barriers. A lost lease
+    // refuses them, which is what a crash at the same point would do.
+    if let Err(error) = emitter.flush().await {
+        tracing::debug!(%error, "held lifecycle events not committed at epoch end");
+    }
     Ok(())
 }
+
+/// Suspension reason when an activation would finish a turn with another
+/// agent build or runtime format than the turn started with.
+const TURN_REVISION_MISMATCH: &str = "turn_revision_mismatch";
 
 struct FrameworkHosts {
     engine: Engine,
@@ -121,6 +160,23 @@ struct FrameworkHosts {
     agent: Agent,
     state: Arc<HookRunState>,
     session: SessionId,
+    /// The previous lease was released, not lost: no earlier epoch can have
+    /// left a receipt for the input this one starts fresh.
+    after_release: bool,
+    /// What this activation runs; retained on each turn it starts.
+    revision: super::TurnRevision,
+}
+
+impl FrameworkHosts {
+    async fn assignment(&self, key: &str) -> Result<super::TurnAssignment> {
+        serde_json::from_value(
+            self.epoch
+                .record(key)
+                .await?
+                .ok_or_else(|| AgentLoopError::store("missing retained turn identity"))?,
+        )
+        .map_err(|_| AgentLoopError::store("invalid retained turn identity"))
+    }
 }
 
 #[async_trait]
@@ -142,25 +198,69 @@ impl ActorHosts for FrameworkHosts {
         self.runtime.clone()
     }
 
+    // Decision: held lifecycle events are not the driver's `flush`. Its
+    // flushes guard committing input, which needs only `turn.started` (never
+    // held); held events ride on the next barrier, or commit when the turn
+    // ends on this worker, before its lease is released or parked.
+
+    fn abandon(&self, host: &Self::Host) {
+        host.host_event_emitter().abandon();
+    }
+
+    async fn turn_ended(&self, _: &TurnDrive) {
+        if let Err(error) = self.runtime.host_event_emitter().flush().await {
+            tracing::debug!(%error, "held lifecycle events not committed as the turn ended");
+        }
+    }
+
+    // Decision: a fresh input's turn identity is its assignment. The driver
+    // commits the assignment right after asking for the identity, with no
+    // event between them, so one receipt does both and `inputs_consumed`
+    // finds it already written (data plane v2 step 1: one write fewer).
+    // After a clean release the assignment rides on the renew that follows
+    // it at once (data plane v2 step 1); that renew is what reports a cancel
+    // the assignment turns into this turn's.
     async fn fresh_turn_id(&self, input: MessageId, proposed: TurnId) -> Result<TurnId> {
-        let key = format!("turn_for/{input}");
-        self.epoch.commit(&key, json!(proposed), true).await?;
-        serde_json::from_value(
-            self.epoch
-                .record(&key)
-                .await?
-                .ok_or_else(|| AgentLoopError::store("missing retained turn identity"))?,
-        )
-        .map_err(|_| AgentLoopError::store("invalid retained turn identity"))
+        let key = format!("assignment/{input}");
+        let value = serde_json::to_value(super::TurnAssignment {
+            turn_id: proposed,
+            steered: false,
+            revision: Some(self.revision.clone()),
+        })
+        .map_err(|_| AgentLoopError::store("invalid turn identity"))?;
+        if self.after_release {
+            self.epoch.commit_with_lease(&key, value).await?;
+            return Ok(proposed);
+        }
+        if self.epoch.commit(&key, value, true).await? {
+            return Ok(proposed);
+        }
+        let retained = self.assignment(&key).await?;
+        // An unfinished turn finishes with what it started with: the
+        // authority hands a resumed turn its retained revision (data plane
+        // v2 step 1). Finishing it with another build could replay tool
+        // calls under different code, so suspend instead.
+        if let Some(revision) = retained.revision
+            && revision != self.revision
+        {
+            self.epoch.suspend(TURN_REVISION_MISMATCH).await?;
+            return Err(AgentLoopError::config(TURN_REVISION_MISMATCH));
+        }
+        Ok(retained.turn_id)
     }
 
     async fn inputs_consumed(&self, drive: &TurnDrive, inputs: &[MessageId]) -> Result<()> {
+        if !inputs.is_empty() {
+            // Steered input continues the turn from the log: the answer it
+            // follows must be there, not held or still committing behind.
+            self.runtime.host_event_emitter().flush().await?;
+        }
         for input in inputs {
             let key = format!("assignment/{input}");
             let value =
                 json!({"turn_id": drive.turn_id, "steered": *input != drive.input_message_id});
-            if !self.epoch.commit(&key, value.clone(), true).await?
-                && self.epoch.record(&key).await? != Some(value)
+            if !self.epoch.commit(&key, value, true).await?
+                && self.assignment(&key).await?.turn_id != drive.turn_id
             {
                 return Err(AgentLoopError::store(
                     "admission already belongs to another turn",
@@ -271,7 +371,9 @@ impl ActorHosts for FrameworkHosts {
             turn.hook_failures
                 .extend(self.state.durable_completion(context).await);
         }
-        self.epoch.commit(&key, json!(turn), true).await?;
+        // The next holder recomputes a lost outcome from the log, so it
+        // rides on the release that follows.
+        self.epoch.commit_with_lease(&key, json!(turn)).await?;
         Ok(())
     }
 }

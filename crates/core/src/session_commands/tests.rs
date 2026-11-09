@@ -261,6 +261,7 @@ fn causal_admission_retry_retains_first_commit_without_changing_identity() {
     let command = SessionCommand::Admit {
         message: Box::new(message.clone()),
         cancelled: false,
+        context: None,
     };
     let first = prepare(command, view()).unwrap();
     let crate::events::EventData::InputMessage(accepted) = &first.events[0].data else {
@@ -282,6 +283,7 @@ fn causal_admission_retry_retains_first_commit_without_changing_identity() {
         SessionCommand::Admit {
             message: Box::new(message),
             cancelled: false,
+            context: None,
         },
         retry_view,
     )

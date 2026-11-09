@@ -121,6 +121,10 @@ impl ReasonAtom {
         };
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
+                // `reason.started` may commit behind the context assembly
+                // above; the call is not dispatched until it is stored, so
+                // an executor killed during the call leaves its record.
+                self.event_emitter.wait_stored(context.session_id).await?;
                 let (policy, retry, started, cause) =
                     durable_retry::restore(retry_operation, &self.provider_retry_config).await?;
                 // Heap-allocate the large fallback future so nested foreground

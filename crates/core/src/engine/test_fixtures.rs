@@ -84,6 +84,7 @@ impl MessageRetriever for TestMessageRetriever {
     async fn load_filtered_history(&self, query: MessageQuery) -> Result<MessageHistory> {
         let messages = self.load(query.session_id).await?;
         Ok(MessageHistory {
+            sequences: Default::default(),
             source_sequence: Some(messages.len() as i64),
             messages,
         })

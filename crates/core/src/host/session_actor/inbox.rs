@@ -40,10 +40,22 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
         self.parked.load(Ordering::SeqCst)
     }
 
-    /// Renew to learn the inbox's newest input; a failed renew is the
-    /// renewer's to judge, and the turn goes on with what it knows.
+    /// Learn the inbox's newest input (a renew unless the store pushes it,
+    /// see `Lease::refresh`); a failed renew is the renewer's to judge, and
+    /// the turn goes on with what it knows.
     async fn refresh(&self) {
-        match self.lease.renew().await {
+        self.report(self.lease.refresh().await);
+    }
+
+    /// Renew after committing taken input: committing its assignment is what
+    /// turns a cancel of that input into this turn's cancel, which only a
+    /// renew reports.
+    async fn renew(&self) {
+        self.report(self.lease.renew().await);
+    }
+
+    fn report(&self, result: Result<()>) {
+        match result {
             // The session was deleted (EVE-1235): the lease is lost and the
             // turn stops on it.
             Ok(()) | Err(AgentLoopError::SessionNotFound(_)) => {}
@@ -71,7 +83,7 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
         let inputs = self.lease.take_inputs().await?;
         self.hosts.inputs_consumed(self.drive, &inputs).await?;
         if !inputs.is_empty() {
-            self.refresh().await;
+            self.renew().await;
         }
         if self.lease.cancel_requested() {
             return Err(cancelled());

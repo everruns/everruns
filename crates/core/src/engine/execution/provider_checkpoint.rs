@@ -66,6 +66,7 @@ pub(super) fn is_restorable(
             false,
         ) => reasoning_state.is_none() || native_reasoning_compaction,
         (CompactionCheckpointPayload::Summary { .. }, false) => true,
+        (CompactionCheckpointPayload::Trimmed, false) => true,
         _ => false,
     }
 }

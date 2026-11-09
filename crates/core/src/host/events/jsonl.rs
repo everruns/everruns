@@ -4,6 +4,7 @@ use super::*;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Mutex;
 
 struct JsonlState {
     file: tokio::fs::File,

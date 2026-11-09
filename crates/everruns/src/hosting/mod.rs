@@ -14,6 +14,11 @@ pub mod spi;
 mod admission;
 mod configuration;
 pub mod cutover;
+mod epoch_cache;
+pub use everruns_contracts::runtime::input_context::InputContext;
+mod live_deltas;
+pub use live_deltas::{LiveAttempt, LiveDelta, LiveDeltaSink};
+mod settled_store;
 #[cfg(not(target_arch = "wasm32"))]
 pub use configuration::DirectoryEnvironmentFactory;
 #[doc(hidden)]
@@ -41,8 +46,8 @@ pub use everruns_core::session_commands::{
     QuestionAnswersRequest, validate_question_answers, validate_tool_resolutions,
 };
 pub(crate) mod query;
-pub use admission::{Admission, AdmissionState, TurnAssignment};
-pub use memory::MemoryHosting;
+pub use admission::{Admission, AdmissionState, TurnAssignment, TurnRevision};
+pub use memory::{AuthorityCounts, MemoryHosting};
 pub use query::SessionQuerySnapshot;
 #[cfg(feature = "local")]
 mod sqlite;
@@ -79,6 +84,29 @@ where
 {
     async fn open(&self, session: SessionId) -> Result<crate::Environment> {
         self(session).await
+    }
+}
+
+/// Builds behavior for a build key the host did not register at startup.
+///
+/// For hosts whose sessions carry their own agent definition (a manifest the
+/// client sent at creation, retained by the authority with the session): the
+/// build key names that definition and the host code that runs it, and the
+/// resolver rebuilds the Agent on whichever process activates the session.
+/// It must return the same behavior for the same key every time, and `None`
+/// for a key it does not know (the session is then suspended as
+/// `MissingBuild`, as for an unregistered build). Experimental.
+pub trait AgentResolver: Send + Sync + 'static {
+    /// The Agent `build` names, or `None` when this process cannot build it.
+    fn resolve(&self, build: &AgentBuild) -> Option<crate::Agent>;
+}
+
+impl<F> AgentResolver for F
+where
+    F: Fn(&AgentBuild) -> Option<crate::Agent> + Send + Sync + 'static,
+{
+    fn resolve(&self, build: &AgentBuild) -> Option<crate::Agent> {
+        self(build)
     }
 }
 
@@ -143,6 +171,16 @@ impl AgentBuild {
         }
     }
 }
+
+/// Execution-critical protocol capabilities this Engine understands, beyond
+/// its runtime format ([`SessionBinding::framework`]). Additive protocol
+/// changes need no format bump: new optional fields are ignored and new
+/// informational event types are skipped. A new event type that changes
+/// execution (an approval, a cancel, an operation state) is instead named
+/// here, and the authority lists it in [`SessionEpoch::requires`] once a
+/// session's journal uses it, so an Engine that does not know it never
+/// guesses. None exist yet.
+pub const PROTOCOL_CAPABILITIES: &[&str] = &[];
 
 /// Authoritative session binding. All optional configuration is immutable.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -513,12 +551,25 @@ pub trait SessionHosting: Send + Sync + 'static {
         message: RuntimeMessage,
         cancelled: bool,
     ) -> Result<AdmissionReceipt> {
+        self.admit_as(session, message, cancelled, None).await
+    }
+    /// [`admit`](Self::admit) with who the input acts for, kept with the
+    /// input (data plane v2 "Execution context"). Only the trusted host that
+    /// verified the author passes one.
+    async fn admit_as(
+        &self,
+        session: SessionId,
+        message: RuntimeMessage,
+        cancelled: bool,
+        context: Option<InputContext>,
+    ) -> Result<AdmissionReceipt> {
         serde_json::from_value(
             self.command(
                 session,
                 spi::session_commands::SessionCommand::Admit {
                     message: Box::new(message),
                     cancelled,
+                    context,
                 },
             )
             .await?,
@@ -666,6 +717,39 @@ pub trait SessionEpoch: Send + Sync + 'static {
     fn renew_poke(&self) -> Option<Arc<tokio::sync::Notify>> {
         None
     }
+    /// Optional drain flag for this epoch's driver: once set, the running
+    /// turn stops at its next step boundary and the lease is handed back
+    /// (`SessionActorStore::hand_off_actor`) with the session still runnable,
+    /// so another process resumes it at once. Hosts that move sessions
+    /// between authorities set it before moving one with an open turn.
+    fn hand_off(&self) -> Option<Arc<std::sync::atomic::AtomicBool>> {
+        None
+    }
+    /// Where this epoch's live deltas go (token deltas, never stored), for a
+    /// host whose watchers are in another process; see [`LiveDelta`] for the
+    /// fencing each carries. `None` (the default) keeps them in-process.
+    fn live_deltas(&self) -> Option<Arc<dyn LiveDeltaSink>> {
+        None
+    }
+    /// Execution-critical protocol capabilities this session's journal uses
+    /// (data plane v2 "Supported rolling upgrades"): event types that change
+    /// execution, added after the session's runtime format. An Engine that
+    /// lacks one hands the epoch back without running anything, so another
+    /// executor can take it; see [`PROTOCOL_CAPABILITIES`].
+    fn requires(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// Whether [`Self::renew_poke`] also fires on every input admission
+    /// while the epoch holds, so the driver need not renew to learn its
+    /// inbox (`SessionActorDriver::with_pushed_inbox`).
+    fn pushes_admissions(&self) -> bool {
+        false
+    }
+    /// The wake time the authority held when this epoch was claimed, when
+    /// the claim returned it, so the epoch can skip storing the same one.
+    fn claimed_wake_at(&self) -> Option<Option<i64>> {
+        None
+    }
     /// Retain a timer obligation under the current epoch. Its activation is
     /// independent of frontend traffic; only Rust interprets expired waits.
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()>;
@@ -682,6 +766,14 @@ pub trait SessionEpoch: Send + Sync + 'static {
     /// With `absent`, atomically insert only if the key does not exist.
     /// Returns false on an existing key. Every mutation checks the epoch.
     async fn commit(&self, key: &str, value: Value, absent: bool) -> Result<bool>;
+    /// Insert a receipt, if absent, with the epoch's next lease write (a
+    /// renew or the release) instead of a write of its own, where the
+    /// authority can; it then commits only if that lease write does. For a
+    /// receipt the next holder recomputes, or one no step waits on before
+    /// the next lease write. The default commits it now.
+    async fn commit_with_lease(&self, key: &str, value: Value) -> Result<()> {
+        self.commit(key, value, true).await.map(|_| ())
+    }
     /// Persist a visible suspension instead of retrying incompatible behavior.
     async fn suspend(&self, reason: &str) -> Result<()>;
 }

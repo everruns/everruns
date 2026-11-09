@@ -88,6 +88,10 @@ pub struct LlmSimConfig {
     /// which messages actually reach the provider after context assembly and
     /// message filtering (e.g. Infinity Context history trimming).
     pub message_capture: Option<Arc<std::sync::Mutex<Vec<Vec<Message>>>>>,
+    /// Context window to report for the simulated model, in tokens. A small
+    /// window makes proactive compaction run in long-session benches and
+    /// tests; `None` reports none, as before.
+    pub context_window: Option<usize>,
 }
 
 impl Default for LlmSimConfig {
@@ -101,6 +105,7 @@ impl Default for LlmSimConfig {
             response_id: None,
             effort_capture: None,
             message_capture: None,
+            context_window: None,
         }
     }
 }
@@ -166,6 +171,12 @@ impl LlmSimConfig {
     /// Add a sequence of tool calls (different per call).
     pub fn with_tool_call_sequence(mut self, sequences: Vec<Vec<ToolCall>>) -> Self {
         self.tool_calls = Some(ToolCallConfig::Sequence(sequences));
+        self
+    }
+
+    /// Report a context window of `tokens` for the simulated model.
+    pub fn with_context_window(mut self, tokens: usize) -> Self {
+        self.context_window = Some(tokens);
         self
     }
 
@@ -720,6 +731,10 @@ impl LlmSimDriver {
 
 #[async_trait]
 impl ChatDriver for LlmSimDriver {
+    fn effective_context_window(&self, _model: &str) -> Option<usize> {
+        self.config.context_window
+    }
+
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,

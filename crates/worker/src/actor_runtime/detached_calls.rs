@@ -399,4 +399,8 @@ impl EventEmitter for GatedEmitter {
         }
         self.inner.emit(request).await
     }
+
+    async fn wait_stored(&self, session_id: SessionId) -> Result<()> {
+        self.inner.wait_stored(session_id).await
+    }
 }

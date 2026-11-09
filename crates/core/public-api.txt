@@ -60,6 +60,7 @@ everruns_core::compaction_checkpoint::CompactionCheckpoint	struct
 everruns_core::compaction_checkpoint::CompactionCheckpointPayload	enum
 everruns_core::compaction_checkpoint::CompactionCheckpointPayload::ProviderOpaque	variant
 everruns_core::compaction_checkpoint::CompactionCheckpointPayload::Summary	variant
+everruns_core::compaction_checkpoint::CompactionCheckpointPayload::Trimmed	variant
 everruns_core::compaction_checkpoint::CompactionCheckpointStore	trait
 everruns_core::compaction_checkpoint::ProactiveCompactionAttempt	struct
 everruns_core::compaction_checkpoint::ProactiveCompactionAttemptTracker	struct

@@ -612,3 +612,107 @@ async fn expired_retry_window_keeps_a_provider_outage_distinct() {
         assert!(!error.contains("rate_limited"), "{error}");
     }
 }
+
+/// Hangs inside its first model call, after the turn's lifecycle events are
+/// emitted and before any of them has a reason to commit.
+#[derive(Clone)]
+struct Hangs {
+    calls: Arc<AtomicUsize>,
+    entered: Arc<tokio::sync::Notify>,
+}
+#[async_trait]
+impl ChatDriver for Hangs {
+    async fn chat_completion_stream(
+        &self,
+        _: &ProviderEndpoint,
+        _: Vec<everruns::llm::Message>,
+        _: &LlmCallConfig,
+    ) -> Result<LlmResponseStream, AgentLoopError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            self.entered.notify_one();
+            return Ok(Box::pin(futures::stream::pending()));
+        }
+        Ok(Box::pin(futures::stream::iter([
+            Ok(LlmStreamEvent::TextDelta("recovered".into())),
+            Ok(LlmStreamEvent::Done(Box::default())),
+        ])))
+    }
+}
+
+/// Data plane v2 step 1 gate: lifecycle events ride on the next committed
+/// event, so a kill in between must leave no listener holding an event the
+/// authority does not have.
+#[tokio::test(start_paused = true)]
+async fn a_kill_before_commit_leaves_no_listener_holding_an_uncommitted_event() {
+    let profile = MemoryHosting::default();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let agent = Agent::builder()
+        .instructions("Answer briefly.")
+        .provider(Provider::new(
+            "hangs",
+            Hangs {
+                calls: calls.clone(),
+                entered: entered.clone(),
+            },
+        ))
+        .model("test")
+        .build()
+        .unwrap();
+    let make = || {
+        Engine::builder()
+            .hosting(External(profile.clone()))
+            .register(build(), agent.clone())
+            .build()
+    };
+    let first = make();
+    let id = SessionId::new();
+    let session = Box::pin(first.create_registered(id, &build()))
+        .await
+        .unwrap();
+    let mut live = session.events();
+    let sent = session.send("hello").await.unwrap();
+    let executor = tokio::spawn(async move { Box::pin(first.activate(id)).await });
+    entered.notified().await;
+    executor.abort();
+    let _ = executor.await;
+
+    let committed: std::collections::HashSet<String> = session
+        .events_after(0)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|event| event.event_id)
+        .collect();
+    assert!(
+        !committed.is_empty(),
+        "the admitted input and turn.started are committed"
+    );
+    let mut seen = 0;
+    while let Ok(Some(event)) = live.try_recv() {
+        seen += 1;
+        assert!(
+            committed.contains(&event.event_id),
+            "listener saw {} that the authority never committed",
+            event.event_type()
+        );
+    }
+    assert!(seen > 0, "the listener saw the committed events");
+    drop(session);
+
+    tokio::time::advance(Duration::from_secs(11)).await;
+    let replacement = make();
+    Box::pin(replacement.activate(id)).await.unwrap();
+    let resumed = replacement.resume(id).await.unwrap();
+    let turn = resumed
+        .admission(sent.message_id.parse().unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert!(turn.success);
+    assert_eq!(turn.response, "recovered");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
