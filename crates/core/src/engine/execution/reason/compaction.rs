@@ -286,7 +286,6 @@ pub(super) struct ProactiveCompactionContext<'a> {
     pub(super) model: &'a str,
     pub(super) system_prompt: Option<&'a str>,
     pub(super) stateful_response_continuation: bool,
-    pub(super) checkpoint_restored: bool,
     pub(super) checkpoint_suffix_message_count: usize,
     pub(super) raw_tool_result_bytes: usize,
     pub(super) prior_usage: Option<&'a TokenUsage>,
@@ -295,7 +294,8 @@ pub(super) struct ProactiveCompactionContext<'a> {
     /// Persisted sequence of each `history` message, when known.
     pub(super) message_sequences:
         &'a std::collections::HashMap<crate::engine::typed_id::MessageId, i64>,
-    /// Source sequence of the checkpoint this phase restored, if any.
+    /// Source sequence of the checkpoint this phase restored, if any (`None`:
+    /// none restored).
     pub(super) current_floor: Option<i64>,
 }
 
@@ -350,7 +350,7 @@ pub(super) async fn apply_proactive_compaction(
             .and_then(|profile| profile.limits.map(|limits| limits.context as usize))
         })
         .unwrap_or(128_000);
-    let checkpoint_rearmed = !context.checkpoint_restored
+    let checkpoint_rearmed = context.current_floor.is_none()
         || context.checkpoint_suffix_message_count >= CHECKPOINT_REARM_MIN_SUFFIX_MESSAGES;
     let native_strategy = matches!(
         settings.strategy,

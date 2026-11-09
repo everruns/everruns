@@ -1151,7 +1151,6 @@ fn lifecycle_test_context<'a>(
         model: "stub-model",
         system_prompt: None,
         stateful_response_continuation: false,
-        checkpoint_restored: false,
         checkpoint_suffix_message_count: 0,
         raw_tool_result_bytes: 0,
         prior_usage: None,

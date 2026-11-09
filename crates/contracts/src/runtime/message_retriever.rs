@@ -24,6 +24,17 @@ pub struct MessageHistory {
     pub sequences: std::collections::HashMap<MessageId, i64>,
 }
 
+impl MessageHistory {
+    /// A history from a store that does not report message sequences.
+    pub fn new(messages: Vec<RuntimeMessage>, source_sequence: Option<i64>) -> Self {
+        Self {
+            messages,
+            source_sequence,
+            sequences: Default::default(),
+        }
+    }
+}
+
 // ============================================================================
 // InputMessage - Input structure for message creation
 // ============================================================================

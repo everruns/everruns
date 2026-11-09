@@ -2,6 +2,10 @@
 
 use super::*;
 
+pub(super) fn default_max_iterations() -> usize {
+    500
+}
+
 /// Input for ReasonAtom
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReasonInput {

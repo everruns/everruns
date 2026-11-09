@@ -67,6 +67,7 @@ mod tool_changes;
 mod transcript;
 mod truncation_gate;
 mod types;
+use types::default_max_iterations;
 pub use types::{NativeExecutionCounts, ReasonInput, ReasonResult};
 
 use compaction::{
@@ -85,10 +86,6 @@ use stream_state::{
     batch_due, inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
-
-fn default_max_iterations() -> usize {
-    500
-}
 
 // ============================================================================
 // ReasonAtom
@@ -321,7 +318,7 @@ impl ReasonAtom {
         reason_span_id: &str,
         previous_response_id: Option<String>,
         iteration: u32,
-        assembled: AssembledTurnContext,
+        mut assembled: AssembledTurnContext,
         prior: partial_recovery::PriorStream,
     ) -> Result<ReasonResult> {
         let prior_usage = assembled.cumulative_usage();
@@ -340,7 +337,6 @@ impl ReasonAtom {
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let assembled_message_floor = assembled.message_floor;
-        let mut message_sequences = assembled.message_sequences;
         let model_with_provider = assembled.model;
         let provider_managed = model_with_provider
             .provider_managed_reduction_option
@@ -408,7 +404,7 @@ impl ReasonAtom {
             message_source_sequence = restored.source_sequence.or(message_source_sequence);
             checkpoint_suffix_message_count = restored.suffix_message_count;
             restored_checkpoint = restored.checkpoint;
-            message_sequences = restored.sequences;
+            assembled.message_sequences = restored.sequences;
         }
 
         let controls = resolve_request_controls(
@@ -826,15 +822,12 @@ impl ReasonAtom {
                     system_prompt: has_system_prompt
                         .then_some(runtime_agent.system_prompt.as_str()),
                     stateful_response_continuation,
-                    checkpoint_restored: restored_checkpoint.is_some(),
                     checkpoint_suffix_message_count,
                     raw_tool_result_bytes,
                     prior_usage: prior_usage.as_ref(),
                     history: &context_messages,
-                    message_sequences: &message_sequences,
-                    current_floor: restored_checkpoint
-                        .as_ref()
-                        .map(|checkpoint| checkpoint.source_sequence),
+                    message_sequences: &assembled.message_sequences,
+                    current_floor: restored_checkpoint.as_ref().map(|c| c.source_sequence),
                 },
                 &mut llm_messages_for_call,
                 &mut llm_config,
