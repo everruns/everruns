@@ -872,6 +872,19 @@ the in-memory authority ran out of memory. What it took:
   keeps prompts in S3 (`--keep-prompts` keeps them): 230 KB retained per
   turn became 33 KB. No turn reads a prompt back.
 
+**Memory per idle session** (`cargo bench -p everruns --bench
+idle_sessions`, 20 000 sessions with one turn each, handles dropped,
+counted by a counting allocator): Engine kept 6.2 KB per idle session for
+good, a cache entry with a full Agent copy and the session's live
+controls. Hosted sessions now sit in a bounded cache (default 1 024,
+`EngineBuilder::session_cache_capacity`), least recently used dropped
+first and rebuilt from the authority on the next activation, query or
+resume: 1.3 KB per idle session, gated at 2 KB. Never dropped: a session
+with an open handle, a volatile session, and live controls held by a turn
+or carrying live MCP edits. Most of what is left is the default in-memory
+workspace's per-session Environment. The in-memory authority holds 37 KB
+per session; a cell keeps that on disk and in S3, not in the executor.
+
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share
 the turn driver, so cells need the host bundle (step 2), not a finished

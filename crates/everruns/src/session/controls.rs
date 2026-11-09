@@ -394,6 +394,16 @@ impl LiveControls {
         self.turn_effort.set(effort);
     }
 
+    /// Whether live MCP edits exist: they live only here, so controls that
+    /// carry them are never dropped from the Engine's cache.
+    pub(crate) fn has_mcp_edits(&self) -> bool {
+        !self
+            .mcp
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_empty()
+    }
+
     /// Apply live MCP edits over the Agent-derived servers of a fresh record.
     pub(crate) fn apply_mcp(&self, servers: &mut ScopedMcpServers) {
         let edits = self

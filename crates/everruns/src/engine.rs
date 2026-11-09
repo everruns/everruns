@@ -28,6 +28,7 @@ use crate::{
 mod cutover;
 mod hosting;
 mod legacy_metadata;
+mod session_cache;
 mod session_overlay;
 
 pub(crate) use cutover::{ensure_legacy_owner, fence_legacy_leases};
@@ -165,6 +166,8 @@ struct EngineInner {
     capabilities: Mutex<Vec<Arc<dyn everruns_core::capabilities::Capability>>>,
     /// See [`SessionExecution::live_controls`].
     live_controls: Mutex<HashMap<SessionId, Arc<crate::session::LiveControls>>>,
+    /// See [`EngineBuilder::session_cache_capacity`].
+    session_cache: session_cache::SessionCache,
 }
 
 /// Configures an application-owned [`Engine`].
@@ -177,6 +180,7 @@ pub struct EngineBuilder {
     resolver: Option<Arc<dyn crate::hosting::AgentResolver>>,
     listeners: Vec<ListenerRegistration>,
     observer_queue_capacity: usize,
+    session_cache_capacity: usize,
 }
 
 impl Default for EngineBuilder {
@@ -188,6 +192,7 @@ impl Default for EngineBuilder {
             resolver: None,
             listeners: Vec::new(),
             observer_queue_capacity: OBSERVER_QUEUE_CAPACITY,
+            session_cache_capacity: session_cache::DEFAULT_CAPACITY,
         }
     }
 }
@@ -251,8 +256,20 @@ impl EngineBuilder {
                 local_backends: Mutex::new(HashMap::new()),
                 capabilities: Mutex::new(Vec::new()),
                 live_controls: Mutex::new(HashMap::new()),
+                session_cache: session_cache::SessionCache::new(self.session_cache_capacity),
             }),
         }
+    }
+
+    /// How many idle hosted sessions this Engine keeps cached (default
+    /// 1 024). A hosted session's authority holds everything it needs, so an
+    /// idle one past this count is dropped from memory, least recently used
+    /// first, and rebuilt from the authority when it next runs or is
+    /// resumed. Sessions with an open handle, a process-local Environment or
+    /// live MCP edits are never dropped. Stability: experimental.
+    pub fn session_cache_capacity(mut self, capacity: usize) -> Self {
+        self.session_cache_capacity = capacity.max(1);
+        self
     }
 
     #[cfg(test)]
@@ -279,6 +296,8 @@ struct EngineSessionEntry {
     /// first authority I/O. A started creation freezes even after reply loss.
     provisional: bool,
     creation: Option<Arc<OnceCell<()>>>,
+    /// Recency for the hosted-session cache (see `session_cache`).
+    used: u64,
 }
 
 #[cfg(feature = "local")]
@@ -577,6 +596,7 @@ impl Engine {
                 durable_binding: None,
                 provisional: false,
                 creation: None,
+                used: 0,
             });
         Ok(())
     }
@@ -748,6 +768,7 @@ impl Engine {
                     durable_binding: None,
                     provisional: false,
                     creation: None,
+                    used: 0,
                 },
             );
     }

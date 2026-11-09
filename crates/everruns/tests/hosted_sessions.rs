@@ -857,3 +857,44 @@ mod causal;
 #[cfg(feature = "local")]
 #[path = "hosted_sessions/members.rs"]
 mod members;
+
+/// Data plane v2 step 1: an Engine keeps a bounded number of idle hosted
+/// sessions in memory; a dropped one is rebuilt from the authority.
+#[tokio::test]
+async fn idle_hosted_sessions_past_the_cache_capacity_reopen_from_the_authority() {
+    let profile = MemoryHosting::default();
+    let engine = Engine::builder()
+        .hosting(profile.clone())
+        .register(build(), agent())
+        .session_cache_capacity(2)
+        .build();
+    let held = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    assert!(held.send_and_wait("held open").await.unwrap().success);
+    let mut idle = Vec::new();
+    for _ in 0..6 {
+        let id = SessionId::new();
+        let session = engine.create_registered(id, &build()).await.unwrap();
+        assert!(session.send_and_wait("first").await.unwrap().success);
+        idle.push(id);
+    }
+    let cached = format!("{engine:?}");
+    assert!(
+        cached == "Engine { sessions: 2 }" || cached == "Engine { sessions: 3 }",
+        "the cache stays near its capacity: {cached}"
+    );
+    let completed = |events: Vec<everruns::SessionEvent>| {
+        events
+            .iter()
+            .filter(|event| event.event_type() == "output.message.completed")
+            .count()
+    };
+    let first = engine.resume(idle[0]).await.unwrap();
+    assert!(first.send_and_wait("second").await.unwrap().success);
+    assert_eq!(completed(first.events_after(0).await.unwrap()), 2);
+    // The open handle kept its session cached and working.
+    assert!(held.send_and_wait("again").await.unwrap().success);
+    assert_eq!(completed(held.events_after(0).await.unwrap()), 2);
+}

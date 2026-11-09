@@ -619,6 +619,7 @@ impl Engine {
             .sessions
             .lock()
             .unwrap_or_else(|p| p.into_inner());
+        let used = self.inner.session_cache.tick();
         if let Some(existing) = sessions.get_mut(&session) {
             if existing.durable_binding.as_ref() != Some(&binding) {
                 return Err(AgentLoopError::config(
@@ -627,6 +628,7 @@ impl Engine {
             }
             existing.agent = Some(registration.agent);
             existing.harness = registration.harness;
+            existing.used = used;
         } else {
             sessions.insert(
                 session,
@@ -638,7 +640,19 @@ impl Engine {
                     durable_binding: Some(binding),
                     provisional: false,
                     creation: None,
+                    used,
                 },
+            );
+        }
+        if self.inner.session_cache.trim(&mut sessions) {
+            // Lock order: sessions, then live controls.
+            super::session_cache::trim_live_controls(
+                &mut self
+                    .inner
+                    .live_controls
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner()),
+                &sessions,
             );
         }
         Ok(())
@@ -670,6 +684,7 @@ impl Engine {
                     durable_binding: Some(status.binding),
                     provisional: false,
                     creation: None,
+                    used: 0,
                 });
         }
         if let Some(state) = self.state(session) {
@@ -854,6 +869,7 @@ impl Engine {
                     }),
                     provisional: true,
                     creation: Some(Arc::new(OnceCell::new())),
+                    used: 0,
                 },
             );
         let handle = Session::new(self.binding(session), None, self.inner.observers.clone());
