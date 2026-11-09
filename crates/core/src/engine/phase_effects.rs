@@ -42,6 +42,14 @@ pub trait PhaseEffectSink: Send + Sync {
     /// Apply one phase effect and return the accepted canonical event.
     async fn apply_phase_effect(&self, effect: PhaseEffect) -> Result<Event>;
 
+    /// See [`EventEmitter::wait_stored`].
+    async fn wait_stored(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Convenience for the common canonical-event effect.
     async fn emit_phase_event(&self, request: EventRequest) -> Result<Event> {
         self.apply_phase_effect(PhaseEffect::EmitEvent(request))
@@ -104,6 +112,10 @@ impl<T: EventEmitter + ?Sized> PhaseEffectSink for T {
             PhaseEffect::EmitEvent(request) => self.emit(request).await,
         }
     }
+
+    async fn wait_stored(&self, session_id: everruns_contracts::typed_id::SessionId) -> Result<()> {
+        EventEmitter::wait_stored(self, session_id).await
+    }
 }
 
 #[async_trait]
@@ -124,6 +136,10 @@ impl<T: PhaseEffectSink + ?Sized> EventEmitter for PhaseEffectEmitter<T> {
 
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         PhaseEffectEmitter::emit(self, request).await
+    }
+
+    async fn wait_stored(&self, session_id: everruns_contracts::typed_id::SessionId) -> Result<()> {
+        self.inner.wait_stored(session_id).await
     }
 }
 

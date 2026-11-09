@@ -1227,3 +1227,43 @@ async fn with_steering_every_model_call_is_settled_exactly_once() {
     settled.sort();
     assert_eq!(started, settled, "one settlement per model call");
 }
+
+/// Data plane v2 step 1: a provider call is recorded before it is
+/// dispatched. `reason.started` commits behind the context assembly, so on
+/// an authority whose behind writes are slow the call must wait for it;
+/// otherwise an executor killed during the call leaves no record of it.
+#[tokio::test]
+async fn a_model_call_is_in_the_log_before_it_is_dispatched() {
+    let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let engine = engine(
+        MemoryHosting::default().with_behind_latency(std::time::Duration::from_millis(300)),
+        Agent::builder()
+            .instructions("Answer briefly.")
+            .model(Model::simulated_with_config(
+                everruns::LlmSimConfig::fixed("done")
+                    .with_message_capture(calls.clone())
+                    .with_response_delay(std::time::Duration::from_secs(3600)),
+            ))
+            .build()
+            .unwrap(),
+    );
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    let _turn = session.send("hello").await.unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while calls.lock().unwrap().is_empty() {
+        assert!(std::time::Instant::now() < deadline, "no model call");
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    // The call is out: the authority already holds its record.
+    let events = session.events_after(0).await.unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type() == "reason.started"),
+        "dispatched before its reason.started was stored: {:?}",
+        events.iter().map(|e| e.event_type()).collect::<Vec<_>>()
+    );
+}

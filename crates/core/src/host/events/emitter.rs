@@ -350,6 +350,11 @@ impl EventEmitter for HostEventEmitter {
             .pop()
             .ok_or_else(|| AgentLoopError::store("event log returned no committed event"))
     }
+    async fn wait_stored(&self, session_id: SessionId) -> CoreResult<()> {
+        let lock = self.session_lock(session_id).await;
+        let _guard = lock.lock().await;
+        self.settle(session_id).await
+    }
 }
 
 fn ephemeral_event(request: EventRequest) -> Event {

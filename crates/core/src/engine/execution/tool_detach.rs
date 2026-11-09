@@ -182,6 +182,10 @@ impl EventEmitter for SwitchEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         self.current().emit(request).await
     }
+
+    async fn wait_stored(&self, session_id: everruns_contracts::typed_id::SessionId) -> Result<()> {
+        self.current().wait_stored(session_id).await
+    }
 }
 
 #[cfg(test)]

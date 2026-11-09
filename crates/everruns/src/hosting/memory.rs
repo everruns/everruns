@@ -80,6 +80,7 @@ pub struct MemoryHosting {
     sessions: Arc<Mutex<HashMap<SessionId, Arc<MemorySession>>>>,
     counts: Arc<AuthorityCounters>,
     drop_prompts: bool,
+    behind_latency: Option<std::time::Duration>,
     live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
     requires: Vec<String>,
 }
@@ -139,6 +140,7 @@ struct MemorySession {
     services: HostBackends,
     counts: Arc<AuthorityCounters>,
     drop_prompts: bool,
+    behind_latency: Option<std::time::Duration>,
 }
 
 #[derive(Default)]
@@ -191,6 +193,15 @@ impl MemoryHosting {
         self
     }
 
+    /// Delay every write that runs behind the work by `latency` before it
+    /// commits, as a replicated authority's quorum round trip would. Lets a
+    /// test see what reaches the log only after the work moved on. Applies
+    /// to sessions created after the call.
+    pub fn with_behind_latency(mut self, latency: std::time::Duration) -> Self {
+        self.behind_latency = Some(latency);
+        self
+    }
+
     /// Send every epoch's live deltas to `sink`, as a host whose watchers
     /// are in another process would (see [`super::LiveDelta`]).
     pub fn with_live_deltas(mut self, sink: impl super::LiveDeltaSink) -> Self {
@@ -228,6 +239,7 @@ impl MemoryHosting {
             services,
             counts: self.counts.clone(),
             drop_prompts: self.drop_prompts,
+            behind_latency: self.behind_latency,
         })
     }
     fn session(&self, id: SessionId) -> Arc<MemorySession> {
@@ -731,6 +743,9 @@ impl EventLog for Ports {
     ) -> std::result::Result<Vec<Event>, EventLogError> {
         self.session.counts.count(Op::Write);
         self.session.counts.count(Op::Behind);
+        if let Some(latency) = self.session.behind_latency {
+            everruns_contracts::rt::sleep(latency).await;
+        }
         self.commit_batch(requests).await
     }
     fn durability(&self) -> EventDurability {

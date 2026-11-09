@@ -902,10 +902,16 @@ suspending, so a capable executor takes the session.
 **Provider call attempts:** with steering (12 inputs over 3 turns, 15 ms
 apart against a model with latency), every `reason.started` has exactly one
 `llm.generation` (`hosted_sessions::with_steering_every_model_call_is_settled_exactly_once`).
-Open: `reason.started` now commits behind the model call, so an executor
-killed during a call can lose the call's only record and its usage. The
-fix is a durable attempt record that rides on the barrier before each call
-(`turn.started` or the step's tool results), not a waited write of its own.
+Every call is also recorded before it is dispatched: `reason.started` still
+commits behind the context assembly, and the reason phase waits for that
+commit (`EventEmitter::wait_stored`) only when the call goes out, so it
+adds no waited write and costs latency only when the commit is slower than
+the assembly. An executor killed during a call leaves `reason.started`
+without `reason.completed`: an explicit unresolved attempt, a call whose
+outcome and usage are unknown; the resumed turn calls again under a new
+execution id (`hosted_sessions::a_model_call_is_in_the_log_before_it_is_dispatched`,
+against an authority whose behind writes take 300 ms). The worker keeps
+its own write-behind queue and is unchanged.
 
 **Memory per idle session** (`cargo bench -p everruns --bench
 idle_sessions`, 20 000 sessions with one turn each, handles dropped,
