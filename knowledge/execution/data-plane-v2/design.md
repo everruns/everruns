@@ -813,6 +813,16 @@ stress` bench) checked in CI, so a later step can't silently undo it.
   checkpoint, so every turn reloads the whole history, and every
   `llm.generation` event carries the untrimmed prompt. Step 1 must give
   that path a durable history floor before the long-session gate can hold.
+  Fixed in step 1 (Trimmed checkpoints, checkpoint-aware loading, tail
+  reads from the latest `turn.started`): p50 per turn now stays near 60 ms
+  from turn 100 to 1 000.
+- **Where a plain chat turn's 22 writes go** (Engine on `MemoryHosting`):
+  9 journal appends, 4 lease renewals, 3 record commits, 2 wake schedules,
+  2 claims, 1 release and 1 session record rewritten by every activation.
+  Reads: 14 record reads, 11 session reads, 9 log pages, 4 storage key
+  listings, 4 log-end lookups, 3 journal tails. Committed batches (appends
+  to about 2), renewals that ride on batches, and one claim per activation
+  are what brings writes to 5 or fewer.
 
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share
