@@ -34,7 +34,7 @@ pub fn configure_connection(conn: &Connection) -> Result<(), SqlDbError> {
 /// rusqlite 0.39+ returns `Result`. A failure here means the timeout
 /// interrupt won't fire; log so this isn't invisible if SQLite ever starts
 /// rejecting the install at runtime.
-fn install_progress_handler(conn: &Connection, interrupted: Arc<AtomicBool>) {
+fn install_progress_handler(conn: &mut Connection, interrupted: Arc<AtomicBool>) {
     if let Err(err) = conn.progress_handler(
         PROGRESS_HANDLER_INTERVAL,
         Some(move || interrupted.load(Ordering::Relaxed)),
@@ -44,14 +44,14 @@ fn install_progress_handler(conn: &Connection, interrupted: Arc<AtomicBool>) {
 }
 
 /// Remove the progress handler.
-fn clear_progress_handler(conn: &Connection) {
+fn clear_progress_handler(conn: &mut Connection) {
     if let Err(err) = conn.progress_handler(0, None::<fn() -> bool>) {
         warn!(error = %err, "failed to clear SQLite progress handler");
     }
 }
 
 /// Execute a read-only SQL query, returning columns and rows as JSON.
-pub fn execute_query(conn: &Connection, sql: &str) -> Result<SqlQueryResult, SqlDbError> {
+pub fn execute_query(conn: &mut Connection, sql: &str) -> Result<SqlQueryResult, SqlDbError> {
     install_authorizer(conn)?;
 
     let interrupted = Arc::new(AtomicBool::new(false));
@@ -114,7 +114,7 @@ fn execute_query_inner(conn: &Connection, sql: &str) -> Result<SqlQueryResult, S
         ));
     }
 
-    let columns: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+    let columns: Vec<String> = stmt.column_names().map(|s| s.to_string()).collect();
     let col_count = columns.len();
 
     let mut rows = Vec::new();
@@ -160,7 +160,7 @@ fn execute_query_inner(conn: &Connection, sql: &str) -> Result<SqlQueryResult, S
 }
 
 /// Execute a write SQL statement, returning affected row count.
-pub fn execute_statement(conn: &Connection, sql: &str) -> Result<SqlExecuteResult, SqlDbError> {
+pub fn execute_statement(conn: &mut Connection, sql: &str) -> Result<SqlExecuteResult, SqlDbError> {
     install_authorizer(conn)?;
 
     let interrupted = Arc::new(AtomicBool::new(false));
@@ -201,7 +201,7 @@ pub fn execute_statement(conn: &Connection, sql: &str) -> Result<SqlExecuteResul
 }
 
 /// Get schema for all tables in the database.
-pub fn get_schema(conn: &Connection) -> Result<Vec<TableSchema>, SqlDbError> {
+pub fn get_schema(conn: &mut Connection) -> Result<Vec<TableSchema>, SqlDbError> {
     install_authorizer(conn)?;
 
     let mut stmt = conn
@@ -311,20 +311,20 @@ mod tests {
 
     #[test]
     fn test_execute_and_query() {
-        let conn = setup_conn();
+        let mut conn = setup_conn();
         execute_statement(
-            &conn,
+            &mut conn,
             "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)",
         )
         .unwrap();
 
         execute_statement(
-            &conn,
+            &mut conn,
             "INSERT INTO users VALUES (1, 'Alice', 30), (2, 'Bob', 25)",
         )
         .unwrap();
 
-        let result = execute_query(&conn, "SELECT * FROM users ORDER BY id").unwrap();
+        let result = execute_query(&mut conn, "SELECT * FROM users ORDER BY id").unwrap();
         assert_eq!(result.columns, vec!["id", "name", "age"]);
         assert_eq!(result.row_count, 2);
         assert_eq!(result.rows[0], vec![json!(1), json!("Alice"), json!(30)]);
@@ -334,51 +334,51 @@ mod tests {
 
     #[test]
     fn test_null_values() {
-        let conn = setup_conn();
-        execute_statement(&conn, "CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
-        execute_statement(&conn, "INSERT INTO t VALUES (1, NULL)").unwrap();
+        let mut conn = setup_conn();
+        execute_statement(&mut conn, "CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
+        execute_statement(&mut conn, "INSERT INTO t VALUES (1, NULL)").unwrap();
 
-        let result = execute_query(&conn, "SELECT * FROM t").unwrap();
+        let result = execute_query(&mut conn, "SELECT * FROM t").unwrap();
         assert_eq!(result.rows[0][1], Value::Null);
     }
 
     #[test]
     fn test_real_values() {
-        let conn = setup_conn();
-        execute_statement(&conn, "CREATE TABLE t (val REAL)").unwrap();
-        execute_statement(&conn, "INSERT INTO t VALUES (2.72)").unwrap();
+        let mut conn = setup_conn();
+        execute_statement(&mut conn, "CREATE TABLE t (val REAL)").unwrap();
+        execute_statement(&mut conn, "INSERT INTO t VALUES (2.72)").unwrap();
 
-        let result = execute_query(&conn, "SELECT * FROM t").unwrap();
+        let result = execute_query(&mut conn, "SELECT * FROM t").unwrap();
         assert_eq!(result.rows[0][0], json!(2.72));
     }
 
     #[test]
     fn test_blob_values() {
-        let conn = setup_conn();
-        execute_statement(&conn, "CREATE TABLE t (val BLOB)").unwrap();
+        let mut conn = setup_conn();
+        execute_statement(&mut conn, "CREATE TABLE t (val BLOB)").unwrap();
         conn.execute("INSERT INTO t VALUES (?1)", [&[0u8, 1, 2, 3] as &[u8]])
             .unwrap();
 
-        let result = execute_query(&conn, "SELECT * FROM t").unwrap();
+        let result = execute_query(&mut conn, "SELECT * FROM t").unwrap();
         // BLOB should be base64 encoded
         assert_eq!(result.rows[0][0], json!("AAECAw=="));
     }
 
     #[test]
     fn test_schema_introspection() {
-        let conn = setup_conn();
+        let mut conn = setup_conn();
         execute_statement(
-            &conn,
+            &mut conn,
             "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
         )
         .unwrap();
         execute_statement(
-            &conn,
+            &mut conn,
             "INSERT INTO users VALUES (1, 'Alice', 30), (2, 'Bob', 25)",
         )
         .unwrap();
 
-        let schema = get_schema(&conn).unwrap();
+        let schema = get_schema(&mut conn).unwrap();
         assert_eq!(schema.len(), 1);
         assert_eq!(schema[0].name, "users");
         assert_eq!(schema[0].row_count, 2);
@@ -393,37 +393,41 @@ mod tests {
 
     #[test]
     fn test_query_error() {
-        let conn = setup_conn();
-        let result = execute_query(&conn, "SELECT * FROM nonexistent");
+        let mut conn = setup_conn();
+        let result = execute_query(&mut conn, "SELECT * FROM nonexistent");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_execute_statement_returns_rows_affected() {
-        let conn = setup_conn();
-        execute_statement(&conn, "CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
-        execute_statement(&conn, "INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')").unwrap();
+        let mut conn = setup_conn();
+        execute_statement(&mut conn, "CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
+        execute_statement(
+            &mut conn,
+            "INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')",
+        )
+        .unwrap();
 
-        let result = execute_statement(&conn, "DELETE FROM t WHERE id > 1").unwrap();
+        let result = execute_statement(&mut conn, "DELETE FROM t WHERE id > 1").unwrap();
         assert_eq!(result.rows_affected, 2);
     }
 
     #[test]
     fn test_query_rejects_writes_and_transactions() {
-        let conn = setup_conn();
+        let mut conn = setup_conn();
         execute_statement(
-            &conn,
+            &mut conn,
             "CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1)",
         )
         .unwrap();
 
-        let err = execute_query(&conn, "DELETE FROM t").unwrap_err();
+        let err = execute_query(&mut conn, "DELETE FROM t").unwrap_err();
         assert!(matches!(err, SqlDbError::QueryError(ref m) if m.contains("read-only")));
-        let err = execute_query(&conn, "BEGIN").unwrap_err();
+        let err = execute_query(&mut conn, "BEGIN").unwrap_err();
         assert!(matches!(err, SqlDbError::QueryError(ref m) if m.contains("transaction")));
         assert!(conn.is_autocommit());
 
-        let count = execute_query(&conn, "SELECT COUNT(*) FROM t").unwrap();
+        let count = execute_query(&mut conn, "SELECT COUNT(*) FROM t").unwrap();
         assert_eq!(count.rows[0][0], json!(1));
     }
 

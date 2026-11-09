@@ -487,7 +487,7 @@ where
     let worker = std::thread::spawn(move || {
         WRITER_GATE.with(|gate| *gate.borrow_mut() = Some((blocked_tx, resume_rx)));
         worker_db
-            .with_conn(|conn| conn.busy_handler(Some(wait_for_writer_commit)))
+            .with_conn_mut(|conn| conn.busy_handler(Some(wait_for_writer_commit)))
             .unwrap();
         tokio::runtime::Builder::new_current_thread()
             .enable_all()

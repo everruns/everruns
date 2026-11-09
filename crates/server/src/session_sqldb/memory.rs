@@ -48,7 +48,7 @@ impl InMemorySqlDbBackend {
     }
 
     /// Get the current database size by serializing (for tracking only).
-    fn estimate_db_size(conn: &Connection) -> i64 {
+    fn estimate_db_size(conn: &mut Connection) -> i64 {
         conn.serialize("main")
             .map(|data| data.len() as i64)
             .unwrap_or(0)
@@ -59,8 +59,8 @@ impl InMemorySqlDbBackend {
         let key = (session_id, name.to_string());
         let mut dbs = self.databases.write();
         if let Some(stored) = dbs.get_mut(&key) {
-            let conn = stored.conn.lock();
-            let size_bytes = Self::estimate_db_size(&conn);
+            let mut conn = stored.conn.lock();
+            let size_bytes = Self::estimate_db_size(&mut conn);
             stored.info.size_bytes = size_bytes;
             stored.info.page_count = ((size_bytes + 4095) / 4096) as i32;
             stored.info.updated_at = Utc::now();
@@ -195,8 +195,8 @@ impl InMemorySqlDbBackend {
             .get(&key)
             .ok_or_else(|| SqlDbError::DatabaseNotFound(db_name.to_string()))?;
 
-        let conn = stored.conn.lock();
-        execute_query(&conn, sql)
+        let mut conn = stored.conn.lock();
+        execute_query(&mut conn, sql)
     }
 
     pub fn execute(
@@ -218,11 +218,11 @@ impl InMemorySqlDbBackend {
             let stored = dbs
                 .get(&key)
                 .ok_or_else(|| SqlDbError::DatabaseNotFound(db_name.to_string()))?;
-            let conn = stored.conn.lock();
-            let result = execute_statement(&conn, sql)?;
+            let mut conn = stored.conn.lock();
+            let result = execute_statement(&mut conn, sql)?;
 
             // Check size limits after mutation
-            let new_size = Self::estimate_db_size(&conn);
+            let new_size = Self::estimate_db_size(&mut conn);
             drop(conn);
             drop(dbs);
             self.check_size_limits(session_id, db_name, new_size)?;
@@ -247,8 +247,8 @@ impl InMemorySqlDbBackend {
             .get(&key)
             .ok_or_else(|| SqlDbError::DatabaseNotFound(db_name.to_string()))?;
 
-        let conn = stored.conn.lock();
-        get_schema(&conn)
+        let mut conn = stored.conn.lock();
+        get_schema(&mut conn)
     }
 }
 
