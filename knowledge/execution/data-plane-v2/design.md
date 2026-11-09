@@ -954,7 +954,7 @@ hosted turn before any model call
 **Agent definitions as data** (`everruns::hosting::AgentDefinition`): an
 agent key, a revision, and the portable agent package as JSON, the format
 `AgentPackage` already reads and writes. The authority keeps every
-revision (`SessionHosting::publish_definition`, memory and SQLite
+revision (`AgentDefinitions::publish_definition`, memory and SQLite
 authorities; a cell keeps them in S3 and its registry). Publishing makes a
 revision the agent's current one; a revision is immutable, and different
 content under a published revision fails. A session bound to a defined
@@ -966,8 +966,7 @@ mapping through `AgentBuilder::package`; a platform host supplies one that
 binds its own capabilities and credentials) and keeps hydrated revisions
 in a bounded cache (`EngineBuilder::hydrated_capacity`, default 256). No
 resolver call and no registry: step 1's `AgentResolver` is gone. A
-definition the Engine cannot hydrate is refused at publication, and on
-another executor leaves the build missing, which suspends as before.
+definition the Engine cannot hydrate is refused at publication.
 Code-registered builds are unchanged and always win.
 
 Gate (`cargo bench -p everruns --bench definitions`, 3 000 sessions per
@@ -1002,6 +1001,115 @@ If step 1's gate can't be met, the plan stops there and we decide between
 fixing the Engine further or keeping funout's own turn driver inside cells
 (losing the shared-code benefit). That decision is made on measured
 numbers, not before.
+
+### Corrections after the architecture review (2026-11-09)
+
+A review of the merged steps 1 to 3 against the code, not the plan, found
+the following. All are fixed and tested; what an authority must honor is
+in the conformance scenario `hosting::conformance::agent_definitions`,
+which runs against the memory and SQLite authorities.
+
+- **A session's binding does not depend on its revision.** A session moves
+  between revisions while its Environment, metadata and bound Harness are
+  fixed at creation. The Environment used to be derived from the revision's
+  content (does the agent have files?) and the Harness from the package
+  mapping inside the authority, so an edit that added an agent's first file,
+  or a hydrator whose Harness differed from the package's, suspended the
+  agent's sessions as unavailable configuration. Now every defined agent's
+  sessions run in one Engine-owned Environment
+  (`EngineBuilder::definition_environment`; a cell installs its filesystem
+  there) and bind no Harness: the revision names it. The workspace also used
+  to belong to the hydrated Agent value, so a session got a new, empty one
+  on every revision and every cache eviction.
+- **One rule for moving a session** (`hosting::definitions::advance`): only
+  between turns, only the revision. The authority no longer parses a
+  package in the claim transaction.
+- **An executor that cannot build a revision hands the session back**
+  unsuspended, like a missing protocol capability, instead of suspending
+  it for every executor.
+- **A resolved revision is held for the whole operation.** The Engine used
+  to check the cache and look the build up again; with more agents than
+  cache slots a concurrent activation could drop the revision in between,
+  and the miss suspended the session.
+- **Definitions are their own interface** (`AgentDefinitions`), reached
+  through a required `SessionHosting::definitions`. As defaulted methods, a
+  profile that wraps another silently answered "no definitions".
+
+- **A team member follows its lead.** `AgentBuild` owns the member key;
+  the Engine and the authorities resolve a member through its lead, so a
+  member session moves to the lead's current revision. Before, the
+  authorities looked a member up under its own key, which no definition
+  has, and members stayed on their first revision.
+- **One typed table says when an event must be stored**
+  (`CommitClass` in the host emitter: live, barrier, held, behind), keyed by
+  the protocol's event type constants, with a test over every event type.
+  An event type nobody classified is a barrier. The emitter contract now
+  says that a returned event without a sequence is a receipt, not a log
+  entry, and that an emitter which returns before storing must implement
+  `wait_stored`. Checked while doing this: no caller keeps the id or
+  sequence of a deferred event, and both worker emitters store before
+  `emit` returns.
+
+Left for step 4, where they are needed anyway: merging the four host
+service bundles into the one the platform host fills. Checked and dropped:
+moving the Engine out of the facade crate. The worker and the server
+already depend on the facade, so step 4 needs no crate move.
+
+### Cell storage: alternatives (2026-11-09)
+
+The design takes funout's storage as given: an in-memory state machine
+replicated by Raft (`openraft` pinned to 0.9, the maintenance line; 0.10
+has been in alpha for a long time), a hand-written write-ahead log, Raft
+messages as JSON over HTTP, and S3 for history. That means owning a storage
+engine. Its speed is measured; its correctness is not: funout has no
+formal model, no deterministic simulation and no fault-injection history
+yet, and torn writes, fsync semantics, snapshot installs, membership
+changes and on-disk format upgrades are where such engines lose data. The
+alternatives were never written down. They are below, against what the
+session authority actually needs:
+
+1. one atomic write per step across a session's control record, inbox,
+   journal tail and wake (the claim, fence and append in one domain);
+2. group commit across sessions, because waited commits are the budget
+   (5 per turn after step 1; at 1 250 turns/s that is about 6 000 waited
+   commits a second for the whole data plane);
+3. failover without minutes of stalled sessions;
+4. a whole data plane on one machine for tests, with no cloud account;
+5. something a self-hosting reader can run.
+
+| Option | Atomic step | Commit, three zones | Failover | What we own | Self-hosted |
+| --- | --- | --- | --- | --- | --- |
+| A. Own Raft and log (funout, the plan) | Yes, by construction | 1.4 ms on one VM; a few ms expected across zones | About a second | The storage engine: log, snapshots, membership, upgrades, and proving them | Three stateful pods per cell |
+| B. PostgreSQL per cell | Yes, a transaction | A few ms with a synchronous standby, group commit built in | Typically 20 to 35 s on a managed Multi-AZ cluster | A schema and a `SessionHosting` profile; SQLite already is one | Everyone already runs it |
+| C. One writer on object storage (conditional writes, batched) | Yes, one object per group commit | Single-digit ms only on S3 Express One Zone, which is one zone; standard S3 is tens of ms | Seconds: any node takes over by winning a conditional write | A log format and a fencing rule, no replicas and no disks | Depends on the object store's conditional writes and latency |
+| D. An existing replicated store (FoundationDB, TiKV) | Yes | A few ms | Seconds | Nothing in storage; a second database to operate, with limits to design around (FoundationDB: 10 MB and 5 s per transaction, 100 KB per value) | Heavy |
+
+Ruled out: etcd (sized for configuration, not this write rate), a log
+broker (appends only, no fenced multi-key step), and JetStream (one Raft
+group per stream does not fit one stream per session, and its KV has no
+multi-key transaction).
+
+What this says:
+
+- **The choice sits behind one interface.** A cell is an Engine
+  `SessionHosting` profile. Steps 4 (workers on the Engine) and the
+  control plane protocol do not depend on which option stores a cell.
+- **A is the fastest and the one with the most unproven correctness.** C
+  and D do not beat it on anything this workload needs: C trades zones for
+  latency, D trades our storage engine for someone else's operations.
+- **B looks simpler and is not.** PostgreSQL does not replicate itself, so
+  every cell would need a managed cluster or an operator. Capacity then
+  moves in whole database clusters that take many minutes to create and
+  are billed idle, and failover takes tens of seconds. It also keeps a
+  database at the center of each cell, which cells exist to remove.
+
+**Decision (2026-11-09): A, own Raft storage, stays.** The point of cells
+is to be fast and to scale by adding cells, with no central database, and
+none of the alternatives keeps that. What the comparison changes is the
+order of the cell port (step 5): the proof of the storage engine comes
+first. The formal models, the deterministic simulation and the kill and
+partition tests listed under Testing are its first deliverables, before
+any feature work on cells.
 
 ## Limits and risks
 

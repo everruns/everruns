@@ -672,11 +672,8 @@ impl SessionHosting for SqliteHosting {
     fn process_scheduler(&self) -> bool {
         true
     }
-    async fn publish_definition(&self, definition: &super::AgentDefinition) -> Result<()> {
-        self.publish(definition)
-    }
-    async fn definition(&self, build: &AgentBuild) -> Result<Option<super::AgentDefinition>> {
-        self.stored_definition(build)
+    fn definitions(&self) -> Option<&dyn super::AgentDefinitions> {
+        Some(self)
     }
     async fn prepare_activation(
         &self,

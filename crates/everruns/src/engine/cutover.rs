@@ -303,7 +303,7 @@ impl Engine {
                 sessions.remove(&session);
             }
         }
-        self.cache_hosted(session, binding)?;
+        self.cache_hosted(session, binding, &registration)?;
         Ok(report)
     }
 

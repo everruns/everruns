@@ -715,3 +715,124 @@ pub async fn retained_build_recovery(profile: impl SessionHosting + Clone) {
     restored.activate(fresh.session_id()).await.unwrap();
     assert_eq!(admission.wait().await.unwrap().response, "new behavior");
 }
+
+/// Qualify an authority that keeps agent definitions
+/// ([`SessionHosting::definitions`]): revisions are immutable and outlive
+/// the process that published them, a session moves to its agent's current
+/// revision at its next turn with the Environment and metadata it was
+/// created with, and an executor that cannot build a revision leaves the
+/// session runnable for one that can.
+pub async fn agent_definitions(profile: impl SessionHosting + Clone) {
+    use super::{AgentDefinition, Hydrated};
+    let agent = format!("defined-{}", uuid::Uuid::new_v4().simple());
+    let revision = |revision: &str, reply: &str| AgentDefinition {
+        build: AgentBuild::new(agent.clone(), revision),
+        package: json!({ "name": agent, "instructions": reply }),
+    };
+    // Offline hydration: the instructions become the simulated reply.
+    fn replying(definition: &AgentDefinition) -> super::spi::error::Result<Hydrated> {
+        let config = |error: String| super::spi::error::AgentLoopError::config(error);
+        let package = definition.agent_package()?;
+        let agent = package
+            .builder()
+            .map_err(|error| config(error.to_string()))?
+            .model(Model::simulated(package.manifest().instructions.clone()))
+            .build()
+            .map_err(|error| config(error.to_string()))?;
+        Ok(Hydrated {
+            agent,
+            harness: None,
+        })
+    }
+    let engine = || {
+        Engine::builder()
+            .hosting(profile.clone())
+            .hydrator(replying)
+            .build()
+    };
+    let definitions = profile
+        .definitions()
+        .expect("the authority keeps agent definitions");
+    let r1 = revision("r1", "one");
+    let id = SessionId::new();
+    {
+        let first = engine();
+        let session = first.create_from_definition(id, &r1).await.unwrap();
+        assert_eq!(session.send_and_wait("Hi").await.unwrap().response, "one");
+    }
+    let created = profile.status(id).await.unwrap().binding;
+    assert_eq!(created.harness, None);
+
+    // Another process: nothing registered, the authority holds the revision.
+    let other = engine();
+    let session = other.resume(id).await.unwrap();
+    assert_eq!(
+        session.send_and_wait("Again").await.unwrap().response,
+        "one"
+    );
+
+    // An edit is a new revision. The session runs it from its next turn,
+    // otherwise unchanged.
+    let r2 = revision("r2", "two");
+    other.publish_definition(&r2).await.unwrap();
+    assert_eq!(session.send_and_wait("Now").await.unwrap().response, "two");
+    let moved = profile.status(id).await.unwrap();
+    assert!(!moved.suspended);
+    assert_eq!(
+        moved.binding,
+        SessionBinding {
+            behavior: r2.build.clone(),
+            ..created
+        }
+    );
+
+    // Revisions are immutable; the same content again is fine, and an
+    // older revision stays readable for the turns that started on it.
+    definitions.publish_definition(&r2).await.unwrap();
+    assert!(
+        definitions
+            .publish_definition(&revision("r2", "changed"))
+            .await
+            .is_err()
+    );
+    assert_eq!(definitions.definition(&r1.build).await.unwrap(), Some(r1));
+    assert_eq!(
+        definitions
+            .definition(&AgentBuild::new(agent.clone(), "r9"))
+            .await
+            .unwrap(),
+        None
+    );
+
+    // An executor that cannot build the revision accepts input, hands the
+    // session back unsuspended, and a capable executor runs the turn.
+    let limited = Engine::builder()
+        .hosting(manual::Manual(profile.clone()))
+        .hydrator(
+            |_: &AgentDefinition| -> super::spi::error::Result<Hydrated> {
+                Err(super::spi::error::AgentLoopError::config(
+                    "capability not installed",
+                ))
+            },
+        )
+        .build();
+    let message = crate::MessageId::new();
+    limited
+        .resume(id)
+        .await
+        .unwrap()
+        .send_with_id(message, "For another executor")
+        .await
+        .unwrap();
+    let refused = limited.activate(id).await.unwrap_err().to_string();
+    assert!(refused.contains("cannot build"), "{refused}");
+    let status = profile.status(id).await.unwrap();
+    assert!(!status.suspended && status.runnable, "{status:?}");
+    let capable = Engine::builder()
+        .hosting(manual::Manual(profile.clone()))
+        .hydrator(replying)
+        .build();
+    capable.activate(id).await.unwrap();
+    let status = profile.status(id).await.unwrap();
+    assert!(!status.suspended && !status.runnable, "{status:?}");
+}

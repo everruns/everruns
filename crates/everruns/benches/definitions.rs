@@ -42,6 +42,9 @@ const COLD_TURN_OVERHEAD_SHARE: f64 = 0.25;
 /// Extra time per turn of a cached revision, as a share of a registered
 /// agent's turn. The expected value is a lookup; the margin is noise.
 const WARM_TURN_OVERHEAD_SHARE: f64 = 0.03;
+/// The smoke runs 100 unoptimized turns per round, where run-to-run noise
+/// alone reaches 3%; it only catches a warm path that stopped being a lookup.
+const WARM_TURN_OVERHEAD_SHARE_SMOKE: f64 = 0.10;
 
 fn args() -> (bool, usize) {
     let mut smoke = true;
@@ -214,12 +217,17 @@ fn main() {
     } else {
         COLD_HYDRATION_BUDGET
     };
+    let warm_share = if smoke {
+        WARM_TURN_OVERHEAD_SHARE_SMOKE
+    } else {
+        WARM_TURN_OVERHEAD_SHARE
+    };
     assert!(
         hydration <= hydration_budget,
         "hydration {hydration:?}, budget {hydration_budget:?}"
     );
     assert!(
-        warm_overhead.as_secs_f64() <= registered.as_secs_f64() * WARM_TURN_OVERHEAD_SHARE,
+        warm_overhead.as_secs_f64() <= registered.as_secs_f64() * warm_share,
         "warm overhead {warm_overhead:?} over a {registered:?} turn"
     );
     assert!(

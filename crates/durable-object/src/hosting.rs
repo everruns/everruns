@@ -32,6 +32,10 @@ impl ObjectHosting {
 
 #[async_trait]
 impl SessionHosting for ObjectHosting {
+    // The object authority hosts code-registered builds only.
+    fn definitions(&self) -> Option<&dyn everruns::hosting::AgentDefinitions> {
+        None
+    }
     async fn command(
         &self,
         session: SessionId,
