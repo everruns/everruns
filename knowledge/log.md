@@ -7,6 +7,9 @@
   protocol models for moves, spend grants and the feed are checked by TLC in
   CI; the move model found a hole in placement generations, now fixed in the
   design ([models](execution/data-plane-v2/models.md)).
+- `cancel_task` returns the task as read after the executor's wind-down,
+  with the same `task` snapshot and message tail as `get_task`
+  ([session tasks](runtime-resources/session-tasks.md#state-machine)).
 
 ## 2026-11-08
 
