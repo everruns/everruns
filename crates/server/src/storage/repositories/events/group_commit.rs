@@ -31,6 +31,11 @@
 //! - Inside a command transaction the append keeps running on that
 //!   transaction (`storage::transaction`), never on a lane.
 //! - `EVENT_GROUP_COMMIT=off` turns grouping off (bench comparisons).
+//! - The statement returns only what the database assigned (id, sequence,
+//!   timestamp as stored, created_at). The rows handed back are built from
+//!   the append's own inputs: echoing every payload back cost the database
+//!   the JSON output and the server its parse, for data it already held
+//!   (an `llm.generation` carries the whole model request).
 
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
@@ -42,6 +47,8 @@ use uuid::Uuid;
 use super::rows::{CreateEventRow, EventRow};
 use super::{ActorLeaseFenceRejected, MAX_EVENT_BATCH};
 use crate::storage::repositories::Database;
+use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::EventId;
 use everruns_contracts::typed_id::SessionId;
 use everruns_server_macros::sql;
 
@@ -215,8 +222,9 @@ async fn commit_group(db: &Database, group: Vec<Append>) {
             let mut unsequenced = Vec::new();
             for (append, verdict) in group.into_iter().zip(verdicts) {
                 match verdict {
-                    Verdict::Stored(rows) => {
-                        let _ = append.reply.send(Ok(rows));
+                    Verdict::Stored(keys) => {
+                        let rows = append.inputs.into_iter().zip(keys).map(stored_row);
+                        let _ = append.reply.send(Ok(rows.collect()));
                     }
                     Verdict::Lost(session) => {
                         let _ = append.reply.send(Err(append.check.rejected(session)));
@@ -251,10 +259,35 @@ async fn commit_group(db: &Database, group: Vec<Append>) {
     }
 }
 
+/// What the database assigned to one stored event.
+struct StoredKey {
+    id: Uuid,
+    sequence: i32,
+    ts: DateTime<Utc>,
+    created_at: DateTime<Utc>,
+}
+
+/// The stored event: its input with what the database assigned. `ts` is the
+/// stored value, at the database's microsecond precision, as a read returns it.
+fn stored_row((input, key): (CreateEventRow, StoredKey)) -> EventRow {
+    EventRow {
+        id: EventId::from_uuid(key.id),
+        session_id: input.session_id,
+        sequence: key.sequence,
+        event_type: input.event_type,
+        ts: key.ts,
+        context: input.context,
+        data: input.data,
+        metadata: input.metadata,
+        tags: input.tags,
+        created_at: key.created_at,
+    }
+}
+
 /// What became of one append of a group.
 enum Verdict {
-    /// Stored; its rows, in input order.
-    Stored(Vec<EventRow>),
+    /// Stored; what the database assigned to each event, in input order.
+    Stored(Vec<StoredKey>),
     /// Refused: this session's lease (or detached call) is not the
     /// append's. Nothing of it was written.
     Lost(Uuid),
@@ -432,10 +465,10 @@ async fn store_in_one_statement(
             INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
             SELECT session_id, sequence, event_type, ts, context, data, metadata, tags
             FROM planned ORDER BY ord
-            RETURNING {EventRow}
+            RETURNING id, session_id, sequence, ts, created_at
         )
         SELECT v.idx AS append_idx, v.sequenced AS append_sequenced, v.lost AS append_lost,
-               ins.*
+               ins.id, ins.sequence, ins.ts, ins.created_at
         FROM verdict v
         LEFT JOIN planned p ON p.idx = v.idx
         LEFT JOIN ins ON ins.session_id = p.session_id AND ins.sequence = p.sequence
@@ -460,7 +493,7 @@ async fn store_in_one_statement(
 /// One verdict per append from [`store_in_one_statement`]'s rows: one row
 /// per stored event, and one bare row per append that stored nothing.
 fn read_verdicts(group: &[Append], rows: Vec<sqlx::postgres::PgRow>) -> Result<Vec<Verdict>> {
-    use sqlx::{FromRow, Row};
+    use sqlx::Row;
     let mut verdicts: Vec<Option<Verdict>> = (0..group.len()).map(|_| None).collect();
     for row in rows {
         let index: i32 = row.try_get("append_idx")?;
@@ -474,8 +507,13 @@ fn read_verdicts(group: &[Append], rows: Vec<sqlx::postgres::PgRow>) -> Result<V
         let id: Option<Uuid> = row.try_get("id")?;
         let verdict = &mut verdicts[index];
         match (id, sequenced, lost) {
-            (Some(_), _, _) => {
-                let event = EventRow::from_row(&row)?;
+            (Some(id), _, _) => {
+                let event = StoredKey {
+                    id,
+                    sequence: row.try_get("sequence")?,
+                    ts: row.try_get("ts")?,
+                    created_at: row.try_get("created_at")?,
+                };
                 match verdict {
                     Some(Verdict::Stored(rows)) => rows.push(event),
                     _ => *verdict = Some(Verdict::Stored(vec![event])),
@@ -624,6 +662,55 @@ mod tests {
             types(&db, c).await,
             ["session.created"],
             "the stale append wrote nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stored_append_answers_with_the_rows_a_read_returns() {
+        let db = StorageBackend::test_database();
+        let (a, fa) = leased(&db, "w1").await;
+        let mut input = row(a, "llm.generation");
+        input.context = serde_json::json!({"turn_id": "turn_1"});
+        input.data = serde_json::json!({"messages": [{"role": "user", "content": "hi"}]});
+        input.metadata = Some(serde_json::json!({"source": "test"}));
+        input.tags = Some(vec!["t".to_string()]);
+        let (ga, ra) = append(vec![input], "w1", fa);
+        commit_group(db.database(), vec![ga]).await;
+
+        let stored = ra.await.unwrap().unwrap().remove(0);
+        let read: EventRow = sqlx::query_as(sql!("SELECT {EventRow} FROM events WHERE id = $1"))
+            .bind(stored.id)
+            .fetch_one(db.database().pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value((
+                &stored.id,
+                stored.session_id,
+                stored.sequence,
+                &stored.event_type,
+                stored.ts,
+                &stored.context,
+                &stored.data,
+                &stored.metadata,
+                &stored.tags,
+                stored.created_at
+            ))
+            .unwrap(),
+            serde_json::to_value((
+                &read.id,
+                read.session_id,
+                read.sequence,
+                &read.event_type,
+                read.ts,
+                &read.context,
+                &read.data,
+                &read.metadata,
+                &read.tags,
+                read.created_at
+            ))
+            .unwrap(),
+            "the answer is built from the input, without reading the payload back"
         );
     }
 
