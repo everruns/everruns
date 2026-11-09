@@ -150,9 +150,12 @@ store.cleanup(10)?;
 `baseline.jsonl` holds one summary line per scenario from a full run on GitHub's
 `ubuntu-latest` runners (moniker `github-ubuntu-latest`). The weekly
 `durable-bench.yml` workflow compares each run with it and fails when a
-scenario's throughput drops by more than 30%. To refresh it, download the
-`durable-bench-memory` and `durable-bench-postgres` artifacts of a trusted run
-on `main` and concatenate their `summary.jsonl` files into this file.
+scenario's throughput drops by more than 30%. The engine lanes run three times
+and the gate compares the run with the median throughput, so one noisy sample
+does not fail it. To refresh the baseline, download the `durable-bench-memory`
+and `durable-bench-postgres` artifacts of a trusted run on `main` and
+concatenate their `median.jsonl` files into this file. Use CI runner numbers,
+never local ones: the gate only compares rows with the runner's moniker.
 
 The `realistic_*` scenarios simulate activity latency, so their throughput
 measures the simulated work rather than the engine.
