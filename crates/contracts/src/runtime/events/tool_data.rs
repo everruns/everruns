@@ -833,6 +833,25 @@ mod executed_arguments_tests {
     }
 
     #[test]
+    fn cookie_previews_scrub_before_truncation_without_mutating_execution() {
+        use crate::tool_approval_types::TOOL_ARGUMENTS_PREVIEW_BYTES;
+        let cookie = "s".repeat(TOOL_ARGUMENTS_PREVIEW_BYTES * 2);
+        let command = format!("curl -H 'Cookie: sid={cookie}; csrf=short' https://example.com");
+        let executed = json!({ "cmd": command, "headers": { "Cookie": "sid=short" } });
+        let original = executed.clone();
+        let data = completed().with_executed_arguments(&json!({}), &executed);
+        assert_eq!(executed, original);
+        assert!(!data.executed_arguments_truncated);
+        assert_eq!(
+            data.executed_arguments,
+            Some(json!({
+                "cmd": "curl -H 'Cookie: [REDACTED]' https://example.com",
+                "headers": { "Cookie": "[REDACTED]" }
+            }))
+        );
+    }
+
+    #[test]
     fn secret_free_rewrite_is_recorded_verbatim() {
         let authored = json!({ "url": "https://example.com" });
         let executed = json!({ "url": "https://example.com", "timeout_ms": 500, "tag": "a@b" });

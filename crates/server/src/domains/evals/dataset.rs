@@ -436,6 +436,26 @@ mod tests {
     }
 
     #[test]
+    fn exports_scrub_cookies_inside_free_text() {
+        let mut value = json!({
+            "messages": [{ "text": "Set-Cookie: sid=short; HttpOnly\nSafe text" }],
+            "arguments": "curl -H 'Cookie: sid=abc; csrf=def' x",
+            "nested": ["export COOKIE='sid=abc; csrf=def'"],
+            "headers": { "Cookie": "sid=abc", "Set-Cookie": "sid=abc" },
+        });
+        sanitize_value(&mut value, false);
+        assert_eq!(
+            value,
+            json!({
+                "messages": [{ "text": "Set-Cookie: [REDACTED]\nSafe text" }],
+                "arguments": "curl -H 'Cookie: [REDACTED]' x",
+                "nested": ["export COOKIE='[REDACTED]'"],
+                "headers": { "Cookie": "[REDACTED]", "Set-Cookie": "[REDACTED]" },
+            })
+        );
+    }
+
+    #[test]
     fn export_and_executed_arguments_redact_the_same_keys() {
         // One credential-key list (EVE-1216): the export sanitizer and the
         // engine's `tool.completed` executed arguments must agree key by key.
