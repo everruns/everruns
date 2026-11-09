@@ -947,7 +947,13 @@ async fn live_deltas_reach_the_host_fenced_to_epoch_and_stream() {
 /// An authority that hands every activation a newer agent build, as one that
 /// moved the session to a new revision would.
 #[derive(Clone)]
-struct Rebind<H>(H, Arc<std::sync::Mutex<Option<AgentBuild>>>);
+/// A hosting profile whose activations run another agent build when one is
+/// set, and forward the trusted host extensions it holds.
+struct Rebind<H>(
+    H,
+    Arc<std::sync::Mutex<Option<AgentBuild>>>,
+    everruns_core::host::HostExtensions,
+);
 #[async_trait::async_trait]
 impl<H: SessionHosting> SessionHosting for Rebind<H> {
     async fn command(
@@ -1004,6 +1010,19 @@ impl<H: SessionHosting> SessionHosting for Rebind<H> {
         }
         Ok(activation)
     }
+    async fn prepare_activation(
+        &self,
+        engine: &Engine,
+        session: SessionId,
+        environment: &everruns::Environment,
+        backends: everruns_core::host::HostBackends,
+    ) -> everruns_contracts::error::Result<everruns_core::host::HostBackends> {
+        let backends = self
+            .0
+            .prepare_activation(engine, session, environment, backends)
+            .await?;
+        Ok(backends.with_extensions(self.2.clone()))
+    }
 }
 
 /// Data plane v2 step 1: a turn finishes with the agent build it started
@@ -1017,6 +1036,7 @@ async fn an_unfinished_turn_never_resumes_under_another_agent_build() {
         .hosting(Rebind(
             profile.clone(),
             Arc::new(std::sync::Mutex::new(Some(newer.clone()))),
+            Default::default(),
         ))
         .register(build(), agent())
         .register(newer, agent())
@@ -1065,7 +1085,11 @@ async fn a_new_turn_runs_the_build_the_authority_moved_the_session_to() {
     let newer = AgentBuild::new("assistant", "test-v2");
     let moved = Arc::new(std::sync::Mutex::new(None));
     let engine = Engine::builder()
-        .hosting(Rebind(MemoryHosting::default(), moved.clone()))
+        .hosting(Rebind(
+            MemoryHosting::default(),
+            moved.clone(),
+            Default::default(),
+        ))
         .register(build(), agent())
         .register(
             newer.clone(),
@@ -1264,6 +1288,59 @@ async fn a_model_call_is_in_the_log_before_it_is_dispatched() {
             .iter()
             .any(|event| event.event_type() == "reason.started"),
         "dispatched before its reason.started was stored: {:?}",
+        events.iter().map(|e| e.event_type()).collect::<Vec<_>>()
+    );
+}
+
+struct Exhausted;
+#[async_trait::async_trait]
+impl everruns_core::tool_execution::BudgetChecker for Exhausted {
+    async fn check_budgets(
+        &self,
+        _session_id: &str,
+    ) -> everruns_contracts::error::Result<everruns_contracts::runtime::budget::BudgetToolResponse>
+    {
+        Ok(everruns_contracts::runtime::budget::BudgetToolResponse {
+            status: "exhausted".into(),
+            budgets: Vec::new(),
+            hint: None,
+        })
+    }
+}
+
+/// Data plane v2 step 2: a trusted host forwards platform services to the
+/// turn through its activation hook. Its budget authority reaches the gate
+/// before every model call, so an exhausted budget ends the turn without one.
+#[tokio::test]
+async fn a_trusted_hosts_budget_authority_stops_a_turn_before_the_model_call() {
+    let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut extensions = everruns_core::host::HostExtensions::default();
+    extensions.authorities.budget = Some(Arc::new(|_| {
+        Some(Arc::new(Exhausted) as Arc<dyn everruns_core::tool_execution::BudgetChecker>)
+    }));
+    let engine = engine(
+        Rebind(MemoryHosting::default(), Arc::default(), extensions),
+        Agent::builder()
+            .instructions("Answer.")
+            .model(Model::simulated_with_config(
+                everruns::LlmSimConfig::fixed("spent").with_message_capture(calls.clone()),
+            ))
+            .build()
+            .unwrap(),
+    );
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    let outcome = session.send("hello").await.unwrap().wait().await.unwrap();
+    assert!(!outcome.success, "{outcome:?}");
+    assert!(calls.lock().unwrap().is_empty(), "no model call");
+    let events = session.events_after(0).await.unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type() == "budget.exhausted"),
+        "{:?}",
         events.iter().map(|e| e.event_type()).collect::<Vec<_>>()
     );
 }

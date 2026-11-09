@@ -478,31 +478,17 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             &snapshot,
             &self.adapters.capability_registry(),
         );
-        if configs.resolved_capability_configs.iter().any(|c| {
-            c.capability_id() == "knowledge"
-                && c.config_value()
-                    .get("automatic")
-                    .and_then(serde_json::Value::as_bool)
-                    == Some(true)
-        }) && let Some(service) = self.adapters.knowledge_runtime(org_id)
+        if crate::core::host::automatic_knowledge(&configs.resolved_capability_configs)
+            && let Some(service) = self.adapters.knowledge_runtime(org_id)
         {
-            let query = messages
-                .iter()
-                .rev()
-                .find(|m| m.role == crate::core::RuntimeMessageRole::User)
-                .and_then(|m| m.text())
-                .unwrap_or("")
-                .to_string();
-            match service
-                .automatic_context(session_id, input_message_id, query)
-                .await
-            {
-                Ok(Some(evidence)) => messages.push(crate::core::RuntimeMessage::user(evidence)),
-                Ok(None) => {}
-                Err(_) => {
-                    tracing::warn!(session_id=%session_id,"Automatic Knowledge retrieval unavailable; file access remains available")
-                }
-            }
+            crate::core::host::add_automatic_knowledge(
+                service.as_ref(),
+                &configs.resolved_capability_configs,
+                session_id,
+                input_message_id,
+                &mut messages,
+            )
+            .await;
         }
         Ok(ResolvedTurnInputs {
             snapshot,

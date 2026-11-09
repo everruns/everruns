@@ -10,7 +10,7 @@ tags:
 
 # Running platform sessions on the Everruns Engine
 
-Status: approved 2026-11-09; implementation in progress. Part of [design.md](design.md).
+Status: approved 2026-11-09; steps 1 and 2 implemented (see design.md "Step 2 measurements"), step 3 next. Part of [design.md](design.md).
 
 ## Question
 

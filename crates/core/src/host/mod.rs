@@ -81,6 +81,7 @@ pub mod session_actor;
 mod session_file_system_factory;
 pub mod session_services;
 mod thread_cpu;
+mod trusted_extensions;
 mod turn_backend;
 mod turn_completion_check;
 mod turn_loop;
@@ -155,6 +156,10 @@ pub use file_store_decorators::{
 #[cfg(feature = "direct-egress")]
 pub use org_egress_allowlist::{
     ORG_EGRESS_ALLOWLIST_CACHE_TTL, install_runtime_org_egress_allowlist,
+};
+pub use trusted_extensions::{
+    AuthorityExtensions, CompositionExtensions, HookExtensions, HostExtensions, PerAgent, PerInput,
+    StoreExtensions, add_automatic_knowledge, automatic_knowledge,
 };
 #[cfg(feature = "direct-egress")]
 pub use web_bot_auth::WebBotAuth;

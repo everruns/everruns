@@ -499,6 +499,19 @@ impl InProcessRuntimeBuilder {
             Some(backends) => backends,
             None => HostBackends::in_memory(),
         };
+        for capability in &backends.extensions.composition.replaced_capabilities {
+            if !self
+                .host_composition
+                .is_capability_registered(capability.id())
+            {
+                return Err(AgentLoopError::config(format!(
+                    "host replaces capability '{}', which this runtime does not have",
+                    capability.id()
+                )));
+            }
+            self.host_composition
+                .register_capability_overriding(capability.clone());
+        }
         let mut file_store = resolve_session_file_system(
             &self.host_composition,
             self.session_file_system_factory_context.clone(),
@@ -628,6 +641,7 @@ impl InProcessRuntimeBuilder {
             None => (None, None),
         };
 
+        let extensions = backends.extensions;
         let seeded_session_ids = self.sessions.iter().map(|session| session.id).collect();
         let runtime = InProcessRuntime {
             host_composition: Arc::new(self.host_composition),
@@ -668,7 +682,11 @@ impl InProcessRuntimeBuilder {
                 .unwrap_or_else(|| Arc::new(crate::host::McpDiscoveryCache::new())),
             plugin_warnings: self.plugin_warnings,
             parked_turns: ParkedTurns::default(),
-            waits_on_person: self.waits_on_person,
+            waits_on_person: either_waits(
+                self.waits_on_person,
+                extensions.hooks.waits_on_person.clone(),
+            ),
+            extensions,
         };
         if self.initialize_session {
             for session in &self.sessions {
@@ -676,6 +694,14 @@ impl InProcessRuntimeBuilder {
             }
         }
         Ok(runtime)
+    }
+}
+
+/// A call waits on a person when either predicate says so.
+fn either_waits(a: Option<WaitsOnPerson>, b: Option<WaitsOnPerson>) -> Option<WaitsOnPerson> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(Arc::new(move |call| a(call) || b(call))),
+        (a, b) => a.or(b),
     }
 }
 
@@ -740,6 +766,8 @@ pub struct InProcessRuntime {
     parked_turns: ParkedTurns,
     /// See [`InProcessRuntimeBuilder::waits_on_person`].
     waits_on_person: Option<WaitsOnPerson>,
+    /// See [`HostBackends::extensions`](crate::host::HostBackends::extensions).
+    extensions: crate::host::HostExtensions,
 }
 
 impl InProcessRuntime {
@@ -774,6 +802,17 @@ impl InProcessRuntime {
         self.event_emitter.clone()
     }
 
+    /// The platform services a trusted host forwarded to this runtime.
+    pub fn host_extensions(&self) -> &crate::host::HostExtensions {
+        &self.extensions
+    }
+
+    /// Tool calls that wait on a person before they run, so resume may run
+    /// them again: the runtime's own predicate and the host's.
+    pub fn waits_on_person_predicate(&self) -> Option<WaitsOnPerson> {
+        self.waits_on_person.clone()
+    }
+
     /// Coherent canonical event log backing this runtime.
     pub fn event_log(&self) -> Arc<dyn EventLog> {
         self.event_log.clone()
@@ -787,7 +826,11 @@ impl InProcessRuntime {
         // tool result rather than answered here — the runtime cannot block a
         // turn on a browser interaction. See `RelayUrlElicitations`.
         Arc::new(crate::mcp::McpClient::with_url_elicitation(
-            self.host_composition.egress_service(),
+            self.extensions
+                .composition
+                .egress
+                .clone()
+                .unwrap_or_else(|| self.host_composition.egress_service()),
             self.mcp_auth_provider.clone(),
             Arc::new(crate::mcp::RelayUrlElicitations),
         ))
@@ -1441,15 +1484,33 @@ impl RuntimeHostAdapter for InProcessRuntime {
     }
 
     fn decisions(&self) -> Option<Arc<dyn crate::DecisionsService>> {
-        Some(self.host_composition.decisions())
+        Some(
+            self.extensions
+                .composition
+                .decisions
+                .clone()
+                .unwrap_or_else(|| self.host_composition.decisions()),
+        )
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn crate::UtilityLlmService>> {
-        Some(self.host_composition.utility_llm_service())
+        Some(
+            self.extensions
+                .composition
+                .utility_llm
+                .clone()
+                .unwrap_or_else(|| self.host_composition.utility_llm_service()),
+        )
     }
 
     fn egress_service(&self) -> Option<Arc<dyn crate::EgressService>> {
-        Some(self.host_composition.egress_service())
+        Some(
+            self.extensions
+                .composition
+                .egress
+                .clone()
+                .unwrap_or_else(|| self.host_composition.egress_service()),
+        )
     }
 
     fn provider_retry_config(&self) -> Option<everruns_contracts::llm_retry::LlmRetryConfig> {
@@ -1476,8 +1537,128 @@ impl RuntimeHostAdapter for InProcessRuntime {
             .and_then(crate::tool_context::ReasoningEffortHandle::get)
     }
 
-    fn budget_checker(&self, _: i64, _: Option<AgentId>) -> Option<Arc<dyn BudgetChecker>> {
-        self.budget_checker.clone()
+    fn budget_checker(&self, _: i64, agent: Option<AgentId>) -> Option<Arc<dyn BudgetChecker>> {
+        match &self.extensions.authorities.budget {
+            Some(budget) => budget(agent),
+            None => self.budget_checker.clone(),
+        }
+    }
+
+    fn payment_authority(
+        &self,
+        _: i64,
+        agent: Option<AgentId>,
+    ) -> Option<Arc<dyn crate::tool_execution::PaymentAuthority>> {
+        self.extensions
+            .authorities
+            .payment
+            .as_ref()
+            .and_then(|payment| payment(agent))
+    }
+
+    fn session_creation_authority(
+        &self,
+        _: i64,
+        _: SessionId,
+    ) -> Option<Arc<dyn crate::delegation_services::SessionCreationAuthority>> {
+        self.extensions.authorities.session_creation.clone()
+    }
+
+    fn outbound_tool_rate_limiter(
+        &self,
+        _: i64,
+    ) -> Option<Arc<dyn crate::tool_execution::OutboundToolRateLimiter>> {
+        self.extensions.authorities.outbound_rate_limiter.clone()
+    }
+
+    fn provider_credential_store(
+        &self,
+        _: i64,
+    ) -> Option<Arc<dyn crate::connection_services::ProviderCredentialStore>> {
+        self.extensions.stores.provider_credentials.clone()
+    }
+
+    fn leased_resource_store(
+        &self,
+        _: i64,
+    ) -> Option<Arc<dyn crate::session_services::LeasedResourceStore>> {
+        self.extensions.stores.leased_resources.clone()
+    }
+
+    fn durable_tool_result_store(
+        &self,
+    ) -> Option<Arc<dyn crate::durability::DurableToolResultStore>> {
+        self.extensions.stores.durable_tool_results.clone()
+    }
+
+    fn session_resource_registry(
+        &self,
+        _: i64,
+    ) -> Option<Arc<dyn crate::session_services::SessionResourceRegistry>> {
+        self.extensions.stores.session_resources.clone()
+    }
+
+    fn subagent_spawn_store(
+        &self,
+    ) -> Option<Arc<dyn crate::delegation_services::SubagentSpawnStore>> {
+        self.extensions.stores.subagent_spawns.clone()
+    }
+
+    fn image_resolver(&self, _: i64) -> Option<Arc<dyn crate::image_services::ImageResolver>> {
+        self.extensions.stores.images.clone()
+    }
+
+    fn file_resolver(&self, _: i64) -> Option<Arc<dyn crate::file_services::FileResolver>> {
+        self.extensions.stores.files.clone()
+    }
+
+    fn image_artifact_store(
+        &self,
+        _: i64,
+    ) -> Option<Arc<dyn crate::image_services::ImageArtifactStore>> {
+        self.extensions.stores.image_artifacts.clone()
+    }
+
+    fn agents_api_store(&self) -> Option<Arc<dyn crate::agents_api_store::AgentsApiStore>> {
+        self.extensions.stores.agents_api.clone()
+    }
+
+    fn hosted_mcp_resolver(
+        &self,
+        _: i64,
+        _: SessionId,
+        agent: Option<AgentId>,
+        input: MessageId,
+    ) -> Option<Arc<dyn everruns_contracts::hosted_mcp::HostedMcpResolver>> {
+        self.extensions
+            .hooks
+            .hosted_mcp
+            .as_ref()
+            .and_then(|resolve| resolve(agent, input))
+    }
+
+    async fn load_resolved_turn_for_execution(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        input_message_id: MessageId,
+    ) -> Result<ResolvedTurnInputs> {
+        let mut inputs = self.load_resolved_turn(org_id, session_id).await?;
+        if let Some(knowledge) = &self.extensions.hooks.knowledge {
+            let configs = crate::runtime_context::resolve_snapshot_capabilities(
+                &inputs.snapshot,
+                &self.capability_registry(),
+            );
+            crate::host::add_automatic_knowledge(
+                knowledge.as_ref(),
+                &configs.resolved_capability_configs,
+                session_id,
+                input_message_id,
+                &mut inputs.messages,
+            )
+            .await;
+        }
+        Ok(inputs)
     }
 }
 
