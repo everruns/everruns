@@ -1,6 +1,6 @@
 ---
 title: Meta
-description: Run Everruns agents on Muse Wonder and Muse Spark 1.3 through Meta Model API, including the discounted Contributor tier.
+description: Run Everruns agents on Muse Wonder, Muse Spark 1.3 and Muse Ember through Meta Model API, including the discounted Contributor tier.
 sidebar:
   label: Meta
 ---
@@ -36,6 +36,23 @@ takes the same requests, so switching is a model ID change.
 Muse Wonder has no Contributor tier on pay-as-you-go. Muse Wonder Full is only
 available inside Meta's Muse Code, not through the API.
 
+## Muse Ember
+
+Muse Ember (`muse-ember-1.0`) is Meta's smallest and cheapest Muse model, built
+for bounded, high-volume work: sub-agent tasks, tool calls, routing, and running
+one task across many files or records. It has the same 1,048,576-token context
+and inputs as Muse Spark, answers up to 524,288 tokens, and is the Meta driver's
+recommended small model. For hard single-shot coding or knowledge-heavy
+questions, Meta recommends Muse Spark or Muse Wonder instead.
+
+| Input tokens in the request | Input / cached input / output per million tokens |
+|---|---|
+| Up to 200K | $0.10 / $0.004 / $0.50 |
+| Over 200K | $0.30 / $0.012 / $1.50 |
+
+A request over 200K input tokens is billed entirely at the higher rates. Ember
+is Standard only: prompts and completions are not used to train Meta models.
+
 ## Muse Spark 1.3 tiers
 
 Muse Spark 1.3 is built for long-horizon coding and multi-step agentic work,
@@ -53,13 +70,22 @@ terms. The distinction is part of the model ID, so changing tiers is an explicit
 model selection rather than a hidden provider setting.
 
 The previous `muse-spark-1.2` and `muse-spark-1.2-contributor` IDs remain
-available with the same tiers and pricing.
+available with the same tiers and pricing, and so does the original
+`muse-spark-1.1` (Standard tier only).
+
+## Through OpenRouter and open weights
+
+The same Muse models are also reachable through [OpenRouter](/providers/openrouter/)
+as `meta/muse-ember`, `meta/muse-wonder`, `meta/muse-spark-1.3` and so on.
+Meta's open-weight models, Muse Spark Open (`meta/muse-spark-open`)
+and Muse Glimmer 30B (`meta/muse-glimmer-30b`), are not on Meta Model API; reach
+them through OpenRouter or any OpenAI-compatible host that serves them.
 
 ## Reasoning effort
 
 Every Muse model lets you pick a reasoning effort per agent or per message:
-Minimal, Low, Medium, High, Extra High and, on Muse Wonder and Muse Spark 1.3
-(both tiers), Max. Muse Spark 1.2 stops at Extra High. No Muse model accepts
+Minimal, Low, Medium, High, Extra High and, on Muse Wonder, Muse Ember and Muse
+Spark 1.3 (both tiers), Max. Muse Spark 1.1 and 1.2 stop at Extra High. No Muse model accepts
 `none`. Leave effort unset and Meta picks a level for the model.
 
 ## Links
@@ -67,5 +93,6 @@ Minimal, Low, Medium, High, Extra High and, on Muse Wonder and Muse Spark 1.3
 - [Muse Wonder model card](https://research.meta.ai/static/muse-wonder-model-card)
 
 - [Meta Model API documentation](https://dev.meta.ai/docs/overview/)
+- [Muse Ember model page](https://dev.meta.ai/docs/muse-ember)
 - [Muse Spark model page](https://developer.meta.com/ai/models/muse-spark/)
 - [Migrate between providers](/how-to/migrate-providers/)

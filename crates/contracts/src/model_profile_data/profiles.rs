@@ -531,8 +531,18 @@ static REGISTRY: &[ModelDescriptor] = &[
         ModelVendor::Microsoft,
         MICROSOFT_MAI,
     ),
+    // OpenRouter lists Ember and Wonder without the version suffix.
     md(
-        &["muse-wonder-1.0", "meta/muse-wonder-1.0"],
+        &["muse-ember-1.0", "meta/muse-ember-1.0", "meta/muse-ember"],
+        ModelVendor::Meta,
+        META_MUSE,
+    ),
+    md(
+        &[
+            "muse-wonder-1.0",
+            "meta/muse-wonder-1.0",
+            "meta/muse-wonder",
+        ],
         ModelVendor::Meta,
         META_MUSE,
     ),
@@ -561,6 +571,21 @@ static REGISTRY: &[ModelDescriptor] = &[
         ],
         ModelVendor::Meta,
         META_MUSE,
+    ),
+    md(
+        &["muse-spark-1.1", "meta/muse-spark-1.1"],
+        ModelVendor::Meta,
+        META_MUSE,
+    ),
+    md(
+        &["muse-spark-open", "meta/muse-spark-open"],
+        ModelVendor::Meta,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["muse-glimmer-30b", "meta/muse-glimmer-30b"],
+        ModelVendor::Meta,
+        OPENAI_COMPAT,
     ),
     md(
         &["minimax-m3", "minimax/minimax-m3"],

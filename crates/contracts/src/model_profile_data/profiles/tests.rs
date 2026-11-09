@@ -538,6 +538,75 @@ fn test_muse_surface_capabilities_are_transport_gated() {
 }
 
 #[test]
+fn test_muse_ember_profile_matches_meta_api() {
+    let ember = get_model_profile("meta", "muse-ember-1.0").unwrap();
+    assert_eq!(ember.name, "Muse Ember");
+    assert!(ember.tool_search && ember.supports_phases);
+    assert_eq!(ember.limits.as_ref().unwrap().output, 524_288);
+    // Standard-only, with a long-context rate card above 200K input tokens.
+    let cost = ember.cost.as_ref().unwrap();
+    assert_eq!(
+        (cost.input, cost.output, cost.cache_read),
+        (0.10, 0.50, Some(0.004))
+    );
+    assert_eq!(cost.cost_tiers.len(), 1);
+    assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
+    assert_eq!(
+        (cost.cost_tiers[0].input, cost.cost_tiers[0].output),
+        (0.30, 1.50)
+    );
+    let efforts = ember.reasoning_effort.as_ref().unwrap();
+    assert_eq!(efforts.default, ReasoningEffort::Max);
+    assert!(
+        efforts
+            .values
+            .iter()
+            .any(|v| v.value == ReasoningEffort::Max)
+    );
+    assert!(get_model_profile("meta", "muse-ember-1.0-contributor").is_none());
+
+    // OpenRouter lists Ember and Wonder without the version suffix.
+    let gateway = get_model_profile("openrouter", "meta/muse-ember").unwrap();
+    assert_eq!(gateway.name, "Muse Ember");
+    assert!(!gateway.tool_search && !gateway.supports_phases);
+    let wonder = get_model_profile("openrouter", "meta/muse-wonder").unwrap();
+    assert_eq!(wonder.name, "Muse Wonder");
+}
+
+#[test]
+fn test_muse_spark_1_1_and_open_weight_models() {
+    // 1.1 is Standard-only and stops at `xhigh`, like 1.2.
+    let spark = get_model_profile("meta", "muse-spark-1.1").unwrap();
+    let efforts = spark.reasoning_effort.unwrap();
+    assert!(
+        !efforts
+            .values
+            .iter()
+            .any(|v| v.value == ReasoningEffort::Max)
+    );
+    assert!(
+        efforts
+            .values
+            .iter()
+            .any(|v| v.value == ReasoningEffort::Xhigh)
+    );
+    assert_eq!(spark.cost.unwrap().input, 1.25);
+    assert!(get_model_profile("meta", "muse-spark-1.1-contributor").is_none());
+
+    // Open-weight Muse models are never served by Meta Model API.
+    for (id, context) in [
+        ("meta/muse-spark-open", 1_048_576),
+        ("meta/muse-glimmer-30b", 131_072),
+    ] {
+        let profile = get_model_profile("openrouter", id).unwrap();
+        assert!(profile.open_weights, "{id}");
+        assert_eq!(profile.limits.unwrap().context, context, "{id}");
+        assert_eq!(get_model_vendor("openrouter", id), Some(ModelVendor::Meta));
+        assert!(get_model_profile("meta", id.trim_start_matches("meta/")).is_none());
+    }
+}
+
+#[test]
 fn test_third_party_alias_matching_is_case_insensitive() {
     // Lowercased and vendor-prefixed variants all resolve to the same model.
     let cases = [

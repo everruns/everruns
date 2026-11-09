@@ -1,7 +1,7 @@
 //! Live compatibility tests against Meta Model API.
 //!
-//! These tests intentionally use the lower-cost Contributor tier and need
-//! `MODEL_API_KEY`.
+//! These tests intentionally use the lower-cost Contributor tier, plus Muse
+//! Ember (Standard only, priced near Contributor), and need `MODEL_API_KEY`.
 
 use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_contracts::model::ReasoningEffort;
@@ -11,6 +11,7 @@ use everruns_contracts::tool_types::{
 use everruns_drivers::meta::provider;
 
 const LIVE_MODEL: &str = "muse-spark-1.3-contributor";
+const EMBER_MODEL: &str = "muse-ember-1.0";
 
 fn api_key() -> String {
     std::env::var("MODEL_API_KEY")
@@ -38,7 +39,15 @@ fn tool(name: &str, description: &str) -> ToolDefinition {
 }
 
 fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmCallConfig {
-    let mut config = LlmCallConfig::new(LIVE_MODEL);
+    config_for(LIVE_MODEL, tools, parallel_tool_calls)
+}
+
+fn config_for(
+    model: &str,
+    tools: Vec<ToolDefinition>,
+    parallel_tool_calls: Option<bool>,
+) -> LlmCallConfig {
+    let mut config = LlmCallConfig::new(model);
     config.temperature = Some(0.0);
     config.max_tokens = Some(512);
     config.tools = tools;
@@ -96,5 +105,48 @@ async fn contributor_accepts_parallel_tool_calls() {
     assert!(
         count >= 1,
         "expected at least one Meta tool call, got {count}"
+    );
+}
+
+/// Ember is the Meta driver's small model: it must answer and call tools
+/// through the same Responses path as Spark.
+#[tokio::test]
+async fn ember_completes_text_and_calls_a_tool() {
+    let provider = provider("meta", api_key());
+
+    let text = provider
+        .chat_completion(
+            vec![Message::text(
+                MessageRole::User,
+                "Reply with exactly: ember-live-ok",
+            )],
+            &config_for(EMBER_MODEL, vec![], None),
+        )
+        .await
+        .expect("Muse Ember should complete a text response");
+    eprintln!("ember text response: {}", text.text);
+    assert!(
+        text.text.to_ascii_lowercase().contains("ember-live-ok"),
+        "unexpected Ember response: {}",
+        text.text
+    );
+
+    let messages = vec![
+        Message::text(
+            MessageRole::System,
+            "Always call the supplied tools rather than guessing.",
+        ),
+        Message::text(MessageRole::User, "What is the weather in Paris?"),
+    ];
+    let tools = vec![tool("get_weather", "Get the current weather for a city.")];
+    let response = provider
+        .chat_completion(messages, &config_for(EMBER_MODEL, tools, None))
+        .await
+        .expect("Muse Ember should call a tool");
+    let calls = response.tool_calls.unwrap_or_default();
+    eprintln!("ember tool calls: {calls:?}");
+    assert!(
+        calls.iter().any(|call| call.name == "get_weather"),
+        "expected Ember to call get_weather, got {calls:?}"
     );
 }
