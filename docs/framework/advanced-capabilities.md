@@ -300,11 +300,29 @@ optional detail and a Ukrainian locale variant.
 ```rust
 use everruns::{capability, narration};
 
+# #[derive(capability::Deserialize, capability::JsonSchema)]
+# #[serde(crate = "everruns::capability::serde")]
+# #[schemars(crate = "everruns::capability::schemars")]
+# struct LookupInput {
+#     id: String,
+# }
 struct Lookup;
 
 #[capability::async_trait]
 impl capability::Handler for Lookup {
     // Input, Output, Error, name, description, and execute as above.
+#     type Input = LookupInput;
+#     type Output = String;
+#     type Error = capability::Error;
+#     fn name(&self) -> &str { "lookup_record" }
+#     fn description(&self) -> &str { "Look up one record by exact id." }
+#     async fn execute(
+#         &self,
+#         input: Self::Input,
+#         _context: capability::Context,
+#     ) -> Result<Self::Output, Self::Error> {
+#         Ok(input.id)
+#     }
 
     fn narrate(&self, call: &capability::ToolNarration<'_>) -> Option<String> {
         // No id yet: keep the generic line.
