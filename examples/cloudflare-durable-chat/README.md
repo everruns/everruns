@@ -140,5 +140,5 @@ server.
 > with its URL can open rooms and send messages using the configured model
 > budget. Add access and usage controls before sharing your own deployment.
 
-See [Durable Object hosting](../../docs/framework/durable-objects.md) for hosting
+See [Durable Object hosting](../../docs/framework/durable-objects.mdx) for hosting
 guarantees and upgrade compatibility.

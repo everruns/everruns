@@ -146,7 +146,6 @@ local = [
     "dep:libc",
     "dep:chrono",
     "dep:chrono-tz",
-    "dep:cron",
     "dep:futures",
     "dep:parking_lot",
     "dep:thiserror",
@@ -273,7 +272,6 @@ anyhow = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 chrono = { workspace = true, optional = true }
 chrono-tz = { version = "0.10", optional = true }
-cron = { version = "0.17", optional = true }
 futures = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }

@@ -56,9 +56,6 @@ uuid.workspace = true
 chrono.workspace = true
 rand.workspace = true
 
-# Cron parsing for session-schedule minimum-interval enforcement
-cron = "0.17"
-
 # Tracing. Plain `tracing` instrumentation is unconditional. OpenTelemetry
 # initialization (SDK, OTLP exporter, tracing-subscriber layers) lives in
 # `host::observability` behind explicit exporter features. Default core carries no exporter dependencies.
@@ -84,9 +81,6 @@ utoipa = { workspace = true, optional = true }
 
 # Default core is a portable kernel over everruns-contracts, with no database
 # driver or concrete provider transport.
-
-# Plugin system for external integrations
-inventory.workspace = true
 
 # Note: LLM simulation (`llmsim`) lives in `everruns-llmsim`; testing/demo
 # helpers live in `everruns-test-support` (EVE-875). Core carries neither

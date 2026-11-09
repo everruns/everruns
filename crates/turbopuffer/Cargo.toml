@@ -27,7 +27,6 @@ turbopuffer-live-tests = []
 # Core dependencies
 anyhow.workspace = true
 async-trait.workspace = true
-thiserror.workspace = true
 
 # Async runtime
 tokio.workspace = true
@@ -42,11 +41,7 @@ sha2.workspace = true
 hex.workspace = true
 uuid.workspace = true
 
-# Tracing
-tracing.workspace = true
-
 # Internal dependencies
-everruns-core.workspace = true
 everruns-contracts = { workspace = true, default-features = false, features = ["http"] }
 
 [dev-dependencies]

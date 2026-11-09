@@ -185,8 +185,11 @@ jobs:
   server-turn-latency:
     name: Server Turn Latency (HTTP, gRPC worker, PostgreSQL)
     runs-on: ubuntu-latest
-    # A release build of the whole server (thin LTO) is most of the time.
-    timeout-minutes: 75
+    # A release build of the whole server (thin LTO) is most of the time, and a
+    # weekly run rarely finds a warm cache. At 75 the build plus turn_latency
+    # took 73 min on 2026-11-09, so knowledge_catalog was cancelled and
+    # engine_sim never ran.
+    timeout-minutes: 120
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
     steps:

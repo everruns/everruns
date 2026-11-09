@@ -15,7 +15,6 @@ s3-tests = ["postgres-tests"]
 
 [dependencies]
 anyhow.workspace = true
-async-trait.workspace = true
 axum.workspace = true
 arrow = { version = "59.2", default-features = false }
 bytes.workspace = true

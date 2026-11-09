@@ -241,7 +241,6 @@ globset = "0.4"
 time = "0.3"
 parking_lot = "0.12"
 dialoguer = "0.12"
-webbrowser = "1"
 
 # WebSocket (CDP sessions)
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
@@ -277,7 +276,6 @@ a2a-server = { package = "a2a-server-lf", version = "0.5" }
 # gRPC (tonic)
 tonic = { version = "0.14", features = ["tls-aws-lc"] }
 tonic-prost = "0.14"
-tonic-build = "0.14"
 tonic-prost-build = "0.14"
 
 # Protocol Buffers (used by tonic/gRPC)
@@ -287,7 +285,6 @@ prost = "0.14"
 # transport reliability (drops, partitions, latency, reorder) with a simulated
 # clock. See knowledge/runtime-resources/agent-reliability-tests.md scenario 3.
 turmoil = "0.7"
-prost-build = "0.14"
 prost-types = "0.14"
 
 # Image processing (for thumbnail generation)
@@ -308,7 +305,6 @@ tempfile = "3"
 
 # File watching and gitignore
 notify = { version = "8.2", default-features = false, features = ["macos_kqueue"] }
-notify-debouncer-mini = { version = "0.7", default-features = false }
 ignore = "0.4"
 
 # TLS

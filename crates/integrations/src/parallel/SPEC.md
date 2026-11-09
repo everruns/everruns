@@ -38,7 +38,7 @@ The Everruns-visible tool names use the normal MCP prefix: `mcp_parallel__web_se
 ## `parallel` capability (paid, machine payments)
 
 The `parallel` capability contributes in-process tools that route paid calls through the
-core `PaymentAuthority`. See [`knowledge/security/machine-payments.md`](../../knowledge/security/machine-payments.md)
+core `PaymentAuthority`. See [`knowledge/security/machine-payments.md`](../../../../knowledge/security/machine-payments.md)
 for the trust boundary and rails.
 
 - `parallel_search`, paid web search. Up to `$0.01` per call.
@@ -52,7 +52,7 @@ The paid tools never sign or submit payments themselves: they build a typed
 `machine_payments` deployment grade permits registration. Its default is off
 because spend is irreversible. Hosted use additionally requires the organisation-effective
 flag, and payment execution re-checks that flag before spending. See
-[Feature Flags](../../knowledge/security/feature-flags.md).
+[Feature Flags](../../../../knowledge/security/feature-flags.md).
 
 ## Tests
 
