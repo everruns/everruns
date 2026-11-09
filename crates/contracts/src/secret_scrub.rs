@@ -73,10 +73,96 @@ static URL_USERINFO: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@?#]+@").expect("valid userinfo regex")
 });
 
+// Match whole field names, not cookie_count, X-Cookie, or prose mentioning cookies.
+#[expect(
+    clippy::expect_used,
+    reason = "Built-in constant regexes must compile; invalid syntax is a programming error"
+)]
+static COOKIE_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(^|[^\w-])(set-cookie|cookie)((?:\\?["'])?)[ \t]*([:=])[ \t]*"#)
+        .expect("valid cookie field regex")
+});
+
+fn scrub_cookies(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut copied = 0;
+    for captures in COOKIE_FIELD.captures_iter(input) {
+        let Some(field) = captures.get(0) else {
+            continue;
+        };
+        if field.start() < copied {
+            continue;
+        }
+        let Some(name) = captures.get(2) else {
+            continue;
+        };
+        let mut start = field.end();
+        let assignment = &captures[4] == "=";
+        // A quote can enclose the value, the entire shell header, or an
+        // escaped header inside serialized command arguments.
+        let quote_at = |offset: usize| -> Option<(u8, usize)> {
+            let tail = input.as_bytes().get(offset..)?;
+            match tail {
+                [q @ (b'\'' | b'"'), ..] => Some((*q, 0)),
+                [b'\\', q @ (b'\'' | b'"'), ..] => Some((*q, 1)),
+                _ => None,
+            }
+        };
+        let delimiter = if let Some((quote, escapes)) = quote_at(start) {
+            start += escapes + 1;
+            Some((quote, escapes))
+        } else if captures[3].is_empty() && name.start() > 0 {
+            let before = &input.as_bytes()[..name.start()];
+            let quote = before[before.len() - 1];
+            matches!(quote, b'\'' | b'"').then(|| {
+                let escapes = usize::from(before.len() > 1 && before[before.len() - 2] == b'\\');
+                (quote, escapes)
+            })
+        } else {
+            None
+        };
+        let bytes = input.as_bytes();
+        let mut end = start;
+        while end < bytes.len() {
+            if matches!(bytes[end], b'\r' | b'\n') {
+                break;
+            }
+            if let Some((quote, escapes)) = delimiter {
+                if bytes[end] == quote {
+                    let slashes = bytes[start..end]
+                        .iter()
+                        .rev()
+                        .take_while(|&&b| b == b'\\')
+                        .count();
+                    if slashes == escapes {
+                        end -= escapes;
+                        break;
+                    }
+                }
+            } else if assignment && (bytes[end].is_ascii_whitespace() || bytes[end] == b';') {
+                break;
+            }
+            end += 1;
+        }
+        let value = &input[start..end];
+        // Header prose is not a cookie. Actual headers contain name=value;
+        // assignments can also carry opaque values of any length.
+        if value.is_empty() || (!assignment && !value.contains('=') && value != REDACTED) {
+            continue;
+        }
+        out.push_str(&input[copied..start]);
+        out.push_str(REDACTED);
+        copied = end;
+    }
+    out.push_str(&input[copied..]);
+    out
+}
+
 /// Scrub credential-looking substrings from a single string.
 pub fn scrub_secrets(input: &str) -> String {
+    let cookies = scrub_cookies(input);
     let mut out = URL_USERINFO
-        .replace_all(input, format!("${{1}}{REDACTED}@"))
+        .replace_all(&cookies, format!("${{1}}{REDACTED}@"))
         .into_owned();
     for re in SECRET_PATTERNS.iter() {
         out = re.replace_all(&out, REDACTED).into_owned();
@@ -134,6 +220,69 @@ mod tests {
             scrub_secrets("curl -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig' x");
         assert!(!scrubbed.contains("eyJhbGci"), "{scrubbed}");
         assert!(scrubbed.contains(REDACTED));
+    }
+
+    #[test]
+    fn scrubs_cookie_headers_and_assignments() {
+        for (input, expected) in [
+            ("Cookie: sid=abc; csrf=def", "Cookie: [REDACTED]"),
+            (
+                "Set-Cookie: sid=abc; Path=/; HttpOnly\nContent-Type: text/plain",
+                "Set-Cookie: [REDACTED]\nContent-Type: text/plain",
+            ),
+            (
+                "curl -H 'Cookie: sid=abc; csrf=def' https://example.com",
+                "curl -H 'Cookie: [REDACTED]' https://example.com",
+            ),
+            (
+                r#"curl -H "cOoKiE: sid=abc; csrf=def" x"#,
+                r#"curl -H "cOoKiE: [REDACTED]" x"#,
+            ),
+            (
+                r#"export COOKIE="sid=abc; csrf=def"; echo ok"#,
+                r#"export COOKIE="[REDACTED]"; echo ok"#,
+            ),
+            (
+                r#"{"Cookie": "sid=abc; csrf=def", "safe": true}"#,
+                r#"{"Cookie": "[REDACTED]", "safe": true}"#,
+            ),
+            (
+                r#"curl -H 'Cookie: sid="abc def"; csrf=ghi' x"#,
+                r#"curl -H 'Cookie: [REDACTED]' x"#,
+            ),
+            (
+                r#"curl -H \"Cookie: sid=abc; csrf=def\" x"#,
+                r#"curl -H \"Cookie: [REDACTED]\" x"#,
+            ),
+            (
+                r#"{\"Cookie\": \"sid=abc; csrf=def\", \"safe\": true}"#,
+                r#"{\"Cookie\": \"[REDACTED]\", \"safe\": true}"#,
+            ),
+            (
+                r#"curl -H "Cookie: sid=\"abc def\"; csrf=ghi" x"#,
+                r#"curl -H "Cookie: [REDACTED]" x"#,
+            ),
+            ("COOKIE=abc command", "COOKIE=[REDACTED] command"),
+            ("Cookie: sid=短; csrf=令牌", "Cookie: [REDACTED]"),
+            (r#"COOKIE='abc' command"#, r#"COOKIE='[REDACTED]' command"#),
+        ] {
+            assert_eq!(scrub_secrets(input), expected, "{input}");
+            assert_eq!(scrub_secrets(expected), expected, "idempotence: {input}");
+        }
+    }
+
+    #[test]
+    fn cookie_words_and_unrelated_assignments_are_not_credentials() {
+        for input in [
+            "cookie recipe",
+            "cookie: chocolate chip",
+            "cookie_count=3",
+            "mycookie=abc",
+            "X-Cookie: example",
+            "set-cookie-policy=strict",
+        ] {
+            assert_eq!(scrub_secrets(input), input);
+        }
     }
 
     #[test]
