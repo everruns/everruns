@@ -29,6 +29,10 @@ use std::{
     sync::{Mutex, RwLock},
 };
 
+/// Object kind of conversation checkpoints (EVE-1339); `checkpoint` holds
+/// compaction checkpoints.
+const CONVERSATION_CHECKPOINT: &str = "conversation_checkpoint";
+
 type ProactiveAttempts =
     Arc<Mutex<HashMap<(SessionId, String, String), everruns_core::ProactiveCompactionAttempt>>>;
 
@@ -653,6 +657,87 @@ impl SessionHosting for SqliteHosting {
         self.transaction(session, |tx, state| {
             state.binding(session)?;
             lineage::read(tx, session, state)
+        })
+    }
+    async fn history_events(
+        &self,
+        session: SessionId,
+        ranges: Vec<super::SequenceRange>,
+        after: i32,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            lineage::events_in(tx, session, state, &ranges, after, limit)
+        })
+    }
+    async fn conversation_checkpoints(
+        &self,
+        session: SessionId,
+    ) -> Result<Vec<super::ConversationCheckpoint>> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            let mut query = tx
+                .prepare("SELECT value FROM framework_objects WHERE session=? AND kind=? ORDER BY created,key LIMIT ?")
+                .map_err(error)?;
+            query
+                .query_map(
+                    params![
+                        session.to_string(),
+                        CONVERSATION_CHECKPOINT,
+                        super::MAX_CONVERSATION_CHECKPOINTS as i64
+                    ],
+                    |row| row.get::<_, String>(0),
+                )
+                .map_err(error)?
+                .map(|row| decode(row.map_err(error)?))
+                .collect()
+        })
+    }
+    async fn save_conversation_checkpoint(
+        &self,
+        session: SessionId,
+        checkpoint: super::ConversationCheckpoint,
+    ) -> Result<()> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            // The ranges must name this session's own journal.
+            super::spi::session_commands::history::validate_ranges(&checkpoint.ranges, state.head)
+                .map_err(error)?;
+            let key = checkpoint.id.to_string();
+            let (count, exists): (i64, bool) = tx
+                .query_row(
+                    "SELECT count(*),coalesce(sum(key=?3),0)>0 FROM framework_objects WHERE session=?1 AND kind=?2",
+                    params![session.to_string(), CONVERSATION_CHECKPOINT, key],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(error)?;
+            if exists {
+                return Err(error("conversation checkpoint already exists"));
+            }
+            if count as usize >= super::MAX_CONVERSATION_CHECKPOINTS {
+                return Err(error("conversation checkpoint capacity reached"));
+            }
+            put(tx, session, CONVERSATION_CHECKPOINT, &key, &checkpoint)
+        })
+    }
+    async fn delete_conversation_checkpoint(
+        &self,
+        session: SessionId,
+        checkpoint: uuid::Uuid,
+    ) -> Result<bool> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            tx.execute(
+                "DELETE FROM framework_objects WHERE session=? AND kind=? AND key=?",
+                params![
+                    session.to_string(),
+                    CONVERSATION_CHECKPOINT,
+                    checkpoint.to_string()
+                ],
+            )
+            .map(|deleted| deleted > 0)
+            .map_err(error)
         })
     }
     async fn import_legacy(&self, session: SessionId, image: LegacySessionImage) -> Result<bool> {

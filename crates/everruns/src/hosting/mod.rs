@@ -27,9 +27,16 @@ pub use everruns_core::session_commands::{ApprovalCommit, SessionConfiguration};
 pub(crate) mod execution;
 mod memory;
 mod retry;
+pub use crate::checkpoints::{ConversationCheckpoint, MAX_CONVERSATION_CHECKPOINTS};
 pub use everruns_core::session_commands::history::{
     HistoryBranch, HistoryLineage, HistorySelection, SequenceRange,
 };
+
+fn unsupported_checkpoints() -> spi::error::AgentLoopError {
+    spi::error::AgentLoopError::config(
+        "this session authority does not support conversation checkpoints",
+    )
+}
 pub use everruns_core::session_commands::{
     QuestionAnswersRequest, validate_question_answers, validate_tool_resolutions,
 };
@@ -366,11 +373,54 @@ pub trait SessionHosting: Send + Sync + 'static {
                     expected_revision,
                     branch: branch.to_owned(),
                     ranges,
+                    discard: false,
                 },
             )
             .await?,
         )
         .map_err(|e| spi::error::AgentLoopError::store(e.to_string()))
+    }
+    /// Journal events whose sequence lies in `ranges` and after `after`, in
+    /// sequence order, at most `limit` (EVE-1339). Unlike reader pages this
+    /// is not limited to the active branch: conversation checkpoints use it
+    /// to preview retained branches. Authorities without branch support
+    /// refuse.
+    async fn history_events(
+        &self,
+        _session: SessionId,
+        _ranges: Vec<SequenceRange>,
+        _after: i32,
+        _limit: usize,
+    ) -> Result<Vec<spi::events::Event>> {
+        Err(spi::error::AgentLoopError::config(
+            "this session authority does not support conversation branch selection",
+        ))
+    }
+    /// Retained conversation checkpoints (EVE-1339), oldest first. Reached
+    /// through [`Engine::checkpoints`](crate::Engine::checkpoints).
+    async fn conversation_checkpoints(
+        &self,
+        _session: SessionId,
+    ) -> Result<Vec<ConversationCheckpoint>> {
+        Err(unsupported_checkpoints())
+    }
+    /// Retain one conversation checkpoint under its id, refusing when the
+    /// session already holds [`MAX_CONVERSATION_CHECKPOINTS`].
+    async fn save_conversation_checkpoint(
+        &self,
+        _session: SessionId,
+        _checkpoint: ConversationCheckpoint,
+    ) -> Result<()> {
+        Err(unsupported_checkpoints())
+    }
+    /// Forget one conversation checkpoint; `false` when it did not exist.
+    /// The journal and branches are unaffected.
+    async fn delete_conversation_checkpoint(
+        &self,
+        _session: SessionId,
+        _checkpoint: uuid::Uuid,
+    ) -> Result<bool> {
+        Err(unsupported_checkpoints())
     }
     /// Capture a read boundary and execution settings in one authority transaction.
     async fn query_snapshot(&self, session: SessionId) -> Result<SessionQuerySnapshot>;

@@ -53,8 +53,8 @@ impl SqliteHosting {
                 ControlUpdate::Resume=>{state.inbox=i64::from(state.head);state.resume_generation+=1;state.runnable=true;},
                 ControlUpdate::RetryExecution=>{state.suspended=false;state.runnable=true;state.holder=None;state.expires=0;},
                 ControlUpdate::Cancel{input,interrupt}=>{state.target_cancels.insert(input,state.inbox);if interrupt{state.cancel=Some(state.inbox);state.cancel_reported=false;state.runnable=true;}},
-                ControlUpdate::SelectBranch{branch,ranges,revision}=>{
-                    super::lineage::select(tx,session,state,branch,ranges,revision)?;
+                ControlUpdate::SelectBranch{branch,ranges,revision,discard}=>{
+                    super::lineage::select(tx,session,state,branch,ranges,revision,discard)?;
                     // Proactive-compaction attempts measured another branch.
                     self.proactive.lock().map_err(error)?.retain(|(id,..),_|*id!=session);
                 },

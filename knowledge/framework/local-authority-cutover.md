@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Local Authority Cutover and Legacy Lane Retirement Gate"
-description: "How legacy local/custom-backend Engine sessions move losslessly into the coherent SQLite authority, conversation branch selection (EVE-1305), the gap matrix against EVE-1298, and the gate for retiring the legacy facade actor."
+description: "How legacy local/custom-backend Engine sessions move losslessly into the coherent SQLite authority, conversation branch selection (EVE-1305) and checkpoints (EVE-1339), the gap matrix against EVE-1298, and the gate for retiring the legacy facade actor."
 tags:
   - everruns
   - framework
@@ -168,6 +168,31 @@ Decided in EVE-1305; this replaces the earlier `history.rewound` event proposal.
   record, so a retry with another lineage fails.
 - **Workspace.** Branch selection never changes files. Workspace restore keeps
   its own confirmed operation and snapshot policy.
+
+## Conversation checkpoints
+
+Decided in EVE-1339 so a host (Yolop's checkpoint commands and restore tool)
+drives checkpoints through [`Engine::checkpoints`](../../crates/everruns/src/checkpoints.rs)
+instead of keeping a parallel checkpoint store beside the journal.
+
+- **A checkpoint names a point, it copies nothing.** It retains the active
+  branch's ranges through the end of the last finished turn, so it can be
+  taken from a tool while its own turn runs. Inputs admitted for later turns
+  stay out, so a queued message never returns without its turn; seeded history
+  has no admission and stays in. Events of that last turn appended after the
+  checkpoint (such as `session.idled`) join it at restore.
+- **Restore is a branch selection.** It runs the same `SelectBranch` command,
+  with the same quiescence and revision checks. Branch mode retains the undone
+  tail for redo. Truncate mode sets `discard`, which drops the left branch from
+  the catalog in the same transaction instead of retaining it; its events stay
+  in the journal and raw export. Checkpoints no retained branch reaches are
+  hidden and pruned.
+- **Session scoped.** Records live in the authority's per-session object store
+  and are only looked up through the session handle, so an id from another
+  session is not found. Previews return short excerpts with control and
+  bidirectional characters removed, safe for a terminal or a UI line.
+- **Scope.** Only branch-capable authorities (SQLite) implement the checkpoint
+  SPI; others refuse. Workspace files are not rewound.
 
 A lower-level Core host still exists for platform hosts; retiring the facade
 lane does not remove it, and is a separate claim from whether an application can

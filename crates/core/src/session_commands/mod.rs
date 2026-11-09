@@ -84,13 +84,17 @@ pub enum SessionCommand {
     },
     /// Make `branch` the active conversation lineage while quiescent. With
     /// `ranges`, create it (or confirm an identical one); without, reselect a
-    /// retained branch. The previous branch is retained for redo and fork.
+    /// retained branch. The previous branch is retained for redo and fork
+    /// unless `discard` drops it from the catalog (a truncating restore,
+    /// EVE-1339); its events stay in the journal and raw export either way.
     SelectBranch {
         id: String,
         expected_revision: u64,
         branch: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         ranges: Option<Vec<history::SequenceRange>>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        discard: bool,
     },
 }
 
@@ -204,12 +208,13 @@ pub enum ControlUpdate {
         input: MessageId,
         interrupt: bool,
     },
-    /// Retain the active branch at its current extent, then activate
-    /// `branch` with these canonical ranges at `revision`.
+    /// Retain the active branch at its current extent (unless `discard`),
+    /// then activate `branch` with these canonical ranges at `revision`.
     SelectBranch {
         branch: String,
         ranges: Vec<history::SequenceRange>,
         revision: u64,
+        discard: bool,
     },
 }
 
@@ -277,8 +282,18 @@ impl SessionCommand {
                 expected_revision,
                 branch,
                 ranges,
+                discard,
                 ..
-            } => json!({"expected_revision":expected_revision,"branch":branch,"ranges":ranges}),
+            } => {
+                let mut value =
+                    json!({"expected_revision":expected_revision,"branch":branch,"ranges":ranges});
+                // Only a discarding selection carries the flag, so receipts
+                // retained before it existed keep their fingerprint.
+                if *discard {
+                    value["discard"] = json!(true);
+                }
+                value
+            }
         }
     }
 }
@@ -490,6 +505,7 @@ pub fn prepare(
             expected_revision,
             branch,
             ranges,
+            discard,
             ..
         } => {
             let facts = view.history.ok_or_else(|| {
@@ -545,7 +561,9 @@ pub fn prepare(
                     changed: false,
                 });
             } else {
-                if facts.retained.is_none() && facts.branches >= history::MAX_BRANCHES {
+                // A discarding selection replaces the active branch in the
+                // catalog, so it never grows it.
+                if facts.retained.is_none() && !discard && facts.branches >= history::MAX_BRANCHES {
                     return Err(CommandError::Capacity("history branch capacity reached"));
                 }
                 let revision = facts
@@ -561,6 +579,7 @@ pub fn prepare(
                     branch,
                     ranges: target,
                     revision,
+                    discard,
                 };
             }
         }

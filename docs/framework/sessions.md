@@ -269,6 +269,77 @@ after uncertain responses. Admissions, approvals, client results and cancellatio
 are authority commands; the journal and wakeup obligation commit together.
 Resources such as workspace files and compute still require explicit host services.
 
+### Checkpoints and rewind
+
+`Engine::checkpoints(session_id)` (experimental) returns a handle for
+conversation checkpoints on a branch-aware authority such as `SqliteHosting`.
+A host can build checkpoint commands, a restore picker or a conversational
+restore tool on it alone:
+
+```rust
+use everruns::checkpoints::RestoreMode;
+use everruns::hosting::{AgentBuild, SqliteHosting};
+use everruns::{Agent, Engine, Model, SessionId};
+
+# #[tokio::main]
+# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+let build = AgentBuild::new("assistant", "v1");
+let agent = Agent::builder()
+    .instructions("Be concise.")
+    .model(Model::simulated("Done."))
+    .build()?;
+let engine = Engine::builder()
+    .hosting(SqliteHosting::open("authority.db")?)
+    .register(build.clone(), agent)
+    .build();
+let id = SessionId::new();
+let session = engine.create_registered(id, &build).await?;
+let checkpoints = engine.checkpoints(id);
+
+session.send_and_wait("Plan the migration.").await?;
+let saved = checkpoints.create_labeled("plan agreed").await?;
+session.send_and_wait("Now rewrite it in Go.").await?;
+
+// Show the user what a restore would undo, then restore.
+let preview = checkpoints.preview(saved.id).await?;
+for turn in &preview.dropped {
+    println!("undo: {}", turn.input.as_deref().unwrap_or(""));
+}
+let restored = checkpoints.restore(saved.id, RestoreMode::Branch).await?;
+
+// The undone turns stay addressable: redo brings them back.
+if let Some(undone) = &restored.undone {
+    checkpoints.redo(undone).await?;
+}
+# Ok(())
+# }
+```
+
+- `create` marks the end of the last finished turn, so a tool can call it while
+  its own turn runs. `list`, `get` and `preview` read without changing anything,
+  and `delete` forgets a checkpoint.
+- A `CheckpointSummary` carries its `id`, `turn_index`, the `message_id` that
+  started its last turn, `created_at`, an optional label and a display-safe
+  `preview`. `on_active_branch` is `false` for a checkpoint left on an undone
+  branch; restoring it brings those turns back.
+- `RestorePreview` lists the turns that leave context (`dropped`) and the turns
+  a restore brings back from another branch (`restored`), with exact totals.
+  Text excerpts are short and have control and bidirectional characters
+  removed, so they are safe to show in a terminal or a single UI line.
+- `RestoreMode::Branch` keeps the undone turns as a branch named in
+  `RestoreOutcome::undone`, which `redo` reselects. `RestoreMode::Truncate`
+  drops them from the branch catalog, and checkpoints taken on them are no
+  longer listed.
+
+Nothing is deleted from the journal: a restore changes which branch is the
+conversation, so context, history and new input follow it while raw exports
+keep every event. Checkpoints and branches survive a restart and
+`Engine::resume`. Restore and redo need a quiescent session, with no running
+turn, pending wait or unconsumed input; otherwise they fail without changing
+anything, so a restore tool should apply its choice after its turn ends. The
+default volatile engine refuses checkpoints. Checkpoints cover the
+conversation only: workspace files are not rewound.
+
 ### Local: crash-durable events
 
 For local applications, the feature-gated `LocalConfig` adds a crash-durable

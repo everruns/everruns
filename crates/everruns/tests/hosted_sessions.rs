@@ -750,6 +750,9 @@ async fn native_rejected_admission_rolls_back_event_cursor_receipt_and_wakeup() 
 #[cfg(feature = "local")]
 #[path = "hosted_sessions/branches.rs"]
 mod branches;
+#[cfg(feature = "local")]
+#[path = "hosted_sessions/checkpoints.rs"]
+mod checkpoints;
 #[path = "hosted_sessions/controls.rs"]
 mod controls;
 #[cfg(feature = "local")]
