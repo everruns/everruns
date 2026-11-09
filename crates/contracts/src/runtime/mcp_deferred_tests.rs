@@ -177,3 +177,12 @@ fn deferred_server_description_marks_controls_only_in_description() {
         serde_json::json!({"type": "object", "properties": {}, "additionalProperties": false})
     );
 }
+
+#[test]
+fn deferred_server_name_is_marked_only_in_rendered_text() {
+    let name = "docs\u{202e}";
+    let definition = deferred_mcp_server_definition(name, None);
+    assert_eq!(definition.name(), deferred_mcp_server_tool_name(name));
+    assert_eq!(definition.display_name(), Some("docs[U+202E]"));
+    assert!(definition.description().contains("`docs[U+202E]`"));
+}

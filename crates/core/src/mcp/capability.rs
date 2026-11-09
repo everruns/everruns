@@ -135,7 +135,7 @@ impl McpCapability {
                     .map(visible_mcp_description)
                     .map(|title| crate::tool_narration::narration_detail(&title))
                     .unwrap_or_else(|| {
-                        format!(
+                        visible_mcp_description(&format!(
                             "{}: {}",
                             self.server_name,
                             mcp_tool
@@ -144,7 +144,7 @@ impl McpCapability {
                                 .filter(|part| !part.is_empty())
                                 .collect::<Vec<_>>()
                                 .join(" ")
-                        )
+                        ))
                     }),
             ),
             description: visible_mcp_description(
@@ -342,6 +342,12 @@ mod tests {
         assert_eq!(capability.tools[0].title, original.title);
         assert_eq!(capability.tools[0].input_schema, schema);
         assert_eq!(capability.description.as_deref(), Some(text));
+        let mut without_title = capability.clone();
+        without_title.tools[0].title = None;
+        let fallback = without_title.tool_definitions();
+        assert_eq!(fallback[0].display_name(), Some("docs: search[U+200B]"));
+        assert_eq!(fallback[0].name(), tool.name);
+        assert_eq!(without_title.tools[0].name, original.name);
     }
 
     #[test]
