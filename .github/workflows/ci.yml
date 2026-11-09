@@ -605,6 +605,7 @@ jobs:
             -p everruns-drivers \
             -p everruns-integrations \
             -p everruns-integrations-experimental \
+            -p everruns-coding \
             -p everruns-turbopuffer \
             -p everruns-serve \
             -p everruns-serve-build \
@@ -1170,6 +1171,9 @@ jobs:
           # Experimental integrations stay on their own support track; unit and
           # mock-backed tests run here, while Sprites live tests remain manual.
           cargo test -p everruns-integrations-experimental --features sprites -- --test-threads=1
+          # Code navigation. Its sandbox host is tested against a real shell,
+          # and the tests need the `local` host for a workspace on disk.
+          cargo test -p everruns-coding --features local
           # Hosted integration composition and its entries live with the hosted
           # capabilities. The script separately guards catalog completeness.
           cargo test -p everruns-capabilities --features hosted-integration-catalog --lib

@@ -78,6 +78,17 @@ Cloud and container sandbox environments for isolated code execution.
 | [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=prod`) |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 (off by default, needs `FEATURE_DOCKER_CAPABILITY` rollout grade) |
 
+### Code navigation
+
+Editor-grade understanding of the code in a session's sandbox.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [Language Server (LSP)](/capabilities/code-navigation/#language-servers) | `lsp` | 7 |
+| [AST Grep](/capabilities/code-navigation/#structural-search) | `ast_grep` | 1 |
+| [AST Edit](/capabilities/code-navigation/#structural-edit) | `ast_edit` | 1 |
+| [Repo Map](/capabilities/code-navigation/#repository-map) | `repo_map` | 2 |
+
 ### Browser
 
 Browser automation and web interaction capabilities.

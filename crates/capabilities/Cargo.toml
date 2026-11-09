@@ -61,6 +61,7 @@ hosted-integration-catalog = [
     "everruns-integrations/typesafe",
     "everruns-integrations/typesafe-hosted",
     "everruns-integrations/web-search",
+    "dep:everruns-coding",
     "dep:everruns-integrations-experimental",
     "everruns-integrations-experimental/agentid",
     "everruns-integrations-experimental/sprites",
@@ -97,6 +98,7 @@ container-sandbox = [
 container-sandbox-live-tests = ["container-sandbox"]
 
 [dependencies]
+everruns-coding = { workspace = true, optional = true }
 everruns-integrations = { workspace = true, optional = true }
 everruns-integrations-experimental = { workspace = true, optional = true }
 everruns-ard = { workspace = true, optional = true }

@@ -183,6 +183,85 @@ impl SandboxWorkspace for ManagedSandboxWorkspace {
             .map(|raw| redact(canonicalize_workspace_output(&raw, &root), secret));
         Ok(response)
     }
+
+    async fn provider_root(&self, context: &ToolContext) -> Result<String, ToolExecutionResult> {
+        let state = ensure_session_sandbox_running(context, &self.config).await?;
+        Ok(workspace_root(&state.instance)
+            .trim_end_matches('/')
+            .to_string())
+    }
+
+    async fn exec_raw(
+        &self,
+        context: &ToolContext,
+        command: &str,
+        cwd: Option<&str>,
+        timeout_ms: Option<u64>,
+    ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
+        let config = &self.config;
+        let provider = provider_for_config(config)?;
+        let state = ensure_session_sandbox_running(context, config).await?;
+        provider
+            .exec(
+                context,
+                config,
+                &state.instance,
+                &SessionSandboxExecRequest {
+                    command: command.to_string(),
+                    cwd: Some(
+                        cwd.map(str::to_string)
+                            .unwrap_or_else(|| workspace_root(&state.instance).to_string()),
+                    ),
+                    timeout_ms,
+                    output_mode: "full".to_string(),
+                },
+            )
+            .await
+    }
+
+    async fn read_file_raw(
+        &self,
+        context: &ToolContext,
+        path: &str,
+    ) -> Result<Vec<u8>, ToolExecutionResult> {
+        let config = &self.config;
+        let provider = provider_for_config(config)?;
+        let state = ensure_session_sandbox_running(context, config).await?;
+        let response = provider
+            .read_file(context, config, &state.instance, path)
+            .await?;
+        everruns_contracts::runtime::SessionFile::decode_content(
+            &response.content,
+            &response.encoding,
+        )
+        .map_err(|error| {
+            ToolExecutionResult::tool_error(format!(
+                "sandbox returned undecodable content: {error}"
+            ))
+        })
+    }
+
+    async fn write_file_raw(
+        &self,
+        context: &ToolContext,
+        path: &str,
+        content: &[u8],
+    ) -> Result<(), ToolExecutionResult> {
+        let config = &self.config;
+        let provider = provider_for_config(config)?;
+        let state = ensure_session_sandbox_running(context, config).await?;
+        provider
+            .write_file(context, config, &state.instance, path, content)
+            .await
+            .map(|_| ())
+    }
+
+    async fn checkpoint(&self, context: &ToolContext) -> Result<(), ToolExecutionResult> {
+        let config = &self.config;
+        let provider = provider_for_config(config)?;
+        let mut state = ensure_session_sandbox_running(context, config).await?;
+        checkpoint_session_sandbox(context, provider.as_ref(), config, &mut state).await
+    }
 }
 
 #[cfg(test)]

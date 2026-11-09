@@ -22,6 +22,7 @@ FEATURES = {
         'typesafe', 'typesafe-hosted', 'web-fetch', 'modal', 'modal-test-util', 'boxd',
         'boxd-test-util'],
     'everruns-integrations-experimental': ['sprites'],
+    'everruns-coding': ['local'],
 }
 
 
@@ -162,7 +163,7 @@ def select(metadata, paths, root):
         # are offline, and cargo test never runs main().
         if not any('lib' in t['kind'] or 'proc-macro' in t['kind'] or 'bin' in t['kind'] for t in targets):
             continue
-        group = 'server' if name == 'everruns-server' else 'facade' if name in ('everruns', 'everruns-cli', 'everruns-docs-snippets') else 'runtime' if name in ('everruns-core', 'everruns-capabilities', 'everruns-worker', 'everruns-integrations', 'everruns-integrations-experimental', 'everruns-test-support') else 'foundation'
+        group = 'server' if name == 'everruns-server' else 'facade' if name in ('everruns', 'everruns-cli', 'everruns-docs-snippets') else 'runtime' if name in ('everruns-core', 'everruns-capabilities', 'everruns-worker', 'everruns-integrations', 'everruns-integrations-experimental', 'everruns-coding', 'everruns-test-support') else 'foundation'
         groups.setdefault(group, []).append(name)
     return {'include': [{'group': group, 'packages': sorted(names),
                          'risk_filters': risk_filters(paths) if group == 'server' else [],

@@ -126,6 +126,40 @@
       ]
     },
     {
+      "category": "Code Navigation",
+      "dependencies": [],
+      "docs_slug": "code-navigation",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "ast_edit",
+      "name": "AST Edit",
+      "status": "available",
+      "tools": [
+        "ast_edit"
+      ]
+    },
+    {
+      "category": "Code Navigation",
+      "dependencies": [],
+      "docs_slug": "code-navigation",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "ast_grep",
+      "name": "AST Grep",
+      "status": "available",
+      "tools": [
+        "ast_grep"
+      ]
+    },
+    {
       "category": "Optimization",
       "dependencies": [],
       "docs_slug": "tool-search",
@@ -862,6 +896,29 @@
       "tools": []
     },
     {
+      "category": "Code Navigation",
+      "dependencies": [],
+      "docs_slug": "code-navigation",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "lsp",
+      "name": "Language Server (LSP)",
+      "status": "available",
+      "tools": [
+        "lsp_code_actions",
+        "lsp_definition",
+        "lsp_diagnostics",
+        "lsp_hover",
+        "lsp_references",
+        "lsp_rename",
+        "lsp_symbols"
+      ]
+    },
+    {
       "category": "Memory",
       "dependencies": [
         "session_file_system"
@@ -1233,6 +1290,24 @@
       "status": "available",
       "tools": [
         "react"
+      ]
+    },
+    {
+      "category": "Code Navigation",
+      "dependencies": [],
+      "docs_slug": "code-navigation",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "repo_map",
+      "name": "Repo Map",
+      "status": "available",
+      "tools": [
+        "repo_map",
+        "repo_symbols"
       ]
     },
     {

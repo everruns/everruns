@@ -243,6 +243,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "memory" => Some("memory"),
         "knowledge" => Some("knowledge"),
         "knowledge_base" => Some("knowledge-base"),
+        "lsp" | "ast_grep" | "ast_edit" | "repo_map" => Some("code-navigation"),
         "knowledge_index" => Some("knowledge-index"),
         "data_knowledge" => Some("data-knowledge"),
         "soft_approval" => Some("soft-approval"),

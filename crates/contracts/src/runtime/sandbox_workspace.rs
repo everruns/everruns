@@ -42,6 +42,58 @@ pub trait SandboxWorkspace: Send + Sync {
         cwd: &str,
         secret: &str,
     ) -> Result<SessionSandboxExecResponse, ToolExecutionResult>;
+
+    /// Where `/workspace` lives on the provider's own filesystem.
+    ///
+    /// The methods below address the sandbox by provider paths, not by the
+    /// model's `/workspace` alias, because their callers (code navigation)
+    /// exchange absolute paths with programs running inside the sandbox.
+    async fn provider_root(&self, _context: &ToolContext) -> Result<String, ToolExecutionResult> {
+        Err(unsupported("provider_root"))
+    }
+
+    /// Run `command` as written (no `/workspace` translation) and return its
+    /// whole output. Nothing is checkpointed: a caller that changed files calls
+    /// [`Self::checkpoint`] once it is done.
+    async fn exec_raw(
+        &self,
+        _context: &ToolContext,
+        _command: &str,
+        _cwd: Option<&str>,
+        _timeout_ms: Option<u64>,
+    ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
+        Err(unsupported("exec_raw"))
+    }
+
+    /// Read one file by provider path. Providers cap the size of one read.
+    async fn read_file_raw(
+        &self,
+        _context: &ToolContext,
+        _path: &str,
+    ) -> Result<Vec<u8>, ToolExecutionResult> {
+        Err(unsupported("read_file_raw"))
+    }
+
+    /// Write one file by provider path, without checkpointing.
+    async fn write_file_raw(
+        &self,
+        _context: &ToolContext,
+        _path: &str,
+        _content: &[u8],
+    ) -> Result<(), ToolExecutionResult> {
+        Err(unsupported("write_file_raw"))
+    }
+
+    /// Persist the workspace after a batch of raw writes.
+    async fn checkpoint(&self, _context: &ToolContext) -> Result<(), ToolExecutionResult> {
+        Err(unsupported("checkpoint"))
+    }
+}
+
+fn unsupported(operation: &str) -> ToolExecutionResult {
+    ToolExecutionResult::tool_error(format!(
+        "this sandbox workspace does not support `{operation}`"
+    ))
 }
 
 /// Tool-context extension carrying the session's [`SandboxWorkspace`].
