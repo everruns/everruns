@@ -50,7 +50,6 @@ use crate::storage::repositories::Database;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::EventId;
 use everruns_contracts::typed_id::SessionId;
-use everruns_server_macros::sql;
 
 /// Appends one group may take.
 const MAX_GROUP_APPENDS: usize = 64;
@@ -392,7 +391,7 @@ async fn store_in_one_statement(
     qb.push("::BIGINT[], ");
     qb.push_bind(&claim_call);
     qb.push("::TEXT[]) AS c(idx, session_id, holder, fence, tool_call_id))");
-    qb.push(sql!(
+    qb.push(
         r#"
         , locked AS MATERIALIZED (
             SELECT es.session_id FROM event_sequences es
@@ -473,8 +472,8 @@ async fn store_in_one_statement(
         LEFT JOIN planned p ON p.idx = v.idx
         LEFT JOIN ins ON ins.session_id = p.session_id AND ins.sequence = p.sequence
         ORDER BY v.idx, p.ord
-        "#
-    ));
+        "#,
+    );
 
     let rows = match qb.build().fetch_all(&db.pool).await {
         Ok(rows) => rows,
@@ -678,11 +677,13 @@ mod tests {
         commit_group(db.database(), vec![ga]).await;
 
         let stored = ra.await.unwrap().unwrap().remove(0);
-        let read: EventRow = sqlx::query_as(sql!("SELECT {EventRow} FROM events WHERE id = $1"))
-            .bind(stored.id)
-            .fetch_one(db.database().pool())
-            .await
-            .unwrap();
+        let read: EventRow = sqlx::query_as(everruns_server_macros::sql!(
+            "SELECT {EventRow} FROM events WHERE id = $1"
+        ))
+        .bind(stored.id)
+        .fetch_one(db.database().pool())
+        .await
+        .unwrap();
         assert_eq!(
             serde_json::to_value((
                 &stored.id,
