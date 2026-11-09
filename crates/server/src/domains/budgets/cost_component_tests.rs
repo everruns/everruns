@@ -1,7 +1,7 @@
 // Budget metering of generations with declared cost components (EVE-1125).
 //
-// A managed-harness turn (the OpenAI Agents API backend) can bill tools and
-// containers beyond its tokens, and can end without known usage. Priced
+// A generation can bill hosted tools and containers beyond its tokens, and
+// can end without known usage. Priced
 // components are debited; unknown ones stay explicit in the journal.
 
 use super::tests::{create_session_with_owner, make_db};
@@ -31,14 +31,14 @@ async fn test_unknown_usage_debits_priced_components_and_journals_the_unknown() 
         .await
         .unwrap();
 
-    // A cancelled managed turn: the provider never reported its usage, but it
+    // A cancelled turn: the provider never reported its usage, but it
     // ran two web searches and a hosted container.
     let mut data = LlmGenerationData::failure(
         vec![],
         vec![],
         "gpt-6-astra".into(),
         Some("openai".into()),
-        "OpenAI Agents API turn cancelled".into(),
+        "turn cancelled".into(),
         None,
         None,
     )

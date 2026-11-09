@@ -2,6 +2,12 @@
 
 ## 2026-11-09
 
+- The OpenAI Agents API runtime backend is removed: the capability, the
+  `openai_agents_api` flag, its checkpoint journal, provider-session lifecycle
+  and late-usage reconciliation, and threat-model entries TM-TOOL-051,
+  TM-LLM-043, TM-LLM-044 and TM-LLM-046. Its tables stay in the database,
+  unused, because records are never purged
+  ([dismissed options](project/dismissed-options.md#openai-agents-api-runtime-backend)).
 - Framework hosts get a local control socket so a second process of the same
   user can list, watch, drive and cancel running sessions
   ([attached control](framework/attached-control.md)); threat model gains
@@ -1753,13 +1759,13 @@
   transcript of the earlier turns (user and assistant text, completed tool
   call/result pairs; newest 200 entries, 32 KiB) as a fenced user message ahead
   of its input, since create `input` takes user-role messages only (verified
-  live). See [OpenAI Agents API Runtime](execution/openai-agents-api-runtime.md#portability);
+  live). See OpenAI Agents API Runtime;
   TM-LLM-046.
 
 * **Agents API live conformance passed.** With the OpenAI organization funded,
   `live_conformance_one_client_function_and_one_allowed_mcp_tool` completed a
   turn with one client function and one allowed MCP tool (EVE-1144). See
-  [OpenAI Agents API Runtime](execution/openai-agents-api-runtime.md#live-validation).
+  OpenAI Agents API Runtime.
 
 * **Memory model moves into knowledge.** The design note on how the
   per-session Workspace and the durable org Memory tiers relate left the public docs Advanced group
@@ -1893,8 +1899,8 @@
   again, and a rejection or expiry submits a failure. Budgets stop the turn
   before more tools run, output guardrails judge every remote message, and
   configurations with provider-run tools or MCP credentials are refused.
-  TM-LLM-043 is mitigated. See [OpenAI Agents API Runtime
-  Backend](execution/openai-agents-api-runtime.md#policy-at-the-tool-and-output-boundaries).
+  TM-LLM-043 is mitigated. See OpenAI Agents API Runtime
+  Backend.
 * **The OpenAI Agents API backend is durable and opt-in (EVE-1123).** A session
   selects it with the `openai_agents_api_runtime` capability, which the
   `openai_agents_api` org flag gates. One encrypted, lease-fenced checkpoint per
@@ -1904,8 +1910,8 @@
   not idempotent at OpenAI), retries input under its idempotency key (which
   OpenAI honors), and reconciles from saved items after a disconnect. Tools run
   only as client functions through the Act pipeline. Threat-model entries
-  TM-TOOL-051 and TM-LLM-043. See [OpenAI Agents API Runtime
-  Backend](execution/openai-agents-api-runtime.md).
+  TM-TOOL-051 and TM-LLM-043. See OpenAI Agents API Runtime
+  Backend.
 * **Hosted sessions have a hard tool-approval gate (EVE-1140).** [Tool Approval](execution/tool-approval.md)
   records how `tool_approval` works where a turn cannot block on a human: the
   gate defers an undecided call, the turn parks on an `approve_tool_call`
@@ -1952,7 +1958,7 @@
   ledger while OpenAI owns live loop state. A feature-gated
   prototype covers one function tool, one MCP tool, event projection, and config
   import. It ran end to end against the live API on 2026-09-30 with one
-  function and one MCP tool; the recorded stream is the test fixture. See [OpenAI Agents API Runtime Backend](execution/openai-agents-api-runtime.md).
+  function and one MCP tool; the recorded stream is the test fixture. See OpenAI Agents API Runtime Backend.
 ## 2026-09-29
 
 * **Virtual users have a proposed replacement design for the runtime identity

@@ -92,7 +92,6 @@ chrono-tz = { version = "0.10", optional = true }
 fs2 = { workspace = true, optional = true }
 ignore = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls"] }
-eventsource-stream = { workspace = true, optional = true }
 serde_urlencoded = { version = "0.7", optional = true }
 futures-util = { workspace = true, optional = true }
 tree-sitter = { version = "0.27", optional = true }
@@ -125,7 +124,6 @@ host = ["engine", "dep:zip", "dep:fs2", "dep:ignore", "dep:libc", "tokio/fs", "t
 execution-host = ["engine", "dep:zip"]
 actor-runtime = ["execution-host", "builtins"]
 direct-egress = ["host", "dep:reqwest", "reqwest/blocking", "dep:ed25519-dalek"]
-openai-agents-api = ["direct-egress", "dep:eventsource-stream"]
 process = ["host", "tokio/process", "tokio/time"]
 native-containment = ["process", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:landlock", "dep:libc", "dep:seccompiler"]
 host-shell = ["native-containment"]

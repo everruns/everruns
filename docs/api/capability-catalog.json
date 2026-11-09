@@ -1011,21 +1011,6 @@
       "tools": []
     },
     {
-      "category": "Runtime",
-      "dependencies": [],
-      "docs_slug": null,
-      "feature_flag": "openai_agents_api",
-      "features": [],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "openai_agents_api_runtime",
-      "name": "OpenAI Agents API Runtime",
-      "status": "available",
-      "tools": []
-    },
-    {
       "category": "Tools",
       "dependencies": [],
       "docs_slug": "openai-server-tools",

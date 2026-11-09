@@ -41,8 +41,6 @@ delegate! {
     load_messages => handle_load_messages(LoadMessagesRequest) -> LoadMessagesResponse;
     native_async_journal => handle_native_async_journal(proto::NativeAsyncJournalRequest)
         -> proto::NativeAsyncJournalResponse;
-    agents_api_journal => handle_agents_api_journal(proto::AgentsApiJournalRequest)
-        -> proto::AgentsApiJournalResponse;
     get_compaction_checkpoint => handle_get_compaction_checkpoint(proto::GetCompactionCheckpointRequest)
         -> proto::GetCompactionCheckpointResponse;
     install_compaction_checkpoint => handle_install_compaction_checkpoint(proto::InstallCompactionCheckpointRequest)

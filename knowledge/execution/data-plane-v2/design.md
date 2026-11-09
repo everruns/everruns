@@ -935,7 +935,7 @@ worker turn already uses: egress, utility model and decisions (over the
 composition's), budget and payment per agent, session creation, outbound
 rate limiting, provider credentials, leased resources, durable tool
 results, session resources, subagent spawns, image and file resolvers,
-image artifacts, the Agents API store and hosted MCP per input. Knowledge
+image artifacts and hosted MCP per input. Knowledge
 auto-context runs through the worker's own code, now shared
 (`host::add_automatic_knowledge`); a host's tool detacher wraps the
 activation as it wraps a worker lease; a host's wait predicate adds to the

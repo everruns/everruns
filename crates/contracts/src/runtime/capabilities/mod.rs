@@ -106,10 +106,6 @@ pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
 /// A2A id, so hosts can name it whether or not the `ag-ui` feature compiled
 /// the implementation in.
 pub const AG_UI_DELEGATION_CAPABILITY_ID: &str = "ag_ui_delegation";
-/// Capability that selects the opt-in OpenAI Agents API runtime backend
-/// (EVE-1123). Defined ungated so platform feature gating and validation can
-/// reference it whether or not the host compiled the backend.
-pub const OPENAI_AGENTS_API_RUNTIME_ID: &str = "openai_agents_api_runtime";
 /// KV key prefix for A2A delegation run records. Defined ungated so the
 /// session-storage internal-prefix reservation (a TM-TOOL/TM-AGENT mitigation
 /// against forged attachments) holds even when the `a2a` feature is compiled out.

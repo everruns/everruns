@@ -457,10 +457,6 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
-        None
-    }
-
     fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
         None
     }

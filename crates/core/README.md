@@ -41,7 +41,7 @@ assert!(drivers.registered_providers().is_empty());
 
 Host networking, processes, containment and exporters have separate opt-ins:
 `direct-egress`, `process`, `native-containment`, `host-shell`,
-`openai-agents-api`, `otel`, and `braintrust`. `mcp-stdio` enables local-process
+`otel`, and `braintrust`. `mcp-stdio` enables local-process
 MCP. `openapi`, `tree-sitter-outlines`, and `ui-capabilities` select their
 respective schema, structural-outline, and UI catalog surfaces.
 

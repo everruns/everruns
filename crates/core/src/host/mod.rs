@@ -62,8 +62,6 @@ mod mcp_readiness;
 pub use mcp_readiness::{McpReadiness, McpReadinessWatch, McpServerReadiness};
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 pub mod observability;
-#[cfg(feature = "openai-agents-api")]
-pub mod openai_agents_api;
 #[cfg(feature = "direct-egress")]
 mod org_egress_allowlist;
 mod partial_stream;

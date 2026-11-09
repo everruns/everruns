@@ -7,7 +7,6 @@
 // repositories themselves offload to, not a runtime-facing seam.
 
 pub mod agent;
-pub mod agents_api;
 pub mod compaction_checkpoint;
 pub mod durable_tool_results;
 pub mod harness;

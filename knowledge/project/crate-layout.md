@@ -124,8 +124,7 @@ actor runs every turn through it, on the in-process default today. The platform
 server runs every turn through `ActorTurnBackend`, which marks the session's actor
 runnable for a worker to lease and run the whole turn with core's `drive_turn`.
 `tonic` and `everruns-internal-protocol` live in the worker and server only.
-Worker-only core features (MCP, telemetry, OpenAI Agents API, tree-sitter
-outlines) are selected by the worker's own `everruns-core` edge. The per-step
+Worker-only core features (MCP, telemetry, tree-sitter outlines) are selected by the worker's own `everruns-core` edge. The per-step
 durable backend (`everruns-durable-engine`) was deleted in step 7 of the
 actor-based design; why is recorded in
 [Execution Backends](../framework/execution-backends.md).

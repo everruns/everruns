@@ -96,7 +96,6 @@ macros = ["dep:everruns-macros", "dep:schemars"]
 # `--no-default-features`.
 utility-llm = ["everruns-contracts/http", "dep:everruns-drivers", "everruns-drivers/openrouter"]
 utility-openai = ["utility-llm"]
-openai-agents-api = ["everruns-core/openai-agents-api"]
 capabilities = ["everruns-contracts/definition", "dep:schemars"]
 # Curated typed values plus the backend-neutral implementation bundle. Kept
 # optional so `default-features = false` Framework consumers compile no built-in

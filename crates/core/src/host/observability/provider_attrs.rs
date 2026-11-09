@@ -1,19 +1,11 @@
-//! Provider correlation and unknown-cost annotations shared by the
-//! exporters (EVE-1125).
+//! Unknown-cost annotations shared by the exporters.
 //!
-//! A runtime backend that hands the loop to a provider (the OpenAI Agents
-//! API) records the provider's ids in event metadata beside the local ids,
-//! and a generation can name billable components whose amount is unknown.
-//! Both reach spans so an operator can follow a span to the provider's own
-//! records and see spend that is unknown rather than zero.
+//! A generation can name billable components whose amount is unknown. They
+//! reach spans so an operator sees spend that is unknown rather than zero.
 
 use crate::events::Event;
 use crate::events::LlmGenerationMetadata;
-use crate::events::correlation::provider_correlation;
 
-/// Prefix of provider correlation attributes (`everruns.provider_session_id`).
-#[cfg(feature = "otel")]
-const ATTRIBUTE_PREFIX: &str = "everruns.";
 /// Billable components of a generation whose amount is unknown.
 #[cfg(feature = "otel")]
 pub(crate) const USAGE_COST_UNKNOWN_COMPONENTS: &str = "everruns.usage.cost_unknown_components";
@@ -22,15 +14,6 @@ pub(crate) const USAGE_COST_UNKNOWN_COMPONENTS: &str = "everruns.usage.cost_unkn
 fn unpriced_components(meta: &LlmGenerationMetadata) -> Vec<String> {
     meta.unpriced_cost_components()
         .map(|component| format!("{}:{}", component.kind, component.name))
-        .collect()
-}
-
-/// Provider ids as `everruns.*` span attributes.
-#[cfg(feature = "otel")]
-pub(crate) fn otel_provider_attributes(event: &Event) -> Vec<opentelemetry::KeyValue> {
-    provider_correlation(event.metadata.as_ref())
-        .into_iter()
-        .map(|(key, value)| opentelemetry::KeyValue::new(format!("{ATTRIBUTE_PREFIX}{key}"), value))
         .collect()
 }
 
@@ -52,13 +35,9 @@ pub(crate) fn otel_unknown_cost_attributes(
     )]
 }
 
-/// Provider ids and, on a generation, its cost components in Braintrust
-/// span metadata. `cost_usd: null` marks an amount nobody could price.
+/// A generation's cost components in Braintrust span metadata. `cost_usd: null` marks an amount nobody could price.
 #[cfg(feature = "braintrust")]
 pub(crate) fn annotate_braintrust(event: &Event, metadata: &mut serde_json::Value) {
-    for (key, value) in provider_correlation(event.metadata.as_ref()) {
-        metadata[key] = serde_json::json!(value);
-    }
     super::generation_attrs::annotate_braintrust(event, metadata);
     if let crate::events::EventData::LlmGeneration(data) = &event.data
         && !data.metadata.cost_components.is_empty()

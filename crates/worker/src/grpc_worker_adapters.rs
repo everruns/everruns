@@ -641,12 +641,6 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
-    fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
-        self.client
-            .checkpoint_stores_available()
-            .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
-    }
-
     fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
         let client = self.client.clone();
         Some(Arc::new(

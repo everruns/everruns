@@ -530,9 +530,7 @@ pub fn plan_after_reason(
 
 /// Whether an act outcome parks the turn, given the session's pause hints.
 ///
-/// One definition shared by [`plan_after_act`] and hosts that run tools
-/// inside a remote reason loop (the OpenAI Agents API backend), so both pause
-/// on exactly the same conditions.
+/// One definition, so every caller pauses on exactly the same conditions.
 pub fn act_pauses_turn(
     outcome: ActOutcome,
     setup_connection_hint_enabled: bool,
