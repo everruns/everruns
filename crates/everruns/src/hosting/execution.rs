@@ -160,12 +160,19 @@ impl ActorHosts for FrameworkHosts {
         self.runtime.clone()
     }
 
-    async fn flush(&self, host: &Self::Host) -> Result<()> {
-        host.host_event_emitter().flush().await
-    }
+    // Decision: held lifecycle events are not the driver's `flush`. Its
+    // flushes guard committing input, which needs only `turn.started` (never
+    // held); held events ride on the next barrier, or commit when the turn
+    // ends on this worker, before its lease is released or parked.
 
     fn abandon(&self, host: &Self::Host) {
         host.host_event_emitter().abandon();
+    }
+
+    async fn turn_ended(&self, _: &TurnDrive) {
+        if let Err(error) = self.runtime.host_event_emitter().flush().await {
+            tracing::debug!(%error, "held lifecycle events not committed as the turn ended");
+        }
     }
 
     async fn fresh_turn_id(&self, input: MessageId, proposed: TurnId) -> Result<TurnId> {

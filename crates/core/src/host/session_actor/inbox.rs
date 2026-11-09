@@ -40,10 +40,22 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
         self.parked.load(Ordering::SeqCst)
     }
 
-    /// Renew to learn the inbox's newest input; a failed renew is the
-    /// renewer's to judge, and the turn goes on with what it knows.
+    /// Learn the inbox's newest input (a renew unless the store pushes it,
+    /// see `Lease::refresh`); a failed renew is the renewer's to judge, and
+    /// the turn goes on with what it knows.
     async fn refresh(&self) {
-        match self.lease.refresh().await {
+        self.report(self.lease.refresh().await);
+    }
+
+    /// Renew after committing taken input: committing its assignment is what
+    /// turns a cancel of that input into this turn's cancel, which only a
+    /// renew reports.
+    async fn renew(&self) {
+        self.report(self.lease.renew().await);
+    }
+
+    fn report(&self, result: Result<()>) {
+        match result {
             // The session was deleted (EVE-1235): the lease is lost and the
             // turn stops on it.
             Ok(()) | Err(AgentLoopError::SessionNotFound(_)) => {}
@@ -64,7 +76,7 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
         let inputs = self.lease.take_inputs().await?;
         self.hosts.inputs_consumed(self.drive, &inputs).await?;
         if !inputs.is_empty() {
-            self.refresh().await;
+            self.renew().await;
         }
         if self.lease.cancel_requested() {
             return Err(AgentLoopError::store("turn cancellation accepted"));
@@ -86,16 +98,14 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
             self.hosts.begin_phase(self.host, self.drive, Phase::Act);
             return Ok(PendingInput::new(pending, Vec::new()));
         }
-        // `take` already stored `turn.started`. A gap in the log stops the
-        // turn before steering input is committed; with none taken, the
-        // drive's end flushes, so a finishing turn's last events ride on its
-        // terminal event instead of a flush of their own.
+        // A gap in the log stops the turn before its input is committed.
+        self.hosts.flush(self.host).await?;
+        self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
+        self.hosts.inputs_consumed(self.drive, &inputs).await?;
         if !inputs.is_empty() {
-            self.hosts.flush(self.host).await?;
-            self.hosts.inputs_consumed(self.drive, &inputs).await?;
-            self.refresh().await;
+            self.renew().await;
         }
         if self.lease.cancel_requested() {
             return Err(AgentLoopError::store("turn cancellation accepted"));
