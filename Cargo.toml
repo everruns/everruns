@@ -41,6 +41,7 @@ members = [
     "examples/incident-commander-agent",
     "examples/coding-cli",
     "examples/framework-cli-host",
+    "examples/attached-cli",
     "examples/bashkit-repo-agent",
     "examples/host-shell-agent",
     "examples/foreman-agent",

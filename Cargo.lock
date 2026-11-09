@@ -3786,6 +3786,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-attached-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "everruns",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-bashkit-repo-agent"
 version = "0.1.0"
 dependencies = [

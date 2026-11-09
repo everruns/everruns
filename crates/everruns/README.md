@@ -251,6 +251,7 @@ opt-in.
 | `a2a` | Outbound Agent2Agent delegation; includes `local` |
 | `ag-ui` | Serve a session to AG-UI 1.0 clients (CopilotKit, `@ag-ui/client`) with `Session::ag_ui` |
 | `ag-ui-axum` | `ag-ui` plus `AgUiHandler`, a ready-made axum route with an authorizer, thread resolution and SSE framing |
+| `control` | `everruns::control` (Unix): a private local socket so a second process of the same user can list, attach to, send to and cancel a host's sessions |
 | `channel-auth` | `channel_auth`: the everruns server's credential verifier for agent endpoints (OIDC/JWKS, OAuth 2.0 introspection, claim requirements) |
 
 Combine features as needed:
