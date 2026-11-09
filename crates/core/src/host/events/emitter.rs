@@ -20,14 +20,14 @@ use crate::events::{Event, EventData, EventRequest};
 /// append acceptance order through the post-commit sink call.
 ///
 /// With [`HostEventEmitter::enable_committed_batches`], events nothing waits
-/// on yet (lifecycle records, and a turn's final answer; see `is_held`) are held and committed together with the next event that
+/// on yet (lifecycle records, and a turn's final answer; see `CommitClass::Held`) are held and committed together with the next event that
 /// is not, in one [`EventLog::append_batch`]. A held event is returned provisionally, without
 /// a sequence, and reaches the sink only once committed, so no listener ever
 /// sees an event the log does not hold. A crash loses only held events, which
 /// the turn re-emits when it runs again.
 ///
-/// Progress markers (`reason.started`, `output.message.started`) commit
-/// behind the work instead: [`EventLog::append_batch_behind`] runs in a
+/// Progress markers (`CommitClass::Behind`) commit behind the work
+/// instead: [`EventLog::append_batch_behind`] runs in a
 /// background task, chained after the session's previous one, and the
 /// emitter returns the event provisionally. Every later commit, flush and
 /// live delta of the session waits for that chain first, so order holds and
@@ -48,49 +48,77 @@ pub struct HostEventEmitter {
 /// The last commit running behind a session's work.
 type Behind = everruns_contracts::rt::JoinHandle<Result<(), String>>;
 
-/// Progress markers that commit behind the work (see [`HostEventEmitter`]).
+/// When an event must be in the log, relative to the `emit` that accepted
+/// it (see [`HostEventEmitter`]).
 ///
-/// Decision: only events the executor never reads back before its next
-/// commit, and needs no sequence for:
-/// - ahead of a model call that overlaps their commit: `reason.started`
-///   ("thinking"), `output.message.started` ("answering") and
-///   `context.compacted` (the step installs the compacted context in
-///   memory; a later step or turn reads the event only after a commit that
-///   waits for it);
-/// - `session.idled`, after the committed terminal event: it overlaps the
-///   turn's finalization, the release waits for it, and a holder that dies
-///   first leaves an idle the next one owes and emits (`unidled_turn`).
-fn commits_behind(request: &EventRequest) -> bool {
-    matches!(
-        request.event_type.as_str(),
-        "reason.started" | "output.message.started" | "context.compacted" | "session.idled"
-    )
+/// Decision: one typed table decides every event's class, keyed by the
+/// protocol's event type constants. An event type the table does not name
+/// is a [`CommitClass::Barrier`], the strongest class, so a new event is
+/// stored before `emit` returns until someone argues it need not be.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CommitClass {
+    /// A live delta: never stored, sink only.
+    Live,
+    /// Stored before `emit` returns, with everything held before it.
+    Barrier,
+    /// Held and stored together with the next barrier.
+    ///
+    /// Only events that no reader of the same epoch looks for before that
+    /// barrier, that no live view shows as progress, and that a rerun of
+    /// the turn re-emits:
+    /// - lifecycle records: `session.activated`, `reason.completed`,
+    ///   `capability.usage`, `llm.generation`;
+    /// - the answer that ends a turn (`output.message.completed` without
+    ///   tool calls): it rides on the `turn.completed` that follows. A tail
+    ///   read, a steered input and the lease release commit it first. An
+    ///   answer that calls tools stays a barrier, so no tool runs on a
+    ///   decision the log may still lose.
+    ///
+    /// `turn.started`, inputs, tool events and terminal events stay
+    /// barriers. A terminal event is never held: an epoch that ends without
+    /// releasing (its lease expired, a step budget ran out) loses what it
+    /// holds, and a turn whose `turn.completed` keeps getting lost never
+    /// completes.
+    Held,
+    /// Stored behind the work, in order, without the emitter waiting.
+    ///
+    /// Only events the executor never reads back before its next commit,
+    /// and needs no sequence for:
+    /// - ahead of a model call that overlaps their commit: `reason.started`
+    ///   ("thinking"), `output.message.started` ("answering") and
+    ///   `context.compacted` (the step installs the compacted context in
+    ///   memory; a later step or turn reads the event only after a commit
+    ///   that waits for it);
+    /// - `session.idled`, after the committed terminal event: it overlaps
+    ///   the turn's finalization, the release waits for it, and a holder
+    ///   that dies first leaves an idle the next one owes and emits
+    ///   (`unidled_turn`).
+    Behind,
 }
 
-/// Events a committed batch may hold until the next barrier event.
-///
-/// Decision: only events that no reader of the same epoch looks for before
-/// that barrier, that no live view shows as progress, and that a rerun of
-/// the turn re-emits.
-/// - Lifecycle records: `session.activated`, `reason.completed`,
-///   `capability.usage`, `llm.generation`.
-/// - The answer that ends a turn (`output.message.completed` without tool
-///   calls): it rides on the `turn.completed` that follows. A tail read, a
-///   steered input and the lease release commit it first. An answer that
-///   calls tools stays a barrier, so no tool runs on a decision the log may
-///   still lose.
-///
-/// `turn.started`, inputs, tool events and terminal events stay barriers.
-/// Decision: a terminal event is never held. An epoch that ends without
-/// releasing (its lease expired, a step budget ran out) loses what it holds,
-/// and a turn whose `turn.completed` keeps getting lost never completes.
-fn is_held(request: &EventRequest) -> bool {
-    match &request.data {
-        EventData::OutputMessageCompleted(data) => !data.message.has_tool_calls(),
-        _ => matches!(
-            request.event_type.as_str(),
-            "session.activated" | "reason.completed" | "capability.usage" | "llm.generation"
-        ),
+impl CommitClass {
+    pub(crate) fn of(request: &EventRequest) -> Self {
+        use crate::events::{
+            CAPABILITY_USAGE, CONTEXT_COMPACTED, LLM_GENERATION, OUTPUT_MESSAGE_STARTED,
+            REASON_COMPLETED, REASON_STARTED, SESSION_ACTIVATED, SESSION_IDLED,
+        };
+        if request.is_ephemeral() {
+            return Self::Live;
+        }
+        if let EventData::OutputMessageCompleted(data) = &request.data {
+            return if data.message.has_tool_calls() {
+                Self::Barrier
+            } else {
+                Self::Held
+            };
+        }
+        match request.event_type.as_str() {
+            REASON_STARTED | OUTPUT_MESSAGE_STARTED | CONTEXT_COMPACTED | SESSION_IDLED => {
+                Self::Behind
+            }
+            SESSION_ACTIVATED | REASON_COMPLETED | CAPABILITY_USAGE | LLM_GENERATION => Self::Held,
+            _ => Self::Barrier,
+        }
     }
 }
 
@@ -335,20 +363,23 @@ impl EventEmitter for HostEventEmitter {
             }
             return Ok(event);
         }
-        if commits_behind(&request) {
-            let provisional = ephemeral_event(request.clone());
-            self.commit_behind(session_id, Some(request), None);
-            return Ok(provisional);
+        match CommitClass::of(&request) {
+            CommitClass::Behind => {
+                let provisional = ephemeral_event(request.clone());
+                self.commit_behind(session_id, Some(request), None);
+                Ok(provisional)
+            }
+            CommitClass::Held => {
+                let provisional = ephemeral_event(request.clone());
+                self.held_map().entry(session_id).or_default().push(request);
+                Ok(provisional)
+            }
+            CommitClass::Barrier | CommitClass::Live => self
+                .commit(session_id, Some(request))
+                .await?
+                .pop()
+                .ok_or_else(|| AgentLoopError::store("event log returned no committed event")),
         }
-        if is_held(&request) {
-            let provisional = ephemeral_event(request.clone());
-            self.held_map().entry(session_id).or_default().push(request);
-            return Ok(provisional);
-        }
-        self.commit(session_id, Some(request))
-            .await?
-            .pop()
-            .ok_or_else(|| AgentLoopError::store("event log returned no committed event"))
     }
     async fn wait_stored(&self, session_id: SessionId) -> CoreResult<()> {
         let lock = self.session_lock(session_id).await;
@@ -368,5 +399,55 @@ fn ephemeral_event(request: EventRequest) -> Event {
         metadata: request.metadata,
         tags: request.tags,
         sequence: None,
+    }
+}
+
+#[cfg(test)]
+mod commit_class_tests {
+    use super::*;
+    use crate::events::{EventContext, VALID_EVENT_TYPES};
+
+    /// The whole table. Every other event type of the protocol, and any
+    /// type added later, is a barrier.
+    #[test]
+    fn only_the_listed_event_types_are_deferred() {
+        let deferred = [
+            ("reason.started", CommitClass::Behind),
+            ("output.message.started", CommitClass::Behind),
+            ("context.compacted", CommitClass::Behind),
+            ("session.idled", CommitClass::Behind),
+            ("session.activated", CommitClass::Held),
+            ("reason.completed", CommitClass::Held),
+            ("capability.usage", CommitClass::Held),
+            ("llm.generation", CommitClass::Held),
+            ("output.message.delta", CommitClass::Live),
+            ("reason.thinking.delta", CommitClass::Live),
+            ("tool.output.delta", CommitClass::Live),
+            ("voice.input_transcript.delta", CommitClass::Live),
+            ("voice.output_transcript.delta", CommitClass::Live),
+        ];
+        for (event_type, class) in deferred {
+            assert!(
+                class == CommitClass::Live || VALID_EVENT_TYPES.contains(&event_type),
+                "{event_type}"
+            );
+        }
+        let named = deferred.iter().map(|(event_type, _)| event_type);
+        for event_type in VALID_EVENT_TYPES.iter().chain(named).chain(&["a.new.event"]) {
+            let request = EventRequest {
+                event_type: (*event_type).to_owned(),
+                ts: chrono::Utc::now(),
+                session_id: SessionId::new(),
+                context: EventContext::empty(),
+                data: EventData::unsupported((*event_type).to_owned(), serde_json::Value::Null),
+                metadata: None,
+                tags: None,
+            };
+            let expected = deferred
+                .iter()
+                .find(|(deferred, _)| deferred == event_type)
+                .map_or(CommitClass::Barrier, |(_, class)| *class);
+            assert_eq!(CommitClass::of(&request), expected, "{event_type}");
+        }
     }
 }

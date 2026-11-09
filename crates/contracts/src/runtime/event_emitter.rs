@@ -42,13 +42,21 @@ pub trait EventEmitter: Send + Sync {
     /// at once, but never the `tool.started` of an `AtMostOnce` call: that
     /// one is stored before `emit` returns, because resume reads a log without
     /// it as proof the call never ran.
+    ///
+    /// The returned event is in the log exactly when it has a `sequence`.
+    /// One without (a live delta, or an event the host stores later) is a
+    /// receipt only: its id is not the id the log will hold, so a caller
+    /// must not keep or pass on its id or sequence.
     async fn emit(&self, request: EventRequest) -> Result<Event>;
 
     /// Wait until every event `emit` already returned for `session_id` is
-    /// stored. A host that stores before `emit` returns has nothing to wait
-    /// for. The reason phase calls it before each provider call, so the
+    /// stored. The reason phase calls it before each provider call, so the
     /// call's `reason.started` is in the log before the call is dispatched
     /// (data plane v2: every provider call attempt recorded before dispatch).
+    ///
+    /// The default is correct only for an emitter that stores every durable
+    /// event before `emit` returns. An emitter that returns earlier must
+    /// implement it, and one that wraps another emitter must forward it.
     async fn wait_stored(&self, _session_id: SessionId) -> Result<()> {
         Ok(())
     }
