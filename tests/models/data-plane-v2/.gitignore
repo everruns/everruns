@@ -1,0 +1,3 @@
+# TLC writes counterexample traces next to the spec.
+*_TTrace_*
+states/

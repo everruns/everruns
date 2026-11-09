@@ -1,0 +1,1053 @@
+---
+type: Specification
+title: "Data plane v2: cells"
+description: "Cell-native execution for 75 000 agents: one control plane, today's workers as data plane v1, and Raft cells with S3 as data plane v2."
+tags:
+  - execution
+  - data-plane-v2
+  - cells
+  - scale
+---
+
+# Everruns data plane v2: cells
+
+Status: approved 2026-11-09; implementation in progress, step by step (see "Implementation plan").
+
+Goal: run 75 000 agents on Everruns. Backward compatibility is not a
+constraint. The cell architecture comes from `everruns/funout` (`0a0c0ec`: cells as Everruns Engine hosting profiles).
+
+## Summary
+
+Everruns splits into one **control plane** for management and two **data
+planes** for running agents. The control plane (server + RDS) owns orgs,
+users, agents, secrets, connections and billing. Data plane v1 is today's
+server-and-workers execution. Data plane v2 is new: cells that hold sessions
+in Raft-replicated memory, run turns on their own executors and keep history
+in S3. Each org runs on one data plane. Clients manage through the control
+plane and send session traffic straight to their org's data plane, so a v2
+turn never touches the server or RDS.
+
+![One control plane, two data planes](diagram-dp-overview.svg)
+
+![Logical view: components and data flows](diagram-logical.svg)
+
+![Physical view: production deployment](diagram-physical.svg)
+
+## Why this shape
+
+An earlier version of this plan kept one shared data path and replaced only
+RDS's session log with cells. It could not reach 75k: every turn still made
+gRPC calls to the server for agents, secrets, usage, budgets, files and MCP
+tokens, most of them RDS reads, and NATS and the server stayed on every
+turn. Most of the work also went into making old and new paths coexist.
+
+Splitting by data plane fixes both:
+
+- **Nothing central on the turn path.** A v2 turn gets its agent
+  definition and sealed secrets from caches the data plane keeps current,
+  checks spend against its cell's local allowance, writes only the cell's
+  Raft log, and streams to the client from the cell's gateway.
+- **Little coexistence work.** v2 orgs never reach the server's session
+  features (sessions, messages, events, trace, files), so those need no cell
+  path. The server gains a small contract with data planes, nothing more.
+- **Capacity grows by adding cells.** Each cell is independent; nothing on a
+  turn's path crosses cells.
+
+## Control plane
+
+Owns everything about *what* runs, never the running of it:
+
+- orgs, users, auth, agents, harnesses, capabilities settings, secrets,
+  connections, providers, billing;
+- the org setting `data_plane = v1 | v2` (cells inside a data plane are the data plane's business);
+- the UI and CLI management API, unchanged.
+
+### Contract with data planes
+
+| Direction | What | How |
+| --- | --- | --- |
+| Control → data | Full agent definitions (revisions), tenant secrets and connections, tenant policy and limits; spend allowances on request | Pushed on every edit from an RDS outbox, retried until acknowledged; stored in the data plane registry, not in any particular cell |
+| Control → client | A short-lived signed org token naming the org's data plane | Issued at sign-in or API key exchange; the edge router and gateways verify it with the control plane's public keys (JWKS), no call back |
+| Data → control | Usage and cost, session summaries for lists and search, health | Batched feed, async; drives billing roll-ups and the org overview |
+| Control → data | Admin: enable, suspend, export or delete an org's data (cells, drains and moves stay internal to the data plane) | Data plane admin API |
+
+Full schema and rules: [cp-dp-protocol.md](cp-dp-protocol.md).
+
+Data plane v1 implements the contract trivially: it shares the control
+plane's RDS, so config pushes and the feed are no-ops and its gateway is today's
+server.
+
+## Data plane v2
+
+![Inside data plane v2](diagram-dp-cell.svg)
+
+### Cells
+
+A cell is three nodes (one per zone) running one Raft group, ported from
+funout:
+
+- **State in memory, replicated.** Sessions (journal and Engine authority state: binding, admitted input,
+  epoch, receipts, checkpoints) of any orgs, their usage counters and
+  spend allowances, timers, and the other placeable units it hosts (shared
+  volumes, schedules). Times and ids travel in commands, so every replica applies the
+  same state.
+- **The Raft WAL is the only hot write,** group-committed across sessions
+  (append commit p50 1.4 ms in funout on one VM; on a three-zone cell with
+  EBS it will be several times that, which is why waited round trips per
+  turn are a budget).
+- **History in S3**: immutable segments with messages-only companions,
+  tiered compaction, snapshots. Idle sessions keep ~20 KB of metadata in
+  memory and page history in when needed.
+- **Moves, rebalancing, draining and live membership** as funout built and
+  proved them under `kill -9`.
+
+### Placement: sessions, not orgs
+
+Nothing ties an org to a cell. The unit of placement is the **session**
+(plus a few other small units: a shared volume such as org Memories, a
+schedule), as in funout:
+
+- **Any cell hosts sessions of any org.** Thousands of small orgs share a
+  cell; a large org's sessions spread over many cells. A new session goes
+  to the less loaded of two random cells (with a mild preference for cells
+  already running the org's agents, for warm caches). An org policy can
+  pin an org to a dedicated pool of cells, for isolation or noisy orgs.
+- **Units move freely.** A move freezes the unit in its source cell, hands
+  back the running epoch at the next step boundary, installs the unit's
+  metadata in the target, repoints the directory and leaves a forward.
+  History is already in S3 and does not move, so a move costs metadata
+  only. The rebalancer uses this for hot cells; draining uses it to empty a
+  cell.
+- **Every placement has a generation.** Each unit carries a placement
+  generation that only grows, and each move has a transfer id. Import,
+  activation, directory updates, forwards and cleanup all name the
+  generation they belong to, and a cell or the directory rejects anything
+  older than what it has seen. Cells keep a tombstone with the last
+  generation of every unit that left them, so a delayed import from an old
+  move (A → B arriving after B → C) is refused rather than revived. The
+  destination holds the imported unit **prepared** (not runnable) and
+  becomes executable only when the directory commits the new generation;
+  only a prepared copy can be activated, so a late duplicate activation
+  can't wake a copy that has since started **leaving** (the model found
+  that hole when both were one "frozen" state). A move whose import or
+  place is lost is abandoned by the source taking the unit back through
+  the directory at a higher generation, so the stale prepared copy can
+  never be activated and is dropped by generation. Freeze waits for the
+  session's pending event batch to commit or fail before it takes the
+  image, so no half-written step travels. funout's moves at
+  `8ce744b` lack these checks (`Import` accepts any unit the cell doesn't
+  hold, `Place` overwrites without a version, `Forward` doesn't name its
+  move), so the port adds them, and the move model in "Formal models" is
+  written first.
+- **The registry** is a small replicated group (sharded by id as it grows)
+  that holds what is per data plane rather than per cell: the directory
+  (unit → cell), each agent's current revision, tenants (data key, secrets, policy) and the change stream. It changes only
+  when a unit is created or moved, an agent is edited or tenant policy
+  changes, so its write rate stays low. Gateways and cells cache it; it is
+  not on the per-step path.
+- **The data plane knows agents, not org configuration.** It has no notion
+  of harnesses, org defaults, members or capability settings. The control
+  plane resolves those (with the platform's existing resolution code) into
+  a **full agent definition** per agent, with a revision number, and sends
+  that. An edit to a harness or the org default model makes the control
+  plane re-resolve the affected agents and send their new revisions; that
+  fan-out happens once, at edit time, off the turn path. Framework apps and
+  the platform look the same to the data plane: a session runs an agent
+  definition.
+  - The org survives only as an opaque **tenant**: an id, its sealed data
+    key, its secret and connection-token store, its spend allowances and
+    its operational limits.
+  - Every change goes onto one data-plane-wide **change stream** ("agent
+    A is now at revision R", "tenant T policy changed"); every cell and
+    executor subscribes to all of it and drops what it cached. Edits are
+    rare, so broadcasting everything costs nothing and nobody tracks who
+    hosts what. Sequence numbers detect gaps; a gap drops the whole cache.
+  - The executor caches the hydrated agent under `(agent, revision)`, and
+    the turn records the revision. A turn keeps that revision until it
+    finishes, also across a crash, a hand-off or a move: an activation for
+    an unfinished turn carries the turn's retained revision, and only a new
+    turn gets the current one. A tool operation that is waiting (approval,
+    detached call) also records the tool's implementation version and its
+    effective arguments, and resumes only on an executor that has them.
+- **Execution context: who a turn acts for.** Some access depends on the
+  person, not the agent: a person's own MCP connections and OAuth tokens
+  are exposed only when that person wrote the input or takes part in the
+  session. An agent definition can't hold that, so each admitted input
+  carries an **execution context**: the verified author (from the org
+  token at the gateway), the session's participants, and the resource
+  grants the agent definition allows for them. The executor resolves
+  per-person connections from the tenant secret store using that context,
+  as today's user-MCP layer does with the verified input author.
+- **Credentials and suspension have a freshness bound.** A connection
+  token is refreshed by one holder at a time: the refresher takes a short
+  lease on the connection in the registry, writes the new token with a
+  higher revision, and a token with a lower revision (a delayed feed, an
+  old full snapshot) never overwrites it. Suspension and policy changes go
+  out on the change stream, and every executor, stream node and egress
+  proxy must have heard from it within 30 s; past that it finishes the
+  current model or tool call and starts nothing new until it catches up.
+  So suspension is immediate when the data plane is connected and takes at
+  most 30 s through a partition. During a control plane outage longer than
+  the 10-minute token lifetime, new clients can't sign in, while running
+  sessions continue.
+- **Budgets stay in the control plane, enforced with allowances.** The
+  control plane's ledger and usage policies (notify, ask to continue,
+  stop) remain the single source of truth. A cell that runs a tenant's
+  turn holds a small **spend allowance** for that tenant, granted by the
+  control plane; it spends from it locally (no call per turn) and asks for
+  more when it runs low, reporting what it used. The control plane sizes
+  each grant from the remaining balance (smaller as it nears zero). The
+  product guarantee is a **strict cap on authorized spend**:
+  - Every grant has an id and is reserved in the ledger when issued.
+  - Before each chargeable operation (a model call, a sandbox lease, a
+    paid tool) the cell reserves that operation's maximum cost from the
+    allowance (for a model call: prompt plus `max_tokens` at the model's
+    price) and settles the actual cost after it. A turn never starts a
+    call its allowance can't cover.
+  - The cell reports usage per grant. A grant is closed only by the cell's
+    final settlement for it, never by time: an expired grant stops being
+    spendable at once, but its reserved amount returns to the balance only
+    when the settlement arrives. If a cell is lost, its open grants count
+    as fully spent until disaster recovery reconciles them.
+  - So the sum of grants can never exceed the balance. Actual cost can pass
+    a reservation only when a provider bills more than the declared
+    maximum, and that difference is reported as an overrun.
+  If the control plane is down, cells keep running until their allowances
+  are spent, then new turns wait rather than fail. Policy actions such as
+  "ask to continue" come back as tenant policy changes on the change
+  stream. Operational limits (concurrent sessions, rate limits) are only
+  safety nets: plain per-cell caps from the tenant policy, no coordination.
+- **Org-wide lists** (the Sessions page) are served by the control plane
+  from the session summaries it receives on the feed, so they may lag a
+  second or two; nothing fans out over cells and nothing is written to the
+  registry per turn. Search over content uses the query service.
+
+### Upgrading code
+
+Moves are what make every upgrade safe:
+
+- **Executors** are stateless: a rolling deploy hands epochs back at step
+  boundaries and other executors resume (no moves at all).
+- **Cell nodes, compatible change** (the common case; cell state follows
+  the same additive rules as the session protocol): rolling restart one
+  replica at a time; Raft keeps quorum, sessions keep running.
+- **Cell nodes, breaking change or a risky release:** blue/green cells.
+  Start cells on the new release, mark old cells draining, the rebalancer
+  moves their units over at a controlled rate, and empty old cells are
+  retired. Mixed releases coexist, so the directory and move protocol
+  stay compatible across adjacent releases (checked in CI).
+- The same drain handles cell replacement, zone evacuation and shrinking
+  the fleet.
+
+### Gateways
+
+Every cell node serves the `/v1` session API (create session, send message,
+read events, SSE, cancel, approvals, tool results) with the same shapes as
+today. Clients never call a gateway directly: one public API
+(`api.everruns.com/v1`, one token) sits behind a stateless **edge router**
+that verifies the org token, sends `/v1/sessions/*` of v2 orgs to the
+session's cell and everything else (and v1 sessions) to the control plane. The
+UI, CLI and SDKs keep one URL, a session move between cells is invisible to
+them, and the control plane stays off the message path. Streaming is
+described under "Live streaming" below. No NATS. Org-wide session lists come from the control plane (feed summaries).
+
+### Executors
+
+Executors are **one shared pool per data plane** (stateless pods, KEDA on
+running plus waiting turns across all cells), not a pool per cell: sessions
+of any org are spread over every cell, so per-cell pools would fragment
+capacity. Executors pull work with **credits**: an executor splits its free slots
+among the cells it talks to and never offers the same slot twice (a cell
+holding an unused credit returns it after a short timeout, and the
+executor re-offers it elsewhere). A cell's leader hands out an activation
+only against a credit, so an executor can't be oversubscribed, and each
+cell has a **per-cell cap** on running turns so one hot cell can't take
+the whole pool. Dispatch has **soft affinity**: a cell offers a
+session's activation first to the executor that ran it last, if that
+executor has a credit, and otherwise to any. Affinity alone doesn't keep a
+session warm, because Engine rebuilds its stored view per epoch, so each
+executor keeps a bounded cache of immutable context (history segments,
+checkpoints) across activations, and Engine's per-session handles on an
+executor sit behind an LRU so an executor doesn't slowly accumulate every
+session it ever touched. The bench measures cache misses and S3 reads per
+warm turn rather than assuming zero. **Each cell is an Everruns Engine hosting
+profile**, as funout now does: the cell implements Engine's
+`SessionHosting` SPI (admission, journal, receipts, execution epochs and the
+wakeup obligation in one consistency domain, every operation a Raft
+command, Engine's shared command reducer running inside apply), and an
+executor runs `Engine::activate`. Turn logic, steering, durable waits,
+cancel, approvals, tool results and recovery are Everruns' own code; the
+cell owns only replication, placement, moves, unloading and S3. Everruns'
+hosting conformance suite runs against a cell.
+
+What the executor adds is the **platform host**: hydrating agents from
+definitions, an `EnvironmentFactory` that reopens the session's workspace
+from the cell (see [fs.md](fs.md)), secrets unwrapped with the org's KMS
+data key, and usage written with the epoch's entries.
+
+**Fewer waited writes, without weakening durability.** As first ported to
+Engine hosting, a funout turn made 23 sequential authority writes, each
+waiting for its own commit (87% of an activation). funout's adapter cut
+that to about 11 by sending lifecycle events in the background with
+predicted sequence numbers. That returns a not-yet-committed result
+through Engine's crash-durable `EventLog`, so a listener can see a
+completed output that a crash then erases, and an input admitted mid-step
+takes the predicted sequence, fails the batch, and re-runs the model call
+with its usage never recorded. v2 does it in Engine, with an explicit
+boundary instead:
+- Events of a step go into a **pending batch**. The authority assigns the
+  final sequence numbers when it commits the batch; listeners, SSE and
+  the feed see an event only after that commit. A batch commits whole or
+  not at all, and its batch id has a receipt, so a retry after a lost
+  acknowledgement gets the original result.
+- **Admission doesn't take journal sequences while an epoch is live.** A
+  message that arrives mid-step goes to the inbox and is journaled at the
+  next step boundary (steering keeps working, at step granularity).
+- Some writes stay waited: authorizing a tool that isn't safe to repeat,
+  the canonical model decision, and accounting settlement.
+- **Every provider call is an attempt.** Before dispatch the executor
+  durably records the attempt with its reserved maximum cost; after it,
+  exactly one settlement, or an explicit "unresolved" state if the process
+  died before usage came back. Unresolved spend stays reserved until
+  reconciled, never counted as zero. A retry that makes a second billable
+  request is a new attempt.
+- `session.started` lives in the authority state, so an activation
+  doesn't read the oldest history segment to check it.
+
+The bench counts **waited authority round trips per turn**, per phase and
+per model or tool call, with a target of 5 or fewer for a chat turn. On a
+three-zone cell each wait is an executor-to-leader hop plus a quorum
+fsync, so this count times that latency is the turn-overhead floor. The
+target is per workload, never a reason to drop a required barrier.
+
+**Agents are data the data plane keeps.** The control plane resolves each
+agent fully (instructions, model, capabilities, MCP servers, sealed secret
+references) and pushes the definition into the data plane as a numbered
+revision stored in S3; every revision a session or trace refers to is
+kept. A session points at its agent. When a **new turn** starts, the cell
+resolves the pointer to the current definition (cached); the turn record
+keeps `(agent_revision, protocol_major)`, and every later activation of
+that unfinished turn (after a crash, hand-off or move) hydrates that
+retained revision instead. The definition goes to Engine with the
+activation (`prepare_activation`). Every revision is kept in S3, so
+serving an old one needs no pinned executor; what it does need is an
+executor whose native tools and hydration declare that they still support
+it, which is a compatibility identity separate from the JSON schema. The
+executor hydrates the live agent from the definition (pure CPU,
+milliseconds), caches it by agent and revision, and drops it when unused. No agent
+registry and no resolver call: the control plane is off the turn path, so
+sessions keep running while it is down, and an edit applies at the next
+turn. Framework apps keep code-registered agents; for them the definition
+is the code.
+
+**Supported rolling upgrades never stop or suspend sessions.** Engine's session binding pins
+the agent identity and the session protocol major, never a release (funout
+made the same change in `8ce744b`). A
+rolling deploy works like today's worker drain: an executor that is
+stopping hands its epochs back at the next step boundary
+(`SessionEpoch::hand_off`) and another executor resumes them from the
+journal. The session protocol (journal event types and payloads, reducer commands)
+is versioned. Additive changes need no bump, with one rule about what
+"additive" means: new optional fields are ignored by older readers, and new
+**informational** event types (diagnostics, metrics) are skipped, but a new
+event type that changes execution (an approval, a cancel, an operation
+state) is declared **execution-critical** and listed as a capability the
+session requires. Dispatch only sends a session to an executor that has
+every capability the session's journal uses; an executor that meets one it
+doesn't know stops and hands the epoch back rather than guess. A breaking
+change bumps the major. Each
+session records its major, each executor declares the range it supports,
+and dispatch only hands a session to an executor that covers it. Once the
+whole fleet supports a new major, the authority upgrades sessions at a
+turn boundary; the next release can drop the old one. CI checks that event
+payloads accept unknown fields and replays stored journals of every
+supported major.
+
+### Live streaming
+
+Two kinds of events reach a watching client: **committed events** (durable,
+in the journal) and **token deltas** (live typing, never stored). Engine's
+listeners carry committed events only, so funout lost deltas when it moved
+to Engine hosting; v2 adds them back with a small Engine hook (plan step 1).
+
+- **One stream node per session.** Within the session's cell, one of the
+  three nodes serves all of that session's live streams, chosen by
+  rendezvous hashing of the session id over the cell's **committed
+  membership view** (the Raft configuration plus a view generation, not
+  each component's own idea of who is alive). The edge router caches
+  session → cell (from the directory) and computes the node itself, so an
+  SSE request takes one hop; every watcher of a session lands on the same
+  node. Edge and executor send the view generation they hashed with; a
+  node that isn't the owner in the current view redirects with the new
+  view instead of serving.
+- **Committed events** come from that node's own replica as it applies
+  them, so no extra copy is made.
+- **Deltas go straight from the executor to the stream node** (same hash,
+  no lookup), over the connection the executor already holds to the cell,
+  and never touch Raft or disk. The node drops them when the session has
+  no watchers, so an unwatched turn costs nothing.
+- **Fencing:** deltas carry `(turn, step, attempt, seq)`, where the
+  attempt is the durable model-call attempt above, and the stream node
+  accepts them only from the executor holding the session's current epoch.
+  The committed event that ends an attempt closes it; later deltas for
+  that attempt, or deltas from a replaced attempt, are dropped.
+- **Resume:** a reconnecting client resumes from its last committed event
+  id (`since_id`); deltas missed while disconnected are not replayed, as
+  today. If the node it lands on hasn't yet applied up to `since_id`, it
+  waits until it has (or redirects); a cursor never moves backwards.
+- **Moves and failures:** a move ends the stream with a `moved` event;
+  the client reconnects and the edge re-resolves. If the stream node dies,
+  the hash picks another live node and clients reconnect with `since_id`.
+- **Tests:** a stale publisher after its epoch is lost, edge and executor
+  on different membership views, reconnect to a lagging follower, and a
+  move during the replay-to-live handoff.
+- **Load:** deltas are the heaviest live traffic (tens of thousands of
+  small messages per second per cell at full load); they are batched per
+  session every ~50 ms and the stress bench has a budget for them.
+
+Executors are separate from the cell's three state nodes on purpose: in
+funout, turns on the same nodes delayed Raft heartbeats until a node cap of
+256 turns was needed. Separate pods keep consensus stable and let turn
+capacity scale in seconds.
+
+### Life of a message
+
+![Life of a message in data plane v2](diagram-dp-seq.svg)
+
+### What a turn needs, and where it comes from
+
+| Need | v1 (today) | v2 |
+| --- | --- | --- |
+| Agent, harness, capabilities | gRPC → server → RDS | Full agent definition handed over with the activation (cached by agent and revision) |
+| Secrets, provider keys | gRPC, decrypted by server | Tenant secret store holds them sealed; executor decrypts with the org's KMS-wrapped data key |
+| Budget check, usage | RDS ledger | Control plane ledger; cells enforce locally from spend allowances it grants |
+| Session log | RDS `events` | Cell Raft log + S3 |
+| Files | Session file storage via server | Workspace tree: root and recent changes in the cell, contents in S3 by hash ([fs.md](fs.md)) |
+| Sandboxes, MCP, web tools | Executor calls provider; records via server | Executor calls provider; records in cell state |
+| OAuth tokens (MCP, connections) | Server refreshes | Tenant secret store; the data plane refreshes and reports the new token on the feed |
+| Schedules, triggers | Durable scheduler in RDS | Timers in cell state; inbound webhooks go through the edge router to the data plane |
+| Streaming | NATS | Cell gateway |
+
+### Where things live
+
+| Thing | Source of truth | Copy or cache | On a turn's path |
+| --- | --- | --- | --- |
+| Agent, harness, capability config | Control plane RDS (edited via UI, CLI, API) | Full agent definitions by revision in S3; current revision in the registry; executor cache | Cached definition only |
+| Org secrets, provider keys, OAuth tokens | Control plane RDS, encrypted | Tenant secret store in the registry, sealed with a per-org data key (envelope encryption, key wrapped by KMS) | Executor unwraps the data key via KMS (cached) and decrypts in memory; cell nodes never see plaintext |
+| Session secrets (set during a session) | Cell state, sealed with the same org data key | | Yes, local |
+| Session log | Cell Raft log, then S3 segments | | Yes, local |
+| Session files (workspace) | Root and recent changes in cell state; tree nodes and contents in S3 by hash ([fs.md](fs.md)) | Executor cache, data plane chunk cache | A commit is a Raft entry; large contents go through the chunk cache to S3 |
+| Session SQL database | SQLite file per session in S3, opened by the executor for the turn | | Stage 2 |
+| Org Memories (shared, mountable) | A shared volume: a placeable unit on some cell (movable like a session), tree in S3 | Read-only mounts read S3 directly; writes go to the cell hosting the volume | Reads local to S3; writes one hop to the volume's cell |
+| Traces (one session) | The session log itself; full model prompts stored as S3 objects referenced from `llm.generation` | | No; read by the gateway on demand |
+| Traces (across sessions: costs, monitoring, reporting) | Analytical copy in S3 written by the cell's segment writer (the trace-store format: "an analytical copy, never a journal") | Catalog entries as Raft commands in the writing cell | No |
+| Usage, budgets | Control plane ledger and usage policies | Spend allowance per tenant in the cell; usage feed back | Yes, local (allowance) |
+| Egress | Policy (allowlists, caps, kill switch) in the tenant policy | | Every outbound call of executors and sandboxes goes through the data plane's egress proxy pool; the cell signs a per-turn proxy token the proxy verifies locally; egress usage joins the turn's usage counters |
+
+#### Trace and session search in v2
+
+This follows the separate trace and session search proposal (DataFusion +
+Parquet for structured search and aggregation, Tantivy for word and phrase
+search, S3 for immutable indexes and payloads, an async exporter publishing
+through a catalog). In v2 its PostgreSQL part maps onto the cell:
+
+| PostgreSQL role in that proposal | v2 |
+| --- | --- |
+| Live execution, session metadata | Cell state |
+| Permissions | Org token from the control plane; queries are scoped to one org |
+| Deletion visibility | Tombstones in cell state, applied before counts and pagination |
+| Catalog (atomic publication) | Catalog entries as Raft commands in the cell that wrote them: an index is visible once its entry commits |
+
+- **Exporter:** the cell's segment writer, which already writes immutable
+  history segments, also builds Parquet files and Tantivy segments for the
+  same events, off the turn path, and commits their catalog entry.
+- **Query service:** stateless pods in the data plane (DataFusion + Tantivy
+  readers with local caches), scoped by org token, reading a consistent
+  catalog snapshot from each cell in the org's **catalog lineage** and
+  fanning out.
+- **Catalog lineage is not placement.** Indexes stay where they were
+  written even after every session of the org has moved away. The
+  registry records, once per org and cell, that the cell holds index
+  entries for the org (a rare write), and queries use that list, not
+  current session placement. Draining a cell hands its catalog entries to
+  another cell before retirement, and deletion tombstones apply to every
+  historical segment and to cached query plans. Test: index on A, move all
+  the org's sessions to B, retire A, then query and delete through B.
+  This must hold before search or analytics are enabled for v2 orgs.
+- **Freshness:** results report how far the index lags; the unindexed tail
+  can be merged from cell memory when a query needs it.
+
+Today, by comparison: config, secrets, session files metadata, Memories and
+traces all live in RDS (file bytes already in S3), and the egress proxy is
+one shared service with its own limits store.
+
+### Storage in S3
+
+![S3 layout](diagram-s3.svg)
+
+One bucket per data plane and region, `s3://everruns-dp2-{env}-{region}/`.
+S3 holds bytes; the cell holds the truth about which bytes matter.
+
+**Keys** (org first, so export, deletion and per-org encryption context
+work by prefix, and random org ids spread load across S3 partitions):
+
+| Key | What | Written by | Read by |
+| --- | --- | --- | --- |
+| `orgs/{org}/sessions/{session}/log/{from}-{to}.seg` | Session history: one object per flush, with events, messages and prompts sections and a footer index. Compaction writes larger replacement segments (funout's tiered compaction, messages-only companions) | Cell leader (segment writer) | Executors (range read of the messages section from the newest checkpoint), gateway (history pages, trace view, full prompts) |
+| `orgs/{org}/blobs/{sha256}` | File, attachment, image and memory bytes, content-addressed, so fork and copy share them | Executors, gateway uploads | Executors (local cache), gateway downloads |
+| `orgs/{org}/sqldb/{session}/{generation}.sqlite` | Session SQL database (stage 2), a new generation per committed turn | Executors | Executors |
+| `orgs/{org}/index/parquet/{cell}/{date}/{seq}.parquet`, `orgs/{org}/index/tantivy/{cell}/{segment}/` | Trace and session search indexes | Cell leader (exporter) | Query service |
+| `orgs/{org}/exports/{export}.tar.zst` | Org export, used to move an org between data planes or for a download | Control plane admin job | Control plane, importing cell |
+| `cells/{cell}/snapshots/{raft_index}.snap` | Raft snapshots, last three kept | Cell leader | Replicas that fall far behind, recovery |
+
+**Rules**
+
+- **Write once.** Every PUT is conditional (`If-None-Match: *`); a retry
+  finds the same key. Nothing is overwritten, so readers never see a torn or
+  changed object and caches never go stale.
+- **Cell state is the index.** Which segments cover a session, which blobs a
+  manifest points to, which index files are published: all Raft state. S3 is
+  never listed on a hot path. An object without a committed reference is
+  invisible and is cleaned up by the sweeper.
+- **Encryption.** SSE-KMS with bucket keys (one KMS call per bucket key, not
+  per object). Secrets never go to S3 except sealed inside Raft snapshots.
+- **Lifecycle.** Segments replaced by compaction and old snapshots are
+  deleted only after no supported restore point refers to them (see
+  "Disaster recovery"), since they are copies. History older than
+  30 days moves to Intelligent-Tiering.
+- **Soft delete.** Deleting a session or org writes a tombstone in cell
+  state; reads and counts respect it at once. Original bytes are removed only
+  by an explicit org deletion job, never by retention, matching the rule that
+  records are never purged.
+- **No blob garbage collection.** Blobs are shared across the org's
+  sessions while reference counts would live in separate cells, so local
+  absence of references proves nothing. Blobs are removed only by the
+  explicit org deletion job, which matches the data rule that records are
+  never purged. If storage cost ever needs it, a global mark-and-sweep over
+  every cell and restore point is a separate design.
+
+**Cost and load, estimated.** At 1 250 turns/s with one flush per turn, about
+1 250 segment PUTs/s plus blob PUTs from file writes. S3 handles 3 500 PUTs/s
+per prefix, and org-first random prefixes spread it further. Group flushing
+(several sessions' events in one segment) is the fallback if PUT cost
+dominates; funout's per-session segments are the starting point. Reads are
+mostly range GETs that executors cache; with session affinity most warm
+turns read nothing from S3, and the bench reports the miss rate.
+
+## Features, in stages
+
+v2 starts small and grows; a feature missing in v2 is hidden for v2 orgs.
+
+1. **Core**: agents, harnesses, sessions, messages, SSE, built-in
+   capabilities and tools, model providers, usage and budgets, cancel,
+   approvals, client-side tools, compaction.
+2. **Platform**: session files, MCP servers, sandboxes, schedules and
+   triggers, detached tool calls, agents using agents.
+3. **Integrations**: Slack and other channels, observers and evals, trace
+   exports, analytics export to a warehouse.
+
+## Scale estimate for 75 000 agents
+
+From funout `0a0c0ec` on one 4-vCPU VM (three replicas of one cell),
+under Engine hosting, with simulated chat agents: about **115 turns/s per
+cell, flat** over 40 sessions × 5 000 turns (p50 100 to 130 ms, 390 to
+470 MB RSS per node). The pre-Engine driver did 131/s (and 75 000
+sessions on 2 cells at 251 turns/s), so Engine hosting is about 12% and
+40 ms p50 behind. Not yet measured under Engine: the 75k-session run, CPU
+per turn, and memory for Engine's per-session handle.
+
+If each of 75 000 agents takes a turn a minute, that is ~1 250 turns/s.
+At 115 turns/s that is 11 cells **at saturation** (98% utilization, no
+room for a lost node, platform work or backlog), so it is a lower bound,
+not the estimate: with headroom for one cell's worth of failure and 70%
+target utilization, plan on about 16 cells (48 state pods) until step 0
+measures cells on separate machines per replica. Executors are sized by
+concurrent turns (at ~2 MiB per running turn, 7 500 running turns need
+~15 GB across the pool). Platform turns cost more CPU than funout's sim
+agent; the stress bench (plan steps 0 and 6) measures the real numbers.
+
+These are hypotheses, not capacity results, and they move a lot with a few
+assumptions:
+
+| Assumption | What it changes |
+| --- | --- |
+| One turn per agent per minute | 1 250 turns/s; agent count alone says nothing about load |
+| Average turn takes ~6 s | ~7 500 running turns, ~15 GB of executor memory |
+| Average turn takes 30 s | ~37 500 running turns, ~73 GB of executor memory |
+| One history PUT per turn | ~108 million PUTs a day before blobs, indexes, replication and compaction |
+| Workspace deltas near the 64 KiB cap | ~4.9 GB of cell state, ~14.7 GB across three replicas |
+| Commit latency from one VM | Says nothing about three-zone network and EBS latency |
+
+The 115 turns/s result relies on funout's background-append pipeline,
+which has the durability problem described under "Executors"; it becomes
+the qualified baseline only after the bench reruns it with the committed
+batch boundary. None of these is a v2 capacity number until the bench
+reruns them on the real path. Shared services (egress proxies, chunk cache, KMS, cold
+definition reads) get their own saturation and failure budgets, and
+analytical export, compaction, snapshots and SSE fan-out run with resources
+isolated from consensus.
+
+## Layout
+
+```text
+crates/cell/            everruns-cell: Raft state machine, WAL, S3 store, directory,
+                        moves, rebalancer, gateway (/v1), node binary
+  benches/  tests/  scripts/   (fleet, chaos, soak, scale, many_sessions,
+                                big_context, prove_*, ported from funout)
+crates/cell-executor/   executor binary: Engine + platform host (agent hydration,
+                        environment factory, usage), no turn logic of its own
+crates/cell-testkit/    unpublished: sim executor, load and check tool
+crates/server           data_plane module: org setting, agent resolution + config outbox,
+                        tokens, allowances, feed ingest
+```
+
+`cell-executor` is separate because it links the platform runtime (heavy),
+while the cell nodes stay small. Deleting v2 later means removing three
+crates and one server module; deleting v1 means removing workers and the
+server's session domains.
+
+## Testing
+
+Testing is a deliverable of every phase, not a later phase. funout's habit stays: a whole data plane runs on one machine with no database, control plane, cloud account or real model. Every run ends with an invariant check over every session, and a red check fails the run.
+
+### Simulators (`crates/cell-testkit`, unpublished)
+
+| Real thing | Simulator |
+| --- | --- |
+| Model providers | llmsim with the prod mix (Luna, Sol, Muse, long tool calls), controllable latency, errors and stream cuts |
+| Executor (cells-alone level) | Sim executor: Engine-shaped activations without platform code |
+| S3 | In-process object store, or local SeaweedFS for conditional PUTs and range reads; fault mode (slow, 5xx, throttling) |
+| KMS | Local key service with the same wrap/unwrap API |
+| Control plane | Fake that serves `/dp/v1` (config changes, allowances, feed sink, JWKS) from files, with a "down" switch |
+| Disk | fsync delay shim (`LD_PRELOAD`, as in the stress bench) to model EBS latency |
+| Network | Fault layer in the cell transport: drop, delay, partition one node or a whole zone |
+| Sandboxes, MCP, web | Test tools with known side effects, so "ran exactly once" is checkable |
+
+### Invariants checked after every run
+
+- Every accepted input has exactly one durable disposition (a new turn, steering into a running turn, or a recorded rejection).
+- Journals are dense, ids are unique, and replicas agree byte for byte.
+- Each logical tool operation (by its operation id and idempotency key) had at most one external effect, also across moves, restores and lost acknowledgements.
+- Every provider call attempt was recorded before dispatch and has exactly one settlement or an explicit unresolved state; no usage is lost when input arrives mid-step.
+- No listener, stream or feed saw an event that was not committed.
+- No placement generation ever went backwards in a cell or in the directory.
+- Feed records and grant settlements reached the control plane exactly once by id, and authorized spend never passed the balance.
+- No committed file write was lost, and forks are independent.
+- Every session is in exactly one cell, and the directory agrees.
+- After an upgrade, no session was suspended for build or protocol reasons.
+
+### Levels
+
+1. **Cells alone, sim executor.** Fleet, chaos (`kill -9` of leaders and followers), partitions, soak, scale (75 000 sessions on one machine, as funout proved), large messages, long sessions (200 000 turns), moves, rebalance, scale in and out, blue/green drain.
+2. **Cells + real executor** (Engine plus platform host), with llmsim, the fake control plane and file-based agent definitions. The same chaos and invariants, plus Everruns' hosting conformance suite against a 3-node cell.
+3. **Full v2 locally.** Real control plane, edge router, cells, executors and UI via `start-all` with a v2 data plane. Covers e2e tests through the UI and API, CP-down (sessions keep running, turns wait once allowances run out), config changes during turns, and token expiry.
+4. **Upgrade tests.** A mixed-release fleet built from the previous release tag: rolling executor deploy mid-turn, rolling cell restart, blue/green cell drain, and replay of stored journals from every supported protocol major. Pass means zero suspended sessions and all invariants green.
+
+### Stress bench with budgets
+
+`just stress-v2` extends today's `scripts/stress`:
+- It runs levels 1 and 2 at fixed loads (100, 1 000, 10 000 and 75 000 agents) and a sweep runner for tuning knobs (batch size, writes in flight, executor slots, segment size).
+- It reports cost per turn against a written budget, like the 8k budgets: CPU per turn (cell, executor), fsyncs and WAL bytes per turn, S3 PUTs and GETs per turn, memory per idle and per active session, Raft commit latency, and platform overhead per model call (p50 and p99).
+- Each budget has a "fits 75k" line. A change that regresses a budget fails the bench, the same gate the 8k program used.
+- The **long-session gate** is part of it: 200 000 turns, with throughput and per-turn latency flat as sessions grow. This closes the Engine hosting regression first.
+
+### CI tiers
+
+| When | What |
+| --- | --- |
+| Every PR touching `crates/cell*`, hosting or the executor | Unit and state-machine property tests, hosting conformance on a cell, a 2-minute chaos run with invariants, protocol contract tests (`/dp/v1` schemas, unknown-field tolerance) |
+| Nightly | Soak (1 h chaos), 75k scale, long-session gate, upgrade tests against the last release, stress bench with budgets; results posted with a trend |
+| Weekly | Large-org and many-small-org placement runs, zone loss |
+| Before each prod ramp step | The same stress profile against EKS with llmsim; prod is only the final check, never the discovery tool |
+
+There are no `#[ignore]` tests: what can't run on every PR runs nightly or weekly, and examples use real models.
+
+### Formal models and deterministic simulation
+
+Running many cells finds the bugs that are common. The dangerous ones sit at a few known interleavings: a leader change in the middle of a group commit, an epoch expiring while its holder's write is in flight, a move racing a hand-off, a snapshot installed during segment compaction. Three tools target those directly. funout has none of them today.
+
+1. **Formal models of our protocols (TLA+, checked with TLC or Apalache).** Raft itself is openraft's, so the models cover what we build on top of it:
+   - epochs and fencing;
+   - session moves (freeze, hand-off, install, forward) and the directory, including a move while an event batch is pending;
+   - turn admission and exactly-once completion;
+   - file commits against the workspace root;
+   - spend allowances;
+   - the config change stream.
+
+   The safety properties are the same invariants as above: one writer per session, never two owners during a move, no lost commit, a bounded overspend. Small models (3 nodes, 2 cells, 3 sessions) explore every interleaving and find the protocol bugs before code exists. Each model is written in the same phase as the protocol it covers.
+2. **Deterministic simulation of the real cell code** (FoundationDB style; madsim or turmoil):
+   - The cell runs under a seeded scheduler with simulated network, disk (fsync latency, torn tail writes, full disk) and clock.
+   - Load is logical rather than wall-clock, so a seed runs millions of commands (heavy multi-session load, long sessions, oversized entries split into pieces) in seconds of CPU.
+   - Code marks **points of interest** with `buggify!` hooks: before and after fsync, between Raft apply and segment flush, mid-move, at epoch expiry, around the snapshot install. The simulator fires faults and reorderings preferentially at those points.
+   - A failing seed replays exactly, and becomes a regression test.
+   - The point list is derived from the models: every model action that interleaves with another becomes a hook.
+3. **Trace checking.** Simulation runs emit protocol events that are checked against the TLA+ model's transitions, so the code can't quietly drift from the spec.
+
+**Finding where load hurts:** a simple queueing model of the leader (group-commit batch size, writes in flight, apply cost, flush cost) predicts saturation points: batch-size cliffs, the 64 KiB entry cap, queue growth on long sessions. The simulator and the stress bench then aim straight at those points, instead of searching blindly with more cells.
+
+**CI:**
+- Every PR: model checks and about 10 000 simulation seeds.
+- Nightly: millions of seeds, with new failing seeds filed automatically.
+
+The simulation harness lands in plan step 5, with the first models (epochs, moves) before the move code is ported. The first models (moves, spend grants, feed) are in [models.md](models.md).
+
+## Disaster recovery
+
+The bar is what RDS gives us today: no loss from a node or zone failure, a
+small stated loss window from anything worse, and a point-in-time restore.
+
+| Failure | What happens | Data lost |
+| --- | --- | --- |
+| One node or one zone | Raft elects a new leader on the surviving quorum; the replaced node catches up from a snapshot and the log | None |
+| A cell loses quorum (two zones, correlated disks) | The cell is rebuilt from its last snapshot plus the shipped log in S3, on new nodes, as a new incarnation | Entries not yet shipped: target under 2 s, enforced by backpressure; never a started side effect |
+| Registry shard loses quorum | Same rebuild; directory entries for sessions created in the window are re-derived from the cells' own state | Same window, then repaired |
+| S3 bucket damage or a bad delete | Object versioning; deletes are tombstones first (data rule: nothing is purged by accident) | None |
+| Region loss | Restore in a second region from the replicated bucket and multi-region KMS keys | Replication lag: S3 Replication Time Control commits to 99.99% of objects within 15 minutes, so the regional target is 15 minutes, not seconds |
+| Bad release corrupts state | Point-in-time restore of the affected cell, or of one org's sessions, to before the release | Turns after the chosen point |
+
+How:
+
+- **Log shipping.** Each cell leader writes its committed Raft batches to
+  S3 continuously (an object per second or per few MB, whichever comes
+  first). This is the same data the segments already hold, just shipped
+  sooner, so the loss window on quorum loss is the shipping interval, not
+  the segment interval. If shipping falls more than 5 s behind, the cell
+  stops admitting new turns until it catches up, so the 2 s target is a
+  bound and not a hope.
+- **Ship before an external effect.** A lost log tail must not turn into a
+  repeated side effect. A tool call that isn't safe to repeat (today's
+  AtMostOnce class) already writes `tool.started` before it runs; in v2 it
+  also waits until that record is shipped to S3 (a forced flush, one PUT,
+  tens of milliseconds). After a restore, every started operation is
+  known, and its idempotency key (derived from session, message and call)
+  is the same as before. Operations whose outcome was lost are reported
+  to the agent as "outcome unknown", as on a crash today; they are not
+  rerun automatically.
+- **Incarnations.** A rebuilt cell gets a new incarnation number. Feed
+  record ids, executor epochs and moves carry it, so nothing from the lost
+  incarnation (a late feed batch, a stale executor, an old move message)
+  is accepted after the rebuild.
+- **Snapshots.** Cells and registry shards snapshot to S3 on a schedule
+  (and before every blue/green drain). Restore = latest snapshot before the
+  target time + shipped log up to it.
+- **Point-in-time restore**, for a whole cell or scoped to one org (replay
+  only that org's units into a fresh cell, then repoint the directory).
+- **Retention follows restore points.** A restore point (snapshot plus
+  shipped log) is only useful if everything it refers to still exists:
+  segments, workspace roots, tree nodes, blobs, agent revisions. Nothing
+  referenced by a supported restore point is deleted; compaction marks
+  replaced objects and they are removed only after the oldest restore
+  point that uses them expires. Blobs are never collected at all (see
+  "Storage in S3").
+- **Bucket:** versioning, cross-region replication, object lock on
+  snapshots and shipped log for the retention window. KMS multi-region keys
+  so data keys can be unwrapped in the second region.
+- **Control plane rollback.** RDS PITR as today, but restoring the control
+  plane can leave the data plane ahead of it (data plane applied config
+  version 120, RDS restored to 100). Config versions therefore carry a
+  control plane epoch; a restored control plane starts a new epoch and the
+  data plane accepts only a full snapshot in that epoch. Before that
+  snapshot applies, the data plane reports every agent revision and
+  secret it holds that the restored control plane doesn't know, and an
+  operator decides per org whether to re-import them or drop them; running
+  turns finish on their retained revision either way. The feed is kept in
+  the shipped log for 30 days, so a restored control plane can replay from
+  its own older cursor.
+- **Restoring one org** also restores its shared volumes, schedules and
+  connection tokens to the same point, and closes its grants: allowances
+  are reissued from the control plane ledger, never from the restored
+  cell.
+- **Drills.** The weekly tier kills a cell's quorum in the bench and
+  restores it, checking the stated loss window and the invariants. A
+  quarterly drill restores a copy of production into a second region.
+- **Bench budget:** log-shipping lag p99 under 2 s at 75k agents, and
+  rebuild of a full cell under 10 minutes.
+
+## Deployment and rollout
+
+- Data plane v2 is a new deployment: its own namespace (or cluster) with
+  cell StatefulSets (PVCs, zone spread), one shared executor Deployment with KEDA, and
+  an S3 bucket. The control plane stays the existing one.
+- Cells are static at first (`cells: N` in Helm); a new cell registers
+  itself and takes new sessions. No operator until manual scaling hurts.
+- Orgs opt in with the org setting: the Load Testing org first, then
+  Alice's. New orgs can default to v2 once stage 1 is solid.
+- Moving an org between data planes is export and import, done when the
+  features it uses exist in v2.
+
+## Implementation plan
+
+One ordered plan that includes the platform-on-Engine work
+([platform-on-engine.md](platform-on-engine.md)), because the cells need it
+before they can run platform features. The rule for every step: **build
+enough to run it, run it under the bench, and only move on when the step's
+gate holds.** A gate is a number in `just stress-v2` (or the v1 `just
+stress` bench) checked in CI, so a later step can't silently undo it.
+
+| # | Step | Gate (bench) | Depends on |
+| --- | --- | --- | --- |
+| 0 | **Bench first, and the core protocols on paper.** `just stress-v2` with budgets and the long-session gate; v1 `just stress` gains the same per-turn report, including waited authority round trips per turn. Rerun funout `0a0c0ec` as the starting point and measure Engine hosting today: long-session throughput and latency against length, memory per idle session, per-model-call overhead at 100 and 1 000 agents. In parallel, write concrete failure traces and small TLA+ models for move generations, feed record ids, grant settlement, turn revision retention and recovery incarnations. | Baseline recorded; budgets written down; models check clean | none |
+| 1 | **Engine hooks.** Definition with activation (`(agent_revision, protocol_major)` retained per turn, plus a compatibility identity for native tools), `SessionEpoch::hand_off`, the log-end fix, token delta hook with attempt fencing, session protocol versioning with execution-critical capabilities, execution context on admitted input. Move funout's adapter fixes into Engine the safe way: committed event batches with authority-assigned sequences, admission through the inbox during a live epoch, provider call attempts, `started` kept in authority state, an LRU for per-session handles. Then rerun the long-session bench, with steering. | Engine long-session: after compaction, throughput and p99 per turn at 200 000 turns within 10% of the first 1 000 turns, and within 10% of funout's own driver; waited round trips per chat turn ≤ 5; a killed executor before commit leaves no listener holding an uncommitted event; with steering, every provider attempt settled once; memory per idle session within budget | 0 |
+| 2 | **Trusted host extensions** (composition, authorities, stores, resolvers). | Per-model-call overhead at 100 agents unchanged versus step 0 | 1 |
+| 3 | **Agent definitions as data.** One definition format, built by the control plane, hydrated and cached by the Engine. | Hydration cost per activation (cold and warm) within budget | 1 |
+| 4 | **Workers on the Engine** (PostgreSQL `SessionHosting`, still actors). Platform e2e and hosting conformance against PostgreSQL. `WorkerRuntimeHost` removed. It inherits step 1's batched commits, which on PostgreSQL is the difference between passing and failing the 8k budgets. | The 8k budgets of today's bench not regressed | 1, 2, 3 |
+| 5 | **`crates/cell` + `crates/cell-testkit`.** Port funout `0a0c0ec` with Engine hosting, adding placement generations; registry, session placement, moves, spend allowances, log shipping. TLA+ models and the deterministic simulation harness. | Cells alone: 75k simulated agents, long session flat, chaos invariants, DST seeds clean | 1 (can start in parallel with 2 to 4) |
+| 6 | **One thin, complete cell deployment.** Three state nodes, separate executors on credits, real Engine, a minimal agent definition, admission, cancel, recovery, streaming, a minimal durable workspace, and the CP protocol exercised early. Then the failure qualification: repeated moves with delayed old messages, lost acknowledgements, CP rollback, delayed feed, expired grants, stale executors, restore after an external effect. Stage-1 features come after this passes. | Level 2 and the failure suite green; overhead per turn and per-cell leader CPU within budget | 2, 3, 5 |
+| 7 | **Control-plane contract** ([cp-dp-protocol.md](cp-dp-protocol.md)): outbox, org tokens, allowances, feed, v1 as the trivial implementation. | Config propagation p99 under 1 s; feed lag within budget; allowances never overspend in chaos | 5 |
+| 8 | **Gateway, edge router, live streaming, local full v2** (`start-all` with a v2 data plane, real UI end to end). | Level 3: the whole stack locally, SSE first-delta latency and edge hop within budget | 6, 7 |
+| 9 | **Disaster recovery:** log shipping, snapshots, point-in-time restore, restore drill in the weekly tier. | Loss window under 2 s; cell rebuild under 10 min | 5 |
+| 10 | **Prove on EKS + operations.** Load Testing org, ramp to 75k agents with the llmsim mix and production-shaped conditions: cross-zone latency, realistic turn durations (including 30 s averages), cold caches, long histories, heavy streaming, S3 throttling, loss of a node and of a fraction of executors. Cell inspector CLI ("where is session X and what is it doing"), per-cell SLO dashboards, runbooks for leader loss, a stuck move and a drain. | 75k agents at the stated cost per agent and turn overhead, with spare capacity and recovery backlog measured, not just peak | 8, 9 |
+| 11 | **Stages 2 and 3 features, then the v1 → v2 org move** (session import format, cutover of in-flight turns). | Each feature lands with its own bench line | 10 |
+
+Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
+its own and v2's first proof does not wait for it: both paths already share
+the turn driver, so cells need the host bundle (step 2), not a finished
+worker replacement. Step 4 is still worth doing: it puts today's production
+on the same execution path as cells and as Framework apps, and the 8k bench
+guards it.
+
+Sandbox file sync (`everruns-fs`) and anything beyond conservative
+retention stay out of the first proof; the workspace starts with the
+executor path only.
+
+If step 1's gate can't be met, the plan stops there and we decide between
+fixing the Engine further or keeping funout's own turn driver inside cells
+(losing the shared-code benefit). That decision is made on measured
+numbers, not before.
+
+## Limits and risks
+
+- **We own consensus.** openraft is a library; snapshots, membership, moves
+  and the directory are ours. The chaos suite runs in CI.
+- **Config is eventually consistent.** An agent edit reaches the data plane
+  in the push delay (target under a second); a turn uses the revision it
+  started with.
+- **No SQL across a v2 org's sessions.** Lists and search come from session
+  summaries; analytics need the warehouse export.
+- **Secrets leave the control plane** (encrypted) and live in the registry's tenant store;
+  key handling needs a security review before real orgs move.
+- **Feature lag.** v2 orgs see fewer features until stages 2 and 3 land.
+- **Stateful pods** (PVCs, zone spread) are new operational weight.
+- **Mixed releases during a deploy.** Protocol ranges and range-aware
+  dispatch keep every session runnable; the discipline is additive-first
+  changes, enforced by CI.
+- **Engine hosting is a little slower, and its fast path isn't safe yet.**
+  funout `0a0c0ec` under Engine hosting runs long sessions at 115.5
+  turns/s flat, against 131 with its own driver (it was 46.7 falling to 25
+  before three fixes: paged reads, compaction, and the `session.started`
+  read). The speed depends on background appends that return uncommitted
+  results; plan step 1 replaces them with committed batches and must hold
+  the gate afterwards. Also open in funout: Engine keeps a handle per session in
+  process (memory at large session counts unmeasured), and member
+  sessions go over HTTP rather than as Engine child sessions.
+- **Platform features on Engine.** The turn driver is already shared, but
+  about half the platform services have no way into Engine today. Closed by
+  a trusted host extension bundle, agents hydrated from definitions, and moving v1
+  workers onto Engine too: see [platform-on-engine.md](platform-on-engine.md).
+- **The registry is a new shared component.** It is off the per-step
+  path, but it is on the session-creation and org-config path, so it is
+  replicated, sharded by id and cached everywhere.
+- **Cross-cell features** (agents using agents, shared volumes) are the
+  norm, not the exception, so every hand-off between units is idempotent,
+  as funout's already are.
+
+## Architecture review
+
+Self-review, 2026-11-09, after a day of design changes. Other reviewers (people or agents) add their findings under "Review log" at the end; please read "How to review" first.
+
+### How to review
+
+**Read in this order:**
+1. this file;
+2. [cp-dp-protocol.md](cp-dp-protocol.md) (control plane ↔ data plane);
+3. [fs.md](fs.md) (workspaces);
+4. [platform-on-engine.md](platform-on-engine.md) (platform services on the Engine).
+
+**Code to check claims against:**
+- funout `0a0c0ec` (`crates/funout/src/hosting.rs`, `authority.rs`, `state.rs`, `docs/architecture.md`, README results);
+- everruns `crates/everruns/src/hosting/` and `engine/hosting.rs` (Engine hosting);
+- `crates/core/src/host/session_actor/` (the shared driver);
+- `crates/worker/src/runtime_host.rs` (today's platform host);
+- `scripts/stress/` (bench and 8k budgets).
+
+**Decisions the user has already made.** Challenge one only with new evidence:
+- Build cell-native from the ground. Target 75 000 agents. No backward compatibility; a new deployment is fine.
+- One control plane (server + RDS), data plane v1 (today's workers) and data plane v2 (cells + S3).
+- One public API. The edge router routes by org token, and the control plane is off the message path.
+- Crates live under `crates/` named `cell*`. funout's isolated testability is kept.
+- Cells are Engine hosting profiles. Workers move onto the Engine too, staying actors.
+- The data plane knows full agent definitions, not org configuration. Changes reach it as a broadcast stream. There is no agent registry or resolver.
+- Placement is per session. Any cell hosts any org, and sessions move freely, also for upgrades.
+- Supported rolling upgrades never suspend sessions. The session protocol is versioned with major/minor rules.
+- Budgets live in the control plane, enforced with spend allowances. Concurrency and rate limits are only safety nets.
+- Control plane ↔ data plane traffic is HTTPS + JSON.
+- Testing: heavy local simulation, a stress bench with budgets, formal models and deterministic simulation.
+- RDS is not a raw event store for v2. The user rejected JetStream as the record because of disaster recovery.
+
+**What to look for:** a turn-path dependency on something central; a protocol step without an idempotency key or fence; a claim that rests on funout numbers measured before Engine hosting; state with two sources of truth; failure modes with no recovery story.
+
+### Strengths
+
+- **Nothing central on the turn path:** a turn touches its cell, the executor's caches and S3.
+- **Stateless executors and per-session placement** make deploys, drains and rebalancing one mechanism.
+- **One turn implementation for everything:** Engine hosting is shared by Framework apps, v1 workers and v2 cells.
+- **The data plane is mostly business-agnostic:** agent definitions in, usage out.
+- **A strong testing story inherited from funout,** extended with budgets, models and simulation.
+
+### Findings
+
+Ordered by severity. Each has a proposed resolution; the ones marked *open* need a decision.
+
+1. **Engine hosting performance is unproven at our scale.** *Accepted: build and measure.*
+   - funout's long-session run fell from 131 turns/s flat to 46.7/s, dropping to 25/s, under Engine hosting.
+   - The Engine also keeps a handle per session in memory, which hasn't been measured at 75k.
+   - The scale estimate above uses pre-Engine numbers (251 turns/s on 2 cells), so it's optimistic until re-measured.
+   - Resolution (user, 2026-11-09): build enough to run, then measure, with a bench gate on every step. Step 0 of the plan measures Engine hosting today; step 1 must make it flat before cells depend on it.
+   - Update (funout `0a0c0ec`, review round 3): now 115.5 turns/s flat; see items 23 to 25.
+2. **Disaster recovery is not designed.** *Accepted; see "Disaster recovery".*
+   - Quorum loss in a cell (two zones, or correlated disk loss) loses whatever was not yet in S3. There's no backup story for the registry, and no answer to "restore the data plane to a point in time", which RDS gives us today. The user rejected JetStream for exactly this reason.
+   - Proposed:
+     - S3 versioning plus cross-region replication.
+     - Registry and cell snapshots to S3 on a schedule.
+     - A recovery procedure that rebuilds a cell from its last snapshot plus segments, with the window of loss stated (unflushed tail, target under a few seconds).
+     - A tested restore drill in the weekly tier.
+3. **The registry risks becoming the new RDS.** *Accepted (user, 2026-11-09): summary index dropped; lists come from the control plane's feed copy.*
+   - It holds the directory, agent revisions, tenants and secrets, the change stream and the session summary index.
+   - The summary index is written on every session status change (about 1 250/s at 75k), and the control plane already receives the same summaries on the feed.
+   - Applied: dropped the summary index from the registry. Org-wide lists and search come from the query service (Parquet index) or the control plane's copy from the feed. The registry keeps only the directory, revisions, tenants and the change stream: low write rate, sharded by id, cached.
+4. **Platform-on-Engine is a prerequisite of stage 1, not a later program.** *Accepted; plans merged into "Implementation plan".*
+   - The Engine hard-codes egress, utility LLM and decisions, and stage 1 needs platform egress.
+   - So the trusted host extension bundle (platform-on-engine step 2) must land before phase 3 here, and the two plans should be one sequence: Engine hooks → host extensions → definitions as data → cells phase 3 in parallel with workers on the Engine.
+   - Proposed: merge the plans into one ordered list.
+5. **Per-cell executor pools fragment capacity.** *Accepted: one shared pool with a per-cell cap (see "Executors").*
+   - With sessions spread over any cell, a pool per cell means N KEDA scalers and idle headroom in each.
+   - A shared executor pool per data plane, with cells dispatching to it, is simpler and packs better. Raft isolation is kept, because executors stay separate from cell nodes.
+   - Decided: shared, with a per-cell cap.
+6. **The live token stream has no routing design.** *Accepted; see "Live streaming".*
+   - Deltas go from the executor to "the gateway that serves the session's SSE", but a client's SSE can land on any gateway node of any cell.
+   - Proposed: the executor publishes deltas to the session's cell, and every replica of that cell fans them out to its local SSE subscribers. The edge sends a session's SSE to a node of that session's cell (directory lookup, cached). This also needs the Engine delta hook (plan step 1). Superseded by the stream-node design in "Live streaming".
+7. **Request routing adds a hop.** *Accepted.* Edge → any cell gateway → directory → session's cell. Proposed: the edge caches session → cell from the directory (invalidated by moves through the forward response), so the common case is one hop.
+8. **Raft write amplification from files.** *Accepted.* File commits add about 2 000 Raft entries/s, and inline file contents up to 16 KiB grow the WAL and snapshots. Proposed: measure in the stress bench, and lower the inline threshold if the fsync or WAL budget is hit.
+9. **Multi-tenant executors see many tenants' secrets.** *Accepted.* This is the same exposure as today's workers, but worth stating. Each executor holds unwrapped org data keys for tenants it ran recently. Proposed: short data-key cache lifetime, keys never written to disk, sandbox tools isolated as today, and a security review before real orgs move (already listed).
+10. **Operations and debugging are thin.** *Accepted; plan step 10.* There are no runbooks, dashboards or "where is session X and what is it doing" tool. Proposed: a deliverable of the EKS proof step with a cell inspector CLI, per-cell SLO dashboards, and runbooks for leader loss, a stuck move and a drain.
+11. **The org move between data planes (v1 → v2) is only sketched.** *Accepted; plan step 11.* Export and import are named, but session import format and cutover of in-flight turns are not. They're needed before any real org moves; it's fine to defer past the EKS proof.
+12. **Doc drift (fixed in this pass):**
+    - stale "config snapshot" wording in the Why, turn-needs and where-things-live tables;
+    - files described as a per-session prefix instead of the workspace tree;
+    - the trace catalog said RDS;
+    - the admin contract mentioned cell drains;
+    - phase 0 and phase 2 wording.
+
+### Second round: yolop and grok (2026-11-09)
+
+Two independent reviews in Styk `#data-plane-v2`, both a conditional go
+for the architecture with a bounded qualification phase first. The owner
+asked for all of it to be fixed; what changed:
+
+13. **Moves can revive a stale copy** (grok; a real bug in funout
+    `8ce744b`: `Import`, `Place` and `Forward` don't check which move they
+    belong to). *Fixed in the design:* placement generations, transfer ids,
+    tombstones of departed units, and "executable only after the directory
+    commits the generation" (Placement). The move model is the first one
+    written (plan step 0).
+14. **Feed dedup by `(source, Raft index)` drops records** (grok; funout
+    batches many commands into one entry). *Fixed:* record id is
+    `(source, incarnation, index, ordinal)`, session summaries carry a
+    monotonic `session_version` that survives moves, cells keep unacked
+    records through retirement, and the feed stays in the shipped log for
+    30 days for control plane replay ([cp-dp-protocol.md](cp-dp-protocol.md)).
+15. **Allowances could double-spend; "hard cap" was ambiguous** (grok).
+    *Fixed:* strict cap on authorized spend; grant ids reserved in the
+    ledger, per-call reservation of maximum cost, settlement per grant,
+    expiry stops spending but doesn't release money, lost cells' grants
+    count as spent until reconciled (Placement, budgets).
+16. **Resumed turns could pick up a newer agent; skipping unknown events is
+    unsafe** (grok). *Fixed:* a turn retains its revision across crash,
+    hand-off and move; waiting tool operations record implementation
+    version and effective arguments; execution-critical event types are
+    capabilities that dispatch checks; the claim is narrowed to "supported
+    rolling upgrades" (Executors).
+17. **Recovery consistency** (grok). *Fixed:* incarnations, admission
+    backpressure when shipping lags, ship-before-effect for unsafe tool
+    calls, retention tied to restore points, control plane epochs with an
+    operator-reviewed diff after a CP rollback, a 15-minute regional target
+    (Disaster recovery).
+18. **Workspace snapshots, commit retries, blob GC, sandbox sync**
+    (grok). *Fixed in [fs.md](fs.md):* snapshots and forks name a full
+    workspace version (root plus delta position), commits carry an op id
+    with a retained receipt, no blob garbage collection, sandbox sync is
+    eager and deferred until after the core proof.
+19. **Execution authority is per person, not per tenant** (grok; today's
+    user-MCP layer checks the verified input author). *Fixed:* execution
+    context on admitted input; single-refresher leases and revisioned
+    tokens; a 30 s freshness bound for suspension and policy; CP outages
+    longer than the token lifetime block new sign-ins (Placement).
+20. **Capacity is a hypothesis; the shared pool can oversubscribe**
+    (grok, yolop). *Fixed:* sensitivity table in the scale estimate,
+    production-shaped EKS gate, executor credits instead of advertising the
+    same slots to every cell (Executors).
+21. **Gates before the full build** (yolop: Engine re-measure, fencing
+    proof under leader loss and stale replay, ops tooling with the EKS
+    proof, v1 → v2 import format; grok: protocols first, measure the
+    Engine path, one thin complete cell, failure qualification,
+    production-shaped capacity, worker migration gated separately).
+    *Fixed:* all are steps or gates in the plan (steps 0, 1, 6, 10, 11);
+    the step 1 gate is now a numeric tolerance rather than "flat".
+22. **Per-message placement lookup as a hotspot; trace and search
+    consistency** (yolop). *Accepted:* the edge caches session → cell and
+    corrects on the forward response (finding 7); search freshness is
+    reported per query (Trace and session search).
+
+### Third round: funout author and grok follow-up (2026-11-09)
+
+23. **Long-session numbers were stale** (funout author). *Fixed:* 115.5
+    turns/s flat at `0a0c0ec`, versus 131 pre-Engine; scale estimate, risks
+    and finding 1 updated; the port starts from `0a0c0ec`.
+24. **The adapter fixes must live in Engine, or PostgreSQL hosting hits the
+    same wall** (funout author). *Fixed:* plan step 1 moves them into
+    Engine; step 4 depends on step 1; new bench line "waited authority
+    round trips per turn", target ≤ 5 for chat, per workload (grok).
+25. **Background appends return uncommitted events through a crash-durable
+    API** (grok, item 10). *Fixed:* committed event batches with
+    authority-assigned sequences, all-or-nothing with a receipt; listeners
+    and SSE see only committed events; required barriers stay waited
+    (Executors). A regression test kills the executor before commit and
+    checks replay and every listener.
+26. **Mid-step admission loses usage and repeats the model call** (funout
+    author). *Fixed:* admission goes to the inbox during a live epoch;
+    every provider call is a durable attempt with exactly one settlement
+    or an explicit unresolved state, kept reserved until reconciled
+    (grok's refinement). New invariant.
+27. **A constant build id hid the revision contradiction** (funout author,
+    grok). *Fixed:* the turn retains `(agent_revision, protocol_major)`; a
+    resumed activation hydrates it; native tools declare a compatibility
+    identity. No executor pinning.
+28. **11 cells is saturation, not an estimate** (funout author, grok).
+    *Fixed:* 11 is the lower bound; plan on about 16 with failure headroom
+    at 70% utilization until step 0 measures.
+29. **Executor warmth needs affinity and a bound** (funout author, grok).
+    *Fixed:* soft session → executor affinity in dispatch, a bounded
+    immutable context cache across activations, an LRU on Engine's
+    per-session handles; the bench measures misses.
+30. **Live deltas need attempt fencing and one membership view** (grok,
+    item 8). *Fixed:* `(turn, step, attempt, seq)`, publisher checked
+    against the current epoch, completion closes the attempt, hashing over
+    the committed membership view with redirects, readers wait for
+    `since_id` (Live streaming).
+31. **Search catalogs must outlive placement** (grok, item 9). *Fixed:*
+    catalog lineage in the registry, handed over on drain, required before
+    search is enabled (Trace and session search).
+32. **Smaller points** (funout author). A move waits for the pending batch
+    before freeze, and the move model includes it. fs.md's inline file
+    threshold drops to 16 KiB, below funout's 32 KB command-split size, so
+    a file commit is always one Raft entry.
+
+### Review log
+
+| Date | Reviewer | Findings | Status |
+| --- | --- | --- | --- |
+| 2026-11-09 | design author (self) | 1-12 above | 12 fixed; 1-11 accepted by the user and applied |
+| 2026-11-09 | yolop (independent review) | Conditional go: sharding/split/fencing/allowances sound; 4 gates before full build — (1) Engine-hosted perf re-measure for 75k math, (2) fencing+idempotency proof under leader-loss/stale-replay in cell-testkit, (3) inspector CLI/dashboards/runbooks with EKS proof, (4) v1→v2 import + in-flight cutover defined. Details in thread. | Applied (20, 21, 22) |
+| 2026-11-09 | grok (independent review) | Conditional go: move generations, feed record ids, grant accounting, turn revision retention, recovery consistency, workspace versions, execution authority, capacity assumptions, slot reservation; gates in a revised order | Applied (13-21) |
+| 2026-11-09 | claude-everruns (funout author, from `0a0c0ec`) | Go for steps 0, 1, 5. (1) Long-session numbers stale: Engine hosting now 115.5/s flat vs 131 pre-Engine. (2) Fixes live in the funout adapter (write pipeline 23→11 waited writes/turn; `session.started` read); move them into Engine before PostgreSQL hosting; add "waited round trips per turn" budget, target ≤5. (3) Background usage events lost and model call re-run when input admitted mid-step; add an invariant of one usage record per provider call. (4) Constant build id disables the retained guard; retain `(agent_revision, protocol_major)` per turn. (5) ~115 turns/s per cell → ~11 cells, not 5–8; executor affinity and an LRU for Engine's per-session cache. Confirms grok's move-generation and feed-identity findings. Details in thread. | Applied (23-29, 32) |
+| 2026-11-09 | grok (follow-up) | (8) live deltas need attempt fencing and one membership view; (9) search catalogs must outlive placement; (10) speculative appends through a crash-durable EventLog; refinements on provider attempts, compatibility identity, 11 cells as saturation | Applied (25-31) |

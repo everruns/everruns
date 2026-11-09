@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-09
+
+- Data plane v2 (cells, 75 000 agents) is approved and its design moved into
+  the bundle ([data plane v2](execution/data-plane-v2/)). First
+  protocol models for moves, spend grants and the feed are checked by TLC in
+  CI; the move model found a hole in placement generations, now fixed in the
+  design ([models](execution/data-plane-v2/models.md)).
+
 ## 2026-11-08
 
 - The worker holding a session's lease answers the turn's later session reads
