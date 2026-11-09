@@ -1050,10 +1050,10 @@ which runs against the memory and SQLite authorities.
   sequence of a deferred event, and both worker emitters store before
   `emit` returns.
 
-Deliberately left for step 4, where they are needed anyway: moving the
-Engine and its hosting contract out of the facade crate (the worker cannot
-depend on the facade), and merging the four host service bundles into the
-one the platform host fills.
+Left for step 4, where they are needed anyway: merging the four host
+service bundles into the one the platform host fills. Checked and dropped:
+moving the Engine out of the facade crate. The worker and the server
+already depend on the facade, so step 4 needs no crate move.
 
 ### Cell storage: alternatives (2026-11-09)
 
