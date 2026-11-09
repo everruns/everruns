@@ -263,14 +263,13 @@ impl std::fmt::Display for ProviderModelConfig {
 // Provider catalogue — add new providers/models here
 // ============================================================================
 
-// Fable 5.1 is in the live matrix (top tier, $10/$50 per MTok — keep its
-// cases to the basic/thinking suites). Fable 5 stays out: same tier, same
-// surface, superseded. The earlier "Model not available" on Fable dates from
-// the period when Anthropic had it disabled; both ids serve inference on the
-// Doppler `ANTHROPIC_API_KEY` (verified 2026-09-02).
-pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig = ProviderModelConfig::new(
+// Fable 5.2 is in the live matrix (top tier, $8/$40 per MTok — keep its
+// cases to the basic/thinking suites). Fable 5.1 and 5 stay out: same tier,
+// same surface, superseded. The earlier "Model not available" on Fable dates
+// from the period when Anthropic had it disabled.
+pub const ANTHROPIC_FABLE_5_2: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
-    "claude-fable-5-1",
+    "claude-fable-5-2",
     everruns_drivers::anthropic::descriptor,
 );
 pub const ANTHROPIC_FABLE: ProviderModelConfig = ProviderModelConfig::new(

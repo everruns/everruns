@@ -452,6 +452,8 @@ static REGISTRY: &[ModelDescriptor] = &[
         OPENAI,
     ),
     // Anthropic
+    md(&["claude-fable-5-2"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-mythos-5-2"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5-5"], ModelVendor::Anthropic, ANTHROPIC),
@@ -463,6 +465,12 @@ static REGISTRY: &[ModelDescriptor] = &[
     // 200K base models (e.g. "Opus 4.8" vs "Opus 4.8 (1M)" in the picker); the
     // driver sends the `context-1m` beta header for them. See
     // `anthropic_1m_variant` for how their profiles are derived.
+    md(&["claude-fable-5-2[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(
+        &["claude-mythos-5-2[1m]"],
+        ModelVendor::Anthropic,
+        ANTHROPIC,
+    ),
     md(&["claude-fable-5-1[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),

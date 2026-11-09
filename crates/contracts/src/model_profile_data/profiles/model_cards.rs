@@ -21,6 +21,9 @@ pub(super) fn model_card_url(canonical: &str) -> Option<&'static str> {
         "claude-haiku-5-5" => "https://www.anthropic.com/claude-haiku-5-5-system-card",
         "claude-sonnet-5-5" => "https://www.anthropic.com/claude-sonnet-5-5-system-card",
         "claude-opus-5-5" => "https://www.anthropic.com/claude-opus-5-5-system-card",
+        "claude-fable-5-2" | "claude-mythos-5-2" => {
+            "https://www.anthropic.com/document/claude-fable-5-2-mythos-5-2-system-card"
+        }
         "claude-fable-5-1" => "https://www.anthropic.com/claude-fable-5-1-mythos-5-1-system-card",
         "claude-opus-5" => "https://www.anthropic.com/claude-opus-5-system-card",
         "claude-sonnet-5" => "https://www.anthropic.com/claude-sonnet-5-system-card",

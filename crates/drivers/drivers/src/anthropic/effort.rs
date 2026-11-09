@@ -15,6 +15,8 @@ use crate::anthropic::driver::normalize_anthropic_id;
 /// `thinking` is omitted, so it is driven like Opus 5.5: always adaptive, with
 /// effort as the only control.
 const THINKING_ALWAYS_ON_FAMILIES: &[&str] = &[
+    "claude-fable-5-2",
+    "claude-mythos-5-2",
     "claude-fable-5-1",
     "claude-fable-5",
     "claude-opus-5-5",
