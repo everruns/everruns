@@ -95,7 +95,11 @@ queued ──► running ◄──► awaiting_input      │ active / interrupt
 
 Cancellation is cooperative and idempotent: `cancel_task` sets
 `cancel_requested_at` and asks the executor to wind down; the task may still
-end `succeeded` or `failed`. Remote state machines map onto this one (A2A:
+end `succeeded` or `failed`. The result is read after that best-effort
+wind-down, so it reports the task as it stands then (`canceled` when the
+executor finishes in process, still `running` while a remote peer winds
+down) and carries the same `task` snapshot and recent `messages` tail as
+`get_task`, so one call is enough to show the outcome (EVE-1343). Remote state machines map onto this one (A2A:
 `submitted→queued`, `working→running`, `input/auth-required→awaiting_input`,
 `rejected`/`timed_out`→`failed` with `error.kind`).
 
@@ -351,7 +355,8 @@ list_tasks / get_task   — state, detail, progress, summary, result_path,
                           (only new output since last check)
 message_task            — inbound message; subsumes message_subagent,
                           message_agent, and input answers (in_reply_to)
-cancel_task             — sets cancel intent
+cancel_task             — sets cancel intent; returns the post-wind-down
+                          get_task shape (task + messages)
 wait_task               — generic foreground wait; subsumes wait_agent
 ```
 
