@@ -67,6 +67,19 @@ test("late targeted cancellation cannot cancel a newer turn", async () => {
   await assert.rejects(f.call("cancel", { command_id: "late-command", input_message_id: input(2).data.message.id }), /different input/);
 });
 
+test("cancelling a running turn keeps input admitted behind it for the next turn", async () => {
+  const f = await fixture();
+  const first = await f.call("input", { event: input() });
+  const lease = await claim(f);
+  const turn = await start(f, lease);
+  await f.call("framework", { lease, operation: "set", key: `assignment/${input().data.message.id}`, value: { turn_id: turn, steered: false } });
+  const queued = await f.call("input", { event: input(2, "next") });
+  await f.call("cancel", { command_id: "cancel-running", input_message_id: input().data.message.id });
+  const status = await f.call("status");
+  assert.equal(status.cancel_inbox_seq, first.sequence, "the cancel stops at its own admission");
+  assert.ok(status.inbox_seq >= queued.sequence);
+});
+
 test("approval permission, correlated answer and wakeup commit atomically and retry after reply loss",async()=>{
   const f=await fixture(); await f.call("input",{event:input()});const lease=await claim(f);const turn=await start(f,lease);
   const request={id:"tool_approval_call_one",name:"approve_tool_call",arguments:{code:"tool_approval_required",error:"waiting",tool_call_id:"call_one",tool:"mutate",arguments:{n:1},fingerprint:"sha256:test",risk:"policy",mode:"normal",asked_at:new Date(1000000).toISOString(),expires_at:new Date(1100000).toISOString()}};

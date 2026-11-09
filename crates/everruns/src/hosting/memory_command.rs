@@ -179,7 +179,15 @@ impl MemoryHosting {
             }
             ControlUpdate::SelectBranch { .. } | ControlUpdate::DropBranch { .. } => {}
             ControlUpdate::Cancel { input, interrupt } => {
-                let position = state.inbox;
+                // The targeted admission's own sequence, not the inbox head:
+                // input admitted behind it is a later admission and must run
+                // as the next turn rather than be consumed by this cancel
+                // (EVE-1344).
+                let position = state
+                    .commands
+                    .get(&input.to_string())
+                    .and_then(|receipt| receipt.value["sequence"].as_i64())
+                    .unwrap_or(state.inbox);
                 state.target_cancels.insert(input, position);
                 if interrupt {
                     state.cancel = Some(position);

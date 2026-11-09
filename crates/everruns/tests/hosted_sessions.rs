@@ -574,6 +574,49 @@ async fn cancelling_a_pending_admission_never_cancels_a_later_turn() {
     );
 }
 
+/// EVE-1344: a targeted cancel ends only the turn its admission reaches. A
+/// message admitted behind it runs as the next turn instead of being consumed
+/// by the cancel with its waiter left pending forever. Activation is manual,
+/// so the cancel lands before either admission is consumed on every authority.
+async fn cancel_keeps_later_admissions(profile: impl SessionHosting + 'static) {
+    let engine = Engine::builder()
+        .hosting(External(profile))
+        .register(build(), agent())
+        .build();
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build()).await.unwrap();
+    let first = session.send("cancel this").await.unwrap();
+    let queued = session.send("keep this").await.unwrap();
+    first.turn().cancel().await.unwrap();
+    engine.activate(id).await.unwrap();
+    assert_eq!(
+        first.wait().await.unwrap().stop_reason,
+        everruns::TurnStopReason::Cancelled
+    );
+    engine.activate(id).await.unwrap();
+    let next = tokio::time::timeout(std::time::Duration::from_secs(10), queued.wait())
+        .await
+        .expect("the queued admission's waiter resolves")
+        .unwrap();
+    assert!(next.success, "{:?}", next.error);
+    assert_eq!(next.response, "Hello!");
+}
+
+#[tokio::test]
+async fn memory_cancel_keeps_later_admissions() {
+    cancel_keeps_later_admissions(MemoryHosting::default()).await;
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn sqlite_cancel_keeps_later_admissions() {
+    let dir = tempfile::tempdir().unwrap();
+    cancel_keeps_later_admissions(
+        everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap(),
+    )
+    .await;
+}
+
 #[cfg(feature = "local")]
 #[tokio::test]
 async fn native_startup_supervision_recovers_an_accepted_command_without_client_traffic() {
