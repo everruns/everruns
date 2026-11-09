@@ -6,7 +6,7 @@ This integration is shipped as the `github` module of `everruns-integrations` En
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-integrations` registers two capabilities through the Everruns
+`everruns-integrations` registers three capabilities through the Everruns
 integration plugin system:
 
 - `github`: host-facing tools for one pull request at a time (read it, read its
@@ -16,6 +16,9 @@ integration plugin system:
 - `github_scout`: blueprint-only. It contributes the `github_scout` blueprint, a
   read-only repository-exploration scout whose private tools run only inside
   blueprint-backed child sessions.
+- `repositories`: the set of repositories a session works on, checked out side
+  by side in the session's sandbox, with one work branch per session and no
+  GitHub credential kept in the sandbox.
 
 Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with
@@ -79,6 +82,20 @@ A read-only scout agent for repository exploration:
   Monitoring and steering use the generic `session_tasks` tools
   (`list_tasks`, `get_task`, `message_task`, `cancel_task`).
 
+### The `repositories` Capability
+
+Several GitHub repositories in one sandbox:
+
+- `repo_status` checks out the listed repositories at `/workspace/<name>` and
+  reports each one's branch, uncommitted files and unpushed commits.
+- `repo_add` brings in another repository, within the `add_repositories`
+  setting.
+- `repo_sync` fetches a branch; `repo_push` pushes the session's work branch of
+  a writable repository.
+- Every clone, fetch and push gets its own short-lived installation token for
+  that one git command. Access is the capability's config, never the state of
+  the checkout.
+
 ## Tool Privacy
 
 The host agent sees only the blueprint, through Everruns' subagent spawning flow.
@@ -89,6 +106,7 @@ added to the host tool list.
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations)
 - [GitHub Scout capability](https://everruns.com/docs/capabilities/github-scout/)
+- [Repositories capability](https://everruns.com/docs/capabilities/repositories/)
 - [Everruns documentation](https://everruns.com/docs)
 
 ## License

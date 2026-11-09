@@ -389,9 +389,15 @@ Each step is one PR unless noted, and leaves everything working.
    again. Not done: D5 is unverified, so the GitHub MCP preset keeps its own
    OAuth client for `user`.
 5. **GitHub channel** (D8) on the channel host, with the manifest additions.
-6. **Sandbox repositories**: repositories and access level on the sandbox
-   template, injected at the egress proxy (Modal, saas egress proxy) or
-   through a credential helper with a cut-down token.
+6. **Sandbox repositories**: done for the credential-helper path, as the
+   `repositories` capability (`integrations/src/github/repositories.rs`). The
+   repository list and access level live in the capability's config on the
+   agent or session, not on the sandbox template, so one template serves many
+   repository sets. Each clone, fetch and push mints its own token (contents
+   read for the repositories fetched, contents write for the one pushed) and
+   hands it to one git command; the sandbox keeps none (TM-GITHUB-009). See
+   [Coding Harness](../harnesses/coding-harness.md). Not done: injection at
+   the egress proxy.
 7. **Usage report** (D6).
 
 ## Open questions
