@@ -400,15 +400,15 @@ impl SessionHosting for MemoryHosting {
         }
         // A new turn runs the agent's current revision; a turn already open
         // (or parked on a wait) keeps the one it started with.
-        if state.open.is_none()
-            && state.pending.is_empty()
-            && state.finalizing.is_empty()
-            && let Some(binding) = state.binding.as_mut()
-        {
-            self.definitions
-                .read()
-                .unwrap_or_else(|p| p.into_inner())
-                .advance(binding);
+        let in_turn =
+            state.open.is_some() || !state.pending.is_empty() || !state.finalizing.is_empty();
+        if let Some(binding) = state.binding.as_mut() {
+            let definitions = self.definitions.read().unwrap_or_else(|p| p.into_inner());
+            super::definitions::advance(
+                binding,
+                in_turn,
+                definitions.current(&binding.behavior.agent),
+            );
         }
         let binding = state.binding(id)?;
         state.holder = Some(holder.to_owned());
@@ -443,6 +443,13 @@ impl SessionHosting for MemoryHosting {
     fn process_scheduler(&self) -> bool {
         true
     }
+    fn definitions(&self) -> Option<&dyn super::AgentDefinitions> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl super::AgentDefinitions for MemoryHosting {
     async fn publish_definition(&self, definition: &super::AgentDefinition) -> Result<()> {
         self.counts.count(Op::Write);
         self.definitions

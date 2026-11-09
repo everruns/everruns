@@ -15,7 +15,8 @@ mod admission;
 mod configuration;
 mod definitions;
 pub use definitions::{
-    AgentDefinition, AgentHydrator, Hydrated, MAX_DEFINITION_BYTES, PackageHydrator,
+    AgentDefinition, AgentDefinitions, AgentHydrator, Hydrated, MAX_DEFINITION_BYTES,
+    PackageHydrator,
 };
 pub(crate) use definitions::{DEFAULT_HYDRATED_CAPACITY, DefinitionStore, HydratedCache};
 pub mod cutover;
@@ -625,21 +626,14 @@ pub trait SessionHosting: Send + Sync + 'static {
     fn changes(&self, _session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
         None
     }
-    /// Keep a revision of an agent definition and make it the agent's
-    /// current one (see [`AgentDefinition`]). Publishing the same content
-    /// again succeeds; different content under a published revision fails.
-    /// A session bound to an older revision of the agent moves to the
-    /// current one when its next turn starts. Profiles that do not keep
-    /// definitions refuse.
-    async fn publish_definition(&self, _definition: &AgentDefinition) -> Result<()> {
-        Err(spi::error::AgentLoopError::config(
-            "this hosting profile does not keep agent definitions",
-        ))
-    }
-    /// The published definition for `build`, if this authority keeps it.
-    async fn definition(&self, _build: &AgentBuild) -> Result<Option<AgentDefinition>> {
-        Ok(None)
-    }
+    /// The agent definitions this authority keeps beside its sessions, or
+    /// `None` for a profile that only hosts code-registered builds.
+    ///
+    /// Decision: required, with no default. A profile that wraps another
+    /// must say what it does with definitions; a default that answers
+    /// "none" made a wrapper that forgot to forward look like an authority
+    /// with no definitions, and its sessions lost their agents.
+    fn definitions(&self) -> Option<&dyn AgentDefinitions>;
     /// Attach profile-owned host services (task registry, child sessions,
     /// wakes) to an activation's runtime after reconciling lost executions.
     /// Profiles without such services keep the defaults.

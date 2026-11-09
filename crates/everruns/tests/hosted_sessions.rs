@@ -995,6 +995,9 @@ impl<H: SessionHosting> SessionHosting for Rebind<H> {
     fn changes(&self, session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
         self.0.changes(session)
     }
+    fn definitions(&self) -> Option<&dyn everruns::hosting::AgentDefinitions> {
+        self.0.definitions()
+    }
     fn process_scheduler(&self) -> bool {
         self.0.process_scheduler()
     }

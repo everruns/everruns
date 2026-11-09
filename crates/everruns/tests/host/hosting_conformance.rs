@@ -56,3 +56,17 @@ async fn sqlite_retained_deployment() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn memory_agent_definitions() {
+    conformance::agent_definitions(MemoryHosting::default()).await;
+}
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn sqlite_agent_definitions() {
+    let dir = tempfile::tempdir().unwrap();
+    conformance::agent_definitions(
+        everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap(),
+    )
+    .await;
+}

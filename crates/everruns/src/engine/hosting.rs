@@ -14,6 +14,9 @@ pub(super) struct Registration {
     pub agent: Agent,
     pub harness: Option<Harness>,
     pub environment: Option<(String, Arc<dyn crate::hosting::EnvironmentFactory>)>,
+    /// Hydrated from a definition the authority keeps, not registered as
+    /// code. Its revision alone names the whole behavior, Harness included.
+    pub defined: bool,
 }
 
 impl EngineBuilder {
@@ -39,6 +42,7 @@ impl EngineBuilder {
                 agent,
                 harness: None,
                 environment: None,
+                defined: false,
             },
         );
         self
@@ -49,6 +53,21 @@ impl EngineBuilder {
     /// hydrator instead of the agent-package mapping. Stability: experimental.
     pub fn hydrator(mut self, hydrator: impl crate::hosting::AgentHydrator) -> Self {
         self.hydrator = Arc::new(hydrator);
+        self
+    }
+
+    /// Where sessions of defined agents keep their files: one factory for
+    /// every agent and revision, opened by session identity, so a session
+    /// keeps its workspace when its agent is edited. The default keeps
+    /// files in this Engine's memory; a host that outlives the process
+    /// installs durable storage (for example
+    /// [`DirectoryEnvironmentFactory`](crate::hosting::DirectoryEnvironmentFactory)).
+    /// Stability: experimental.
+    pub fn definition_environment(
+        mut self,
+        factory: impl crate::hosting::EnvironmentFactory,
+    ) -> Self {
+        self.definition_environment = Some(Arc::new(factory));
         self
     }
 
@@ -77,6 +96,7 @@ impl EngineBuilder {
                 agent,
                 harness: Some(harness),
                 environment: None,
+                defined: false,
             },
         );
         self
@@ -103,9 +123,11 @@ impl Engine {
         let snapshot = self.profile()?.query_snapshot(session).await?;
         let live = self.live_controls(session);
         live.sync_authority(&snapshot.configuration);
-        self.ensure_hydrated(&snapshot.binding.behavior).await?;
-        self.cache_hosted(session, snapshot.binding.clone())?;
-        let registration = self.registration(&snapshot.binding.behavior)?;
+        let registration = self
+            .resolve(&snapshot.binding.behavior)
+            .await?
+            .registration()?;
+        self.cache_hosted(session, snapshot.binding.clone(), &registration)?;
         let environment = if snapshot.binding.environment.is_some() {
             self.hosted_environment(session).await?
         } else {
@@ -294,6 +316,7 @@ impl Engine {
                 agent,
                 harness,
                 environment: None,
+                defined: false,
             },
         );
         Ok(())
@@ -331,6 +354,7 @@ impl Engine {
                 agent,
                 harness,
                 environment: Some((reference, Arc::new(factory))),
+                defined: false,
             },
         );
         Ok(())
@@ -352,8 +376,7 @@ impl Engine {
             Some(binding) => binding,
             None => self.session_binding(session).await?,
         };
-        self.ensure_hydrated(&binding.behavior).await?;
-        let registration = self.registration(&binding.behavior)?;
+        let registration = self.resolve(&binding.behavior).await?.registration()?;
         let Some((reference, factory)) = registration.environment else {
             return Err(AgentLoopError::config(
                 "no retained Environment factory is configured",
@@ -433,8 +456,8 @@ impl Engine {
     /// changing suspension, history, accepted inputs or pending waits.
     pub async fn session_compatibility(&self, session: SessionId) -> Result<SessionCompatibility> {
         let binding = self.session_binding(session).await?;
-        self.ensure_hydrated(&binding.behavior).await?;
-        self.binding_compatibility(&binding)
+        let resolved = self.resolve(&binding.behavior).await?;
+        binding_compatibility(&binding, resolved.available())
     }
 
     /// Retry a compatibility suspension after restoring the required code.
@@ -443,8 +466,8 @@ impl Engine {
     /// Retain `command` across lost replies. Privileged hosts authorize callers.
     pub async fn retry_session(&self, session: SessionId, command: uuid::Uuid) -> Result<()> {
         let binding = self.session_binding(session).await?;
-        self.ensure_hydrated(&binding.behavior).await?;
-        let compatibility = self.binding_compatibility(&binding)?;
+        let resolved = self.resolve(&binding.behavior).await?;
+        let compatibility = binding_compatibility(&binding, resolved.available())?;
         if !compatibility.is_available() {
             return Err(AgentLoopError::config(compatibility.suspension_reason()));
         }
@@ -488,8 +511,7 @@ impl Engine {
             return Err(AgentLoopError::config("creation metadata exceeds limit"));
         }
         let profile = self.profile()?;
-        self.ensure_hydrated(build).await?;
-        let registration = self.registration(build)?;
+        let registration = self.resolve(build).await?.registration()?;
         let binding = registered_binding(build, &registration, metadata)?;
         if let Some((_, factory)) = &registration.environment {
             let environment = factory.open(session).await?;
@@ -504,7 +526,7 @@ impl Engine {
             ));
         }
         profile.create(session, &binding).await?;
-        self.cache_hosted(session, binding)?;
+        self.cache_hosted(session, binding, &registration)?;
         self.resume_hosted(session).await
     }
 
@@ -515,28 +537,28 @@ impl Engine {
             .ok_or_else(|| AgentLoopError::config("Engine has no session hosting profile"))
     }
 
-    /// Hydrate `build` from the authority's definition when no registration
-    /// or cached revision has it (see `hosting::definitions`). A member
-    /// build hydrates its lead. A definition this process cannot build (a
-    /// capability it lacks) leaves the build missing, so activation
-    /// suspends the session as for any unavailable build.
-    pub(super) async fn ensure_hydrated(&self, build: &AgentBuild) -> Result<()> {
-        let target = match build.agent.rsplit_once(MEMBER_BUILD_SEPARATOR) {
-            Some((lead, _)) => AgentBuild::new(lead, build.build_id.clone()),
-            None => build.clone(),
-        };
-        if self
-            .inner
-            .registry
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .contains_key(&target)
-            || self.inner.hydrated.get(&target).is_some()
-        {
-            return Ok(());
+    /// What this process has for `build`: a code registration, else a
+    /// cached hydrated revision, else the authority's definition hydrated
+    /// now (see `hosting::definitions`). A member build resolves through
+    /// its lead.
+    ///
+    /// Decision: the caller keeps the returned registration for the whole
+    /// operation. Looking the build up a second time could miss, because
+    /// the bounded cache may drop the revision in between, and a miss
+    /// reads as "build unavailable", which suspends the session.
+    pub(super) async fn resolve(&self, build: &AgentBuild) -> Result<Resolved> {
+        if let Ok(registration) = self.registration(build) {
+            return Ok(Resolved::Ready(Box::new(registration)));
         }
-        let Some(definition) = self.profile()?.definition(&target).await? else {
-            return Ok(());
+        let (target, member) = match build.agent.rsplit_once(MEMBER_BUILD_SEPARATOR) {
+            Some((lead, member)) => (AgentBuild::new(lead, build.build_id.clone()), Some(member)),
+            None => (build.clone(), None),
+        };
+        let Some(definitions) = self.profile()?.definitions() else {
+            return Ok(Resolved::Unknown);
+        };
+        let Some(definition) = definitions.definition(&target).await? else {
+            return Ok(Resolved::Unknown);
         };
         if definition.build != target {
             return Err(AgentLoopError::store(
@@ -552,13 +574,42 @@ impl Engine {
                     %error,
                     "agent definition cannot be hydrated by this Engine"
                 );
-                return Ok(());
+                return Ok(Resolved::Unbuildable(error.to_string()));
             }
         };
-        self.inner
+        let lead = self
+            .inner
             .hydrated
-            .insert(target, hydrated_registration(hydrated));
-        Ok(())
+            .insert(target, self.hydrated_registration(hydrated));
+        Ok(match member {
+            None => Resolved::Ready(Box::new(lead)),
+            Some(member) => member_registration(&lead, member)
+                .map(|member| Resolved::Ready(Box::new(member)))
+                .unwrap_or(Resolved::Unknown),
+        })
+    }
+
+    /// A hydrated definition as a registration. Every defined agent runs
+    /// in the Engine's definition Environment, under one reference.
+    ///
+    /// Decision: the Environment does not depend on the revision. A
+    /// session's Environment is fixed at creation while its revision
+    /// moves, so an Environment derived from the revision's content (does
+    /// it have files?) made an edit that adds an agent's first file
+    /// suspend that agent's sessions, and an Environment owned by the
+    /// hydrated Agent gave a session a new, empty workspace on every
+    /// revision and every cache eviction.
+    fn hydrated_registration(&self, hydrated: crate::hosting::Hydrated) -> Registration {
+        let crate::hosting::Hydrated { agent, harness } = hydrated;
+        Registration {
+            agent,
+            harness,
+            environment: Some((
+                DEFINITION_ENVIRONMENT.to_owned(),
+                self.inner.definition_environment.clone(),
+            )),
+            defined: true,
+        }
     }
 
     /// Publish a revision of an agent definition to the session authority
@@ -574,9 +625,15 @@ impl Engine {
     ) -> Result<()> {
         definition.validate()?;
         let hydrated = self.inner.hydrator.hydrate(definition)?;
-        let registration = hydrated_registration(hydrated);
+        let registration = self.hydrated_registration(hydrated);
         registered_binding(&definition.build, &registration, serde_json::Value::Null)?;
-        self.profile()?.publish_definition(definition).await?;
+        self.profile()?
+            .definitions()
+            .ok_or_else(|| {
+                AgentLoopError::config("this hosting profile does not keep agent definitions")
+            })?
+            .publish_definition(definition)
+            .await?;
         self.inner
             .hydrated
             .insert(definition.build.clone(), registration);
@@ -617,13 +674,7 @@ impl Engine {
                     .get(&lead_build)
                     .cloned()
                     .or_else(|| self.inner.hydrated.get(&lead_build))?;
-                let member = uuid::Uuid::try_parse(member).ok()?;
-                let agent = lead.agent.member_on_host(member.into())?;
-                Some(Registration {
-                    agent,
-                    harness: None,
-                    environment: lead.environment.clone(),
-                })
+                member_registration(&lead, member)
             })
             .or_else(|| self.inner.hydrated.get(build))
             .ok_or_else(|| AgentLoopError::config("retained agent build is unavailable"))
@@ -648,42 +699,17 @@ impl Engine {
         ))
     }
 
-    fn binding_compatibility(&self, binding: &SessionBinding) -> Result<SessionCompatibility> {
-        if binding.framework != SESSION_RUNTIME_VERSION {
-            return Ok(SessionCompatibility::UnsupportedRuntimeVersion {
-                required: binding.framework,
-                supported: SESSION_RUNTIME_VERSION,
-            });
-        }
-        let Ok(registration) = self.registration(&binding.behavior) else {
-            return Ok(SessionCompatibility::MissingBuild {
-                required: binding.behavior.clone(),
-            });
-        };
-        let harness = registration
-            .harness
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()
-            .map_err(|_| AgentLoopError::config("invalid registered Harness"))?;
-        if binding.harness != harness
-            || binding.environment
-                != registration
-                    .environment
-                    .as_ref()
-                    .map(|(reference, _)| reference.clone())
-        {
-            return Ok(SessionCompatibility::ConfigurationUnavailable);
-        }
-        Ok(SessionCompatibility::Available)
-    }
-
-    pub(super) fn cache_hosted(&self, session: SessionId, binding: SessionBinding) -> Result<()> {
-        let compatibility = self.binding_compatibility(&binding)?;
+    pub(super) fn cache_hosted(
+        &self,
+        session: SessionId,
+        binding: SessionBinding,
+        registration: &Registration,
+    ) -> Result<()> {
+        let compatibility = binding_compatibility(&binding, Some(registration))?;
         if !compatibility.is_available() {
             return Err(AgentLoopError::config(compatibility.suspension_reason()));
         }
-        let registration = self.registration(&binding.behavior)?;
+        let registration = registration.clone();
         let mut sessions = self
             .inner
             .sessions
@@ -772,8 +798,13 @@ impl Engine {
 
     pub(crate) async fn resume_hosted(&self, session: SessionId) -> Result<Session> {
         let status = self.profile()?.status(session).await?;
-        self.ensure_hydrated(&status.binding.behavior).await?;
-        if self.cache_hosted(session, status.binding.clone()).is_err() {
+        let cached = match self.resolve(&status.binding.behavior).await?.available() {
+            Some(registration) => self
+                .cache_hosted(session, status.binding.clone(), registration)
+                .is_ok(),
+            None => false,
+        };
+        if !cached {
             // Readers need authoritative identity and ports, not executable
             // code. A missing retained build is handled by activation, which
             // suspends execution without hiding history or existing outcomes.
@@ -888,8 +919,38 @@ impl Engine {
                     missing.join(", ")
                 )));
             }
-            self.ensure_hydrated(&activation.binding.behavior).await?;
-            let compatibility = self.binding_compatibility(&activation.binding)?;
+            let release = || async {
+                activation
+                    .epoch
+                    .actor_store()
+                    .release_actor(
+                        session,
+                        &config.holder,
+                        activation.actor.fence,
+                        activation.actor.consumed_seq,
+                    )
+                    .await
+            };
+            let resolved = match self.resolve(&activation.binding.behavior).await {
+                Ok(Resolved::Unbuildable(error)) => {
+                    // Decision: a definition the authority has but this
+                    // process cannot build (a capability it lacks, an
+                    // older executor) is this executor's limit, not the
+                    // session's. Hand the epoch back untouched and
+                    // unsuspended, as for a missing protocol capability:
+                    // an executor that can build it runs the session.
+                    release().await?;
+                    return Err(AgentLoopError::config(format!(
+                        "this Engine cannot build the session's agent definition: {error}"
+                    )));
+                }
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    release().await?;
+                    return Err(error);
+                }
+            };
+            let compatibility = binding_compatibility(&activation.binding, resolved.available())?;
             if !compatibility.is_available() {
                 let reason = compatibility.suspension_reason();
                 activation.epoch.suspend(reason).await?;
@@ -907,8 +968,8 @@ impl Engine {
                     .await?;
                 return Err(AgentLoopError::config(reason));
             }
-            self.cache_hosted(session, activation.binding.clone())?;
-            let registration = self.registration(&activation.binding.behavior)?;
+            let registration = resolved.registration()?;
+            self.cache_hosted(session, activation.binding.clone(), &registration)?;
             // Heap-allocate the activation: the full runtime build and driver
             // future is large, and hosts often await activation inline.
             Box::pin(crate::hosting::execution::run(
@@ -928,24 +989,115 @@ impl Engine {
     }
 }
 
-/// The Environment reference of a hydrated Agent that needs a workspace.
-const RESOLVED_ENVIRONMENT: &str = "agent-default";
+/// The Environment reference every defined agent's sessions bind.
+const DEFINITION_ENVIRONMENT: &str = "agent-default";
 
-/// A hydrated definition as a registration. An Agent that needs a
-/// workspace runs in its own default Environment, under a reference every
-/// process derives the same way.
-fn hydrated_registration(hydrated: crate::hosting::Hydrated) -> Registration {
-    let crate::hosting::Hydrated { agent, harness } = hydrated;
-    let environment = agent.requires_hosted_workspace().then(|| {
-        let factory: Arc<dyn crate::hosting::EnvironmentFactory> =
-            Arc::new(agent.environment_factory());
-        (RESOLVED_ENVIRONMENT.to_owned(), factory)
-    });
-    Registration {
-        agent,
-        harness,
-        environment,
+/// The default definition Environment: one in-memory workspace per
+/// session, kept as long as the Engine.
+pub(super) fn volatile_definition_environment() -> Arc<dyn crate::hosting::EnvironmentFactory> {
+    let workspace = crate::default_workspace::DefaultWorkspace::in_memory();
+    Arc::new(move |session| {
+        let workspace = workspace.clone();
+        async move {
+            workspace
+                .environment(session)
+                .await
+                .map_err(|error| AgentLoopError::config(error.to_string()))
+        }
+    })
+}
+
+/// What a process has for an agent build (`Engine::resolve`).
+pub(super) enum Resolved {
+    /// Executable here.
+    Ready(Box<Registration>),
+    /// Neither registered here nor defined in the authority.
+    Unknown,
+    /// Defined in the authority, but this process cannot build it.
+    Unbuildable(String),
+}
+
+impl Resolved {
+    pub(super) fn available(&self) -> Option<&Registration> {
+        match self {
+            Self::Ready(registration) => Some(registration),
+            Self::Unknown | Self::Unbuildable(_) => None,
+        }
     }
+
+    pub(super) fn registration(self) -> Result<Registration> {
+        match self {
+            Self::Ready(registration) => Ok(*registration),
+            Self::Unknown => Err(AgentLoopError::config(
+                "retained agent build is unavailable",
+            )),
+            Self::Unbuildable(error) => Err(AgentLoopError::config(format!(
+                "this Engine cannot build the agent definition: {error}"
+            ))),
+        }
+    }
+}
+
+/// The registration of a member of `lead`'s team. A member's build is
+/// derived from its lead's (`member_build`), so a member session resumes
+/// after a restart once the lead is available.
+fn member_registration(lead: &Registration, member: &str) -> Option<Registration> {
+    let member = uuid::Uuid::try_parse(member).ok()?;
+    Some(Registration {
+        agent: lead.agent.member_on_host(member.into())?,
+        harness: None,
+        environment: lead.environment.clone(),
+        defined: lead.defined,
+    })
+}
+
+/// The Harness a session binding records for `registration`.
+///
+/// Decision: a session of a defined agent binds no Harness. Its revision
+/// names the Harness, and the session moves between revisions, so a bound
+/// copy could only disagree: the authority would have to derive it from
+/// the definition the same way every executor's hydrator does, and any
+/// difference suspended the session as unavailable configuration.
+fn bound_harness(registration: &Registration) -> serde_json::Result<Option<serde_json::Value>> {
+    if registration.defined {
+        return Ok(None);
+    }
+    registration
+        .harness
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+}
+
+/// Whether `registration`, what this process has for the binding's build,
+/// can run a session bound as `binding`.
+fn binding_compatibility(
+    binding: &SessionBinding,
+    registration: Option<&Registration>,
+) -> Result<SessionCompatibility> {
+    if binding.framework != SESSION_RUNTIME_VERSION {
+        return Ok(SessionCompatibility::UnsupportedRuntimeVersion {
+            required: binding.framework,
+            supported: SESSION_RUNTIME_VERSION,
+        });
+    }
+    let Some(registration) = registration else {
+        return Ok(SessionCompatibility::MissingBuild {
+            required: binding.behavior.clone(),
+        });
+    };
+    let harness = bound_harness(registration)
+        .map_err(|_| AgentLoopError::config("invalid registered Harness"))?;
+    if binding.harness != harness
+        || binding.environment
+            != registration
+                .environment
+                .as_ref()
+                .map(|(reference, _)| reference.clone())
+    {
+        return Ok(SessionCompatibility::ConfigurationUnavailable);
+    }
+    Ok(SessionCompatibility::Available)
 }
 
 /// The immutable binding a registered build creates. An Agent cannot choose a
@@ -968,11 +1120,7 @@ pub(super) fn registered_binding(
     }
     Ok(SessionBinding {
         behavior: build.clone(),
-        harness: registration
-            .harness
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()
+        harness: bound_harness(registration)
             .map_err(|_| AgentLoopError::config("invalid Harness binding"))?,
         environment: registration
             .environment

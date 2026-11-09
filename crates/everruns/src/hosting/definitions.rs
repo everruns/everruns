@@ -3,7 +3,7 @@
 //! Decision: an Engine that hosts sessions for agents defined by data (the
 //! platform, a cell) does not register code per agent and does not ask
 //! anyone to build one. The authority keeps every revision of a definition
-//! with the sessions that use it ([`SessionHosting::publish_definition`]),
+//! with the sessions that use it ([`AgentDefinitions::publish_definition`]),
 //! and the Engine that activates a session reads the revision the session
 //! is bound to from that authority and hydrates it into an [`Agent`]
 //! ([`AgentHydrator`], by default the agent-package mapping). Hydrated
@@ -18,9 +18,11 @@
 //! behavior it started with (`TurnRevision`). Publishing makes the revision
 //! the agent's current one; a session created from a definition moves to
 //! the current revision when its next turn starts, never in the middle of a
-//! turn.
+//! turn (`advance`). Every defined agent's sessions run in one
+//! Engine-owned Environment
+//! ([`EngineBuilder::definition_environment`](crate::EngineBuilder::definition_environment)),
+//! so what a session was created with does not depend on the revision.
 //!
-//! [`SessionHosting::publish_definition`]: super::SessionHosting::publish_definition
 
 use super::AgentBuild;
 use crate::{Agent, AgentPackage, Harness, PackageFormat};
@@ -98,6 +100,20 @@ impl AgentDefinition {
         }
         Ok(())
     }
+}
+
+/// The definitions an authority keeps beside its sessions
+/// ([`SessionHosting::definitions`](super::SessionHosting::definitions)).
+/// A session bound to an older revision of an agent moves to the current
+/// one when its next turn starts. Stability: experimental.
+#[async_trait::async_trait]
+pub trait AgentDefinitions: Send + Sync {
+    /// Keep a revision and make it the agent's current one. Publishing the
+    /// same content again succeeds; different content under a published
+    /// revision fails.
+    async fn publish_definition(&self, definition: &AgentDefinition) -> Result<()>;
+    /// The published definition for `build`, if any.
+    async fn definition(&self, build: &AgentBuild) -> Result<Option<AgentDefinition>>;
 }
 
 /// What a definition hydrates into: the Agent and the Harness its
@@ -264,31 +280,33 @@ impl DefinitionStore {
         self.revisions.get(build).cloned()
     }
 
-    /// Move a session bound to an older revision of a defined agent to the
-    /// current one, with the current revision's Harness, for its next
-    /// turn. Returns whether the binding changed. The Environment a
-    /// session was created with never changes: a revision that needs
-    /// another one is reported as unavailable configuration at activation.
-    pub(crate) fn advance(&self, binding: &mut super::SessionBinding) -> bool {
-        let Some(current) = self.current.get(&binding.behavior.agent) else {
-            return false;
-        };
-        if current == &binding.behavior.build_id {
-            return false;
+    /// The agent's current revision.
+    pub(crate) fn current(&self, agent: &str) -> Option<&str> {
+        self.current.get(agent).map(String::as_str)
+    }
+}
+
+/// Move a session to `current`, its agent's current revision. Returns
+/// whether the binding changed.
+///
+/// Decision: this is the whole rule, for every authority. A session moves
+/// only between turns (`in_turn` covers an open turn, pending tool calls and
+/// a turn being finalized), so a turn always finishes on the revision it
+/// started with, and only the revision moves. The authority never reads the
+/// definition to do it: the Harness comes from the revision when an
+/// executor hydrates it, and the Environment and metadata a session was
+/// created with never change.
+pub(crate) fn advance(
+    binding: &mut super::SessionBinding,
+    in_turn: bool,
+    current: Option<&str>,
+) -> bool {
+    match current {
+        Some(current) if !in_turn && current != binding.behavior.build_id => {
+            binding.behavior.build_id = current.to_owned();
+            true
         }
-        let build = AgentBuild::new(binding.behavior.agent.clone(), current.clone());
-        let harness = self.revisions.get(&build).and_then(|definition| {
-            match definition.agent_package().ok()?.session_harness().ok()? {
-                Some(harness) => serde_json::to_value(harness).ok().map(Some),
-                None => Some(None),
-            }
-        });
-        let Some(harness) = harness else {
-            return false;
-        };
-        binding.behavior = build;
-        binding.harness = harness;
-        true
+        _ => false,
     }
 }
 

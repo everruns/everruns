@@ -7,6 +7,9 @@ use everruns::{MessageId, SessionId};
 pub struct External<H>(pub H);
 #[async_trait::async_trait]
 impl<H: SessionHosting> SessionHosting for External<H> {
+    fn definitions(&self) -> Option<&dyn everruns::hosting::AgentDefinitions> {
+        self.0.definitions()
+    }
     async fn command(
         &self,
         session: everruns::SessionId,

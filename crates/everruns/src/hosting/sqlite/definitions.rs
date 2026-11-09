@@ -18,8 +18,9 @@ fn load(tx: &rusqlite::Connection, build: &AgentBuild) -> Result<Option<AgentDef
     .transpose()
 }
 
-impl SqliteHosting {
-    pub(super) fn publish(&self, definition: &AgentDefinition) -> Result<()> {
+#[async_trait]
+impl crate::hosting::AgentDefinitions for SqliteHosting {
+    async fn publish_definition(&self, definition: &AgentDefinition) -> Result<()> {
         let mut db = self
             .db
             .lock()
@@ -50,7 +51,7 @@ impl SqliteHosting {
         tx.commit().map_err(error)
     }
 
-    pub(super) fn stored_definition(&self, build: &AgentBuild) -> Result<Option<AgentDefinition>> {
+    async fn definition(&self, build: &AgentBuild) -> Result<Option<AgentDefinition>> {
         let db = self
             .db
             .lock()
@@ -59,12 +60,10 @@ impl SqliteHosting {
     }
 }
 
-/// Move an idle session to its agent's current revision, in the claim
-/// transaction, so the new turn and its retained revision agree.
+/// Move a session between turns to its agent's current revision, in the
+/// claim transaction, so the new turn and its retained revision agree.
 pub(super) fn advance(tx: &Transaction<'_>, state: &mut Control) -> Result<()> {
-    if state.open.is_some() || !state.pending.is_empty() || !state.finalizing.is_empty() {
-        return Ok(());
-    }
+    let in_turn = state.open.is_some() || !state.pending.is_empty() || !state.finalizing.is_empty();
     let Some(binding) = state.binding.as_mut() else {
         return Ok(());
     };
@@ -76,18 +75,6 @@ pub(super) fn advance(tx: &Transaction<'_>, state: &mut Control) -> Result<()> {
         )
         .optional()
         .map_err(error)?;
-    let Some(current) = current.filter(|current| current != &binding.behavior.build_id) else {
-        return Ok(());
-    };
-    let Some(definition) = load(
-        tx,
-        &AgentBuild::new(binding.behavior.agent.clone(), current),
-    )?
-    else {
-        return Ok(());
-    };
-    let mut store = DefinitionStore::default();
-    store.publish(&definition)?;
-    store.advance(binding);
+    crate::hosting::definitions::advance(binding, in_turn, current.as_deref());
     Ok(())
 }

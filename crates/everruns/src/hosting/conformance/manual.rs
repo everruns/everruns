@@ -34,6 +34,9 @@ impl<H: SessionHosting> SessionHosting for Manual<H> {
     ) -> crate::hosting::spi::error::Result<Option<crate::hosting::AdmissionReceipt>> {
         self.0.receipt(id, message).await
     }
+    fn definitions(&self) -> Option<&dyn crate::hosting::AgentDefinitions> {
+        self.0.definitions()
+    }
     fn reader(&self, id: SessionId) -> crate::hosting::spi::HostBackends {
         self.0.reader(id)
     }

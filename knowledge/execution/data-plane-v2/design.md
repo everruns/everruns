@@ -954,7 +954,7 @@ hosted turn before any model call
 **Agent definitions as data** (`everruns::hosting::AgentDefinition`): an
 agent key, a revision, and the portable agent package as JSON, the format
 `AgentPackage` already reads and writes. The authority keeps every
-revision (`SessionHosting::publish_definition`, memory and SQLite
+revision (`AgentDefinitions::publish_definition`, memory and SQLite
 authorities; a cell keeps them in S3 and its registry). Publishing makes a
 revision the agent's current one; a revision is immutable, and different
 content under a published revision fails. A session bound to a defined
@@ -966,8 +966,7 @@ mapping through `AgentBuilder::package`; a platform host supplies one that
 binds its own capabilities and credentials) and keeps hydrated revisions
 in a bounded cache (`EngineBuilder::hydrated_capacity`, default 256). No
 resolver call and no registry: step 1's `AgentResolver` is gone. A
-definition the Engine cannot hydrate is refused at publication, and on
-another executor leaves the build missing, which suspends as before.
+definition the Engine cannot hydrate is refused at publication.
 Code-registered builds are unchanged and always win.
 
 Gate (`cargo bench -p everruns --bench definitions`, 3 000 sessions per
@@ -1002,6 +1001,39 @@ If step 1's gate can't be met, the plan stops there and we decide between
 fixing the Engine further or keeping funout's own turn driver inside cells
 (losing the shared-code benefit). That decision is made on measured
 numbers, not before.
+
+### Corrections after the architecture review (2026-11-09)
+
+A review of the merged steps 1 to 3 against the code, not the plan, found
+the following in agent definitions. All are fixed and covered by the
+conformance scenario `hosting::conformance::agent_definitions`, which runs
+against the memory and SQLite authorities.
+
+- **A session's binding does not depend on its revision.** A session moves
+  between revisions while its Environment, metadata and bound Harness are
+  fixed at creation. The Environment used to be derived from the revision's
+  content (does the agent have files?) and the Harness from the package
+  mapping inside the authority, so an edit that added an agent's first file,
+  or a hydrator whose Harness differed from the package's, suspended the
+  agent's sessions as unavailable configuration. Now every defined agent's
+  sessions run in one Engine-owned Environment
+  (`EngineBuilder::definition_environment`; a cell installs its filesystem
+  there) and bind no Harness: the revision names it. The workspace also used
+  to belong to the hydrated Agent value, so a session got a new, empty one
+  on every revision and every cache eviction.
+- **One rule for moving a session** (`hosting::definitions::advance`): only
+  between turns, only the revision. The authority no longer parses a
+  package in the claim transaction.
+- **An executor that cannot build a revision hands the session back**
+  unsuspended, like a missing protocol capability, instead of suspending
+  it for every executor.
+- **A resolved revision is held for the whole operation.** The Engine used
+  to check the cache and look the build up again; with more agents than
+  cache slots a concurrent activation could drop the revision in between,
+  and the miss suspended the session.
+- **Definitions are their own interface** (`AgentDefinitions`), reached
+  through a required `SessionHosting::definitions`. As defaulted methods, a
+  profile that wraps another silently answered "no definitions".
 
 ## Limits and risks
 

@@ -159,6 +159,8 @@ struct EngineInner {
     /// See [`EngineBuilder::hydrator`].
     hydrator: Arc<dyn crate::hosting::AgentHydrator>,
     hydrated: crate::hosting::HydratedCache<hosting::Registration>,
+    /// See [`EngineBuilder::definition_environment`].
+    definition_environment: Arc<dyn crate::hosting::EnvironmentFactory>,
     sessions: Mutex<HashMap<SessionId, EngineSessionEntry>>,
     memory_backends: Arc<OnceCell<Arc<EngineBackends>>>,
     observers: Arc<ObserverDispatcher>,
@@ -181,6 +183,7 @@ pub struct EngineBuilder {
     registry: HashMap<crate::hosting::AgentBuild, hosting::Registration>,
     hydrator: Arc<dyn crate::hosting::AgentHydrator>,
     hydrated_capacity: usize,
+    definition_environment: Option<Arc<dyn crate::hosting::EnvironmentFactory>>,
     listeners: Vec<ListenerRegistration>,
     observer_queue_capacity: usize,
     session_cache_capacity: usize,
@@ -194,6 +197,7 @@ impl Default for EngineBuilder {
             registry: HashMap::new(),
             hydrator: Arc::new(crate::hosting::PackageHydrator::default()),
             hydrated_capacity: crate::hosting::DEFAULT_HYDRATED_CAPACITY,
+            definition_environment: None,
             listeners: Vec::new(),
             observer_queue_capacity: OBSERVER_QUEUE_CAPACITY,
             session_cache_capacity: session_cache::DEFAULT_CAPACITY,
@@ -254,6 +258,9 @@ impl EngineBuilder {
                 registry: Mutex::new(self.registry),
                 hydrator: self.hydrator,
                 hydrated: crate::hosting::HydratedCache::new(self.hydrated_capacity),
+                definition_environment: self
+                    .definition_environment
+                    .unwrap_or_else(hosting::volatile_definition_environment),
                 sessions: Mutex::new(HashMap::new()),
                 memory_backends: Arc::new(OnceCell::new()),
                 observers: ObserverDispatcher::new(self.listeners, self.observer_queue_capacity),
