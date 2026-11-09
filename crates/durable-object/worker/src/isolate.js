@@ -3,6 +3,20 @@ import { HttpError, requireValue } from "./storage.js";
 // The bridge is object-local and bound to the activation's session. It never
 // accepts an object address or callback URL from agent-visible input.
 export function objectPort(authority, scope) {
+  // Decision: one authority operation at a time per activation. The Engine
+  // commits some events behind the work (in a background task), so its calls
+  // can overlap; overlapping async storage transactions with alarm reads and
+  // writes stalled forever on celld 0.6.2 (owner-loss qualification).
+  let tail = Promise.resolve();
+  const call = serve(authority, scope);
+  return (encoded) => {
+    const reply = tail.then(() => call(encoded));
+    tail = reply.catch(() => {});
+    return reply;
+  };
+}
+
+function serve(authority, scope) {
   return async (encoded) => {
     try {
       requireValue(
