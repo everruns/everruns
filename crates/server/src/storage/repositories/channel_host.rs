@@ -29,14 +29,18 @@ fn interval_secs(lease: Duration) -> f64 {
 }
 
 impl Database {
-    /// The session bound to `binding_key` on a channel.
+    /// The session bound to `binding_key` on a channel. A binding to a
+    /// deleted session reads as no binding, so the next message starts a new
+    /// session.
     pub async fn channel_binding(
         &self,
         channel_id: Uuid,
         binding_key: &str,
     ) -> Result<Option<Uuid>> {
         Ok(sqlx::query_scalar::<_, Uuid>(
-            "SELECT session_id FROM channel_bindings WHERE channel_id = $1 AND binding_key = $2",
+            "SELECT b.session_id FROM channel_bindings b \
+             JOIN sessions s ON s.id = b.session_id AND s.deleted_at IS NULL \
+             WHERE b.channel_id = $1 AND b.binding_key = $2",
         )
         .bind(channel_id)
         .bind(binding_key)
@@ -45,7 +49,8 @@ impl Database {
     }
 
     /// Bind `binding_key` to `session_id` unless it is bound already; returns
-    /// the session it is bound to afterwards.
+    /// the session it is bound to afterwards. A binding left by a deleted
+    /// session is taken over.
     pub async fn bind_channel_session(
         &self,
         channel_id: Uuid,
@@ -57,7 +62,13 @@ impl Database {
             INSERT INTO channel_bindings (channel_id, binding_key, session_id)
             VALUES ($1, $2, $3)
             ON CONFLICT (channel_id, binding_key) DO UPDATE
-              SET binding_key = EXCLUDED.binding_key
+              SET session_id = CASE
+                  WHEN EXISTS (
+                      SELECT 1 FROM sessions s
+                      WHERE s.id = channel_bindings.session_id AND s.deleted_at IS NULL
+                  ) THEN channel_bindings.session_id
+                  ELSE EXCLUDED.session_id
+              END
             RETURNING session_id
             "#,
         )

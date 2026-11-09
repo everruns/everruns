@@ -29,7 +29,7 @@ const FAILURE_SESSIONS: &str = "WITH failure_sessions AS MATERIALIZED (
     SELECT s.id AS session_id, COUNT(*)::BIGINT AS failed_turns,
            MAX(e.ts) AS failed_at
     FROM sessions s JOIN events e ON e.session_id = s.id
-    WHERE s.org_id = $1 AND s.agent_id = $2 AND s.updated_at > $3
+    WHERE s.org_id = $1 AND s.agent_id = $2 AND s.deleted_at IS NULL AND s.updated_at > $3
       AND e.event_type = 'turn.failed' AND e.ts > $3 AND e.ts <= $4
     GROUP BY s.id
 )";

@@ -151,7 +151,7 @@ impl Database {
             r#"
             SELECT {TASK_COLUMNS}
             FROM session_tasks
-            WHERE session_id IN (SELECT id FROM sessions WHERE org_id = $1)
+            WHERE session_id IN (SELECT id FROM sessions WHERE org_id = $1 AND deleted_at IS NULL)
               AND ($2::text IS NULL OR kind = $2)
               AND ($3::text IS NULL OR state = $3)
               AND ($4::timestamptz IS NULL OR created_at >= $4)

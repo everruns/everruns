@@ -49,7 +49,7 @@ impl Database {
         let state = sqlx::query_as::<_, AutomaticTitleState>(
             "SELECT title, title_is_automatic, auto_title_sequence, auto_title_attempt_sequence,
                     auto_title_input_sequence, auto_title_backoff
-             FROM sessions WHERE org_id = $1 AND id = $2 AND archived_at IS NULL
+             FROM sessions WHERE org_id = $1 AND id = $2 AND archived_at IS NULL AND deleted_at IS NULL
              AND (auto_title_checked_at IS NULL OR auto_title_checked_at <= now() - interval '5 minutes')
              FOR UPDATE",
         ).bind(org_id).bind(session_id).fetch_optional(&mut *tx).await?;

@@ -328,9 +328,15 @@ async fn delete_removes_pages() {
         .await
         .unwrap();
 
-    // Deleting the session cascades to its databases and pages.
+    // Erasing the session row (its user or organization was deleted)
+    // cascades to its databases and pages.
     let id = fx.row("db").await.id;
-    assert!(fx.backend.delete_session(ORG, fx.session).await.unwrap());
+    assert!(
+        fx.backend
+            .purge_session_for_test(ORG, fx.session)
+            .await
+            .unwrap()
+    );
     assert_eq!(fx.page_rows(id).await, 0);
     assert!(store.list_databases(fx.session).await.unwrap().is_empty());
 }

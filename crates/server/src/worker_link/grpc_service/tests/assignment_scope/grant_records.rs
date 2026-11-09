@@ -174,7 +174,7 @@ async fn retained_grant_tombstones_allow_parent_session_deletion() {
         .revoke_worker_journal_read_grant(2, scope.grant_id)
         .await
         .unwrap();
-    assert!(service.db.delete_session(2, own).await.unwrap());
+    assert!(service.db.purge_session_for_test(2, own).await.unwrap());
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM worker_journal_read_grants WHERE id = $1")
             .bind(scope.grant_id)

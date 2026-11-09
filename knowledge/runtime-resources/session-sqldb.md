@@ -71,7 +71,7 @@ See `crates/server/src/session_sqldb/types.rs` for the backend result types. See
 - List all databases for a session
 - Get metadata for a specific database
 - Delete a database and all its pages
-- Cascade delete when session is deleted (FK CASCADE)
+- Databases stay when their session is deleted ([Session deletion](session-deletion.md)); the FK cascade removes them only when the session row is erased with its user or organization
 - Session fork copies every database page for page into the child (`Database::copy_session_databases`, one statement, so a consistent snapshot)
 
 ### Query Execution
