@@ -81,6 +81,7 @@ pub struct MemoryHosting {
     counts: Arc<AuthorityCounters>,
     drop_prompts: bool,
     live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
+    requires: Vec<String>,
 }
 
 /// How many operations an execution epoch asked of the authority.
@@ -197,6 +198,14 @@ impl MemoryHosting {
         self
     }
 
+    /// Report `capabilities` as execution-critical protocol capabilities
+    /// every session requires ([`super::SessionEpoch::requires`]), as an
+    /// authority whose journals use newer event types would.
+    pub fn requiring(mut self, capabilities: &[&str]) -> Self {
+        self.requires = capabilities.iter().map(|c| (*c).to_owned()).collect();
+        self
+    }
+
     /// Authority operations the execution epochs of every session have made
     /// so far (see [`AuthorityCounts`]).
     pub fn authority_counts(&self) -> AuthorityCounts {
@@ -236,6 +245,7 @@ impl MemoryHosting {
             claimed_wake_at: None,
             riding: Arc::default(),
             live_deltas: None,
+            requires: self.requires.clone(),
         }
     }
 }
@@ -400,6 +410,7 @@ impl SessionHosting for MemoryHosting {
                 session: session.clone(),
                 fence: Arc::new(RwLock::new(Some(ActorFence::new(id, holder, state.fence)))),
                 live_deltas: self.live_deltas.clone(),
+                requires: self.requires.clone(),
             }),
         }))
     }
@@ -416,6 +427,7 @@ struct Ports {
     /// Receipts that commit with this epoch's next renew or release.
     riding: Arc<std::sync::Mutex<Vec<(String, Value)>>>,
     live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
+    requires: Vec<String>,
 }
 
 /// Insert one receipt, with its effect on the control state; `false` when
@@ -582,6 +594,9 @@ impl SessionEpoch for Ports {
     }
     fn live_deltas(&self) -> Option<Arc<dyn super::LiveDeltaSink>> {
         self.live_deltas.clone()
+    }
+    fn requires(&self) -> Vec<String> {
+        self.requires.clone()
     }
     fn claimed_wake_at(&self) -> Option<Option<i64>> {
         self.claimed_wake_at

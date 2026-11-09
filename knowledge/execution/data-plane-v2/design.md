@@ -893,6 +893,12 @@ different code.
 context is a different command, and turn host code reads it with
 `Engine::input_context(session, input)`.
 
+**Protocol capabilities:** `SessionEpoch::requires` lists the
+execution-critical protocol capabilities a session's journal uses, and
+`hosting::PROTOCOL_CAPABILITIES` the ones an Engine knows (none yet). An
+Engine missing one releases the epoch without consuming input or
+suspending, so a capable executor takes the session.
+
 **Memory per idle session** (`cargo bench -p everruns --bench
 idle_sessions`, 20 000 sessions with one turn each, handles dropped,
 counted by a counting allocator): Engine kept 6.2 KB per idle session for

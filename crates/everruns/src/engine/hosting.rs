@@ -791,6 +791,32 @@ impl Engine {
                     "activation belongs to another session",
                 ));
             }
+            let missing: Vec<String> = activation
+                .epoch
+                .requires()
+                .into_iter()
+                .filter(|capability| {
+                    !crate::hosting::PROTOCOL_CAPABILITIES.contains(&capability.as_str())
+                })
+                .collect();
+            if !missing.is_empty() {
+                // Hand the epoch back untouched and unsuspended: an executor
+                // that knows these capabilities runs the session.
+                activation
+                    .epoch
+                    .actor_store()
+                    .release_actor(
+                        session,
+                        &config.holder,
+                        activation.actor.fence,
+                        activation.actor.consumed_seq,
+                    )
+                    .await?;
+                return Err(AgentLoopError::config(format!(
+                    "session requires protocol capabilities this Engine lacks: {}",
+                    missing.join(", ")
+                )));
+            }
             let compatibility = self.binding_compatibility(&activation.binding)?;
             if !compatibility.is_available() {
                 let reason = compatibility.suspension_reason();

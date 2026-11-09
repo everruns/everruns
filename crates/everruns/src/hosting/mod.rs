@@ -172,6 +172,16 @@ impl AgentBuild {
     }
 }
 
+/// Execution-critical protocol capabilities this Engine understands, beyond
+/// its runtime format ([`SessionBinding::framework`]). Additive protocol
+/// changes need no format bump: new optional fields are ignored and new
+/// informational event types are skipped. A new event type that changes
+/// execution (an approval, a cancel, an operation state) is instead named
+/// here, and the authority lists it in [`SessionEpoch::requires`] once a
+/// session's journal uses it, so an Engine that does not know it never
+/// guesses. None exist yet.
+pub const PROTOCOL_CAPABILITIES: &[&str] = &[];
+
 /// Authoritative session binding. All optional configuration is immutable.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SessionBinding {
@@ -720,6 +730,14 @@ pub trait SessionEpoch: Send + Sync + 'static {
     /// fencing each carries. `None` (the default) keeps them in-process.
     fn live_deltas(&self) -> Option<Arc<dyn LiveDeltaSink>> {
         None
+    }
+    /// Execution-critical protocol capabilities this session's journal uses
+    /// (data plane v2 "Supported rolling upgrades"): event types that change
+    /// execution, added after the session's runtime format. An Engine that
+    /// lacks one hands the epoch back without running anything, so another
+    /// executor can take it; see [`PROTOCOL_CAPABILITIES`].
+    fn requires(&self) -> Vec<String> {
+        Vec::new()
     }
     /// Whether [`Self::renew_poke`] also fires on every input admission
     /// while the epoch holds, so the driver need not renew to learn its

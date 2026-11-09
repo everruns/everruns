@@ -48,6 +48,9 @@ impl SessionEpoch for EpochCache {
     fn live_deltas(&self) -> Option<Arc<dyn super::LiveDeltaSink>> {
         self.inner.live_deltas()
     }
+    fn requires(&self) -> Vec<String> {
+        self.inner.requires()
+    }
     fn claimed_wake_at(&self) -> Option<Option<i64>> {
         self.inner.claimed_wake_at()
     }

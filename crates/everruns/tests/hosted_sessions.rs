@@ -1134,3 +1134,30 @@ async fn an_input_keeps_who_it_acts_for() {
             .is_err()
     );
 }
+
+/// Data plane v2 step 1: an Engine that lacks an execution-critical protocol
+/// capability the session's journal uses hands the epoch back untouched,
+/// without suspending the session, so an executor that has it runs it.
+#[tokio::test]
+async fn an_engine_lacking_a_required_protocol_capability_hands_the_session_back() {
+    let profile = MemoryHosting::default().requiring(&["approval.v9"]);
+    let lacking = engine(profile.clone(), agent());
+    let id = SessionId::new();
+    lacking.create_registered(id, &build()).await.unwrap();
+    profile
+        .admit(
+            id,
+            everruns_contracts::runtime::message::RuntimeMessage::user("hello"),
+            false,
+        )
+        .await
+        .unwrap();
+    let refused = lacking.activate(id).await.unwrap_err();
+    assert!(refused.to_string().contains("approval.v9"), "{refused}");
+    let status = lacking.session_status(id).await.unwrap();
+    assert!(status.suspension_reason.is_none());
+    assert!(status.runnable, "the input waits for a capable executor");
+    let capable = engine(profile.requiring(&[]), agent());
+    capable.activate(id).await.unwrap();
+    assert!(!lacking.session_status(id).await.unwrap().runnable);
+}
