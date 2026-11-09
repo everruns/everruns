@@ -62,11 +62,7 @@ impl Warehouse {
             .lock()
             .map_err(|_| anyhow!("warehouse lock poisoned"))?;
         let mut prepared = conn.prepare(statement)?;
-        let columns: Vec<String> = prepared
-            .column_names()
-            .iter()
-            .map(|c| c.to_string())
-            .collect();
+        let columns: Vec<String> = prepared.column_names().map(|c| c.to_string()).collect();
         let width = columns.len();
         let mut rows = Vec::new();
         let mut cursor = prepared.query([])?;

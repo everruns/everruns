@@ -51,7 +51,10 @@ pub fn page_digests(image: &[u8]) -> Vec<PageDigest> {
 }
 
 /// Diff the current state of `conn` against `baseline`.
-pub fn diff_connection(conn: &Connection, baseline: &[PageDigest]) -> Result<PageDiff, SqlDbError> {
+pub fn diff_connection(
+    conn: &mut Connection,
+    baseline: &[PageDigest],
+) -> Result<PageDiff, SqlDbError> {
     // A database nothing has been written to has no pages, and SQLite refuses
     // to serialize an empty image.
     let page_count: i64 = conn
@@ -129,47 +132,51 @@ mod tests {
 
     #[test]
     fn empty_database_has_no_pages() {
-        let diff = diff_connection(&fresh(), &[]).unwrap();
+        let diff = diff_connection(&mut fresh(), &[]).unwrap();
         assert_eq!(diff.page_count, 0);
         assert!(diff.is_unchanged(0));
     }
 
     #[test]
     fn first_write_changes_every_page_and_round_trips() {
-        let conn = fresh();
-        execute_statement(&conn, "CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('a')").unwrap();
-        let diff = diff_connection(&conn, &[]).unwrap();
+        let mut conn = fresh();
+        execute_statement(
+            &mut conn,
+            "CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('a')",
+        )
+        .unwrap();
+        let diff = diff_connection(&mut conn, &[]).unwrap();
         assert!(diff.page_count > 0);
         assert_eq!(diff.changed.len(), diff.page_count as usize);
 
-        let (reopened, digests) = open_from_pages(&diff.changed).unwrap();
+        let (mut reopened, digests) = open_from_pages(&diff.changed).unwrap();
         assert_eq!(digests, diff.digests);
-        let rows = execute_query(&reopened, "SELECT v FROM t").unwrap();
+        let rows = execute_query(&mut reopened, "SELECT v FROM t").unwrap();
         assert_eq!(rows.rows[0][0], serde_json::json!("a"));
         // The reopened database keeps accepting writes past its loaded size.
         execute_statement(
-            &reopened,
+            &mut reopened,
             "INSERT INTO t SELECT hex(randomblob(2000)) FROM (SELECT 1 UNION SELECT 2 UNION SELECT 3)",
         )
         .unwrap();
-        assert!(diff_connection(&reopened, &digests).unwrap().page_count > diff.page_count);
+        assert!(diff_connection(&mut reopened, &digests).unwrap().page_count > diff.page_count);
     }
 
     #[test]
     fn small_update_rewrites_few_pages() {
-        let conn = fresh();
+        let mut conn = fresh();
         execute_statement(
-            &conn,
+            &mut conn,
             "CREATE TABLE a (v TEXT); CREATE TABLE b (v TEXT);
              WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 200)
              INSERT INTO a SELECT hex(randomblob(100)) FROM n;",
         )
         .unwrap();
-        let base = diff_connection(&conn, &[]).unwrap();
+        let base = diff_connection(&mut conn, &[]).unwrap();
         assert!(base.page_count > 10);
 
-        execute_statement(&conn, "INSERT INTO b VALUES ('x')").unwrap();
-        let diff = diff_connection(&conn, &base.digests).unwrap();
+        execute_statement(&mut conn, "INSERT INTO b VALUES ('x')").unwrap();
+        let diff = diff_connection(&mut conn, &base.digests).unwrap();
         assert!(!diff.changed.is_empty());
         assert!(
             diff.changed.len() < base.page_count as usize / 2,
@@ -181,12 +188,12 @@ mod tests {
 
     #[test]
     fn read_leaves_image_unchanged() {
-        let conn = fresh();
-        execute_statement(&conn, "CREATE TABLE t (v INTEGER)").unwrap();
-        let base = diff_connection(&conn, &[]).unwrap();
-        execute_query(&conn, "SELECT * FROM t").unwrap();
+        let mut conn = fresh();
+        execute_statement(&mut conn, "CREATE TABLE t (v INTEGER)").unwrap();
+        let base = diff_connection(&mut conn, &[]).unwrap();
+        execute_query(&mut conn, "SELECT * FROM t").unwrap();
         assert!(
-            diff_connection(&conn, &base.digests)
+            diff_connection(&mut conn, &base.digests)
                 .unwrap()
                 .is_unchanged(base.digests.len())
         );

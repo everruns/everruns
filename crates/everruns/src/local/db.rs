@@ -61,7 +61,8 @@ impl SqliteDb {
         f(&guard).map_err(LocalError::from)
     }
 
-    pub(crate) fn with_conn_mut<T>(
+    /// Run a closure with mutable access to the connection, including hook setup.
+    pub fn with_conn_mut<T>(
         &self,
         f: impl FnOnce(&mut rusqlite::QueryConnection) -> rusqlite::Result<T>,
     ) -> LocalResult<T> {

@@ -31,7 +31,7 @@ const ALLOWED_PRAGMAS: &[&str] = &[
 /// primary security boundary for the session SQL sandbox; if the install
 /// fails the caller MUST fail closed and abort the operation rather than
 /// run unrestricted SQL.
-pub fn install_authorizer(conn: &Connection) -> Result<(), SqlDbError> {
+pub fn install_authorizer(conn: &mut Connection) -> Result<(), SqlDbError> {
     conn.authorizer(Some(authorizer_callback)).map_err(|err| {
         warn!(error = %err, "failed to install SQLite authorizer");
         SqlDbError::Internal(format!("failed to install SQLite authorizer: {err}"))
@@ -41,7 +41,7 @@ pub fn install_authorizer(conn: &Connection) -> Result<(), SqlDbError> {
 /// Remove the authorizer from a connection. Removal is best-effort cleanup —
 /// a failure here cannot widen the trust posture since the connection is
 /// about to be dropped, so a warn-level log is sufficient.
-pub fn remove_authorizer(conn: &Connection) {
+pub fn remove_authorizer(conn: &mut Connection) {
     if let Err(err) = conn.authorizer(None::<fn(AuthContext<'_>) -> Authorization>) {
         warn!(error = %err, "failed to remove SQLite authorizer");
     }
@@ -99,8 +99,8 @@ mod tests {
     use rusqlite::Connection;
 
     fn setup_conn() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        install_authorizer(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        install_authorizer(&mut conn).unwrap();
         conn
     }
 
@@ -162,13 +162,13 @@ mod tests {
 
     #[test]
     fn test_authorizer_removal() {
-        let conn = Connection::open_in_memory().unwrap();
-        install_authorizer(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        install_authorizer(&mut conn).unwrap();
         assert!(
             conn.execute_batch("ATTACH DATABASE ':memory:' AS other")
                 .is_err()
         );
-        remove_authorizer(&conn);
+        remove_authorizer(&mut conn);
         assert!(
             conn.execute_batch("ATTACH DATABASE ':memory:' AS other")
                 .is_ok()

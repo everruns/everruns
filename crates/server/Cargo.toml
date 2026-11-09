@@ -139,7 +139,7 @@ everruns-capabilities = { path = "../capabilities", features = ["openapi", "envi
 # neutral event-listener contracts only.
 everruns-cli-contract.workspace = true
 # Sandbox Templates validate Modal egress with the provider's own rules.
-rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
+rusqlite = { version = "0.41.1", features = ["bundled", "serialize", "column_decltype", "hooks"] }
 everruns-worker = { path = "../worker" }  # worker adapters, in-process worker
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }

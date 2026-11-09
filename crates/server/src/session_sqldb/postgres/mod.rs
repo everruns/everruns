@@ -164,7 +164,7 @@ impl PostgresSqlDbStore {
     ) -> Result<T, SessionSqlDbError>
     where
         T: Send + 'static,
-        F: FnOnce(&Connection) -> Result<T, SqlDbError> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T, SqlDbError> + Send + 'static,
     {
         validate_database_name(db_name)?;
         let slot = self.slot(&(session_id, db_name.to_string()));
@@ -173,10 +173,10 @@ impl PostgresSqlDbStore {
             *held = None;
             return Err(SessionSqlDbError::DatabaseNotFound(db_name.to_string()));
         };
-        let cached = self.fresh(&mut held, &meta).await?;
+        let mut cached = self.fresh(&mut held, &meta).await?;
         // Reads keep the cache: the executor refuses statements that write.
         let (cached, result) = blocking(move || {
-            let result = read(&cached.conn);
+            let result = read(&mut cached.conn);
             (cached, result)
         })
         .await?;
@@ -225,15 +225,15 @@ impl PostgresSqlDbStore {
 /// Run `sql` on the cache and diff the result. The flag on an error says
 /// whether the cache is still identical to what is stored, and can be kept.
 fn run_write(
-    cached: &CachedDb,
+    cached: &mut CachedDb,
     sql: &str,
 ) -> Result<(SqlExecuteResult, PageDiff), (SqlDbError, bool)> {
-    let unchanged = |cached: &CachedDb| {
+    let unchanged = |cached: &mut CachedDb| {
         cached.conn.is_autocommit()
-            && diff_connection(&cached.conn, &cached.digests)
+            && diff_connection(&mut cached.conn, &cached.digests)
                 .is_ok_and(|diff| diff.is_unchanged(cached.digests.len()))
     };
-    let result = match execute_statement(&cached.conn, sql) {
+    let result = match execute_statement(&mut cached.conn, sql) {
         Ok(result) => result,
         Err(err) => return Err((err, unchanged(cached))),
     };
@@ -245,7 +245,7 @@ fn run_write(
             false,
         ));
     }
-    let diff = diff_connection(&cached.conn, &cached.digests).map_err(|err| (err, false))?;
+    let diff = diff_connection(&mut cached.conn, &cached.digests).map_err(|err| (err, false))?;
     Ok((result, diff))
 }
 
@@ -353,11 +353,11 @@ impl SessionSqlDbStore for PostgresSqlDbStore {
                     }
                 },
             };
-            let cached = self.fresh(&mut held, &meta).await?;
+            let mut cached = self.fresh(&mut held, &meta).await?;
 
             let statement = sql.to_string();
             let (cached, outcome) = blocking(move || {
-                let outcome = run_write(&cached, &statement);
+                let outcome = run_write(&mut cached, &statement);
                 (cached, outcome)
             })
             .await?;

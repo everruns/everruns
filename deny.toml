@@ -13,24 +13,7 @@ unmaintained = "none"
 # Advisory IDs to ignore, each with a justification comment. Prefer upgrading the
 # affected crate over ignoring; only ignore when no upstream fix path exists and
 # the advisory is not reachable in our usage.
-ignore = [
-    # The PostgreSQL archive compatibility patch selects ZIP9, so the ZIP
-    # advisories need no exceptions. Fix new advisories rather than ignore.
-    #
-    # RUSTSEC-2026-0459 (CVE-2026-119375): bundled SQLite < 3.54 can return
-    # uninitialized page-cache memory when it opens a database together with a
-    # crafted sibling `-wal` file. No upstream path: the fix needs
-    # libsqlite3-sys >= 0.39 (rusqlite 0.41), but sqlx 0.9.0 (latest) pins
-    # sqlx-sqlite to libsqlite3-sys < 0.38, and the `links = "sqlite3"` rule
-    # makes Cargo reject two copies even though we never enable sqlx's sqlite
-    # feature. Not reachable: the server's session SQL databases are opened
-    # in memory and rebuilt from page images (no -wal file), and the agent SQL
-    # authorizer blocks ATTACH and write PRAGMAs; local SqliteHosting and the
-    # custom-data-agent example only open files the host process created in
-    # its own data directory. Remove this entry and bump rusqlite to 0.41 once
-    # sqlx releases with libsqlite3-sys >= 0.39 (tracked in Linear).
-    { id = "RUSTSEC-2026-0459", reason = "no upstream path (sqlx pins libsqlite3-sys < 0.38); not reachable: no untrusted db+wal pairs are opened" },
-]
+ignore = []
 
 [licenses]
 # Allow these license types
