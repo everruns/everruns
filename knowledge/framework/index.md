@@ -6,6 +6,7 @@
 * [Event Listeners and Observability](observability.md) - Engine-level push listener delivery, isolation, statistics, and shutdown semantics.
 * [Provider Extension Boundary](provider-extension.md) - Why model identity and provider execution are open, separate concerns.
 * [Framework Harnesses](harnesses.md) - Promoting the harness to an application-facing value, separating an agent's world from its behavior and its machine.
+* [Attached Control for Framework Hosts](attached-control.md) - Why hosts get a local, same-user control socket for a second process to list, watch, drive and cancel sessions, with token and cancel rules.
 * [Library Experience](library-experience.md) - Ergonomic and behavioral success bars for application-facing use.
 * [Documentation and Examples](documentation-and-examples.md) - The maintained public learning path and runnable-example contract.
 * [API Stability](api-stability.md) - Stable versus alpha markers, promises, and the marking convention.

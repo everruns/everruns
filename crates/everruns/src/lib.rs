@@ -77,6 +77,8 @@ pub mod channel_auth {
 #[cfg(feature = "channels")]
 pub mod channels;
 mod context;
+#[cfg(all(unix, feature = "control"))]
+pub mod control;
 /// The app as a Personal Agent Protocol ("Poppy") personal agent: tools that
 /// find a company by domain, message its agent, read replies, ask for a
 /// person and close the conversation, for the person the app works for.

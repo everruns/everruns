@@ -14,6 +14,7 @@ repository: these Cargo packages depend on local workspace crates.
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
 | [Poppy Personal Agent](poppy-personal-agent/) | Ask a company's agent for the person over the Personal Agent Protocol | `cargo run -p everruns-poppy-personal-agent -- <company-domain>` |
+| [Attached CLI](attached-cli/) | Drive a running session from a second terminal: list, attach, send, cancel | `cargo run -p everruns-attached-cli -- host` |
 | [Foreman](foreman-agent/) | Supervise a coding agent — a session, Codex, or yolop — with a decision service | `cargo run -p everruns-foreman-agent --bin foreman -- demo` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and

@@ -361,6 +361,7 @@ export default defineConfig({
                     { label: "Agent Blueprints", slug: "framework/agent-blueprints" },
                     { label: "Host Services", slug: "framework/host-services" },
                     { label: "Session Controls", slug: "framework/session-controls" },
+                    { label: "Attach to a Running Session", slug: "framework/attach-control" },
                     { label: "Custom Backends", slug: "framework/custom-backends" },
                     { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },
                   ],
