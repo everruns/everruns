@@ -1,6 +1,5 @@
 //! Trusted host extensions: the platform services an embedded host forwards
-//! to the turn, grouped by concern (data plane v2 step 2,
-//! `knowledge/execution/data-plane-v2/platform-on-engine.md`).
+//! to the turn, grouped by concern.
 //!
 //! Decision: one bundle on [`HostBackends`](crate::host::HostBackends), not a
 //! field per service, and no Framework builder method. Only a host that
