@@ -784,6 +784,40 @@ async fn live_mcp_servers_are_scoped_and_validated() {
     assert!(servers().await.is_empty());
 }
 
+#[cfg(feature = "mcp")]
+#[tokio::test]
+async fn mcp_readiness_controls_reach_the_session_runtime() {
+    let (agent, _backends) = legacy_agent(Model::simulated("ok"), vec![], None);
+    let engine = Engine::new();
+    let session = engine.create(agent);
+    session.inspect().await.unwrap();
+    assert!(session.mcp_readiness().await.unwrap().servers.is_empty());
+    let mut watch = session.watch_mcp_readiness().await.unwrap();
+    let seen = watch.revision();
+
+    session
+        .add_mcp_server(McpServer::http("docs", "https://mcp.invalid/mcp").tool_discovery(false))
+        .await
+        .expect("add");
+    assert!(
+        session.mcp_readiness().await.unwrap().servers.is_empty(),
+        "servers that do not discover tools have no readiness"
+    );
+    for name in ["docs", "unknown"] {
+        assert!(matches!(
+            session.probe_mcp(Some(name)).await,
+            Err(SessionControlError::Rejected(_))
+        ));
+    }
+    let probed = session.probe_mcp(None).await.expect("probe all");
+    assert!(probed.servers.is_empty());
+    session.refresh_mcp().await.expect("refresh");
+    let changed = tokio::time::timeout(std::time::Duration::from_secs(5), watch.changed())
+        .await
+        .expect("reload publishes a readiness change");
+    assert!(changed.expect("cache alive") > seen);
+}
+
 // ---------------------------------------------------------------------------
 // Coherent hosting: the same controls commit through authority operations
 // ---------------------------------------------------------------------------

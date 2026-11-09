@@ -105,7 +105,9 @@ that bundles its own provider is refused: a live selection never changes
 credentials or provider code, and nothing falls back to another provider.
 Changes apply from the next model call, including later calls of a turn that is
 running. `reset_model` returns to the Agent's model, and `refresh_mcp`
-rediscovers MCP tools after a credential refresh.
+rediscovers MCP tools after a credential refresh. To show per-server MCP status,
+reconnect a single server, or follow readiness changes, see
+[MCP status, reconnect and doctor](/framework/host-services/#mcp-status-reconnect-and-doctor).
 
 ## Queries for host review
 

@@ -56,6 +56,10 @@ mod mcp;
 mod mcp_cache;
 #[cfg(feature = "mcp")]
 pub use mcp_cache::{McpDiscoveryCache, McpDiscoveryStatus};
+#[cfg(feature = "mcp")]
+mod mcp_readiness;
+#[cfg(feature = "mcp")]
+pub use mcp_readiness::{McpReadiness, McpReadinessWatch, McpServerReadiness};
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 pub mod observability;
 #[cfg(feature = "openai-agents-api")]

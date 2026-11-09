@@ -10,6 +10,81 @@ impl InProcessRuntime {
         &self,
         session_id: SessionId,
     ) -> Result<Vec<(String, crate::host::McpDiscoveryStatus)>> {
+        Ok(self
+            .mcp_readiness(session_id)
+            .await?
+            .servers
+            .into_iter()
+            .filter(|server| !server.deferred)
+            .map(|server| (server.name, server.status))
+            .collect())
+    }
+
+    /// Readiness of every configured MCP server of a session that discovers
+    /// tools, including unrevealed deferred ones, without starting discovery.
+    #[cfg(feature = "mcp")]
+    pub async fn mcp_readiness(&self, session_id: SessionId) -> Result<crate::host::McpReadiness> {
+        let (servers, deferred) = self.session_mcp_partition(session_id).await?;
+        Ok(crate::host::mcp::server_readiness(
+            &self.mcp_discovery_cache,
+            session_id.uuid(),
+            &servers,
+            &deferred,
+        ))
+    }
+
+    /// Run MCP discovery now and return the resulting readiness.
+    ///
+    /// `server` names one configured server, deferred or not; `None` probes
+    /// every eager and revealed server. An attempt bypasses cached freshness,
+    /// the transient retry cooldown and the authentication hold, asking the
+    /// MCP auth provider for credentials again. A successful attempt serves
+    /// the session's next turn; a transient failure keeps the previous
+    /// complete catalog. Waits at most the discovery deadline.
+    #[cfg(feature = "mcp")]
+    pub async fn probe_mcp(
+        &self,
+        session_id: SessionId,
+        server: Option<&str>,
+    ) -> Result<crate::host::McpReadiness> {
+        let (servers, deferred) = self.session_mcp_partition(session_id).await?;
+        let names: Vec<String> = match server {
+            Some(name) => vec![name.trim().to_string()],
+            None => servers
+                .iter()
+                .filter(|(name, server)| server.tool_discovery && !deferred.contains(name))
+                .map(|(name, _)| name.clone())
+                .collect(),
+        };
+        crate::host::mcp::probe_servers(
+            &self.mcp_discovery_cache,
+            self.mcp_client(),
+            session_id.uuid(),
+            &servers,
+            &names,
+        )
+        .await
+        .map_err(|error| AgentLoopError::config(error.to_string()))?;
+        Ok(crate::host::mcp::server_readiness(
+            &self.mcp_discovery_cache,
+            session_id.uuid(),
+            &servers,
+            &deferred,
+        ))
+    }
+
+    /// Watch for MCP readiness changes on this runtime's discovery cache.
+    #[cfg(feature = "mcp")]
+    pub fn watch_mcp_readiness(&self) -> crate::host::McpReadinessWatch {
+        crate::host::McpReadinessWatch::new(self.mcp_discovery_cache.subscribe())
+    }
+
+    /// A session's effective MCP servers and the deferred ones not yet revealed.
+    #[cfg(feature = "mcp")]
+    async fn session_mcp_partition(
+        &self,
+        session_id: SessionId,
+    ) -> Result<(crate::ScopedMcpServers, Vec<String>)> {
         let session = self
             .session_store
             .get_session(session_id)
@@ -20,13 +95,13 @@ impl InProcessRuntime {
             None => None,
         };
         let servers = self.session_mcp_servers(&session, agent.as_ref()).await;
-        let revealed = crate::revealed_mcp_servers(self.storage_store.as_ref(), session_id).await;
-        let (listed, _) = crate::partition_deferred_mcp_servers(&servers, &revealed);
-        Ok(crate::host::mcp::discovery_statuses(
-            &self.mcp_discovery_cache,
-            session_id.uuid(),
-            &listed,
-        ))
+        let revealed = if servers.values().any(|server| server.deferred) {
+            crate::revealed_mcp_servers(self.storage_store.as_ref(), session_id).await
+        } else {
+            Default::default()
+        };
+        let (_, deferred) = crate::partition_deferred_mcp_servers(&servers, &revealed);
+        Ok((servers, deferred))
     }
 
     /// The implementation a canonical id or alias resolves to on this runtime.

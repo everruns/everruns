@@ -873,6 +873,60 @@ impl Session {
             .map_err(|error| SessionControlError::Rejected(error.to_string()))
     }
 
+    /// Readiness of every configured MCP server that discovers tools, for
+    /// status displays and doctor output, without starting discovery.
+    ///
+    /// Each entry carries its status, whether it is an unrevealed deferred
+    /// server, whether an attempt is running, its current tool count, the
+    /// failure or authentication reason and when the last attempt completed.
+    #[cfg(feature = "mcp")]
+    pub async fn mcp_readiness(&self) -> Result<crate::McpReadiness, SessionControlError> {
+        self.control_runtime()
+            .await?
+            .runtime()
+            .mcp_readiness(self.session_id())
+            .await
+            .map_err(|error| SessionControlError::Rejected(error.to_string()))
+    }
+
+    /// Reconnect: run MCP discovery now and return the resulting readiness.
+    ///
+    /// `server` names one configured server, including an unrevealed deferred
+    /// one; `None` probes every eager and revealed server. The attempt asks
+    /// the MCP auth provider for credentials again and bypasses the retry
+    /// cooldown and authentication hold. Success serves the next turn; a
+    /// transient failure keeps the previous complete catalog. Waits at most
+    /// the discovery deadline. An unknown or unservable name is
+    /// [`SessionControlError::Rejected`] before any attempt starts.
+    #[cfg(feature = "mcp")]
+    pub async fn probe_mcp(
+        &self,
+        server: Option<&str>,
+    ) -> Result<crate::McpReadiness, SessionControlError> {
+        self.control_runtime()
+            .await?
+            .runtime()
+            .probe_mcp(self.session_id(), server)
+            .await
+            .map_err(|error| SessionControlError::Rejected(error.to_string()))
+    }
+
+    /// Wake a status display when MCP readiness may have changed, instead of
+    /// polling. Re-read [`mcp_readiness`](Self::mcp_readiness) after each
+    /// change. Survives runtime rebuilds only when the Agent's
+    /// [`HostServices`](crate::hosting::services::HostServices) own the
+    /// discovery cache, as with `mcp_readiness_budget`.
+    #[cfg(feature = "mcp")]
+    pub async fn watch_mcp_readiness(
+        &self,
+    ) -> Result<crate::McpReadinessWatch, SessionControlError> {
+        Ok(self
+            .control_runtime()
+            .await?
+            .runtime()
+            .watch_mcp_readiness())
+    }
+
     /// Rediscover this session's MCP tools, requesting credentials from the
     /// host's MCP auth provider again, for example after an auth refresh.
     pub async fn refresh_mcp(&self) -> Result<(), SessionControlError> {
