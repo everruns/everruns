@@ -44,11 +44,19 @@ impl EngineBuilder {
         self
     }
 
-    /// Resolve builds that were not registered at startup (see
-    /// [`AgentResolver`](crate::hosting::AgentResolver)). Registered builds
-    /// win; a resolved build is retained for the Engine's lifetime.
-    pub fn resolver(mut self, resolver: impl crate::hosting::AgentResolver) -> Self {
-        self.resolver = Some(Arc::new(resolver));
+    /// Hydrate agent definitions the authority keeps (see
+    /// [`AgentDefinition`](crate::hosting::AgentDefinition)) with this
+    /// hydrator instead of the agent-package mapping. Stability: experimental.
+    pub fn hydrator(mut self, hydrator: impl crate::hosting::AgentHydrator) -> Self {
+        self.hydrator = Arc::new(hydrator);
+        self
+    }
+
+    /// How many hydrated definition revisions this Engine keeps (default
+    /// 256), least recently used dropped first and hydrated again from the
+    /// authority when next needed. Stability: experimental.
+    pub fn hydrated_capacity(mut self, capacity: usize) -> Self {
+        self.hydrated_capacity = capacity.max(1);
         self
     }
 
@@ -95,6 +103,7 @@ impl Engine {
         let snapshot = self.profile()?.query_snapshot(session).await?;
         let live = self.live_controls(session);
         live.sync_authority(&snapshot.configuration);
+        self.ensure_hydrated(&snapshot.binding.behavior).await?;
         self.cache_hosted(session, snapshot.binding.clone())?;
         let registration = self.registration(&snapshot.binding.behavior)?;
         let environment = if snapshot.binding.environment.is_some() {
@@ -343,6 +352,7 @@ impl Engine {
             Some(binding) => binding,
             None => self.session_binding(session).await?,
         };
+        self.ensure_hydrated(&binding.behavior).await?;
         let registration = self.registration(&binding.behavior)?;
         let Some((reference, factory)) = registration.environment else {
             return Err(AgentLoopError::config(
@@ -422,7 +432,9 @@ impl Engine {
     /// Inspect retained-code compatibility without claiming execution or
     /// changing suspension, history, accepted inputs or pending waits.
     pub async fn session_compatibility(&self, session: SessionId) -> Result<SessionCompatibility> {
-        self.binding_compatibility(&self.session_binding(session).await?)
+        let binding = self.session_binding(session).await?;
+        self.ensure_hydrated(&binding.behavior).await?;
+        self.binding_compatibility(&binding)
     }
 
     /// Retry a compatibility suspension after restoring the required code.
@@ -431,6 +443,7 @@ impl Engine {
     /// Retain `command` across lost replies. Privileged hosts authorize callers.
     pub async fn retry_session(&self, session: SessionId, command: uuid::Uuid) -> Result<()> {
         let binding = self.session_binding(session).await?;
+        self.ensure_hydrated(&binding.behavior).await?;
         let compatibility = self.binding_compatibility(&binding)?;
         if !compatibility.is_available() {
             return Err(AgentLoopError::config(compatibility.suspension_reason()));
@@ -475,6 +488,7 @@ impl Engine {
             return Err(AgentLoopError::config("creation metadata exceeds limit"));
         }
         let profile = self.profile()?;
+        self.ensure_hydrated(build).await?;
         let registration = self.registration(build)?;
         let binding = registered_binding(build, &registration, metadata)?;
         if let Some((_, factory)) = &registration.environment {
@@ -501,6 +515,88 @@ impl Engine {
             .ok_or_else(|| AgentLoopError::config("Engine has no session hosting profile"))
     }
 
+    /// Hydrate `build` from the authority's definition when no registration
+    /// or cached revision has it (see `hosting::definitions`). A member
+    /// build hydrates its lead. A definition this process cannot build (a
+    /// capability it lacks) leaves the build missing, so activation
+    /// suspends the session as for any unavailable build.
+    pub(super) async fn ensure_hydrated(&self, build: &AgentBuild) -> Result<()> {
+        let target = match build.agent.rsplit_once(MEMBER_BUILD_SEPARATOR) {
+            Some((lead, _)) => AgentBuild::new(lead, build.build_id.clone()),
+            None => build.clone(),
+        };
+        if self
+            .inner
+            .registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains_key(&target)
+            || self.inner.hydrated.get(&target).is_some()
+        {
+            return Ok(());
+        }
+        let Some(definition) = self.profile()?.definition(&target).await? else {
+            return Ok(());
+        };
+        if definition.build != target {
+            return Err(AgentLoopError::store(
+                "authority returned another definition revision",
+            ));
+        }
+        let hydrated = match self.inner.hydrator.hydrate(&definition) {
+            Ok(hydrated) => hydrated,
+            Err(error) => {
+                tracing::warn!(
+                    agent = %target.agent,
+                    revision = %target.build_id,
+                    %error,
+                    "agent definition cannot be hydrated by this Engine"
+                );
+                return Ok(());
+            }
+        };
+        self.inner
+            .hydrated
+            .insert(target, hydrated_registration(hydrated));
+        Ok(())
+    }
+
+    /// Publish a revision of an agent definition to the session authority
+    /// and make it the agent's current one (see
+    /// [`AgentDefinition`](crate::hosting::AgentDefinition)). Sessions of
+    /// the agent run it from their next turn; a turn already started keeps
+    /// the revision it started with. Hydration is checked first, so a
+    /// definition this Engine cannot build is refused before any session
+    /// can bind to it. Stability: experimental.
+    pub async fn publish_definition(
+        &self,
+        definition: &crate::hosting::AgentDefinition,
+    ) -> Result<()> {
+        definition.validate()?;
+        let hydrated = self.inner.hydrator.hydrate(definition)?;
+        let registration = hydrated_registration(hydrated);
+        registered_binding(&definition.build, &registration, serde_json::Value::Null)?;
+        self.profile()?.publish_definition(definition).await?;
+        self.inner
+            .hydrated
+            .insert(definition.build.clone(), registration);
+        Ok(())
+    }
+
+    /// Create a session of a defined agent, bound to its current revision:
+    /// `definition` is published first (a no-op when the authority already
+    /// has it), then the session is created as for a registered build.
+    /// Retry a lost response with the same session id and definition.
+    /// Stability: experimental.
+    pub async fn create_from_definition(
+        &self,
+        session: SessionId,
+        definition: &crate::hosting::AgentDefinition,
+    ) -> Result<Session> {
+        self.publish_definition(definition).await?;
+        self.create_registered(session, &definition.build).await
+    }
+
     pub(super) fn registration(&self, build: &AgentBuild) -> Result<Registration> {
         let registry = self
             .inner
@@ -516,7 +612,11 @@ impl Engine {
             .agent
             .rsplit_once(MEMBER_BUILD_SEPARATOR)
             .and_then(|(lead, member)| {
-                let lead = registry.get(&AgentBuild::new(lead, build.build_id.clone()))?;
+                let lead_build = AgentBuild::new(lead, build.build_id.clone());
+                let lead = registry
+                    .get(&lead_build)
+                    .cloned()
+                    .or_else(|| self.inner.hydrated.get(&lead_build))?;
                 let member = uuid::Uuid::try_parse(member).ok()?;
                 let agent = lead.agent.member_on_host(member.into())?;
                 Some(Registration {
@@ -525,37 +625,7 @@ impl Engine {
                     environment: lead.environment.clone(),
                 })
             })
-            .or_else(|| {
-                // A host that builds behavior on demand (from a definition it
-                // retains with the session) resolves builds it never
-                // registered. The result is retained like a registration, so
-                // the build keeps naming one immutable behavior.
-                let resolver = self.inner.resolver.as_ref()?;
-                drop(registry);
-                let agent = resolver.resolve(build)?;
-                // A resolved Agent that needs a workspace runs in its own
-                // default Environment, under a reference every process of
-                // the host derives the same way.
-                let environment = agent.requires_hosted_workspace().then(|| {
-                    let factory: Arc<dyn crate::hosting::EnvironmentFactory> =
-                        Arc::new(agent.environment_factory());
-                    (RESOLVED_ENVIRONMENT.to_owned(), factory)
-                });
-                let registration = Registration {
-                    agent,
-                    harness: None,
-                    environment,
-                };
-                Some(
-                    self.inner
-                        .registry
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .entry(build.clone())
-                        .or_insert(registration)
-                        .clone(),
-                )
-            })
+            .or_else(|| self.inner.hydrated.get(build))
             .ok_or_else(|| AgentLoopError::config("retained agent build is unavailable"))
     }
 
@@ -702,6 +772,7 @@ impl Engine {
 
     pub(crate) async fn resume_hosted(&self, session: SessionId) -> Result<Session> {
         let status = self.profile()?.status(session).await?;
+        self.ensure_hydrated(&status.binding.behavior).await?;
         if self.cache_hosted(session, status.binding.clone()).is_err() {
             // Readers need authoritative identity and ports, not executable
             // code. A missing retained build is handled by activation, which
@@ -817,6 +888,7 @@ impl Engine {
                     missing.join(", ")
                 )));
             }
+            self.ensure_hydrated(&activation.binding.behavior).await?;
             let compatibility = self.binding_compatibility(&activation.binding)?;
             if !compatibility.is_available() {
                 let reason = compatibility.suspension_reason();
@@ -856,8 +928,25 @@ impl Engine {
     }
 }
 
-/// The Environment reference of a resolved Agent that needs a workspace.
+/// The Environment reference of a hydrated Agent that needs a workspace.
 const RESOLVED_ENVIRONMENT: &str = "agent-default";
+
+/// A hydrated definition as a registration. An Agent that needs a
+/// workspace runs in its own default Environment, under a reference every
+/// process derives the same way.
+fn hydrated_registration(hydrated: crate::hosting::Hydrated) -> Registration {
+    let crate::hosting::Hydrated { agent, harness } = hydrated;
+    let environment = agent.requires_hosted_workspace().then(|| {
+        let factory: Arc<dyn crate::hosting::EnvironmentFactory> =
+            Arc::new(agent.environment_factory());
+        (RESOLVED_ENVIRONMENT.to_owned(), factory)
+    });
+    Registration {
+        agent,
+        harness,
+        environment,
+    }
+}
 
 /// The immutable binding a registered build creates. An Agent cannot choose a
 /// second authority beneath the Engine profile.

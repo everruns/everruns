@@ -2,6 +2,7 @@
 //! IMMEDIATE SQLite transaction with FULL synchronization. JSONL is not a
 //! second writer. A startup supervisor rediscovers owed work after process loss.
 mod commands;
+mod definitions;
 mod dreaming;
 mod export;
 mod import;
@@ -146,6 +147,7 @@ impl SqliteHosting {
             CREATE TABLE IF NOT EXISTS dreaming_state(org_id INTEGER NOT NULL,key TEXT NOT NULL,revision INTEGER NOT NULL,value TEXT NOT NULL,session_id TEXT,due_at INTEGER,PRIMARY KEY(org_id,key));
             CREATE INDEX IF NOT EXISTS dreaming_due ON dreaming_state(due_at) WHERE due_at IS NOT NULL;
             CREATE TABLE IF NOT EXISTS framework_commands(session TEXT NOT NULL,id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(session,id));").map_err(error)?;
+        db.execute_batch(definitions::SCHEMA).map_err(error)?;
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
             proactive: Arc::default(),
@@ -623,11 +625,15 @@ impl SessionHosting for SqliteHosting {
         holder: &str,
         ttl: Duration,
     ) -> Result<Option<SessionActivation>> {
-        self.transaction(session, |_, state| {
-            let binding = state.binding(session)?;
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
             if !state.runnable || state.suspended || state.expires > now() {
                 return Ok(None);
             }
+            // A new turn runs the agent's current revision; an open or
+            // parked turn keeps the one it started with.
+            definitions::advance(tx, state)?;
+            let binding = state.binding(session)?;
             state.holder = Some(holder.to_owned());
             state.fence = state
                 .fence
@@ -665,6 +671,12 @@ impl SessionHosting for SqliteHosting {
     }
     fn process_scheduler(&self) -> bool {
         true
+    }
+    async fn publish_definition(&self, definition: &super::AgentDefinition) -> Result<()> {
+        self.publish(definition)
+    }
+    async fn definition(&self, build: &AgentBuild) -> Result<Option<super::AgentDefinition>> {
+        self.stored_definition(build)
     }
     async fn prepare_activation(
         &self,

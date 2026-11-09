@@ -13,6 +13,11 @@ pub mod spi;
 
 mod admission;
 mod configuration;
+mod definitions;
+pub use definitions::{
+    AgentDefinition, AgentHydrator, Hydrated, MAX_DEFINITION_BYTES, PackageHydrator,
+};
+pub(crate) use definitions::{DEFAULT_HYDRATED_CAPACITY, DefinitionStore, HydratedCache};
 pub mod cutover;
 mod epoch_cache;
 pub use everruns_contracts::runtime::input_context::InputContext;
@@ -84,29 +89,6 @@ where
 {
     async fn open(&self, session: SessionId) -> Result<crate::Environment> {
         self(session).await
-    }
-}
-
-/// Builds behavior for a build key the host did not register at startup.
-///
-/// For hosts whose sessions carry their own agent definition (a manifest the
-/// client sent at creation, retained by the authority with the session): the
-/// build key names that definition and the host code that runs it, and the
-/// resolver rebuilds the Agent on whichever process activates the session.
-/// It must return the same behavior for the same key every time, and `None`
-/// for a key it does not know (the session is then suspended as
-/// `MissingBuild`, as for an unregistered build). Experimental.
-pub trait AgentResolver: Send + Sync + 'static {
-    /// The Agent `build` names, or `None` when this process cannot build it.
-    fn resolve(&self, build: &AgentBuild) -> Option<crate::Agent>;
-}
-
-impl<F> AgentResolver for F
-where
-    F: Fn(&AgentBuild) -> Option<crate::Agent> + Send + Sync + 'static,
-{
-    fn resolve(&self, build: &AgentBuild) -> Option<crate::Agent> {
-        self(build)
     }
 }
 
@@ -642,6 +624,21 @@ pub trait SessionHosting: Send + Sync + 'static {
     /// Without the hint every waiter pays up to one poll interval per turn.
     fn changes(&self, _session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
         None
+    }
+    /// Keep a revision of an agent definition and make it the agent's
+    /// current one (see [`AgentDefinition`]). Publishing the same content
+    /// again succeeds; different content under a published revision fails.
+    /// A session bound to an older revision of the agent moves to the
+    /// current one when its next turn starts. Profiles that do not keep
+    /// definitions refuse.
+    async fn publish_definition(&self, _definition: &AgentDefinition) -> Result<()> {
+        Err(spi::error::AgentLoopError::config(
+            "this hosting profile does not keep agent definitions",
+        ))
+    }
+    /// The published definition for `build`, if this authority keeps it.
+    async fn definition(&self, _build: &AgentBuild) -> Result<Option<AgentDefinition>> {
+        Ok(None)
     }
     /// Attach profile-owned host services (task registry, child sessions,
     /// wakes) to an activation's runtime after reconciling lost executions.
