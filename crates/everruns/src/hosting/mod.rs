@@ -153,7 +153,43 @@ impl AgentBuild {
             build_id: build_id.into(),
         }
     }
+
+    /// The build a team member of this agent runs as: the lead's key, a
+    /// separator and the member's id, at the lead's revision.
+    ///
+    /// Decision: this type is the only place that knows a member's key. A
+    /// member has no registration or definition of its own, so the Engine
+    /// and the authorities resolve it through [`Self::lead`]: it runs its
+    /// lead's code and follows its lead's revision.
+    #[cfg(any(feature = "local", test))]
+    pub(crate) fn member(&self, member: everruns_contracts::typed_id::AgentId) -> Self {
+        Self::new(
+            format!("{}{MEMBER_SEPARATOR}{}", self.agent, member.uuid().simple()),
+            self.build_id.clone(),
+        )
+    }
+
+    /// The lead's build and the member's id when this is a member's build
+    /// ([`Self::member`]).
+    pub(crate) fn lead(&self) -> Option<(Self, everruns_contracts::typed_id::AgentId)> {
+        let (lead, member) = self.agent.rsplit_once(MEMBER_SEPARATOR)?;
+        let member = uuid::Uuid::try_parse(member).ok()?;
+        Some((Self::new(lead, self.build_id.clone()), member.into()))
+    }
+
+    /// The agent whose definitions this build follows: its lead's key for
+    /// a member, its own otherwise.
+    pub(crate) fn defined_agent(&self) -> &str {
+        match self.agent.rsplit_once(MEMBER_SEPARATOR) {
+            Some((lead, member)) if uuid::Uuid::try_parse(member).is_ok() => lead,
+            _ => &self.agent,
+        }
+    }
 }
+
+/// Joins a lead's build key and a member's id. Build keys allow only
+/// `[A-Za-z0-9_.:-]`, so the id, not the name, follows.
+const MEMBER_SEPARATOR: &str = ":agent:";
 
 /// Execution-critical protocol capabilities this Engine understands, beyond
 /// its runtime format ([`SessionBinding::framework`]). Additive protocol

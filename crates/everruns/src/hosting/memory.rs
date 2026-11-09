@@ -407,7 +407,7 @@ impl SessionHosting for MemoryHosting {
             super::definitions::advance(
                 binding,
                 in_turn,
-                definitions.current(&binding.behavior.agent),
+                definitions.current(binding.behavior.defined_agent()),
             );
         }
         let binding = state.binding(id)?;

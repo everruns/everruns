@@ -236,3 +236,39 @@ async fn concurrent_agents_over_a_small_cache_never_suspend() {
         task.await.unwrap();
     }
 }
+
+/// A team member's build is derived from its lead's and follows the lead's
+/// definitions, whatever the lead's key looks like.
+#[test]
+fn a_member_build_resolves_through_its_lead() {
+    let lead = AgentBuild::new("support:agent:tier-1", "r1");
+    let member = everruns_contracts::typed_id::AgentId::new();
+    let build = lead.member(member);
+    assert_eq!(build.lead(), Some((lead.clone(), member)));
+    assert_eq!(build.defined_agent(), lead.agent);
+    assert_eq!(lead.lead(), None);
+    assert_eq!(lead.defined_agent(), lead.agent);
+
+    let mut binding = crate::hosting::SessionBinding {
+        framework: crate::hosting::SESSION_RUNTIME_VERSION,
+        behavior: build,
+        harness: None,
+        environment: None,
+        metadata: json!(null),
+    };
+    let mut store = DefinitionStore::default();
+    for revision in ["r1", "r2"] {
+        store
+            .publish(&AgentDefinition {
+                build: AgentBuild::new(lead.agent.clone(), revision),
+                package: json!({ "name": "support", "instructions": revision }),
+            })
+            .unwrap();
+    }
+    let current = store.current(binding.behavior.defined_agent());
+    assert!(advance(&mut binding, false, current));
+    assert_eq!(
+        binding.behavior,
+        AgentBuild::new(lead.agent, "r2").member(member)
+    );
+}

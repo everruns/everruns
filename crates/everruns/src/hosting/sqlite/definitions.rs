@@ -70,7 +70,7 @@ pub(super) fn advance(tx: &Transaction<'_>, state: &mut Control) -> Result<()> {
     let current: Option<String> = tx
         .query_row(
             "SELECT revision FROM framework_agent_current WHERE agent=?",
-            [&binding.behavior.agent],
+            [binding.behavior.defined_agent()],
             |row| row.get(0),
         )
         .optional()

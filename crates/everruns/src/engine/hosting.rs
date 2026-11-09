@@ -5,10 +5,6 @@ use crate::hosting::{
 };
 use everruns_contracts::error::{AgentLoopError, Result};
 
-/// Joins a lead's build key and a member's id into the member's build key.
-/// Build keys allow only `[A-Za-z0-9_.:-]`, so the id, not the name, follows.
-const MEMBER_BUILD_SEPARATOR: &str = ":agent:";
-
 #[derive(Clone)]
 pub(super) struct Registration {
     pub agent: Agent,
@@ -550,8 +546,8 @@ impl Engine {
         if let Ok(registration) = self.registration(build) {
             return Ok(Resolved::Ready(Box::new(registration)));
         }
-        let (target, member) = match build.agent.rsplit_once(MEMBER_BUILD_SEPARATOR) {
-            Some((lead, member)) => (AgentBuild::new(lead, build.build_id.clone()), Some(member)),
+        let (target, member) = match build.lead() {
+            Some((lead, member)) => (lead, Some(member)),
             None => (build.clone(), None),
         };
         let Some(definitions) = self.profile()?.definitions() else {
@@ -666,10 +662,8 @@ impl Engine {
         // A member's build is derived from its lead's (`member_build`), so a
         // member session resumes after a restart once the lead is registered.
         build
-            .agent
-            .rsplit_once(MEMBER_BUILD_SEPARATOR)
-            .and_then(|(lead, member)| {
-                let lead_build = AgentBuild::new(lead, build.build_id.clone());
+            .lead()
+            .and_then(|(lead_build, member)| {
                 let lead = registry
                     .get(&lead_build)
                     .cloned()
@@ -689,14 +683,7 @@ impl Engine {
     ) -> Option<AgentBuild> {
         let registration = self.registration(lead).ok()?;
         registration.agent.member_on_host(member)?;
-        Some(AgentBuild::new(
-            format!(
-                "{}{MEMBER_BUILD_SEPARATOR}{}",
-                lead.agent,
-                member.uuid().simple()
-            ),
-            lead.build_id.clone(),
-        ))
+        Some(lead.member(member))
     }
 
     pub(super) fn cache_hosted(
@@ -1041,10 +1028,12 @@ impl Resolved {
 /// The registration of a member of `lead`'s team. A member's build is
 /// derived from its lead's (`member_build`), so a member session resumes
 /// after a restart once the lead is available.
-fn member_registration(lead: &Registration, member: &str) -> Option<Registration> {
-    let member = uuid::Uuid::try_parse(member).ok()?;
+fn member_registration(
+    lead: &Registration,
+    member: everruns_contracts::typed_id::AgentId,
+) -> Option<Registration> {
     Some(Registration {
-        agent: lead.agent.member_on_host(member.into())?,
+        agent: lead.agent.member_on_host(member)?,
         harness: None,
         environment: lead.environment.clone(),
         defined: lead.defined,
