@@ -20,8 +20,8 @@ use crate::events::{Event, EventRequest};
 /// append acceptance order through the post-commit sink call.
 ///
 /// With [`HostEventEmitter::enable_committed_batches`], lifecycle events that
-/// nothing waits on (`reason.*`, `llm.generation`, `capability.usage`,
-/// `output.message.started`, `session.activated`) are held and committed
+/// nothing waits on (`reason.completed`, `llm.generation`,
+/// `capability.usage`, `session.activated`) are held and committed
 /// together with the next event that is not, in one
 /// [`EventLog::append_batch`]. A held event is returned provisionally, without
 /// a sequence, and reaches the sink only once committed, so no listener ever
@@ -40,18 +40,15 @@ pub struct HostEventEmitter {
 
 /// Lifecycle events a committed batch may hold until the next barrier event.
 ///
-/// Decision: only events that no reader of the same epoch looks for and that
-/// a rerun of the turn re-emits. `turn.started`, messages, tool events and
-/// terminal events stay barriers.
+/// Decision: only events that no reader of the same epoch looks for, that no
+/// live view shows as progress, and that a rerun of the turn re-emits.
+/// `turn.started`, `reason.started` and `output.message.started` (a live
+/// view's "thinking" and "answering"; clients time steering and cancels on
+/// them), messages, tool events and terminal events stay barriers.
 fn is_deferrable_event_type(event_type: &str) -> bool {
     matches!(
         event_type,
-        "session.activated"
-            | "reason.started"
-            | "reason.completed"
-            | "capability.usage"
-            | "output.message.started"
-            | "llm.generation"
+        "session.activated" | "reason.completed" | "capability.usage" | "llm.generation"
     )
 }
 

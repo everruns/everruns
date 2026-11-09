@@ -335,14 +335,13 @@ async fn committed(log: &InMemoryEventLog, session_id: SessionId) -> usize {
     .len()
 }
 
-fn reason_started(session_id: SessionId) -> EventRequest {
+fn held_lifecycle(session_id: SessionId) -> EventRequest {
     EventRequest::new(
         session_id,
         EventContext::empty(),
-        crate::events::ReasonStartedData {
-            harness_id: HarnessId::new(),
-            agent_id: None,
-            metadata: None,
+        crate::events::SessionActivatedData {
+            turn_id: TurnId::new(),
+            input_message_id: MessageId::new(),
         },
     )
 }
@@ -355,7 +354,7 @@ async fn committed_batches_hold_lifecycle_events_until_the_next_barrier() {
     let emitter = HostEventEmitter::new(log.clone(), sink.clone());
     emitter.enable_committed_batches();
 
-    let held = emitter.emit(reason_started(session_id)).await.unwrap();
+    let held = emitter.emit(held_lifecycle(session_id)).await.unwrap();
     assert_eq!(held.sequence, None, "a held event is provisional");
     assert!(
         sink.types().is_empty(),
@@ -378,11 +377,11 @@ async fn committed_batches_hold_lifecycle_events_until_the_next_barrier() {
     );
     assert_eq!(
         sink.types(),
-        ["reason.started", "output.message.completed"],
+        ["session.activated", "output.message.completed"],
         "the sink sees committed events in emission order"
     );
 
-    emitter.emit(reason_started(session_id)).await.unwrap();
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
     emitter.flush().await.unwrap();
     assert_eq!(committed(&log, session_id).await, 3);
     assert_eq!(sink.types().len(), 3);
@@ -396,7 +395,7 @@ async fn committed_batches_commit_held_events_before_a_live_delta() {
     let emitter = HostEventEmitter::new(log.clone(), sink.clone());
     emitter.enable_committed_batches();
 
-    emitter.emit(reason_started(session_id)).await.unwrap();
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
     let delta = emitter
         .emit(EventRequest::new(
             session_id,
@@ -413,7 +412,7 @@ async fn committed_batches_commit_held_events_before_a_live_delta() {
         .unwrap();
     assert_eq!(delta.sequence, None);
     assert_eq!(committed(&log, session_id).await, 1);
-    assert_eq!(sink.types(), ["reason.started", "output.message.delta"]);
+    assert_eq!(sink.types(), ["session.activated", "output.message.delta"]);
 }
 
 #[tokio::test]
@@ -424,7 +423,7 @@ async fn abandoned_held_events_are_never_committed() {
     let emitter = HostEventEmitter::new(log.clone(), sink.clone());
     emitter.enable_committed_batches();
 
-    emitter.emit(reason_started(session_id)).await.unwrap();
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
     emitter.abandon();
     emitter.flush().await.unwrap();
     assert_eq!(committed(&log, session_id).await, 0);
