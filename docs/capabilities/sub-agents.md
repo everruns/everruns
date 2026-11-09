@@ -46,7 +46,7 @@ Use the generic `session_tasks` tools to monitor and steer subagents after spawn
 - `list_tasks` with `kind: "subagent"`, list all subagent tasks and their status
 - `get_task` with the task ID, get detailed status and result for a specific subagent
 - `message_task`, send a steering message or additional context to a running subagent
-- `cancel_task`, request cooperative cancellation of a subagent
+- `cancel_task`, request cooperative cancellation of a subagent; returns the task's state after the cancel request plus its recent messages, the same shape as `get_task`
 - `wait_task`, block until a subagent reaches a terminal or interrupted state
 
 ## Notes

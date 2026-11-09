@@ -74,3 +74,50 @@ async fn dropping_session_closes_live_events_while_engine_retains_resume_state()
         session_id
     );
 }
+
+/// EVE-1344: cancelling the running turn ends only that turn. A message
+/// admitted behind it is a later admission, not part of the cancelled turn:
+/// it runs as the next turn and its waiter resolves.
+#[tokio::test]
+async fn cancelling_a_running_turn_keeps_a_queued_message_for_the_next_turn() {
+    use everruns::{LlmSimConfig, TurnStopReason};
+    use std::time::Duration;
+    let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let config = LlmSimConfig::fixed("done")
+        .with_response_delay(Duration::from_millis(500))
+        .with_message_capture(calls.clone());
+    let agent = Agent::builder()
+        .instructions("Reply deterministically.")
+        .model(Model::simulated_with_config(config))
+        .build()
+        .expect("valid simulated agent");
+    let session = Engine::new().create(agent);
+
+    let first = session.send("first").await.unwrap();
+    // The simulator records a call before its delay. Sending only once the
+    // first model call is in flight keeps "second" out of the first turn's
+    // initial input take, so the turn cannot legitimately include it.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while calls.lock().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the first model call starts");
+    let queued = session.send("second").await.unwrap();
+    first.turn().cancel().await.unwrap();
+
+    let cancelled = tokio::time::timeout(Duration::from_secs(10), first.wait())
+        .await
+        .expect("cancelled turn resolves")
+        .unwrap();
+    assert_eq!(cancelled.stop_reason, TurnStopReason::Cancelled);
+    let next = tokio::time::timeout(Duration::from_secs(10), queued.wait())
+        .await
+        .expect("the queued message's waiter resolves")
+        .unwrap();
+    assert!(next.success, "{:?}", next.error);
+    assert_eq!(next.response, "done");
+    assert_ne!(next.turn_id, cancelled.turn_id);
+    assert_eq!(calls.lock().unwrap().len(), 2, "one call per turn");
+}

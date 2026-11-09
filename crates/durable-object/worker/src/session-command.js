@@ -110,15 +110,23 @@ export function applySessionCommand(j, state, session, tenant, command, reduce) 
       state.resume_generation = (state.resume_generation ?? 0) + 1;
       state.runnable = true;
       break;
-    case "cancel":
+    case "cancel": {
+      // A Framework cancel targets its admission's own sequence, not the inbox
+      // head: input admitted behind it runs as the next turn (EVE-1344). The
+      // server-compatible API keeps withdrawing everything pending.
+      const receipt = state.binding?.framework === 1
+        ? j.sql.exec("SELECT value FROM commands WHERE id=?", plan.control.input).toArray()[0]
+        : null;
+      const position = receipt ? (JSON.parse(receipt.value).sequence ?? state.inbox_seq) : state.inbox_seq;
       state.target_cancels ??= {};
-      state.target_cancels[plan.control.input] = state.inbox_seq;
+      state.target_cancels[plan.control.input] = position;
       if (plan.control.interrupt) {
-        state.cancel_inbox_seq = state.inbox_seq;
+        state.cancel_inbox_seq = position;
         state.cancel_reported = false;
         state.runnable = true;
       }
       break;
+    }
   }
   if (plan.key) {
     j.sql.exec("INSERT INTO commands VALUES (?,?,?)", plan.key, stableJson(plan.fingerprint), JSON.stringify(plan.reply));

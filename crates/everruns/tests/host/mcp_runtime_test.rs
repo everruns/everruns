@@ -321,6 +321,84 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
     );
 }
 
+/// A host renders MCP status, reconnects and waits for changes purely through
+/// the runtime readiness API (EVE-1342), without its own projection.
+#[tokio::test]
+async fn host_reads_probes_and_watches_mcp_readiness() {
+    let traffic = Arc::new(Mutex::new(McpTraffic::default()));
+    let seed = 1342u128;
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(seed);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(seed);
+    let runtime = everruns::batteries::runtime_builder()
+        .host_composition(platform_with_egress(traffic.clone()))
+        .llm_sim_as_default(LlmSimConfig::fixed("unused"))
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .harness(
+            HarnessBuilder::new("mcp", "MCP readiness.")
+                .id(harness_id)
+                .build(),
+        )
+        .session(
+            SessionBuilder::new(harness_id)
+                .id(session_id)
+                .mcp_servers(scoped_servers())
+                .build(),
+        )
+        .build()
+        .await
+        .expect("runtime builds");
+
+    let cold = runtime.mcp_readiness(session_id).await.expect("readiness");
+    let docs = cold
+        .server("docs")
+        .expect("one entry per configured server");
+    assert_eq!(docs.status, everruns::McpDiscoveryStatus::Pending);
+    assert_eq!((docs.last_probe, docs.tool_count), (None, 0));
+    assert_eq!(
+        traffic.lock().unwrap().tools_list_calls,
+        0,
+        "reading readiness never starts discovery"
+    );
+
+    let mut watch = runtime.watch_mcp_readiness();
+    let seen = watch.revision();
+    let probed = runtime
+        .probe_mcp(session_id, None)
+        .await
+        .expect("reconnect probes every eager server");
+    let docs = probed.server("docs").expect("docs");
+    assert_eq!(docs.status, everruns::McpDiscoveryStatus::Ready);
+    assert_eq!(docs.tool_count, 1);
+    assert!(docs.last_probe.is_some() && docs.reason.is_none());
+    assert!(probed.revision > cold.revision);
+    assert!(watch.changed().await.expect("cache alive") > seen);
+    assert_eq!(traffic.lock().unwrap().tools_list_calls, 1);
+    assert_eq!(
+        runtime
+            .mcp_discovery_statuses(session_id)
+            .await
+            .expect("statuses"),
+        vec![("docs".to_string(), everruns::McpDiscoveryStatus::Ready)]
+    );
+
+    // The probed catalog serves the next turn without another tools/list.
+    let context = runtime.load_context(session_id).await.expect("context");
+    assert!(
+        context
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "mcp_docs__echo")
+    );
+    assert_eq!(traffic.lock().unwrap().tools_list_calls, 1);
+
+    let error = runtime
+        .probe_mcp(session_id, Some("missing"))
+        .await
+        .expect_err("unknown server is rejected");
+    assert!(error.to_string().contains("missing"), "{error}");
+}
+
 #[tokio::test]
 async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let traffic = Arc::new(Mutex::new(McpTraffic::default()));

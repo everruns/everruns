@@ -202,6 +202,10 @@ channels = [
     "everruns-integrations/webhook-channel",
     "everruns-integrations/slack-channel",
 ]
+# Local control plane (`everruns::control`, Unix only): a host serves its
+# running sessions on a private Unix socket so a second process of the same
+# user can list, attach, send and cancel. Token-gated; see the module docs.
+control = ["dep:libc", "dep:rand", "tokio/net", "tokio/io-util"]
 # Voice channels (`everruns::voice`): talk to a session through a
 # speech-to-speech provider and hear its answers, on the shared core voice
 # loop. Pair with `openai` for `OpenAI::realtime`.

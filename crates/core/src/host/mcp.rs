@@ -152,19 +152,125 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
         .collect()
 }
 
-pub(crate) fn discovery_statuses(
+/// Readiness of every configured server that discovers tools, read from the
+/// discovery cache without starting discovery. `deferred` names the deferred
+/// servers not yet revealed in the session.
+pub(crate) fn server_readiness(
     cache: &McpDiscoveryCache,
     session: Uuid,
     servers: &ScopedMcpServers,
-) -> Vec<(String, crate::host::McpDiscoveryStatus)> {
-    resolve_servers(servers)
+    deferred: &[String],
+) -> crate::host::McpReadiness {
+    // Read the revision first: a change racing this read bumps past it, so a
+    // host comparing revisions never misses an update.
+    let revision = cache.revision();
+    let mut resolved: HashMap<String, ResolvedServer> = resolve_servers(servers)
         .into_iter()
-        .filter(|server| server.tool_discovery)
-        .map(|server| {
-            let status = cache.status(&(session, server.name.clone(), server.configuration));
-            (server.name, status)
+        .map(|server| (server.name.clone(), server))
+        .collect();
+    let servers = servers
+        .iter()
+        .filter(|(_, server)| server.tool_discovery)
+        .map(|(name, _)| {
+            let Some(server) = resolved.remove(name) else {
+                // resolve_servers dropped it: a name that is not a usable tool
+                // prefix, or a transport this build cannot serve.
+                let mut entry = crate::host::McpServerReadiness::new(
+                    name.clone(),
+                    crate::host::McpDiscoveryStatus::Failed,
+                );
+                entry.reason = Some(UNSERVABLE_SERVER_REASON.to_string());
+                return entry;
+            };
+            let state = cache.readiness(&(session, server.name.clone(), server.configuration));
+            let mut entry = crate::host::McpServerReadiness::new(server.name, state.status);
+            entry.deferred = deferred.contains(name);
+            entry.probing = state.probing;
+            entry.tool_count = state.tool_count;
+            entry.reason = state.reason;
+            entry.last_probe = state.last_probe;
+            entry
         })
-        .collect()
+        .collect();
+    crate::host::McpReadiness { revision, servers }
+}
+
+const UNSERVABLE_SERVER_REASON: &str =
+    "server ignored: its name is not a valid tool prefix or this build cannot serve its transport";
+
+/// Run one discovery attempt now for each named server, bypassing cached
+/// freshness, cooldowns and authentication holds. Unknown, non-discovering or
+/// unservable names are rejected before any attempt starts.
+pub(crate) async fn probe_servers(
+    cache: &Arc<McpDiscoveryCache>,
+    client: Arc<McpClient>,
+    session_uuid: Uuid,
+    servers: &ScopedMcpServers,
+    names: &[String],
+) -> anyhow::Result<()> {
+    let mut resolved: HashMap<String, ResolvedServer> = resolve_servers(servers)
+        .into_iter()
+        .map(|server| (server.name.clone(), server))
+        .collect();
+    let mut targets = Vec::with_capacity(names.len());
+    for name in names {
+        match servers.get(name) {
+            None => anyhow::bail!("session has no MCP server {name:?}"),
+            Some(server) if !server.tool_discovery => {
+                anyhow::bail!("MCP server {name:?} does not discover tools")
+            }
+            Some(_) => {}
+        }
+        let Some(server) = resolved.remove(name) else {
+            anyhow::bail!("MCP server {name:?} {UNSERVABLE_SERVER_REASON}");
+        };
+        targets.push(server);
+    }
+    stream::iter(targets.into_iter().map(|server| {
+        let cache = cache.clone();
+        let client = client.clone();
+        async move {
+            let key = (session_uuid, server.name.clone(), server.configuration);
+            cache
+                .probe(key, || {
+                    discover_once(client, session_uuid, server.name, server.connection)
+                })
+                .await;
+        }
+    }))
+    .buffer_unordered(MAX_DISCOVERY_CONCURRENCY)
+    .collect::<()>()
+    .await;
+    Ok(())
+}
+
+/// One upstream `tools/list` for a server, classified for the cache.
+async fn discover_once(
+    client: Arc<McpClient>,
+    session_uuid: Uuid,
+    name: String,
+    connection: McpConnection,
+) -> Result<Vec<ToolDefinition>, DiscoveryFailure> {
+    match client.discover(&connection).await {
+        Ok(tools) => Ok(build_definitions(session_uuid, &name, tools)),
+        Err(error) => {
+            if let Some(status) = error
+                .downcast_ref::<crate::mcp::McpHttpStatusError>()
+                .map(|error| error.status)
+                .filter(|status| matches!(status, 401 | 403))
+            {
+                tracing::warn!(server = %name,
+                    "MCP authentication rejected; reconnect and reload MCP to retry discovery");
+                Err(DiscoveryFailure::authentication(format!(
+                    "server rejected credentials (HTTP {status}); reconnect to retry"
+                )))
+            } else {
+                tracing::warn!(server = %name, %error,
+                    "scoped MCP discovery failed; retrying after a short cooldown");
+                Err(DiscoveryFailure::transient(error.to_string()))
+            }
+        }
+    }
 }
 
 /// Map a scoped server to a transport endpoint. Returns `None` (and logs) for
@@ -231,29 +337,18 @@ pub(crate) async fn discover_tool_definitions(
                 let name = resolved.name.clone();
                 let connection = resolved.connection.clone();
                 cache
-                    .resolve_until(key, move || {
-                        let client = client.clone();
-                        let connection = connection.clone();
-                        let name = name.clone();
-                        async move {
-                            match client.discover(&connection).await {
-                                Ok(tools) => Ok(build_definitions(session_uuid, &name, tools)),
-                                Err(error) => {
-                                    let failure = if error.downcast_ref::<crate::mcp::McpHttpStatusError>()
-                                        .is_some_and(|error| matches!(error.status, 401 | 403)) {
-                                        tracing::warn!(server = %name,
-                                            "MCP authentication rejected; reconnect and reload MCP to retry discovery");
-                                        DiscoveryFailure::Authentication
-                                    } else {
-                                        tracing::warn!(server = %name, %error,
-                                            "scoped MCP discovery failed; retrying after a short cooldown");
-                                        DiscoveryFailure::Transient
-                                    };
-                                    Err(failure)
-                                }
-                            }
-                        }
-                    }, deadline)
+                    .resolve_until(
+                        key,
+                        move || {
+                            discover_once(
+                                client.clone(),
+                                session_uuid,
+                                name.clone(),
+                                connection.clone(),
+                            )
+                        },
+                        deadline,
+                    )
                     .await
             }
         });
@@ -568,8 +663,15 @@ mod tests {
             first.iter().map(|tool| tool.name()).collect::<Vec<_>>(),
             ["mcp_z_fast__ping"]
         );
+        let statuses = |cache: &McpDiscoveryCache| {
+            server_readiness(cache, session, &servers, &[])
+                .servers
+                .into_iter()
+                .map(|server| (server.name, server.status))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            discovery_statuses(&cache, session, &servers),
+            statuses(&cache),
             vec![
                 ("a_slow".into(), crate::host::McpDiscoveryStatus::Pending),
                 ("z_fast".into(), crate::host::McpDiscoveryStatus::Ready),
@@ -577,7 +679,7 @@ mod tests {
         );
         gate.add_permits(8);
         tokio::time::timeout(Duration::from_secs(2), async {
-            while discovery_statuses(&cache, session, &servers)
+            while statuses(&cache)
                 .iter()
                 .any(|(_, status)| *status != crate::host::McpDiscoveryStatus::Ready)
             {
@@ -653,6 +755,258 @@ mod tests {
             );
             assert!(egress.requests.load(Ordering::SeqCst) > before_reload);
         }
+    }
+
+    #[tokio::test]
+    async fn readiness_reports_reason_probe_time_and_probe_lifts_the_auth_hold() {
+        use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
+        let egress = Arc::new(DiscoveryEgress {
+            requests: AtomicUsize::new(0),
+            status: AtomicU16::new(401),
+            slow_gate: None,
+        });
+        let client = Arc::new(McpClient::new(
+            egress.clone(),
+            Arc::new(crate::mcp::NoAuthProvider),
+        ));
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let session = Uuid::new_v4();
+        let mut servers = servers_with(
+            "private",
+            ScopedMcpServer {
+                url: "https://93.184.216.34/mcp".into(),
+                ..Default::default()
+            },
+        );
+        servers.insert(
+            "later".into(),
+            ScopedMcpServer {
+                url: "https://93.184.216.34/later".into(),
+                deferred: true,
+                ..Default::default()
+            },
+        );
+        servers.insert(
+            "bad__name".into(),
+            ScopedMcpServer {
+                url: "https://93.184.216.34/bad".into(),
+                ..Default::default()
+            },
+        );
+        servers.insert(
+            "quiet".into(),
+            ScopedMcpServer {
+                url: "https://93.184.216.34/quiet".into(),
+                tool_discovery: false,
+                ..Default::default()
+            },
+        );
+        let deferred = vec!["later".to_string()];
+
+        let cold = server_readiness(&cache, session, &servers, &deferred);
+        assert_eq!(
+            cold.servers
+                .iter()
+                .map(|server| server.name.as_str())
+                .collect::<Vec<_>>(),
+            ["bad__name", "later", "private"],
+            "one entry per discovering server; tool_discovery=false is excluded"
+        );
+        let bad = cold.server("bad__name").unwrap();
+        assert_eq!(bad.status, crate::host::McpDiscoveryStatus::Failed);
+        assert!(
+            bad.reason
+                .as_deref()
+                .unwrap()
+                .contains("not a valid tool prefix")
+        );
+        let later = cold.server("later").unwrap();
+        assert!(later.deferred);
+        assert_eq!(later.status, crate::host::McpDiscoveryStatus::Pending);
+        let private = cold.server("private").unwrap();
+        assert_eq!(private.status, crate::host::McpDiscoveryStatus::Pending);
+        assert_eq!(
+            (private.last_probe, private.reason.as_deref()),
+            (None, None)
+        );
+
+        // A turn hits the authentication failure and holds it.
+        let mut listed = servers.clone();
+        listed.remove("later");
+        assert!(
+            discover_tool_definitions(&cache, client.clone(), session, &listed)
+                .await
+                .is_empty()
+        );
+        let held = server_readiness(&cache, session, &servers, &deferred);
+        assert!(held.revision > cold.revision);
+        let private = held.server("private").unwrap();
+        assert_eq!(
+            private.status,
+            crate::host::McpDiscoveryStatus::AuthenticationRequired
+        );
+        assert!(private.reason.as_deref().unwrap().contains("HTTP 401"));
+        let first_probe = private.last_probe.expect("completed attempt time");
+        assert!(!private.probing);
+
+        // Turns keep the hold; an explicit probe bypasses it.
+        egress.status.store(200, Ordering::SeqCst);
+        discover_tool_definitions(&cache, client.clone(), session, &listed).await;
+        assert_eq!(
+            server_readiness(&cache, session, &servers, &deferred)
+                .server("private")
+                .unwrap()
+                .status,
+            crate::host::McpDiscoveryStatus::AuthenticationRequired
+        );
+        probe_servers(
+            &cache,
+            client.clone(),
+            session,
+            &servers,
+            &["private".into(), "later".into()],
+        )
+        .await
+        .unwrap();
+        let probed = server_readiness(&cache, session, &servers, &deferred);
+        assert!(probed.revision > held.revision);
+        let private = probed.server("private").unwrap();
+        assert_eq!(private.status, crate::host::McpDiscoveryStatus::Ready);
+        assert_eq!((private.tool_count, private.reason.as_deref()), (1, None));
+        assert!(private.last_probe.unwrap() >= first_probe);
+        let later = probed.server("later").unwrap();
+        assert_eq!(
+            (later.deferred, later.status),
+            (true, crate::host::McpDiscoveryStatus::Ready),
+            "an explicit probe connects a deferred server without revealing it"
+        );
+        assert_eq!(
+            discover_tool_definitions(&cache, client.clone(), session, &listed)
+                .await
+                .iter()
+                .map(|tool| tool.name())
+                .collect::<Vec<_>>(),
+            ["mcp_private__ping"]
+        );
+
+        // A transient probe failure records its reason and keeps the catalog.
+        egress.status.store(500, Ordering::SeqCst);
+        probe_servers(
+            &cache,
+            client.clone(),
+            session,
+            &servers,
+            &["private".into()],
+        )
+        .await
+        .unwrap();
+        let failed = server_readiness(&cache, session, &servers, &deferred);
+        let private = failed.server("private").unwrap();
+        assert_eq!(private.status, crate::host::McpDiscoveryStatus::Failed);
+        assert_eq!(private.tool_count, 1);
+        assert!(private.reason.is_some());
+
+        for rejected in ["missing", "quiet", "bad__name"] {
+            let requests = egress.requests.load(Ordering::SeqCst);
+            assert!(
+                probe_servers(
+                    &cache,
+                    client.clone(),
+                    session,
+                    &servers,
+                    &[rejected.into()]
+                )
+                .await
+                .is_err(),
+                "{rejected}"
+            );
+            assert_eq!(egress.requests.load(Ordering::SeqCst), requests);
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_waiting_on_an_in_flight_attempt_reuses_its_result() {
+        use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
+        use std::time::Duration;
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let egress = Arc::new(DiscoveryEgress {
+            requests: AtomicUsize::new(0),
+            status: AtomicU16::new(200),
+            slow_gate: Some(gate.clone()),
+        });
+        let client = Arc::new(McpClient::new(
+            egress.clone(),
+            Arc::new(crate::mcp::NoAuthProvider),
+        ));
+        let cache = Arc::new(McpDiscoveryCache::with_readiness_budget(Some(
+            Duration::from_millis(10),
+        )));
+        // Requests one complete discovery makes, measured on an ungated path.
+        let fast = servers_with(
+            "fast",
+            ScopedMcpServer {
+                url: "https://93.184.216.34/fast".into(),
+                ..Default::default()
+            },
+        );
+        discover_tool_definitions(
+            &Arc::new(McpDiscoveryCache::new()),
+            client.clone(),
+            Uuid::new_v4(),
+            &fast,
+        )
+        .await;
+        let per_discovery = egress.requests.swap(0, Ordering::SeqCst);
+        assert!(per_discovery > 0);
+        let session = Uuid::new_v4();
+        let servers = servers_with(
+            "slow",
+            ScopedMcpServer {
+                url: "https://93.184.216.34/slow".into(),
+                ..Default::default()
+            },
+        );
+        let mut watch = crate::host::McpReadinessWatch::new(cache.subscribe());
+        let seen = watch.revision();
+        // The budget expires; background discovery keeps running.
+        assert!(
+            discover_tool_definitions(&cache, client.clone(), session, &servers)
+                .await
+                .is_empty()
+        );
+        let connecting = server_readiness(&cache, session, &servers, &[]);
+        assert!(connecting.servers[0].probing);
+        assert_eq!(
+            connecting.servers[0].status,
+            crate::host::McpDiscoveryStatus::Pending
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), watch.changed())
+                .await
+                .unwrap()
+                .unwrap()
+                > seen
+        );
+        let probe = tokio::spawn({
+            let cache = cache.clone();
+            let servers = servers.clone();
+            async move { probe_servers(&cache, client, session, &servers, &["slow".into()]).await }
+        });
+        tokio::task::yield_now().await;
+        // Exactly one discovery's worth: a second upstream attempt would block.
+        gate.add_permits(per_discovery);
+        tokio::time::timeout(Duration::from_secs(2), probe)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let ready = server_readiness(&cache, session, &servers, &[]);
+        assert_eq!(
+            ready.servers[0].status,
+            crate::host::McpDiscoveryStatus::Ready
+        );
+        assert!(!ready.servers[0].probing);
+        assert_eq!(egress.requests.load(Ordering::SeqCst), per_discovery);
     }
 
     #[test]

@@ -569,6 +569,51 @@ async fn interrupted_legacy_tool_is_not_replayed_after_cutover() {
     assert_eq!(runs.load(Ordering::SeqCst), 0, "uncertain effect replayed");
 }
 
+/// EVE-1339: an input the legacy executor never ran is imported as consumed
+/// history. It has an admission receipt but no turn, and a checkpoint keeps
+/// it like seeded history instead of excluding it as queued work.
+#[tokio::test]
+async fn imported_unanswered_input_stays_in_checkpoints() {
+    use everruns::hosting::spi::events::{EventContext, EventRequest, InputMessageData};
+    let backends = HostBackends::in_memory();
+    let legacy = legacy_agent(&backends);
+    let session = Engine::new().create(legacy.clone());
+    let id = session.session_id();
+    session.run("first").await.unwrap();
+    let orphan = everruns_core::RuntimeMessage::user("never answered");
+    backends
+        .event_log
+        .append(EventRequest::new(
+            id,
+            EventContext::empty(),
+            InputMessageData::new(orphan),
+        ))
+        .await
+        .unwrap();
+    session.run("second").await.unwrap();
+    drop(session);
+    let directory = tempfile::tempdir().unwrap();
+    let engine = hosting_engine(
+        SqliteHosting::open(directory.path().join("authority.db")).unwrap(),
+        Agent::builder()
+            .instructions("Answer briefly.")
+            .model(Model::simulated("Hello!"))
+            .build()
+            .unwrap(),
+    );
+    engine
+        .cut_over_legacy_session(id, &legacy, &target_build())
+        .await
+        .unwrap();
+    let checkpoint = engine.checkpoints(id).create().await.unwrap();
+    assert_eq!(checkpoint.turn_index, 2);
+    assert!(
+        checkpoint.excluded.is_empty(),
+        "imported history is not queued work: {checkpoint:?}"
+    );
+    assert_eq!(checkpoint.ranges.len(), 1, "{checkpoint:?}");
+}
+
 /// Expired-epoch writes stay fenced on an imported session.
 #[tokio::test]
 async fn imported_sessions_fence_writes_from_an_expired_epoch() {

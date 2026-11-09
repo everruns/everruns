@@ -70,6 +70,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Agent blueprints](/framework/agent-blueprints/), contribute a code-defined specialist agent from a capability.
 - [Host services](/framework/host-services/), compose a host's own capabilities, provider resolution, retry budgets, MCP credentials and observers into Engine sessions.
 - [Session controls](/framework/session-controls/), run slash commands, hot-install capabilities, switch model, effort and MCP servers, and query context on a live session.
+- [Attach to a running session](/framework/attach-control/), let a second local process list, watch, drive and cancel a host's sessions.
 - [Custom backends](/framework/custom-backends/), cross into low-level host composition deliberately.
 - [Testing and simulation](/framework/testing-and-simulation/), deterministic tests without credentials.
 - [Runnable examples](/framework/examples/), complete programs maintained with the crate.

@@ -310,3 +310,122 @@ async fn failing_renews_lose_the_lease_by_its_ttl() {
         .expect("the renewer stops once the lease is lost")
         .expect("renewer task");
 }
+
+/// A fixed journal; recovery only reads it.
+struct Journal(Vec<crate::events::Event>);
+
+#[async_trait]
+impl SessionActorStore for Journal {
+    async fn renew_actor_lease(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: Duration,
+        _consumed: i64,
+    ) -> Result<Option<ActorRenewal>> {
+        unreachable!("recovery reads the journal only")
+    }
+    async fn release_actor(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed: i64,
+    ) -> Result<ActorRelease> {
+        unreachable!("recovery reads the journal only")
+    }
+    async fn read_actor_journal(
+        &self,
+        _id: SessionId,
+        after: Option<i32>,
+        _limit: u32,
+    ) -> Result<ActorJournal> {
+        let events: Vec<_> = self
+            .0
+            .iter()
+            .filter(|event| event.sequence > after)
+            .cloned()
+            .collect();
+        Ok(ActorJournal {
+            head_sequence: self.0.last().and_then(|event| event.sequence),
+            events,
+            has_more: false,
+        })
+    }
+}
+
+/// EVE-1344: a Framework authority records a targeted cancel at the targeted
+/// admission's own sequence. A holder that takes over an open turn after the
+/// previous one died must still apply that cancel to the turn started from
+/// exactly that input (the journal read after the position skips it), and
+/// must not apply it to the turn of an input admitted after it.
+#[tokio::test]
+async fn a_takeover_applies_a_targeted_cancel_only_to_the_turn_of_its_input() {
+    use crate::events::{Event, EventContext, EventData, InputMessageData};
+    let session_id = SessionId::new();
+    let input = |sequence: i32| {
+        let mut event = Event::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(crate::RuntimeMessage::user("input")),
+        );
+        event.sequence = Some(sequence);
+        event
+    };
+    let message_id = |event: &Event| match &event.data {
+        EventData::InputMessage(data) => data.message.id,
+        _ => unreachable!("an input"),
+    };
+    // An event the turn wrote (it carries the turn id), standing in for its
+    // `turn.started` at `sequence`.
+    let turn_event = |sequence: i32, of: &Event| {
+        let mut event = Event::new(
+            session_id,
+            EventContext::turn(TurnId::new(), message_id(of)),
+            InputMessageData::new(crate::RuntimeMessage::user("turn")),
+        );
+        event.sequence = Some(sequence);
+        event
+    };
+    // A at 1 starts its turn at 2; B is admitted behind it at 3 and its turn
+    // starts at 4. The cancel targets A: position 1.
+    let (a, b) = (input(1), input(3));
+    let journal = vec![a.clone(), turn_event(2, &a), b.clone(), turn_event(4, &b)];
+    let lease = || {
+        let mut actor = leased();
+        actor.session_id = session_id;
+        actor.inbox_seq = 3;
+        actor.cancel_inbox_seq = Some(1);
+        Lease::new(
+            Arc::new(Journal(journal.clone())),
+            "next".into(),
+            &actor,
+            Duration::from_secs(3),
+            1,
+        )
+    };
+
+    let taken_over = lease();
+    taken_over.begin_turn(
+        taken_over
+            .open_turn_input(message_id(&a), Some(2))
+            .await
+            .unwrap(),
+    );
+    assert!(taken_over.cancel_requested(), "A's open turn is cancelled");
+    assert_eq!(
+        taken_over.cancelled_inbox(),
+        1,
+        "recording the cancel leaves B pending"
+    );
+
+    let next = lease();
+    let input_seq = next.open_turn_input(message_id(&b), Some(4)).await.unwrap();
+    assert_eq!(input_seq, 3);
+    next.begin_turn(input_seq);
+    assert!(
+        !next.cancel_requested(),
+        "A's cancel does not reach B's turn"
+    );
+}

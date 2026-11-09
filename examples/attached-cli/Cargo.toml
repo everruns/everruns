@@ -1,0 +1,34 @@
+# A host that serves its running session to a second terminal, and the
+# attached CLI that lists, watches, sends to and cancels it (EVE-1340). Copy
+# this crate to give a terminal host `myagent attach` without writing a
+# control plane. Depends only on the public `everruns` facade.
+
+[package]
+name = "everruns-attached-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Drive a running Everruns session from a second terminal"
+
+[lib]
+name = "everruns_attached_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "attached-cli"
+path = "src/main.rs"
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["control", "openai"] }
+anyhow.workspace = true
+clap = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-std", "io-util", "signal"] }
+
+[dev-dependencies]
+# Tests drive a simulated model; the binary always runs a real one.
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

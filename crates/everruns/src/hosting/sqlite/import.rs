@@ -407,6 +407,18 @@ fn import_admissions(
                 &format!("assignment/{id}"),
                 &json!({"turn_id": turn, "steered": steered}),
             )?;
+        } else {
+            // The legacy executor never ran this input, and the cutover
+            // consumes it as history (see `import_journal`). Mark it so a
+            // conversation checkpoint keeps it like seeded history instead of
+            // treating its admission receipt as queued work.
+            put(
+                tx,
+                session,
+                "framework",
+                &format!("{IMPORTED_INPUT}{id}"),
+                &json!(true),
+            )?;
         }
     }
     let mut finished = HashSet::new();

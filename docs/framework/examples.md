@@ -41,6 +41,12 @@ See [file-based agents](/how-to/define-agents-as-files/) for loading, importing 
 | [Host Shell Agent](/framework/examples/host-shell-agent/) | OpenAI `gpt-6.1-sol` | Fixes a failing Rust test suite by compiling and running it through real processes inside a kernel-enforced boundary. |
 | [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decision questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
 
+## Terminal hosts
+
+| Example | Provider and model | What it does |
+| --- | --- | --- |
+| [`attached-cli`](https://github.com/everruns/everruns/tree/main/examples/attached-cli) | OpenAI `gpt-6.1-sol` | Serves a running session to a second terminal, which lists, watches, sends to and cancels it through [attached control](/framework/attach-control/). |
+
 ## Talking to other companies' agents
 
 | Example | Provider and model | What it does |

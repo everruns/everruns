@@ -225,6 +225,70 @@ transient failures retain the existing retry cooldown. The shared cache remains
 scoped by session and attachment configuration. Reuse the same `HostServices`
 value for runtimes that should share completion state.
 
+### MCP status, reconnect and doctor
+
+A host can drive an MCP status display, a reconnect action and doctor output
+from the session alone:
+
+```rust
+use everruns::{McpDiscoveryStatus, Session, SessionControlError};
+
+async fn render(session: &Session) -> Result<(), SessionControlError> {
+    let readiness = session.mcp_readiness().await?;
+    for server in &readiness.servers {
+        let state = match server.status {
+            McpDiscoveryStatus::Ready => format!("ready, {} tools", server.tool_count),
+            McpDiscoveryStatus::Pending if server.deferred => "deferred".into(),
+            McpDiscoveryStatus::Pending => "connecting".into(),
+            McpDiscoveryStatus::AuthenticationRequired => "sign-in required".into(),
+            McpDiscoveryStatus::Failed => "failed".into(),
+        };
+        println!("{}: {state} {}", server.name, server.reason.as_deref().unwrap_or(""));
+    }
+    Ok(())
+}
+
+async fn reconnect(session: &Session, name: &str) -> Result<(), SessionControlError> {
+    let after = session.probe_mcp(Some(name)).await?;
+    if let Some(server) = after.server(name) {
+        println!("{name}: {:?} at {:?}", server.status, server.last_probe);
+    }
+    Ok(())
+}
+
+async fn follow(session: &Session) -> Result<(), SessionControlError> {
+    let mut changes = session.watch_mcp_readiness().await?;
+    while changes.changed().await.is_some() {
+        render(session).await?;
+    }
+    Ok(())
+}
+```
+
+- `mcp_readiness` reads, and never starts discovery. It returns one entry per
+  configured server that discovers tools, including unrevealed deferred ones.
+  Each entry carries the status, `deferred`, `probing` (an attempt is running),
+  `tool_count`, a bounded failure or authentication `reason` and `last_probe`
+  (when the last attempt completed). A server the runtime cannot serve, for
+  example a stdio server in a build without `mcp-stdio`, reports `Failed` with a
+  reason.
+- `probe_mcp(Some(name))` reconnects one server now, and `probe_mcp(None)`
+  reconnects every eager and revealed server. The probe asks your
+  `McpAuthProvider` again and skips the authentication hold and the retry
+  cooldown. It waits up to the discovery deadline and returns the updated
+  readiness. If an attempt is already in flight, the probe returns that
+  attempt's result. A transient failure keeps the previous tools for turns.
+  Unknown names, and servers that do not discover tools, are rejected.
+- `watch_mcp_readiness` wakes when readiness may have changed. Every snapshot
+  also carries a `revision` that you can poll and compare instead. Revisions are
+  shared by sessions that use the same `HostServices`, so re-read readiness
+  after each change. For hosted sessions, set `mcp_readiness_budget` so that
+  readiness survives runtime rebuilds.
+
+For doctor output, print the full snapshot: `McpReadiness` and its entries
+implement `Debug`. `mcp_discovery_statuses` remains as the short status list for
+eager and revealed servers.
+
 ## Budgets, MCP credentials and observers
 
 ```rust

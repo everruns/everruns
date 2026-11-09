@@ -723,9 +723,8 @@ impl<H: ActorHosts> SessionActorDriver<H> {
 
     /// Record the cancel of `drive`'s turn, if the log still has it open:
     /// `turn.cancelled`, the person's request as part of the turn, and the
-    /// session idled. Consumes the input that was pending when the cancel was
-    /// requested, as the server's withdraw does; input sent after it starts
-    /// the next turn.
+    /// session idled. Consumes input up to the cancel's reported position
+    /// (`Lease::cancelled_inbox`); input after it starts the next turn.
     async fn record_cancel(&self, lease: &Lease, host: &H::Host, drive: &TurnDrive) -> Result<()> {
         let still_open = TurnLogFold::from_events(lease.read_tail().await?)
             .is_some_and(|turn| turn.turn_id() == drive.turn_id);
