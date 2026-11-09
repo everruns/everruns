@@ -926,6 +926,29 @@ or carrying live MCP edits. Most of what is left is the default in-memory
 workspace's per-session Environment. The in-memory authority holds 37 KB
 per session; a cell keeps that on disk and in S3, not in the executor.
 
+### Step 2 measurements (2026-11-09)
+
+**Trusted host extensions** (`everruns_core::host::HostExtensions` on
+`HostBackends`, set in a profile's activation hook; no Framework builder
+method). `InProcessRuntime` forwards each slot to the adapter method a
+worker turn already uses: egress, utility model and decisions (over the
+composition's), budget and payment per agent, session creation, outbound
+rate limiting, provider credentials, leased resources, durable tool
+results, session resources, subagent spawns, image and file resolvers,
+image artifacts, the Agents API store and hosted MCP per input. Knowledge
+auto-context runs through the worker's own code, now shared
+(`host::add_automatic_knowledge`); a host's tool detacher wraps the
+activation as it wraps a worker lease; a host's wait predicate adds to the
+agent's, and the Engine's resume now uses it. A host may replace a
+built-in capability by listing it in `replaced_capabilities`; one whose id
+the runtime lacks fails the build. An empty bundle changes nothing.
+
+Gate (`long_session`, 100 sessions x 20 turns, two runs each): 432 and
+444 turns/s before, 444 and 495 after, 5.1 waited writes per turn in both.
+Per-model-call overhead is unchanged. A host budget authority stops a
+hosted turn before any model call
+(`hosted_sessions::a_trusted_hosts_budget_authority_stops_a_turn_before_the_model_call`).
+
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share
 the turn driver, so cells need the host bundle (step 2), not a finished

@@ -103,6 +103,7 @@ pub(crate) async fn run(
     // Lifecycle events ride on the next event a reader waits for (data plane
     // v2 step 1): one authority write per batch instead of one per event.
     let emitter = runtime.host_event_emitter();
+    let detacher = runtime.host_extensions().hooks.tool_detacher.clone();
     emitter.enable_committed_batches();
     let store: Arc<dyn SessionActorStore> = Arc::new(super::settled_store::SettledStore {
         inner: epoch.actor_store(),
@@ -139,8 +140,16 @@ pub(crate) async fn run(
     if pushes_admissions {
         driver = driver.with_pushed_inbox();
     }
-    everruns_contracts::durable_retry::scope(retries, Box::pin(driver.run_actor(activation.actor)))
-        .await;
+    let run = everruns_contracts::durable_retry::scope(
+        retries,
+        Box::pin(driver.run_actor(activation.actor)),
+    );
+    // A trusted host that runs long tool calls itself takes them from the
+    // turn, as the worker does.
+    match detacher {
+        Some(detacher) => everruns_core::engine::tool_detach::provide(detacher, run).await,
+        None => run.await,
+    }
     // Held events left by an epoch that ended between barriers. A lost lease
     // refuses them, which is what a crash at the same point would do.
     if let Err(error) = emitter.flush().await {
@@ -205,6 +214,10 @@ impl ActorHosts for FrameworkHosts {
 
     fn abandon(&self, host: &Self::Host) {
         host.host_event_emitter().abandon();
+    }
+
+    fn waits_on_person(&self) -> Option<everruns_core::host::WaitsOnPerson> {
+        self.runtime.waits_on_person_predicate()
     }
 
     async fn turn_ended(&self, _: &TurnDrive) {

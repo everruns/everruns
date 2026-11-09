@@ -56,6 +56,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+mod adapter;
 mod builder;
 use builder::hydrate_plugin_refs;
 mod input_message;
@@ -499,6 +500,19 @@ impl InProcessRuntimeBuilder {
             Some(backends) => backends,
             None => HostBackends::in_memory(),
         };
+        for capability in &backends.extensions.composition.replaced_capabilities {
+            if !self
+                .host_composition
+                .is_capability_registered(capability.id())
+            {
+                return Err(AgentLoopError::config(format!(
+                    "host replaces capability '{}', which this runtime does not have",
+                    capability.id()
+                )));
+            }
+            self.host_composition
+                .register_capability_overriding(capability.clone());
+        }
         let mut file_store = resolve_session_file_system(
             &self.host_composition,
             self.session_file_system_factory_context.clone(),
@@ -628,6 +642,7 @@ impl InProcessRuntimeBuilder {
             None => (None, None),
         };
 
+        let extensions = backends.extensions;
         let seeded_session_ids = self.sessions.iter().map(|session| session.id).collect();
         let runtime = InProcessRuntime {
             host_composition: Arc::new(self.host_composition),
@@ -668,7 +683,11 @@ impl InProcessRuntimeBuilder {
                 .unwrap_or_else(|| Arc::new(crate::host::McpDiscoveryCache::new())),
             plugin_warnings: self.plugin_warnings,
             parked_turns: ParkedTurns::default(),
-            waits_on_person: self.waits_on_person,
+            waits_on_person: either_waits(
+                self.waits_on_person,
+                extensions.hooks.waits_on_person.clone(),
+            ),
+            extensions,
         };
         if self.initialize_session {
             for session in &self.sessions {
@@ -676,6 +695,14 @@ impl InProcessRuntimeBuilder {
             }
         }
         Ok(runtime)
+    }
+}
+
+/// A call waits on a person when either predicate says so.
+fn either_waits(a: Option<WaitsOnPerson>, b: Option<WaitsOnPerson>) -> Option<WaitsOnPerson> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(Arc::new(move |call| a(call) || b(call))),
+        (a, b) => a.or(b),
     }
 }
 
@@ -740,6 +767,8 @@ pub struct InProcessRuntime {
     parked_turns: ParkedTurns,
     /// See [`InProcessRuntimeBuilder::waits_on_person`].
     waits_on_person: Option<WaitsOnPerson>,
+    /// See [`HostBackends::extensions`](crate::host::HostBackends::extensions).
+    extensions: crate::host::HostExtensions,
 }
 
 impl InProcessRuntime {
@@ -774,6 +803,17 @@ impl InProcessRuntime {
         self.event_emitter.clone()
     }
 
+    /// The platform services a trusted host forwarded to this runtime.
+    pub fn host_extensions(&self) -> &crate::host::HostExtensions {
+        &self.extensions
+    }
+
+    /// Tool calls that wait on a person before they run, so resume may run
+    /// them again: the runtime's own predicate and the host's.
+    pub fn waits_on_person_predicate(&self) -> Option<WaitsOnPerson> {
+        self.waits_on_person.clone()
+    }
+
     /// Coherent canonical event log backing this runtime.
     pub fn event_log(&self) -> Arc<dyn EventLog> {
         self.event_log.clone()
@@ -787,7 +827,11 @@ impl InProcessRuntime {
         // tool result rather than answered here — the runtime cannot block a
         // turn on a browser interaction. See `RelayUrlElicitations`.
         Arc::new(crate::mcp::McpClient::with_url_elicitation(
-            self.host_composition.egress_service(),
+            self.extensions
+                .composition
+                .egress
+                .clone()
+                .unwrap_or_else(|| self.host_composition.egress_service()),
             self.mcp_auth_provider.clone(),
             Arc::new(crate::mcp::RelayUrlElicitations),
         ))
@@ -1236,248 +1280,6 @@ impl InProcessRuntime {
             None,
         )
         .await
-    }
-}
-
-#[async_trait]
-impl RuntimeHostAdapter for InProcessRuntime {
-    async fn set_session_status(
-        &self,
-        _org_id: i64,
-        session_id: SessionId,
-        _status: SessionExecutionState,
-    ) -> Result<()> {
-        // Not persisted in-process (nothing here observes session.status); the
-        // existence check keeps lifecycle warnings surfacing a missing session.
-        self.session_store
-            .get_session(session_id)
-            .await?
-            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
-        Ok(())
-    }
-
-    async fn load_resolved_turn(
-        &self,
-        _org_id: i64,
-        session_id: SessionId,
-    ) -> Result<ResolvedTurnInputs> {
-        let session = self.attached_session(session_id).await?;
-        let agent = match session.agent_id {
-            Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
-            None => None,
-        };
-        let harness = self
-            .harness_store
-            .get_harness(session.harness_id)
-            .await?
-            .ok_or_else(|| AgentLoopError::harness_not_found(session.harness_id))?;
-        // Platform projection: stored records stop here; execution receives
-        // the canonical resolved value (EVE-872).
-        let snapshot = ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), &session)?;
-        let messages = match self
-            .compaction_checkpoint_store
-            .latest_source_sequence(session_id)
-            .await?
-        {
-            Some(checkpoint) => {
-                self.event_history
-                    .load_since_checkpoint(session_id, checkpoint)
-                    .await?
-            }
-            None => self.event_history.load(session_id).await?,
-        };
-
-        // Discover session MCP tools for the LLM (knowledge/integrations/runtime-mcp.md D4).
-        #[cfg(feature = "mcp")]
-        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
-        #[cfg(feature = "mcp")]
-        let mcp_tool_definitions = crate::host::mcp::discover_turn_tool_definitions(
-            &self.mcp_discovery_cache,
-            self.mcp_client(),
-            session_id,
-            &scoped_servers,
-            self.storage_store.as_ref(),
-        )
-        .await;
-        #[cfg(not(feature = "mcp"))]
-        let mcp_tool_definitions = vec![];
-
-        Ok(ResolvedTurnInputs {
-            snapshot,
-            messages,
-            mcp_tool_definitions,
-        })
-    }
-
-    #[cfg(feature = "mcp")]
-    async fn mcp_executor(
-        &self,
-        _org_id: i64,
-        session_id: SessionId,
-        _agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn crate::McpToolInvoker>> {
-        let session = self.session_store.get_session(session_id).await.ok()??;
-        let agent = match session.agent_id {
-            Some(agent_id) => self.agent_store.get_agent(agent_id).await.ok().flatten(),
-            None => None,
-        };
-        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
-        crate::host::mcp::build_executor(self.mcp_client(), &scoped_servers)
-            .map(|executor| executor as Arc<dyn crate::McpToolInvoker>)
-    }
-
-    fn capability_registry(&self) -> CapabilityRegistry {
-        // Snapshot per call, so a capability registered after composition
-        // (EVE-917) reaches the next caller rather than a stale copy.
-        (*self.host_composition.capability_registry()).clone()
-    }
-
-    fn driver_registry(&self) -> DriverRegistry {
-        self.host_composition.driver_registry().clone()
-    }
-
-    fn harness_store(&self, _org_id: i64) -> Arc<dyn HarnessStore> {
-        self.harness_store.clone()
-    }
-
-    fn agent_store(&self, _org_id: i64) -> Arc<dyn AgentStore> {
-        self.agent_store.clone()
-    }
-
-    fn session_store(&self, _org_id: i64) -> Arc<dyn SessionStore> {
-        self.session_store.clone()
-    }
-
-    fn session_mutator(&self, _org_id: i64) -> Arc<dyn SessionMutator> {
-        self.session_store.clone()
-    }
-
-    fn provider_store(&self, _org_id: i64) -> Arc<dyn ProviderStore> {
-        self.provider_store.clone()
-    }
-
-    fn message_store(&self) -> Arc<dyn MessageRetriever> {
-        self.event_history.clone()
-    }
-
-    fn native_async_store(&self) -> Option<Arc<dyn crate::native_async_store::NativeAsyncStore>> {
-        self.native_async_store.clone()
-    }
-
-    fn dreaming_store(&self) -> Option<Arc<dyn crate::dreaming::DreamingStore>> {
-        Some(self.dreaming_store.clone())
-    }
-
-    fn compaction_checkpoint_store(&self) -> Option<Arc<dyn crate::CompactionCheckpointStore>> {
-        Some(self.compaction_checkpoint_store.clone())
-    }
-
-    fn partial_stream_store(&self) -> Option<Arc<dyn crate::durability::PartialStreamStore>> {
-        Some(super::partial_stream::over(&self.event_log))
-    }
-
-    fn event_emitter(&self) -> Arc<dyn EventEmitter> {
-        self.event_emitter.clone()
-    }
-
-    fn bash_hook_dispatcher(
-        &self,
-        org_id: i64,
-    ) -> Arc<dyn crate::hook_executor::BashHookDispatcher> {
-        self.bash_hook_dispatcher_factory
-            .as_ref()
-            .map(|factory| factory(self.file_store(org_id)))
-            .unwrap_or_else(|| Arc::new(crate::host::DisabledBashHookDispatcher))
-    }
-
-    fn file_store(&self, _org_id: i64) -> Arc<dyn SessionFileSystem> {
-        self.file_store.clone()
-    }
-
-    fn storage_store(&self, _org_id: i64) -> Option<Arc<dyn SessionStorageStore>> {
-        // In-process runtime: the store is already bound to this runtime's org.
-        Some(self.storage_store.clone())
-    }
-
-    fn connection_resolver(&self, _org_id: i64) -> Option<Arc<dyn UserConnectionResolver>> {
-        self.connection_resolver.clone()
-    }
-
-    fn session_task_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionTaskRegistry>> {
-        self.session_task_registry.clone()
-    }
-
-    fn schedule_store(
-        &self,
-        org_id: i64,
-    ) -> Option<Arc<dyn crate::session_services::SessionScheduleStore>> {
-        self.schedule_store_factory
-            .as_ref()
-            .map(|factory| factory(org_id))
-    }
-
-    fn tool_context_extensions(
-        &self,
-        request: crate::host::runtime_host::ToolContextRequest<'_>,
-    ) -> crate::tool_context::ToolContextExtensions {
-        self.tool_context_extensions_factory
-            .as_ref()
-            .map(|factory| factory(request.org_id, request.session_id))
-            .unwrap_or_default()
-    }
-
-    fn subagent_delegate(
-        &self,
-        org_id: i64,
-        session_id: SessionId,
-    ) -> Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>> {
-        self.subagent_delegate_factory
-            .as_ref()
-            .map(|factory| factory(org_id, session_id))
-    }
-
-    fn tool_augmentor(&self) -> Option<Arc<dyn crate::host::HostToolAugmentor>> {
-        self.tool_augmentor.clone()
-    }
-
-    fn decisions(&self) -> Option<Arc<dyn crate::DecisionsService>> {
-        Some(self.host_composition.decisions())
-    }
-
-    fn utility_llm_service(&self) -> Option<Arc<dyn crate::UtilityLlmService>> {
-        Some(self.host_composition.utility_llm_service())
-    }
-
-    fn egress_service(&self) -> Option<Arc<dyn crate::EgressService>> {
-        Some(self.host_composition.egress_service())
-    }
-
-    fn provider_retry_config(&self) -> Option<everruns_contracts::llm_retry::LlmRetryConfig> {
-        self.provider_retry_config.clone()
-    }
-
-    fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
-        self.provider_stall_timeout
-    }
-
-    fn reasoning_effort_handle(
-        &self,
-        _session_id: SessionId,
-    ) -> Option<crate::tool_context::ReasoningEffortHandle> {
-        self.reasoning_effort_handle.clone()
-    }
-
-    fn session_reasoning_effort(
-        &self,
-        _session_id: SessionId,
-    ) -> Option<everruns_contracts::ReasoningEffort> {
-        self.session_reasoning_effort
-            .as_ref()
-            .and_then(crate::tool_context::ReasoningEffortHandle::get)
-    }
-
-    fn budget_checker(&self, _: i64, _: Option<AgentId>) -> Option<Arc<dyn BudgetChecker>> {
-        self.budget_checker.clone()
     }
 }
 

@@ -125,6 +125,9 @@ pub struct HostBackends {
     /// Which process runs each session; see [`ActorRunner`](crate::host::ActorRunner).
     /// In memory by default, so only this process's own turns contend.
     pub session_leases: Arc<dyn crate::host::SessionLeases>,
+    /// Platform services a trusted host forwards to the turn; empty by
+    /// default. See [`HostExtensions`](crate::host::HostExtensions).
+    pub extensions: crate::host::HostExtensions,
 }
 
 impl std::fmt::Debug for HostBackends {
@@ -162,7 +165,14 @@ impl HostBackends {
             subagent_delegate_factory: None,
             tool_augmentor: None,
             session_leases: Arc::new(crate::host::InMemorySessionLeases::new()),
+            extensions: crate::host::HostExtensions::default(),
         }
+    }
+
+    /// Forward a trusted host's platform services to the turn.
+    pub fn with_extensions(mut self, extensions: crate::host::HostExtensions) -> Self {
+        self.extensions = extensions;
+        self
     }
 
     /// Share session leases with other processes through `leases`.

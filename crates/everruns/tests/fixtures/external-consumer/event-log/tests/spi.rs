@@ -249,6 +249,7 @@ fn external_backends(log: Arc<ExternalEventLog>) -> HostBackends {
         subagent_delegate_factory: defaults.subagent_delegate_factory,
         tool_augmentor: defaults.tool_augmentor,
         session_leases: defaults.session_leases,
+        extensions: defaults.extensions,
     }
 }
 

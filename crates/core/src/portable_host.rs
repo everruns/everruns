@@ -73,6 +73,8 @@ mod script_run;
 #[cfg(feature = "actor-runtime")]
 #[path = "host/session_actor/mod.rs"]
 pub mod session_actor;
+#[path = "host/trusted_extensions.rs"]
+mod trusted_extensions;
 #[path = "host/turn_completion_check.rs"]
 mod turn_completion_check;
 #[path = "host/turn_loop.rs"]
@@ -142,6 +144,10 @@ pub use session_services::{
     SESSION_CAPABILITY_ID, SESSION_STORAGE_CAPABILITY_ID, SessionCapability, SessionMutator,
     SessionMutatorExt, SessionStorageCapability, is_internal_session_kv_key,
     is_internal_session_secret_name,
+};
+pub use trusted_extensions::{
+    AuthorityExtensions, CompositionExtensions, HookExtensions, HostExtensions, PerAgent, PerInput,
+    StoreExtensions, add_automatic_knowledge, automatic_knowledge,
 };
 pub use turn_backend::{
     InProcessBackend, TurnBackend, TurnBackendFactory, TurnInput, TurnRequest, TurnScope,
