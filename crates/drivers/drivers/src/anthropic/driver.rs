@@ -912,14 +912,13 @@ struct AnthropicOutputConfig {
     effort: String,
 }
 
-/// Claude families that use adaptive thinking. On Fable 5.x, Opus 5.5/5/4.8/4.7,
-/// Sonnet 5.5/5, and Haiku 5.5 budget thinking is removed (400); on Opus/Sonnet 4.6
-/// it is deprecated and adaptive is the recommended form. Keep in sync with the
-/// adaptive-thinking profiles in `everruns_contracts::model_profiles`.
-///
-/// `claude-fable-5-1` is listed on its own: `normalize_anthropic_id` only
-/// strips 8-digit date suffixes, so the `-1` does not collapse to Fable 5.
+/// Claude families that use adaptive thinking (budget thinking is a 400 on 4.7+,
+/// deprecated on 4.6). Keep in sync with the adaptive-thinking profiles in
+/// `everruns_contracts::model_profiles`. Point releases (`-5-2`) are listed on
+/// their own: `normalize_anthropic_id` only strips 8-digit date suffixes.
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
+    "claude-fable-5-2",
+    "claude-mythos-5-2",
     "claude-fable-5-1",
     "claude-fable-5",
     "claude-opus-5-5",
@@ -934,9 +933,10 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
 ];
 
 /// Anthropic families with the 1M context window; gates `[1m]` suffix handling.
-/// Same list as `ADAPTIVE_THINKING_FAMILIES` today but a distinct capability,
-/// kept separate so a future divergence cannot silently mis-gate either path.
+/// Same list as above today, kept separate so a divergence cannot mis-gate either.
 const MILLION_CONTEXT_FAMILIES: &[&str] = &[
+    "claude-fable-5-2",
+    "claude-mythos-5-2",
     "claude-fable-5-1",
     "claude-fable-5",
     "claude-opus-5-5",

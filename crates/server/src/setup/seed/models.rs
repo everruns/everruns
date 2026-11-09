@@ -250,12 +250,32 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic current-gen (Fable 5.1, Opus 5.5, Opus 5, Sonnet 5.5, Sonnet 5, Opus 4.8)
+    // Anthropic current-gen (Fable 5.2, Fable 5.1, Opus 5.5, Opus 5, Sonnet 5.5, Sonnet 5, Opus 4.8)
     SeedModel {
-        // Fable 5.1 is Anthropic's top tier above Opus (successor to Fable 5,
-        // which is intentionally not seeded). Priced well above Opus 5.5, so Opus 5.5
-        // stays the recommended default while Fable 5.1 is available for the
-        // hardest reasoning and long-horizon agentic work.
+        // Fable 5.2 is Anthropic's top tier above Opus (successor to Fable 5.1).
+        // Priced well above Opus 5.5, so Opus 5.5 stays the recommended default
+        // while Fable 5.2 is available for the hardest reasoning and long-horizon
+        // agentic work. Mythos 5.2 (same model, verified orgs only) is not seeded.
+        id: seed_ids::CLAUDE_FABLE_5_2,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-fable-5-2",
+        display_name: "Claude Fable 5.2",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // 1M-context twin of the 200K base above (driver sends the `context-1m`
+        // beta header for `[1m]` ids).
+        id: seed_ids::CLAUDE_FABLE_5_2_1M,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-fable-5-2[1m]",
+        display_name: "Claude Fable 5.2 (1M)",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // Fable 5.1 is the previous Fable release, kept enabled for existing
+        // agents (Fable 5 is intentionally not seeded).
         id: seed_ids::CLAUDE_FABLE_5_1,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-fable-5-1",

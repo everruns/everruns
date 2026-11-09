@@ -1,11 +1,9 @@
 // Service seeding module for server (control plane)
-// Decision: Always seed on startup (no flag needed)
-// Decision: Prepare auth identities before serving; seed catalogs in background
-// Decision: Auth readiness errors stop startup; catalog errors are non-fatal
-// Decision: Use fixed UUIDs for idempotency
+// Decision: Always seed on startup (no flag needed), with fixed UUIDs for idempotency
+// Decision: Prepare auth identities before serving (readiness errors stop startup);
+//           seed catalogs in background (catalog errors are non-fatal)
 // Decision: Upsert seed data on conflict, only when values changed (ON CONFLICT DO UPDATE ... WHERE differs)
 // Decision: Modular design allows easy addition of new seeders
-
 use crate::auth::config::{AdminConfig, AuthConfig, AuthMode};
 use crate::domains::harnesses::record::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 use crate::setup::org_init;
@@ -109,6 +107,7 @@ mod seed_ids {
     pub const GPT_6_1_TERRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022e);
 
     // Anthropic Models (0x300-0x3FF)
+    pub const CLAUDE_FABLE_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000313);
     pub const CLAUDE_FABLE_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030f);
     pub const CLAUDE_OPUS_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000310);
     pub const CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030e);
@@ -123,6 +122,7 @@ mod seed_ids {
     // 0x…0302: retired Claude Sonnet 4.5 (sunset by Anthropic). Do not reuse.
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
+    pub const CLAUDE_FABLE_5_2_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003ad);
     pub const CLAUDE_FABLE_5_1_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a9);
     pub const CLAUDE_OPUS_5_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003aa);
     pub const CLAUDE_OPUS_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a8);

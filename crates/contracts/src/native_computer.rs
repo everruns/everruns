@@ -109,10 +109,12 @@ pub fn openai_has_native_computer(model: &str) -> bool {
 }
 
 /// Models that take Anthropic's `computer_toolset_20260801`, from the computer
-/// use tool reference (2026-10). Claude Opus 5.5, Sonnet 5.5, and Haiku 5.5
-/// accept only the toolset on the Claude API, so for them the function tool is
+/// use tool reference (2026-11). Claude Fable/Mythos 5.2, Opus 5.5, Sonnet 5.5,
+/// and Haiku 5.5 accept only the toolset on the Claude API, so for them the function tool is
 /// the only other option.
-const ANTHROPIC_COMPUTER_TOOLSET_MODELS: [&str; 10] = [
+const ANTHROPIC_COMPUTER_TOOLSET_MODELS: [&str; 12] = [
+    "claude-fable-5-2",
+    "claude-mythos-5-2",
     "claude-fable-5-1",
     "claude-mythos-5-1",
     "claude-fable-5",

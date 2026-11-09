@@ -86,7 +86,7 @@ fn spot_checks_match_requested_defaults() {
         .recommended_models(&DriverId::Anthropic)
         .expect("anthropic");
     assert_eq!(anthropic.coding_model, "claude-opus-5-5");
-    assert_eq!(anthropic.research_model, "claude-fable-5-1");
+    assert_eq!(anthropic.research_model, "claude-fable-5-2");
     let openrouter = registry
         .recommended_models(&DriverId::OpenRouter)
         .expect("openrouter");

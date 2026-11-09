@@ -7,6 +7,8 @@ use super::*;
 fn test_uses_adaptive_thinking_by_family() {
     // Adaptive-only / adaptive-recommended families, with and without
     // dated suffixes.
+    assert!(uses_adaptive_thinking("claude-fable-5-2"));
+    assert!(uses_adaptive_thinking("claude-mythos-5-2"));
     assert!(uses_adaptive_thinking("claude-fable-5-1"));
     assert!(uses_adaptive_thinking("claude-fable-5-1-20260901"));
     assert!(uses_adaptive_thinking("claude-fable-5"));
@@ -32,6 +34,14 @@ fn test_split_million_context() {
     assert_eq!(
         split_million_context("claude-opus-4-8[1m]"),
         ("claude-opus-4-8", true)
+    );
+    assert_eq!(
+        split_million_context("claude-fable-5-2[1m]"),
+        ("claude-fable-5-2", true)
+    );
+    assert_eq!(
+        split_million_context("claude-mythos-5-2[1m]"),
+        ("claude-mythos-5-2", true)
     );
     assert_eq!(
         split_million_context("claude-fable-5-1[1m]"),

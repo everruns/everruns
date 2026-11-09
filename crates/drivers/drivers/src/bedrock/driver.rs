@@ -192,11 +192,11 @@ pub const BEDROCK_RECOMMENDED: everruns_contracts::recommended_models::ProviderR
         recommended_models: &[
             "claude-opus-5-5",
             "claude-sonnet-5-5",
-            "claude-fable-5-1",
+            "claude-fable-5-2",
             "claude-haiku-5-5",
         ],
         coding_model: "claude-opus-5-5",
-        research_model: "claude-fable-5-1",
+        research_model: "claude-fable-5-2",
         chat_model: "claude-sonnet-5-5",
         small_model: "claude-haiku-5-5",
         decision_model: "claude-haiku-5-5",

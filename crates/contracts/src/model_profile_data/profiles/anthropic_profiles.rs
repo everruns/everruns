@@ -2,7 +2,72 @@ use super::*;
 
 pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        // Claude Fable 5.1 (newest — top tier above Opus; successor to Fable 5)
+        // Claude Fable 5.2 (newest — top tier above Opus; successor to Fable 5.1)
+        // Source: platform.claude.com models overview and "What's new in Claude
+        // Fable 5.2" (2026-11-09). Cheaper than Fable 5.1: $8/$40, cache reads
+        // $0.20 (the same 0.025x multiplier). 1M context (bare id is the 200K
+        // profile by repo convention, `[1m]` is the twin), 128K output, Opus 4.7
+        // tokenizer, API default effort `high`. Same request surface as Fable
+        // 5.1: adaptive thinking only (`disabled` and `budget_tokens` return
+        // 400), sampling parameters removed, forced `tool_choice` returns 400
+        // (the driver only sends `auto`). Differences that touch the driver:
+        // the preserved-thinking prefix check applies on every account, and
+        // computer use is only `computer_toolset_20260801` (except Bedrock).
+        "claude-fable-5-2" => Some(ModelProfile {
+            name: "Claude Fable 5.2".into(),
+            family: "claude-fable-5-2".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 8.00,
+                output: 40.00,
+                cache_read: Some(0.20),
+                cache_write: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-fable-5-2[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+            supports_server_compaction: false,
+            model_card_url: None,
+            decisions: None,
+            images: None,
+        }),
+
+        // Claude Mythos 5.2: the same model, specs and price as Fable 5.2, served
+        // only to organizations in Anthropic's verification programs (Cyber,
+        // Life Sciences). Its own family because the driver gates on the id.
+        "claude-mythos-5-2" => {
+            anthropic_profile_data_inner("claude-fable-5-2").map(|p| ModelProfile {
+                name: "Claude Mythos 5.2".into(),
+                family: "claude-mythos-5-2".into(),
+                ..p
+            })
+        }
+
+        // Claude Fable 5.1 (previous Fable release; still served, below Fable 5.2)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Fable 5.1 is not yet in models.dev. Same tier, limits
         // and per-token price as Fable 5 ($10/$50); cache reads drop to $0.25/MTok
@@ -353,6 +418,12 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
 
         // 1M-context twins of the base profiles above. Same pricing and
         // capabilities; only the context limit and display name differ.
+        "claude-fable-5-2[1m]" => {
+            anthropic_profile_data("claude-fable-5-2").map(anthropic_1m_variant)
+        }
+        "claude-mythos-5-2[1m]" => {
+            anthropic_profile_data("claude-mythos-5-2").map(anthropic_1m_variant)
+        }
         "claude-fable-5-1[1m]" => {
             anthropic_profile_data("claude-fable-5-1").map(anthropic_1m_variant)
         }

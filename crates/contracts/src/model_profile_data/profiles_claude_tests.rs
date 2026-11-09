@@ -136,3 +136,48 @@ fn one_hour_cache_writes_are_surcharged_up_to_twice_the_input_rate() {
         None
     );
 }
+
+#[test]
+fn claude_fable_and_mythos_5_2_profiles() {
+    // Source: platform.claude.com "What's new in Claude Fable 5.2" (2026-11-09).
+    for (id, name, family) in [
+        ("claude-fable-5-2", "Claude Fable 5.2", "claude-fable-5-2"),
+        (
+            "claude-mythos-5-2",
+            "Claude Mythos 5.2",
+            "claude-mythos-5-2",
+        ),
+    ] {
+        let p = get_model_profile("anthropic", id).unwrap();
+        assert_eq!(p.name, name);
+        assert_eq!(p.family, family);
+        let cost = p.cost.as_ref().unwrap();
+        assert_eq!((cost.input, cost.output), (8.00, 40.00));
+        assert_eq!(cost.cache_read, Some(0.20));
+        let limits = p.limits.as_ref().unwrap();
+        assert_eq!((limits.context, limits.output), (200_000, 128_000));
+        assert!(p.reasoning && !p.temperature);
+        assert_eq!(
+            p.reasoning_effort.as_ref().unwrap().default,
+            ReasoningEffort::High
+        );
+        assert!(p.tool_search, "{id}");
+        assert!(
+            p.supports_parameter(MID_CONVERSATION_SYSTEM_PARAMETER),
+            "{id}"
+        );
+        assert!(p.supports_parameter(CLEAR_AT_PARAMETER), "{id}");
+        assert!(
+            p.model_card_url
+                .as_deref()
+                .unwrap()
+                .contains("fable-5-2-mythos-5-2")
+        );
+
+        let m1 = get_model_profile("anthropic", &format!("{id}[1m]")).unwrap();
+        assert_eq!(m1.name, format!("{name} (1M)"));
+        assert_eq!(m1.family, family);
+        assert_eq!(m1.limits.unwrap().context, 1_000_000);
+        assert_eq!(m1.cost.unwrap().input, 8.00);
+    }
+}

@@ -33,6 +33,8 @@ use super::{
 
 /// Families whose thinking blocks are bound to the conversation prefix.
 const PRESERVED_THINKING_FAMILIES: &[&str] = &[
+    "claude-fable-5-2",
+    "claude-mythos-5-2",
     "claude-fable-5-1",
     "claude-opus-5-5",
     "claude-sonnet-5-5",

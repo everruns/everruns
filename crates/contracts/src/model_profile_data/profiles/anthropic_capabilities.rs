@@ -17,7 +17,9 @@ pub(super) fn apply(profile: &mut ModelProfile) {
     );
     if !matches!(
         profile.family.as_str(),
-        "claude-fable-5-1"
+        "claude-fable-5-2"
+            | "claude-mythos-5-2"
+            | "claude-fable-5-1"
             | "claude-fable-5"
             | "claude-opus-5-5"
             | "claude-opus-5"
@@ -59,13 +61,14 @@ pub(super) fn apply(profile: &mut ModelProfile) {
 /// per model literal.
 ///
 /// Only families with a corresponding profile in `anthropic_profile_data_inner`
-/// belong here — Anthropic docs also list Mythos 5, but this registry has no
-/// `claude-mythos-5` descriptor, so including it would be a dead branch. Add the
-/// family here when (and if) its profile lands.
+/// belong here — Anthropic docs also list Mythos 5/5.1, but this registry has no
+/// profile for them, so including them would be a dead branch. Mythos 5.2 has one.
 pub(super) fn supports_tool_search(family: &str) -> bool {
     matches!(
         family,
-        "claude-fable-5-1"
+        "claude-fable-5-2"
+            | "claude-mythos-5-2"
+            | "claude-fable-5-1"
             | "claude-fable-5"
             | "claude-opus-5-5"
             | "claude-opus-5"
