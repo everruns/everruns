@@ -12,9 +12,9 @@ use super::*;
 use crate::Capability;
 use crate::host::{InProcessRuntime, InProcessRuntimeBuilder, RuntimeHostAdapter};
 
-struct Budget(&'static str);
+struct Spending(&'static str);
 #[async_trait]
-impl BudgetChecker for Budget {
+impl BudgetChecker for Spending {
     async fn check_budgets(&self, _session_id: &str) -> Result<BudgetToolResponse> {
         Ok(BudgetToolResponse {
             status: self.0.into(),
@@ -106,7 +106,7 @@ async fn each_slot_reaches_the_turn_through_its_adapter_method() {
     extensions.composition.egress = Some(egress.clone());
     extensions.authorities.budget = Some(Arc::new(move |agent: Option<AgentId>| {
         seen.lock().unwrap().push(agent);
-        Some(Arc::new(Budget("exhausted")) as Arc<dyn BudgetChecker>)
+        Some(Arc::new(Spending("exhausted")) as Arc<dyn BudgetChecker>)
     }));
     extensions.hooks.knowledge = Some(Arc::new(Knowledge));
     let runtime = runtime(extensions).await.unwrap();
