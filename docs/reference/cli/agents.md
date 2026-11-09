@@ -160,7 +160,7 @@ everruns agents create [OPTIONS]
 | `--name <NAME>` | Agent name (required if no --file) |
 | `--instructions <SYSTEM_PROMPT>` | System prompt (required if no --file) |
 | `--description <DESCRIPTION>` | Agent description. |
-| `--model <MODEL>` | Default model ID (e.g. mod_xxx) |
+| `--model <MODEL>` | Default model ID (e.g. model_xxx) |
 | `-H`, `--harness <HARNESS>` | Harness ID or name (e.g. harness_xxx or "generic"). Omit to default to the org's generic harness. |
 | `-t`, `--tag <TAG>` | Tag. Repeat for each, or pass one JSON array of strings. Repeatable. |
 
@@ -182,7 +182,7 @@ everruns agents update [OPTIONS] [AGENT_ID]
 | `--name <NAME>` | Agent name. |
 | `--instructions <SYSTEM_PROMPT>` | System prompt. |
 | `--description <DESCRIPTION>` | Agent description. |
-| `--model <MODEL>` | Default model ID (e.g. mod_xxx) |
+| `--model <MODEL>` | Default model ID (e.g. model_xxx) |
 | `-H`, `--harness <HARNESS>` | Harness ID or name (e.g. harness_xxx or "generic") |
 | `-t`, `--tag <TAG>` | Tag. Repeat for each, or pass one JSON array of strings. Repeatable. |
 

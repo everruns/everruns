@@ -31,7 +31,7 @@ pub enum SessionsCommand {
         #[arg(long)]
         locale: Option<String>,
 
-        /// Model ID override (e.g. mod_xxx)
+        /// Model ID override (e.g. model_xxx)
         #[arg(long)]
         model: Option<String>,
 
