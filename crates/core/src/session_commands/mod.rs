@@ -49,6 +49,10 @@ pub enum SessionCommand {
         message: Box<RuntimeMessage>,
         #[serde(default)]
         cancelled: bool,
+        /// Who the input acts for, attached by the trusted host that admits
+        /// it (see `InputContext`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<everruns_contracts::runtime::input_context::InputContext>,
     },
     Configure {
         id: String,
@@ -266,17 +270,25 @@ impl SessionCommand {
         match self {
             Self::Create { binding } => binding.clone(),
             Self::RetryExecution { binding, .. } => binding.clone(),
-            Self::Admit { message, cancelled } => {
+            Self::Admit {
+                message,
+                cancelled,
+                context,
+            } => {
                 let mut value = json!(message);
                 if let Some(object) = value.as_object_mut() {
                     object.remove("created_at");
                     object.remove("updated_at");
                 }
                 causal::normalize_fingerprint(&mut value);
-                if *cancelled {
-                    json!({"message":value,"cancelled":true})
-                } else {
-                    value
+                // A retry with another context is another command; inputs
+                // without one keep the fingerprint they always had.
+                match (cancelled, context) {
+                    (false, None) => value,
+                    (true, None) => json!({"message":value,"cancelled":true}),
+                    (cancelled, Some(context)) => {
+                        json!({"message":value,"cancelled":cancelled,"context":context})
+                    }
                 }
             }
             Self::Configure { patch, .. } => json!(patch),
@@ -455,6 +467,7 @@ pub fn prepare(
         SessionCommand::Admit {
             mut message,
             cancelled,
+            context,
         } => {
             crate::causal::sanitize_input_metadata(&mut message.metadata);
             if message.role != RuntimeMessageRole::User {
@@ -472,11 +485,17 @@ pub fn prepare(
                 message: message.id,
                 cancelled,
             };
-            plan.events.push(EventRequest::new(
+            let mut input = EventRequest::new(
                 view.session,
                 EventContext::empty(),
                 InputMessageData::new(*message),
-            ));
+            );
+            if let Some(context) = context {
+                input = input.with_metadata(json!({
+                    everruns_contracts::runtime::input_context::INPUT_CONTEXT_METADATA_KEY: context,
+                }));
+            }
+            plan.events.push(input);
         }
         SessionCommand::Configure { patch, .. } => {
             patch.validate()?;

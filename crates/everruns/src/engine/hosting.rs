@@ -669,6 +669,37 @@ impl Engine {
         Ok(())
     }
 
+    /// Who an admitted input acts for, as the trusted host that admitted it
+    /// said ([`Session::send_as`]); `None` for an input admitted without
+    /// one, or not admitted. Host code that resolves per-person access for a
+    /// turn (a person's own MCP connections) reads it for the turn's input.
+    /// Stability: experimental.
+    pub async fn input_context(
+        &self,
+        session: SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+    ) -> Result<Option<crate::hosting::InputContext>> {
+        use everruns_core::host::{EventCursor, EventReadLimit, EventReadRequest};
+        let profile = self.profile()?;
+        let Some(receipt) = profile.receipt(session, message).await? else {
+            return Ok(None);
+        };
+        let store = |error: &dyn std::fmt::Display| AgentLoopError::store(error.to_string());
+        let page = profile
+            .reader(session)
+            .event_log
+            .read_page(EventReadRequest::from_cursor(
+                EventCursor::continuation(session, receipt.sequence - 1, receipt.sequence)
+                    .map_err(|e| store(&e))?,
+                EventReadLimit::new(1).map_err(|e| store(&e))?,
+            ))
+            .await
+            .map_err(|e| store(&e))?;
+        Ok(page.events.first().and_then(|event| {
+            crate::hosting::InputContext::from_event_metadata(event.metadata.as_ref())
+        }))
+    }
+
     pub(crate) async fn resume_hosted(&self, session: SessionId) -> Result<Session> {
         let status = self.profile()?.status(session).await?;
         if self.cache_hosted(session, status.binding.clone()).is_err() {

@@ -380,6 +380,7 @@ fn import_admissions(
         let command = SessionCommand::Admit {
             message: Box::new(message),
             cancelled: false,
+            context: None,
         };
         let seen: bool = tx
             .query_row(

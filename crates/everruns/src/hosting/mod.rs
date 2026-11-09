@@ -15,6 +15,7 @@ mod admission;
 mod configuration;
 pub mod cutover;
 mod epoch_cache;
+pub use everruns_contracts::runtime::input_context::InputContext;
 mod live_deltas;
 pub use live_deltas::{LiveAttempt, LiveDelta, LiveDeltaSink};
 mod settled_store;
@@ -540,12 +541,25 @@ pub trait SessionHosting: Send + Sync + 'static {
         message: RuntimeMessage,
         cancelled: bool,
     ) -> Result<AdmissionReceipt> {
+        self.admit_as(session, message, cancelled, None).await
+    }
+    /// [`admit`](Self::admit) with who the input acts for, kept with the
+    /// input (data plane v2 "Execution context"). Only the trusted host that
+    /// verified the author passes one.
+    async fn admit_as(
+        &self,
+        session: SessionId,
+        message: RuntimeMessage,
+        cancelled: bool,
+        context: Option<InputContext>,
+    ) -> Result<AdmissionReceipt> {
         serde_json::from_value(
             self.command(
                 session,
                 spi::session_commands::SessionCommand::Admit {
                     message: Box::new(message),
                     cancelled,
+                    context,
                 },
             )
             .await?,

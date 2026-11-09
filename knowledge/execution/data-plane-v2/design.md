@@ -886,6 +886,13 @@ activation that brings another revision to an unfinished turn suspends
 the session (`turn_revision_mismatch`) instead of finishing it under
 different code.
 
+**Execution context:** a trusted host admits input with
+`Session::send_as(id, input, InputContext { author, participants, grants })`
+(`SessionHosting::admit_as`); the authority keeps the context in the
+`input.message` event's host-written metadata, a retry under another
+context is a different command, and turn host code reads it with
+`Engine::input_context(session, input)`.
+
 **Memory per idle session** (`cargo bench -p everruns --bench
 idle_sessions`, 20 000 sessions with one turn each, handles dropped,
 counted by a counting allocator): Engine kept 6.2 KB per idle session for

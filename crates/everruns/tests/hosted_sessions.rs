@@ -1090,3 +1090,47 @@ async fn a_new_turn_runs_the_build_the_authority_moved_the_session_to() {
         "Hello from v2!"
     );
 }
+
+/// Data plane v2 step 1: the trusted host that admits an input says who it
+/// acts for, and the context stays with the input for the turn's host code.
+#[tokio::test]
+async fn an_input_keeps_who_it_acts_for() {
+    let engine = engine(MemoryHosting::default(), agent());
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build()).await.unwrap();
+    let context = everruns::hosting::InputContext {
+        author: Some("principal_alice".into()),
+        participants: vec!["principal_alice".into(), "principal_bob".into()],
+        grants: vec!["mcp:alice-github".into()],
+    };
+    let message = MessageId::new();
+    let sent = session
+        .send_as(message, "hi", context.clone())
+        .await
+        .unwrap();
+    assert!(sent.wait().await.unwrap().success);
+    assert_eq!(
+        engine.input_context(id, message).await.unwrap(),
+        Some(context)
+    );
+    // An input admitted without one has none; a retry under another
+    // context is a different command.
+    let plain = MessageId::new();
+    assert!(
+        session
+            .send_with_id(plain, "hello")
+            .await
+            .unwrap()
+            .wait()
+            .await
+            .unwrap()
+            .success
+    );
+    assert_eq!(engine.input_context(id, plain).await.unwrap(), None);
+    assert!(
+        session
+            .send_as(message, "hi", everruns::hosting::InputContext::default())
+            .await
+            .is_err()
+    );
+}
