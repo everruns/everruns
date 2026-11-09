@@ -292,6 +292,18 @@ impl EventReader for Ports {
         };
         EventPage::new(events, next, through)
     }
+
+    async fn last_sequence(
+        &self,
+        session_id: SessionId,
+    ) -> std::result::Result<Option<i32>, EventLogError> {
+        self.scope(session_id).map_err(log_error)?;
+        let head = self
+            .hosting
+            .transaction(self.session, |_, state| Ok(state.head))
+            .map_err(log_error)?;
+        Ok((head > 0).then_some(head))
+    }
 }
 #[async_trait]
 impl EventLog for Ports {

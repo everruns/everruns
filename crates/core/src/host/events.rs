@@ -926,6 +926,10 @@ impl EventReader for InMemoryEventLog {
     async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
         self.index.read().await.page(request)
     }
+
+    async fn last_sequence(&self, session_id: SessionId) -> Result<Option<i32>, EventLogError> {
+        Ok(self.index.read().await.last_sequence(session_id))
+    }
 }
 
 fn reject_ephemeral(request: &EventRequest) -> Result<(), EventLogError> {
