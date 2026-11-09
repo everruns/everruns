@@ -15,5 +15,14 @@ instance renames its window to the session title, so the tab says what the
 session is about. A secondary yolop in a split pane renames only its own
 block, so helpers never steal the tab title.
 
+```text
+# Before: generic labels no matter what the session is doing.
+#   Window 0a0d3b71, shell
+
+# After: the tab follows the session title; panes keep their own labels.
+$ rex window ls
+1  Batch independent work  0a0d3b71  1  *
+```
+
 Titles update on every effective title change and are restored on resume.
 Explicit titles keep winning, and without Rex nothing changes.
