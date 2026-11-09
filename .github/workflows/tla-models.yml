@@ -1,0 +1,35 @@
+name: Protocol models (TLA+)
+
+# Data plane v2 protocol models (knowledge/execution/data-plane-v2/). Each model
+# has a safe configuration that must pass and a bug configuration that must
+# keep reproducing the flaw it was written for.
+
+on:
+  pull_request:
+    paths:
+      - 'tests/models/**'
+      - 'scripts/check-tla-models.sh'
+      - '.github/workflows/tla-models.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tests/models/**'
+      - 'scripts/check-tla-models.sh'
+      - '.github/workflows/tla-models.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tla-models-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tlc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # GitHub's Ubuntu runners ship a JDK; TLC needs nothing else.
+      - run: scripts/check-tla-models.sh
