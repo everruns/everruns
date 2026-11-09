@@ -26,6 +26,8 @@ members = [
     # Integrations, one feature module per vendor (everruns-integrations).
     "crates/integrations",
     "crates/integrations-experimental",
+    # Code navigation (LSP, ast-grep, repository maps), shared with Yolop.
+    "crates/coding",
     "crates/docs-snippets",
     # serve: experimental agent framework (Alpha, published as everruns-serve*). See crates/serve/README.md.
     "crates/serve",
@@ -257,6 +259,7 @@ everruns-contracts = { path = "crates/contracts", version = "0.51.0", default-fe
 everruns-ard = { path = "crates/ard", version = "0.51.0" }
 everruns-drivers = { path = "crates/drivers/drivers", version = "0.51.0", default-features = false }
 everruns-integrations = { path = "crates/integrations", version = "0.51.0", default-features = false }
+everruns-coding = { path = "crates/coding", version = "0.51.0", default-features = false }
 everruns-integrations-experimental = { path = "crates/integrations-experimental", version = "0.51.0", default-features = false }
 everruns = { path = "crates/everruns", version = "0.51.0", default-features = false }
 everruns-macros = { path = "crates/macros", version = "0.51.0" }

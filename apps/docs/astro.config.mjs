@@ -555,6 +555,11 @@ export default defineConfig({
                       ],
                     },
                     {
+                      label: "Code",
+                      collapsed: true,
+                      items: [{ label: "Code Navigation", slug: "capabilities/code-navigation" }],
+                    },
+                    {
                       label: "Browser",
                       collapsed: true,
                       items: [{ label: "Browserless", slug: "capabilities/browserless" }],

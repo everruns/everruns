@@ -1,0 +1,82 @@
+# Code navigation for coding agents: language servers, structural search and
+# edit, and repository maps.
+# Decision: these moved here from Yolop so the hosted coding harness and Yolop
+# run one implementation. The crate is its own package, not a feature of
+# everruns-integrations, because it carries the tree-sitter grammars: only hosts
+# that want coding tools pay that build cost. See knowledge/harnesses/coding-harness.md.
+
+[package]
+name = "everruns-coding"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-coding"
+description = "Code navigation capabilities for Everruns agents: LSP, ast-grep, and repository maps"
+readme = "README.md"
+keywords = ["everruns", "agents", "lsp", "ast-grep", "coding"]
+categories = ["development-tools"]
+
+[features]
+default = []
+# Code on the machine this process runs on (a terminal agent such as Yolop):
+# reads the disk directly and starts language servers as child processes.
+local = ["dep:rustix", "tokio/process"]
+
+[dependencies]
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
+anyhow.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+flate2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "sync", "time", "rt", "macros"] }
+tracing.workspace = true
+ast-grep-core = "0.51"
+ast-grep-language = { version = "0.51", default-features = false, features = [
+    "tree-sitter-bash",
+    "tree-sitter-c-sharp",
+    "tree-sitter-css",
+    "tree-sitter-go",
+    "tree-sitter-html",
+    "tree-sitter-javascript",
+    "tree-sitter-python",
+    "tree-sitter-rust",
+    "tree-sitter-typescript",
+] }
+tree-sitter = "0.27"
+tree-sitter-bash = "0.25"
+tree-sitter-c = "0.24"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-css = "0.25"
+tree-sitter-go = "0.25"
+tree-sitter-html = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-kotlin-ng = "1.1"
+tree-sitter-php = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-ruby = "0.23"
+tree-sitter-rust = "0.24"
+tree-sitter-scala = "0.26"
+tree-sitter-sequel = "0.3"
+tree-sitter-typescript = "0.23"
+tree-sitter-zig = "1"
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1", features = ["fs"], optional = true }
+
+[dev-dependencies]
+# The tests drive the tools against a real directory, which is the `local` host.
+everruns-coding = { path = ".", features = ["local"] }
+tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

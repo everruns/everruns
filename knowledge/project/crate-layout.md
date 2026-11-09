@@ -47,6 +47,7 @@ layer, never upward.
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
 | `crates/integrations/` | `everruns-integrations` | maintained integrations, selected by feature | yes |
 | `crates/integrations-experimental/` | `everruns-integrations-experimental` | Sprites, selected by feature | yes |
+| `crates/coding/` | `everruns-coding` | code navigation (LSP, ast-grep, repository maps) over local code or a session's sandbox; separate because of the tree-sitter grammars, see [Code Navigation](../harnesses/code-navigation.md) | yes |
 | | `everruns-durable` | durable workflow primitives and their own Postgres store | yes |
 | Foundation | `everruns-contracts` | provider and capability SPIs, model profiles, typed ids, runtime view types, connector, store, sandbox, and vector-store traits; the runtime SPI (capability, tool, tool context, session, message, event) behind its `runtime` feature | yes |
 

@@ -2,6 +2,7 @@
 
 * [Harness Types Specification](harness-types.md) - Built-in harness types.
 * [Coding Harness](coding-harness.md) - Provider-neutral coding behavior selected independently from the Agent's Sandbox Template binding.
+* [Code Navigation](code-navigation.md) - Language servers, ast-grep and repository maps on code inside a session's sandbox, shared with Yolop through `everruns-coding`.
 * [Sandbox Platform Architecture](sandbox-abstraction.md) - Target model for Harness bindings, reusable Sandbox Templates, recoverable primary Sandboxes, Workspaces, and sandbox fleets.
 * [Sandbox Templates and Execution Targets](sandbox-templates.md) - Current Sandbox Template API and target/containment model.
 * [Generic Sandbox Snapshot Builder](sandbox-builder.md) - Script-driven provider builds extending existing Sandbox Templates, bootstrap, metadata, and access contracts.
