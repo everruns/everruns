@@ -145,6 +145,7 @@ async fn hydrated_revisions_are_bounded() {
     assert_eq!(session_a.send_and_wait("Hi").await.unwrap().response, "one");
 }
 
+#[cfg(feature = "filesystem")]
 fn with_file(revision: &str) -> AgentDefinition {
     AgentDefinition {
         build: AgentBuild::new("helper", revision),
@@ -159,6 +160,7 @@ fn with_file(revision: &str) -> AgentDefinition {
 /// An edit that gives an agent its first file, and one that takes its files
 /// away, apply to the agent's sessions like any other edit, and a session
 /// keeps one workspace through every revision and cache eviction.
+#[cfg(feature = "filesystem")]
 #[tokio::test]
 async fn a_session_keeps_its_workspace_when_its_agent_is_edited() {
     let engine = Engine::builder()

@@ -725,9 +725,9 @@ pub async fn retained_build_recovery(profile: impl SessionHosting + Clone) {
 pub async fn agent_definitions(profile: impl SessionHosting + Clone) {
     use super::{AgentDefinition, Hydrated};
     let agent = format!("defined-{}", uuid::Uuid::new_v4().simple());
-    let revision = |revision: &str, reply: &str, files: serde_json::Value| AgentDefinition {
+    let revision = |revision: &str, reply: &str| AgentDefinition {
         build: AgentBuild::new(agent.clone(), revision),
-        package: json!({ "name": agent, "instructions": reply, "files": files }),
+        package: json!({ "name": agent, "instructions": reply }),
     };
     // Offline hydration: the instructions become the simulated reply.
     fn replying(definition: &AgentDefinition) -> super::spi::error::Result<Hydrated> {
@@ -753,7 +753,7 @@ pub async fn agent_definitions(profile: impl SessionHosting + Clone) {
     let definitions = profile
         .definitions()
         .expect("the authority keeps agent definitions");
-    let r1 = revision("r1", "one", json!([]));
+    let r1 = revision("r1", "one");
     let id = SessionId::new();
     {
         let first = engine();
@@ -771,13 +771,9 @@ pub async fn agent_definitions(profile: impl SessionHosting + Clone) {
         "one"
     );
 
-    // An edit is a new revision, here one that gives the agent its first
-    // file. The session runs it from its next turn, otherwise unchanged.
-    let r2 = revision(
-        "r2",
-        "two",
-        json!([{ "path": "notes.md", "content": "Remember." }]),
-    );
+    // An edit is a new revision. The session runs it from its next turn,
+    // otherwise unchanged.
+    let r2 = revision("r2", "two");
     other.publish_definition(&r2).await.unwrap();
     assert_eq!(session.send_and_wait("Now").await.unwrap().response, "two");
     let moved = profile.status(id).await.unwrap();
@@ -795,7 +791,7 @@ pub async fn agent_definitions(profile: impl SessionHosting + Clone) {
     definitions.publish_definition(&r2).await.unwrap();
     assert!(
         definitions
-            .publish_definition(&revision("r2", "changed", json!([])))
+            .publish_definition(&revision("r2", "changed"))
             .await
             .is_err()
     );

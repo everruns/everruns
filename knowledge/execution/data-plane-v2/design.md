@@ -1005,9 +1005,9 @@ numbers, not before.
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
-the following in agent definitions. All are fixed and covered by the
-conformance scenario `hosting::conformance::agent_definitions`, which runs
-against the memory and SQLite authorities.
+the following. All are fixed and tested; what an authority must honor is
+in the conformance scenario `hosting::conformance::agent_definitions`,
+which runs against the memory and SQLite authorities.
 
 - **A session's binding does not depend on its revision.** A session moves
   between revisions while its Environment, metadata and bound Harness are
