@@ -13,10 +13,6 @@
   that kept every event for an hour is gone, and an SSE stream that sees a
   durable event past the next sequence reads the gap from PostgreSQL
   ([architecture](foundations/architecture.md#event-delivery)).
-- A server on NATS marks its database connections so the `task_available`
-  triggers send no NOTIFY: nobody listens under NATS, and each notifying
-  commit queued on one database-wide lock
-  ([sticky sessions](execution/sticky-sessions.md)).
 
 ## 2026-11-07
 
