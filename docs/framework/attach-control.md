@@ -65,7 +65,7 @@ use everruns::control::{ControlClient, default_dir};
 let client = ControlClient::new(default_dir("myagent"));
 
 for session in client.list().await? {
-    println!("{} {} {:?}", session.label, session.id, session.active_turn);
+    println!("{} {} {:?}", session.label, session.id, session.active_turns);
 }
 
 // Start a turn (or steer the running one) and wait for its reply.
@@ -142,23 +142,29 @@ server.rotate_token()?;
 
 ## Cancel semantics
 
-`cancel` targets the session's active tracked turn, the most recent one sent
-through the registry that has not finished, and returns its identity (the turn
-id, or the accepting message id while the turn is still being assigned). It
-behaves exactly like `TurnHandle::cancel`:
+`cancel` targets every unfinished turn the registry tracks for the session:
+the running turn and any message admitted behind it that has not started. It
+returns their identities, the same values `list` reports in `active_turns`.
+An identity is fixed when the message is sent: the turn id when `send` returned
+one, otherwise the accepted message's id (the default Engine admits durably
+first, so expect message ids there). It does not change once the turn is
+assigned. Each target behaves like `TurnHandle::cancel`:
 
 - The turn stops at its next await point; running tool work is dropped and the
   session records `turn.cancelled`.
-- Messages that steered into that turn end with it.
-- The runtime records a short user message noting the cancellation, so the
-  next turn knows the work was stopped. Attached streams show it like any
-  other user message.
+- Messages that steered into that turn end with it, and messages still queued
+  behind it are dropped rather than run afterwards.
+- The runtime records a short user message noting the cancellation
+  ("User requested to cancel the work."), so the next turn knows the work was
+  stopped. Attached streams show it like any other user message.
 - The session stays usable; the next `send` starts a new turn.
-- A session with no running tracked turn answers `no_active_turn`.
+- A session with nothing tracked still running answers `no_active_turn`,
+  including when the turn finished while the cancel was on its way.
 
 Disconnecting never cancels anything. Dropping an attach stream, a client that
 exits while waiting on `send_and_wait`, a revocation or a server shutdown all
-leave the session's turns running.
+leave the session's turns running. A client that leaves frees its connection
+slot at once, so abandoned waits cannot starve `cancel`.
 
 ## Protocol
 
@@ -169,5 +175,9 @@ JSON lines: `{"token": "...", "command": {"op": "list"}}`, with `send`,
 `unauthorized`, `bad_request`, `not_found`, `ambiguous`, `no_active_turn`,
 `session_closed`, `busy` and `failed`. Requests are capped at 256 KiB and must
 arrive within 10 seconds; connections beyond `max_connections` get `busy`. The
+client caps response lines at the same size and expects the first line within
+30 seconds; later lines (attach events, a waited-for turn) have no deadline.
+Only one server may use a directory at a time: it holds an exclusive lock on
+`<dir>/lock` while it runs. The
 serde types in `everruns::control` are the wire format, so a client in another
 language can speak it.

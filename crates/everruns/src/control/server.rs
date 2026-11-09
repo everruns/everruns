@@ -14,8 +14,8 @@ use tokio::task::JoinHandle;
 
 use super::registry::{ControlError, ControlRegistry};
 use super::wire::{ControlCommand, ControlRequest, ControlResponse, ControlSent, Projector};
-use super::{SOCKET_FILE, TOKEN_FILE};
-use crate::{EventStreamError, Session};
+use super::{LOCK_FILE, SOCKET_FILE, TOKEN_FILE};
+use crate::{EventStream, EventStreamError};
 
 /// Largest request line accepted, including the message text.
 pub const MAX_REQUEST_BYTES: u64 = 256 * 1024;
@@ -85,6 +85,10 @@ impl ControlServerBuilder {
     pub fn start(self, registry: ControlRegistry) -> io::Result<ControlServer> {
         let uid = effective_uid();
         prepare_private_dir(&self.dir, uid)?;
+        // Held for the server's lifetime and taken before the stale-socket
+        // check, so two hosts started on one directory cannot delete each
+        // other's socket and token.
+        let lock = lock_dir(&self.dir)?;
         let info = AttachInfo::in_dir(&self.dir);
         remove_stale_socket(&info.socket)?;
         let listener = UnixListener::bind(&info.socket)?;
@@ -115,7 +119,11 @@ impl ControlServerBuilder {
                 }
             }));
         }
-        Ok(ControlServer { shared, tasks })
+        Ok(ControlServer {
+            shared,
+            tasks,
+            _lock: lock,
+        })
     }
 }
 
@@ -139,6 +147,9 @@ impl ControlServerBuilder {
 pub struct ControlServer {
     shared: Arc<Shared>,
     tasks: Vec<JoinHandle<()>>,
+    /// Exclusive `flock` on `<dir>/lock`, released after `Drop` has removed
+    /// the socket and token.
+    _lock: fs::File,
 }
 
 impl ControlServer {
@@ -381,8 +392,15 @@ where
             if !wait {
                 return Ok(());
             }
-            // Disconnecting from a waiting send never cancels the turn.
+            // Disconnecting from a waiting send never cancels the turn, and
+            // frees this connection's slot at once rather than when the turn
+            // ends, so an abandoned wait cannot starve `cancel`.
+            let mut scratch = [0u8; 64];
             tokio::select! {
+                read = reader.read(&mut scratch) => match read {
+                    Ok(0) | Err(_) => Ok(()),
+                    Ok(_) => write_line(write, &error("bad_request", "unexpected bytes after the request")).await,
+                },
                 result = sent.wait() => match result {
                     Ok(turn) => write_line(write, &ControlResponse::Turn(turn.into())).await,
                     Err(failure) => write_line(write, &error("failed", &failure.to_string())).await,
@@ -393,7 +411,7 @@ where
             }
         }
         ControlCommand::Cancel { session } => match registry.cancel(&session).await {
-            Ok(turn) => write_line(write, &ControlResponse::Cancelled { turn }).await,
+            Ok(turns) => write_line(write, &ControlResponse::Cancelled { turns }).await,
             Err(failure) => write_line(write, &control_error(&failure)).await,
         },
         ControlCommand::Attach { session, after } => {
@@ -401,14 +419,28 @@ where
                 Ok(session) => session,
                 Err(failure) => return write_line(write, &control_error(&failure)).await,
             };
-            attach(session, after, &mut reader, write, closing).await
+            let events = match after {
+                None => session.events(),
+                Some(after) => match session.events_from(after).await {
+                    Ok(events) => events,
+                    Err(failure) => {
+                        return write_line(write, &error("failed", &failure.to_string())).await;
+                    }
+                },
+            };
+            let id = session.id();
+            // Do not keep the session alive for as long as someone watches:
+            // once the host unregisters and drops it, the stream ends with
+            // `session_closed`.
+            drop(session);
+            attach(id, events, &mut reader, write, closing).await
         }
     }
 }
 
 async fn attach<R, W>(
-    session: Session,
-    after: Option<i32>,
+    session: String,
+    mut events: EventStream,
     reader: &mut R,
     write: &mut W,
     mut closing: watch::Receiver<Closing>,
@@ -417,20 +449,7 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mut events = match after {
-        None => session.events(),
-        Some(after) => match session.events_from(after).await {
-            Ok(events) => events,
-            Err(failure) => return write_line(write, &error("failed", &failure.to_string())).await,
-        },
-    };
-    write_line(
-        write,
-        &ControlResponse::Attached {
-            session: session.id(),
-        },
-    )
-    .await?;
+    write_line(write, &ControlResponse::Attached { session }).await?;
     let mut projector = Projector::default();
     let mut scratch = [0u8; 64];
     loop {
@@ -593,6 +612,32 @@ fn remove_stale_socket(socket: &Path) -> io::Result<()> {
         ));
     }
     fs::remove_file(socket)
+}
+
+/// Take an exclusive, non-blocking `flock` on `<dir>/lock`.
+fn lock_dir(dir: &Path) -> io::Result<fs::File> {
+    use std::os::fd::AsRawFd as _;
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(dir.join(LOCK_FILE))?;
+    // SAFETY: the fd is valid for the lifetime of `file`; flock has no other
+    // preconditions.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        let error = io::Error::last_os_error();
+        if error.kind() == io::ErrorKind::WouldBlock {
+            return Err(io::Error::new(
+                io::ErrorKind::AddrInUse,
+                format!("another control server holds {}", dir.display()),
+            ));
+        }
+        return Err(error);
+    }
+    Ok(file)
 }
 
 /// Write via a temporary file and rename, so a reader never sees a partial

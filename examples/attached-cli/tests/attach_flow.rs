@@ -139,3 +139,30 @@ async fn a_second_client_cancels_the_hosts_own_turn() {
     assert!(host_out.contains("[Cancelled"), "{host_out}");
     assert!(!host_out.contains("too late"), "{host_out}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_revoked_host_is_reported_as_revoked_not_missing() {
+    use everruns::control::{ControlRegistry, ControlServer};
+
+    let root = tempfile::tempdir().unwrap();
+    let dir = control_dir(&root);
+    let registry = ControlRegistry::new();
+    registry.register("main", &session(Model::simulated("ok")));
+    let server = ControlServer::start(&dir, registry).unwrap();
+    server.revoke();
+
+    let mut out = Vec::new();
+    let error = run_attached(&dir, AttachedCommand::List, &mut out)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("revoked"), "{error}");
+    assert!(!error.contains("no host"), "{error}");
+
+    drop(server);
+    let error = run_attached(&dir, AttachedCommand::List, &mut out)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("no host is serving here"), "{error}");
+}

@@ -11,12 +11,22 @@ use serde_json::Value;
 use crate::{SendDisposition, SessionEvent, SessionEventKind, Turn};
 
 /// The single request line a connection opens with.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ControlRequest {
     /// The bearer token from the server's token file.
     pub token: String,
     /// What to do.
     pub command: ControlCommand,
+}
+
+// THREAT[TM-AUTH-040]: never print the bearer token through `{:?}`.
+impl std::fmt::Debug for ControlRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ControlRequest")
+            .field("token", &"<redacted>")
+            .field("command", &self.command)
+            .finish()
+    }
 }
 
 /// One control operation.
@@ -36,7 +46,7 @@ pub enum ControlCommand {
         #[serde(default)]
         wait: bool,
     },
-    /// Cancel the session's active turn.
+    /// Cancel every unfinished tracked turn of the session.
     Cancel {
         /// Session id, or a unique label.
         session: String,
@@ -66,10 +76,10 @@ pub enum ControlResponse {
     Sent(ControlSent),
     /// The accepting turn ended (only after `send` with `wait`).
     Turn(ControlTurn),
-    /// The cancellation request reached the turn.
+    /// The cancellation request reached the session's unfinished turns.
     Cancelled {
-        /// The cancelled turn.
-        turn: String,
+        /// Identities of the cancelled turns, as `list` reports them.
+        turns: Vec<String>,
     },
     /// The attach stream is open; events follow.
     Attached {
@@ -100,9 +110,13 @@ pub struct ControlSessionInfo {
     pub id: String,
     /// The label the host registered it under.
     pub label: String,
-    /// The tracked turn still running, if any: its turn id once assigned,
-    /// otherwise the id of the message that is starting it.
-    pub active_turn: Option<String>,
+    /// Identities of the tracked turns that have not finished, oldest first.
+    /// An identity is fixed when the message is sent: the turn id when
+    /// [`Session::send`](crate::Session::send) already returned one, and the
+    /// accepted message's id otherwise (for example on the default Engine's
+    /// durable admission). It does not change once the turn is assigned.
+    /// Empty when the session is idle.
+    pub active_turns: Vec<String>,
 }
 
 /// Receipt for an accepted message.
@@ -362,6 +376,17 @@ fn message_text(canonical: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_output_never_shows_the_token() {
+        let request = ControlRequest {
+            token: "secret-token-value".to_owned(),
+            command: ControlCommand::List,
+        };
+        let printed = format!("{request:?}");
+        assert!(!printed.contains("secret-token-value"), "{printed}");
+        assert!(printed.contains("redacted"), "{printed}");
+    }
 
     #[test]
     fn unknown_event_kinds_from_a_newer_server_read_as_other() {

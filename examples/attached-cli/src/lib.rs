@@ -13,7 +13,9 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use everruns::Session;
-use everruns::control::{ControlClient, ControlClientError, ControlRegistry, ControlServer};
+use everruns::control::{
+    AttachInfo, ControlClient, ControlClientError, ControlRegistry, ControlServer,
+};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
 /// What the attached process can do.
@@ -58,10 +60,11 @@ pub async fn run_attached(
     let client = ControlClient::new(dir);
     match command {
         AttachedCommand::List => {
-            for session in client.list().await.map_err(explain)? {
-                let state = match &session.active_turn {
-                    Some(turn) => format!("running {turn}"),
-                    None => "idle".to_owned(),
+            for session in client.list().await.map_err(|e| explain(dir, e))? {
+                let state = if session.active_turns.is_empty() {
+                    "idle".to_owned()
+                } else {
+                    format!("running {}", session.active_turns.join(" "))
                 };
                 writeln!(out, "{}\t{}\t{state}", session.label, session.id)?;
             }
@@ -73,13 +76,16 @@ pub async fn run_attached(
         } => {
             let text = text.join(" ");
             if no_wait {
-                let sent = client.send(&session, text).await.map_err(explain)?;
+                let sent = client
+                    .send(&session, text)
+                    .await
+                    .map_err(|e| explain(dir, e))?;
                 writeln!(out, "{} {}", sent.disposition, sent.message_id)?;
             } else {
                 let (_, turn) = client
                     .send_and_wait(&session, text)
                     .await
-                    .map_err(explain)?;
+                    .map_err(|e| explain(dir, e))?;
                 match turn.error {
                     Some(error) if !turn.success => {
                         writeln!(out, "[{}: {error}]", turn.stop_reason)?
@@ -89,11 +95,14 @@ pub async fn run_attached(
             }
         }
         AttachedCommand::Cancel { session } => {
-            let turn = client.cancel(&session).await.map_err(explain)?;
-            writeln!(out, "cancelled {turn}")?;
+            let turns = client.cancel(&session).await.map_err(|e| explain(dir, e))?;
+            writeln!(out, "cancelled {}", turns.join(" "))?;
         }
         AttachedCommand::Attach { session, after } => {
-            let mut stream = client.attach(&session, after).await.map_err(explain)?;
+            let mut stream = client
+                .attach(&session, after)
+                .await
+                .map_err(|e| explain(dir, e))?;
             loop {
                 match stream.next().await {
                     Ok(Some(event)) => {
@@ -107,7 +116,7 @@ pub async fn run_attached(
                         writeln!(out, "[detached: {reason}]")?;
                         break;
                     }
-                    Err(error) => return Err(explain(error)),
+                    Err(error) => return Err(explain(dir, error)),
                 }
             }
         }
@@ -115,11 +124,27 @@ pub async fn run_attached(
     Ok(())
 }
 
-fn explain(error: ControlClientError) -> anyhow::Error {
+fn explain(dir: &Path, error: ControlClientError) -> anyhow::Error {
+    let info = AttachInfo::in_dir(dir);
+    let revoked = || {
+        anyhow::anyhow!(
+            "the host revoked control access; it must issue a new token before anyone can attach"
+        )
+    };
     match &error {
+        // A live socket without a token file is a revoked server, not a
+        // missing one.
+        ControlClientError::Io(io)
+            if io.kind() == std::io::ErrorKind::NotFound
+                && info.socket.exists()
+                && !info.token_file.exists() =>
+        {
+            revoked()
+        }
         ControlClientError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
             anyhow::anyhow!("no host is serving here (start one with `attached-cli host`): {io}")
         }
+        ControlClientError::Rejected { code, .. } if code == "unauthorized" => revoked(),
         _ => anyhow::Error::new(error),
     }
 }

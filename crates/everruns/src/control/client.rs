@@ -2,16 +2,22 @@
 
 use std::io;
 use std::path::PathBuf;
+use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, BufReader, Lines};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 
-use super::server::{AttachInfo, check_private_dir, check_private_file, effective_uid, write_line};
+use super::server::{
+    AttachInfo, MAX_REQUEST_BYTES, check_private_dir, check_private_file, effective_uid, write_line,
+};
 use super::wire::{
     ControlCommand, ControlEvent, ControlRequest, ControlResponse, ControlSent, ControlSessionInfo,
     ControlTurn,
 };
+
+/// How long the server may take to send its first line.
+const FIRST_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Why a [`ControlClient`] call failed.
 #[derive(Debug)]
@@ -112,13 +118,14 @@ impl ControlClient {
         }
     }
 
-    /// Cancel the session's active turn, returning its id.
-    pub async fn cancel(&self, session: &str) -> Result<String, ControlClientError> {
+    /// Cancel every unfinished tracked turn of the session, returning their
+    /// identities.
+    pub async fn cancel(&self, session: &str) -> Result<Vec<String>, ControlClientError> {
         let command = ControlCommand::Cancel {
             session: session.to_owned(),
         };
         match self.request(command).await?.0 {
-            ControlResponse::Cancelled { turn } => Ok(turn),
+            ControlResponse::Cancelled { turns } => Ok(turns),
             other => Err(unexpected(other)),
         }
     }
@@ -182,12 +189,20 @@ impl ControlClient {
         let (read, mut write) = stream.into_split();
         let written = write_line(&mut write, &ControlRequest { token, command }).await;
         let mut lines = Connection {
-            lines: BufReader::new(read).lines(),
+            reader: BufReader::new(read),
             _write: write,
         };
         // A server that refuses up front (`busy`, a foreign peer) may close
         // before the request is written; its answer is still readable.
-        let first = match (written, next_response(&mut lines).await) {
+        // The first answer is immediate for every command (a waiting send
+        // answers `sent` before it waits); later lines have no deadline, so
+        // idle attach streams and long turns are fine.
+        let first = tokio::time::timeout(FIRST_RESPONSE_TIMEOUT, next_response(&mut lines))
+            .await
+            .map_err(|_| {
+                io::Error::new(io::ErrorKind::TimedOut, "control server did not answer")
+            })?;
+        let first = match (written, first) {
             (_, Ok(Some(ControlResponse::Error { code, message }))) => {
                 return Err(ControlClientError::Rejected { code, message });
             }
@@ -207,7 +222,7 @@ impl ControlClient {
 /// An open connection. The write half stays open so the server does not read
 /// EOF and treat the client as gone.
 struct Connection {
-    lines: Lines<BufReader<OwnedReadHalf>>,
+    reader: BufReader<OwnedReadHalf>,
     _write: OwnedWriteHalf,
 }
 
@@ -253,10 +268,26 @@ impl Attachment {
 async fn next_response(
     connection: &mut Connection,
 ) -> Result<Option<ControlResponse>, ControlClientError> {
-    let Some(line) = connection.lines.next_line().await? else {
+    // THREAT[TM-DOS-056]: a response line is bounded like a request line, so
+    // a misbehaving server cannot grow this buffer without limit.
+    let mut line = Vec::new();
+    let read = (&mut connection.reader)
+        .take(MAX_REQUEST_BYTES + 1)
+        .read_until(b'\n', &mut line)
+        .await?;
+    if read == 0 {
         return Ok(None);
-    };
-    serde_json::from_str(&line)
+    }
+    if line.last() != Some(&b'\n') {
+        return Err(ControlClientError::Protocol(
+            if read as u64 > MAX_REQUEST_BYTES {
+                "response line exceeds the size limit".to_owned()
+            } else {
+                "truncated response line".to_owned()
+            },
+        ));
+    }
+    serde_json::from_slice(&line)
         .map(Some)
         .map_err(|error| ControlClientError::Protocol(error.to_string()))
 }

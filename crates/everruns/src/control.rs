@@ -58,6 +58,7 @@ pub use wire::{
 
 const SOCKET_FILE: &str = "control.sock";
 const TOKEN_FILE: &str = "token";
+const LOCK_FILE: &str = "lock";
 
 /// A per-user control directory for `app`.
 ///

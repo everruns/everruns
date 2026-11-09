@@ -34,7 +34,8 @@ boundary or authorizes anyone.
 - **Local Unix socket, not HTTP.** The use case is the same user on the same
   machine. Remote or multi-user access already has authenticated surfaces
   (AG-UI handler, serve's `/v1` API); a local plane must not become a third.
-  Unix only; the feature does not compile elsewhere.
+  Unix only: on other targets `everruns::control` is absent even with the
+  `control` feature on.
 - **Two gates, both required.** Kernel peer credentials pin the OS user; a
   bearer token in a private file adds rotation and revocation, so a token that
   leaked into a log stops working without restarting the host. Both ends check
@@ -42,9 +43,14 @@ boundary or authorizes anyone.
   could otherwise hand its token and input to a socket another user planted
   (TM-AUTH-040).
 - **Registry, not engine-wide exposure.** Only sessions the host registers are
-  reachable. The registry also holds each session's active `TurnHandle`,
-  because the handle from `send` is the only cancel capability the facade
-  exposes; host-originated sends must go through the registry or `track`.
+  reachable. The registry also holds every unfinished `TurnHandle` of each
+  session, because the handle from `send` is the only cancel capability the
+  facade exposes; host-originated sends must go through the registry or
+  `track`. Cancel targets all of them, so concurrent sends cannot hide the
+  running turn and queued work never runs after a cancel.
+- **One server per directory.** An exclusive `flock` on `<dir>/lock`, taken
+  before the stale-socket check and held for the server's lifetime, stops a
+  second host from deleting the first one's socket and token.
 - **Disconnect never cancels.** Attach streams, waiting sends, revocation and
   shutdown only end the control connection. Cancel is an explicit command
   with `TurnHandle::cancel` semantics.

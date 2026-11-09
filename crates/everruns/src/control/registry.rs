@@ -1,6 +1,7 @@
 //! The sessions a host exposes to attached processes, and the turns they run.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::{CancelError, InputMessage, RunError, SentMessage, Session, TurnHandle};
@@ -11,8 +12,8 @@ use super::wire::ControlSessionInfo;
 ///
 /// Only registered sessions are reachable from an attached process; a session
 /// the host never registers cannot be listed, driven or cancelled. The
-/// registry also remembers the active turn of each session so a second process
-/// can cancel it: [`Session::send`] is the only way to obtain a
+/// registry also remembers every unfinished turn of each session so a second
+/// process can cancel them: [`Session::send`] is the only way to obtain a
 /// [`TurnHandle`], so every send the host itself makes on a registered session
 /// should go through [`send`](Self::send) (or be reported with
 /// [`track`](Self::track)), otherwise an attached `cancel` cannot see it.
@@ -21,13 +22,40 @@ use super::wire::ControlSessionInfo;
 #[derive(Clone, Default)]
 pub struct ControlRegistry {
     inner: Arc<Mutex<BTreeMap<String, Entry>>>,
+    next: Arc<AtomicU64>,
 }
 
 struct Entry {
     session: Session,
     label: String,
-    /// The most recently tracked turn that has not yet finished.
-    active: Option<TurnHandle>,
+    /// Every tracked turn that has not finished, in tracking order. Each
+    /// waiter removes only its own entry, so concurrent sends that track in
+    /// any order never lose a running turn.
+    active: Vec<Tracked>,
+}
+
+struct Tracked {
+    key: u64,
+    turn: TurnHandle,
+}
+
+impl Entry {
+    /// Distinct identities of the unfinished tracked turns. Messages steered
+    /// into one running turn share its identity.
+    fn identities(&self) -> Vec<String> {
+        let mut identities: Vec<String> = Vec::new();
+        for tracked in &self.active {
+            let identity = tracked.turn.identity();
+            if !identities.contains(&identity) {
+                identities.push(identity);
+            }
+        }
+        identities
+    }
+
+    fn is_tracked(&self, key: u64) -> bool {
+        self.active.iter().any(|tracked| tracked.key == key)
+    }
 }
 
 /// Why a [`ControlRegistry`] operation did not run.
@@ -69,7 +97,7 @@ impl ControlRegistry {
     /// Expose `session` under `label`, returning its id.
     ///
     /// Registering the same session again replaces its label and keeps its
-    /// tracked turn.
+    /// tracked turns.
     pub fn register(&self, label: impl Into<String>, session: &Session) -> String {
         let id = session.id();
         let label = label.into();
@@ -82,7 +110,7 @@ impl ControlRegistry {
                     Entry {
                         session: session.clone(),
                         label,
-                        active: None,
+                        active: Vec::new(),
                     },
                 );
             }
@@ -90,8 +118,9 @@ impl ControlRegistry {
         id
     }
 
-    /// Stop exposing a session. Attached streams already open keep running
-    /// until they disconnect; new requests no longer find it.
+    /// Stop exposing a session. New requests no longer find it; attach
+    /// streams already open end with `session_closed` once the host drops its
+    /// last handle to the session.
     pub fn unregister(&self, key: &str) -> Option<Session> {
         let mut sessions = self.lock();
         let id = resolve(&sessions, key).ok()?;
@@ -105,7 +134,7 @@ impl ControlRegistry {
             .map(|(id, entry)| ControlSessionInfo {
                 id: id.clone(),
                 label: entry.label.clone(),
-                active_turn: entry.active.as_ref().map(TurnHandle::identity),
+                active_turns: entry.identities(),
             })
             .collect()
     }
@@ -135,56 +164,99 @@ impl ControlRegistry {
 
     /// Record a turn the host started on a registered session itself.
     ///
-    /// The turn stays the session's active turn until it finishes or a later
-    /// tracked send replaces it. Unknown session ids are ignored.
+    /// The turn stays tracked until it finishes. Unknown session ids are
+    /// ignored.
     pub fn track(&self, session_id: &str, sent: &SentMessage) {
         let turn = sent.turn();
-        let identity = turn.identity();
+        let key = self.next.fetch_add(1, Ordering::Relaxed);
         {
             let mut sessions = self.lock();
             let Some(entry) = sessions.get_mut(session_id) else {
                 return;
             };
-            entry.active = Some(turn.clone());
+            entry.active.push(Tracked {
+                key,
+                turn: turn.clone(),
+            });
         }
-        // Clear the slot once this turn ends, unless a newer turn took it.
         let registry = self.clone();
         let session_id = session_id.to_owned();
         tokio::spawn(async move {
             let _ = turn.wait().await;
-            let mut sessions = registry.lock();
-            if let Some(entry) = sessions.get_mut(&session_id)
-                && entry
-                    .active
-                    .as_ref()
-                    .is_some_and(|active| active.identity() == identity)
-            {
-                entry.active = None;
+            if let Some(entry) = registry.lock().get_mut(&session_id) {
+                entry.active.retain(|tracked| tracked.key != key);
             }
         });
     }
 
-    /// Cooperatively cancel the session's active turn, returning its
-    /// [identity](TurnHandle::identity), as [`list`](Self::list) reports it.
+    /// Cooperatively cancel every unfinished tracked turn of the session,
+    /// returning the [identities](TurnHandle::identity) that were cancelled,
+    /// as [`list`](Self::list) reports them.
     ///
-    /// Semantics are [`TurnHandle::cancel`]'s: the running turn stops at its
+    /// That covers the running turn and any message admitted but not yet
+    /// started, so a cancel never leaves queued work to run afterwards.
+    /// Semantics per turn are [`TurnHandle::cancel`]'s: the turn stops at its
     /// next await point, its tool work is torn down, and the session emits
-    /// `turn.cancelled`. Messages that steered into that turn end with it. The
-    /// session itself stays usable. A turn that already finished reports
-    /// [`ControlError::NoActiveTurn`].
-    pub async fn cancel(&self, key: &str) -> Result<String, ControlError> {
-        let turn = {
+    /// `turn.cancelled`. Messages that steered into a turn end with it. The
+    /// session itself stays usable. When nothing tracked is still running,
+    /// including a turn that finished while the cancel was in flight, this
+    /// reports [`ControlError::NoActiveTurn`].
+    pub async fn cancel(&self, key: &str) -> Result<Vec<String>, ControlError> {
+        let (id, targets) = {
             let sessions = self.lock();
             let id = resolve(&sessions, key)?;
-            sessions[&id]
+            let targets: Vec<(u64, TurnHandle)> = sessions[&id]
                 .active
-                .clone()
-                .ok_or(ControlError::NoActiveTurn)?
+                .iter()
+                .map(|tracked| (tracked.key, tracked.turn.clone()))
+                .collect();
+            (id, targets)
         };
-        match turn.cancel().await {
-            Ok(()) => Ok(turn.identity()),
-            Err(CancelError::TurnFinished) => Err(ControlError::NoActiveTurn),
-            Err(_) => Err(ControlError::SessionClosed),
+        let tracked = |key: u64| {
+            self.lock()
+                .get(&id)
+                .is_some_and(|entry| entry.is_tracked(key))
+        };
+        let mut cancelled: Vec<String> = Vec::new();
+        let mut settled: Vec<u64> = Vec::new();
+        let mut closed = false;
+        for (key, turn) in targets {
+            let identity = turn.identity();
+            // Skip a duplicate (steered into a turn already cancelled) or a
+            // turn whose waiter saw it finish since the snapshot: a hosted
+            // cancel of a finished admission is accepted silently.
+            if cancelled.contains(&identity) {
+                settled.push(key);
+                continue;
+            }
+            if !tracked(key) {
+                continue;
+            }
+            match turn.cancel().await {
+                Ok(()) => {
+                    cancelled.push(identity);
+                    settled.push(key);
+                }
+                Err(CancelError::TurnFinished) => {}
+                // A turn that completed while this cancel was in flight is
+                // gone from the registry: nothing to cancel, not a closed
+                // session.
+                Err(_) => closed |= tracked(key),
+            }
+        }
+        // Stop tracking what was cancelled now rather than when its waiter
+        // returns: cancelling the running turn also drops messages still
+        // queued behind it, and on a hosting profile their handles may never
+        // report an outcome.
+        if let Some(entry) = self.lock().get_mut(&id) {
+            entry
+                .active
+                .retain(|tracked| !settled.contains(&tracked.key));
+        }
+        match (cancelled.is_empty(), closed) {
+            (false, _) => Ok(cancelled),
+            (true, true) => Err(ControlError::SessionClosed),
+            (true, false) => Err(ControlError::NoActiveTurn),
         }
     }
 

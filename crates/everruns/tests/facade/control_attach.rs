@@ -48,10 +48,35 @@ async fn raw(socket: &Path, line: &str) -> String {
     reply
 }
 
-/// What `list` and `cancel` report for a turn: its id once assigned,
-/// otherwise the accepting message's id.
-fn identity(sent: &everruns::SentMessage) -> String {
-    sent.turn().identity()
+/// What `list` and `cancel` report for a tracked turn: fixed at send time,
+/// the turn id when `send` returned one and otherwise the accepted message's
+/// id. It stays that way after the turn is assigned.
+fn identity(sent: &everruns::SentMessage) -> Vec<String> {
+    vec![sent.turn().identity()]
+}
+
+async fn wait_until_running(client: &ControlClient) -> Vec<String> {
+    tokio::time::timeout(DEADLINE, async {
+        loop {
+            let turns = client.list().await.unwrap()[0].active_turns.clone();
+            if !turns.is_empty() {
+                return turns;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("a turn becomes active")
+}
+
+async fn wait_until_idle(registry: &ControlRegistry) {
+    tokio::time::timeout(DEADLINE, async {
+        while !registry.list()[0].active_turns.is_empty() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("tracked turns leave the registry");
 }
 
 fn rejected(result: Result<impl std::fmt::Debug, ControlClientError>) -> String {
@@ -69,7 +94,7 @@ async fn attached_client_lists_sends_and_watches_output() {
     let sessions = client.list().await.unwrap();
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].label, "main");
-    assert_eq!(sessions[0].active_turn, None);
+    assert!(sessions[0].active_turns.is_empty());
 
     // A watcher attaches before another process sends.
     let mut watcher = client.attach("main", None).await.unwrap();
@@ -129,16 +154,7 @@ async fn attached_cancel_stops_the_running_turn_and_keeps_the_session() {
         let client = client.clone();
         tokio::spawn(async move { client.send_and_wait("main", "take your time").await })
     };
-    let active = tokio::time::timeout(DEADLINE, async {
-        loop {
-            if let Some(turn) = client.list().await.unwrap()[0].active_turn.clone() {
-                return turn;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect("the turn becomes active");
+    let active = wait_until_running(&client).await;
 
     let cancelled = client.cancel("main").await.unwrap();
     assert_eq!(cancelled, active);
@@ -151,13 +167,7 @@ async fn attached_cancel_stops_the_running_turn_and_keeps_the_session() {
     assert_eq!(turn.stop_reason, "cancelled");
 
     // The slot clears and the session still accepts work.
-    tokio::time::timeout(DEADLINE, async {
-        while client.list().await.unwrap()[0].active_turn.is_some() {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect("the cancelled turn leaves the registry");
+    wait_until_idle(&registry).await;
     assert_eq!(rejected(client.cancel("main").await), "no_active_turn");
     let again = registry.send("main", "still there?").await.unwrap();
     assert_eq!(client.cancel("main").await.unwrap(), identity(&again));
@@ -312,4 +322,157 @@ async fn oversized_requests_and_excess_connections_are_refused() {
     let client = ControlClient::new(&dir);
     let _watcher = client.attach("main", None).await.unwrap();
     assert_eq!(rejected(client.list().await), "busy");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_abandoned_waiting_send_frees_its_connection_slot() {
+    // Regression: a client that dropped `send_and_wait` kept its slot until
+    // the turn ended, so with the slots used up `cancel` answered `busy`.
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("ctl");
+    let registry = ControlRegistry::new();
+    registry.register("main", &session(slow()));
+    let _server = ControlServer::builder(&dir)
+        .max_connections(1)
+        .start(registry.clone())
+        .unwrap();
+    let client = ControlClient::new(&dir);
+
+    let waiting = {
+        let client = client.clone();
+        tokio::spawn(async move { client.send_and_wait("main", "take your time").await })
+    };
+    tokio::time::timeout(DEADLINE, async {
+        while registry.list()[0].active_turns.is_empty() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the turn becomes active");
+    waiting.abort();
+    let _ = waiting.await;
+
+    // The slot comes back promptly and the turn is still running.
+    let listed = tokio::time::timeout(DEADLINE, async {
+        loop {
+            match client.list().await {
+                Ok(sessions) => return sessions,
+                Err(_) => tokio::time::sleep(Duration::from_millis(20)).await,
+            }
+        }
+    })
+    .await
+    .expect("the slot is released");
+    assert_eq!(listed[0].active_turns.len(), 1);
+    assert_eq!(client.cancel("main").await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cancel_reaches_every_unfinished_turn_of_concurrent_sends() {
+    // Regression: one tracked slot per session lost the running turn when
+    // concurrent sends tracked out of order.
+    let (_root, dir, registry, _server) = host(slow());
+    let (first, second) = tokio::join!(
+        registry.send("main", "first"),
+        registry.send("main", "second")
+    );
+    let (first, second) = (first.unwrap(), second.unwrap());
+    let client = ControlClient::new(&dir);
+    let mut expected = identity(&first);
+    for turn in identity(&second) {
+        if !expected.contains(&turn) {
+            expected.push(turn);
+        }
+    }
+    let mut listed = client.list().await.unwrap()[0].active_turns.clone();
+    listed.sort();
+    let mut sorted = expected.clone();
+    sorted.sort();
+    assert_eq!(listed, sorted);
+
+    let mut cancelled = client.cancel("main").await.unwrap();
+    cancelled.sort();
+    assert_eq!(cancelled, sorted);
+    // The running turn ends cancelled; the queued message is dropped with
+    // it, and nothing stays tracked.
+    let turn = tokio::time::timeout(DEADLINE, first.wait())
+        .await
+        .expect("the running turn ends")
+        .unwrap();
+    assert!(!turn.success);
+    assert!(registry.list()[0].active_turns.is_empty());
+    drop(second);
+    wait_until_idle(&registry).await;
+    assert_eq!(rejected(client.cancel("main").await), "no_active_turn");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_host_on_the_same_directory_leaves_the_first_intact() {
+    // Regression: a second host's stale-socket cleanup could delete the
+    // first host's socket and token.
+    let (_root, dir, _registry, server) = host(Model::simulated("ok"));
+    let info = server.attach_info().clone();
+    let token = std::fs::read_to_string(&info.token_file).unwrap();
+    // Even with the socket gone (as if stale), the directory lock refuses.
+    std::fs::remove_file(&info.socket).unwrap();
+    let second = ControlServer::start(&dir, ControlRegistry::new())
+        .err()
+        .unwrap();
+    assert_eq!(second.kind(), std::io::ErrorKind::AddrInUse);
+    assert_eq!(std::fs::read_to_string(&info.token_file).unwrap(), token);
+
+    // Once the first host stops, the directory is free again.
+    drop(server);
+    let third = ControlServer::start(&dir, ControlRegistry::new()).unwrap();
+    assert!(third.attach_info().socket.exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn attach_ends_when_the_host_drops_the_session() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("ctl");
+    let registry = ControlRegistry::new();
+    let id = registry.register("main", &session(Model::simulated("ok")));
+    let _server = ControlServer::start(&dir, registry.clone()).unwrap();
+    let mut watcher = ControlClient::new(&dir).attach("main", None).await.unwrap();
+
+    drop(registry.unregister(&id));
+    let ended = tokio::time::timeout(DEADLINE, watcher.next())
+        .await
+        .expect("the stream ends");
+    assert!(
+        matches!(ended, Err(ControlClientError::Closed(ref reason)) if reason == "session_closed"),
+        "{ended:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_oversized_response_line_is_refused_by_the_client() {
+    use std::io::Write as _;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("ctl");
+    std::fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(dir.join("token"))
+        .unwrap()
+        .write_all(b"t")
+        .unwrap();
+    let listener = tokio::net::UnixListener::bind(dir.join("control.sock")).unwrap();
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let huge = vec![b'x'; everruns::control::MAX_REQUEST_BYTES as usize + 1024];
+        let _ = stream.write_all(&huge).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    });
+    match tokio::time::timeout(DEADLINE, ControlClient::new(&dir).list()).await {
+        Ok(Err(ControlClientError::Protocol(detail))) => {
+            assert!(detail.contains("size limit"), "{detail}")
+        }
+        other => panic!("expected a protocol error, got {other:?}"),
+    }
 }
