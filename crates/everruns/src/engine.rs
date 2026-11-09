@@ -155,6 +155,7 @@ struct EngineInner {
     volatile_default: bool,
     hosting: Option<Arc<dyn crate::hosting::SessionHosting>>,
     registry: Mutex<HashMap<crate::hosting::AgentBuild, hosting::Registration>>,
+    resolver: Option<Arc<dyn crate::hosting::AgentResolver>>,
     sessions: Mutex<HashMap<SessionId, EngineSessionEntry>>,
     memory_backends: Arc<OnceCell<Arc<EngineBackends>>>,
     observers: Arc<ObserverDispatcher>,
@@ -173,6 +174,7 @@ pub struct EngineBuilder {
     volatile_default: bool,
     hosting: Option<Arc<dyn crate::hosting::SessionHosting>>,
     registry: HashMap<crate::hosting::AgentBuild, hosting::Registration>,
+    resolver: Option<Arc<dyn crate::hosting::AgentResolver>>,
     listeners: Vec<ListenerRegistration>,
     observer_queue_capacity: usize,
 }
@@ -183,6 +185,7 @@ impl Default for EngineBuilder {
             volatile_default: true,
             hosting: Some(Arc::new(crate::hosting::MemoryHosting::default())),
             registry: HashMap::new(),
+            resolver: None,
             listeners: Vec::new(),
             observer_queue_capacity: OBSERVER_QUEUE_CAPACITY,
         }
@@ -240,6 +243,7 @@ impl EngineBuilder {
                 volatile_default: self.volatile_default,
                 hosting: self.hosting,
                 registry: Mutex::new(self.registry),
+                resolver: self.resolver,
                 sessions: Mutex::new(HashMap::new()),
                 memory_backends: Arc::new(OnceCell::new()),
                 observers: ObserverDispatcher::new(self.listeners, self.observer_queue_capacity),
