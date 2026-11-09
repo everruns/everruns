@@ -1,7 +1,9 @@
 # SQLx SQLite compatibility backport
 
 This is the crates.io `sqlx-sqlite` 0.9.0 source (upstream revision
-`003b698e99e024f3621b8043a2426fde5b741171`), including its original licenses.
+`003b698e99e024f3621b8043a2426fde5b741171`). The registry archive contains
+flattened license-link placeholders; `LICENSE-APACHE` and `LICENSE-MIT` here
+contain the complete license texts from that exact upstream revision.
 Only the `libsqlite3-sys` upper bound in the normalized and original manifests
 changes: `<0.38.0` becomes `<0.40.0`.
 
