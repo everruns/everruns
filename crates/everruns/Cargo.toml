@@ -71,6 +71,11 @@ name = "idle_sessions"
 harness = false
 test = true
 
+[[bench]]
+name = "definitions"
+harness = false
+test = true
+
 [features]
 # Opt-in, native test harness for downstream SessionHosting implementations.
 hosting-conformance = ["builtins"]

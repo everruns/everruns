@@ -83,6 +83,7 @@ pub struct MemoryHosting {
     behind_latency: Option<std::time::Duration>,
     live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
     requires: Vec<String>,
+    definitions: Arc<std::sync::RwLock<super::DefinitionStore>>,
 }
 
 /// How many operations an execution epoch asked of the authority.
@@ -380,7 +381,7 @@ impl SessionHosting for MemoryHosting {
         let session = self.session(id);
         session.counts.count(Op::Write);
         let mut state = session.control.lock().await;
-        let binding = state.binding(id)?;
+        state.binding(id)?;
         if state
             .wake_at
             .is_some_and(|at| at <= everruns_contracts::rt::utc_now().timestamp_millis())
@@ -397,6 +398,19 @@ impl SessionHosting for MemoryHosting {
         {
             return Ok(None);
         }
+        // A new turn runs the agent's current revision; a turn already open
+        // (or parked on a wait) keeps the one it started with.
+        if state.open.is_none()
+            && state.pending.is_empty()
+            && state.finalizing.is_empty()
+            && let Some(binding) = state.binding.as_mut()
+        {
+            self.definitions
+                .read()
+                .unwrap_or_else(|p| p.into_inner())
+                .advance(binding);
+        }
+        let binding = state.binding(id)?;
         state.holder = Some(holder.to_owned());
         state.fence += 1;
         state.expires = Some(Instant::now() + ttl);
@@ -428,6 +442,21 @@ impl SessionHosting for MemoryHosting {
     }
     fn process_scheduler(&self) -> bool {
         true
+    }
+    async fn publish_definition(&self, definition: &super::AgentDefinition) -> Result<()> {
+        self.counts.count(Op::Write);
+        self.definitions
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .publish(definition)
+    }
+    async fn definition(&self, build: &AgentBuild) -> Result<Option<super::AgentDefinition>> {
+        self.counts.count(Op::Read);
+        Ok(self
+            .definitions
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(build))
     }
 }
 
@@ -1154,65 +1183,6 @@ mod tail_tests {
 }
 
 #[cfg(test)]
-mod resolver_tests {
-    use super::*;
-
-    /// A build the host never registered runs once its resolver knows it,
-    /// and a build it does not know is refused at creation.
-    #[tokio::test]
-    async fn an_unregistered_build_runs_through_the_resolver() {
-        let profile = MemoryHosting::default();
-        let engine = crate::Engine::builder()
-            .hosting(profile)
-            .resolver(|build: &AgentBuild| {
-                (build.agent == "from-definition").then(|| {
-                    crate::Agent::builder()
-                        .instructions("Answer.")
-                        .model(crate::Model::simulated("resolved"))
-                        .build()
-                        .unwrap()
-                })
-            })
-            .build();
-        let build = AgentBuild::new("from-definition", "host-v1");
-        let session = engine
-            .create_registered(SessionId::new(), &build)
-            .await
-            .unwrap();
-        let turn = session.send_and_wait("Hi").await.unwrap();
-        assert_eq!(turn.response, "resolved");
-        assert!(engine.has_agent_build(&build));
-        // A resolved Agent that needs a workspace gets its own default one.
-        let workspace = crate::Engine::builder()
-            .hosting(MemoryHosting::default())
-            .resolver(|_: &AgentBuild| {
-                crate::Agent::builder()
-                    .instructions("Answer.")
-                    .model(crate::Model::simulated("with files"))
-                    .file("notes.md", "hello")
-                    .build()
-                    .ok()
-            })
-            .build();
-        let files = workspace
-            .create_registered(SessionId::new(), &AgentBuild::new("files", "host-v1"))
-            .await
-            .unwrap();
-        assert_eq!(
-            files.send_and_wait("Hi").await.unwrap().response,
-            "with files"
-        );
-        let unknown = AgentBuild::new("unknown", "host-v1");
-        assert!(
-            engine
-                .create_registered(SessionId::new(), &unknown)
-                .await
-                .is_err()
-        );
-    }
-}
-
-#[cfg(test)]
 mod trim_floor_tests {
     use super::*;
 
@@ -1276,5 +1246,57 @@ mod trim_floor_tests {
             *prompts.last().unwrap() < largest,
             "the floor shortened later prompts: {prompts:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod definition_tests {
+    use super::*;
+
+    /// A turn that is open (running, or parked on a wait) keeps the revision
+    /// it started with when the agent is edited; the next turn moves.
+    #[tokio::test]
+    async fn an_open_turn_keeps_its_revision() {
+        let profile = MemoryHosting::default();
+        let revision = |id: &str| AgentDefinition {
+            build: AgentBuild::new("helper", id),
+            package: json!({ "name": "helper", "instructions": id }),
+        };
+        let id = SessionId::new();
+        profile.publish_definition(&revision("r1")).await.unwrap();
+        profile
+            .create(
+                id,
+                &SessionBinding {
+                    framework: SESSION_RUNTIME_VERSION,
+                    behavior: AgentBuild::new("helper", "r1"),
+                    harness: None,
+                    environment: None,
+                    metadata: Value::Null,
+                },
+            )
+            .await
+            .unwrap();
+        profile.publish_definition(&revision("r2")).await.unwrap();
+        let claim = || async {
+            let session = profile.session(id);
+            {
+                let mut state = session.control.lock().await;
+                state.runnable = true;
+                state.expires = None;
+            }
+            profile
+                .claim(id, "executor", Duration::from_secs(30))
+                .await
+                .unwrap()
+                .unwrap()
+                .binding
+                .behavior
+                .build_id
+        };
+        profile.session(id).control.lock().await.open = Some(TurnId::new());
+        assert_eq!(claim().await, "r1");
+        profile.session(id).control.lock().await.open = None;
+        assert_eq!(claim().await, "r2");
     }
 }

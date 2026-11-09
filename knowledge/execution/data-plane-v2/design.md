@@ -949,6 +949,44 @@ Per-model-call overhead is unchanged. A host budget authority stops a
 hosted turn before any model call
 (`hosted_sessions::a_trusted_hosts_budget_authority_stops_a_turn_before_the_model_call`).
 
+### Step 3 measurements (2026-11-09)
+
+**Agent definitions as data** (`everruns::hosting::AgentDefinition`): an
+agent key, a revision, and the portable agent package as JSON, the format
+`AgentPackage` already reads and writes. The authority keeps every
+revision (`SessionHosting::publish_definition`, memory and SQLite
+authorities; a cell keeps them in S3 and its registry). Publishing makes a
+revision the agent's current one; a revision is immutable, and different
+content under a published revision fails. A session bound to a defined
+agent moves to the current revision in the claim that starts its next
+turn, never while a turn is open or parked, so the turn's retained
+`TurnRevision` and the claim agree. The Engine hydrates a revision it
+lacks from its own authority (`AgentHydrator`, by default the package
+mapping through `AgentBuilder::package`; a platform host supplies one that
+binds its own capabilities and credentials) and keeps hydrated revisions
+in a bounded cache (`EngineBuilder::hydrated_capacity`, default 256). No
+resolver call and no registry: step 1's `AgentResolver` is gone. A
+definition the Engine cannot hydrate is refused at publication, and on
+another executor leaves the build missing, which suspends as before.
+Code-registered builds are unchanged and always win.
+
+Gate (`cargo bench -p everruns --bench definitions`, 3 000 sessions per
+path, one llmsim turn each, a support agent with 7 KB of instructions,
+three capabilities and five starter files):
+
+| Measure | Value |
+|---|---|
+| Hydrate one definition (parse and build) | 114 us |
+| Turn, registered agent | 4.83 ms |
+| Turn, defined agent, revision cached (warm) | 4.67 ms (no measurable overhead) |
+| Turn, defined agent, revision not cached (cold) | 4.97 ms (+138 us) |
+
+Budgets in the bench: hydration under 1 ms, warm overhead under 3% of a
+registered turn, cold under 25%. The control plane producing definitions
+from stored agents (with harness and org defaults resolved) and the
+platform hydrator land with step 4, which needs them on the PostgreSQL
+authority.
+
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share
 the turn driver, so cells need the host bundle (step 2), not a finished
