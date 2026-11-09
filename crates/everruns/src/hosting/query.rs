@@ -194,6 +194,12 @@ impl EventLog for InputFilterLog {
     ) -> std::result::Result<Vec<Event>, EventLogError> {
         self.inner.append_batch(requests).await
     }
+    async fn append_batch_behind(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
+        self.inner.append_batch_behind(requests).await
+    }
     fn durability(&self) -> EventDurability {
         self.inner.durability()
     }

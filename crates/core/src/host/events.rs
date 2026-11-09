@@ -585,6 +585,19 @@ pub trait EventLog: EventReader {
         Ok(events)
     }
 
+    /// [`append_batch`] for a caller that does not wait for the result: the
+    /// commit runs behind the work that emitted it, in order with the other
+    /// commits of its session. Logs that count authority round trips tell the
+    /// two apart; the default is the same commit.
+    ///
+    /// [`append_batch`]: EventLog::append_batch
+    async fn append_batch_behind(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> Result<Vec<Event>, EventLogError> {
+        self.append_batch(requests).await
+    }
+
     /// Persistence guarantee used for acknowledged appends.
     fn durability(&self) -> EventDurability;
 }

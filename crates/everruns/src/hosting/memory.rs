@@ -92,6 +92,10 @@ pub struct AuthorityCounts {
     /// Operations that change authority state (journal appends, records,
     /// lease renewals and releases, claims, schedules).
     pub writes: u64,
+    /// The writes among them that ran behind the work and that no caller
+    /// waited on, so they add to the leader's load but not to the turn's
+    /// latency floor (`writes - behind` waited round trips).
+    pub behind: u64,
     /// Operations that only read authority state.
     pub reads: u64,
 }
@@ -99,12 +103,15 @@ pub struct AuthorityCounts {
 #[derive(Default)]
 struct AuthorityCounters {
     writes: std::sync::atomic::AtomicU64,
+    behind: std::sync::atomic::AtomicU64,
     reads: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Clone, Copy)]
 enum Op {
     Write,
+    /// A write already counted, that its caller does not wait on.
+    Behind,
     Read,
 }
 
@@ -112,6 +119,7 @@ impl AuthorityCounters {
     fn count(&self, op: Op) {
         let counter = match op {
             Op::Write => &self.writes,
+            Op::Behind => &self.behind,
             Op::Read => &self.reads,
         };
         counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -170,6 +178,7 @@ impl MemoryHosting {
         use std::sync::atomic::Ordering::Relaxed;
         AuthorityCounts {
             writes: self.counts.writes.load(Relaxed),
+            behind: self.counts.behind.load(Relaxed),
             reads: self.counts.reads.load(Relaxed),
         }
     }
@@ -630,15 +639,33 @@ impl EventLog for Ports {
         requests: Vec<EventRequest>,
     ) -> std::result::Result<Vec<Event>, EventLogError> {
         self.session.counts.count(Op::Write);
+        self.commit_batch(requests).await
+    }
+    /// The same write, counted as one nothing waits on.
+    async fn append_batch_behind(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
+        self.session.counts.count(Op::Write);
+        self.session.counts.count(Op::Behind);
+        self.commit_batch(requests).await
+    }
+    fn durability(&self) -> EventDurability {
+        EventDurability::Volatile
+    }
+}
+
+impl Ports {
+    async fn commit_batch(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
         let mut state = self.session.control.lock().await;
         let mut events = Vec::with_capacity(requests.len());
         for request in requests {
             events.push(self.append_locked(&mut state, request, None).await?);
         }
         Ok(events)
-    }
-    fn durability(&self) -> EventDurability {
-        EventDurability::Volatile
     }
 }
 

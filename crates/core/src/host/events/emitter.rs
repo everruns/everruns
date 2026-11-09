@@ -27,6 +27,14 @@ use crate::events::{Event, EventRequest};
 /// a sequence, and reaches the sink only once committed, so no listener ever
 /// sees an event the log does not hold. A crash loses only held events, which
 /// the turn re-emits when it runs again.
+///
+/// Progress markers (`reason.started`, `output.message.started`) commit
+/// behind the work instead: [`EventLog::append_batch_behind`] runs in a
+/// background task, chained after the session's previous one, and the
+/// emitter returns the event provisionally. Every later commit, flush and
+/// live delta of the session waits for that chain first, so order holds and
+/// a listener still sees only committed events; a failed commit fails the
+/// next one that waits.
 #[derive(Clone)]
 pub struct HostEventEmitter {
     log: Arc<dyn EventLog>,
@@ -36,6 +44,19 @@ pub struct HostEventEmitter {
     closed: Arc<AtomicU64>,
     batching: Arc<std::sync::atomic::AtomicBool>,
     held: Arc<std::sync::Mutex<HashMap<SessionId, Vec<EventRequest>>>>,
+    behind: Arc<std::sync::Mutex<HashMap<SessionId, Behind>>>,
+}
+
+/// The last commit running behind a session's work.
+type Behind = everruns_contracts::rt::JoinHandle<Result<(), String>>;
+
+/// Progress markers that commit behind the work (see [`HostEventEmitter`]).
+///
+/// Decision: only events the executor never reads back and needs no
+/// sequence for. A live view waits on them, and gets them once committed;
+/// the model call they precede overlaps their commit.
+fn is_behind_event_type(event_type: &str) -> bool {
+    matches!(event_type, "reason.started" | "output.message.started")
 }
 
 /// Lifecycle events a committed batch may hold until the next barrier event.
@@ -63,6 +84,7 @@ impl HostEventEmitter {
             closed: Arc::new(AtomicU64::new(0)),
             batching: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             held: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            behind: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -73,14 +95,19 @@ impl HostEventEmitter {
         self.batching.store(true, Ordering::Release);
     }
 
-    /// Drop every held event uncommitted (the epoch's lease is lost).
+    /// Drop every held event uncommitted (the epoch's lease is lost). A
+    /// commit already running behind finishes or fails on its own.
     pub fn abandon(&self) {
         self.held_map().clear();
+        self.behind_map().clear();
     }
 
-    /// Commit every held event.
+    /// Commit every held event, after the commits running behind.
     pub async fn flush(&self) -> CoreResult<()> {
-        let sessions: Vec<SessionId> = self.held_map().keys().copied().collect();
+        let mut sessions: Vec<SessionId> = self.held_map().keys().copied().collect();
+        sessions.extend(self.behind_map().keys().copied());
+        sessions.sort_unstable_by_key(|id| id.to_string());
+        sessions.dedup();
         for session_id in sessions {
             let lock = self.session_lock(session_id).await;
             let _guard = lock.lock().await;
@@ -95,6 +122,72 @@ impl HostEventEmitter {
             .unwrap_or_else(|poison| poison.into_inner())
     }
 
+    fn behind_map(&self) -> std::sync::MutexGuard<'_, HashMap<SessionId, Behind>> {
+        self.behind
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    /// Wait for the session's commits running behind. Callers hold the
+    /// session lock.
+    async fn settle(&self, session_id: SessionId) -> CoreResult<()> {
+        let Some(behind) = self.behind_map().remove(&session_id) else {
+            return Ok(());
+        };
+        match behind.await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(AgentLoopError::store(error)),
+            Err(_) => Err(AgentLoopError::store(
+                "event commit stopped before it finished",
+            )),
+        }
+    }
+
+    /// Commit the held events and `barrier` behind the work, then notify
+    /// them and `then` (a live delta) in order. Callers hold the session lock.
+    fn commit_behind(
+        &self,
+        session_id: SessionId,
+        barrier: Option<EventRequest>,
+        then: Option<Event>,
+    ) {
+        let mut requests = self.held_map().remove(&session_id).unwrap_or_default();
+        requests.extend(barrier);
+        let previous = self.behind_map().remove(&session_id);
+        let emitter = self.clone();
+        let task = everruns_contracts::rt::spawn(async move {
+            if let Some(previous) = previous {
+                match previous.await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => return Err(error),
+                    Err(_) => return Err("event commit stopped before it finished".to_owned()),
+                }
+            }
+            if !requests.is_empty() {
+                let events = emitter
+                    .log
+                    .append_batch_behind(requests)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                for event in events {
+                    emitter.notify(event);
+                }
+            }
+            if let Some(event) = then {
+                emitter.notify(event);
+            }
+            Ok(())
+        });
+        self.behind_map().insert(session_id, task);
+    }
+
+    /// Whether a commit of the session is still running behind.
+    fn running_behind(&self, session_id: SessionId) -> bool {
+        self.behind_map()
+            .get(&session_id)
+            .is_some_and(|behind| !behind.is_finished())
+    }
+
     /// Commit the session's held events, then `barrier` when given, and
     /// notify the sink in order. Returns the committed events. Callers hold
     /// the session lock.
@@ -103,6 +196,7 @@ impl HostEventEmitter {
         session_id: SessionId,
         barrier: Option<EventRequest>,
     ) -> CoreResult<Vec<Event>> {
+        self.settle(session_id).await?;
         let mut requests = self.held_map().remove(&session_id).unwrap_or_default();
         requests.extend(barrier);
         let events = if requests.len() == 1 {
@@ -206,11 +300,24 @@ impl EventEmitter for HostEventEmitter {
             return Ok(event);
         }
         if request.is_ephemeral() {
-            // A live delta must not overtake the events it follows.
-            self.commit(session_id, None).await?;
+            // A live delta must not overtake the events it follows: behind
+            // their commit when one runs, else at once.
             let event = ephemeral_event(request);
-            self.notify(event.clone());
+            let has_held = self
+                .held_map()
+                .get(&session_id)
+                .is_some_and(|held| !held.is_empty());
+            if has_held || self.running_behind(session_id) {
+                self.commit_behind(session_id, None, Some(event.clone()));
+            } else {
+                self.notify(event.clone());
+            }
             return Ok(event);
+        }
+        if is_behind_event_type(&request.event_type) {
+            let provisional = ephemeral_event(request.clone());
+            self.commit_behind(session_id, Some(request), None);
+            return Ok(provisional);
         }
         if is_deferrable_event_type(&request.event_type) {
             let provisional = ephemeral_event(request.clone());

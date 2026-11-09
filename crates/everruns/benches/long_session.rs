@@ -188,14 +188,16 @@ fn main() {
         opts.turns
     );
     println!(
-        "{:<6} {:>10} {:>9} {:>9} {:>12} {:>11}",
-        "tenth", "turns/s", "p50 ms", "p99 ms", "writes/turn", "reads/turn"
+        "{:<6} {:>10} {:>9} {:>9} {:>12} {:>12} {:>11}",
+        "tenth", "turns/s", "p50 ms", "p99 ms", "writes/turn", "waited/turn", "reads/turn"
     );
     let mut tenths = Vec::new();
     for (index, window) in progress.marks.windows(2).enumerate() {
         let turns = progress.latencies[index].len().max(1) as f64;
         let seconds = window[1].at.duration_since(window[0].at).as_secs_f64();
         let writes = (window[1].counts.writes - window[0].counts.writes) as f64 / turns;
+        let behind = (window[1].counts.behind - window[0].counts.behind) as f64 / turns;
+        let waited = writes - behind;
         let reads = (window[1].counts.reads - window[0].counts.reads) as f64 / turns;
         let (p50, p99) = (
             percentile_ms(&progress.latencies[index], 0.50),
@@ -203,12 +205,13 @@ fn main() {
         );
         let rate = turns / seconds.max(f64::EPSILON);
         println!(
-            "{:<6} {:>10.1} {:>9.2} {:>9.2} {:>12.1} {:>11.1}",
+            "{:<6} {:>10.1} {:>9.2} {:>9.2} {:>12.1} {:>12.1} {:>11.1}",
             index + 1,
             rate,
             p50,
             p99,
             writes,
+            waited,
             reads
         );
         tenths.push(json!({
@@ -217,15 +220,17 @@ fn main() {
             "p50_ms": (p50 * 100.0).round() / 100.0,
             "p99_ms": (p99 * 100.0).round() / 100.0,
             "writes_per_turn": (writes * 10.0).round() / 10.0,
+            "waited_writes_per_turn": (waited * 10.0).round() / 10.0,
             "reads_per_turn": (reads * 10.0).round() / 10.0,
         }));
     }
     let counts = profile.authority_counts();
     println!(
-        "total: {total} turns in {:.1} s ({:.1} turns/s), {:.1} writes and {:.1} reads per turn",
+        "total: {total} turns in {:.1} s ({:.1} turns/s), {:.1} writes ({:.1} waited) and {:.1} reads per turn",
         elapsed.as_secs_f64(),
         total as f64 / elapsed.as_secs_f64(),
         counts.writes as f64 / total as f64,
+        (counts.writes - counts.behind) as f64 / total as f64,
         counts.reads as f64 / total as f64
     );
     assert_eq!(progress.done, total, "every turn finished");

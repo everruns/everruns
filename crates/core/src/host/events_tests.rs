@@ -411,8 +411,114 @@ async fn committed_batches_commit_held_events_before_a_live_delta() {
         .await
         .unwrap();
     assert_eq!(delta.sequence, None);
+    emitter.flush().await.unwrap();
     assert_eq!(committed(&log, session_id).await, 1);
     assert_eq!(sink.types(), ["session.activated", "output.message.delta"]);
+}
+
+fn reason_started(session_id: SessionId) -> EventRequest {
+    EventRequest::new(
+        session_id,
+        EventContext::empty(),
+        crate::events::ReasonStartedData {
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            metadata: None,
+        },
+    )
+}
+
+#[tokio::test]
+async fn progress_markers_commit_behind_and_before_the_next_barrier() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    emitter.emit(held_lifecycle(session_id)).await.unwrap();
+    let marker = emitter.emit(reason_started(session_id)).await.unwrap();
+    assert_eq!(
+        marker.sequence, None,
+        "a marker committing behind is provisional"
+    );
+
+    let barrier = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        barrier.sequence,
+        Some(3),
+        "the barrier waits for the marker"
+    );
+    assert_eq!(
+        sink.types(),
+        [
+            "session.activated",
+            "reason.started",
+            "output.message.completed"
+        ],
+        "listeners see committed events in emission order"
+    );
+}
+
+/// A log whose batches running behind fail, as with a lost lease.
+struct RefusesBehind(InMemoryEventLog);
+
+#[async_trait::async_trait]
+impl EventReader for RefusesBehind {
+    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
+        self.0.read_page(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl EventLog for RefusesBehind {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        self.0.append(request).await
+    }
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        self.0.append_conditional(request, expected).await
+    }
+    async fn append_batch_behind(&self, _: Vec<EventRequest>) -> Result<Vec<Event>, EventLogError> {
+        Err(EventLogError::Backend {
+            detail: "refused".into(),
+        })
+    }
+    fn durability(&self) -> EventDurability {
+        self.0.durability()
+    }
+}
+
+#[tokio::test]
+async fn a_failed_commit_behind_fails_the_next_commit_and_reaches_no_listener() {
+    let session_id = SessionId::new();
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(
+        Arc::new(RefusesBehind(InMemoryEventLog::new())),
+        sink.clone(),
+    );
+    emitter.enable_committed_batches();
+
+    emitter.emit(reason_started(session_id)).await.unwrap();
+    let next = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
+        ))
+        .await;
+    assert!(next.is_err(), "the failure surfaces at the next commit");
+    assert!(sink.types().is_empty());
 }
 
 #[tokio::test]
