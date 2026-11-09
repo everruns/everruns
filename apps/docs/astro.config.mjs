@@ -598,6 +598,7 @@ export default defineConfig({
                       items: [
                         { label: "GitHub", slug: "capabilities/github" },
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
+                        { label: "Repositories", slug: "capabilities/repositories" },
                         { label: "Slack actions", slug: "capabilities/slack" },
                         { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
                         { label: "Poppy Personal Agent", slug: "capabilities/poppy-personal-agent" },

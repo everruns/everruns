@@ -1311,6 +1311,25 @@
       ]
     },
     {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": "repositories",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "repositories",
+      "name": "Repositories",
+      "status": "available",
+      "tools": [
+        "repo_add",
+        "repo_status",
+        "repo_sync"
+      ]
+    },
+    {
       "category": "AI",
       "dependencies": [],
       "docs_slug": null,

@@ -35,7 +35,7 @@ Harness examples are adoptable templates. Import them when you want a preconfigu
 
 | Example | Import Name | Description |
 |---------|-------------|-------------|
-| Coding | `coding` | Sandbox Worker + coding behavior and GitHub Scout; the Agent Sandbox Template binding selects Daytona, a container, or another full sandbox |
+| Coding (beta) | `coding` | Sandbox Worker + coding behavior for one or several GitHub repositories: [Repositories](/capabilities/repositories/), [code navigation](/capabilities/code-navigation/), [GitHub](/capabilities/github/) with pull requests, and GitHub Scout; the Agent Sandbox Template binding selects Daytona, a container, or another full sandbox |
 | Data Analyst | `data-analyst` | Bashkit Worker + SQL databases, charts, persistent memory, and curated data knowledge |
 
 ## Capabilities
