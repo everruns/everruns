@@ -441,6 +441,16 @@ where
     }
 }
 
+/// Distinguishes an explicit `null` (`Some(None)`, clear) from an omitted
+/// field (`None`, unchanged).
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(de).map(Some)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CreateAgentRequest, UpdateAgentRequest};
@@ -592,14 +602,4 @@ mod tests {
     // Strict-mode coverage lives in `tests/strict_client_tools.rs` so it
     // runs in its own process and doesn't race the lenient tests above
     // over the `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS` env var.
-}
-
-/// Distinguishes an explicit `null` (`Some(None)`, clear) from an omitted
-/// field (`None`, unchanged).
-fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    Option::<T>::deserialize(de).map(Some)
 }
