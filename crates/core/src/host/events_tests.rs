@@ -366,7 +366,7 @@ async fn committed_batches_hold_lifecycle_events_until_the_next_barrier() {
         .emit(EventRequest::new(
             session_id,
             EventContext::empty(),
-            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
+            InputMessageData::new(RuntimeMessage::user("hi")),
         ))
         .await
         .unwrap();
@@ -377,7 +377,7 @@ async fn committed_batches_hold_lifecycle_events_until_the_next_barrier() {
     );
     assert_eq!(
         sink.types(),
-        ["session.activated", "output.message.completed"],
+        ["session.activated", "input.message"],
         "the sink sees committed events in emission order"
     );
 
@@ -447,7 +447,7 @@ async fn progress_markers_commit_behind_and_before_the_next_barrier() {
         .emit(EventRequest::new(
             session_id,
             EventContext::empty(),
-            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
+            InputMessageData::new(RuntimeMessage::user("hi")),
         ))
         .await
         .unwrap();
@@ -458,11 +458,7 @@ async fn progress_markers_commit_behind_and_before_the_next_barrier() {
     );
     assert_eq!(
         sink.types(),
-        [
-            "session.activated",
-            "reason.started",
-            "output.message.completed"
-        ],
+        ["session.activated", "reason.started", "input.message"],
         "listeners see committed events in emission order"
     );
 }
@@ -514,7 +510,7 @@ async fn a_failed_commit_behind_fails_the_next_commit_and_reaches_no_listener() 
         .emit(EventRequest::new(
             session_id,
             EventContext::empty(),
-            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
+            InputMessageData::new(RuntimeMessage::user("hi")),
         ))
         .await;
     assert!(next.is_err(), "the failure surfaces at the next commit");
@@ -534,4 +530,68 @@ async fn abandoned_held_events_are_never_committed() {
     emitter.flush().await.unwrap();
     assert_eq!(committed(&log, session_id).await, 0);
     assert!(sink.types().is_empty());
+}
+
+#[tokio::test]
+async fn a_final_answer_rides_on_session_idled_and_a_tool_call_does_not_wait() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    let calls = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant_with_tools(
+                "",
+                vec![everruns_contracts::tool_types::ToolCall {
+                    id: "call_1".into(),
+                    name: "search".into(),
+                    arguments: serde_json::json!({}),
+                }],
+            )),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        calls.sequence,
+        Some(1),
+        "no tool runs on an uncommitted call"
+    );
+
+    let answer = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("done")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(answer.sequence, None, "the final answer is held");
+    assert_eq!(committed(&log, session_id).await, 1);
+
+    let turn_id = TurnId::new();
+    emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            crate::events::SessionIdledData {
+                turn_id,
+                iterations: None,
+                usage: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert_eq!(committed(&log, session_id).await, 3);
+    assert_eq!(
+        sink.types(),
+        [
+            "output.message.completed",
+            "output.message.completed",
+            "session.idled"
+        ]
+    );
 }

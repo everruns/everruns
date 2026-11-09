@@ -4,7 +4,8 @@
 //! timer while the lease holds (every write is fenced), so a value it wrote
 //! need not be read back, and a timer it set need not be set again. Only
 //! successful writes are remembered: a key this epoch never wrote is always
-//! read from the authority. A claim that returns the stored wake time seeds
+//! read from the authority. A receipt riding on the next lease write counts
+//! as written: if that write fails, so does the epoch. A claim that returns the stored wake time seeds
 //! the timer. Data plane v2 step 1 counts each saved call as a
 //! saved round trip to a replicated authority's leader.
 use std::collections::HashMap;
@@ -84,6 +85,14 @@ impl SessionEpoch for EpochCache {
             self.written().insert(key.to_owned(), value);
         }
         Ok(committed)
+    }
+    async fn commit_with_lease(&self, key: &str, value: Value) -> Result<()> {
+        if self.written().contains_key(key) {
+            return Ok(());
+        }
+        self.inner.commit_with_lease(key, value.clone()).await?;
+        self.written().insert(key.to_owned(), value);
+        Ok(())
     }
     async fn suspend(&self, reason: &str) -> Result<()> {
         self.inner.suspend(reason).await

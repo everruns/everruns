@@ -15,6 +15,7 @@ mod admission;
 mod configuration;
 pub mod cutover;
 mod epoch_cache;
+mod settled_store;
 #[cfg(not(target_arch = "wasm32"))]
 pub use configuration::DirectoryEnvironmentFactory;
 #[doc(hidden)]
@@ -657,6 +658,14 @@ pub trait SessionEpoch: Send + Sync + 'static {
     /// With `absent`, atomically insert only if the key does not exist.
     /// Returns false on an existing key. Every mutation checks the epoch.
     async fn commit(&self, key: &str, value: Value, absent: bool) -> Result<bool>;
+    /// Insert a receipt, if absent, with the epoch's next lease write (a
+    /// renew or the release) instead of a write of its own, where the
+    /// authority can; it then commits only if that lease write does. For a
+    /// receipt the next holder recomputes, or one no step waits on before
+    /// the next lease write. The default commits it now.
+    async fn commit_with_lease(&self, key: &str, value: Value) -> Result<()> {
+        self.commit(key, value, true).await.map(|_| ())
+    }
     /// Persist a visible suspension instead of retrying incompatible behavior.
     async fn suspend(&self, reason: &str) -> Result<()>;
 }

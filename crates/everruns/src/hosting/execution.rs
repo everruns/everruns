@@ -95,7 +95,10 @@ pub(crate) async fn run(
     // v2 step 1): one authority write per batch instead of one per event.
     let emitter = runtime.host_event_emitter();
     emitter.enable_committed_batches();
-    let store = epoch.actor_store();
+    let store: Arc<dyn SessionActorStore> = Arc::new(super::settled_store::SettledStore {
+        inner: epoch.actor_store(),
+        emitter: emitter.clone(),
+    });
     let retries = Arc::new(super::retry::ProviderRetries {
         engine: engine.clone(),
         session,
@@ -111,6 +114,7 @@ pub(crate) async fn run(
         agent,
         state,
         session,
+        after_release: activation.actor.attempts == 1,
     });
     let mut driver = SessionActorDriver::new(hosts, store, config);
     if let Some(poke) = renew_poke {
@@ -139,6 +143,9 @@ struct FrameworkHosts {
     agent: Agent,
     state: Arc<HookRunState>,
     session: SessionId,
+    /// The previous lease was released, not lost: no earlier epoch can have
+    /// left a receipt for the input this one starts fresh.
+    after_release: bool,
 }
 
 #[async_trait]
@@ -179,9 +186,16 @@ impl ActorHosts for FrameworkHosts {
     // commits the assignment right after asking for the identity, with no
     // event between them, so one receipt does both and `inputs_consumed`
     // finds it already written (data plane v2 step 1: one write fewer).
+    // After a clean release the assignment rides on the renew that follows
+    // it at once (data plane v2 step 1); that renew is what reports a cancel
+    // the assignment turns into this turn's.
     async fn fresh_turn_id(&self, input: MessageId, proposed: TurnId) -> Result<TurnId> {
         let key = format!("assignment/{input}");
         let value = json!({"turn_id": proposed, "steered": false});
+        if self.after_release {
+            self.epoch.commit_with_lease(&key, value).await?;
+            return Ok(proposed);
+        }
         if self.epoch.commit(&key, value, true).await? {
             return Ok(proposed);
         }
@@ -196,6 +210,11 @@ impl ActorHosts for FrameworkHosts {
     }
 
     async fn inputs_consumed(&self, drive: &TurnDrive, inputs: &[MessageId]) -> Result<()> {
+        if !inputs.is_empty() {
+            // Steered input continues the turn from the log: the answer it
+            // follows must be there, not held or still committing behind.
+            self.runtime.host_event_emitter().flush().await?;
+        }
         for input in inputs {
             let key = format!("assignment/{input}");
             let value =
@@ -312,7 +331,9 @@ impl ActorHosts for FrameworkHosts {
             turn.hook_failures
                 .extend(self.state.durable_completion(context).await);
         }
-        self.epoch.commit(&key, json!(turn), true).await?;
+        // The next holder recomputes a lost outcome from the log, so it
+        // rides on the release that follows.
+        self.epoch.commit_with_lease(&key, json!(turn)).await?;
         Ok(())
     }
 }

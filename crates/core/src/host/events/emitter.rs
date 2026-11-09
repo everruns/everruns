@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 use super::{EventDeliveryStats, EventLog, EventSink, EventSinkError};
 use crate::event_emitter::EventEmitter;
-use crate::events::{Event, EventRequest};
+use crate::events::{Event, EventData, EventRequest};
 
 /// Canonical event router shared by in-process, worker, and facade hosts.
 ///
@@ -19,11 +19,10 @@ use crate::events::{Event, EventRequest};
 /// `sequence = None`, and are sink-only. Per-session serialization preserves
 /// append acceptance order through the post-commit sink call.
 ///
-/// With [`HostEventEmitter::enable_committed_batches`], lifecycle events that
-/// nothing waits on (`reason.completed`, `llm.generation`,
-/// `capability.usage`, `session.activated`) are held and committed
-/// together with the next event that is not, in one
-/// [`EventLog::append_batch`]. A held event is returned provisionally, without
+/// With [`HostEventEmitter::enable_committed_batches`], events nothing waits
+/// on yet (lifecycle records, and a turn's final answer and `turn.completed`;
+/// see `is_held`) are held and committed together with the next event that
+/// is not, in one [`EventLog::append_batch`]. A held event is returned provisionally, without
 /// a sequence, and reaches the sink only once committed, so no listener ever
 /// sees an event the log does not hold. A crash loses only held events, which
 /// the turn re-emits when it runs again.
@@ -53,24 +52,42 @@ type Behind = everruns_contracts::rt::JoinHandle<Result<(), String>>;
 /// Progress markers that commit behind the work (see [`HostEventEmitter`]).
 ///
 /// Decision: only events the executor never reads back and needs no
-/// sequence for. A live view waits on them, and gets them once committed;
-/// the model call they precede overlaps their commit.
-fn is_behind_event_type(event_type: &str) -> bool {
-    matches!(event_type, "reason.started" | "output.message.started")
+/// sequence for, ahead of a model call that overlaps their commit
+/// (`reason.started`: "thinking"; `output.message.started`: "answering").
+fn commits_behind(request: &EventRequest) -> bool {
+    matches!(
+        request.event_type.as_str(),
+        "reason.started" | "output.message.started"
+    )
 }
 
-/// Lifecycle events a committed batch may hold until the next barrier event.
+/// Events a committed batch may hold until the next barrier event.
 ///
-/// Decision: only events that no reader of the same epoch looks for, that no
-/// live view shows as progress, and that a rerun of the turn re-emits.
-/// `turn.started`, `reason.started` and `output.message.started` (a live
-/// view's "thinking" and "answering"; clients time steering and cancels on
-/// them), messages, tool events and terminal events stay barriers.
-fn is_deferrable_event_type(event_type: &str) -> bool {
-    matches!(
-        event_type,
-        "session.activated" | "reason.completed" | "capability.usage" | "llm.generation"
-    )
+/// Decision: only events that no reader of the same epoch looks for before
+/// that barrier, that no live view shows as progress, and that a rerun of
+/// the turn re-emits.
+/// - Lifecycle records: `session.activated`, `reason.completed`,
+///   `capability.usage`, `llm.generation`.
+/// - The answer that ends a turn (`output.message.completed` without tool
+///   calls) and `turn.completed`: both ride on the `session.idled` that
+///   follows. A tail read, a steered input and the lease release commit
+///   them first. An answer that calls tools stays a barrier, so no tool
+///   runs on a decision the log may still lose.
+///
+/// `turn.started`, the progress markers, inputs, tool events, `session.idled`
+/// and the other terminal events stay barriers.
+fn is_held(request: &EventRequest) -> bool {
+    match &request.data {
+        EventData::OutputMessageCompleted(data) => !data.message.has_tool_calls(),
+        _ => matches!(
+            request.event_type.as_str(),
+            "session.activated"
+                | "reason.completed"
+                | "capability.usage"
+                | "llm.generation"
+                | "turn.completed"
+        ),
+    }
 }
 
 impl HostEventEmitter {
@@ -314,12 +331,12 @@ impl EventEmitter for HostEventEmitter {
             }
             return Ok(event);
         }
-        if is_behind_event_type(&request.event_type) {
+        if commits_behind(&request) {
             let provisional = ephemeral_event(request.clone());
             self.commit_behind(session_id, Some(request), None);
             return Ok(provisional);
         }
-        if is_deferrable_event_type(&request.event_type) {
+        if is_held(&request) {
             let provisional = ephemeral_event(request.clone());
             self.held_map().entry(session_id).or_default().push(request);
             return Ok(provisional);

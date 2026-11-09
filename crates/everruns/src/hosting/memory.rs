@@ -208,6 +208,7 @@ impl MemoryHosting {
             session: self.session(id),
             fence: Arc::new(RwLock::new(None)),
             claimed_wake_at: None,
+            riding: Arc::default(),
         }
     }
 }
@@ -368,6 +369,7 @@ impl SessionHosting for MemoryHosting {
             actor,
             epoch: Arc::new(Ports {
                 claimed_wake_at: Some(state.wake_at),
+                riding: Arc::default(),
                 session: session.clone(),
                 fence: Arc::new(RwLock::new(Some(ActorFence::new(id, holder, state.fence)))),
             }),
@@ -383,6 +385,37 @@ struct Ports {
     session: Arc<MemorySession>,
     fence: Arc<RwLock<Option<ActorFence>>>,
     claimed_wake_at: Option<Option<i64>>,
+    /// Receipts that commit with this epoch's next renew or release.
+    riding: Arc<std::sync::Mutex<Vec<(String, Value)>>>,
+}
+
+/// Insert one receipt, with its effect on the control state; `false` when
+/// `absent` and the key exists.
+fn apply_record(state: &mut Control, key: &str, value: Value, absent: bool) -> Result<bool> {
+    if absent && state.records.contains_key(key) {
+        return Ok(false);
+    }
+    if let Some(input) = key
+        .strip_prefix("assignment/")
+        .and_then(|key| key.parse::<MessageId>().ok())
+        && let Some(position) = state.target_cancels.get(&input).copied()
+    {
+        let assignment: super::TurnAssignment = serde_json::from_value(value.clone())
+            .map_err(|_| AgentLoopError::store("invalid turn assignment"))?;
+        if state.open.is_none() || state.open == Some(assignment.turn_id) {
+            state.cancel = Some(position);
+            state.cancel_reported = false;
+            state.runnable = true;
+        }
+    }
+    if let Some(turn) = key
+        .strip_prefix("outcome/")
+        .and_then(|key| key.parse::<TurnId>().ok())
+    {
+        state.finalizing.remove(&turn);
+    }
+    state.records.insert(key.to_owned(), value);
+    Ok(true)
 }
 
 fn core_error(error: impl std::fmt::Display) -> AgentLoopError {
@@ -395,6 +428,16 @@ fn log_error(error: impl std::fmt::Display) -> EventLogError {
 }
 
 impl Ports {
+    /// Commit the receipts riding on a lease write, under its ownership
+    /// check. Returns whether any committed.
+    fn apply_riding(&self, state: &mut Control) -> Result<bool> {
+        let riding = std::mem::take(&mut *self.riding.lock().unwrap_or_else(|p| p.into_inner()));
+        let mut any = false;
+        for (key, value) in riding {
+            any |= apply_record(state, &key, value, true)?;
+        }
+        Ok(any)
+    }
     fn check(&self, state: &Control) -> Result<()> {
         // THREAT[TM-DURABLE-012]: callers hold the authority gate while checking
         // ownership and committing; lease expiry fences delayed writers too.
@@ -558,32 +601,19 @@ impl SessionEpoch for Ports {
         self.session.counts.count(Op::Write);
         let mut state = self.session.control.lock().await;
         self.check(&state)?;
-        if absent && state.records.contains_key(key) {
-            return Ok(false);
-        }
-        if let Some(input) = key
-            .strip_prefix("assignment/")
-            .and_then(|key| key.parse::<MessageId>().ok())
-            && let Some(position) = state.target_cancels.get(&input).copied()
-        {
-            let assignment: super::TurnAssignment = serde_json::from_value(value.clone())
-                .map_err(|_| AgentLoopError::store("invalid turn assignment"))?;
-            if state.open.is_none() || state.open == Some(assignment.turn_id) {
-                state.cancel = Some(position);
-                state.cancel_reported = false;
-                state.runnable = true;
-            }
-        }
-        if let Some(turn) = key
-            .strip_prefix("outcome/")
-            .and_then(|key| key.parse::<TurnId>().ok())
-        {
-            state.finalizing.remove(&turn);
-        }
-        state.records.insert(key.to_owned(), value);
+        let committed = apply_record(&mut state, key, value, absent)?;
         drop(state);
-        self.session.changed.notify_waiters();
-        Ok(true)
+        if committed {
+            self.session.changed.notify_waiters();
+        }
+        Ok(committed)
+    }
+    async fn commit_with_lease(&self, key: &str, value: Value) -> Result<()> {
+        self.riding
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push((key.to_owned(), value));
+        Ok(())
     }
     async fn suspend(&self, reason: &str) -> Result<()> {
         self.session.counts.count(Op::Write);
@@ -712,13 +742,19 @@ impl SessionActorStore for Ports {
         if !state.owns(holder, fence) {
             return Ok(None);
         }
+        let receipts = self.apply_riding(&mut state)?;
         state.consumed = state.consumed.max(consumed);
         state.expires = Some(Instant::now() + ttl);
         state.cancel_reported = state.cancel.is_some();
-        Ok(Some(ActorRenewal {
+        let renewal = ActorRenewal {
             inbox_seq: state.inbox,
             cancel_inbox_seq: state.cancel,
-        }))
+        };
+        drop(state);
+        if receipts {
+            self.session.changed.notify_waiters();
+        }
+        Ok(Some(renewal))
     }
     async fn release_actor(
         &self,
@@ -733,6 +769,7 @@ impl SessionActorStore for Ports {
         if !state.owns(holder, fence) {
             return Ok(ActorRelease::LeaseLost);
         }
+        let receipts = self.apply_riding(&mut state)?;
         state.consumed = state.consumed.max(consumed);
         state.holder = None;
         state.expires = None;
@@ -745,9 +782,12 @@ impl SessionActorStore for Ports {
             state.cancel = None;
         }
         state.cancel_reported = false;
-        Ok(ActorRelease::Released {
-            still_runnable: state.runnable,
-        })
+        let still_runnable = state.runnable;
+        drop(state);
+        if receipts {
+            self.session.changed.notify_waiters();
+        }
+        Ok(ActorRelease::Released { still_runnable })
     }
     async fn read_actor_journal(
         &self,
