@@ -77,7 +77,16 @@ test("cancelling a running turn keeps input admitted behind it for the next turn
   await f.call("cancel", { command_id: "cancel-running", input_message_id: input().data.message.id });
   const status = await f.call("status");
   assert.equal(status.cancel_inbox_seq, first.sequence, "the cancel stops at its own admission");
-  assert.ok(status.inbox_seq >= queued.sequence);
+  assert.ok(queued.sequence > status.cancel_inbox_seq, "the queued input is behind the cancel");
+  // The holder sees the cancel on renew, records it, and consumes input up to
+  // its position only. The reported cancel clears on release; the queued
+  // input alone keeps the session runnable.
+  const renewed = await f.call("renew", { ...lease, consumed_seq: status.cancel_inbox_seq, ttl_ms: 10000 });
+  assert.equal(renewed.cancel_inbox_seq, first.sequence);
+  const released = await f.call("release", { ...lease, consumed_seq: status.cancel_inbox_seq });
+  assert.equal(released.Released.still_runnable, true, "the queued input still owes a turn");
+  assert.equal((await f.call("status")).cancel_inbox_seq, null);
+  assert.notEqual(await f.call("claim", { holder: "next-owner", ttl_ms: 10000 }), null);
 });
 
 test("approval permission, correlated answer and wakeup commit atomically and retry after reply loss",async()=>{

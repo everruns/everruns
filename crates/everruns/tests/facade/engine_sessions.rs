@@ -82,7 +82,10 @@ async fn dropping_session_closes_live_events_while_engine_retains_resume_state()
 async fn cancelling_a_running_turn_keeps_a_queued_message_for_the_next_turn() {
     use everruns::{LlmSimConfig, TurnStopReason};
     use std::time::Duration;
-    let config = LlmSimConfig::fixed("done").with_response_delay(Duration::from_millis(500));
+    let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let config = LlmSimConfig::fixed("done")
+        .with_response_delay(Duration::from_millis(500))
+        .with_message_capture(calls.clone());
     let agent = Agent::builder()
         .instructions("Reply deterministically.")
         .model(Model::simulated_with_config(config))
@@ -91,13 +94,16 @@ async fn cancelling_a_running_turn_keeps_a_queued_message_for_the_next_turn() {
     let session = Engine::new().create(agent);
 
     let first = session.send("first").await.unwrap();
+    // The simulator records a call before its delay. Sending only once the
+    // first model call is in flight keeps "second" out of the first turn's
+    // initial input take, so the turn cannot legitimately include it.
     tokio::time::timeout(Duration::from_secs(10), async {
-        while first.assignment().await.unwrap().is_none() {
+        while calls.lock().unwrap().is_empty() {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
     })
     .await
-    .expect("first message starts a turn");
+    .expect("the first model call starts");
     let queued = session.send("second").await.unwrap();
     first.turn().cancel().await.unwrap();
 
@@ -113,4 +119,5 @@ async fn cancelling_a_running_turn_keeps_a_queued_message_for_the_next_turn() {
     assert!(next.success, "{:?}", next.error);
     assert_eq!(next.response, "done");
     assert_ne!(next.turn_id, cancelled.turn_id);
+    assert_eq!(calls.lock().unwrap().len(), 2, "one call per turn");
 }

@@ -602,9 +602,54 @@ async fn cancel_keeps_later_admissions(profile: impl SessionHosting + 'static) {
     assert_eq!(next.response, "Hello!");
 }
 
+/// EVE-1344: the same while the turn is running. An authority without a renew
+/// poke (SQLite) reports the cancel only at the turn's next inbox boundary,
+/// after the queued message arrived; the turn must end there without taking
+/// that message as steering.
+async fn cancel_of_a_running_turn_keeps_later_admissions(profile: impl SessionHosting) {
+    let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let config = everruns::LlmSimConfig::fixed("done")
+        .with_response_delay(std::time::Duration::from_millis(500))
+        .with_message_capture(calls.clone());
+    let agent = Agent::builder()
+        .instructions("Answer.")
+        .model(Model::simulated_with_config(config))
+        .build()
+        .unwrap();
+    let engine = engine(profile, agent);
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    let deadline = std::time::Duration::from_secs(20);
+    let first = session.send("first").await.unwrap();
+    // Send once the first model call is in flight, past the turn's first take.
+    tokio::time::timeout(deadline, async {
+        while calls.lock().unwrap().is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the first model call starts");
+    let queued = session.send("second").await.unwrap();
+    first.turn().cancel().await.unwrap();
+    let cancelled = tokio::time::timeout(deadline, first.wait())
+        .await
+        .expect("cancelled turn resolves")
+        .unwrap();
+    assert_eq!(cancelled.stop_reason, everruns::TurnStopReason::Cancelled);
+    let next = tokio::time::timeout(deadline, queued.wait())
+        .await
+        .expect("the queued admission's waiter resolves")
+        .unwrap();
+    assert!(next.success, "{:?}", next.error);
+    assert_ne!(next.turn_id, cancelled.turn_id);
+}
+
 #[tokio::test]
 async fn memory_cancel_keeps_later_admissions() {
     cancel_keeps_later_admissions(MemoryHosting::default()).await;
+    cancel_of_a_running_turn_keeps_later_admissions(MemoryHosting::default()).await;
 }
 
 #[cfg(feature = "local")]
@@ -613,6 +658,10 @@ async fn sqlite_cancel_keeps_later_admissions() {
     let dir = tempfile::tempdir().unwrap();
     cancel_keeps_later_admissions(
         everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap(),
+    )
+    .await;
+    cancel_of_a_running_turn_keeps_later_admissions(
+        everruns::hosting::SqliteHosting::open(dir.path().join("running.db")).unwrap(),
     )
     .await;
 }
