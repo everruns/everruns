@@ -12,7 +12,7 @@ use everruns_contracts::error::{AgentLoopError, Result as CoreResult};
 use everruns_contracts::typed_id::{EventId, MessageId, SessionId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 /// Default number of canonical envelopes returned by a host event read.
 pub const DEFAULT_EVENT_READ_LIMIT: usize = 256;
@@ -644,6 +644,7 @@ pub struct EventDeliveryStats {
     pub closed: u64,
 }
 
+#[path = "events/emitter.rs"]
 mod emitter;
 pub use emitter::HostEventEmitter;
 
