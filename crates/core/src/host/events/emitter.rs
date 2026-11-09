@@ -20,8 +20,7 @@ use crate::events::{Event, EventData, EventRequest};
 /// append acceptance order through the post-commit sink call.
 ///
 /// With [`HostEventEmitter::enable_committed_batches`], events nothing waits
-/// on yet (lifecycle records, and a turn's final answer and `turn.completed`;
-/// see `is_held`) are held and committed together with the next event that
+/// on yet (lifecycle records, and a turn's final answer; see `is_held`) are held and committed together with the next event that
 /// is not, in one [`EventLog::append_batch`]. A held event is returned provisionally, without
 /// a sequence, and reaches the sink only once committed, so no listener ever
 /// sees an event the log does not hold. A crash loses only held events, which
@@ -52,15 +51,19 @@ type Behind = everruns_contracts::rt::JoinHandle<Result<(), String>>;
 /// Progress markers that commit behind the work (see [`HostEventEmitter`]).
 ///
 /// Decision: only events the executor never reads back before its next
-/// commit, and needs no sequence for, ahead of a model call that overlaps
-/// their commit: `reason.started` ("thinking"), `output.message.started`
-/// ("answering") and `context.compacted` (the step installs the compacted
-/// context in memory; a later step or turn reads the event only after a
-/// commit that waits for it).
+/// commit, and needs no sequence for:
+/// - ahead of a model call that overlaps their commit: `reason.started`
+///   ("thinking"), `output.message.started` ("answering") and
+///   `context.compacted` (the step installs the compacted context in
+///   memory; a later step or turn reads the event only after a commit that
+///   waits for it);
+/// - `session.idled`, after the committed terminal event: it overlaps the
+///   turn's finalization, the release waits for it, and a holder that dies
+///   first leaves an idle the next one owes and emits (`unidled_turn`).
 fn commits_behind(request: &EventRequest) -> bool {
     matches!(
         request.event_type.as_str(),
-        "reason.started" | "output.message.started" | "context.compacted"
+        "reason.started" | "output.message.started" | "context.compacted" | "session.idled"
     )
 }
 
@@ -72,23 +75,21 @@ fn commits_behind(request: &EventRequest) -> bool {
 /// - Lifecycle records: `session.activated`, `reason.completed`,
 ///   `capability.usage`, `llm.generation`.
 /// - The answer that ends a turn (`output.message.completed` without tool
-///   calls) and `turn.completed`: both ride on the `session.idled` that
-///   follows. A tail read, a steered input and the lease release commit
-///   them first. An answer that calls tools stays a barrier, so no tool
-///   runs on a decision the log may still lose.
+///   calls): it rides on the `turn.completed` that follows. A tail read, a
+///   steered input and the lease release commit it first. An answer that
+///   calls tools stays a barrier, so no tool runs on a decision the log may
+///   still lose.
 ///
-/// `turn.started`, the progress markers, inputs, tool events, `session.idled`
-/// and the other terminal events stay barriers.
+/// `turn.started`, inputs, tool events and terminal events stay barriers.
+/// Decision: a terminal event is never held. An epoch that ends without
+/// releasing (its lease expired, a step budget ran out) loses what it holds,
+/// and a turn whose `turn.completed` keeps getting lost never completes.
 fn is_held(request: &EventRequest) -> bool {
     match &request.data {
         EventData::OutputMessageCompleted(data) => !data.message.has_tool_calls(),
         _ => matches!(
             request.event_type.as_str(),
-            "session.activated"
-                | "reason.completed"
-                | "capability.usage"
-                | "llm.generation"
-                | "turn.completed"
+            "session.activated" | "reason.completed" | "capability.usage" | "llm.generation"
         ),
     }
 }

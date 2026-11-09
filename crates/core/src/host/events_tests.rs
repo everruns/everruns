@@ -533,7 +533,7 @@ async fn abandoned_held_events_are_never_committed() {
 }
 
 #[tokio::test]
-async fn a_final_answer_rides_on_session_idled_and_a_tool_call_does_not_wait() {
+async fn a_final_answer_rides_on_turn_completed_and_a_tool_call_does_not_wait() {
     let session_id = SessionId::new();
     let log = Arc::new(InMemoryEventLog::new());
     let sink = Arc::new(SeenSink::default());
@@ -573,25 +573,24 @@ async fn a_final_answer_rides_on_session_idled_and_a_tool_call_does_not_wait() {
     assert_eq!(committed(&log, session_id).await, 1);
 
     let turn_id = TurnId::new();
-    emitter
+    let terminal = emitter
         .emit(EventRequest::new(
             session_id,
             EventContext::empty(),
-            crate::events::SessionIdledData {
+            crate::events::TurnCompletedData {
                 turn_id,
-                iterations: None,
-                usage: None,
+                ..Default::default()
             },
         ))
         .await
         .unwrap();
-    assert_eq!(committed(&log, session_id).await, 3);
+    assert_eq!(terminal.sequence, Some(3), "a terminal event is never held");
     assert_eq!(
         sink.types(),
         [
             "output.message.completed",
             "output.message.completed",
-            "session.idled"
+            "turn.completed"
         ]
     );
 }
