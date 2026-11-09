@@ -198,6 +198,7 @@ impl MemoryHosting {
         Ports {
             session: self.session(id),
             fence: Arc::new(RwLock::new(None)),
+            claimed_wake_at: None,
         }
     }
 }
@@ -357,6 +358,7 @@ impl SessionHosting for MemoryHosting {
             binding,
             actor,
             epoch: Arc::new(Ports {
+                claimed_wake_at: Some(state.wake_at),
                 session: session.clone(),
                 fence: Arc::new(RwLock::new(Some(ActorFence::new(id, holder, state.fence)))),
             }),
@@ -371,6 +373,7 @@ impl SessionHosting for MemoryHosting {
 struct Ports {
     session: Arc<MemorySession>,
     fence: Arc<RwLock<Option<ActorFence>>>,
+    claimed_wake_at: Option<Option<i64>>,
 }
 
 fn core_error(error: impl std::fmt::Display) -> AgentLoopError {
@@ -489,6 +492,9 @@ impl SessionEpoch for Ports {
     }
     fn pushes_admissions(&self) -> bool {
         true
+    }
+    fn claimed_wake_at(&self) -> Option<Option<i64>> {
+        self.claimed_wake_at
     }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
         self.session.counts.count(Op::Write);

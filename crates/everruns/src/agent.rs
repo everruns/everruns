@@ -864,6 +864,20 @@ impl Agent {
                 crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID,
             ));
         }
+        // Decision: the synthetic harness and the agent definition take ids
+        // derived from the session, so every rebuild of one session uses the
+        // same ids and no other session's. Fresh ids on every activation
+        // rewrote the session record each turn and added one more harness and
+        // agent definition to a long-lived store; the definitions under the
+        // derived ids are replaced on every build, so an edited Agent still
+        // takes effect, and an unchanged record is not written again (data
+        // plane v2 step 1).
+        let stored = backends
+            .session_store
+            .get_session(session_id)
+            .await
+            .ok()
+            .flatten();
         let mut harness = match bound_harness {
             Some(harness) => harness.seeded(),
             None => {
@@ -879,6 +893,9 @@ impl Agent {
                 for file in &self.initial_files {
                     harness = harness.initial_file(file.clone());
                 }
+                harness = harness.id(everruns_contracts::typed_id::HarnessId::from_uuid(
+                    session_scoped_id(session_id, b"synthetic-harness"),
+                ));
                 harness.build()
             }
         };
@@ -910,6 +927,9 @@ impl Agent {
         if let Some(access) = &self.network_access {
             agent = agent.network_access(access.clone());
         }
+        agent = agent.id(everruns_contracts::typed_id::AgentId::from_uuid(
+            session_scoped_id(session_id, b"agent-definition"),
+        ));
         let agent_id = agent.agent_id();
         let agent = agent.build();
 
@@ -937,12 +957,8 @@ impl Agent {
         for file in &self.initial_files {
             session = session.initial_file(file.clone());
         }
-        let mut session = crate::engine::reconcile_session_record(
-            backends.session_store.as_ref(),
-            session.build(),
-            &capabilities,
-        )
-        .await;
+        let mut session =
+            crate::engine::reconcile_session_record(session.build(), stored.clone(), &capabilities);
         // EVE-1297: live MCP edits are trusted Engine-held input, re-applied
         // over the Agent-derived servers on every rebuild (see the MCP rule in
         // `engine::session_overlay`).
@@ -973,6 +989,11 @@ impl Agent {
             .session(session)
             .model_spec(self.model.clone())
             .workspace_policy(self.workspace_policy.clone());
+        // An activation rebuilds the runtime; an unchanged record is not
+        // written back to the authority each time.
+        if let Some(stored) = &stored {
+            builder = builder.stored_session(stored);
+        }
         if let Some(live) = live {
             let (turn, session) = live.effort_handles();
             builder = builder
@@ -1253,3 +1274,9 @@ pub(crate) fn validate_tool_search_config(config: &serde_json::Value) -> Result<
 #[cfg(test)]
 #[path = "agent_tests.rs"]
 mod tests;
+
+/// A stable id for a definition this session's runtime seeds (see
+/// `runtime_builder`).
+fn session_scoped_id(session: SessionId, purpose: &[u8]) -> uuid::Uuid {
+    uuid::Uuid::new_v5(&session.uuid(), purpose)
+}

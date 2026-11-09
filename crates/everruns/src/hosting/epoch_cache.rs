@@ -4,7 +4,8 @@
 //! timer while the lease holds (every write is fenced), so a value it wrote
 //! need not be read back, and a timer it set need not be set again. Only
 //! successful writes are remembered: a key this epoch never wrote is always
-//! read from the authority. Data plane v2 step 1 counts each saved call as a
+//! read from the authority. A claim that returns the stored wake time seeds
+//! the timer. Data plane v2 step 1 counts each saved call as a
 //! saved round trip to a replicated authority's leader.
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -21,9 +22,9 @@ pub(crate) struct EpochCache {
 impl EpochCache {
     pub(crate) fn new(inner: Arc<dyn SessionEpoch>) -> Self {
         Self {
+            scheduled: Mutex::new(inner.claimed_wake_at()),
             inner,
             written: Mutex::default(),
-            scheduled: Mutex::default(),
         }
     }
 
@@ -42,6 +43,9 @@ impl SessionEpoch for EpochCache {
     }
     fn pushes_admissions(&self) -> bool {
         self.inner.pushes_admissions()
+    }
+    fn claimed_wake_at(&self) -> Option<Option<i64>> {
+        self.inner.claimed_wake_at()
     }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
         if *self.scheduled.lock().unwrap_or_else(|p| p.into_inner()) == Some(wake_at) {
@@ -70,6 +74,11 @@ impl SessionEpoch for EpochCache {
         self.inner.records(prefix).await
     }
     async fn commit(&self, key: &str, value: Value, absent: bool) -> Result<bool> {
+        // An insert-if-absent of a key this epoch already wrote finds it
+        // present; the authority would answer the same.
+        if absent && self.written().contains_key(key) {
+            return Ok(false);
+        }
         let committed = self.inner.commit(key, value.clone(), absent).await?;
         if committed {
             self.written().insert(key.to_owned(), value);

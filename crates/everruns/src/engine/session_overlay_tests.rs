@@ -192,7 +192,8 @@ async fn a_new_record_is_the_fresh_build() {
         .title("fresh")
         .capability(CapabilityRef::new("overlay"))
         .build();
-    let merged = reconcile_session_record(store.as_ref(), fresh.clone(), &[]).await;
+    let stored = store.get_session(fresh.id).await.unwrap();
+    let merged = reconcile_session_record(fresh.clone(), stored, &[]);
     assert_eq!(
         serde_json::to_value(&merged).unwrap(),
         serde_json::to_value(&fresh).unwrap()

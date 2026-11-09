@@ -636,6 +636,11 @@ pub trait SessionEpoch: Send + Sync + 'static {
     fn pushes_admissions(&self) -> bool {
         false
     }
+    /// The wake time the authority held when this epoch was claimed, when
+    /// the claim returned it, so the epoch can skip storing the same one.
+    fn claimed_wake_at(&self) -> Option<Option<i64>> {
+        None
+    }
     /// Retain a timer obligation under the current epoch. Its activation is
     /// independent of frontend traffic; only Rust interprets expired waits.
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()>;

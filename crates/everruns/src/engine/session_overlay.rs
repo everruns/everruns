@@ -45,7 +45,6 @@
 use std::collections::HashSet;
 
 use everruns_contracts::CapabilityRef;
-use everruns_core::host::RuntimeSessionStore;
 use everruns_core::session::ExecutionSession;
 
 /// Client hints the runtime builder derives from the Agent on every build.
@@ -56,14 +55,14 @@ pub(crate) const AGENT_DERIVED_HINTS: [&str; 2] = ["setup_connection", "ask_user
 ///
 /// `agent_capabilities` are the capabilities the trusted Agent contributes on
 /// its own layer; see the module docs for every field's precedence.
-pub(crate) async fn reconcile_session_record(
-    store: &dyn RuntimeSessionStore,
+pub(crate) fn reconcile_session_record(
     fresh: ExecutionSession,
+    stored: Option<ExecutionSession>,
     agent_capabilities: &[CapabilityRef],
 ) -> ExecutionSession {
-    match store.get_session(fresh.id).await {
-        Ok(Some(existing)) => reconcile(fresh, existing, agent_capabilities),
-        _ => fresh,
+    match stored {
+        Some(existing) => reconcile(fresh, existing, agent_capabilities),
+        None => fresh,
     }
 }
 

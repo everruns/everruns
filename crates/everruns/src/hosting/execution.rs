@@ -175,16 +175,24 @@ impl ActorHosts for FrameworkHosts {
         }
     }
 
+    // Decision: a fresh input's turn identity is its assignment. The driver
+    // commits the assignment right after asking for the identity, with no
+    // event between them, so one receipt does both and `inputs_consumed`
+    // finds it already written (data plane v2 step 1: one write fewer).
     async fn fresh_turn_id(&self, input: MessageId, proposed: TurnId) -> Result<TurnId> {
-        let key = format!("turn_for/{input}");
-        self.epoch.commit(&key, json!(proposed), true).await?;
-        serde_json::from_value(
+        let key = format!("assignment/{input}");
+        let value = json!({"turn_id": proposed, "steered": false});
+        if self.epoch.commit(&key, value, true).await? {
+            return Ok(proposed);
+        }
+        let retained: super::TurnAssignment = serde_json::from_value(
             self.epoch
                 .record(&key)
                 .await?
                 .ok_or_else(|| AgentLoopError::store("missing retained turn identity"))?,
         )
-        .map_err(|_| AgentLoopError::store("invalid retained turn identity"))
+        .map_err(|_| AgentLoopError::store("invalid retained turn identity"))?;
+        Ok(retained.turn_id)
     }
 
     async fn inputs_consumed(&self, drive: &TurnDrive, inputs: &[MessageId]) -> Result<()> {
