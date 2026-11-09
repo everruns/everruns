@@ -76,7 +76,10 @@ pub mod channel_auth {
 }
 #[cfg(feature = "channels")]
 pub mod channels;
+pub mod checkpoints;
 mod context;
+#[cfg(all(unix, feature = "control"))]
+pub mod control;
 /// The app as a Personal Agent Protocol ("Poppy") personal agent: tools that
 /// find a company by domain, message its agent, read replies, ask for a
 /// person and close the conversation, for the person the app works for.
@@ -566,3 +569,7 @@ pub use everruns_core::dreaming::{
 /// MCP discovery readiness reported by a session.
 #[cfg(feature = "mcp")]
 pub use everruns_core::host::McpDiscoveryStatus;
+
+/// Per-server MCP readiness snapshot, change watch and probe results.
+#[cfg(feature = "mcp")]
+pub use everruns_core::host::{McpReadiness, McpReadinessWatch, McpServerReadiness};

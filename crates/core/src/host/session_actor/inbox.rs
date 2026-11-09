@@ -52,23 +52,42 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
             }
         }
     }
-}
 
-#[async_trait]
-impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
-    async fn take(&self, _session_id: SessionId) -> Result<Vec<MessageId>> {
+    /// Store the turn's queued events, then hand it the input past the
+    /// cursor, unless a cancel targets the turn.
+    async fn steering(&self) -> Result<Vec<MessageId>> {
         // A gap in the log stops the turn before its input is committed.
         self.hosts.flush(self.host).await?;
         self.lease.turn_stored();
         self.refresh().await;
+        // A cancel the renew already reported ends the turn before it takes
+        // more input: a message admitted behind a cancelled turn is not part
+        // of it and runs as the next turn (EVE-1344). A cancel reported only
+        // by the renew after the take still ends the turn with the input it
+        // took; that input joined the turn and resolves as cancelled.
+        if self.lease.cancel_requested() {
+            return Err(cancelled());
+        }
         let inputs = self.lease.take_inputs().await?;
         self.hosts.inputs_consumed(self.drive, &inputs).await?;
         if !inputs.is_empty() {
             self.refresh().await;
         }
         if self.lease.cancel_requested() {
-            return Err(AgentLoopError::store("turn cancellation accepted"));
+            return Err(cancelled());
         }
+        Ok(inputs)
+    }
+}
+
+fn cancelled() -> AgentLoopError {
+    AgentLoopError::store("turn cancellation accepted")
+}
+
+#[async_trait]
+impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
+    async fn take(&self, _session_id: SessionId) -> Result<Vec<MessageId>> {
+        let inputs = self.steering().await?;
         self.hosts.begin_phase(self.host, self.drive, Phase::Reason);
         Ok(inputs)
     }
@@ -86,18 +105,7 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
             self.hosts.begin_phase(self.host, self.drive, Phase::Act);
             return Ok(PendingInput::new(pending, Vec::new()));
         }
-        // A gap in the log stops the turn before its input is committed.
-        self.hosts.flush(self.host).await?;
-        self.lease.turn_stored();
-        self.refresh().await;
-        let inputs = self.lease.take_inputs().await?;
-        self.hosts.inputs_consumed(self.drive, &inputs).await?;
-        if !inputs.is_empty() {
-            self.refresh().await;
-        }
-        if self.lease.cancel_requested() {
-            return Err(AgentLoopError::store("turn cancellation accepted"));
-        }
+        let inputs = self.steering().await?;
         Ok(PendingInput::new(inputs.len(), inputs))
     }
 

@@ -230,6 +230,7 @@ jobs:
               - 'examples/bashkit-repo-agent/**'
               - 'examples/foreman-agent/**'
               - 'examples/framework-cli-host/**'
+              - 'examples/attached-cli/**'
               - 'examples/demo-support/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'

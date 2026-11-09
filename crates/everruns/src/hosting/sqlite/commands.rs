@@ -32,6 +32,7 @@ impl SqliteHosting {
                 // Branch facts only when asked: building them reads the journal index.
                 history:match &command {
                     SessionCommand::SelectBranch{branch,ranges,..}=>Some(super::lineage::view(tx,session,state,branch,ranges.as_deref())?),
+                    SessionCommand::DropBranch{branch,..}=>Some(super::lineage::view(tx,session,state,branch,None)?),
                     _=>None,
                 },
             };
@@ -52,12 +53,19 @@ impl SqliteHosting {
                 },
                 ControlUpdate::Resume=>{state.inbox=i64::from(state.head);state.resume_generation+=1;state.runnable=true;},
                 ControlUpdate::RetryExecution=>{state.suspended=false;state.runnable=true;state.holder=None;state.expires=0;},
-                ControlUpdate::Cancel{input,interrupt}=>{state.target_cancels.insert(input,state.inbox);if interrupt{state.cancel=Some(state.inbox);state.cancel_reported=false;state.runnable=true;}},
-                ControlUpdate::SelectBranch{branch,ranges,revision}=>{
-                    super::lineage::select(tx,session,state,branch,ranges,revision)?;
+                ControlUpdate::Cancel{input,interrupt}=>{
+                    // The targeted admission's own sequence, not the inbox head:
+                    // input admitted behind it runs as the next turn (EVE-1344).
+                    let position=tx.query_row("SELECT value FROM framework_commands WHERE session=? AND id=?",params![session.to_string(),input.to_string()],|row|row.get::<_,String>(0)).optional().map_err(error)?
+                        .map(decode::<Value>).transpose()?.and_then(|receipt|receipt["sequence"].as_i64()).unwrap_or(state.inbox);
+                    state.target_cancels.insert(input,position);if interrupt{state.cancel=Some(position);state.cancel_reported=false;state.runnable=true;}
+                },
+                ControlUpdate::SelectBranch{branch,ranges,revision,discard}=>{
+                    super::lineage::select(tx,session,state,branch,ranges,revision,discard)?;
                     // Proactive-compaction attempts measured another branch.
                     self.proactive.lock().map_err(error)?.retain(|(id,..),_|*id!=session);
                 },
+                ControlUpdate::DropBranch{branch,revision}=>super::lineage::drop_branch(tx,session,state,&branch,revision)?,
             }
             if let Some(key)=plan.key {retain_command(tx,session,&key,&plan.fingerprint,&plan.reply)?;}
             Ok(plan.reply)

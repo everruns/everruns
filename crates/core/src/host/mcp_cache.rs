@@ -26,10 +26,10 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use everruns_contracts::tool_types::ToolDefinition;
-use tokio::sync::{Mutex as AsyncMutex, Semaphore};
+use tokio::sync::{Mutex as AsyncMutex, Semaphore, watch};
 use uuid::Uuid;
 
 /// How long cached tools are considered fresh. Matches the hosted server's
@@ -52,10 +52,43 @@ const MAX_CACHE_BYTES: usize = 128 * 1024 * 1024;
 /// Identifies one attachment: session, sanitized name, and configuration digest.
 pub(crate) type CacheKey = (Uuid, String, [u8; 32]);
 
-#[derive(Clone, Copy, Debug)]
+/// Maximum bytes of a failure reason retained for readiness reporting.
+const MAX_FAILURE_REASON_BYTES: usize = 512;
+
+/// A classified discovery failure and the host-facing reason it carries.
+#[derive(Clone, Debug)]
 pub(crate) enum DiscoveryFailure {
-    Authentication,
-    Transient,
+    Authentication(Arc<str>),
+    Transient(Arc<str>),
+}
+
+impl DiscoveryFailure {
+    pub(crate) fn authentication(reason: impl AsRef<str>) -> Self {
+        Self::Authentication(bounded_reason(reason.as_ref()))
+    }
+
+    pub(crate) fn transient(reason: impl AsRef<str>) -> Self {
+        Self::Transient(bounded_reason(reason.as_ref()))
+    }
+
+    fn reason(&self) -> &Arc<str> {
+        match self {
+            Self::Authentication(reason) | Self::Transient(reason) => reason,
+        }
+    }
+}
+
+// THREAT[TM-DOS-031]: upstream error text is server-influenced; retain a
+// bounded prefix so per-entry readiness never grows with a server's response.
+fn bounded_reason(reason: &str) -> Arc<str> {
+    if reason.len() <= MAX_FAILURE_REASON_BYTES {
+        return reason.into();
+    }
+    let mut end = MAX_FAILURE_REASON_BYTES;
+    while !reason.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &reason[..end]).into()
 }
 
 /// Current discovery state. Pending is not a connection failure.
@@ -71,8 +104,20 @@ struct CacheEntry {
     tools: Vec<ToolDefinition>,
     serialized_bytes: usize,
     cached_at: Instant,
+    /// Wall-clock completion of the attempt that produced this entry, for hosts.
+    completed_at: SystemTime,
     last_used: Instant,
     failure: Option<DiscoveryFailure>,
+}
+
+/// Readiness of one cache key, projected for host status surfaces.
+#[derive(Clone, Debug)]
+pub(crate) struct KeyReadiness {
+    pub(crate) status: McpDiscoveryStatus,
+    pub(crate) probing: bool,
+    pub(crate) tool_count: usize,
+    pub(crate) reason: Option<String>,
+    pub(crate) last_probe: Option<SystemTime>,
 }
 
 fn cached_bytes(entries: &HashMap<CacheKey, CacheEntry>) -> usize {
@@ -141,6 +186,10 @@ pub struct McpDiscoveryCache {
     pub(crate) readiness_budget: Option<Duration>,
     background_slots: Arc<Semaphore>,
     background_queue: Arc<Semaphore>,
+    /// Bumped whenever any key's readiness may have changed: an attempt
+    /// starts or completes, or a session is invalidated. Hosts poll or watch
+    /// it instead of projecting their own readiness state.
+    revision: watch::Sender<u64>,
 }
 
 impl McpDiscoveryCache {
@@ -165,6 +214,7 @@ impl McpDiscoveryCache {
             readiness_budget: None,
             background_slots: Arc::new(Semaphore::new(16)),
             background_queue: Arc::new(Semaphore::new(MAX_CACHE_ENTRIES)),
+            revision: watch::Sender::new(0),
         }
     }
 
@@ -180,15 +230,60 @@ impl McpDiscoveryCache {
         self.entries.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    #[cfg(test)]
     pub(crate) fn status(&self, key: &CacheKey) -> McpDiscoveryStatus {
+        self.readiness(key).status
+    }
+
+    /// Current readiness revision; see [`Self::subscribe`].
+    pub(crate) fn revision(&self) -> u64 {
+        *self.revision.borrow()
+    }
+
+    /// Watch the readiness revision. A change means some key's readiness may
+    /// have changed, including keys of other sessions sharing this cache.
+    pub(crate) fn subscribe(&self) -> watch::Receiver<u64> {
+        self.revision.subscribe()
+    }
+
+    fn bump_revision(&self) {
+        self.revision
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
+    }
+
+    /// Readiness of `key` without starting discovery.
+    pub(crate) fn readiness(&self, key: &CacheKey) -> KeyReadiness {
+        // A held per-key lock means an attempt (turn, background or probe) is running.
+        let probing = self
+            .locks
+            .map
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(key)
+            .is_some_and(|lock| lock.try_lock().is_err());
         match self.entries().get(key) {
-            None => McpDiscoveryStatus::Pending,
-            Some(entry) => match entry.failure {
-                Some(DiscoveryFailure::Authentication) => {
-                    McpDiscoveryStatus::AuthenticationRequired
-                }
-                Some(DiscoveryFailure::Transient) => McpDiscoveryStatus::Failed,
-                None => McpDiscoveryStatus::Ready,
+            None => KeyReadiness {
+                status: McpDiscoveryStatus::Pending,
+                probing,
+                tool_count: 0,
+                reason: None,
+                last_probe: None,
+            },
+            Some(entry) => KeyReadiness {
+                status: match entry.failure {
+                    Some(DiscoveryFailure::Authentication(_)) => {
+                        McpDiscoveryStatus::AuthenticationRequired
+                    }
+                    Some(DiscoveryFailure::Transient(_)) => McpDiscoveryStatus::Failed,
+                    None => McpDiscoveryStatus::Ready,
+                },
+                probing,
+                tool_count: entry.tools.len(),
+                reason: entry
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.reason().to_string()),
+                last_probe: Some(entry.completed_at),
             },
         }
     }
@@ -203,17 +298,19 @@ impl McpDiscoveryCache {
         locks.retain(|(id, _, _), _| *id != session_id);
         self.entries()
             .retain(|(cached_session_id, _, _), _| *cached_session_id != session_id);
+        drop(locks);
+        self.bump_revision();
     }
 
     /// Classify the entry for `key` at `now`.
     fn classify(&self, key: &CacheKey, now: Instant) -> Freshness {
         match self.entries().get_mut(key) {
             None => Freshness::Cold,
-            Some(entry) if matches!(entry.failure, Some(DiscoveryFailure::Authentication)) => {
+            Some(entry) if matches!(entry.failure, Some(DiscoveryFailure::Authentication(_))) => {
                 entry.last_used = now;
                 Freshness::Fresh(Vec::new())
             }
-            Some(entry) if matches!(entry.failure, Some(DiscoveryFailure::Transient)) => {
+            Some(entry) if matches!(entry.failure, Some(DiscoveryFailure::Transient(_))) => {
                 entry.last_used = now;
                 if now.duration_since(entry.cached_at) < Duration::from_secs(5) {
                     Freshness::Fresh(entry.tools.clone())
@@ -264,6 +361,7 @@ impl McpDiscoveryCache {
                 tools,
                 serialized_bytes,
                 cached_at: now,
+                completed_at: SystemTime::now(),
                 last_used: now,
                 failure,
             },
@@ -279,6 +377,8 @@ impl McpDiscoveryCache {
             };
             entries.remove(&evict_key);
         }
+        drop(entries);
+        self.bump_revision();
     }
 
     fn store_refresh(
@@ -298,8 +398,8 @@ impl McpDiscoveryCache {
             Ok(tools) => self.store(key, tools, Instant::now()),
             Err(failure) => {
                 let tools = match failure {
-                    DiscoveryFailure::Authentication => Vec::new(),
-                    DiscoveryFailure::Transient => self
+                    DiscoveryFailure::Authentication(_) => Vec::new(),
+                    DiscoveryFailure::Transient(_) => self
                         .entries()
                         .get(&key)
                         .map(|entry| entry.tools.clone())
@@ -406,11 +506,12 @@ impl McpDiscoveryCache {
             return tools;
         }
 
+        self.bump_revision();
         let result = refresh().await;
         let tools = match &result {
             Ok(tools) => tools.clone(),
-            Err(DiscoveryFailure::Authentication) => Vec::new(),
-            Err(DiscoveryFailure::Transient) => match self.classify(&key, Instant::now()) {
+            Err(DiscoveryFailure::Authentication(_)) => Vec::new(),
+            Err(DiscoveryFailure::Transient(_)) => match self.classify(&key, Instant::now()) {
                 Freshness::Fresh(tools) | Freshness::Stale(tools) => tools,
                 Freshness::Cold => Vec::new(),
             },
@@ -436,6 +537,7 @@ impl McpDiscoveryCache {
             return;
         };
         let cache = self.clone();
+        self.bump_revision();
         tokio::spawn(async move {
             let _admission = admission;
             let _guard = guard; // held while queued and running -> single-flight
@@ -455,24 +557,72 @@ impl McpDiscoveryCache {
                     .get(&key)
                     .is_some_and(|current| Arc::ptr_eq(current, &lock));
                 if !current {
-                    return Err(DiscoveryFailure::Transient);
+                    return Err(DiscoveryFailure::transient("discovery was superseded"));
                 }
                 refresh().await
             })
             .await
-            .unwrap_or(Err(DiscoveryFailure::Transient));
-            let result = result.and_then(|tools| {
-                if Self::cacheable(&tools) {
-                    Ok(tools)
-                } else {
-                    // Background completion has no direct caller to receive an
-                    // uncacheable catalog. Report failure instead of perpetual pending.
-                    tracing::warn!(server = %key.1, "MCP catalog exceeds background cache admission bounds");
-                    Err(DiscoveryFailure::Transient)
-                }
-            });
+            .unwrap_or_else(|_| Err(deadline_failure()));
+            let result = result.and_then(|tools| admit_catalog(&key, tools));
             cache.store_refresh(key, &lock, result);
+            drop(_guard);
+            // Retired attempts store nothing; still publish that probing ended.
+            cache.bump_revision();
         });
+    }
+
+    /// Run one discovery attempt for `key` now, bypassing freshness, the
+    /// transient cooldown and the authentication hold. Hosts call it from
+    /// reconnect or doctor actions.
+    ///
+    /// Shares the per-key single-flight lock with turns and background
+    /// refreshes: when another attempt completes while this one waits, that
+    /// result is the answer and no second upstream call is made. On transient
+    /// failure the previous complete catalog keeps serving turns.
+    pub(crate) async fn probe<F, Fut>(self: &Arc<Self>, key: CacheKey, refresh: F)
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<Vec<ToolDefinition>, DiscoveryFailure>>,
+    {
+        let completed = |cache: &Self| cache.entries().get(&key).map(|entry| entry.cached_at);
+        let before = completed(self);
+        let lock = self.locks.lock_for(&key);
+        let guard = lock.clone().lock_owned().await;
+        let after = completed(self);
+        if after.is_some() && after != before {
+            return;
+        }
+        self.bump_revision();
+        let result = tokio::time::timeout(crate::mcp::MCP_DISCOVERY_DEADLINE, refresh())
+            .await
+            .unwrap_or_else(|_| Err(deadline_failure()))
+            .and_then(|tools| admit_catalog(&key, tools));
+        self.store_refresh(key, &lock, result);
+        drop(guard);
+        self.bump_revision();
+    }
+}
+
+fn deadline_failure() -> DiscoveryFailure {
+    DiscoveryFailure::transient(format!(
+        "discovery exceeded its {}s deadline",
+        crate::mcp::MCP_DISCOVERY_DEADLINE.as_secs()
+    ))
+}
+
+/// Admit a catalog completed without a direct caller to receive it. An
+/// uncacheable catalog is reported as a failure instead of perpetual pending.
+fn admit_catalog(
+    key: &CacheKey,
+    tools: Vec<ToolDefinition>,
+) -> Result<Vec<ToolDefinition>, DiscoveryFailure> {
+    if McpDiscoveryCache::cacheable(&tools) {
+        Ok(tools)
+    } else {
+        tracing::warn!(server = %key.1, "MCP catalog exceeds background cache admission bounds");
+        Err(DiscoveryFailure::transient(
+            "tool catalog exceeds the discovery cache bounds",
+        ))
     }
 }
 
@@ -560,16 +710,25 @@ mod tests {
     async fn background_discovery_retains_failure_classification_and_hard_deadline() {
         for (failure, expected) in [
             (
-                DiscoveryFailure::Authentication,
+                DiscoveryFailure::authentication("rejected"),
                 McpDiscoveryStatus::AuthenticationRequired,
             ),
-            (DiscoveryFailure::Transient, McpDiscoveryStatus::Failed),
+            (
+                DiscoveryFailure::transient("unreachable"),
+                McpDiscoveryStatus::Failed,
+            ),
         ] {
             let cache = Arc::new(McpDiscoveryCache::new());
             cache
                 .resolve_until(
                     key(),
-                    move || async move { Err(failure) },
+                    {
+                        let failure = failure.clone();
+                        move || {
+                            let failure = failure.clone();
+                            async move { Err(failure) }
+                        }
+                    },
                     Some(tokio::time::Instant::now() + Duration::from_secs(1)),
                 )
                 .await;
@@ -762,7 +921,9 @@ mod tests {
     async fn transient_failure_returns_empty_with_a_short_cooldown() {
         let cache = Arc::new(McpDiscoveryCache::new());
         let out = cache
-            .resolve(key(), || async { Err(DiscoveryFailure::Transient) })
+            .resolve(key(), || async {
+                Err(DiscoveryFailure::transient("unreachable"))
+            })
             .await;
         assert!(out.is_empty());
         assert!(matches!(
@@ -959,7 +1120,9 @@ mod tests {
         let cache = Arc::new(McpDiscoveryCache::with_ttl(Duration::ZERO));
         cache.store(key(), vec![def("complete_v1")], Instant::now());
         let served = cache
-            .resolve(key(), || async { Err(DiscoveryFailure::Transient) })
+            .resolve(key(), || async {
+                Err(DiscoveryFailure::transient("unreachable"))
+            })
             .await;
         assert_eq!(names(&served), ["complete_v1"]);
         assert!(matches!(
@@ -991,7 +1154,7 @@ mod failure_tests {
                         async move {
                             calls.fetch_add(1, Ordering::SeqCst);
                             tokio::task::yield_now().await;
-                            Err(DiscoveryFailure::Authentication)
+                            Err(DiscoveryFailure::authentication("rejected"))
                         }
                     })
                     .await
@@ -1041,7 +1204,7 @@ mod reload_tests {
                         async move {
                             started.notify_one();
                             release.notified().await;
-                            Err(DiscoveryFailure::Authentication)
+                            Err(DiscoveryFailure::authentication("rejected"))
                         }
                     })
                     .await
@@ -1055,5 +1218,47 @@ mod reload_tests {
             cache.classify(&key, Instant::now()),
             Freshness::Cold
         ));
+    }
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::*;
+
+    #[test]
+    fn failure_reasons_are_bounded_on_a_char_boundary() {
+        let long = "é".repeat(MAX_FAILURE_REASON_BYTES);
+        let failure = DiscoveryFailure::transient(&long);
+        let reason = failure.reason();
+        assert!(reason.len() <= MAX_FAILURE_REASON_BYTES + '…'.len_utf8());
+        assert!(reason.ends_with('…'));
+        assert_eq!(
+            DiscoveryFailure::authentication("short").reason().as_ref(),
+            "short"
+        );
+    }
+
+    #[test]
+    fn completion_and_invalidation_advance_the_revision() {
+        let cache = McpDiscoveryCache::new();
+        let key: CacheKey = (Uuid::nil(), "docs".into(), [0; 32]);
+        let mut watch = cache.subscribe();
+        let start = *watch.borrow_and_update();
+        cache.store_entry(
+            key.clone(),
+            Vec::new(),
+            Instant::now(),
+            Some(DiscoveryFailure::transient("down")),
+        );
+        assert!(watch.has_changed().unwrap());
+        let stored = *watch.borrow_and_update();
+        assert!(stored > start);
+        let readiness = cache.readiness(&key);
+        assert_eq!(readiness.status, McpDiscoveryStatus::Failed);
+        assert_eq!(readiness.reason.as_deref(), Some("down"));
+        assert!(readiness.last_probe.is_some());
+        cache.invalidate_session(Uuid::nil());
+        assert!(cache.revision() > stored);
+        assert_eq!(cache.readiness(&key).status, McpDiscoveryStatus::Pending);
     }
 }

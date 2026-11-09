@@ -175,7 +175,8 @@ pub(super) fn view(
     })
 }
 
-/// Retain the active branch at its extent and activate `branch`.
+/// Retain the active branch at its extent, unless `discard` (a truncating
+/// restore, EVE-1339) drops it from the catalog, and activate `branch`.
 pub(super) fn select(
     tx: &Transaction<'_>,
     session: SessionId,
@@ -183,15 +184,18 @@ pub(super) fn select(
     branch: String,
     ranges: Vec<SequenceRange>,
     revision: u64,
+    discard: bool,
 ) -> Result<()> {
-    let previous = active_branch(state);
-    put(
-        tx,
-        session,
-        "branch",
-        &previous,
-        &active_ranges(tx, session, state)?,
-    )?;
+    if !discard {
+        let previous = active_branch(state);
+        put(
+            tx,
+            session,
+            "branch",
+            &previous,
+            &active_ranges(tx, session, state)?,
+        )?;
+    }
     tx.execute(
         "DELETE FROM framework_objects WHERE session=? AND kind='branch' AND key=?",
         params![session.to_string(), branch],
@@ -203,6 +207,28 @@ pub(super) fn select(
         ranges,
         base: state.head,
     });
+    Ok(())
+}
+
+/// Delete retained `branch` at `revision` (EVE-1339). The reducer has
+/// checked that it exists and is not active, so a lineage exists.
+pub(super) fn drop_branch(
+    tx: &Transaction<'_>,
+    session: SessionId,
+    state: &mut Control,
+    branch: &str,
+    revision: u64,
+) -> Result<()> {
+    tx.execute(
+        "DELETE FROM framework_objects WHERE session=? AND kind='branch' AND key=?",
+        params![session.to_string(), branch],
+    )
+    .map_err(error)?;
+    let lineage = state
+        .lineage
+        .as_mut()
+        .ok_or_else(|| error("history lineage is missing"))?;
+    lineage.revision = revision;
     Ok(())
 }
 
@@ -264,4 +290,38 @@ pub(super) fn covers(branch: &[SequenceRange], source: i64, prefix: &[SequenceRa
         .ok()
         .and_then(|source| history::clip(branch, source))
         .is_some_and(|clipped| clipped == prefix)
+}
+
+/// Journal events in `ranges` after `after`, active or not (EVE-1339).
+pub(super) fn events_in(
+    tx: &Transaction<'_>,
+    session: SessionId,
+    state: &Control,
+    ranges: &[SequenceRange],
+    after: i32,
+    limit: usize,
+) -> Result<Vec<Event>> {
+    history::validate_ranges(ranges, state.head).map_err(error)?;
+    let ranges = encode(
+        &ranges
+            .iter()
+            .map(|range| [range.first, range.last])
+            .collect::<Vec<_>>(),
+    )?;
+    let mut query = tx
+        .prepare("SELECT value FROM framework_events WHERE session=?1 AND seq>?2 AND EXISTS(SELECT 1 FROM json_each(?3) AS r WHERE seq BETWEEN json_extract(r.value,'$[0]') AND json_extract(r.value,'$[1]')) ORDER BY seq LIMIT ?4")
+        .map_err(error)?;
+    query
+        .query_map(
+            params![
+                session.to_string(),
+                after,
+                ranges,
+                limit.clamp(1, 1024) as i64
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(error)?
+        .map(|row| decode(row.map_err(error)?))
+        .collect()
 }

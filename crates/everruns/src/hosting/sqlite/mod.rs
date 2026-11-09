@@ -29,6 +29,13 @@ use std::{
     sync::{Mutex, RwLock},
 };
 
+/// Object kind of conversation checkpoints (EVE-1339); `checkpoint` holds
+/// compaction checkpoints.
+const CONVERSATION_CHECKPOINT: &str = "conversation_checkpoint";
+/// Framework record prefix marking an input a cutover imported without a
+/// turn: consumed history, not queued work (EVE-1339, see `import.rs`).
+const IMPORTED_INPUT: &str = "imported_input/";
+
 type ProactiveAttempts =
     Arc<Mutex<HashMap<(SessionId, String, String), everruns_core::ProactiveCompactionAttempt>>>;
 
@@ -282,6 +289,28 @@ impl SqliteHosting {
             }
         }
     }
+}
+
+/// Retained conversation checkpoints, oldest first (EVE-1339).
+fn conversation_checkpoints(
+    tx: &Transaction<'_>,
+    session: SessionId,
+) -> Result<Vec<super::ConversationCheckpoint>> {
+    let mut query = tx
+        .prepare("SELECT value FROM framework_objects WHERE session=? AND kind=? ORDER BY created,key LIMIT ?")
+        .map_err(error)?;
+    query
+        .query_map(
+            params![
+                session.to_string(),
+                CONVERSATION_CHECKPOINT,
+                super::MAX_CONVERSATION_CHECKPOINTS as i64 + 1
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(error)?
+        .map(|row| decode(row.map_err(error)?))
+        .collect()
 }
 
 fn object<T: DeserializeOwned>(
@@ -653,6 +682,158 @@ impl SessionHosting for SqliteHosting {
         self.transaction(session, |tx, state| {
             state.binding(session)?;
             lineage::read(tx, session, state)
+        })
+    }
+    async fn history_events(
+        &self,
+        session: SessionId,
+        ranges: Vec<super::SequenceRange>,
+        after: i32,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            lineage::events_in(tx, session, state, &ranges, after, limit)
+        })
+    }
+    async fn conversation_checkpoints(
+        &self,
+        session: SessionId,
+    ) -> Result<Vec<super::ConversationCheckpoint>> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            conversation_checkpoints(tx, session)
+        })
+    }
+    async fn create_conversation_checkpoint(
+        &self,
+        session: SessionId,
+        label: Option<String>,
+    ) -> Result<super::ConversationCheckpoint> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            // One snapshot: branch, raw active events, assignments and the
+            // commit (EVE-1339).
+            let lineage = lineage::read(tx, session, state)?;
+            let mut builder = crate::checkpoints::CheckpointBuilder::new();
+            let mut after = 0;
+            loop {
+                let (events, more) = ports::page(tx, session, state, after, state.head, 1024)?;
+                for event in &events {
+                    builder.add(event);
+                }
+                match events.last().and_then(|event| event.sequence) {
+                    Some(last) if more => after = last,
+                    _ => break,
+                }
+            }
+            let checkpoint = builder.build(
+                lineage.active_ranges(),
+                &lineage.active,
+                label,
+                |input| {
+                    Ok(crate::checkpoints::InputFacts {
+                        assigned: object::<super::TurnAssignment>(
+                            tx,
+                            session,
+                            "framework",
+                            &format!("assignment/{input}"),
+                        )?
+                        .map(|assignment| assignment.turn_id),
+                        admitted: tx
+                            .query_row(
+                                "SELECT EXISTS(SELECT 1 FROM framework_commands WHERE session=? AND id=?)",
+                                params![session.to_string(), input.to_string()],
+                                |row| row.get(0),
+                            )
+                            .map_err(error)?,
+                        rejected: object::<Value>(
+                            tx,
+                            session,
+                            "framework",
+                            &format!("rejected/{input}"),
+                        )?
+                        .is_some(),
+                        history: object::<Value>(
+                            tx,
+                            session,
+                            "framework",
+                            &format!("{IMPORTED_INPUT}{input}"),
+                        )?
+                        .is_some(),
+                    })
+                },
+            )?;
+            // Unreachable checkpoints do not count against capacity.
+            let mut retained = 0;
+            for existing in conversation_checkpoints(tx, session)? {
+                if crate::checkpoints::reachable(&lineage, &existing).is_some() {
+                    retained += 1;
+                } else {
+                    tx.execute(
+                        "DELETE FROM framework_objects WHERE session=? AND kind=? AND key=?",
+                        params![session.to_string(), CONVERSATION_CHECKPOINT, existing.id.to_string()],
+                    )
+                    .map_err(error)?;
+                }
+            }
+            if retained >= super::MAX_CONVERSATION_CHECKPOINTS {
+                return Err(error("conversation checkpoint capacity reached"));
+            }
+            put(
+                tx,
+                session,
+                CONVERSATION_CHECKPOINT,
+                &checkpoint.id.to_string(),
+                &checkpoint,
+            )?;
+            Ok(checkpoint)
+        })
+    }
+    async fn turn_sequences(
+        &self,
+        session: SessionId,
+        turn: TurnId,
+        after: i32,
+        limit: usize,
+    ) -> Result<Vec<i32>> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            let mut query = tx
+                .prepare("SELECT seq FROM framework_events WHERE session=? AND seq>? AND turn_id=? ORDER BY seq LIMIT ?")
+                .map_err(error)?;
+            query
+                .query_map(
+                    params![
+                        session.to_string(),
+                        after,
+                        turn.to_string(),
+                        limit.clamp(1, 1024) as i64
+                    ],
+                    |row| row.get::<_, i32>(0),
+                )
+                .map_err(error)?
+                .map(|row| row.map_err(error))
+                .collect()
+        })
+    }
+    async fn delete_conversation_checkpoint(
+        &self,
+        session: SessionId,
+        checkpoint: uuid::Uuid,
+    ) -> Result<bool> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            tx.execute(
+                "DELETE FROM framework_objects WHERE session=? AND kind=? AND key=?",
+                params![
+                    session.to_string(),
+                    CONVERSATION_CHECKPOINT,
+                    checkpoint.to_string()
+                ],
+            )
+            .map(|deleted| deleted > 0)
+            .map_err(error)
         })
     }
     async fn import_legacy(&self, session: SessionId, image: LegacySessionImage) -> Result<bool> {

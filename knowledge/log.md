@@ -2,6 +2,16 @@
 
 ## 2026-11-09
 
+- Framework hosts get a local control socket so a second process of the same
+  user can list, watch, drive and cancel running sessions
+  ([attached control](framework/attached-control.md)); threat model gains
+  TM-AUTH-040 and TM-DOS-056.
+- Framework conversation checkpoints: `Engine::checkpoints` creates, lists,
+  previews, restores and redoes checkpoints over the branch-aware SQLite
+  journal; a truncating restore drops the undone branch from the catalog
+  without rewriting the journal
+  ([conversation checkpoints](framework/local-authority-cutover.md#conversation-checkpoints)).
+
 - Data plane v2 (cells, 75 000 agents) is approved and its design moved into
   the bundle ([data plane v2](execution/data-plane-v2/)). First
   protocol models for moves, spend grants and the feed are checked by TLC in
