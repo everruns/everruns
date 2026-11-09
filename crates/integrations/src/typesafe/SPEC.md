@@ -1,6 +1,6 @@
 # TypeSafe Integration
 
-This crate owns the whole TypeSafe surface: the vendor [`client`](src/client/),
+This crate owns the whole TypeSafe surface: the vendor [`client`](client/),
 the `jev` capability and its tool, the connector catalog entry, and the
 deployment decisions that backs guardrail checks. The published
 `everruns-host` stays provider-neutral — it no longer depends on TypeSafe at
@@ -8,7 +8,7 @@ all, because the platform composes the decisions from above.
 
 ## Split
 
-- [`src/client`](src/client/) owns the HTTP
+- [`src/client`](client/) owns the HTTP
   endpoint, the three question types, the typed answers, retries, and the
   credential-safe error contract.
 - This crate owns `capability` (the hosted capability and its tool), `evaluate`
@@ -49,14 +49,14 @@ valid but throttled.
 
 ## Relationship to the decisions
 
-This crate owns the whole TypeSafe surface: the vendor [`client`](src/client/),
+This crate owns the whole TypeSafe surface: the vendor [`client`](client/),
 the `jev` capability and its tool, the connector catalog entry, and the
 deployment decisions that backs guardrail checks. The published
 `everruns-host` stays provider-neutral — it no longer depends on TypeSafe at
 all, because the platform composes the decisions from above. `TypeSafeAI` is
 the `typesafe` decision driver (owning `jev-*` model ids) that the platform
 registers with its decision router. See
-[`knowledge/operations/decisions-service.md`](../../knowledge/operations/decisions-service.md).
+[`knowledge/operations/decisions-service.md`](../../../../knowledge/operations/decisions-service.md).
 
 ## Tests
 
@@ -67,4 +67,4 @@ registers with its decision router. See
 The client's own coverage — wire shape, retries, terminal statuses, credential
 safety, pre-flight validation, and the real-API smoke tests behind the
 `integration` feature — lives in
-[`tests/client.rs`](tests/client.rs).
+[`tests/client.rs`](../../tests/typesafe_client.rs).

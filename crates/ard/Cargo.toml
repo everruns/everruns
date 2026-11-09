@@ -38,7 +38,6 @@ serde_json.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 chrono.workspace = true
-tracing.workspace = true
 url = "2"
 
 [features]

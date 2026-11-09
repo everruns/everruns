@@ -40,7 +40,6 @@ everruns-drivers = { path = "../drivers/drivers", features = [
 
 anyhow.workspace = true
 async-trait.workspace = true
-chrono.workspace = true
 rstest.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }

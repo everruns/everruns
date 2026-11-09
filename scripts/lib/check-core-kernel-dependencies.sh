@@ -43,7 +43,6 @@ base64
 bytes
 chrono
 chrono-tz
-cron
 ed25519-dalek
 eventsource-stream
 everruns-contracts
@@ -53,7 +52,6 @@ futures-util
 globset
 http
 ignore
-inventory
 jsonschema
 jsonwebtoken
 landlock

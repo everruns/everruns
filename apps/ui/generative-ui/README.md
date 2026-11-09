@@ -21,7 +21,7 @@ catalog upgrade, run `node generative-ui/scripts/export-catalog.mjs` there.
 Both hosts have browser tests using the 69-component fixtures. The console also
 has a development-only gallery at `/dev/generative-ui`.
 
-The public docs [component gallery](../../../docs/features/generative-ui-gallery.mdx)
+The public docs [component gallery](../../../docs/reference/generative-ui/index.mdx)
 uses the same authored fixtures, with light and dark screenshots and expandable
 A2UI source. Regenerate screenshots with the console dev server running:
 `node scripts/capture-generative-ui-gallery.mjs http://localhost:9120` from

@@ -41,7 +41,10 @@ jobs:
   excluded-examples-check:
     name: Excluded Standalone Crates
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A weekly run rarely finds a warm cache (Actions evicts one after seven
+    # idle days), so budget for a cold build of every excluded crate: 19 min on
+    # 2026-10-26, and on 2026-11-09 the 20 min limit cancelled a passing run.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
