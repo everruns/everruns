@@ -120,7 +120,7 @@ jobs:
           npm ci --prefix crates/durable-object/worker
           npm ci --prefix examples/serve/celld/worker
           cargo install s3s-fs --version 0.14.1 --features binary --locked
-          curl --fail --location --retry 3 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
+          curl --fail --location --retry 8 --retry-delay 15 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
           echo 'ce0ee3552cc8d55dde3998dc3b1b0c8f547bbcb4bc803d2a94842368b047646c  /tmp/celld.gz' | sha256sum --check
           gzip --decompress --stdout /tmp/celld.gz > "$HOME/.cargo/bin/celld"
           chmod +x "$HOME/.cargo/bin/celld"
@@ -168,7 +168,7 @@ jobs:
           npm ci --prefix crates/durable-object/worker
           cargo install wasm-bindgen-cli --version 0.2.129 --locked
           cargo install s3s-fs --version 0.14.1 --features binary --locked
-          curl --fail --location --retry 3 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
+          curl --fail --location --retry 8 --retry-delay 15 https://github.com/denoland/celld/releases/download/v0.6.2/celld-x86_64-unknown-linux-gnu.gz -o /tmp/celld.gz
           echo 'ce0ee3552cc8d55dde3998dc3b1b0c8f547bbcb4bc803d2a94842368b047646c  /tmp/celld.gz' | sha256sum --check
           gzip --decompress --stdout /tmp/celld.gz > "$HOME/.cargo/bin/celld"
           chmod +x "$HOME/.cargo/bin/celld"
