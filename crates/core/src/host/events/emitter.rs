@@ -433,7 +433,11 @@ mod commit_class_tests {
             );
         }
         let named = deferred.iter().map(|(event_type, _)| event_type);
-        for event_type in VALID_EVENT_TYPES.iter().chain(named).chain(&["a.new.event"]) {
+        for event_type in VALID_EVENT_TYPES
+            .iter()
+            .chain(named)
+            .chain(&["a.new.event"])
+        {
             let request = EventRequest {
                 event_type: (*event_type).to_owned(),
                 ts: chrono::Utc::now(),
