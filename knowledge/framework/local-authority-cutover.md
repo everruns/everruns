@@ -185,7 +185,9 @@ instead of keeping a parallel checkpoint store beside the journal.
   An input queued during one turn sits inside that turn's journal span but is
   answered by a later one, so its position alone would wrongly keep it.
   Unassigned admitted inputs stay out; seeded history (no admission) and
-  rejected inputs (already hidden) stay in. All events of the last turn,
+  rejected inputs (already hidden) stay in. An input a cutover imported with
+  no turn has an admission receipt but is consumed history, not queued work;
+  the import marks it (`imported_input/{input}`) and it stays in. All events of the last turn,
   including those appended after the checkpoint such as `session.idled`, are
   looked up by turn id at restore.
 - **Restore is a branch selection.** It runs the same `SelectBranch` command,
@@ -193,7 +195,10 @@ instead of keeping a parallel checkpoint store beside the journal.
   tail for redo. Truncate mode sets `discard`, which drops the left branch from
   the catalog in the same transaction instead of retaining it; its events stay
   in the journal and raw export. Checkpoints no retained branch reaches are
-  hidden and pruned. Truncating to a checkpoint from another branch drops the
+  hidden from every read and pruned only inside the transaction that commits
+  the next checkpoint. Never prune client side: `DropBranch` needs no
+  quiescence, so a separate lineage read, list and delete would race a tool
+  creating a checkpoint on newer turns and delete it. Truncating to a checkpoint from another branch drops the
   whole current branch.
 - **Bounded branches.** A branch restore to a point a retained branch already
   is reselects it. Otherwise each one adds a branch, up to the catalog limit;

@@ -10,9 +10,15 @@
 //!   [`Checkpoints::redo`] reselects.
 //! - [`RestoreMode::Truncate`] drops the current branch from the branch
 //!   catalog, so it can no longer be reselected; checkpoints only it held
-//!   become unreachable and are pruned.
+//!   become unreachable.
 //! - [`Checkpoints::delete_branch`] removes a retained branch the same way,
 //!   keeping the catalog under its limit.
+//!
+//! Unreachable checkpoints are hidden from every read and pruned by the
+//! authority inside the transaction that commits the next checkpoint. They
+//! are never pruned client side: `delete_branch` needs no quiescence, so a
+//! lineage read, a list and a delete in separate transactions would race a
+//! tool creating a checkpoint on newer turns and delete it.
 //!
 //! The authority builds each checkpoint in one transaction from its own
 //! snapshot of the active branch and input assignments (see
@@ -317,6 +323,10 @@ impl Checkpoints {
                 .iter()
                 .find(|branch| branch.id != lineage.active && same(&branch.ranges, &target))
             {
+                // `redo` re-reads the lineage and selects against that
+                // revision, not the one `resolve` read. Benign: the reused
+                // branch is identified by its ranges, and a concurrent
+                // branch change still fails the revision check in `redo`.
                 return self.redo(&existing.id.clone()).await;
             }
             if lineage.branches.len() >= history::MAX_BRANCHES {
@@ -342,10 +352,6 @@ impl Checkpoints {
                 .await?,
         )
         .map_err(|e| AgentLoopError::store(e.to_string()))?;
-        if mode == RestoreMode::Truncate {
-            let lineage = profile.history_lineage(self.session).await?;
-            self.prune(&profile, &lineage).await?;
-        }
         Ok(RestoreOutcome {
             undone: (mode == RestoreMode::Branch && selection.changed)
                 .then(|| lineage.active.clone()),
@@ -385,7 +391,8 @@ impl Checkpoints {
 
     /// Delete a retained, inactive branch, such as an undone tail that is no
     /// longer wanted. Its events stay in the journal and raw export;
-    /// checkpoints only it held are pruned. `false` when it did not exist.
+    /// checkpoints only it held are no longer listed. `false` when it did
+    /// not exist.
     pub async fn delete_branch(&self, branch: &str) -> Result<bool> {
         let profile = self.profile()?;
         let lineage = profile.history_lineage(self.session).await?;
@@ -407,8 +414,6 @@ impl Checkpoints {
                 },
             )
             .await?;
-        let lineage = profile.history_lineage(self.session).await?;
-        self.prune(&profile, &lineage).await?;
         Ok(true)
     }
 
@@ -438,7 +443,8 @@ impl Checkpoints {
         let mut target = checkpoint.ranges.clone();
         if let Some(turn) = checkpoint.turn_id {
             // Events of the last turn appended after the checkpoint (such as
-            // `session.idled`) belong to it, however many there are.
+            // `session.idled`) belong to it, however many there are. Page
+            // until an empty page: an authority may return short pages.
             let mut after = checkpoint.through;
             loop {
                 let sequences = profile
@@ -451,8 +457,8 @@ impl Checkpoints {
                         .map(|sequence| SequenceRange::new(*sequence, *sequence)),
                 );
                 match sequences.last() {
-                    Some(last) if sequences.len() == TURN_PAGE => after = *last,
-                    _ => break,
+                    Some(last) => after = *last,
+                    None => break,
                 }
             }
             target = normalize(target);
@@ -462,22 +468,6 @@ impl Checkpoints {
             checkpoint,
         };
         Ok((lineage, summary, target))
-    }
-
-    /// Drop checkpoints no retained branch reaches any more.
-    async fn prune(
-        &self,
-        profile: &Arc<dyn SessionHosting>,
-        lineage: &HistoryLineage,
-    ) -> Result<()> {
-        for checkpoint in profile.conversation_checkpoints(self.session).await? {
-            if reachable(lineage, &checkpoint).is_none() {
-                profile
-                    .delete_conversation_checkpoint(self.session, checkpoint.id)
-                    .await?;
-            }
-        }
-        Ok(())
     }
 
     /// Fold the active branch through the authority's read-only reader.
@@ -660,6 +650,10 @@ pub struct InputFacts {
     pub admitted: bool,
     /// The input was rejected and is hidden from context reads.
     pub rejected: bool,
+    /// The input is consumed history no turn answered: a cutover imported it
+    /// with its admission receipt, but the legacy executor never ran it, so
+    /// it is not queued work. It stays in checkpoints like seeded history.
+    pub history: bool,
 }
 
 /// Builds a [`ConversationCheckpoint`] from one authority snapshot, for
@@ -722,8 +716,9 @@ impl CheckpointBuilder {
             let keep = match facts.assigned {
                 Some(turn) => included.contains(&turn),
                 // A rejected input is hidden from context anyway; keeping
-                // its sequence avoids splitting ranges for nothing.
-                None => facts.rejected || !facts.admitted,
+                // its sequence avoids splitting ranges for nothing. Only an
+                // admitted live input without a turn is queued work.
+                None => facts.rejected || !facts.admitted || facts.history,
             };
             if !keep {
                 excluded.push(sequence);
@@ -751,8 +746,11 @@ impl CheckpointBuilder {
     }
 }
 
-/// The retained branch a checkpoint lies on, the active one preferred.
-pub(crate) fn reachable<'a>(
+/// The retained branch a checkpoint lies on, the active one preferred;
+/// `None` when no retained branch reaches it. Hosting plugins implementing
+/// [`SessionHosting::create_conversation_checkpoint`] use it to prune
+/// unreachable checkpoints in the committing transaction.
+pub fn reachable<'a>(
     lineage: &'a HistoryLineage,
     checkpoint: &ConversationCheckpoint,
 ) -> Option<&'a [SequenceRange]> {
@@ -948,7 +946,7 @@ mod tests {
         let answered_later = build(InputFacts {
             assigned: Some(t2),
             admitted: true,
-            rejected: false,
+            ..Default::default()
         });
         assert_eq!(answered_later.through, 4);
         assert_eq!(answered_later.ranges, [r(1, 2), r(4, 4)]);
@@ -963,9 +961,15 @@ mod tests {
             InputFacts {
                 assigned: Some(t1),
                 admitted: true,
-                rejected: false,
+                ..Default::default()
             },
             InputFacts::default(),
+            // Imported with a receipt but never run: consumed history.
+            InputFacts {
+                admitted: true,
+                history: true,
+                ..Default::default()
+            },
             InputFacts {
                 admitted: true,
                 rejected: true,

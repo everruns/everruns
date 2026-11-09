@@ -32,6 +32,9 @@ use std::{
 /// Object kind of conversation checkpoints (EVE-1339); `checkpoint` holds
 /// compaction checkpoints.
 const CONVERSATION_CHECKPOINT: &str = "conversation_checkpoint";
+/// Framework record prefix marking an input a cutover imported without a
+/// turn: consumed history, not queued work (EVE-1339, see `import.rs`).
+const IMPORTED_INPUT: &str = "imported_input/";
 
 type ProactiveAttempts =
     Arc<Mutex<HashMap<(SessionId, String, String), everruns_core::ProactiveCompactionAttempt>>>;
@@ -749,6 +752,13 @@ impl SessionHosting for SqliteHosting {
                             session,
                             "framework",
                             &format!("rejected/{input}"),
+                        )?
+                        .is_some(),
+                        history: object::<Value>(
+                            tx,
+                            session,
+                            "framework",
+                            &format!("{IMPORTED_INPUT}{input}"),
                         )?
                         .is_some(),
                     })

@@ -164,7 +164,7 @@ async fn restore_branch_keeps_the_undone_tail_and_truncate_drops_it() {
     assert_eq!(
         remaining,
         [empty.id, after_a.id],
-        "checkpoints on the dropped tail are pruned"
+        "checkpoints on the dropped tail are hidden"
     );
     assert!(checkpoints.preview(after_b.id).await.is_err());
     assert!(checkpoints.redo("main").await.is_err());
@@ -305,12 +305,12 @@ async fn a_tool_creates_checkpoints_while_its_turn_runs() {
 }
 
 /// Branch restores reuse an identical retained branch, use collision-proof
-/// names, and retained branches can be deleted (pruning their checkpoints).
+/// names, and retained branches can be deleted (hiding their checkpoints).
 #[tokio::test]
 async fn branch_restores_reuse_branches_and_retained_branches_can_be_deleted() {
     let directory = tempfile::tempdir().unwrap();
     let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
-    let engine = hosted(profile);
+    let engine = hosted(profile.clone());
     let id = SessionId::new();
     let session = engine.create_registered(id, &build()).await.unwrap();
     let checkpoints = engine.checkpoints(id);
@@ -354,4 +354,26 @@ async fn branch_restores_reuse_branches_and_retained_branches_can_be_deleted() {
     );
     assert!(checkpoints.preview(after_b.id).await.is_err());
     assert_eq!(transcript(&session).await, ["alpha question", "Hello!"]);
+
+    // Review finding B1: `delete_branch` needs no quiescence, so a client-side
+    // prune (lineage read, list, delete in separate transactions) could delete
+    // a checkpoint a tool committed on newer turns in between. Deleting a
+    // branch therefore only hides its checkpoints; the authority prunes them
+    // inside the transaction that commits the next checkpoint.
+    let stored = |profile: SqliteHosting| async move {
+        profile
+            .conversation_checkpoints(id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|checkpoint| checkpoint.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(stored(profile.clone()).await, [after_a.id, after_b.id]);
+    let next = checkpoints.create().await.unwrap();
+    assert_eq!(
+        stored(profile).await,
+        [after_a.id, next.id],
+        "the next create prunes atomically"
+    );
 }

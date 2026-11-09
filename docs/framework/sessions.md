@@ -338,8 +338,8 @@ if let Some(undone) = &restored.undone {
   `Branch` restore would exceed that, it fails; delete retained branches you
   no longer need with `delete_branch`, or restore with `Truncate`.
   `delete_branch` never deletes the active branch, and checkpoints only the
-  deleted branch held are pruned. A session also keeps at most 1024
-  checkpoints; `delete` frees room.
+  deleted branch held are no longer listed. A session also keeps at most 1024
+  checkpoints, not counting ones no branch reaches; `delete` frees room.
 
 Nothing is deleted from the journal: a restore changes which branch is the
 conversation, so context, history and new input follow it while raw exports

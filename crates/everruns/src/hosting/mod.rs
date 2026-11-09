@@ -408,8 +408,10 @@ pub trait SessionHosting: Send + Sync + 'static {
     /// finished turn of the active branch, in one authority transaction:
     /// the branch, its events and the input assignments are read from the
     /// same snapshot the checkpoint is committed in. Build it with
-    /// [`crate::checkpoints::CheckpointBuilder`]. Unreachable checkpoints are
-    /// pruned first; refuses when [`MAX_CONVERSATION_CHECKPOINTS`] remain.
+    /// [`crate::checkpoints::CheckpointBuilder`]. Checkpoints no retained
+    /// branch reaches ([`crate::checkpoints::reachable`]) are pruned in the
+    /// same transaction; refuses when [`MAX_CONVERSATION_CHECKPOINTS`]
+    /// reachable ones remain. Callers never prune outside this transaction.
     async fn create_conversation_checkpoint(
         &self,
         _session: SessionId,
@@ -418,7 +420,8 @@ pub trait SessionHosting: Send + Sync + 'static {
         Err(unsupported_checkpoints())
     }
     /// Journal sequences of `turn` after `after`, ascending, at most `limit`,
-    /// on any branch. Restores use it to take a checkpoint's last turn whole.
+    /// on any branch. Restores use it to take a checkpoint's last turn whole,
+    /// paging until an empty result, so a page may be shorter than `limit`.
     async fn turn_sequences(
         &self,
         _session: SessionId,
