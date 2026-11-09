@@ -1155,7 +1155,18 @@ fn lifecycle_test_context<'a>(
         checkpoint_suffix_message_count: 0,
         raw_tool_result_bytes: 0,
         prior_usage: None,
+        history: &[],
+        message_sequences: empty_sequences(),
+        current_floor: None,
     }
+}
+
+fn empty_sequences() -> &'static std::collections::HashMap<crate::engine::typed_id::MessageId, i64>
+{
+    static EMPTY: std::sync::OnceLock<
+        std::collections::HashMap<crate::engine::typed_id::MessageId, i64>,
+    > = std::sync::OnceLock::new();
+    EMPTY.get_or_init(Default::default)
 }
 
 fn lifecycle_test_config() -> crate::engine::driver_registry::LlmCallConfig {

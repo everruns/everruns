@@ -118,6 +118,9 @@ pub struct AssembledTurnContext {
     /// compaction checkpoint replaces (see [`HistoryFloor`]); `None` when
     /// they hold all of it.
     pub message_floor: Option<i64>,
+    /// Persisted sequence of each history message, when the store reports
+    /// them ([`MessageHistory::sequences`](crate::MessageHistory)).
+    pub message_sequences: std::collections::HashMap<everruns_contracts::typed_id::MessageId, i64>,
     /// Fully assembled runtime agent for this turn.
     pub runtime_agent: RuntimeAgent,
     /// Credential-safe model identity and opaque ready driver.
@@ -235,6 +238,7 @@ pub async fn assemble_resolved_turn_context(
         messages,
         message_source_sequence,
         message_floor: None,
+        message_sequences: Default::default(),
         runtime_agent,
         model,
         resolved_model_id,

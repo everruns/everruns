@@ -963,6 +963,7 @@ impl MessageRetriever for GrpcAdapter {
         }
 
         Ok(MessageHistory {
+            sequences: Default::default(),
             messages,
             source_sequence,
         })

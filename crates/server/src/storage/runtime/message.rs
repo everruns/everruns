@@ -196,6 +196,7 @@ impl MessageRetriever for DbMessageRetriever {
         }
 
         Ok(MessageHistory {
+            sequences: Default::default(),
             messages,
             source_sequence,
         })

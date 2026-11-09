@@ -148,6 +148,9 @@ struct Control {
     runnable: bool,
     suspended: bool,
     open: Option<TurnId>,
+    /// Sequence of the latest `turn.started`, where an actor's tail read
+    /// starts, so it does not scan the log from its beginning.
+    last_turn_started: Option<i32>,
     pending: Vec<crate::ToolCall>,
     human_waits: everruns_core::human_wait::HumanWaitState,
     finalizing: HashSet<TurnId>,
@@ -443,6 +446,7 @@ impl Ports {
         };
         state.human_waits.observe(&event);
         if matches!(event.data, EventData::TurnStarted(_)) {
+            state.last_turn_started = event.sequence;
             state.open = turn;
             state.open_input = event.context.input_message_id;
         }
@@ -607,7 +611,12 @@ impl EventLog for Ports {
     }
 }
 
-async fn all_events(session: &MemorySession, after: Option<i32>) -> Result<Vec<Event>> {
+/// Up to `limit` events after `after`, read page by page.
+async fn events_after(
+    session: &MemorySession,
+    after: Option<i32>,
+    limit: usize,
+) -> Result<Vec<Event>> {
     let mut events = Vec::new();
     let mut request = EventReadRequest::from_cursor(
         EventCursor::after(session.id, after.unwrap_or(0)).map_err(core_error)?,
@@ -616,10 +625,9 @@ async fn all_events(session: &MemorySession, after: Option<i32>) -> Result<Vec<E
     loop {
         let page = session.log.read_page(request).await.map_err(core_error)?;
         events.extend(page.events);
-        if events.len() > 100_000 {
-            return Err(AgentLoopError::store(
-                "session journal recovery limit exceeded",
-            ));
+        if events.len() >= limit {
+            events.truncate(limit);
+            return Ok(events);
         }
         match page.next_cursor {
             Some(cursor) => {
@@ -691,20 +699,30 @@ impl SessionActorStore for Ports {
     ) -> Result<ActorJournal> {
         self.session.counts.count(Op::Read);
         self.scope(id)?;
-        let mut events = all_events(&self.session, after).await?;
-        let head = events.last().and_then(|event| event.sequence);
-        if after.is_none()
-            && let Some(start) = events
-                .iter()
-                .rposition(|event| matches!(event.data, EventData::TurnStarted(_)))
-        {
-            events.drain(..start);
-        }
         let limit = if limit == 0 {
             256
         } else {
             limit.min(1024) as usize
         };
+        // With no cursor the tail starts at the latest `turn.started`.
+        let after = match after {
+            Some(after) => Some(after),
+            None => self
+                .session
+                .control
+                .lock()
+                .await
+                .last_turn_started
+                .map(|sequence| sequence - 1),
+        };
+        // Read one event past the limit to learn whether more follow.
+        let mut events = events_after(&self.session, after, limit + 1).await?;
+        let head = self
+            .session
+            .log
+            .last_sequence(id)
+            .await
+            .map_err(core_error)?;
         let has_more = events.len() > limit;
         events.truncate(limit);
         Ok(ActorJournal {
@@ -848,6 +866,17 @@ impl SessionStorageStore for Ports {
 }
 #[async_trait]
 impl CompactionCheckpointStore for Ports {
+    // Context assembly loads only the history after the newest checkpoint;
+    // without this every turn read the whole log.
+    async fn latest_source_sequence(&self, id: SessionId) -> Result<Option<i64>> {
+        self.session.counts.count(Op::Read);
+        self.scope(id)?;
+        self.session
+            .services
+            .compaction_checkpoint_store
+            .latest_source_sequence(id)
+            .await
+    }
     async fn get_latest(
         &self,
         id: SessionId,
@@ -1013,6 +1042,73 @@ mod resolver_tests {
                 .create_registered(SessionId::new(), &unknown)
                 .await
                 .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod trim_floor_tests {
+    use super::*;
+
+    /// A session on a provider without native compaction keeps trimming its
+    /// prompt. Once the history passes a few budgets a durable floor appears,
+    /// and later turns load (and record) only what follows it, so the prompt
+    /// stops growing with the session.
+    #[tokio::test]
+    async fn trimming_sessions_load_a_bounded_suffix() {
+        let profile = MemoryHosting::default();
+        let build = AgentBuild::new("trim-floor", "v1");
+        let agent = crate::Agent::builder()
+            .instructions("You are concise.")
+            .model(crate::Model::simulated_with_config(
+                crate::LlmSimConfig::lorem(150).with_context_window(2_000),
+            ))
+            .capability(crate::CompactionConfig::new())
+            .build()
+            .unwrap();
+        let engine = crate::Engine::builder()
+            .hosting(profile.clone())
+            .register(build.clone(), agent)
+            .build();
+        let session = engine
+            .create_registered(SessionId::new(), &build)
+            .await
+            .unwrap();
+        let id = session.session_id();
+        for _ in 0..60 {
+            session.send_and_wait("hi").await.unwrap();
+        }
+        let floor = profile
+            .ports(id)
+            .get_latest(id, "llmsim", "llmsim-model")
+            .await
+            .unwrap()
+            .expect("a trim floor");
+        assert!(matches!(
+            floor.payload,
+            everruns_core::CompactionCheckpointPayload::Trimmed
+        ));
+        let mut prompts = Vec::new();
+        let log = profile.reader(id).event_log;
+        let mut request = EventReadRequest::new(id, EventReadLimit::default());
+        loop {
+            let page = log.read_page(request).await.unwrap();
+            for event in &page.events {
+                if let EventData::LlmGeneration(data) = &event.data {
+                    prompts.push(data.messages.len());
+                }
+            }
+            match page.next_cursor {
+                Some(cursor) => {
+                    request = EventReadRequest::from_cursor(cursor, EventReadLimit::default())
+                }
+                None => break,
+            }
+        }
+        let largest = *prompts.iter().max().unwrap();
+        assert!(
+            *prompts.last().unwrap() < largest,
+            "the floor shortened later prompts: {prompts:?}"
         );
     }
 }

@@ -340,6 +340,7 @@ impl ReasonAtom {
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let assembled_message_floor = assembled.message_floor;
+        let mut message_sequences = assembled.message_sequences;
         let model_with_provider = assembled.model;
         let provider_managed = model_with_provider
             .provider_managed_reduction_option
@@ -407,6 +408,7 @@ impl ReasonAtom {
             message_source_sequence = restored.source_sequence.or(message_source_sequence);
             checkpoint_suffix_message_count = restored.suffix_message_count;
             restored_checkpoint = restored.checkpoint;
+            message_sequences = restored.sequences;
         }
 
         let controls = resolve_request_controls(
@@ -828,6 +830,11 @@ impl ReasonAtom {
                     checkpoint_suffix_message_count,
                     raw_tool_result_bytes,
                     prior_usage: prior_usage.as_ref(),
+                    history: &context_messages,
+                    message_sequences: &message_sequences,
+                    current_floor: restored_checkpoint
+                        .as_ref()
+                        .map(|checkpoint| checkpoint.source_sequence),
                 },
                 &mut llm_messages_for_call,
                 &mut llm_config,

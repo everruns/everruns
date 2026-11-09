@@ -13,11 +13,15 @@ use crate::runtime::message::{
 use crate::runtime::message_filter::MessageQuery;
 use crate::runtime::typed_id::{MessageId, SessionId};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MessageHistory {
     pub messages: Vec<RuntimeMessage>,
     /// Highest persisted message-event sequence visible when the load ran.
     pub source_sequence: Option<i64>,
+    /// The persisted sequence of each loaded message, when the store knows
+    /// it. Lets compaction place a durable history floor at a message
+    /// boundary; empty when the store does not report sequences.
+    pub sequences: std::collections::HashMap<MessageId, i64>,
 }
 
 // ============================================================================
@@ -147,6 +151,7 @@ pub trait MessageRetriever: Send + Sync {
 
     async fn load_filtered_history(&self, query: MessageQuery) -> Result<MessageHistory> {
         Ok(MessageHistory {
+            sequences: Default::default(),
             messages: self.load_filtered(query).await?,
             source_sequence: None,
         })

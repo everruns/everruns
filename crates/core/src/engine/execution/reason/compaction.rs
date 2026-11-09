@@ -290,6 +290,13 @@ pub(super) struct ProactiveCompactionContext<'a> {
     pub(super) checkpoint_suffix_message_count: usize,
     pub(super) raw_tool_result_bytes: usize,
     pub(super) prior_usage: Option<&'a TokenUsage>,
+    /// The conversation the prompt was built from, in order.
+    pub(super) history: &'a [crate::engine::message::RuntimeMessage],
+    /// Persisted sequence of each `history` message, when known.
+    pub(super) message_sequences:
+        &'a std::collections::HashMap<crate::engine::typed_id::MessageId, i64>,
+    /// Source sequence of the checkpoint this phase restored, if any.
+    pub(super) current_floor: Option<i64>,
 }
 
 /// Classify a proactive evaluation as budget- or cost-driven.
@@ -608,6 +615,7 @@ pub(super) async fn apply_proactive_compaction(
                 budget_tokens,
                 context.system_prompt.is_some(),
             );
+            install_trim_floor(&context, budget_tokens).await;
         }
     }
 
@@ -1158,4 +1166,153 @@ pub(super) async fn apply_reactive_compaction(
         "ReasonAtom: compaction cascade completed, retrying LLM call"
     );
     Ok(Some(ReactiveCompactionResult { generation_info }))
+}
+
+/// Trimmed history is kept in the prompt only up to the budget, so a session
+/// that keeps trimming would otherwise reload and re-trim its whole log on
+/// every turn. Once the history held in memory passes three budgets, save a
+/// floor behind the newest two: later turns load only what follows it (see
+/// [`CompactionCheckpointPayload::Trimmed`](crate::engine::CompactionCheckpointPayload)).
+///
+/// Decisions:
+/// - The floor keeps twice what the trim sends, so it never hides a message
+///   the trim would have kept, even if token estimates drift.
+/// - It starts at a user message, so a tool call and its result stay
+///   together.
+/// - Waiting for three budgets before moving it costs one write every couple
+///   of budgets of conversation, not one per turn.
+/// - A failed write only costs the next turn a longer read.
+async fn install_trim_floor(context: &ProactiveCompactionContext<'_>, budget_tokens: usize) {
+    let (Some(store), false) = (
+        context.checkpoint_store,
+        context.message_sequences.is_empty(),
+    ) else {
+        return;
+    };
+    let Some(floor) = trim_floor(
+        context.history,
+        context.message_sequences,
+        budget_tokens,
+        context.current_floor,
+    ) else {
+        return;
+    };
+    let checkpoint = crate::engine::CompactionCheckpoint {
+        id: Uuid::now_v7(),
+        session_id: context.session_id,
+        source_sequence: floor,
+        provider_type: context.provider_type.to_string(),
+        model: context.model.to_string(),
+        format_version: super::super::provider_checkpoint::format_version(false),
+        payload: crate::engine::CompactionCheckpointPayload::Trimmed,
+    };
+    if let Err(error) = store.install(checkpoint).await {
+        tracing::warn!(
+            session_id = %context.session_id,
+            error = %error,
+            "ReasonAtom: trim floor write failed"
+        );
+    }
+}
+
+/// Rough token count of a history message: its serialized content over four.
+fn estimate_message_tokens(message: &crate::engine::message::RuntimeMessage) -> usize {
+    serde_json::to_vec(&message.content)
+        .map(|bytes| bytes.len() / 4)
+        .unwrap_or(0)
+        .max(1)
+}
+
+/// Where a trim floor goes, or `None` when the history is still short
+/// enough or no safe boundary is known.
+pub(super) fn trim_floor(
+    history: &[crate::engine::message::RuntimeMessage],
+    sequences: &std::collections::HashMap<crate::engine::typed_id::MessageId, i64>,
+    budget_tokens: usize,
+    current_floor: Option<i64>,
+) -> Option<i64> {
+    let total: usize = history.iter().map(estimate_message_tokens).sum();
+    if total <= budget_tokens.saturating_mul(3) {
+        return None;
+    }
+    let keep = budget_tokens.saturating_mul(2);
+    let mut used = 0usize;
+    let mut cut = None;
+    for (index, message) in history.iter().enumerate().rev() {
+        used = used.saturating_add(estimate_message_tokens(message));
+        if used > keep {
+            cut = Some(index + 1);
+            break;
+        }
+    }
+    let start = (cut?..history.len())
+        .find(|&index| history[index].role == crate::engine::message::RuntimeMessageRole::User)?;
+    let first_kept = *sequences.get(&history[start].id)?;
+    // Every stored message kept must come after the floor; a reordered tool
+    // result with an older sequence would otherwise be lost. Messages with no
+    // stored sequence were added at load time and come back with it.
+    if history[start..].iter().any(|message| {
+        sequences
+            .get(&message.id)
+            .is_some_and(|seq| *seq < first_kept)
+    }) {
+        return None;
+    }
+    let floor = first_kept - 1;
+    (floor > current_floor.unwrap_or(0)).then_some(floor)
+}
+
+#[cfg(test)]
+mod trim_floor_tests {
+    use super::trim_floor;
+    use crate::engine::message::RuntimeMessage;
+    use std::collections::HashMap;
+
+    /// `turns` user/assistant pairs of ~100 tokens each, sequences 1, 2, ...
+    fn history(
+        turns: usize,
+    ) -> (
+        Vec<RuntimeMessage>,
+        HashMap<crate::engine::typed_id::MessageId, i64>,
+    ) {
+        let text = "word ".repeat(80);
+        let mut messages = Vec::new();
+        for _ in 0..turns {
+            messages.push(RuntimeMessage::user(text.clone()));
+            messages.push(RuntimeMessage::assistant(text.clone()));
+        }
+        let sequences = messages
+            .iter()
+            .enumerate()
+            .map(|(index, message)| (message.id, index as i64 + 1))
+            .collect();
+        (messages, sequences)
+    }
+
+    #[test]
+    fn short_history_keeps_no_floor() {
+        let (messages, sequences) = history(10);
+        assert_eq!(trim_floor(&messages, &sequences, 1_000, None), None);
+    }
+
+    #[test]
+    fn long_history_floors_before_a_user_message_two_budgets_back() {
+        let (messages, sequences) = history(40);
+        let floor = trim_floor(&messages, &sequences, 1_000, None).expect("floor");
+        // The first kept message is a user message (odd sequence).
+        assert_eq!((floor + 1) % 2, 1);
+        let kept = &messages[floor as usize..];
+        assert!(kept.len() >= 18, "keeps about two budgets: {}", kept.len());
+        // A floor that is not past the current one is not rewritten.
+        assert_eq!(trim_floor(&messages, &sequences, 1_000, Some(floor)), None);
+    }
+
+    #[test]
+    fn a_kept_message_stored_before_the_floor_blocks_it() {
+        let (mut messages, mut sequences) = history(40);
+        let early = RuntimeMessage::assistant("late tool result");
+        sequences.insert(early.id, 0);
+        messages.push(early);
+        assert_eq!(trim_floor(&messages, &sequences, 1_000, None), None);
+    }
 }

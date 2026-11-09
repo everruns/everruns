@@ -38,6 +38,8 @@ pub(super) struct Restored {
     pub(super) checkpoint: Option<CompactionCheckpoint>,
     /// Messages after the checkpoint, before post-load filters.
     pub(super) suffix_message_count: usize,
+    /// Persisted sequence of each restored message, when known.
+    pub(super) sequences: std::collections::HashMap<crate::engine::typed_id::MessageId, i64>,
 }
 
 /// The history to send instead of the assembled one, if any.
@@ -90,6 +92,7 @@ pub(super) async fn restore(request: Request<'_>) -> Result<Option<Restored>> {
             source_sequence: history.source_sequence,
             checkpoint: Some(checkpoint),
             suffix_message_count,
+            sequences: history.sequences,
         }));
     }
     if request.message_floor.is_none() {
@@ -107,5 +110,6 @@ pub(super) async fn restore(request: Request<'_>) -> Result<Option<Restored>> {
         source_sequence: history.source_sequence,
         checkpoint: None,
         suffix_message_count: 0,
+        sequences: history.sequences,
     }))
 }

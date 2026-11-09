@@ -1339,10 +1339,15 @@ impl MessageRetriever for EventHistory {
                 .last()
                 .map(|item| i64::from(item.sequence));
         }
+        let sequences = projected
+            .iter()
+            .map(|item| (item.message.id, i64::from(item.sequence)))
+            .collect();
         let messages = finish_messages(apply_filters(projected, &query), &query);
         Ok(MessageHistory {
             messages,
             source_sequence,
+            sequences,
         })
     }
 

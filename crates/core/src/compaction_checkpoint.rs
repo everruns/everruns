@@ -19,8 +19,18 @@ pub const ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION: u32 = 2;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CompactionCheckpointPayload {
-    ProviderOpaque { context: ProviderOpaqueContext },
-    Summary { text: String },
+    ProviderOpaque {
+        context: ProviderOpaqueContext,
+    },
+    Summary {
+        text: String,
+    },
+    /// History up to `source_sequence` was trimmed out of the prompt and is
+    /// not loaded again. Nothing replaces it: the model sees only what
+    /// follows. Written by proactive compaction for providers without
+    /// native compaction, so a long session's turns read a bounded suffix
+    /// instead of the whole log.
+    Trimmed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

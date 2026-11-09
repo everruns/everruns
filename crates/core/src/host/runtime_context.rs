@@ -444,6 +444,7 @@ async fn assemble_from_snapshot(
         messages
     };
 
+    let message_sequences = history.sequences;
     let mut assembled = assemble_resolved_turn_context(
         ResolvedTurnContextInput {
             snapshot,
@@ -459,6 +460,7 @@ async fn assemble_from_snapshot(
     )
     .await?;
     assembled.message_floor = message_floor;
+    assembled.message_sequences = message_sequences;
     Ok(assembled)
 }
 
