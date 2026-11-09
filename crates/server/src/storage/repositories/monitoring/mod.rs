@@ -17,7 +17,7 @@ pub const MONITORING_COHORT_LIMIT: i64 = 4096;
 const POPULATION: &str = r#"
 WITH candidates AS MATERIALIZED (
     SELECT id FROM sessions WHERE ($1::bigint IS NULL OR org_id = $1) AND ($3::uuid IS NULL OR id = $3)
-      AND status IN ('active', 'waiting_for_tool_results', 'resolving_tool_results', 'paused')
+      AND deleted_at IS NULL AND status IN ('active', 'waiting_for_tool_results', 'resolving_tool_results', 'paused')
     UNION
     SELECT session_id FROM session_actors WHERE ($1::bigint IS NULL OR org_id = $1) AND ($3::uuid IS NULL OR session_id = $3)
       AND (runnable_since IS NOT NULL OR lease_holder IS NOT NULL OR $3::uuid IS NOT NULL)

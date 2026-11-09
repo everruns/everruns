@@ -114,7 +114,11 @@ async fn identity_and_capability_bindings_cannot_be_retargeted_resurrected_or_re
     );
 
     // Parent purge is supported; neither identity nor proof can be recycled.
-    service.db.delete_session(2, a.session).await.unwrap();
+    service
+        .db
+        .purge_session_for_test(2, a.session)
+        .await
+        .unwrap();
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM worker_journal_capabilities WHERE capability_sha256=$1",
     )

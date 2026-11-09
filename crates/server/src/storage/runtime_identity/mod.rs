@@ -245,7 +245,7 @@ impl StorageBackend {
     ) -> Result<Vec<SessionRow>> {
         {
             let db = self.database();
-            Ok(sqlx::query_as("SELECT s.* FROM sessions s LEFT JOIN principals p ON p.id=s.owner_principal_id LEFT JOIN agents a ON a.id=s.agent_id WHERE s.org_id=$1 AND s.status<>'deleted' AND ((p.org_id=$1 AND p.kind='virtual_user' AND p.subject_id=$2) OR s.virtual_user_id=$2 OR a.virtual_user_id=$2 OR EXISTS(SELECT 1 FROM session_participants sp JOIN principals pp ON pp.id=sp.principal_id WHERE sp.org_id=$1 AND sp.session_id=s.id AND pp.kind='virtual_user' AND pp.subject_id=$2)) ORDER BY s.updated_at DESC LIMIT 100").bind(org).bind(user).fetch_all(db.pool()).await?)
+            Ok(sqlx::query_as("SELECT s.* FROM sessions s LEFT JOIN principals p ON p.id=s.owner_principal_id LEFT JOIN agents a ON a.id=s.agent_id WHERE s.org_id=$1 AND s.deleted_at IS NULL AND s.status<>'deleted' AND ((p.org_id=$1 AND p.kind='virtual_user' AND p.subject_id=$2) OR s.virtual_user_id=$2 OR a.virtual_user_id=$2 OR EXISTS(SELECT 1 FROM session_participants sp JOIN principals pp ON pp.id=sp.principal_id WHERE sp.org_id=$1 AND sp.session_id=s.id AND pp.kind='virtual_user' AND pp.subject_id=$2)) ORDER BY s.updated_at DESC LIMIT 100").bind(org).bind(user).fetch_all(db.pool()).await?)
         }
     }
 

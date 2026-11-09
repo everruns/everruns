@@ -126,7 +126,7 @@ fn fleet_cte() -> String {
     format!(
         r#"
         WITH fleet AS (
-            SELECT s.id, s.session_id,
+            SELECT s.id, sess.id AS session_id,
                    COALESCE(sess.title, s.session_title) AS session_title,
                    a.id AS agent_id,
                    COALESCE(NULLIF(a.display_name, ''), a.name) AS agent_name,
@@ -160,7 +160,8 @@ fn fleet_cte() -> String {
                    ]::text[], NULL) AS attention,
                    s.created_at, s.updated_at, s.last_activity_at, s.deleted_at
             FROM sandboxes s
-            LEFT JOIN sessions sess ON sess.id = s.session_id
+            -- A deleted session keeps its sandboxes as history, without a link.
+            LEFT JOIN sessions sess ON sess.id = s.session_id AND sess.deleted_at IS NULL
             LEFT JOIN agents a ON a.id = COALESCE(sess.agent_id, s.agent_id)
             LEFT JOIN execution_environment_revisions rev ON rev.id = s.environment_revision_id
             LEFT JOIN execution_environments env ON env.id = rev.environment_id

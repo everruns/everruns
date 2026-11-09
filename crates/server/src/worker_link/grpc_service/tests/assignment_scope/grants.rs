@@ -138,7 +138,7 @@ async fn journal_read_requires_a_present_grant_record() {
     let db = service.db.clone();
     let mut absent = ScopedServer::start_shared(service.clone(), missing).await;
     refused(&mut absent, own).await;
-    assert!(db.delete_session(2, own).await.unwrap());
+    assert!(db.purge_session_for_test(2, own).await.unwrap());
     let mut deleted = ScopedServer::start_shared(service, scope).await;
     refused(&mut deleted, own).await;
 }

@@ -19,6 +19,7 @@ impl Database {
             SELECT {SESSION_COLUMNS}
             FROM sessions
             WHERE org_id = $1
+              AND deleted_at IS NULL
               AND root_session_id = $2
               AND id <> $2
               AND status = 'waiting_for_tool_results'
@@ -59,6 +60,7 @@ impl Database {
             SELECT {SESSION_COLUMNS}, root_session_id
             FROM sessions
             WHERE org_id = $1
+              AND deleted_at IS NULL
               AND (id = $2 OR root_session_id = $2)
             ORDER BY (id = $2) DESC, created_at ASC
             LIMIT $3

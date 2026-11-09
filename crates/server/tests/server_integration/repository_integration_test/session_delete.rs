@@ -1,14 +1,9 @@
 use super::*;
 
-/// Deleting a session while an event insert for it is in flight must not
-/// deadlock (nightly workflow test, 2026-10-08).
-///
-/// An event insert reserves its sequence on the `event_sequences` row first and
-/// only then, at the end of the statement, checks the events FK, which takes a
-/// key-share lock on the sessions row. The delete used to lock the sessions row
-/// first and then cascade into `event_sequences`: the opposite order. The insert
-/// is replayed here as an explicit transaction in that same lock order, so the
-/// delete deterministically lands between its two locks.
+/// Deleting a session while an event insert for it is in flight neither waits
+/// for the insert nor deadlocks with it, and events written around the delete
+/// are kept (the purge this replaced had to order its locks against the insert;
+/// nightly workflow test, 2026-10-08).
 #[tokio::test]
 async fn test_delete_session_during_event_insert_does_not_deadlock() {
     let pool = create_test_pool().await;
@@ -37,10 +32,6 @@ async fn test_delete_session_during_event_insert_does_not_deadlock() {
 
     // First half of an insert: reserve a sequence (row lock on event_sequences).
     let mut insert_tx = pool.begin().await.unwrap();
-    let insert_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
-        .fetch_one(&mut *insert_tx)
-        .await
-        .unwrap();
     let sequence: i32 = sqlx::query_scalar(
         r#"
         INSERT INTO event_sequences (session_id, next_sequence, updated_at)
@@ -55,27 +46,16 @@ async fn test_delete_session_during_event_insert_does_not_deadlock() {
     .await
     .unwrap();
 
-    let delete = tokio::spawn({
-        let backend = backend.clone();
-        async move { backend.delete_session(TEST_ORG_ID, session.id).await }
-    });
-    // Wait until the delete is blocked behind the insert's lock.
-    let mut blocked = false;
-    for _ in 0..200 {
-        let waiting: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
-        )
-        .bind(insert_pid)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        if waiting > 0 {
-            blocked = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-    assert!(blocked, "delete should wait for the in-flight insert");
+    // The delete only marks the session row, so it does not wait for the
+    // insert's lock on the sequence row.
+    let deleted = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        backend.delete_session(TEST_ORG_ID, session.id),
+    )
+    .await
+    .expect("delete must not wait for the in-flight insert")
+    .expect("delete must succeed");
+    assert!(deleted);
 
     // Second half: the event row itself, whose FK check locks the sessions row.
     sqlx::query(
@@ -88,14 +68,9 @@ async fn test_delete_session_during_event_insert_does_not_deadlock() {
     .bind(sequence)
     .execute(&mut *insert_tx)
     .await
-    .expect("in-flight insert must complete, not deadlock");
+    .expect("in-flight insert must complete");
     insert_tx.commit().await.unwrap();
 
-    let deleted = delete
-        .await
-        .unwrap()
-        .expect("delete must succeed, not deadlock");
-    assert!(deleted);
     assert!(
         backend
             .get_session(TEST_ORG_ID, session.id)
@@ -104,20 +79,19 @@ async fn test_delete_session_during_event_insert_does_not_deadlock() {
             .is_none()
     );
 
-    // A late insert for the deleted session fails cleanly and leaves no
-    // orphaned sequence row behind.
-    let late = backend
+    // A worker still finishing the turn writes into the deleted session; the
+    // events are stored with the rest of its history.
+    backend
         .create_events(vec![
             event_row("turn.completed"),
             event_row("turn.completed"),
         ])
-        .await;
-    assert!(late.is_err(), "insert into a deleted session must fail");
-    let sequences: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM event_sequences WHERE session_id = $1")
-            .bind(session.id.uuid())
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(sequences, 0);
+        .await
+        .expect("late events for a deleted session are kept");
+    let events: i64 = sqlx::query_scalar("SELECT count(*) FROM events WHERE session_id = $1")
+        .bind(session.id.uuid())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(events, 4);
 }

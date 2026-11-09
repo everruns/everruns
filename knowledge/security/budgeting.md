@@ -177,9 +177,10 @@ never touched. The append-only trigger permits exactly that shape of update and
 rejects everything else, including a hand-written update that nulls a reference
 while editing another column. Deleting a journal or ledger row is never allowed.
 
-This is why deleting a session no longer fails: before migration 122 the trigger
-rejected the cascade itself, so `DELETE /v1/sessions/{id}` returned 500 for any
-session that had spent anything.
+Deleting a session does not reach this path: it is a soft delete that keeps the
+session row and every reference to it
+([Session deletion](../runtime-resources/session-deletion.md)). The detach
+applies when a row is really erased, with its user or organization.
 
 ## Evaluation Pipeline
 

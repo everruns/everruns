@@ -287,7 +287,7 @@ impl StorageBackend {
                         WHERE t.org_id = s.org_id AND t.session_id = s.id
                           AND t.status = 'completed' AND t.pass = false) AS low_score
              FROM sessions s
-             WHERE s.org_id = $1 AND s.agent_id = $2
+             WHERE s.org_id = $1 AND s.agent_id = $2 AND s.deleted_at IS NULL
                AND s.source <> 'eval' AND s.parent_session_id IS NULL
                AND s.turn_count > 0
                AND s.created_at > now() - make_interval(days => $3)

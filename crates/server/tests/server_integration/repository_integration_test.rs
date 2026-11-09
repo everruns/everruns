@@ -3618,11 +3618,9 @@ async fn test_llm_generation_without_session_is_org_attributed() {
     assert_eq!(actual_cost_usd, Some(0.000_82));
 }
 
-/// A session that has taken a turn fans out into append-only tables when it is
-/// deleted: its `events` cascade away, and its `usage_journal` / `usage_ledger`
-/// rows are detached by `ON DELETE SET NULL`. Before migration 122 every one of
-/// those guards aborted the delete, so `DELETE /v1/sessions/{id}` answered 500
-/// for any real session (EVE-919).
+/// Deleting a session that has taken a turn keeps everything it wrote: the
+/// row is marked deleted, and its events and financial records stay attached.
+/// (EVE-919 was the purge this replaced answering 500 for any real session.)
 #[tokio::test]
 async fn delete_session_purges_events_and_detaches_usage_records() {
     let backend = create_test_backend().await;
@@ -3684,31 +3682,40 @@ async fn delete_session_purges_events_and_detaches_usage_records() {
         .delete_session(TEST_ORG_ID, session.id)
         .await
         .expect("Deleting a session that has taken a turn must not error");
-    assert!(deleted, "the session row was removed");
+    assert!(deleted, "the session was marked deleted");
 
-    let sessions_left: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions WHERE id = $1")
-        .bind(session.id.uuid())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(sessions_left, 0, "session is gone");
+    let deleted_at: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT deleted_at FROM sessions WHERE id = $1")
+            .bind(session.id.uuid())
+            .fetch_one(&pool)
+            .await
+            .expect("the session row stays");
+    assert!(deleted_at.is_some(), "the row is marked, not removed");
+    assert!(
+        backend
+            .get_session(TEST_ORG_ID, session.id)
+            .await
+            .unwrap()
+            .is_none(),
+        "a deleted session is not found"
+    );
 
     let events_left: i64 = sqlx::query_scalar("SELECT count(*) FROM events WHERE session_id = $1")
         .bind(session.id.uuid())
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(events_left, 0, "the session's events went with it");
+    assert_eq!(events_left, 1, "the session's events stay");
 
-    // The financial record outlives the session it came from — detached, not deleted.
+    // The financial record stays attached to the session it came from.
     let (journal_session, journal_event): (Option<Uuid>, Option<Uuid>) =
         sqlx::query_as("SELECT session_id, event_id FROM usage_journal WHERE id = $1")
             .bind(journal_id)
             .fetch_one(&pool)
             .await
             .expect("usage journal entry survives session deletion");
-    assert_eq!(journal_session, None, "journal detached from the session");
-    assert_eq!(journal_event, None, "journal detached from the event");
+    assert_eq!(journal_session, Some(session.id.uuid()));
+    assert_eq!(journal_event, Some(event.id.uuid()));
 
     let (ledger_session, amount): (Option<Uuid>, f64) =
         sqlx::query_as("SELECT session_id, amount FROM usage_ledger WHERE id = $1")
@@ -3716,7 +3723,7 @@ async fn delete_session_purges_events_and_detaches_usage_records() {
             .fetch_one(&pool)
             .await
             .expect("usage ledger entry survives session deletion");
-    assert_eq!(ledger_session, None, "ledger detached from the session");
+    assert_eq!(ledger_session, Some(session.id.uuid()));
     assert_eq!(amount, 1.25, "the amount charged is untouched");
 }
 

@@ -8,6 +8,10 @@
   TM-LLM-043, TM-LLM-044 and TM-LLM-046. Its tables stay in the database,
   unused, because records are never purged
   ([dismissed options](project/dismissed-options.md#openai-agents-api-runtime-backend)).
+- Deleting a session is a soft delete: the row and everything it owns stay,
+  `sessions.deleted_at` hides it from every API read, and only erasing a user
+  or an organization removes session rows
+  ([session deletion](runtime-resources/session-deletion.md)).
 - Framework hosts get a local control socket so a second process of the same
   user can list, watch, drive and cancel running sessions
   ([attached control](framework/attached-control.md)); threat model gains

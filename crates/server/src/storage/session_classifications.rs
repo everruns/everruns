@@ -58,7 +58,7 @@ impl StorageBackend {
              JOIN sessions s ON s.id = h.session_id
              LEFT JOIN session_classifications c ON c.session_id = h.session_id
              WHERE h.code = ANY($1) AND h.status IN ('open', 'needs_check')
-               AND h.session_id IS NOT NULL AND s.source <> 'eval'
+               AND h.session_id IS NOT NULL AND s.source <> 'eval' AND s.deleted_at IS NULL
                AND (c.claimed_at IS NULL OR c.claimed_at < NOW() - make_interval(secs => $2))
              ORDER BY h.session_id
              LIMIT $3",
@@ -88,7 +88,7 @@ impl StorageBackend {
              JOIN sessions s ON s.id = a.session_id
              LEFT JOIN organization_settings o ON o.org_id = s.org_id
              LEFT JOIN session_classifications c ON c.session_id = s.id
-             WHERE s.source <> 'eval'
+             WHERE s.source <> 'eval' AND s.deleted_at IS NULL
                AND COALESCE(o.system_decisions, 'deployment') = 'deployment'
                AND (c.claimed_at IS NULL OR c.claimed_at < NOW() - make_interval(secs => $1))
              ORDER BY random()
