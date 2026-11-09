@@ -201,8 +201,6 @@ pub use everruns_contracts::runtime::resource_names;
 // See knowledge/integrations/plugins.md
 pub mod plugins;
 
-/// Durable orchestration state for the opt-in OpenAI Agents API backend.
-pub mod agents_api_store;
 pub use capabilities::ModelToolBudget;
 pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;

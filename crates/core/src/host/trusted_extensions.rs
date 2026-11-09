@@ -26,7 +26,7 @@ use crate::engine::tool_detach::ToolDetacher;
 use crate::host::WaitsOnPerson;
 use crate::tool_execution::{BudgetChecker, OutboundToolRateLimiter, PaymentAuthority};
 use crate::{
-    DecisionsService, EgressService, UtilityLlmService, agents_api_store::AgentsApiStore,
+    DecisionsService, EgressService, UtilityLlmService,
     connection_services::ProviderCredentialStore, durability::DurableToolResultStore,
     file_services::FileResolver, image_services::ImageArtifactStore, image_services::ImageResolver,
     session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
@@ -111,8 +111,6 @@ pub struct StoreExtensions {
     pub files: Option<Arc<dyn FileResolver>>,
     /// Images tools produce.
     pub image_artifacts: Option<Arc<dyn ImageArtifactStore>>,
-    /// The Agents API record store.
-    pub agents_api: Option<Arc<dyn AgentsApiStore>>,
 }
 
 /// Turn hooks. Stability: experimental.

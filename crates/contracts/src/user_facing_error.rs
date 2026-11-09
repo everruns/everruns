@@ -36,9 +36,9 @@ pub mod codes {
     pub const MODEL_REFUSAL: &str = "model_refusal";
     pub const PROVIDER_UNAVAILABLE: &str = "provider_unavailable";
     pub const PROCESSING_ERROR: &str = "processing_error";
-    /// Provider-held session state (OpenAI Agents API) is gone: deleted,
-    /// expired, or out of reach of the current credentials. The next turn
-    /// starts a new provider session from the Everruns record.
+    /// Provider-held session state is gone. Nothing emits this since the
+    /// OpenAI Agents API backend was removed; kept so recorded events that
+    /// carry the code still render.
     pub const PROVIDER_SESSION_UNAVAILABLE: &str = "provider_session_unavailable";
     pub const DEPENDENCY_UNAVAILABLE: &str = "dependency_unavailable";
     pub const INVALID_TOOL_SCHEMA: &str = "invalid_tool_schema";

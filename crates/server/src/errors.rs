@@ -141,12 +141,6 @@ impl ConflictError {
     }
 }
 
-/// Stable code of a refused fork of a session that ran on the OpenAI Agents
-/// API backend (EVE-1126).
-pub const AGENTS_API_SESSION_NOT_FORKABLE_CODE: &str = "agents_api_session_not_forkable";
-/// Why such a fork is refused.
-pub const AGENTS_API_SESSION_NOT_FORKABLE_DETAIL: &str = "This session ran on the OpenAI Agents API backend, whose provider-held context cannot be copied, so it cannot be forked. Start a new session instead; this session's record stays readable.";
-
 pub type ResourceLimitError = ConflictError;
 
 #[derive(Debug, Error)]

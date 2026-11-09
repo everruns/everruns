@@ -86,7 +86,6 @@ fn spawn_background_tasks(
     server_context: &ServerContext,
     background_tasks: Vec<BackgroundTaskFn>,
 ) {
-    crate::background::agents_api_lifecycle::track(supervisor, server_context);
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));

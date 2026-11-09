@@ -16,7 +16,6 @@ RUNTIME_HANDLES = {
     'crates/contracts/src/runtime_provider.rs': {'Provider'},
     'crates/everruns/src/harness.rs': {'Harness'},
     'crates/core/src/host/workspace.rs': {'Workspace'},
-    'crates/everruns/tests/host/agents_api_support/mod.rs': {'Harness'},
     'crates/serve/src/agent.rs': {'Agent'},
     'crates/serve/src/app.rs': {'App', 'Skill'},
     'crates/serve/src/connection.rs': {'McpServer'},

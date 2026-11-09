@@ -535,10 +535,6 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.native_async_store()
     }
 
-    fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
-        self.adapters.agents_api_store()
-    }
-
     fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
         self.adapters.dreaming_store()
     }

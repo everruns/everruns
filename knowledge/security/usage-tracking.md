@@ -170,11 +170,7 @@ turn at 500 agents). A process killed between flushes loses at most the last
 second of an agent's display totals; `llm_generations` stays the per-call
 record.
 
-A generation without usage is normally not recorded. The exception is an OpenAI
-Agents API turn billed before the provider reported its usage: it is recorded
-with zero tokens and `usage_pending`, and its usage, totals, and budget debit
-are applied once when a later read finds it
-([late usage](../execution/openai-agents-api-runtime.md#observability-and-cost)).
+A generation without usage is not recorded.
 
 ## API Response
 

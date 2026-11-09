@@ -8,18 +8,7 @@ mod integration;
 mod mcp_catalog_lifecycle;
 #[cfg(feature = "mcp")]
 mod mcp_runtime_test;
-#[cfg(feature = "openai-agents-api")]
-mod openai_agents_api;
-#[cfg(feature = "openai-agents-api")]
-mod openai_agents_api_lifecycle;
-#[cfg(feature = "openai-agents-api")]
-mod openai_agents_api_observability;
-#[cfg(feature = "openai-agents-api")]
-mod openai_agents_api_policy;
 mod tool_catalog_lifecycle;
-
-#[cfg(feature = "openai-agents-api")]
-mod agents_api_support;
 
 #[cfg(feature = "hosting-conformance")]
 mod hosting_conformance;

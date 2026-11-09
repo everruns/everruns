@@ -120,7 +120,6 @@ Provider-executed tools and model selection.
 | [OpenRouter Server Tools](/capabilities/openrouter-server-tools/) | `openrouter_server_tools` | 0 |
 | Model Scout | `model_scout` | 0 |
 | OpenRouter Workspace | `openrouter_workspace` | 2 |
-| OpenAI Agents API Runtime | `openai_agents_api_runtime` | 0; `FEATURE_OPENAI_AGENTS_API` grade |
 
 ### Integrations
 

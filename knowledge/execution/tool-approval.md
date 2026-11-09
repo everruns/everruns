@@ -95,11 +95,6 @@ Engine approval commands use this same retry contract. Restart fixtures must
 have the model request the approved call again rather than report success
 without executing it.
 
-The OpenAI Agents API backend is the exception: its provider is still waiting on
-the original call, so the backend holds that call open, and on an approval runs
-it again itself under a fresh local id, through the same gate and binding. See
-[OpenAI Agents API runtime](openai-agents-api-runtime.md#policy-at-the-tool-and-output-boundaries).
-
 ## Decisions
 
 The vocabulary is the capability's `ApprovalDecision`. A person answers one

@@ -24,11 +24,10 @@ fn test_encryption() -> Arc<EncryptionService> {
     )
 }
 
-fn store_presence(adapters: &GrpcWorkerAdapters) -> [bool; 3] {
+fn store_presence(adapters: &GrpcWorkerAdapters) -> [bool; 2] {
     [
         adapters.compaction_checkpoint_store().is_some(),
         adapters.native_async_store().is_some(),
-        adapters.agents_api_store().is_some(),
     ]
 }
 
@@ -49,7 +48,7 @@ async fn worker_without_server_encryption_runs_without_checkpoint_stores() {
     let (addr, shutdown, server) = start_grpc_test_server(worker_service(None)).await;
 
     let adapters = GrpcWorkerAdapters::connect(&addr).await.unwrap();
-    assert_eq!(store_presence(&adapters), [false; 3]);
+    assert_eq!(store_presence(&adapters), [false; 2]);
 
     // A worker that skipped the connect probe learns it from the first
     // refused read: that read finds no checkpoint instead of failing the turn.
@@ -61,7 +60,7 @@ async fn worker_without_server_encryption_runs_without_checkpoint_stores() {
         .await
         .expect("missing server encryption must not fail the checkpoint read");
     assert!(checkpoint.is_none());
-    assert_eq!(store_presence(&late), [false; 3]);
+    assert_eq!(store_presence(&late), [false; 2]);
 
     let _ = shutdown.send(());
     server.await.unwrap();
@@ -73,10 +72,10 @@ async fn worker_with_server_encryption_keeps_checkpoint_stores() {
     let (addr, shutdown, server) = start_grpc_test_server(service).await;
 
     let adapters = GrpcWorkerAdapters::connect(&addr).await.unwrap();
-    assert_eq!(store_presence(&adapters), [true; 3]);
+    assert_eq!(store_presence(&adapters), [true; 2]);
     let store = adapters.compaction_checkpoint_store().unwrap();
     assert!(latest_checkpoint(store.as_ref()).await.unwrap().is_none());
-    assert_eq!(store_presence(&adapters), [true; 3]);
+    assert_eq!(store_presence(&adapters), [true; 2]);
 
     let _ = shutdown.send(());
     server.await.unwrap();

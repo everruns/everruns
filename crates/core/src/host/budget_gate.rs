@@ -7,8 +7,7 @@
 //!   per reason, which bounds overspend to the provider call already in flight.
 //! - One gate for every path that runs a reason: the in-process loop, the
 //!   durable workflow, and worker activities all go through
-//!   `execute_reason_activity_with_prompt_messages`; the OpenAI Agents API
-//!   backend reuses the same evaluation before each tool batch it runs.
+//!   `execute_reason_activity_with_prompt_messages`.
 //! - A checker error fails open (warn and continue), as everywhere budgets are
 //!   read: an unreachable budget store must not take every turn down.
 //! - A stop ends the turn through the ordinary failed-reason path, so the
@@ -45,7 +44,7 @@ pub(crate) struct BudgetStop {
 }
 
 impl BudgetStop {
-    #[cfg(any(test, feature = "openai-agents-api"))]
+    #[cfg(test)]
     pub(crate) fn code(&self) -> &str {
         &self.user_error.code
     }
@@ -313,7 +312,7 @@ mod tests {
     }
 
     /// The copy round-trips through the runtime classifier, so persisted
-    /// errors (durable task errors, the Agents API tool result) keep the code.
+    /// errors (durable task errors) keep the code.
     #[test]
     fn stop_copy_classifies_back_to_its_code() {
         let mut paused = summary("paused", 40.0, 100.0);

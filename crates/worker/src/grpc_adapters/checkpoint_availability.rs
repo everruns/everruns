@@ -1,8 +1,8 @@
 //! Whether the control plane can serve encrypted checkpoint stores.
 //!
 //! Decision (EVE-1261): a control plane without `SECRETS_ENCRYPTION_KEY` runs
-//! turns without compaction checkpoints and the native-async / Agents API
-//! journals, the same way the in-process worker does
+//! turns without compaction checkpoints and the native-async
+//! journal, the same way the in-process worker does
 //! (`DirectWorkerAdapters` returns `None` for those stores). The key stays
 //! "Recommended", not required. A remote worker learns this once, when it
 //! connects (`probe`), and again if a checkpoint read is refused later
@@ -37,7 +37,7 @@ impl CheckpointAvailability {
         if !self.unavailable.swap(true, Ordering::Relaxed) {
             tracing::warn!(
                 "control plane has no SECRETS_ENCRYPTION_KEY; running turns without \
-                 compaction checkpoints and native-async / Agents API journals"
+                 compaction checkpoints and the native-async journal"
             );
         }
     }

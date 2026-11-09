@@ -17,10 +17,8 @@ mod test_harness;
 
 mod agent_activity_test;
 mod agent_avatar_storage_test;
-mod agents_api_lifecycle_test;
 mod api_integration_test;
 mod harness_levels_test;
-mod late_generation_usage_test;
 mod mcp_catalog_integration_test;
 mod organization_connections_test;
 mod platform_chat_starter_test;

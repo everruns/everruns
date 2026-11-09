@@ -11,10 +11,6 @@
 //! doppler run -- cargo test -p everruns-llm-tests --test provider_live -- --nocapture
 //! ```
 
-// Shared with the fake-API suite in the `everruns` crate.
-#[path = "../../../everruns/tests/host/agents_api_support/mod.rs"]
-mod agents_api_support;
-
 mod anthropic_message_threads;
 mod anthropic_parallel_tool_calls;
 mod decision_discovery;
@@ -23,7 +19,6 @@ mod discovery;
 // every call returns 412. Restore `fireworks_chat.rs` from git history and
 // re-add its `mod` once billing is restored.
 mod meta_model_api;
-mod openai_agents_api;
 mod openai_astra_compaction;
 mod openai_completions_max_tokens;
 mod openai_hosted_tools;

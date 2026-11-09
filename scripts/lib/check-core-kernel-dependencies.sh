@@ -44,7 +44,6 @@ bytes
 chrono
 chrono-tz
 ed25519-dalek
-eventsource-stream
 everruns-contracts
 fs2
 futures
@@ -96,7 +95,6 @@ a2a-lf
 bytes
 chrono-tz
 ed25519-dalek
-eventsource-stream
 fs2
 futures-util
 http

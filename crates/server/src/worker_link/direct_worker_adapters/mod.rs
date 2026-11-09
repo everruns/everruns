@@ -1179,9 +1179,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
     ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
         crate::storage::PgNativeAsyncStore::shared(&self.db, self.encryption.as_ref())
     }
-    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
-        crate::storage::PgAgentsApiStore::shared(&self.db, self.encryption.as_ref())
-    }
 
     fn dreaming_store(&self) -> Option<Arc<dyn everruns_core::dreaming::DreamingStore>> {
         let adapters = self.clone();

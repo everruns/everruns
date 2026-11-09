@@ -75,7 +75,6 @@ mod knowledge_bases;
 pub use knowledge_bases::rows::*;
 mod knowledge_indexes;
 pub use knowledge_indexes::rows::*;
-mod late_generation_usage;
 mod manager_context;
 mod mcp_event_subscriptions;
 mod mcp_servers;

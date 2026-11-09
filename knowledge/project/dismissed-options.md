@@ -235,3 +235,15 @@ and [Load Testing](../operations/load-testing.md).
 **Revisit if**: a turn must be split across workers mid-turn (for example one
 step on GPU hardware and the next elsewhere), which a single lease holder per
 turn does not allow.
+
+## OpenAI Agents API runtime backend
+
+**Status**: Built, then removed (2026-11-09)
+
+**What it was**: An opt-in backend (EVE-1123) that ran an agent's loop on OpenAI's Agents API instead of the native Everruns loop. Everruns tools ran as client functions through the normal pipeline, with a lease-fenced checkpoint per session, provider-session lifecycle, and late usage reconciliation.
+
+**Why considered**: A managed loop promised provider-side compaction and hosted tools without Everruns owning the loop.
+
+**Why it was removed**: It never left the internal grade. Part of each session's context lived only at the provider, so those sessions could not be forked and did not qualify for Zero Data Retention. From 2026-11-07 every turn on our project failed with a provider `internal_error` while the Responses API kept working, and nobody planned to return to it.
+
+**What remains**: The `agents_api_sessions` and `agents_api_provider_deletions` tables and the `usage_pending` column stay in the schema, unused, because records are never purged. The `provider_session_unavailable` error code stays so recorded events still render. The design is in git history (`knowledge/execution/openai-agents-api-runtime.md`).

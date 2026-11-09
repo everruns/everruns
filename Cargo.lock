@@ -3993,7 +3993,6 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "ed25519-dalek 3.0.0",
- "eventsource-stream",
  "everruns-contracts",
  "fs2",
  "futures",

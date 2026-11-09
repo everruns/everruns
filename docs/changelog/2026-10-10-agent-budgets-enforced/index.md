@@ -13,7 +13,7 @@ links:
 ---
 
 An agent budget is now enforced before every model call in the native loop
-through a shared budget gate, the same gate the Agents API backend uses. When a
+through a shared budget gate. When a
 budget is exhausted, the turn stops with a typed reason and emits budget events,
 instead of continuing to spend.
 

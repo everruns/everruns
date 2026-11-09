@@ -33,7 +33,6 @@ use uuid::Uuid;
 use crate::storage::StorageBackend;
 use crate::storage::repositories::{AgentUsageDelta, GenerationProvider};
 use everruns_contracts::typed_id::ProviderId;
-use everruns_core::host::openai_agents_api::GENERATION_PROVIDER_ID;
 
 /// Event listener that tracks LLM usage statistics.
 ///
@@ -139,16 +138,8 @@ impl EventListener for UsageTrackingListener {
         // Extract usage data
         let usage = match &data.metadata.usage {
             Some(u) => u,
-            None => {
-                // No usage data. An Agents API turn billed before the provider
-                // reported its usage is recorded as pending, for the late
-                // usage reconciler to apply (EVE-1145); anything else has
-                // nothing to track.
-                if let Err(e) = super::agents_api::record_pending(&self.db, event, data).await {
-                    error!(error = %e, "Failed to record pending Agents API usage");
-                }
-                return;
-            }
+            // No usage data: nothing to track.
+            None => return,
         };
 
         let input_tokens = usage.input_tokens as i64;
@@ -181,16 +172,7 @@ impl EventListener for UsageTrackingListener {
 
         // org_id comes directly from the session row
         let org_id = session.org_id;
-        // The native engine stamps the provider on the generation; the OpenAI
-        // Agents API backend carries it in the event metadata instead.
-        let provider_id = data.metadata.provider_id.clone().or_else(|| {
-            event
-                .metadata
-                .as_ref()
-                .and_then(|metadata| metadata.get(GENERATION_PROVIDER_ID))
-                .and_then(|value| value.as_str())
-                .map(str::to_string)
-        });
+        let provider_id = data.metadata.provider_id.clone();
         let served_by = served_by(&self.db, org_id, provider_id.as_deref()).await;
 
         // Insert into llm_generations with org_id
