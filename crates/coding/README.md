@@ -1,7 +1,8 @@
 # everruns-coding
 
-Code navigation for [Everruns](https://everruns.com) agents: language servers,
-structural search and edit, and repository maps.
+> Code navigation for Everruns agents: language servers, structural search and edit, and repository maps.
+
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
 | Capability | Tools | What it is for |
 |---|---|---|
@@ -49,3 +50,11 @@ rooted at that repository.
 ## Features
 
 - `local`: `LocalCodeHost`, for code on the machine the agent runs on.
+
+## Documentation
+
+See the [code navigation guide](https://everruns.com/docs/capabilities/code-navigation) and the [API reference](https://docs.rs/everruns-coding).
+
+## License
+
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).
