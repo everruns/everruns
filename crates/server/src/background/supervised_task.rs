@@ -129,7 +129,10 @@ mod tests {
             },
         );
 
-        tokio::time::timeout(Duration::from_secs(1), async {
+        // The deadline only bounds a broken supervisor. Each intentional panic
+        // prints a symbolized backtrace (CI sets RUST_BACKTRACE=1), which took
+        // over 1 s on a loaded runner (2026-11-09), so keep it generous.
+        tokio::time::timeout(Duration::from_secs(30), async {
             while runs.load(Ordering::SeqCst) < 2 {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
