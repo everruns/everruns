@@ -943,3 +943,150 @@ async fn live_deltas_reach_the_host_fenced_to_epoch_and_stream() {
         .to_string();
     assert!(deltas.iter().all(|delta| delta.attempt.stream == message));
 }
+
+/// An authority that hands every activation a newer agent build, as one that
+/// moved the session to a new revision would.
+#[derive(Clone)]
+struct Rebind<H>(H, Arc<std::sync::Mutex<Option<AgentBuild>>>);
+#[async_trait::async_trait]
+impl<H: SessionHosting> SessionHosting for Rebind<H> {
+    async fn command(
+        &self,
+        session: SessionId,
+        command: everruns::hosting::spi::session_commands::SessionCommand,
+    ) -> everruns::hosting::spi::error::Result<serde_json::Value> {
+        self.0.command(session, command).await
+    }
+    async fn query_snapshot(
+        &self,
+        id: SessionId,
+    ) -> everruns_contracts::error::Result<everruns::hosting::SessionQuerySnapshot> {
+        self.0.query_snapshot(id).await
+    }
+    async fn status(
+        &self,
+        id: SessionId,
+    ) -> everruns_contracts::error::Result<everruns::hosting::HostingStatus> {
+        self.0.status(id).await
+    }
+    async fn receipt(
+        &self,
+        id: SessionId,
+        message: MessageId,
+    ) -> everruns_contracts::error::Result<Option<everruns::hosting::AdmissionReceipt>> {
+        self.0.receipt(id, message).await
+    }
+    fn reader(&self, id: SessionId) -> everruns_core::host::HostBackends {
+        self.0.reader(id)
+    }
+    async fn record(
+        &self,
+        id: SessionId,
+        key: &str,
+    ) -> everruns_contracts::error::Result<Option<serde_json::Value>> {
+        self.0.record(id, key).await
+    }
+    fn changes(&self, session: SessionId) -> Option<Arc<tokio::sync::Notify>> {
+        self.0.changes(session)
+    }
+    fn process_scheduler(&self) -> bool {
+        self.0.process_scheduler()
+    }
+    async fn claim(
+        &self,
+        id: SessionId,
+        holder: &str,
+        ttl: std::time::Duration,
+    ) -> everruns_contracts::error::Result<Option<everruns::hosting::SessionActivation>> {
+        let mut activation = self.0.claim(id, holder, ttl).await?;
+        if let (Some(activation), Some(build)) = (&mut activation, self.1.lock().unwrap().clone()) {
+            activation.binding.behavior = build;
+        }
+        Ok(activation)
+    }
+}
+
+/// Data plane v2 step 1: a turn finishes with the agent build it started
+/// with. An activation that brings another one to an unfinished turn
+/// suspends the session instead of finishing it under different code.
+#[tokio::test]
+async fn an_unfinished_turn_never_resumes_under_another_agent_build() {
+    let profile = MemoryHosting::default();
+    let newer = AgentBuild::new("assistant", "test-v2");
+    let engine = Engine::builder()
+        .hosting(Rebind(
+            profile.clone(),
+            Arc::new(std::sync::Mutex::new(Some(newer.clone()))),
+        ))
+        .register(build(), agent())
+        .register(newer, agent())
+        .build();
+    let id = SessionId::new();
+    engine.create_registered(id, &build()).await.unwrap();
+    // Admitted straight at the authority, so no executor starts at once.
+    let input = everruns_contracts::runtime::message::RuntimeMessage::user("hello");
+    let message = input.id;
+    profile.admit(id, input, false).await.unwrap();
+    // An executor that started the turn under v1, then crashed.
+    let lease = std::time::Duration::from_millis(200);
+    let crashed = profile.claim(id, "crashed", lease).await.unwrap().unwrap();
+    let started = everruns::hosting::TurnAssignment {
+        turn_id: everruns::TurnId::new(),
+        steered: false,
+        revision: Some(everruns::hosting::TurnRevision {
+            behavior: build(),
+            framework: crashed.binding.framework,
+        }),
+    };
+    assert!(
+        crashed
+            .epoch
+            .commit(
+                &format!("assignment/{message}"),
+                serde_json::to_value(&started).unwrap(),
+                true,
+            )
+            .await
+            .unwrap()
+    );
+    tokio::time::sleep(lease * 2).await;
+    // The driver reports the refusal through the session, not the call.
+    let _ = engine.activate(id).await;
+    let status = engine.session_status(id).await.unwrap();
+    assert_eq!(
+        status.suspension_reason.as_deref(),
+        Some("turn_revision_mismatch")
+    );
+}
+
+/// A finished turn's session moves to the newer build for its next turn.
+#[tokio::test]
+async fn a_new_turn_runs_the_build_the_authority_moved_the_session_to() {
+    let newer = AgentBuild::new("assistant", "test-v2");
+    let moved = Arc::new(std::sync::Mutex::new(None));
+    let engine = Engine::builder()
+        .hosting(Rebind(MemoryHosting::default(), moved.clone()))
+        .register(build(), agent())
+        .register(
+            newer.clone(),
+            Agent::builder()
+                .instructions("Answer briefly.")
+                .model(Model::simulated("Hello from v2!"))
+                .build()
+                .unwrap(),
+        )
+        .build();
+    let session = engine
+        .create_registered(SessionId::new(), &build())
+        .await
+        .unwrap();
+    assert_eq!(
+        session.send_and_wait("hi").await.unwrap().response,
+        "Hello!"
+    );
+    *moved.lock().unwrap() = Some(newer);
+    assert_eq!(
+        session.send_and_wait("hi").await.unwrap().response,
+        "Hello from v2!"
+    );
+}

@@ -124,6 +124,10 @@ pub(crate) async fn run(
         state,
         session,
         after_release: activation.actor.attempts == 1,
+        revision: super::TurnRevision {
+            behavior: activation.binding.behavior.clone(),
+            framework: activation.binding.framework,
+        },
     });
     let mut driver = SessionActorDriver::new(hosts, store, config);
     if let Some(poke) = renew_poke {
@@ -145,6 +149,10 @@ pub(crate) async fn run(
     Ok(())
 }
 
+/// Suspension reason when an activation would finish a turn with another
+/// agent build or runtime format than the turn started with.
+const TURN_REVISION_MISMATCH: &str = "turn_revision_mismatch";
+
 struct FrameworkHosts {
     engine: Engine,
     runtime: InProcessRuntime,
@@ -155,6 +163,20 @@ struct FrameworkHosts {
     /// The previous lease was released, not lost: no earlier epoch can have
     /// left a receipt for the input this one starts fresh.
     after_release: bool,
+    /// What this activation runs; retained on each turn it starts.
+    revision: super::TurnRevision,
+}
+
+impl FrameworkHosts {
+    async fn assignment(&self, key: &str) -> Result<super::TurnAssignment> {
+        serde_json::from_value(
+            self.epoch
+                .record(key)
+                .await?
+                .ok_or_else(|| AgentLoopError::store("missing retained turn identity"))?,
+        )
+        .map_err(|_| AgentLoopError::store("invalid retained turn identity"))
+    }
 }
 
 #[async_trait]
@@ -200,7 +222,12 @@ impl ActorHosts for FrameworkHosts {
     // the assignment turns into this turn's.
     async fn fresh_turn_id(&self, input: MessageId, proposed: TurnId) -> Result<TurnId> {
         let key = format!("assignment/{input}");
-        let value = json!({"turn_id": proposed, "steered": false});
+        let value = serde_json::to_value(super::TurnAssignment {
+            turn_id: proposed,
+            steered: false,
+            revision: Some(self.revision.clone()),
+        })
+        .map_err(|_| AgentLoopError::store("invalid turn identity"))?;
         if self.after_release {
             self.epoch.commit_with_lease(&key, value).await?;
             return Ok(proposed);
@@ -208,13 +235,17 @@ impl ActorHosts for FrameworkHosts {
         if self.epoch.commit(&key, value, true).await? {
             return Ok(proposed);
         }
-        let retained: super::TurnAssignment = serde_json::from_value(
-            self.epoch
-                .record(&key)
-                .await?
-                .ok_or_else(|| AgentLoopError::store("missing retained turn identity"))?,
-        )
-        .map_err(|_| AgentLoopError::store("invalid retained turn identity"))?;
+        let retained = self.assignment(&key).await?;
+        // An unfinished turn finishes with what it started with: the
+        // authority hands a resumed turn its retained revision (data plane
+        // v2 step 1). Finishing it with another build could replay tool
+        // calls under different code, so suspend instead.
+        if let Some(revision) = retained.revision
+            && revision != self.revision
+        {
+            self.epoch.suspend(TURN_REVISION_MISMATCH).await?;
+            return Err(AgentLoopError::config(TURN_REVISION_MISMATCH));
+        }
         Ok(retained.turn_id)
     }
 
@@ -228,8 +259,8 @@ impl ActorHosts for FrameworkHosts {
             let key = format!("assignment/{input}");
             let value =
                 json!({"turn_id": drive.turn_id, "steered": *input != drive.input_message_id});
-            if !self.epoch.commit(&key, value.clone(), true).await?
-                && self.epoch.record(&key).await? != Some(value)
+            if !self.epoch.commit(&key, value, true).await?
+                && self.assignment(&key).await?.turn_id != drive.turn_id
             {
                 return Err(AgentLoopError::store(
                     "admission already belongs to another turn",

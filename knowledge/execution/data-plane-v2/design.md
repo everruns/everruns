@@ -878,6 +878,14 @@ the in-memory authority ran out of memory. What it took:
   keeps prompts in S3 (`--keep-prompts` keeps them): 230 KB retained per
   turn became 33 KB. No turn reads a prompt back.
 
+**Per-turn revision:** the turn's first assignment receipt keeps
+`TurnRevision { behavior, framework }` (agent build and runtime format).
+An activation's binding is the authority's choice, so a session moves to
+a newer build at its next turn and Engine's session cache follows it; an
+activation that brings another revision to an unfinished turn suspends
+the session (`turn_revision_mismatch`) instead of finishing it under
+different code.
+
 **Memory per idle session** (`cargo bench -p everruns --bench
 idle_sessions`, 20 000 sessions with one turn each, handles dropped,
 counted by a counting allocator): Engine kept 6.2 KB per idle session for

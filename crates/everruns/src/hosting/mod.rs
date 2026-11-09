@@ -45,7 +45,7 @@ pub use everruns_core::session_commands::{
     QuestionAnswersRequest, validate_question_answers, validate_tool_resolutions,
 };
 pub(crate) mod query;
-pub use admission::{Admission, AdmissionState, TurnAssignment};
+pub use admission::{Admission, AdmissionState, TurnAssignment, TurnRevision};
 pub use memory::{AuthorityCounts, MemoryHosting};
 pub use query::SessionQuerySnapshot;
 #[cfg(feature = "local")]

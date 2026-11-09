@@ -13,6 +13,24 @@ pub struct TurnAssignment {
     pub turn_id: TurnId,
     /// Whether input joined an already started turn.
     pub steered: bool,
+    /// The agent build and runtime format the turn runs with, retained on
+    /// the turn's first input (absent on steered inputs and older receipts).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<TurnRevision>,
+}
+
+/// What a turn runs with, retained for its whole life (data plane v2 plan
+/// step 1): an authority that moves a session to a newer agent build does
+/// so for new turns, and every later activation of an unfinished turn
+/// (after a crash, hand-off or move) must bring the same revision. Engine
+/// suspends the session rather than finish a turn with another one.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TurnRevision {
+    /// The agent build ([`super::SessionBinding::behavior`]).
+    pub behavior: super::AgentBuild,
+    /// The session runtime format, its protocol major
+    /// ([`super::SessionBinding::framework`]).
+    pub framework: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]

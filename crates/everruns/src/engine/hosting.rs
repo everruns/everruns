@@ -622,9 +622,20 @@ impl Engine {
         let used = self.inner.session_cache.tick();
         if let Some(existing) = sessions.get_mut(&session) {
             if existing.durable_binding.as_ref() != Some(&binding) {
-                return Err(AgentLoopError::config(
-                    "session cache binding conflicts with authority",
-                ));
+                // Decision: an authority moves a session to a newer revision
+                // (agent build, runtime format and its Harness) for new
+                // turns (data plane v2 step 1; an unfinished turn keeps its
+                // own, see `TurnRevision`). What the session was created
+                // with, its Environment and metadata, never changes.
+                let same_session = existing.durable_binding.as_ref().is_some_and(|cached| {
+                    cached.environment == binding.environment && cached.metadata == binding.metadata
+                });
+                if !same_session {
+                    return Err(AgentLoopError::config(
+                        "session cache binding conflicts with authority",
+                    ));
+                }
+                existing.durable_binding = Some(binding);
             }
             existing.agent = Some(registration.agent);
             existing.harness = registration.harness;

@@ -1247,6 +1247,7 @@ impl SentMessage {
             TurnHandleSource::Local { turn_id, .. } => Ok(Some(crate::hosting::TurnAssignment {
                 turn_id: *turn_id,
                 steered: self.disposition == SendDisposition::Steered,
+                revision: None,
             })),
         }
     }
