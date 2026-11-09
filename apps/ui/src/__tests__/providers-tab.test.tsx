@@ -219,6 +219,26 @@ describe("DefaultsTab", () => {
     expect(mockUpdateOrganization).toHaveBeenLastCalledWith({ small_model_id: null });
   });
 
+  it("shows the automatic research model and sets or resets an explicit one", () => {
+    mockOrg = { ...mockOrg, effective_research_model_id: "fable" };
+    const models = [model({}), model({ id: "fable", display_name: "Claude Fable 5.2" })];
+    const { rerender } = render(<DefaultsTab models={models} providers={providers} canManage />);
+    const row = () => screen.getByLabelText("Research model");
+    expect(within(row()).getByRole("combobox")).toHaveTextContent(
+      "Automatic · Claude Fable 5.2 (OpenAI Production)",
+    );
+    fireEvent.click(within(row()).getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "GPT-5.2 (OpenAI Production)" }));
+    expect(mockUpdateOrganization).toHaveBeenLastCalledWith({ research_model_id: "model-1" });
+    mockOrg = { ...mockOrg, research_model_id: "model-1" };
+    rerender(<DefaultsTab models={models} providers={providers} canManage />);
+    fireEvent.click(within(row()).getByRole("combobox"));
+    fireEvent.click(
+      screen.getByRole("option", { name: "Automatic · Claude Fable 5.2 (OpenAI Production)" }),
+    );
+    expect(mockUpdateOrganization).toHaveBeenLastCalledWith({ research_model_id: null });
+  });
+
   it("retains an unavailable small selection with repair guidance", () => {
     mockOrg = { ...mockOrg, small_model_id: "small" };
     render(

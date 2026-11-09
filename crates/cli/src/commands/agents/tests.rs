@@ -7,6 +7,7 @@ fn harness_params(harness: Option<&str>) -> serde_json::Value {
         "p".into(),
         None,
         None,
+        None,
         harness.map(ToOwned::to_owned),
         Vec::new(),
     )
@@ -51,6 +52,7 @@ fn a_json_array_tag_becomes_the_strings_inside_it() {
         None,
         None,
         None,
+        None,
         vec![r#"["company", "ci"]"#.into()],
     );
     assert_eq!(params["tags"], serde_json::json!(["company", "ci"]));
@@ -64,6 +66,7 @@ fn an_update_from_flags_is_an_upsert_by_id() {
         "p".into(),
         Some("d".into()),
         Some("m".into()),
+        None,
         None,
         vec!["t".into()],
     );
@@ -746,4 +749,20 @@ async fn import_sends_the_reason_header_only_when_given() {
 
     let request = sent_by(&["import", &file]).await;
     assert_eq!(request.header(REASON_HEADER), None);
+}
+
+#[test]
+fn a_model_role_flag_follows_the_organization_research_model() {
+    let params = agent_params(
+        None,
+        "a".into(),
+        "p".into(),
+        None,
+        None,
+        Some("research".into()),
+        None,
+        Vec::new(),
+    );
+    assert_eq!(params["model_role"], "research");
+    assert!(params.get("default_model_id").is_none());
 }

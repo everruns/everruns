@@ -33,6 +33,8 @@ export interface CreateAgentRequest {
   /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
   harness_name?: string;
   default_model_id?: string;
+  /** Follow an organization model instead of pinning one; exclusive with `default_model_id`. */
+  model_role?: AgentModelRole;
   tags?: string[];
   /** Capabilities with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];
@@ -67,6 +69,8 @@ export interface UpdateAgentRequest {
   /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
   harness_name?: string;
   default_model_id?: string;
+  /** Follow an organization model; null stops following it. Setting `default_model_id` clears it. */
+  model_role?: AgentModelRole | null;
   tags?: string[];
   /** Capabilities with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];
@@ -88,3 +92,6 @@ export interface UpdateAgentRequest {
   /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
   forked_from_sequence?: number | null;
 }
+
+/** Organization model an agent follows: `research` is the organization research model. */
+export type AgentModelRole = "research";

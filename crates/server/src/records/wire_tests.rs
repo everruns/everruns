@@ -11,6 +11,7 @@ fn test_proto_agent_includes_capability_ids() {
     // Create an Agent with capabilities
     let id = Uuid::now_v7();
     let mut agent = crate::domains::agents::record::Agent {
+        model_role: None,
         completion_check: Default::default(),
         localizations: Default::default(),
         is_built_in: false,

@@ -189,25 +189,21 @@ impl WorkerServiceImpl {
         }
 
         // Get model with provider (decrypted API key) via ProviderResolverService
-        // Priority: session model > agent model > harness model > default model
-        let mut model_id = session
-            .model_id
-            .or(agent.as_ref().and_then(|a| a.default_model_id))
-            .or(harness.as_ref().and_then(|h| h.default_model_id));
-
-        if !omit_messages_and_model
-            && model_id.is_none()
-            && let Some(agent) = agent.as_ref()
-        {
-            model_id = crate::platform_chat_agent::org_chat_model_id(
+        // Priority: session model > agent model or model role > harness model >
+        // Chat model (built-in Chat agent) > default model
+        let model_id = if omit_messages_and_model {
+            None
+        } else {
+            crate::domains::organizations::research_model::turn_model_id(
                 &self.db,
                 req.org_id,
-                &agent.name,
-                agent.is_built_in,
+                session.model_id,
+                agent.as_ref(),
+                harness.as_ref().and_then(|h| h.default_model_id),
             )
             .await
-            .map_err(|_| Status::internal("Failed to resolve Chat model"))?;
-        }
+            .map_err(|_| Status::internal("Failed to resolve model"))?
+        };
 
         let model: Option<proto::ResolvedModel> = if omit_messages_and_model {
             None

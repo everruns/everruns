@@ -408,6 +408,7 @@ pub(crate) fn test_harness() -> Harness {
 pub(crate) fn test_agent() -> Agent {
     let public_id = generate_agent_public_id();
     Agent {
+        model_role: None,
         completion_check: Default::default(),
         localizations: Default::default(),
         is_built_in: false,

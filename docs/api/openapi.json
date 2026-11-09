@@ -36571,6 +36571,17 @@
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
           },
+          "model_role": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentModelRole",
+                "description": "Organization model the agent follows instead of `default_model_id`.\n`research` uses the organization research model."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "type": "string",
             "description": "Name, unique per org (e.g. \"customer-support\").",
@@ -38187,6 +38198,13 @@
           "ready",
           "connection_missing",
           "preset_missing"
+        ]
+      },
+      "AgentModelRole": {
+        "type": "string",
+        "description": "An organization model an agent follows instead of pinning a model.",
+        "enum": [
+          "research"
         ]
       },
       "AgentPreviewResponse": {
@@ -43902,6 +43920,17 @@
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this agent."
+          },
+          "model_role": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentModelRole",
+                "description": "Follow an organization model instead of pinning one: `research` uses\nthe organization research model. Cannot be combined with\n`default_model_id`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "type": "string",
@@ -54048,6 +54077,17 @@
                   "$ref": "#/components/schemas/BTreeMap",
                   "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
                 },
+                "model_role": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentModelRole",
+                      "description": "Organization model the agent follows instead of `default_model_id`.\n`research` uses the organization research model."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "name": {
                   "type": "string",
                   "description": "Name, unique per org (e.g. \"customer-support\").",
@@ -56526,6 +56566,13 @@
                     "type": "string"
                   }
                 },
+                "effective_research_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model."
+                },
                 "id": {
                   "type": "string",
                   "description": "External identifier (org_<32-hex-chars>)"
@@ -56541,6 +56588,13 @@
                   ],
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
+                "research_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic."
                 },
                 "self_healing": {
                   "$ref": "#/components/schemas/SelfHealingPolicy",
@@ -59542,6 +59596,13 @@
                 "type": "null"
               }
             ]
+          },
+          "model_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Organization model the agent follows instead of `model`, such as\n`research` for the host's research model. Hosts without model roles\nuse their default model."
           },
           "name": {
             "type": "string",
@@ -63298,6 +63359,13 @@
               "type": "string"
             }
           },
+          "effective_research_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model."
+          },
           "id": {
             "type": "string",
             "description": "External identifier (org_<32-hex-chars>)"
@@ -63313,6 +63381,13 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "research_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic."
           },
           "self_healing": {
             "$ref": "#/components/schemas/SelfHealingPolicy",
@@ -78708,6 +78783,13 @@
               }
             ]
           },
+          "model_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Follow an organization model instead of pinning one: `research` uses\nthe organization research model and clears `default_model_id`. Null\nstops following it; setting `default_model_id` also clears it."
+          },
           "name": {
             "type": [
               "string",
@@ -80097,6 +80179,13 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "research_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Research model for agents set to \"Organization research model\". Omit to\npreserve; null returns to Automatic. Must be an enabled shared chat model."
           },
           "self_healing": {
             "oneOf": [
@@ -81937,6 +82026,17 @@
               "mcpServers": {
                 "$ref": "#/components/schemas/BTreeMap",
                 "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
+              },
+              "model_role": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AgentModelRole",
+                    "description": "Organization model the agent follows instead of `default_model_id`.\n`research` uses the organization research model."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "name": {
                 "type": "string",

@@ -50,6 +50,7 @@ export type OpenApiAgentMcpAttachmentContributor = Schemas["AgentMcpAttachmentCo
 export type OpenApiAgentMcpAttachmentSource = Schemas["AgentMcpAttachmentSource"];
 export type OpenApiAgentMcpAttachmentSourceInfo = Schemas["AgentMcpAttachmentSourceInfo"];
 export type OpenApiAgentMcpAttachmentState = Schemas["AgentMcpAttachmentState"];
+export type OpenApiAgentModelRole = Schemas["AgentModelRole"];
 export type OpenApiAgentPreviewResponse = Schemas["AgentPreviewResponse"];
 export type OpenApiAgentScript = Schemas["AgentScript"];
 export type OpenApiAgentSessionView = Schemas["AgentSessionView"];

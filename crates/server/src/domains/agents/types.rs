@@ -77,6 +77,11 @@ pub struct CreateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<ModelId>,
+    /// Follow an organization model instead of pinning one: `research` uses
+    /// the organization research model. Cannot be combined with
+    /// `default_model_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_role: Option<crate::domains::organizations::research_model::AgentModelRole>,
     /// Harness ID used as this agent's base execution environment. If omitted,
     /// the organization default is used (Conversation for new organizations).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -199,6 +204,16 @@ pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<ModelId>,
+    /// Follow an organization model instead of pinning one: `research` uses
+    /// the organization research model and clears `default_model_id`. Null
+    /// stops following it; setting `default_model_id` also clears it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "double_option"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub model_role: Option<Option<crate::domains::organizations::research_model::AgentModelRole>>,
     /// Harness ID used as this agent's base execution environment. Omit to leave unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
@@ -577,4 +592,14 @@ mod tests {
     // Strict-mode coverage lives in `tests/strict_client_tools.rs` so it
     // runs in its own process and doesn't race the lenient tests above
     // over the `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS` env var.
+}
+
+/// Distinguishes an explicit `null` (`Some(None)`, clear) from an omitted
+/// field (`None`, unchanged).
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(de).map(Some)
 }

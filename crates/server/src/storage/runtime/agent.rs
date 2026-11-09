@@ -58,6 +58,7 @@ impl DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
+                    model_role: None,
                     localizations: row.localizations.clone(),
                     avatar: row
                         .avatar_id

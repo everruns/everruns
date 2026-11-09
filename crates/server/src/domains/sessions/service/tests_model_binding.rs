@@ -13,6 +13,7 @@ async fn agent_with_model(
     default_model_id: Option<ModelId>,
 ) -> <crate::domains::agents::CreateAgent as Command>::Output {
     crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -344,4 +345,79 @@ async fn operator_chat_uses_its_own_org_default_without_rebinding_sessions() {
             .unwrap(),
         Some(chat_model)
     );
+}
+
+#[tokio::test]
+async fn research_agent_follows_the_org_research_model_until_it_pins_one() {
+    let db = Arc::new(StorageBackend::test_database());
+    let caller = Caller::internal(DEFAULT_ORG_ID);
+    let ctx = test_ctx(caller.clone(), db.clone()).await;
+    let service = SessionService::new(db.clone());
+    let general = create_model(&db, caller.org_id, "general").await;
+    let research = create_model(&db, caller.org_id, "research").await;
+    let next_research = create_model(&db, caller.org_id, "next-research").await;
+    let set_research = |id| crate::storage::UpdateOrganizationSettings {
+        default_model_id: UpdateField::Set(general),
+        research_model_id: UpdateField::Set(id),
+        ..Default::default()
+    };
+    db.patch_organization_settings(caller.org_id, set_research(research))
+        .await
+        .unwrap();
+
+    // A role and a pinned model together are refused.
+    let both = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: Some(crate::domains::organizations::research_model::AgentModelRole::Research),
+        default_model_id: Some(general),
+        ..serde_json::from_value(serde_json::json!({"name": "both", "system_prompt": "x"})).unwrap()
+    })
+    .execute(&ctx)
+    .await
+    .unwrap_err();
+    assert!(both.to_string().contains("not both"), "{both}");
+
+    let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: Some(crate::domains::organizations::research_model::AgentModelRole::Research),
+        ..serde_json::from_value(serde_json::json!({"name": "researcher", "system_prompt": "x"}))
+            .unwrap()
+    })
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&agent).unwrap()["model_role"],
+        "research"
+    );
+    let harness = org_init::base_harness_id(&db, caller.org_id).await.unwrap();
+    let session = service
+        .create(
+            &caller,
+            harness.uuid(),
+            Some(agent.internal_id),
+            Some(agent.public_id),
+            SessionSource::Api,
+            build_create_request(harness, Some(agent.public_id), None),
+        )
+        .await
+        .unwrap();
+    let resolved = || service.resolved_model_id(caller.org_id, &session);
+    assert_eq!(resolved().await.unwrap(), Some(research));
+
+    // Changing the org setting moves the agent without editing it.
+    db.patch_organization_settings(caller.org_id, set_research(next_research))
+        .await
+        .unwrap();
+    assert_eq!(resolved().await.unwrap(), Some(next_research));
+
+    // Pinning a model replaces the role.
+    let pinned = crate::domains::agents::UpdateAgentCmd {
+        id: agent.public_id.to_string(),
+        req: serde_json::from_value(serde_json::json!({"default_model_id": general.to_string()}))
+            .unwrap(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(pinned.model_role, None);
+    assert_eq!(pinned.default_model_id, Some(general));
 }

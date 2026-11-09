@@ -366,4 +366,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Small model": "Modelo pequeño",
   "Spend Policies": "Políticas de gasto",
   "Structured Output": "Salida estructurada",
+  "Research model": "Modelo de investigación",
+  "Organization research model": "Modelo de investigación de la organización",
+  'The strongest model for hard reasoning and long research. Agents set to "Organization research model" run on it.':
+    "El modelo más potente para razonamiento difícil e investigaciones largas. Los agentes configurados con «Modelo de investigación de la organización» se ejecutan en él.",
 };

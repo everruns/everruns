@@ -310,6 +310,7 @@ async fn export_inner(
         "short_description",
         "starters",
         "sandbox_policy",
+        "model_role",
     ];
     object.retain(|key, _| allowed.contains(&key.as_str()));
     // `direct` is the default; a package states only a deliberate choice.
@@ -580,6 +581,18 @@ pub async fn request(
     } else {
         package.legacy_model_id
     };
+    let model_role = m
+        .model_role
+        .as_deref()
+        .map(|role| {
+            crate::domains::organizations::research_model::AgentModelRole::from_db(Some(role))
+                .ok_or_else(|| {
+                    CommandError::bad_request(format!("model_role: unknown role {role}"))
+                })
+        })
+        .transpose()?;
+    // A role replaces the pinned model, as in the agent API.
+    let model_id = if model_role.is_some() { None } else { model_id };
     let req = CreateAgentRequest {
         owner_agent_id: None,
         localizations: m.localizations.clone(),
@@ -594,6 +607,7 @@ pub async fn request(
             .map_err(|e| CommandError::bad_request(format!("starters: {e}")))?,
         system_prompt: m.instructions.clone(),
         default_model_id: model_id,
+        model_role,
         harness_id: package.legacy_harness_id,
         harness_name: m.harness.clone(),
         tags: m.tags.clone(),

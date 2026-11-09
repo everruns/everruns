@@ -17,8 +17,11 @@ Model resolution priority on each turn:
 
 1. Message-level `controls.model_id` (if present on the incoming message).
 2. Session override (`session.default_model_id`).
-3. Agent default (`agent.default_model_id`).
-4. System default.
+3. Agent default (`agent.default_model_id`), or the
+   [organization research model](/providers/#organization-research-model) for
+   an agent with `model_role: "research"`.
+4. Harness default model.
+5. Organization default model, then the platform default.
 
 ## Add a new provider
 

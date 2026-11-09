@@ -136,6 +136,7 @@ impl Command for CreateAgent {
         .await?;
         let default_model_id =
             q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
+        validate_model_choice(default_model_id, req.model_role)?;
         let harness_source = if req.harness_id.is_some() || req.harness_name.is_some() {
             "explicit"
         } else {
@@ -261,6 +262,9 @@ impl Command for CreateAgent {
                 .set_agent_owner(ctx.org_id(), row.id, Some(owner))
                 .await?;
             row.owner_agent_id = Some(owner);
+        }
+        if let Some(role) = req.model_role {
+            set_model_role(ctx, &mut row, Some(role)).await?;
         }
         persist_capabilities(&ctx.db, agent_uuid, &caps).await?;
         Ok(crate::storage::row_to_agent(row, caps))
@@ -481,8 +485,10 @@ impl Command for UpdateAgentCmd {
         }
         let default_model_id =
             q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
+        validate_model_choice(default_model_id, req.model_role.flatten())?;
         // A new model or an archived agent can open or resolve its model issue.
-        let recheck_model_health = default_model_id.is_some() || is_archiving;
+        let recheck_model_health =
+            default_model_id.is_some() || req.model_role.is_some() || is_archiving;
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
@@ -559,11 +565,14 @@ impl Command for UpdateAgentCmd {
         if is_archiving {
             super::lifecycle::prepare_for_removal(ctx, internal_id.uuid()).await?;
         }
-        let row = ctx
+        let mut row = ctx
             .db
             .update_agent(ctx.org_id(), internal_id, input)
             .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
+        if let Some(role) = req.model_role {
+            set_model_role(ctx, &mut row, role).await?;
+        }
 
         if is_archiving {
             super::credentials::revoke_agent_grants(ctx, &row).await?;
@@ -720,6 +729,7 @@ impl Command for UpsertAgent {
         .await?;
         let default_model_id =
             q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
+        validate_model_choice(default_model_id, req.model_role)?;
         let harness_source = if req.harness_id.is_some() || req.harness_name.is_some() {
             "explicit"
         } else {
@@ -763,7 +773,9 @@ impl Command for UpsertAgent {
             is_built_in: false,
         };
         let (row, was_created) = ctx.db.upsert_agent(ctx.org_id(), input).await?;
-        let row = persist_harness_source(ctx, row, harness_source).await?;
+        let mut row = persist_harness_source(ctx, row, harness_source).await?;
+        // Upsert replaces the agent, so an omitted role clears a stored one.
+        set_model_role(ctx, &mut row, req.model_role).await?;
         let agent_uuid = row.id.uuid();
 
         let final_caps = if self.replace_capabilities || !caps.is_empty() {
@@ -790,6 +802,35 @@ impl Command for UpsertAgent {
         Ok(UpsertResult { agent, was_created })
     }
 }
+/// An agent pins a model or follows an organization model role, not both.
+fn validate_model_choice(
+    default_model_id: Option<everruns_contracts::typed_id::ModelId>,
+    role: Option<crate::domains::organizations::research_model::AgentModelRole>,
+) -> Result<(), CommandError> {
+    if default_model_id.is_some() && role.is_some() {
+        return Err(CommandError::bad_request(
+            "Set either default_model_id or model_role, not both",
+        ));
+    }
+    Ok(())
+}
+
+/// Persist the agent's model role and mirror it onto the returned row.
+async fn set_model_role(
+    ctx: &Ctx,
+    row: &mut AgentRow,
+    role: Option<crate::domains::organizations::research_model::AgentModelRole>,
+) -> Result<(), CommandError> {
+    ctx.db
+        .set_agent_model_role(ctx.org_id(), row.id, role)
+        .await?;
+    row.model_role = role.map(|role| role.as_str().to_owned());
+    if role.is_some() {
+        row.default_model_id = None;
+    }
+    Ok(())
+}
+
 // ============================================================================
 // CopyAgent
 // ============================================================================
@@ -836,6 +877,7 @@ impl Command for CopyAgent {
             starters: source.starters,
             system_prompt: source.system_prompt,
             default_model_id: source.default_model_id,
+            model_role: source.model_role,
             harness_id: Some(source.harness_id),
             harness_name: None,
             tags: source.tags,

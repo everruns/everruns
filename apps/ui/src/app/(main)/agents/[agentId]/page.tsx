@@ -1,5 +1,7 @@
 "use client";
 
+import { useOrganization } from "@/hooks/use-organizations";
+import { agentModelId, agentModelValue } from "@/lib/agent-model-role";
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -313,7 +315,10 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     () => new Map<string, ModelWithProvider>((models ?? []).map((m) => [m.id, m])),
     [models],
   );
-  const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
+  const { data: organization } = useOrganization();
+  // A research-role agent shows the model the org research model resolves to.
+  const agentModel = agent ? agentModelId(agentModelValue(agent), organization) : "";
+  const defaultModel = agentModel ? modelMap.get(agentModel) : undefined;
 
   // Leaving the page with unsaved edits asks first.
   useEffect(() => {
@@ -851,7 +856,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                 <>
                   {!isExternal && (
                     <AgentCostEstimate
-                      modelId={draft.fields.default_model_id}
+                      modelId={agentModelId(draft.fields.default_model_id, organization)}
                       maxOutputTokens={draft.fields.max_output_tokens}
                       previewRequest={{
                         system_prompt: draft.fields.system_prompt,
@@ -987,6 +992,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                     readOnly={readOnly}
                     allCapabilities={allCapabilities ?? []}
                     defaultModel={defaultModel}
+                    researchModel={modelMap.get(organization?.effective_research_model_id ?? "")}
                     onStartEdit={startEdit}
                     moreRows={moreRows}
                     external={isExternal}
@@ -1025,7 +1031,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   {shownTab === "sessions" && (
                     <AgentSessionsPanel
                       agentId={agentId}
-                      defaultModelId={agent?.default_model_id}
+                      defaultModelId={agentModel || undefined}
                     />
                   )}
                 </div>

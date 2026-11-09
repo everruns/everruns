@@ -349,4 +349,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Small model": "小模型",
   "Spend Policies": "支出政策",
   "Structured Output": "结构化输出",
+  "Research model": "研究模型",
+  "Organization research model": "组织研究模型",
+  'The strongest model for hard reasoning and long research. Agents set to "Organization research model" run on it.':
+    "用于复杂推理和长时间研究的最强模型。设置为“组织研究模型”的代理会使用它。",
 };

@@ -9682,6 +9682,7 @@ export interface components {
       max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      model_role?: components["schemas"]["AgentModelRole"] | null;
       /**
        * @description Name, unique per org (e.g. "customer-support").
        * @example customer-support
@@ -10505,6 +10506,11 @@ export interface components {
      * @enum {string}
      */
     AgentMcpAttachmentState: "ready" | "connection_missing" | "preset_missing";
+    /**
+     * @description An organization model an agent follows instead of pinning a model.
+     * @enum {string}
+     */
+    AgentModelRole: "research";
     /** @description Response showing the final agent shape after applying capabilities */
     AgentPreviewResponse: {
       /** @description Session features from effective capabilities and their dependencies. */
@@ -13702,6 +13708,7 @@ export interface components {
       max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      model_role?: components["schemas"]["AgentModelRole"] | null;
       /**
        * @description Name, unique per org. Lowercase alphanumeric and hyphens.
        *     Format: lowercase alphanumeric and hyphens (e.g. "customer-support").
@@ -19351,6 +19358,7 @@ export interface components {
         max_output_tokens?: number | null;
         /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
         mcpServers?: components["schemas"]["BTreeMap"];
+        model_role?: components["schemas"]["AgentModelRole"] | null;
         /**
          * @description Name, unique per org (e.g. "customer-support").
          * @example customer-support
@@ -20749,6 +20757,12 @@ export interface components {
         default_provider_per_service: {
           [key: string]: string;
         };
+        /**
+         * @description The model the research model resolves to now: the selection, else the
+         *     Automatic pick (Anthropic's recommended research model, then OpenAI's,
+         *     then another provider's), else the default model.
+         */
+        effective_research_model_id?: string | null;
         /** @description External identifier (org_<32-hex-chars>) */
         id: string;
         /** @description Display name */
@@ -20760,6 +20774,11 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /**
+         * @description Research model: the org's strongest model for hard reasoning and long
+         *     research. None means Automatic.
+         */
+        research_model_id?: string | null;
         /**
          * @description What Everruns does on its own when a finding opens (Settings →
          *     Limits): pause a repeating schedule automatically, and whether the
@@ -22341,6 +22360,12 @@ export interface components {
        */
       members?: string[] | null;
       model?: components["schemas"]["PackageModel"] | null;
+      /**
+       * @description Organization model the agent follows instead of `model`, such as
+       *     `research` for the host's research model. Hosts without model roles
+       *     use their default model.
+       */
+      model_role?: string | null;
       /** @description Stable agent name used for destination lookup; resource IDs are not portable. */
       name?: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
@@ -24429,6 +24454,12 @@ export interface components {
       default_provider_per_service: {
         [key: string]: string;
       };
+      /**
+       * @description The model the research model resolves to now: the selection, else the
+       *     Automatic pick (Anthropic's recommended research model, then OpenAI's,
+       *     then another provider's), else the default model.
+       */
+      effective_research_model_id?: string | null;
       /** @description External identifier (org_<32-hex-chars>) */
       id: string;
       /** @description Display name */
@@ -24440,6 +24471,11 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /**
+       * @description Research model: the org's strongest model for hard reasoning and long
+       *     research. None means Automatic.
+       */
+      research_model_id?: string | null;
       /**
        * @description What Everruns does on its own when a finding opens (Settings →
        *     Limits): pause a repeating schedule automatically, and whether the
@@ -33001,6 +33037,12 @@ export interface components {
       max_output_tokens?: number | null;
       mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
+       * @description Follow an organization model instead of pinning one: `research` uses
+       *     the organization research model and clears `default_model_id`. Null
+       *     stops following it; setting `default_model_id` also clears it.
+       */
+      model_role?: string | null;
+      /**
        * @description Name, unique per org. Lowercase alphanumeric and hyphens.
        * @example updated-support
        */
@@ -33662,6 +33704,11 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      /**
+       * @description Research model for agents set to "Organization research model". Omit to
+       *     preserve; null returns to Automatic. Must be an enabled shared chat model.
+       */
+      research_model_id?: string | null;
       self_healing?: components["schemas"]["SelfHealingPolicy"] | null;
       /**
        * @description Shared small chat model for lightweight work. Omit to preserve the selection;
@@ -34645,6 +34692,7 @@ export interface components {
       max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      model_role?: components["schemas"]["AgentModelRole"] | null;
       /**
        * @description Name, unique per org (e.g. "customer-support").
        * @example customer-support

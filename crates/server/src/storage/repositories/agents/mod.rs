@@ -303,7 +303,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, localizations, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, owner_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, completion_check, environments, avatar_id,
+            r#"SELECT id, public_id, org_id, name, display_name, localizations, description, intro_markdown, short_description, starters, system_prompt, default_model_id, model_role, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, owner_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, completion_check, environments, avatar_id,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -373,6 +373,27 @@ impl Database {
         Ok(())
     }
 
+    /// Set or clear the organization model role an agent follows. A role
+    /// replaces a pinned model, so setting one clears `default_model_id`.
+    pub async fn set_agent_model_role(
+        &self,
+        org_id: i64,
+        id: AgentId,
+        role: Option<crate::domains::organizations::research_model::AgentModelRole>,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE agents SET model_role = $3, \
+             default_model_id = CASE WHEN $3::text IS NULL THEN default_model_id ELSE NULL END, \
+             updated_at = NOW() WHERE org_id = $1 AND id = $2",
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .bind(role.map(|role| role.as_str()))
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Active agents created as part of `owner`, by name.
     pub async fn list_owned_agents(&self, org_id: i64, owner: AgentId) -> Result<Vec<AgentRow>> {
         Ok(sqlx::query_as::<_, AgentRow>(
@@ -421,6 +442,8 @@ impl Database {
                 starters = COALESCE($27, starters),
                 system_prompt = COALESCE($6, system_prompt),
                 default_model_id = COALESCE($7, default_model_id),
+                -- Pinning a model replaces the organization model role.
+                model_role = CASE WHEN $7 IS NULL THEN model_role ELSE NULL END,
                 harness_id = COALESCE($8, harness_id),
                 harness_source = COALESCE($22, harness_source),
                 tags = COALESCE($9, tags),

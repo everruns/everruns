@@ -33,6 +33,9 @@ pub struct AgentRow {
     pub starters: serde_json::Value,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
+    /// Organization model role (`research`); exclusive with `default_model_id`.
+    #[sqlx(default)]
+    pub model_role: Option<String>,
     pub harness_id: HarnessId,
     /// Whether `harness_id` was explicitly selected or materialized from the
     /// organization default for backward-compatible API responses.
@@ -317,6 +320,9 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
             .map(crate::domains::agents::record::AgentAvatar::from_uuid),
         system_prompt: row.system_prompt,
         default_model_id: row.default_model_id,
+        model_role: crate::domains::organizations::research_model::AgentModelRole::from_db(
+            row.model_role.as_deref(),
+        ),
         harness_id: row.harness_id,
         forked_from_agent_id: row.forked_from_agent_id,
         root_agent_id: row.root_agent_id,

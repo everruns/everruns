@@ -133,6 +133,18 @@ impl SessionService {
             if let Some(model_id) = agent.as_ref().and_then(|agent| agent.default_model_id) {
                 return Ok(Some(model_id));
             }
+            if let Some(model_id) =
+                crate::domains::organizations::research_model::agent_role_model_id(
+                    &self.db,
+                    org_id,
+                    crate::domains::organizations::research_model::AgentModelRole::from_db(
+                        agent.as_ref().and_then(|agent| agent.model_role.as_deref()),
+                    ),
+                )
+                .await?
+            {
+                return Ok(Some(model_id));
+            }
             chat_agent = agent;
         }
 

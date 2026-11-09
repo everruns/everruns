@@ -166,7 +166,12 @@ async fn organization_settings_require_database_admin_role() {
         .await
         .unwrap();
 
-    for field in ["default_model_id", "small_model_id", "chat_model_id"] {
+    for field in [
+        "default_model_id",
+        "small_model_id",
+        "chat_model_id",
+        "research_model_id",
+    ] {
         let response = app
             .clone()
             .oneshot(update_default_org_json_request(
@@ -1119,6 +1124,88 @@ async fn organization_chat_model_is_independent_validated_and_clearable() {
     assert_eq!(status, StatusCode::OK, "{org}");
     assert!(org["chat_model_id"].is_null());
     assert_eq!(org["default_model_id"], main.to_string());
+}
+
+#[tokio::test]
+async fn organization_research_model_is_automatic_until_set_and_clearable() {
+    use crate::storage::{CreateModelRow, CreateProviderRow};
+    use serde_json::json;
+    let (app, db, user_id) = create_org_app(None).await;
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
+    let provider = db
+        .create_provider(
+            DEFAULT_ORG_ID,
+            CreateProviderRow {
+                name: "Shared".into(),
+                provider_type: "llmsim".into(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    let model = |name: &str, enabled: bool| CreateModelRow {
+        provider_id: provider.id,
+        model_id: name.into(),
+        display_name: name.into(),
+        capabilities: vec![],
+        is_favorite: false,
+        enabled,
+        source: "manual".into(),
+        provider_metadata: None,
+    };
+    let main = db
+        .create_model(DEFAULT_ORG_ID, model("main", true))
+        .await
+        .unwrap()
+        .id;
+    let deep = db
+        .create_model(DEFAULT_ORG_ID, model("deep", true))
+        .await
+        .unwrap()
+        .id;
+    let off = db
+        .create_model(DEFAULT_ORG_ID, model("off", false))
+        .await
+        .unwrap()
+        .id;
+    let send = |body: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(update_default_org_json_request(body.to_string()))
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+            )
+        }
+    };
+    // Automatic with no recommended research model falls back to the default.
+    let (status, org) = send(json!({"default_model_id":main})).await;
+    assert_eq!(status, StatusCode::OK, "{org}");
+    assert!(org["research_model_id"].is_null());
+    assert_eq!(org["effective_research_model_id"], main.to_string());
+
+    let (status, org) = send(json!({"research_model_id":deep})).await;
+    assert_eq!(status, StatusCode::OK, "{org}");
+    assert_eq!(org["research_model_id"], deep.to_string());
+    assert_eq!(org["effective_research_model_id"], deep.to_string());
+    assert_eq!(org["default_model_id"], main.to_string());
+
+    let (status, body) = send(json!({"research_model_id":off})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    let (status, org) = send(json!({"research_model_id":null})).await;
+    assert_eq!(status, StatusCode::OK, "{org}");
+    assert!(org["research_model_id"].is_null());
+    assert_eq!(org["effective_research_model_id"], main.to_string());
 }
 
 // ---- Direct member add requires platform admin (TM-AUTHZ-027) ----
