@@ -419,3 +419,42 @@ fn url_elicitation_requires_discriminator_and_complete_payload() {
         assert!(UrlElicitationRequired::from_tool_result(&result).is_none());
     }
 }
+
+#[test]
+fn mcp_schema_projection_preserves_canonical_and_deferred_wire_schemas() {
+    let schema = json!({"type":"object","description":"Find\u{202e}","properties":{
+        "query\u{200b}": {"type":"string","description":"Query\u{200b}","enum":["value\u{202e}"]}
+    }});
+    let payload = json!({"type":"builtin","name":"mcp_docs__search","description":"Search",
+        "parameters":{"type":"object"},"full_parameters":schema});
+    let tool: ToolDefinition = serde_json::from_value(payload).unwrap();
+    assert_eq!(tool.parameters_for_model(), json!({"type":"object"}));
+    assert_eq!(
+        tool.full_parameters_for_model()["description"],
+        "Find[U+202E]"
+    );
+    assert_eq!(tool.full_parameters(), &schema);
+    assert_eq!(
+        serde_json::to_value(&tool).unwrap()["full_parameters"],
+        schema
+    );
+    let tool: ToolDefinition = serde_json::from_value(json!({"type":"builtin","name":"mcp_docs__search","description":"Search","parameters":schema})).unwrap();
+    let wire = crate::openai_wire::tool_to_openai(&tool);
+    assert_eq!(wire["function"]["name"], "mcp_docs__search");
+    assert_eq!(
+        wire["function"]["parameters"]["description"],
+        "Find[U+202E]"
+    );
+    assert_eq!(
+        wire["function"]["parameters"]["properties"]["query\u{200b}"]["enum"],
+        json!(["value\u{202e}"])
+    );
+    assert_eq!(tool.parameters(), &schema);
+    assert_eq!(serde_json::to_value(&tool).unwrap()["parameters"], schema);
+    assert_eq!(
+        ToolDefinition::function("ordinary", "Search", schema.clone()).parameters_for_model(),
+        schema
+    );
+    let client: ToolDefinition = serde_json::from_value(json!({"type":"client_side","name":"mcp_docs__search","description":"Search","parameters":schema})).unwrap();
+    assert_eq!(client.parameters_for_model(), schema);
+}

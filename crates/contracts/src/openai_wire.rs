@@ -253,7 +253,7 @@ pub fn tool_to_openai(tool: &ToolDefinition) -> Value {
         "function": {
             "name": tool.name(),
             "description": tool.description(),
-            "parameters": tool.parameters().clone(),
+            "parameters": tool.parameters_for_model(),
         },
     })
 }

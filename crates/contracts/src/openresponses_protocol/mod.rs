@@ -704,8 +704,9 @@ impl OpenResponsesProtocolChatDriver {
         defer_loading: Option<bool>,
         normalize: bool,
     ) -> ResponsesTool {
+        let parameters = tool.parameters_for_model();
         let strict_parameters = normalize
-            .then(|| crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters()))
+            .then(|| crate::tool_schema_compat::strict_openai_tool_schema(&parameters))
             .flatten();
         ResponsesTool::Function {
             r#type: "function".to_string(),
@@ -713,7 +714,7 @@ impl OpenResponsesProtocolChatDriver {
             description: tool.description().to_string(),
             parameters: strict_parameters
                 .clone()
-                .unwrap_or_else(|| Self::sanitize_parameters(tool.parameters())),
+                .unwrap_or_else(|| Self::sanitize_parameters(&parameters)),
             // Omitting `strict` lets Responses normalize optional properties
             // into required ones. Explicitly opt out when our safe conversion
             // declines a schema so kind-specific fields remain optional.

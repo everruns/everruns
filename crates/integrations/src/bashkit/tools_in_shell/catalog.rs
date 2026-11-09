@@ -578,7 +578,7 @@ fn pending_bytes(pending: &Pending) -> usize {
 
 /// `tools <...> <tool> --help`: the signature, description and input schema.
 pub(crate) fn tool_help(entry: &Entry) -> String {
-    let schema = strip_human_intent(entry.tool.parameters_schema());
+    let schema = strip_human_intent(entry.tool.to_definition().parameters_for_model());
     format!(
         "{} '{}'\n\n{}\n\nInput schema:\n{}\n",
         entry.command_line(),

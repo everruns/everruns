@@ -69,7 +69,7 @@ pub fn deferred_mcp_server_definition(
     let about = description
         .map(str::trim)
         .filter(|text| !text.is_empty())
-        .map(|text| format!(": {text}"))
+        .map(|text| format!(": {}", crate::mcp_metadata::visible_mcp_description(text)))
         .unwrap_or_default();
     ToolDefinition::Builtin(BuiltinTool {
         name: deferred_mcp_server_tool_name(server_name),

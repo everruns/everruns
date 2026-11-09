@@ -408,7 +408,7 @@ impl GeminiChatDriver {
             .map(|tool| GeminiFunctionDeclaration {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
-                parameters: Self::clean_schema(tool.parameters().clone()),
+                parameters: Self::clean_schema(tool.parameters_for_model()),
             })
             .collect();
 

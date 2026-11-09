@@ -121,7 +121,7 @@ impl SessionContext {
             .map(|tool| ToolInfo {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
-                parameters: tool.parameters().clone(),
+                parameters: tool.parameters_for_model(),
             })
             .collect();
 

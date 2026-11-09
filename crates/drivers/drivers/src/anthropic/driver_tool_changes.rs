@@ -71,7 +71,7 @@ fn definition(tool: &ToolDefinition) -> Value {
     json!({
         "name": tool.name(),
         "description": tool.description(),
-        "input_schema": AnthropicChatDriver::sanitize_input_schema(tool.parameters().clone()),
+        "input_schema": AnthropicChatDriver::sanitize_input_schema(tool.parameters_for_model()),
     })
 }
 

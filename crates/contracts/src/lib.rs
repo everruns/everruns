@@ -64,6 +64,8 @@ pub mod llm_retry;
 pub mod llm_telemetry;
 #[cfg(feature = "http")]
 pub mod managed_dispatch;
+/// Model-facing MCP descriptive metadata projections.
+pub mod mcp_metadata;
 pub mod message;
 pub mod message_origin;
 pub mod message_reactions;

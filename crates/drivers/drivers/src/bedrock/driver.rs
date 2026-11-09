@@ -783,7 +783,7 @@ fn build_tool_config(
 ) -> Result<ToolConfiguration> {
     let mut tool_list = Vec::new();
     for tool in tools {
-        let schema_doc = json_to_document(tool.parameters().clone());
+        let schema_doc = json_to_document(tool.parameters_for_model());
         let spec = ToolSpecification::builder()
             .name(tool.name())
             .description(tool.description())

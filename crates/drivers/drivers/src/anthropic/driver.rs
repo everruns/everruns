@@ -569,7 +569,7 @@ impl AnthropicChatDriver {
                 AnthropicToolEntry::Function(AnthropicTool {
                     name: tool.name().to_string(),
                     description: tool.description().to_string(),
-                    input_schema: Self::sanitize_input_schema(tool.parameters().clone()),
+                    input_schema: Self::sanitize_input_schema(tool.parameters_for_model()),
                     cache_control: (prompt_cache_enabled && index == last_index)
                         .then(AnthropicCacheControl::ephemeral),
                     defer_loading: None,
@@ -625,7 +625,7 @@ impl AnthropicChatDriver {
             entries.push(AnthropicToolEntry::Function(AnthropicTool {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
-                input_schema: Self::sanitize_input_schema(tool.parameters().clone()),
+                input_schema: Self::sanitize_input_schema(tool.parameters_for_model()),
                 cache_control: None,
                 defer_loading: should_defer.then_some(true),
             }));

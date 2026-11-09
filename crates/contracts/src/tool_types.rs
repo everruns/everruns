@@ -264,6 +264,24 @@ impl ToolDefinition {
         }
     }
 
+    /// Presentation-only schema copy; canonical registration and validation stay intact.
+    pub fn parameters_for_model(&self) -> serde_json::Value {
+        self.schema_for_model(self.parameters())
+    }
+
+    /// Presentation-only copy of a deferred tool's full schema.
+    pub fn full_parameters_for_model(&self) -> serde_json::Value {
+        self.schema_for_model(self.full_parameters())
+    }
+
+    fn schema_for_model(&self, schema: &serde_json::Value) -> serde_json::Value {
+        if matches!(self, Self::Builtin(_)) && self.name().starts_with("mcp_") {
+            crate::mcp_metadata::project_schema_descriptions(schema)
+        } else {
+            schema.clone()
+        }
+    }
+
     /// Get the full (pre-deferral) parameter schema, falling back to `parameters()`.
     ///
     /// When `DeferSchemaHook` strips a tool's schema it saves the original in

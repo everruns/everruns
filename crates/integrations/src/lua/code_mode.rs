@@ -249,7 +249,7 @@ fn parse_options(config: &Value) -> CodeModeOptions {
 /// is summarized into a `tools.<name>{ args }` catalog appended to the `lua`
 /// tool's own description — the discovery surface the model reads right before
 /// it decides to call `lua`. Each entry shows a typed signature; with
-/// `full_schemas` it also embeds the tool's complete JSON Schema (lossless).
+/// `full_schemas` it also embeds the tool's complete parameter schema with model-facing annotation presentation.
 #[derive(Default)]
 struct HideCodeModeToolsHook {
     keep_visible: Vec<String>,
@@ -304,7 +304,7 @@ fn format_catalog_entry(def: &ToolDefinition, full_schemas: bool) -> String {
     if full_schemas {
         entry.push_str(&format!(
             "\n    schema: {}",
-            compact_schema(def.full_parameters())
+            compact_schema(&def.full_parameters_for_model())
         ));
     }
     entry
@@ -512,6 +512,18 @@ mod tests {
                 .any(|tool| tool.name() == "add"),
             "Lua-routed operations must remain in the effective execution scope"
         );
+    }
+
+    #[test]
+    fn mcp_full_schema_catalog_marks_annotations_without_changing_literal_values() {
+        let schema = json!({"type":"object", "description":"Docs\u{202e}",
+            "properties":{"query":{"type":"string","description":"Query\u{200b}","enum":["raw\u{202e}"]}}});
+        let tool: ToolDefinition = serde_json::from_value(json!({"type":"builtin","name":"mcp_docs__search","description":"Search","parameters":schema})).unwrap();
+        let entry = format_catalog_entry(&tool, true);
+        assert!(entry.contains("Docs[U+202E]"), "{entry}");
+        assert!(entry.contains("Query[U+200B]"), "{entry}");
+        assert!(entry.contains("raw\u{202e}"), "{entry}");
+        assert_eq!(tool.full_parameters(), &schema);
     }
 
     #[test]

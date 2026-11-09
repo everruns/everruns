@@ -162,3 +162,18 @@ async fn placeholder_without_storage_fails_as_a_tool_error() {
         .await;
     assert!(result.is_error());
 }
+
+#[test]
+fn deferred_server_description_marks_controls_only_in_description() {
+    let text = "Docs\u{202e} search\u{200b}";
+    let ToolDefinition::Builtin(tool) = deferred_mcp_server_definition("docs", Some(text)) else {
+        panic!("expected builtin")
+    };
+    assert_eq!(tool.name, "mcp_docs");
+    assert_eq!(tool.display_name.as_deref(), Some("docs"));
+    assert!(tool.description.contains("Docs[U+202E] search[U+200B]"));
+    assert_eq!(
+        tool.parameters,
+        serde_json::json!({"type": "object", "properties": {}, "additionalProperties": false})
+    );
+}

@@ -887,7 +887,9 @@ pub(crate) fn attach_server_search_metadata(
         if let Some(context) = &server.capability_context {
             tool.hints.capability_id = Some(context.id.clone());
             tool.hints.capability_name = Some(context.name.clone());
-            tool.hints.capability_description = Some(context.description.clone());
+            tool.hints.capability_description = Some(everruns_core::mcp::visible_mcp_description(
+                &context.description,
+            ));
         }
         let metadata = tool
             .hints
@@ -909,7 +911,10 @@ pub(crate) fn attach_server_search_metadata(
             .as_deref()
             .filter(|description| !description.trim().is_empty())
         {
-            server_metadata.insert("description".to_string(), serde_json::json!(description));
+            server_metadata.insert(
+                "description".to_string(),
+                serde_json::json!(everruns_core::mcp::visible_mcp_description(description)),
+            );
         }
     }
 }

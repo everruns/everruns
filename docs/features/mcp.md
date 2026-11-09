@@ -435,3 +435,16 @@ A discovery response whose cache TTL expires before the next turn can still be
 delivered once as a delayed response, after current authority and configuration
 are checked. It is not treated as fresh cached data and does not restart its
 database cache TTL. Subsequent turns rediscover it.
+
+## Descriptive metadata
+
+Everruns renders selected invisible and bidirectional formatting controls in MCP
+descriptions as visible Unicode markers such as `[U+202E]`. Tool and server
+descriptions, display titles, and recognized schema `title`/`description`
+annotations receive this presentation when sent to a model. Canonical schemas,
+identifiers, argument values, and literal schema data remain unchanged.
+
+This is metadata hygiene, not prompt-injection protection. Schema traversal is
+limited to 64 levels and 16,384 schema nodes; metadata beyond these limits and
+inside opaque extensions stays unchanged. Emoji, script joiners and combining
+marks are preserved.

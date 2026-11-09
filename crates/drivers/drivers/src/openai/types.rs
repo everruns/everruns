@@ -169,13 +169,9 @@ impl LlmConfig {
         self.tools
             .iter()
             .map(|tool| {
-                let (name, description, parameters) = match tool {
-                    ToolDefinition::Builtin(builtin) => {
-                        (&builtin.name, &builtin.description, &builtin.parameters)
-                    }
-                    ToolDefinition::ClientSide(client) => {
-                        (&client.name, &client.description, &client.parameters)
-                    }
+                let (name, description) = match tool {
+                    ToolDefinition::Builtin(builtin) => (&builtin.name, &builtin.description),
+                    ToolDefinition::ClientSide(client) => (&client.name, &client.description),
                 };
 
                 OpenAiTool {
@@ -183,7 +179,7 @@ impl LlmConfig {
                     function: OpenAiFunction {
                         name: name.clone(),
                         description: description.clone(),
-                        parameters: parameters.clone(),
+                        parameters: tool.parameters_for_model(),
                     },
                 }
             })
