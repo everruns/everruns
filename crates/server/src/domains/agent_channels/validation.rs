@@ -58,6 +58,11 @@ pub(crate) fn normalize_and_validate_channel_config(
                     CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
                 })?;
             validate_session_binding(&channel_type, config.session_strategy)?;
+            if !config.app_token.is_empty() && !config.app_token.starts_with("xapp-") {
+                return Err(CommandError::bad_request(
+                    "Slack app_token must be an app-level token starting with xapp-",
+                ));
+            }
         }
         ChannelType::AgUi => {
             let config: AgUiChannelConfig = serde_json::from_value(channel_config.clone())
@@ -656,7 +661,7 @@ pub(crate) fn merge_preserved_secret_fields(
                     out.insert(key.to_string(), value.clone());
                 }
             }
-            for key in ["signing_secret", "bot_token"] {
+            for key in ["signing_secret", "bot_token", "app_token"] {
                 let should_preserve = out
                     .get(key)
                     .and_then(Value::as_str)

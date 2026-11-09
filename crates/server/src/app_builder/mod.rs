@@ -875,6 +875,7 @@ impl ServerAppBuilder {
         .with_frontend_url(auth_config.frontend_url.clone())
         .with_decisions(&host_composition, &provider_resolver, &budget_service)
         .with_channel_host();
+        crate::channels::slack::socket_mode::spawn(&mut supervisor, slack_state.clone());
         let channel_recovery = slack_state.channels.clone();
         let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
             session_service: sessions_state.session_service.clone(),

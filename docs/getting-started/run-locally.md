@@ -150,7 +150,9 @@ everruns docker up --name demo   # profile 'local-demo', next free port
 Slack, webhook channels, GitHub triggers and OAuth callbacks need an address
 the internet can reach. `--tunnel` adds one, running as one more container in
 the stack, so it starts and stops with everything else and nothing is
-installed on your computer:
+installed on your computer. (A Slack agent alone does not need one: a Slack
+channel can use [Socket Mode](/capabilities/slack/#socket-mode-or-request-url)
+instead.)
 
 ```bash
 TS_AUTHKEY=tskey-auth-... everruns docker up --tunnel tailscale

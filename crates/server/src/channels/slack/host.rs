@@ -55,7 +55,7 @@ use super::events::{
 };
 use crate::channels::host::{HISTORY_NOTICE, THREAD_VIEW_CONTEXT};
 use crate::domains::agent_channels::ingress::{IngressChannel, IngressContext};
-use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::slack_channel::{SlackChannelConfig, SlackConnection};
 use crate::domains::agent_channels::slack_evidence::{self, DeliveryEvidence};
 
 pub(crate) const SLACK_PLATFORM: &str = "slack";
@@ -374,17 +374,28 @@ impl ChannelDeliveryAdapter for SlackHostDriver {
 #[async_trait]
 impl ChannelDriver for SlackHostDriver {
     fn secrets(&self) -> Vec<String> {
-        vec!["signing_secret".into(), "bot_token".into()]
+        vec![
+            "signing_secret".into(),
+            "bot_token".into(),
+            "app_token".into(),
+        ]
     }
 
     async fn receive(&self, request: &ChannelRequest) -> Result<Inbound, ChannelError> {
-        // THREAT[TM-SLACK-001]
-        verify_slack_signature(
-            &header_map(request),
-            &request.body,
-            &self.config.signing_secret,
-        )
-        .map_err(ChannelError::Unauthorized)?;
+        // THREAT[TM-SLACK-001]: an HTTP request is signed by Slack. A Socket
+        // Mode event arrived over the connection this server opened with the
+        // app token, and only the socket supervisor sets this path: the HTTP
+        // routes always build the request with an empty one.
+        let from_socket = request.path == super::socket_mode::SOCKET_MODE_PATH
+            && self.config.connection == SlackConnection::SocketMode;
+        if !from_socket {
+            verify_slack_signature(
+                &header_map(request),
+                &request.body,
+                &self.config.signing_secret,
+            )
+            .map_err(ChannelError::Unauthorized)?;
+        }
         let raw = request.body_json()?;
         let envelope: SlackEventEnvelope = serde_json::from_value(raw.clone())
             .map_err(|error| ChannelError::BadRequest(error.to_string()))?;

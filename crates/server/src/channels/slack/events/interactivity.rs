@@ -200,6 +200,33 @@ async fn handle_slack_interactivity(
     .await
 }
 
+/// A button click delivered over Socket Mode: the same handling as the HTTP
+/// route after its signature check, which the socket replaces (the
+/// connection was opened with the channel's own app token).
+pub(crate) async fn handle_socket_interaction(
+    state: &SlackState,
+    app: &IngressContext,
+    slack_channel: &IngressChannel,
+    slack_config: &SlackChannelConfig,
+    payload: serde_json::Value,
+) {
+    let payload: InteractionPayload = match serde_json::from_value(payload) {
+        Ok(payload) => payload,
+        Err(error) => {
+            tracing::warn!(channel_id = %slack_channel.public_id, %error, "Failed to parse Slack Socket Mode interaction");
+            return;
+        }
+    };
+    if payload.interaction_type != "block_actions" {
+        return;
+    }
+    if let Err(error) =
+        handle_block_action(state, app, slack_channel, slack_config, payload, None).await
+    {
+        tracing::warn!(channel_id = %slack_channel.public_id, ?error, "Slack Socket Mode interaction failed");
+    }
+}
+
 /// Slack posts `payload=<json>` as form-encoded, not as a JSON body.
 fn parse_interaction(body: &[u8]) -> Option<InteractionPayload> {
     let form = std::str::from_utf8(body).ok()?;

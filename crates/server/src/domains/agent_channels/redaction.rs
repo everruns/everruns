@@ -35,6 +35,7 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
             for (key, flag) in [
                 ("signing_secret", "signing_secret_configured"),
                 ("bot_token", "bot_token_configured"),
+                ("app_token", "app_token_configured"),
             ] {
                 let removed = map.remove(key);
                 let is_configured = removed

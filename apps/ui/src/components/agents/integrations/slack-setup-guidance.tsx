@@ -17,17 +17,20 @@ export type SlackChannelSetupConfig = SlackChannelConfig & {
   agent_surface_enabled?: boolean;
 };
 
+/** Socket Mode needs the app-level token; the Request URL needs the signing secret. */
 export function hasSlackCredentials(config: SlackChannelConfig): boolean {
-  return (
-    !!(config.signing_secret_configured || config.signing_secret) &&
-    !!(config.bot_token_configured || config.bot_token)
-  );
+  const ingress =
+    config.connection === "socket_mode"
+      ? config.app_token_configured || config.app_token
+      : config.signing_secret_configured || config.signing_secret;
+  return !!ingress && !!(config.bot_token_configured || config.bot_token);
 }
 
 export function slackConnectionLabel(config: SlackChannelConfig): string {
   if (!hasSlackCredentials(config)) return "Not connected";
   if (config.first_message_received_at) return "Message received";
-  // Slack checked the Request URL with a signed challenge, so Slack can reach the channel.
+  // Slack checked the Request URL with a signed challenge, or accepted the Socket Mode
+  // connection, so Slack can reach the channel.
   if (config.webhook_verified_at) return "Connected";
   return "Credentials saved";
 }
@@ -60,9 +63,13 @@ export function SlackConnectionStatus({ channel }: { channel: AgentChannel }) {
               ? // Signed message delivery is stronger evidence than the optional URL challenge.
                 ui("A signed Slack message has reached this channel.")
               : config.webhook_verified_at
-                ? ui(
-                    "Slack verified the Request URL. Invite the bot to a channel, then @mention it to test.",
-                  )
+                ? config.connection === "socket_mode"
+                  ? ui(
+                      "Everruns is connected to Slack. Invite the bot to a channel, then @mention it to test.",
+                    )
+                  : ui(
+                      "Slack verified the Request URL. Invite the bot to a channel, then @mention it to test.",
+                    )
                 : ui(
                     "No Slack message received yet. Invite the bot to a channel, then @mention it to test.",
                   )}
@@ -74,7 +81,9 @@ export function SlackConnectionStatus({ channel }: { channel: AgentChannel }) {
 // Mounted only inside the manual disclosure; normal installation needs no manifest or URL.
 export function SlackManualSetup({ channel }: { channel: AgentChannel }) {
   const ui = useUiTranslations();
-  const configured = hasSlackCredentials(channel.channel_config as SlackChannelConfig);
+  const config = channel.channel_config as SlackChannelConfig;
+  const configured = hasSlackCredentials(config);
+  const socketMode = config.connection === "socket_mode";
   const live = getChannelLifecyclePresentation(channel).isLive;
   const manifest = useQuery({
     queryKey: ["slack-channel-manifest", channel.id, channel.updated_at],
@@ -84,19 +93,25 @@ export function SlackManualSetup({ channel }: { channel: AgentChannel }) {
   const requestUrl = manifest.data?.manifest_yaml.match(
     /event_subscriptions:\s*\n\s*request_url:\s*"([^"]+)"/,
   )?.[1];
-  const canCreate = live && isPublicHttpsUrl(requestUrl ?? null);
+  // Socket Mode apps have no Request URL, so they need no public address.
+  const reachable = socketMode || isPublicHttpsUrl(requestUrl ?? null);
+  const canCreate = live && reachable;
   return (
     <div className="space-y-3">
       {!configured && (
         <>
           <p className="text-xs text-muted-foreground">
-            {live
+            {live && socketMode
               ? ui(
-                  "Create an app from this channel’s manifest in Slack, install it to your workspace, then enter its signing secret and bot token below.",
+                  "Create an app from this channel’s manifest in Slack and install it to your workspace. Then generate an app-level token and enter it with the bot token below.",
                 )
-              : ui(
-                  "Publish this channel before creating a Slack app from its manifest. Slack checks the Request URL during app creation.",
-                )}
+              : live
+                ? ui(
+                    "Create an app from this channel’s manifest in Slack, install it to your workspace, then enter its signing secret and bot token below.",
+                  )
+                : ui(
+                    "Publish this channel before creating a Slack app from its manifest. Slack checks the Request URL during app creation.",
+                  )}
           </p>
           {live && (
             <Button
@@ -125,7 +140,7 @@ export function SlackManualSetup({ channel }: { channel: AgentChannel }) {
           </Button>
         </div>
       )}
-      {manifest.data && !isPublicHttpsUrl(requestUrl ?? null) && (
+      {manifest.data && !reachable && (
         <p className="text-xs text-destructive">
           {ui(
             "Set PUBLIC_APP_URL to a public HTTPS origin, restart Everruns, and reload before creating the Slack app.",

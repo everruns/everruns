@@ -2,6 +2,8 @@ import type { ChannelFormState } from "./channel-form";
 
 export function buildSlackChannelConfig(state: ChannelFormState) {
   return {
+    connection: state.slackConnection,
+    ...(state.slackAppToken.trim() ? { app_token: state.slackAppToken.trim() } : {}),
     ...(state.slackSigningSecret.trim() ? { signing_secret: state.slackSigningSecret.trim() } : {}),
     ...(state.slackBotToken.trim() ? { bot_token: state.slackBotToken.trim() } : {}),
     ...(state.slackTeamId.trim() ? { team_id: state.slackTeamId.trim() } : {}),

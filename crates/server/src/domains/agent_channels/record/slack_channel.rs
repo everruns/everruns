@@ -24,6 +24,23 @@ pub enum SlackResponsePolicy {
     RelevantMessages,
 }
 
+/// How Slack reaches this channel.
+///
+/// Decision: Socket Mode is how a self-hosted Everruns without a public HTTPS
+/// address talks to Slack. Everruns opens an outgoing WebSocket with the app's
+/// `xapp-` token and Slack delivers events and button clicks over it, so
+/// nothing has to reach the server. The Request URL stays the default for
+/// channels created without a choice, since every channel before this used it.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SlackConnection {
+    /// Slack posts each event to this channel's Request URL (public HTTPS).
+    #[default]
+    RequestUrl,
+    /// Everruns keeps a WebSocket open to Slack; no public address needed.
+    SocketMode,
+}
+
 /// Typed Slack channel configuration.
 /// Parsed from the `channel_config` JSON field on App.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -39,6 +56,15 @@ pub struct SlackChannelConfig {
     /// May be empty while the channel is being configured.
     #[serde(default)]
     pub bot_token: String,
+    /// How Slack reaches this channel.
+    #[serde(default)]
+    pub connection: SlackConnection,
+    /// App-level token (`xapp-`, scope `connections:write`) for Socket Mode.
+    ///
+    /// Write-only like the other secrets: API responses carry
+    /// `app_token_configured` instead.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub app_token: String,
     /// Set when this deployment created the endpoint's Slack app (EVE-1069).
     /// Absent on a hand-configured endpoint.
     ///
@@ -154,6 +180,8 @@ mod tests {
         let config = SlackChannelConfig {
             signing_secret: "s".into(),
             bot_token: "t".into(),
+            connection: Default::default(),
+            app_token: String::new(),
             provisioned_app: None,
             channel_id: None,
             team_id: None,

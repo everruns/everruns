@@ -58,6 +58,8 @@ pub(crate) fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
         agent_surface_enabled: false,
         signing_secret: "secret".to_string(),
         bot_token: "xoxb-token".to_string(),
+        connection: Default::default(),
+        app_token: String::new(),
         provisioned_app: None,
         channel_id: None,
         team_id: None,

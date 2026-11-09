@@ -1,7 +1,7 @@
 //! Building the Slack app manifest served to the install flow.
 
-use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 pub(crate) use crate::domains::agent_channels::record::slack_channel::slack_bot_scopes;
+use crate::domains::agent_channels::record::slack_channel::{SlackChannelConfig, SlackConnection};
 use crate::domains::harnesses::record::ConversationStarter;
 use axum::{
     Json,
@@ -69,10 +69,12 @@ pub(crate) async fn manifest_yaml_for_channel(
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     // A config we cannot parse still produces the channel-bot manifest rather than
     // a 500: the agent surface is additive, so defaulting it off is the safe read.
-    let agent_surface_enabled =
-        serde_json::from_value::<SlackChannelConfig>(slack_channel.channel_config.clone())
-            .map(|config| config.agent_surface_enabled)
-            .unwrap_or(false);
+    let parsed = serde_json::from_value::<SlackChannelConfig>(slack_channel.channel_config.clone());
+    let agent_surface_enabled = parsed
+        .as_ref()
+        .map(|config| config.agent_surface_enabled)
+        .unwrap_or(false);
+    let socket_mode = parsed.is_ok_and(|config| config.connection == SlackConnection::SocketMode);
 
     let display_name = truncate_display_name(&app.name);
 
@@ -98,8 +100,48 @@ pub(crate) async fn manifest_yaml_for_channel(
         agent_surface_enabled,
         &starters,
     );
+    if socket_mode {
+        // Slack's install consent needs an HTTPS redirect; without a public
+        // address the app is installed from its own Slack page instead.
+        let keep_redirect = state.api_base_url.starts_with("https://");
+        return Ok(socket_mode_manifest(&manifest_yaml, keep_redirect));
+    }
 
     Ok(manifest_yaml)
+}
+
+/// The same manifest for an app that receives events over Socket Mode: no
+/// Request URLs (Slack delivers over the socket), `socket_mode_enabled: true`,
+/// and the OAuth redirect only when it is reachable HTTPS.
+///
+/// A rewrite of [`build_manifest_yaml`]'s output rather than a parameter, so
+/// the two connection kinds can never drift in scopes, events or branding.
+pub(crate) fn socket_mode_manifest(yaml: &str, keep_redirect: bool) -> String {
+    let mut out = String::with_capacity(yaml.len());
+    let mut skip_redirects = false;
+    for line in yaml.lines() {
+        let trimmed = line.trim_start();
+        if skip_redirects {
+            if trimmed.starts_with("- ") {
+                continue;
+            }
+            skip_redirects = false;
+        }
+        if !keep_redirect && trimmed == "redirect_urls:" {
+            skip_redirects = true;
+            continue;
+        }
+        if trimmed.starts_with("request_url:") {
+            continue;
+        }
+        if trimmed == "socket_mode_enabled: false" {
+            out.push_str("  socket_mode_enabled: true\n");
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 /// This server's Slack webhook endpoint for one channel.
