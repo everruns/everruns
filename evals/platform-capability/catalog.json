@@ -2092,6 +2092,13 @@
           ],
           "type": "object"
         },
+        "AgentModelRole": {
+          "description": "An organization model an agent follows instead of pinning a model.",
+          "enum": [
+            "research"
+          ],
+          "type": "string"
+        },
         "BTreeMap": {
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
@@ -3190,6 +3197,17 @@
         "mcpServers": {
           "$ref": "#/$defs/BTreeMap",
           "description": "Remote MCP servers scoped to this agent."
+        },
+        "model_role": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentModelRole",
+              "description": "Follow an organization model instead of pinning one: `research` uses\nthe organization research model. Cannot be combined with\n`default_model_id`."
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "name": {
           "description": "Name, unique per org. Lowercase alphanumeric and hyphens.\nFormat: lowercase alphanumeric and hyphens (e.g. \"customer-support\").",
@@ -23606,6 +23624,13 @@
                 }
               ]
             },
+            "model_role": {
+              "description": "Follow an organization model instead of pinning one: `research` uses\nthe organization research model and clears `default_model_id`. Null\nstops following it; setting `default_model_id` also clears it.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "name": {
               "description": "Name, unique per org. Lowercase alphanumeric and hyphens.",
               "example": "updated-support",
@@ -27717,6 +27742,13 @@
                 "null"
               ]
             },
+            "research_model_id": {
+              "description": "Research model for agents set to \"Organization research model\". Omit to\npreserve; null returns to Automatic. Must be an enabled shared chat model.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "self_healing": {
               "oneOf": [
                 {
@@ -29340,6 +29372,13 @@
           ],
           "type": "object"
         },
+        "AgentModelRole": {
+          "description": "An organization model an agent follows instead of pinning a model.",
+          "enum": [
+            "research"
+          ],
+          "type": "string"
+        },
         "BTreeMap": {
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
@@ -29726,6 +29765,17 @@
             "mcpServers": {
               "$ref": "#/$defs/BTreeMap",
               "description": "Remote MCP servers scoped to this agent."
+            },
+            "model_role": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentModelRole",
+                  "description": "Follow an organization model instead of pinning one: `research` uses\nthe organization research model. Cannot be combined with\n`default_model_id`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "name": {
               "description": "Name, unique per org. Lowercase alphanumeric and hyphens.\nFormat: lowercase alphanumeric and hyphens (e.g. \"customer-support\").",

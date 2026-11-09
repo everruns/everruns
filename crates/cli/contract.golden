@@ -67,7 +67,7 @@ agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
 agents triggers trigger	--agent-id! --context-revision --event --reason --trigger-id!
 agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --model-role --name --reason --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --communication --completion-check --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --owner-agent-id --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --communication --completion-check --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --model-role --name! --network-access --owner-agent-id --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
@@ -269,7 +269,7 @@ orgs list	--context-revision --reason
 orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --self-healing --small-model-id --system-decisions --web-search-defaults
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --research-model-id --self-healing --small-model-id --system-decisions --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason

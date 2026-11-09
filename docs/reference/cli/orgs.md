@@ -106,6 +106,7 @@ everruns orgs update [OPTIONS] --org <org>
 | `--default-provider-per-service <DEFAULT_PROVIDER_PER_SERVICE>` | Org-level default provider per service (EVE-569). |
 | `--name <NAME>` | The display name of the organization. |
 | `--org <ORG>` | Required. |
+| `--research-model-id <RESEARCH_MODEL_ID>` | Research model for agents set to "Organization research model". |
 | `--self-healing <SELF_HEALING>` |  |
 | `--small-model-id <SMALL_MODEL_ID>` | Shared small chat model for lightweight work. |
 | `--system-decisions <SYSTEM_DECISIONS>` |  |

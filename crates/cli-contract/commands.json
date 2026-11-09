@@ -969,6 +969,12 @@
         "required": false
       },
       {
+        "field": "model_role",
+        "long": "model-role",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "name",
         "long": "name",
         "kind": "string",
@@ -3103,6 +3109,13 @@
         "required": false
       },
       {
+        "field": "model_role",
+        "long": "model-role",
+        "kind": "string",
+        "required": false,
+        "help": "Follow an organization model instead of pinning one: `research` uses the organization researc..."
+      },
+      {
         "field": "name",
         "long": "name",
         "kind": "string",
@@ -3310,6 +3323,12 @@
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
+        "required": false
+      },
+      {
+        "field": "model_role",
+        "long": "model-role",
+        "kind": "string",
         "required": false
       },
       {
@@ -10310,6 +10329,13 @@
         "long": "org",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "research_model_id",
+        "long": "research-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Research model for agents set to \"Organization research model\"."
       },
       {
         "field": "self_healing",
