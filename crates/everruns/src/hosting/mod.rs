@@ -404,13 +404,28 @@ pub trait SessionHosting: Send + Sync + 'static {
     ) -> Result<Vec<ConversationCheckpoint>> {
         Err(unsupported_checkpoints())
     }
-    /// Retain one conversation checkpoint under its id, refusing when the
-    /// session already holds [`MAX_CONVERSATION_CHECKPOINTS`].
-    async fn save_conversation_checkpoint(
+    /// Take and retain a conversation checkpoint at the end of the last
+    /// finished turn of the active branch, in one authority transaction:
+    /// the branch, its events and the input assignments are read from the
+    /// same snapshot the checkpoint is committed in. Build it with
+    /// [`crate::checkpoints::CheckpointBuilder`]. Unreachable checkpoints are
+    /// pruned first; refuses when [`MAX_CONVERSATION_CHECKPOINTS`] remain.
+    async fn create_conversation_checkpoint(
         &self,
         _session: SessionId,
-        _checkpoint: ConversationCheckpoint,
-    ) -> Result<()> {
+        _label: Option<String>,
+    ) -> Result<ConversationCheckpoint> {
+        Err(unsupported_checkpoints())
+    }
+    /// Journal sequences of `turn` after `after`, ascending, at most `limit`,
+    /// on any branch. Restores use it to take a checkpoint's last turn whole.
+    async fn turn_sequences(
+        &self,
+        _session: SessionId,
+        _turn: TurnId,
+        _after: i32,
+        _limit: usize,
+    ) -> Result<Vec<i32>> {
         Err(unsupported_checkpoints())
     }
     /// Forget one conversation checkpoint; `false` when it did not exist.

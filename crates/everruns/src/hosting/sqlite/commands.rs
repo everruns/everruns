@@ -32,6 +32,7 @@ impl SqliteHosting {
                 // Branch facts only when asked: building them reads the journal index.
                 history:match &command {
                     SessionCommand::SelectBranch{branch,ranges,..}=>Some(super::lineage::view(tx,session,state,branch,ranges.as_deref())?),
+                    SessionCommand::DropBranch{branch,..}=>Some(super::lineage::view(tx,session,state,branch,None)?),
                     _=>None,
                 },
             };
@@ -58,6 +59,7 @@ impl SqliteHosting {
                     // Proactive-compaction attempts measured another branch.
                     self.proactive.lock().map_err(error)?.retain(|(id,..),_|*id!=session);
                 },
+                ControlUpdate::DropBranch{branch,revision}=>super::lineage::drop_branch(tx,session,state,&branch,revision)?,
             }
             if let Some(key)=plan.key {retain_command(tx,session,&key,&plan.fingerprint,&plan.reply)?;}
             Ok(plan.reply)

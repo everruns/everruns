@@ -473,3 +473,37 @@ fn discarding_selection_replaces_the_active_branch_and_fingerprints_apart() {
         "a retaining retry cannot replay a discarding command"
     );
 }
+
+/// EVE-1339: deleting a retained branch bumps the revision, never touches
+/// the active branch and needs no quiescence.
+#[test]
+fn dropping_a_branch_removes_only_retained_inactive_branches() {
+    let drop = |branch: &str| SessionCommand::DropBranch {
+        id: "drop".into(),
+        expected_revision: 3,
+        branch: branch.into(),
+    };
+    let mut view = branch_view();
+    view.execution_active = true;
+    view.history.as_mut().unwrap().retained = Some(vec![history::SequenceRange::new(1, 3)]);
+    let plan = prepare(drop("old"), view.clone()).unwrap();
+    assert_eq!(plan.key.as_deref(), Some("history_branch_drop:drop"));
+    assert!(matches!(
+        plan.control,
+        ControlUpdate::DropBranch { ref branch, revision: 4 } if branch == "old"
+    ));
+    assert_eq!(plan.reply["branch"], history::DEFAULT_BRANCH);
+    assert!(
+        prepare(drop(history::DEFAULT_BRANCH), view.clone()).is_err(),
+        "the active branch cannot be deleted"
+    );
+    let mut stale = view.clone();
+    stale.history.as_mut().unwrap().revision = 4;
+    assert!(matches!(
+        prepare(drop("old"), stale),
+        Err(CommandError::Conflict(_))
+    ));
+    let mut missing = view;
+    missing.history.as_mut().unwrap().retained = None;
+    assert!(prepare(drop("old"), missing).is_err());
+}

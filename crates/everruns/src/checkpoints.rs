@@ -8,20 +8,29 @@
 //!
 //! - [`RestoreMode::Branch`] retains the undone tail as a branch that
 //!   [`Checkpoints::redo`] reselects.
-//! - [`RestoreMode::Truncate`] drops the undone tail from the branch catalog,
-//!   so it can no longer be reselected; checkpoints taken on it become
-//!   unreachable and are pruned.
+//! - [`RestoreMode::Truncate`] drops the current branch from the branch
+//!   catalog, so it can no longer be reselected; checkpoints only it held
+//!   become unreachable and are pruned.
+//! - [`Checkpoints::delete_branch`] removes a retained branch the same way,
+//!   keeping the catalog under its limit.
+//!
+//! The authority builds each checkpoint in one transaction from its own
+//! snapshot of the active branch and input assignments (see
+//! [`CheckpointBuilder`]), so a concurrent append or branch change cannot
+//! leave a checkpoint off its branch, and an input belongs to a checkpoint
+//! only when it is assigned to an included turn.
 //!
 //! Checkpoints live in the session authority next to its branches, keyed by
 //! session. Every lookup is scoped to the session the handle was opened for,
 //! and a checkpoint only ever names ranges of that session's own journal.
 //! Only branch-capable authorities (`SqliteHosting`) support them; the
 //! volatile default refuses.
-// THREAT[TM-DURABLE-015]: session-scoped records, journal-validated ranges,
-// non-destructive restore, bounded storage and display-safe previews.
+// THREAT[TM-DURABLE-015]: session-scoped records built by the authority from
+// the session's own journal, non-destructive restore and branch deletion,
+// bounded storage and catalog, display-safe previews.
 use crate::Engine;
 use crate::hosting::spi::events::{Event, EventData};
-use crate::hosting::spi::session_commands::SessionCommand;
+use crate::hosting::spi::session_commands::{SessionCommand, history};
 use crate::hosting::spi::{EventReadLimit, EventReadRequest};
 use crate::hosting::{HistoryLineage, HistorySelection, SequenceRange, SessionHosting};
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -36,9 +45,8 @@ pub const MAX_CONVERSATION_CHECKPOINTS: usize = 1024;
 pub const MAX_PREVIEW_TURNS: usize = 50;
 /// Characters kept from a label or message in display previews.
 const PREVIEW_CHARS: usize = 160;
-/// Journal events read past a checkpoint to pick up late events of its last
-/// turn (`session.idled` follows the terminal).
-const SETTLE_WINDOW: usize = 64;
+/// Sequences read per call when collecting a checkpoint's last turn.
+const TURN_PAGE: usize = 1024;
 
 /// A retained checkpoint as the session authority stores it.
 ///
@@ -204,27 +212,15 @@ impl Checkpoints {
     }
 
     async fn create_checkpoint(&self, label: Option<String>) -> Result<CheckpointSummary> {
-        let profile = self.profile()?;
-        let lineage = profile.history_lineage(self.session).await?;
-        let fold = self.fold_active(&profile).await?;
-        let active = lineage.active_ranges();
-        let boundary = fold.boundary(active);
-        // An admitted input no included turn holds belongs to a later turn
-        // (queued or not yet run): it never re-enters context without it.
-        let mut excluded = Vec::new();
-        for (message, sequence) in fold.unheld_inputs(boundary.0) {
-            if profile.receipt(self.session, message).await?.is_some() {
-                excluded.push(sequence);
-            }
-        }
-        let checkpoint = fold.checkpoint(active, boundary, excluded, label, &lineage.active);
-        // Unreachable checkpoints do not count against capacity.
-        self.prune(&profile, &lineage).await?;
-        profile
-            .save_conversation_checkpoint(self.session, checkpoint.clone())
+        // One authority transaction reads the branch, its events and the
+        // input assignments and commits the checkpoint, so a concurrent
+        // append or branch change cannot produce a checkpoint off its branch.
+        let checkpoint = self
+            .profile()?
+            .create_conversation_checkpoint(self.session, label)
             .await?;
         Ok(CheckpointSummary {
-            on_active_branch: on_branch(active, &checkpoint),
+            on_active_branch: true,
             checkpoint,
         })
     }
@@ -313,8 +309,24 @@ impl Checkpoints {
         if same(&target, lineage.active_ranges()) {
             return Ok(unchanged(&lineage));
         }
-        // Revisions only grow, so this identity was never selected before.
-        let branch = format!("restore-{}", lineage.revision + 1);
+        if mode == RestoreMode::Branch {
+            // Restoring to a point some retained branch already is reuses
+            // it instead of adding another branch.
+            if let Some(existing) = lineage
+                .branches
+                .iter()
+                .find(|branch| branch.id != lineage.active && same(&branch.ranges, &target))
+            {
+                return self.redo(&existing.id.clone()).await;
+            }
+            if lineage.branches.len() >= history::MAX_BRANCHES {
+                return Err(AgentLoopError::config(
+                    "conversation branch capacity reached; delete retained branches with Checkpoints::delete_branch or restore with RestoreMode::Truncate",
+                ));
+            }
+        }
+        // A fresh identity never collides with a caller-chosen branch.
+        let branch = format!("restore-{}", uuid::Uuid::new_v4().simple());
         let selection: HistorySelection = serde_json::from_value(
             profile
                 .command(
@@ -371,6 +383,35 @@ impl Checkpoints {
         })
     }
 
+    /// Delete a retained, inactive branch, such as an undone tail that is no
+    /// longer wanted. Its events stay in the journal and raw export;
+    /// checkpoints only it held are pruned. `false` when it did not exist.
+    pub async fn delete_branch(&self, branch: &str) -> Result<bool> {
+        let profile = self.profile()?;
+        let lineage = profile.history_lineage(self.session).await?;
+        if branch == lineage.active {
+            return Err(AgentLoopError::config(
+                "the active history branch cannot be deleted",
+            ));
+        }
+        if lineage.branch(branch).is_none() {
+            return Ok(false);
+        }
+        profile
+            .command(
+                self.session,
+                SessionCommand::DropBranch {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    expected_revision: lineage.revision,
+                    branch: branch.to_owned(),
+                },
+            )
+            .await?;
+        let lineage = profile.history_lineage(self.session).await?;
+        self.prune(&profile, &lineage).await?;
+        Ok(true)
+    }
+
     fn profile(&self) -> Result<Arc<dyn SessionHosting>> {
         self.engine.profile().cloned()
     }
@@ -396,19 +437,22 @@ impl Checkpoints {
             .to_vec();
         let mut target = checkpoint.ranges.clone();
         if let Some(turn) = checkpoint.turn_id {
-            let after = profile
-                .history_events(
-                    self.session,
-                    branch.clone(),
-                    checkpoint.through,
-                    SETTLE_WINDOW,
-                )
-                .await?;
-            for event in after {
-                if event.context.turn_id == Some(turn)
-                    && let Some(sequence) = event.sequence
-                {
-                    target.push(SequenceRange::new(sequence, sequence));
+            // Events of the last turn appended after the checkpoint (such as
+            // `session.idled`) belong to it, however many there are.
+            let mut after = checkpoint.through;
+            loop {
+                let sequences = profile
+                    .turn_sequences(self.session, turn, after, TURN_PAGE)
+                    .await?;
+                target.extend(
+                    sequences
+                        .iter()
+                        .filter(|sequence| contains(&branch, **sequence))
+                        .map(|sequence| SequenceRange::new(*sequence, *sequence)),
+                );
+                match sequences.last() {
+                    Some(last) if sequences.len() == TURN_PAGE => after = *last,
+                    _ => break,
                 }
             }
             target = normalize(target);
@@ -602,65 +646,113 @@ impl Fold {
         };
         (through, last)
     }
+}
 
-    /// Input messages at or before `through` that no included turn holds,
-    /// either as its input or steered into its span. Admitted ones among
-    /// them belong to later turns; seeded history has no admission.
-    fn unheld_inputs(&self, through: i32) -> Vec<(MessageId, i32)> {
-        let included: Vec<&TurnInfo> = self
+/// Authoritative facts about one input message, read by the authority in
+/// the transaction that commits a checkpoint.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InputFacts {
+    /// Turn the authority assigned the input to (`assignment/{input}`),
+    /// steered inputs included.
+    pub assigned: Option<TurnId>,
+    /// The input was admitted (it has an admission receipt); seeded history
+    /// has none.
+    pub admitted: bool,
+    /// The input was rejected and is hidden from context reads.
+    pub rejected: bool,
+}
+
+/// Builds a [`ConversationCheckpoint`] from one authority snapshot, for
+/// hosting plugins implementing
+/// [`SessionHosting::create_conversation_checkpoint`]: feed the active
+/// branch's raw journal events in order, then [`build`](Self::build) with
+/// the active ranges read in the same transaction.
+#[derive(Default)]
+pub struct CheckpointBuilder {
+    fold: Fold,
+}
+
+impl CheckpointBuilder {
+    /// An empty builder.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add the next active-branch event, in sequence order.
+    pub fn add(&mut self, event: &Event) {
+        self.fold.add(event);
+    }
+
+    /// The checkpoint at the end of the last finished turn. `facts` is asked
+    /// only about input messages at or before that point that no included
+    /// turn started. Membership comes from the authority's assignment, never
+    /// from where an input happens to sit in the journal: an input admitted
+    /// while one turn ran but answered by a later one stays out.
+    pub fn build(
+        self,
+        active: &[SequenceRange],
+        branch: &str,
+        label: Option<String>,
+        mut facts: impl FnMut(MessageId) -> Result<InputFacts>,
+    ) -> Result<ConversationCheckpoint> {
+        let fold = self.fold;
+        let (through, last) = fold.boundary(active);
+        let included: std::collections::HashSet<TurnId> = fold
             .turns
             .iter()
             .filter(|turn| turn.last <= through)
+            .map(|turn| turn.id)
             .collect();
-        let mut unheld: Vec<(MessageId, i32)> = self
+        let started: std::collections::HashSet<MessageId> = fold
+            .turns
+            .iter()
+            .filter(|turn| included.contains(&turn.id))
+            .filter_map(|turn| turn.message)
+            .collect();
+        let mut candidates: Vec<(MessageId, i32)> = fold
             .inputs
             .iter()
-            .filter(|(id, (sequence, _))| {
-                *sequence <= through
-                    && !included.iter().any(|turn| {
-                        turn.message == Some(**id)
-                            || (turn.first <= *sequence && *sequence <= turn.last)
-                    })
-            })
+            .filter(|(id, (sequence, _))| *sequence <= through && !started.contains(*id))
             .map(|(id, (sequence, _))| (*id, *sequence))
             .collect();
-        unheld.sort_unstable_by_key(|(_, sequence)| *sequence);
-        unheld
-    }
-
-    /// A checkpoint at `through`, after `last`, leaving out `excluded`.
-    fn checkpoint(
-        &self,
-        active: &[SequenceRange],
-        (through, last): (i32, Option<&TurnInfo>),
-        mut excluded: Vec<i32>,
-        label: Option<String>,
-        branch: &str,
-    ) -> ConversationCheckpoint {
-        excluded.sort_unstable();
+        candidates.sort_unstable_by_key(|(_, sequence)| *sequence);
+        let mut excluded = Vec::new();
+        for (message, sequence) in candidates {
+            let facts = facts(message)?;
+            let keep = match facts.assigned {
+                Some(turn) => included.contains(&turn),
+                // A rejected input is hidden from context anyway; keeping
+                // its sequence avoids splitting ranges for nothing.
+                None => facts.rejected || !facts.admitted,
+            };
+            if !keep {
+                excluded.push(sequence);
+            }
+        }
         let ranges = subtract(&prefix(active, through), &excluded);
-        ConversationCheckpoint {
+        if ranges.len() > history::MAX_RANGES {
+            return Err(AgentLoopError::config(
+                "conversation checkpoint would split history into too many ranges",
+            ));
+        }
+        Ok(ConversationCheckpoint {
             id: uuid::Uuid::now_v7(),
             label,
             branch: branch.to_owned(),
             through,
             ranges,
             excluded,
-            turn_index: self
-                .turns
-                .iter()
-                .filter(|turn| turn.last <= through)
-                .count() as u32,
+            turn_index: included.len() as u32,
             turn_id: last.map(|turn| turn.id),
             message_id: last.and_then(|turn| turn.message),
-            preview: last.and_then(|turn| self.input(turn).and_then(|(_, text)| text.clone())),
+            preview: last.and_then(|turn| fold.input(turn).and_then(|(_, text)| text.clone())),
             created_at: everruns_contracts::rt::utc_now().to_rfc3339(),
-        }
+        })
     }
 }
 
 /// The retained branch a checkpoint lies on, the active one preferred.
-fn reachable<'a>(
+pub(crate) fn reachable<'a>(
     lineage: &'a HistoryLineage,
     checkpoint: &ConversationCheckpoint,
 ) -> Option<&'a [SequenceRange]> {
@@ -782,9 +874,142 @@ fn display(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hosting::spi::RuntimeMessage;
+    use crate::hosting::spi::events::{EventContext, InputMessageData, OutputMessageCompletedData};
+    use everruns_contracts::runtime::events::TurnCompletedData;
 
     fn r(first: i32, last: i32) -> SequenceRange {
         SequenceRange::new(first, last)
+    }
+
+    fn at(sequence: i32, context: EventContext, data: impl Into<EventData>) -> Event {
+        let mut event = Event::new(SessionId::new(), context, data);
+        event.sequence = Some(sequence);
+        event
+    }
+
+    fn input(sequence: i32, message: &RuntimeMessage) -> Event {
+        at(
+            sequence,
+            EventContext::empty(),
+            InputMessageData::new(message.clone()),
+        )
+    }
+
+    fn reply(sequence: i32, turn: TurnId, message: MessageId) -> Event {
+        at(
+            sequence,
+            EventContext::turn(turn, message),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("Done.")),
+        )
+    }
+
+    fn end(sequence: i32, turn: TurnId, message: MessageId) -> Event {
+        at(
+            sequence,
+            EventContext::turn(turn, message),
+            TurnCompletedData {
+                turn_id: turn,
+                ..Default::default()
+            },
+        )
+    }
+
+    /// Review finding: an input admitted while T1 runs but answered by T2
+    /// sits inside T1's journal span. Membership must come from the
+    /// assignment, not the span.
+    #[test]
+    fn inputs_follow_their_assignment_not_their_journal_position() {
+        let (t1, t2) = (TurnId::new(), TurnId::new());
+        let hello = RuntimeMessage::user("hello");
+        let queued = RuntimeMessage::user("queued");
+        let journal = [
+            input(1, &hello),
+            reply(2, t1, hello.id),
+            input(3, &queued),
+            end(4, t1, hello.id),
+            reply(5, t2, queued.id),
+        ];
+        let build = |facts: InputFacts| {
+            let mut builder = CheckpointBuilder::new();
+            for event in &journal {
+                builder.add(event);
+            }
+            let mut asked = Vec::new();
+            let checkpoint = builder
+                .build(&[r(1, 5)], "main", None, |message| {
+                    asked.push(message);
+                    Ok(facts)
+                })
+                .unwrap();
+            assert_eq!(asked, [queued.id], "only unstarted inputs are looked up");
+            checkpoint
+        };
+        let answered_later = build(InputFacts {
+            assigned: Some(t2),
+            admitted: true,
+            rejected: false,
+        });
+        assert_eq!(answered_later.through, 4);
+        assert_eq!(answered_later.ranges, [r(1, 2), r(4, 4)]);
+        assert_eq!(answered_later.excluded, [3]);
+        assert_eq!(answered_later.turn_id, Some(t1));
+        let pending = build(InputFacts {
+            admitted: true,
+            ..Default::default()
+        });
+        assert_eq!(pending.excluded, [3]);
+        for kept in [
+            InputFacts {
+                assigned: Some(t1),
+                admitted: true,
+                rejected: false,
+            },
+            InputFacts::default(),
+            InputFacts {
+                admitted: true,
+                rejected: true,
+                ..Default::default()
+            },
+        ] {
+            let checkpoint = build(kept);
+            assert_eq!(checkpoint.ranges, [r(1, 4)], "{kept:?}");
+            assert!(checkpoint.excluded.is_empty());
+        }
+    }
+
+    #[test]
+    fn too_fragmented_checkpoints_fail_clearly() {
+        let turn = TurnId::new();
+        let start = RuntimeMessage::user("start");
+        let mut journal = Vec::new();
+        let mut pending = std::collections::HashSet::new();
+        let mut sequence = 0;
+        for _ in 0..history::MAX_RANGES + 1 {
+            for admitted in [false, true] {
+                sequence += 1;
+                let message = RuntimeMessage::user("x");
+                if admitted {
+                    pending.insert(message.id);
+                }
+                journal.push(input(sequence, &message));
+            }
+        }
+        journal.push(input(sequence + 1, &start));
+        journal.push(end(sequence + 2, turn, start.id));
+        let mut builder = CheckpointBuilder::new();
+        for event in &journal {
+            builder.add(event);
+        }
+        let error = builder
+            .build(&[r(1, sequence + 2)], "main", None, |message| {
+                Ok(InputFacts {
+                    admitted: pending.contains(&message),
+                    ..Default::default()
+                })
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("too many ranges"), "{error}");
     }
 
     #[test]

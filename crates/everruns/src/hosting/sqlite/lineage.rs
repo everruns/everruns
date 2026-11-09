@@ -210,6 +210,28 @@ pub(super) fn select(
     Ok(())
 }
 
+/// Delete retained `branch` at `revision` (EVE-1339). The reducer has
+/// checked that it exists and is not active, so a lineage exists.
+pub(super) fn drop_branch(
+    tx: &Transaction<'_>,
+    session: SessionId,
+    state: &mut Control,
+    branch: &str,
+    revision: u64,
+) -> Result<()> {
+    tx.execute(
+        "DELETE FROM framework_objects WHERE session=? AND kind='branch' AND key=?",
+        params![session.to_string(), branch],
+    )
+    .map_err(error)?;
+    let lineage = state
+        .lineage
+        .as_mut()
+        .ok_or_else(|| error("history lineage is missing"))?;
+    lineage.revision = revision;
+    Ok(())
+}
+
 /// The branch catalog, active branch first.
 pub(super) fn read(
     tx: &Transaction<'_>,

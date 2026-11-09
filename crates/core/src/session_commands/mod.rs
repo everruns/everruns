@@ -96,6 +96,15 @@ pub enum SessionCommand {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         discard: bool,
     },
+    /// Delete a retained, inactive conversation branch from the catalog
+    /// (EVE-1339). Its events stay in the journal and raw export; only the
+    /// ability to reselect it goes. Does not need quiescence: no execution
+    /// reads a retained branch.
+    DropBranch {
+        id: String,
+        expected_revision: u64,
+        branch: String,
+    },
 }
 
 /// A retained command's immutable request fingerprint and reply.
@@ -216,6 +225,11 @@ pub enum ControlUpdate {
         revision: u64,
         discard: bool,
     },
+    /// Delete retained `branch` and move the lineage to `revision`.
+    DropBranch {
+        branch: String,
+        revision: u64,
+    },
 }
 
 /// A complete atomic commit, or a replay with no effects.
@@ -245,6 +259,7 @@ impl SessionCommand {
             Self::ResolveWaits { id, .. } => format!("wait_resolution:{id}"),
             Self::Cancel { id, .. } => format!("cancel:{id}"),
             Self::SelectBranch { id, .. } => format!("history_branch:{id}"),
+            Self::DropBranch { id, .. } => format!("history_branch_drop:{id}"),
         })
     }
     pub fn fingerprint(&self) -> Value {
@@ -294,6 +309,11 @@ impl SessionCommand {
                 }
                 value
             }
+            Self::DropBranch {
+                expected_revision,
+                branch,
+                ..
+            } => json!({"expected_revision":expected_revision,"branch":branch}),
         }
     }
 }
@@ -345,7 +365,8 @@ pub fn prepare(
         | SessionCommand::Resolve { id, .. }
         | SessionCommand::ResolveWaits { id, .. }
         | SessionCommand::Cancel { id, .. }
-        | SessionCommand::SelectBranch { id, .. } => Some(id),
+        | SessionCommand::SelectBranch { id, .. }
+        | SessionCommand::DropBranch { id, .. } => Some(id),
         _ => None,
     };
     if identity.is_some_and(|id| id.is_empty())
@@ -582,6 +603,39 @@ pub fn prepare(
                     discard,
                 };
             }
+        }
+        SessionCommand::DropBranch {
+            expected_revision,
+            branch,
+            ..
+        } => {
+            let facts = view.history.ok_or_else(|| {
+                invalid("this session authority does not support conversation branch selection")
+            })?;
+            if !history::valid_branch_id(&branch) {
+                return Err(invalid("invalid history branch identity"));
+            }
+            if expected_revision != facts.revision {
+                return Err(CommandError::Conflict(
+                    "conversation history revision changed",
+                ));
+            }
+            if branch == facts.active {
+                return Err(invalid("the active history branch cannot be deleted"));
+            }
+            if facts.retained.is_none() {
+                return Err(invalid("history branch not found"));
+            }
+            let revision = facts
+                .revision
+                .checked_add(1)
+                .ok_or(CommandError::Capacity("history revision capacity reached"))?;
+            plan.reply = json!(history::HistorySelection {
+                revision,
+                branch: facts.active,
+                changed: true,
+            });
+            plan.control = ControlUpdate::DropBranch { branch, revision };
         }
         command => {
             if view.pending.len() > 256 {

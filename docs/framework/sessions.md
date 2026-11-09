@@ -327,9 +327,19 @@ if let Some(undone) = &restored.undone {
   Text excerpts are short and have control and bidirectional characters
   removed, so they are safe to show in a terminal or a single UI line.
 - `RestoreMode::Branch` keeps the undone turns as a branch named in
-  `RestoreOutcome::undone`, which `redo` reselects. `RestoreMode::Truncate`
-  drops them from the branch catalog, and checkpoints taken on them are no
-  longer listed.
+  `RestoreOutcome::undone`, which `redo` reselects. Restoring to a point a
+  retained branch already holds reselects that branch instead of adding one.
+- `RestoreMode::Truncate` drops the current branch from the branch catalog,
+  and checkpoints that only it held are no longer listed. For a checkpoint
+  on the current branch that is just the undone turns. For a checkpoint
+  with `on_active_branch == false` it is the whole current branch, including
+  the turns before the point where the two branches split.
+- A session keeps at most 1024 branches, the active one included. Once a
+  `Branch` restore would exceed that, it fails; delete retained branches you
+  no longer need with `delete_branch`, or restore with `Truncate`.
+  `delete_branch` never deletes the active branch, and checkpoints only the
+  deleted branch held are pruned. A session also keeps at most 1024
+  checkpoints; `delete` frees room.
 
 Nothing is deleted from the journal: a restore changes which branch is the
 conversation, so context, history and new input follow it while raw exports

@@ -303,3 +303,55 @@ async fn a_tool_creates_checkpoints_while_its_turn_runs() {
         Some("save a checkpoint")
     );
 }
+
+/// Branch restores reuse an identical retained branch, use collision-proof
+/// names, and retained branches can be deleted (pruning their checkpoints).
+#[tokio::test]
+async fn branch_restores_reuse_branches_and_retained_branches_can_be_deleted() {
+    let directory = tempfile::tempdir().unwrap();
+    let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+    let engine = hosted(profile);
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build()).await.unwrap();
+    let checkpoints = engine.checkpoints(id);
+    assert!(turn(&session, "alpha question").await.success);
+    let after_a = checkpoints.create().await.unwrap();
+    assert!(turn(&session, "beta question").await.success);
+    let after_b = checkpoints.create().await.unwrap();
+
+    let first = checkpoints
+        .restore(after_a.id, RestoreMode::Branch)
+        .await
+        .unwrap();
+    assert!(first.branch.starts_with("restore-") && first.branch.len() > 20);
+    checkpoints.redo("main").await.unwrap();
+    let second = checkpoints
+        .restore(after_a.id, RestoreMode::Branch)
+        .await
+        .unwrap();
+    assert_eq!(second.branch, first.branch, "identical branch reused");
+    assert_eq!(
+        engine.history_lineage(id).await.unwrap().branches.len(),
+        2,
+        "no new branch per repeated restore"
+    );
+
+    assert!(checkpoints.delete_branch(&second.branch).await.is_err());
+    assert!(checkpoints.delete_branch("main").await.unwrap());
+    assert!(!checkpoints.delete_branch("main").await.unwrap());
+    assert_eq!(engine.history_lineage(id).await.unwrap().branches.len(), 1);
+    let listed: Vec<_> = checkpoints
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|summary| summary.id)
+        .collect();
+    assert_eq!(
+        listed,
+        [after_a.id],
+        "after_b only lived on the deleted branch"
+    );
+    assert!(checkpoints.preview(after_b.id).await.is_err());
+    assert_eq!(transcript(&session).await, ["alpha question", "Hello!"]);
+}

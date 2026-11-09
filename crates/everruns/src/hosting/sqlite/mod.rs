@@ -288,6 +288,28 @@ impl SqliteHosting {
     }
 }
 
+/// Retained conversation checkpoints, oldest first (EVE-1339).
+fn conversation_checkpoints(
+    tx: &Transaction<'_>,
+    session: SessionId,
+) -> Result<Vec<super::ConversationCheckpoint>> {
+    let mut query = tx
+        .prepare("SELECT value FROM framework_objects WHERE session=? AND kind=? ORDER BY created,key LIMIT ?")
+        .map_err(error)?;
+    query
+        .query_map(
+            params![
+                session.to_string(),
+                CONVERSATION_CHECKPOINT,
+                super::MAX_CONVERSATION_CHECKPOINTS as i64 + 1
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(error)?
+        .map(|row| decode(row.map_err(error)?))
+        .collect()
+}
+
 fn object<T: DeserializeOwned>(
     tx: &Transaction<'_>,
     session: SessionId,
@@ -677,48 +699,112 @@ impl SessionHosting for SqliteHosting {
     ) -> Result<Vec<super::ConversationCheckpoint>> {
         self.transaction(session, |tx, state| {
             state.binding(session)?;
+            conversation_checkpoints(tx, session)
+        })
+    }
+    async fn create_conversation_checkpoint(
+        &self,
+        session: SessionId,
+        label: Option<String>,
+    ) -> Result<super::ConversationCheckpoint> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            // One snapshot: branch, raw active events, assignments and the
+            // commit (EVE-1339).
+            let lineage = lineage::read(tx, session, state)?;
+            let mut builder = crate::checkpoints::CheckpointBuilder::new();
+            let mut after = 0;
+            loop {
+                let (events, more) = ports::page(tx, session, state, after, state.head, 1024)?;
+                for event in &events {
+                    builder.add(event);
+                }
+                match events.last().and_then(|event| event.sequence) {
+                    Some(last) if more => after = last,
+                    _ => break,
+                }
+            }
+            let checkpoint = builder.build(
+                lineage.active_ranges(),
+                &lineage.active,
+                label,
+                |input| {
+                    Ok(crate::checkpoints::InputFacts {
+                        assigned: object::<super::TurnAssignment>(
+                            tx,
+                            session,
+                            "framework",
+                            &format!("assignment/{input}"),
+                        )?
+                        .map(|assignment| assignment.turn_id),
+                        admitted: tx
+                            .query_row(
+                                "SELECT EXISTS(SELECT 1 FROM framework_commands WHERE session=? AND id=?)",
+                                params![session.to_string(), input.to_string()],
+                                |row| row.get(0),
+                            )
+                            .map_err(error)?,
+                        rejected: object::<Value>(
+                            tx,
+                            session,
+                            "framework",
+                            &format!("rejected/{input}"),
+                        )?
+                        .is_some(),
+                    })
+                },
+            )?;
+            // Unreachable checkpoints do not count against capacity.
+            let mut retained = 0;
+            for existing in conversation_checkpoints(tx, session)? {
+                if crate::checkpoints::reachable(&lineage, &existing).is_some() {
+                    retained += 1;
+                } else {
+                    tx.execute(
+                        "DELETE FROM framework_objects WHERE session=? AND kind=? AND key=?",
+                        params![session.to_string(), CONVERSATION_CHECKPOINT, existing.id.to_string()],
+                    )
+                    .map_err(error)?;
+                }
+            }
+            if retained >= super::MAX_CONVERSATION_CHECKPOINTS {
+                return Err(error("conversation checkpoint capacity reached"));
+            }
+            put(
+                tx,
+                session,
+                CONVERSATION_CHECKPOINT,
+                &checkpoint.id.to_string(),
+                &checkpoint,
+            )?;
+            Ok(checkpoint)
+        })
+    }
+    async fn turn_sequences(
+        &self,
+        session: SessionId,
+        turn: TurnId,
+        after: i32,
+        limit: usize,
+    ) -> Result<Vec<i32>> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
             let mut query = tx
-                .prepare("SELECT value FROM framework_objects WHERE session=? AND kind=? ORDER BY created,key LIMIT ?")
+                .prepare("SELECT seq FROM framework_events WHERE session=? AND seq>? AND turn_id=? ORDER BY seq LIMIT ?")
                 .map_err(error)?;
             query
                 .query_map(
                     params![
                         session.to_string(),
-                        CONVERSATION_CHECKPOINT,
-                        super::MAX_CONVERSATION_CHECKPOINTS as i64
+                        after,
+                        turn.to_string(),
+                        limit.clamp(1, 1024) as i64
                     ],
-                    |row| row.get::<_, String>(0),
+                    |row| row.get::<_, i32>(0),
                 )
                 .map_err(error)?
-                .map(|row| decode(row.map_err(error)?))
+                .map(|row| row.map_err(error))
                 .collect()
-        })
-    }
-    async fn save_conversation_checkpoint(
-        &self,
-        session: SessionId,
-        checkpoint: super::ConversationCheckpoint,
-    ) -> Result<()> {
-        self.transaction(session, |tx, state| {
-            state.binding(session)?;
-            // The ranges must name this session's own journal.
-            super::spi::session_commands::history::validate_ranges(&checkpoint.ranges, state.head)
-                .map_err(error)?;
-            let key = checkpoint.id.to_string();
-            let (count, exists): (i64, bool) = tx
-                .query_row(
-                    "SELECT count(*),coalesce(sum(key=?3),0)>0 FROM framework_objects WHERE session=?1 AND kind=?2",
-                    params![session.to_string(), CONVERSATION_CHECKPOINT, key],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .map_err(error)?;
-            if exists {
-                return Err(error("conversation checkpoint already exists"));
-            }
-            if count as usize >= super::MAX_CONVERSATION_CHECKPOINTS {
-                return Err(error("conversation checkpoint capacity reached"));
-            }
-            put(tx, session, CONVERSATION_CHECKPOINT, &key, &checkpoint)
         })
     }
     async fn delete_conversation_checkpoint(
