@@ -1035,6 +1035,83 @@ against the memory and SQLite authorities.
   through a required `SessionHosting::definitions`. As defaulted methods, a
   profile that wraps another silently answered "no definitions".
 
+- **A team member follows its lead.** `AgentBuild` owns the member key;
+  the Engine and the authorities resolve a member through its lead, so a
+  member session moves to the lead's current revision. Before, the
+  authorities looked a member up under its own key, which no definition
+  has, and members stayed on their first revision.
+- **One typed table says when an event must be stored**
+  (`CommitClass` in the host emitter: live, barrier, held, behind), keyed by
+  the protocol's event type constants, with a test over every event type.
+  An event type nobody classified is a barrier. The emitter contract now
+  says that a returned event without a sequence is a receipt, not a log
+  entry, and that an emitter which returns before storing must implement
+  `wait_stored`. Checked while doing this: no caller keeps the id or
+  sequence of a deferred event, and both worker emitters store before
+  `emit` returns.
+
+Deliberately left for step 4, where they are needed anyway: moving the
+Engine and its hosting contract out of the facade crate (the worker cannot
+depend on the facade), and merging the four host service bundles into the
+one the platform host fills.
+
+### Cell storage: alternatives (2026-11-09)
+
+The design takes funout's storage as given: an in-memory state machine
+replicated by Raft (`openraft` pinned to 0.9, the maintenance line; 0.10
+has been in alpha for a long time), a hand-written write-ahead log, Raft
+messages as JSON over HTTP, and S3 for history. That means owning a storage
+engine. Its speed is measured; its correctness is not: funout has no
+formal model, no deterministic simulation and no fault-injection history
+yet, and torn writes, fsync semantics, snapshot installs, membership
+changes and on-disk format upgrades are where such engines lose data. The
+alternatives were never written down. They are below, against what the
+session authority actually needs:
+
+1. one atomic write per step across a session's control record, inbox,
+   journal tail and wake (the claim, fence and append in one domain);
+2. group commit across sessions, because waited commits are the budget
+   (5 per turn after step 1; at 1 250 turns/s that is about 6 000 waited
+   commits a second for the whole data plane);
+3. failover without minutes of stalled sessions;
+4. a whole data plane on one machine for tests, with no cloud account;
+5. something a self-hosting reader can run.
+
+| Option | Atomic step | Commit, three zones | Failover | What we own | Self-hosted |
+| --- | --- | --- | --- | --- | --- |
+| A. Own Raft and log (funout, the plan) | Yes, by construction | 1.4 ms on one VM; a few ms expected across zones | About a second | The storage engine: log, snapshots, membership, upgrades, and proving them | Three stateful pods per cell |
+| B. PostgreSQL per cell | Yes, a transaction | A few ms with a synchronous standby, group commit built in | Typically 20 to 35 s on a managed Multi-AZ cluster | A schema and a `SessionHosting` profile; SQLite already is one | Everyone already runs it |
+| C. One writer on object storage (conditional writes, batched) | Yes, one object per group commit | Single-digit ms only on S3 Express One Zone, which is one zone; standard S3 is tens of ms | Seconds: any node takes over by winning a conditional write | A log format and a fencing rule, no replicas and no disks | Depends on the object store's conditional writes and latency |
+| D. An existing replicated store (FoundationDB, TiKV) | Yes | A few ms | Seconds | Nothing in storage; a second database to operate, with limits to design around (FoundationDB: 10 MB and 5 s per transaction, 100 KB per value) | Heavy |
+
+Ruled out: etcd (sized for configuration, not this write rate), a log
+broker (appends only, no fenced multi-key step), and JetStream (one Raft
+group per stream does not fit one stream per session, and its KV has no
+multi-key transaction).
+
+What this says:
+
+- **The choice sits behind one interface.** A cell is an Engine
+  `SessionHosting` profile. Steps 4 (workers on the Engine) and the
+  control plane protocol do not depend on which option stores a cell.
+- **A is the fastest and the one with the most unproven correctness.** C
+  and D do not beat it on anything this workload needs: C trades zones for
+  latency, D trades our storage engine for someone else's operations.
+- **B is the real alternative.** It gives up failover time (tens of
+  seconds instead of one) and some commit latency, and removes the storage
+  engine from what we must get right. It is also what a self-hosting
+  reader already operates. Today's 214 statements a turn come from data
+  plane v1's design, not from PostgreSQL: the SQLite authority runs the
+  same Engine turn in 5 waited writes.
+
+Decision rule, in keeping with a bench gate per step: before the cell port
+(step 5), port the SQLite authority to PostgreSQL (a few days, same
+conformance suite) and run the stress bench against it. If PostgreSQL per
+cell meets the per-turn budgets with headroom, cells start on B and A
+remains the upgrade for failover time. If it does not, A proceeds, and its
+first deliverables are the formal models and the deterministic simulation
+listed under Testing, before any feature work on it.
+
 ## Limits and risks
 
 - **We own consensus.** openraft is a library; snapshots, membership, moves
