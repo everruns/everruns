@@ -898,3 +898,48 @@ async fn idle_hosted_sessions_past_the_cache_capacity_reopen_from_the_authority(
     assert!(held.send_and_wait("again").await.unwrap().success);
     assert_eq!(completed(held.events_after(0).await.unwrap()), 2);
 }
+
+/// Data plane v2 step 1: a host whose watchers are elsewhere gets the live
+/// token deltas, fenced to the epoch and the stream they belong to.
+#[tokio::test]
+async fn live_deltas_reach_the_host_fenced_to_epoch_and_stream() {
+    #[derive(Clone, Default)]
+    struct Collect(Arc<std::sync::Mutex<Vec<everruns::hosting::LiveDelta>>>);
+    impl everruns::hosting::LiveDeltaSink for Collect {
+        fn publish(&self, delta: everruns::hosting::LiveDelta) {
+            self.0.lock().unwrap().push(delta);
+        }
+    }
+    let deltas = Collect::default();
+    let profile = MemoryHosting::default().with_live_deltas(deltas.clone());
+    let engine = engine(profile, agent());
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build()).await.unwrap();
+    assert!(
+        session
+            .send_and_wait("stream please")
+            .await
+            .unwrap()
+            .success
+    );
+    let events = session.events_after(0).await.unwrap();
+    let completed = events
+        .iter()
+        .find(|event| event.event_type() == "output.message.completed")
+        .expect("an answer");
+    let deltas = deltas.0.lock().unwrap().clone();
+    assert!(!deltas.is_empty(), "the answer streamed");
+    for (index, delta) in deltas.iter().enumerate() {
+        assert_eq!(delta.session, id);
+        assert_eq!(delta.fence, 1, "the first epoch's fence");
+        assert_eq!(delta.seq, index as u64, "in order, none skipped");
+        assert_eq!(delta.event.event_type, "output.message.delta");
+        assert!(delta.event.sequence.is_none(), "never stored");
+        assert!(delta.attempt.turn.is_some());
+    }
+    let message = completed.canonical_json()["data"]["message"]["id"]
+        .as_str()
+        .expect("message id")
+        .to_string();
+    assert!(deltas.iter().all(|delta| delta.attempt.stream == message));
+}

@@ -80,6 +80,7 @@ pub struct MemoryHosting {
     sessions: Arc<Mutex<HashMap<SessionId, Arc<MemorySession>>>>,
     counts: Arc<AuthorityCounters>,
     drop_prompts: bool,
+    live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
 }
 
 /// How many operations an execution epoch asked of the authority.
@@ -189,6 +190,13 @@ impl MemoryHosting {
         self
     }
 
+    /// Send every epoch's live deltas to `sink`, as a host whose watchers
+    /// are in another process would (see [`super::LiveDelta`]).
+    pub fn with_live_deltas(mut self, sink: impl super::LiveDeltaSink) -> Self {
+        self.live_deltas = Some(Arc::new(sink));
+        self
+    }
+
     /// Authority operations the execution epochs of every session have made
     /// so far (see [`AuthorityCounts`]).
     pub fn authority_counts(&self) -> AuthorityCounts {
@@ -227,6 +235,7 @@ impl MemoryHosting {
             fence: Arc::new(RwLock::new(None)),
             claimed_wake_at: None,
             riding: Arc::default(),
+            live_deltas: None,
         }
     }
 }
@@ -390,6 +399,7 @@ impl SessionHosting for MemoryHosting {
                 riding: Arc::default(),
                 session: session.clone(),
                 fence: Arc::new(RwLock::new(Some(ActorFence::new(id, holder, state.fence)))),
+                live_deltas: self.live_deltas.clone(),
             }),
         }))
     }
@@ -405,6 +415,7 @@ struct Ports {
     claimed_wake_at: Option<Option<i64>>,
     /// Receipts that commit with this epoch's next renew or release.
     riding: Arc<std::sync::Mutex<Vec<(String, Value)>>>,
+    live_deltas: Option<Arc<dyn super::LiveDeltaSink>>,
 }
 
 /// Insert one receipt, with its effect on the control state; `false` when
@@ -568,6 +579,9 @@ impl SessionEpoch for Ports {
     }
     fn pushes_admissions(&self) -> bool {
         true
+    }
+    fn live_deltas(&self) -> Option<Arc<dyn super::LiveDeltaSink>> {
+        self.live_deltas.clone()
     }
     fn claimed_wake_at(&self) -> Option<Option<i64>> {
         self.claimed_wake_at

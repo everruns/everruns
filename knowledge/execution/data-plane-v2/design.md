@@ -395,6 +395,12 @@ to Engine hosting; v2 adds them back with a small Engine hook (plan step 1).
   id (`since_id`); deltas missed while disconnected are not replayed, as
   today. If the node it lands on hasn't yet applied up to `since_id`, it
   waits until it has (or redirects); a cursor never moves backwards.
+- **Engine hook (step 1):** `SessionEpoch::live_deltas` hands an epoch's
+  deltas to the host as `LiveDelta { fence, attempt: (turn, stream), seq,
+  event }`. Until durable model-call attempts land, the stream is the
+  assistant message id (the tool call id for tool output, the atom
+  execution for thinking); a committed `output.message.completed`,
+  `tool.completed` or `reason.completed` closes it on the executor too.
 - **Moves and failures:** a move ends the stream with a `moved` event;
   the client reconnects and the edge re-resolves. If the stream node dies,
   the hash picks another live node and clients reconnect with `since_id`.

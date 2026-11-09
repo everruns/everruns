@@ -64,6 +64,15 @@ pub(crate) async fn run(
         .prepare_activation(engine, session, &environment, backends)
         .await?;
     let live = engine.hosted_live_controls(session).await?;
+    let event_sink: Arc<dyn everruns_core::host::events::EventSink> = match epoch.live_deltas() {
+        Some(deltas) => Arc::new(super::live_deltas::LiveDeltaTee::new(
+            handle.inner.event_bus.clone(),
+            deltas,
+            session,
+            activation.actor.fence,
+        )),
+        None => handle.inner.event_bus.clone(),
+    };
     let runtime = match everruns_contracts::rt::timeout(
         config.lease_ttl,
         agent.build_runtime_with_event_sink(
@@ -71,7 +80,7 @@ pub(crate) async fn run(
             session,
             Some(environment),
             harness.as_ref(),
-            handle.inner.event_bus.clone(),
+            event_sink,
             state.clone(),
             Some(live.as_ref()),
         ),

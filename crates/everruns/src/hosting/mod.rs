@@ -15,6 +15,8 @@ mod admission;
 mod configuration;
 pub mod cutover;
 mod epoch_cache;
+mod live_deltas;
+pub use live_deltas::{LiveAttempt, LiveDelta, LiveDeltaSink};
 mod settled_store;
 #[cfg(not(target_arch = "wasm32"))]
 pub use configuration::DirectoryEnvironmentFactory;
@@ -697,6 +699,12 @@ pub trait SessionEpoch: Send + Sync + 'static {
     /// so another process resumes it at once. Hosts that move sessions
     /// between authorities set it before moving one with an open turn.
     fn hand_off(&self) -> Option<Arc<std::sync::atomic::AtomicBool>> {
+        None
+    }
+    /// Where this epoch's live deltas go (token deltas, never stored), for a
+    /// host whose watchers are in another process; see [`LiveDelta`] for the
+    /// fencing each carries. `None` (the default) keeps them in-process.
+    fn live_deltas(&self) -> Option<Arc<dyn LiveDeltaSink>> {
         None
     }
     /// Whether [`Self::renew_poke`] also fires on every input admission

@@ -45,6 +45,9 @@ impl SessionEpoch for EpochCache {
     fn pushes_admissions(&self) -> bool {
         self.inner.pushes_admissions()
     }
+    fn live_deltas(&self) -> Option<Arc<dyn super::LiveDeltaSink>> {
+        self.inner.live_deltas()
+    }
     fn claimed_wake_at(&self) -> Option<Option<i64>> {
         self.inner.claimed_wake_at()
     }
