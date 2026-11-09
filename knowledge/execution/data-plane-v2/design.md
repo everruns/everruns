@@ -826,9 +826,9 @@ stress` bench) checked in CI, so a later step can't silently undo it.
 
 ### Step 1 measurements (2026-11-09)
 
-Same bench, 4 sessions x 1 000 turns: **8 authority writes per chat turn, 5
+Same bench, 4 sessions x 1 000 turns: **9 authority writes per chat turn, 5
 waited** (claim, renew, the turn's opening batch, its closing batch,
-release), flat from the second tenth to the last. Where the other 14 went:
+release), flat from the second tenth to the last. Where the other 13 went:
 
 - Gone. The separate turn-identity receipt (a fresh input's assignment is
   its turn identity); the wake time stored again unchanged (the claim
@@ -836,14 +836,15 @@ release), flat from the second tenth to the last. Where the other 14 went:
   synthetic harness and agent definition take session-derived ids, which
   also stops each turn from adding one more definition to the store).
 - Folded. Lifecycle records ride on the next barrier, and a turn's final
-  answer without tool calls rides with `turn.completed` on `session.idled`.
+  answer without tool calls rides with `turn.completed`. A terminal event
+  is never held: an epoch that ends without a release must not lose it.
   A receipt the next holder can recompute rides on the next lease write:
   the outcome on the release and, after a clean release, the fresh input's
   assignment on the renew that reports its cancel.
-- Behind the work. `reason.started`, `output.message.started` and
-  `context.compacted` commit in a background task, chained per session,
-  while the model call runs. Each is counted as a write but not as a
-  waited one.
+- Behind the work. `reason.started`, `output.message.started`,
+  `context.compacted` and `session.idled` commit in a background task,
+  chained per session, while the work goes on. Each is counted as a write
+  but not as a waited one.
 
 What keeps this safe: a listener sees an event only after its commit, in
 emission order; every later commit, tail read, steered input and lease
@@ -851,6 +852,25 @@ release commits held and background events first; an answer that calls
 tools commits before any tool runs; a failed background commit fails the
 next commit that waits for it. A crash loses only events and receipts the
 next holder re-emits or recomputes from the log.
+
+**Long sessions (gate run, 40 sessions x 5 000 turns, 200 000 turns, 4
+cores):** p99 per turn stays within 10% (70 ms in the first tenth, 49 to
+78 ms after); throughput after the first compactions holds within 11%
+(1 043 turns/s in the second tenth, 929 to 1 032 after). One 20 000-turn
+session: 261 turns/s in the second tenth, 215 to 238 after, p99 6 to 7.5
+ms. Before the fixes below, the same run fell from 947 to 611 turns/s and
+the in-memory authority ran out of memory. What it took:
+
+- History reads name the event types they want, and the in-memory log
+  skips the rest and starts at the cursor. Each turn re-read the events
+  since the last compaction several times, copying every earlier turn's
+  `llm.generation` with its whole prompt (about 77 KB in an 8k window):
+  74 turns/s became 666 on 4 x 1 000.
+- No per-turn read scans the session: receipts are scanned by key range,
+  and a typed read examines a bounded run of other events per page.
+- The bench authority keeps `llm.generation` without its prompt, as a cell
+  keeps prompts in S3 (`--keep-prompts` keeps them): 230 KB retained per
+  turn became 33 KB. No turn reads a prompt back.
 
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share

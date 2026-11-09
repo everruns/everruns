@@ -812,34 +812,37 @@ impl EventIndex {
             return EventPage::new(Vec::new(), None, 0);
         }
         // Sequences ascend within a session: start at the cursor, not at
-        // the session's first event, so a page costs the page.
+        // the session's first event, so a page costs the page. A typed read
+        // examines at most `MAX_EVENT_PAGE_SIZE` events past the limit and
+        // then continues after the last one examined, so a rare type costs
+        // pages, not one scan of the whole session.
         let start = events.partition_point(|event| event.sequence.is_some_and(|s| s <= after));
-        let mut selected = events[start..]
+        let in_snapshot = events[start..]
             .iter()
-            .take_while(|event| event.sequence.is_some_and(|sequence| sequence <= snapshot))
-            .filter(|event| {
-                request
-                    .types
-                    .is_none_or(|types| types.contains(&event.event_type.as_str()))
-            })
-            .take(request.limit.get() + 1)
-            .cloned()
-            .collect::<Vec<_>>();
-        let has_more = selected.len() > request.limit.get();
-        if has_more {
-            selected.pop();
+            .take_while(|event| event.sequence.is_some_and(|sequence| sequence <= snapshot));
+        let limit = request.limit.get();
+        let mut selected = Vec::new();
+        let mut examined_to = after;
+        let mut skipped = 0usize;
+        let mut has_more = false;
+        for event in in_snapshot {
+            let sequence = event.sequence.expect("stored events carry sequences");
+            let wanted = request
+                .types
+                .is_none_or(|types| types.contains(&event.event_type.as_str()));
+            if (wanted && selected.len() == limit) || (!wanted && skipped == MAX_EVENT_PAGE_SIZE) {
+                has_more = true;
+                break;
+            }
+            if wanted {
+                selected.push(event.clone());
+            } else {
+                skipped += 1;
+            }
+            examined_to = sequence;
         }
         let next_cursor = has_more
-            .then(|| {
-                EventCursor::continuation(
-                    request.session_id,
-                    selected
-                        .last()
-                        .and_then(|event| event.sequence)
-                        .expect("a page with more events returned at least one event"),
-                    snapshot,
-                )
-            })
+            .then(|| EventCursor::continuation(request.session_id, examined_to, snapshot))
             .transpose()?;
         EventPage::new(selected, next_cursor, snapshot)
     }

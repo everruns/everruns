@@ -194,6 +194,47 @@ async fn a_typed_read_skips_other_events_and_resumes_after_its_last() {
         .unwrap();
     assert_eq!(sequences(&rest), vec![5, 7, 9]);
     assert!(rest.next_cursor.is_none());
+    // A rare type costs pages, not a scan of the whole session: a page
+    // examines a bounded run of other events, then continues after them.
+    let long = SessionId::new();
+    log.append(EventRequest::new(
+        long,
+        EventContext::empty(),
+        InputMessageData::new(RuntimeMessage::user("first")),
+    ))
+    .await
+    .unwrap();
+    for _ in 0..(MAX_EVENT_PAGE_SIZE + 10) {
+        log.append(EventRequest::new(
+            long,
+            EventContext::empty(),
+            SessionStartedData {
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                model_id: None,
+            },
+        ))
+        .await
+        .unwrap();
+    }
+    let first = log
+        .read_page(
+            EventReadRequest::new(long, EventReadLimit::new(2).unwrap())
+                .with_types(&[crate::events::INPUT_MESSAGE]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sequences(&first), vec![1]);
+    let cursor = first.next_cursor.clone().expect("the scan stopped early");
+    assert_eq!(cursor.after_sequence(), 1 + MAX_EVENT_PAGE_SIZE as i32);
+    let rest = log
+        .read_page(
+            EventReadRequest::from_cursor(cursor, EventReadLimit::new(2).unwrap())
+                .with_types(&[crate::events::INPUT_MESSAGE]),
+        )
+        .await
+        .unwrap();
+    assert!(rest.events.is_empty() && rest.next_cursor.is_none());
     // A read after a cursor in the middle starts there.
     let after = log
         .read_page(EventReadRequest::from_cursor(

@@ -18,6 +18,11 @@
 //!   line up with session length.
 //! - `cargo test` runs this as a smoke (`test = true`); `cargo bench` runs
 //!   the full scale.
+//! - The authority keeps `llm.generation` events without their prompts
+//!   ([`MemoryHosting::without_prompts`]), as a cell keeps prompts in S3:
+//!   at about 77 KB a turn they would not fit 200 000 turns in memory, and
+//!   no turn reads them back. `--keep-prompts` keeps them, to check that
+//!   the numbers do not change.
 //!
 //! Usage:
 //!   cargo bench -p everruns --bench long_session
@@ -44,17 +49,19 @@ struct Options {
     turns: usize,
     moniker: String,
     summary: Option<PathBuf>,
+    keep_prompts: bool,
 }
 
 impl Options {
     fn from_args() -> Self {
-        let (mut smoke, mut bench) = (false, false);
+        let (mut smoke, mut bench, mut keep_prompts) = (false, false, false);
         let (mut sessions, mut turns, mut moniker, mut summary) = (None, None, None, None);
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--smoke" => smoke = true,
                 "--bench" => bench = true,
+                "--keep-prompts" => keep_prompts = true,
                 "--sessions" => sessions = args.next().and_then(|v| v.parse().ok()),
                 "--turns" => turns = args.next().and_then(|v| v.parse().ok()),
                 "--moniker" => moniker = args.next(),
@@ -69,6 +76,7 @@ impl Options {
             turns: turns.unwrap_or(if smoke { 20 } else { 1_000 }),
             moniker: moniker.unwrap_or_else(|| "local".into()),
             summary,
+            keep_prompts,
         }
     }
 }
@@ -104,7 +112,11 @@ fn main() {
         .build()
         .expect("tokio runtime");
     let total = opts.sessions * opts.turns;
-    let profile = MemoryHosting::default();
+    let profile = if opts.keep_prompts {
+        MemoryHosting::default()
+    } else {
+        MemoryHosting::default().without_prompts()
+    };
     let build = AgentBuild::new("long-session", "bench-v1");
     let agent = Agent::builder()
         .instructions("You are concise.")
@@ -182,10 +194,11 @@ fn main() {
 
     let progress = progress.lock().unwrap();
     println!(
-        "long_session ({}): {} sessions x {} turns, llmsim 150-token answers, 8k window, zero model latency",
+        "long_session ({}): {} sessions x {} turns, llmsim 150-token answers, 8k window, zero model latency, prompts {}",
         if opts.smoke { "smoke" } else { "full" },
         opts.sessions,
-        opts.turns
+        opts.turns,
+        if opts.keep_prompts { "kept" } else { "dropped" }
     );
     println!(
         "{:<6} {:>10} {:>9} {:>9} {:>12} {:>12} {:>11}",

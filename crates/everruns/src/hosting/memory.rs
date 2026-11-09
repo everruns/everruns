@@ -79,6 +79,7 @@ pub struct MemoryHosting {
     dreaming: Arc<everruns_core::engine::dreaming::store::InMemoryDreamingStore>,
     sessions: Arc<Mutex<HashMap<SessionId, Arc<MemorySession>>>>,
     counts: Arc<AuthorityCounters>,
+    drop_prompts: bool,
 }
 
 /// How many operations an execution epoch asked of the authority.
@@ -135,6 +136,7 @@ struct MemorySession {
     log: InMemoryEventLog,
     services: HostBackends,
     counts: Arc<AuthorityCounters>,
+    drop_prompts: bool,
 }
 
 #[derive(Default)]
@@ -162,7 +164,9 @@ struct Control {
     pending: Vec<crate::ToolCall>,
     human_waits: everruns_core::human_wait::HumanWaitState,
     finalizing: HashSet<TurnId>,
-    records: HashMap<String, Value>,
+    /// Ordered, so a prefix scan reads only its range: a session keeps a
+    /// receipt or two per turn, and a turn scans prefixes.
+    records: std::collections::BTreeMap<String, Value>,
     pending_inputs: std::collections::VecDeque<i64>,
     commands: HashMap<String, super::spi::session_commands::CommandReceipt>,
     open_input: Option<MessageId>,
@@ -172,6 +176,19 @@ struct Control {
 }
 
 impl MemoryHosting {
+    /// Keep `llm.generation` events without the prompt they carry (its
+    /// messages and captured request body); the rest of the event stays.
+    ///
+    /// Decision: a data plane v2 cell keeps full prompts in S3 objects, off
+    /// the replicated authority, and no turn reads them back. This lets a
+    /// long run on this authority hold what a cell holds, so a 200 000-turn
+    /// bench fits in memory. Listeners see the event as stored. Applies to
+    /// sessions created after the call.
+    pub fn without_prompts(mut self) -> Self {
+        self.drop_prompts = true;
+        self
+    }
+
     /// Authority operations the execution epochs of every session have made
     /// so far (see [`AuthorityCounts`]).
     pub fn authority_counts(&self) -> AuthorityCounts {
@@ -193,6 +210,7 @@ impl MemoryHosting {
             log: InMemoryEventLog::new(),
             services,
             counts: self.counts.clone(),
+            drop_prompts: self.drop_prompts,
         })
     }
     fn session(&self, id: SessionId) -> Arc<MemorySession> {
@@ -478,6 +496,12 @@ impl Ports {
         expected: Option<Option<i32>>,
     ) -> std::result::Result<Event, EventLogError> {
         self.scope(request.session_id).map_err(log_error)?;
+        if self.session.drop_prompts
+            && let EventData::LlmGeneration(data) = &mut request.data
+        {
+            data.messages = Vec::new();
+            data.request_body = None;
+        }
         if !request.is_dreaming_metadata() {
             self.check(state).map_err(log_error)?;
         } else {
@@ -585,8 +609,8 @@ impl SessionEpoch for Ports {
         let state = self.session.control.lock().await;
         let records: Vec<_> = state
             .records
-            .iter()
-            .filter(|(key, _)| key.starts_with(prefix))
+            .range(prefix.to_owned()..)
+            .take_while(|(key, _)| key.starts_with(prefix))
             .take(4097)
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
