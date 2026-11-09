@@ -101,7 +101,7 @@ everruns sessions create [OPTIONS]
 | `-a`, `--agent <AGENT>` | Agent ID or name (optional, e.g. agent_xxx or "support"). When set without --harness, the session runs on the agent's harness. |
 | `--title <TITLE>` | Session title. |
 | `--locale <LOCALE>` | Session locale (BCP 47, e.g. uk-UA) |
-| `--model <MODEL>` | Model ID override (e.g. mod_xxx) |
+| `--model <MODEL>` | Model ID override (e.g. model_xxx) |
 | `--virtual-user <VIRTUAL_USER>` | Resident virtual user ID for unattended/background execution. |
 | `--system-prompt <SYSTEM_PROMPT>` | Session-level system prompt override. |
 | `-t`, `--tag <TAGS>` | Session tag. Repeat for each, or pass one JSON array of strings. Repeatable. |

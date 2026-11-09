@@ -17,10 +17,12 @@ Bedrock. Fable 5.1 stays enabled for agents that use it.
 
 It costs $8/$40 per million input/output tokens, with $0.20 cache reads, so the
 same run on the top Claude tier reports 20% less than on Fable 5.1. Thinking is
-always on, with high effort by default. To move an agent over:
+always on, with high effort by default. Pick it in an agent's model picker, or
+call it straight from the Framework:
 
-```bash
-everruns agents update agent_01h9 --model claude-fable-5-2 --reason "Move to Fable 5.2"
+```rust
+let model = Model::new("claude-fable-5-2", Anthropic::from_env()?);
+let answer = model.complete("Is 2^61 - 1 prime?").await?;
 ```
 
 `claude-mythos-5-2`, the same model for organizations in Anthropic's

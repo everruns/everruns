@@ -20,7 +20,7 @@ A reason is a short note in your own words that travels with the call and is sto
 | Agent shell and MCP | `--reason "..."` on the command |
 
 ```bash
-everruns agents update agent_01h9 --model gpt-6.1 --reason "Support asked for faster answers"
+everruns agents update agent_01h9 --model model_01h9 --reason "Support asked for faster answers"
 ```
 
 A reason is caller text. Everruns stores it as given and does not verify it. Never put a secret in one.

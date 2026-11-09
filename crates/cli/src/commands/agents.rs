@@ -101,7 +101,7 @@ pub enum AgentsCommand {
         #[arg(long)]
         description: Option<String>,
 
-        /// Default model ID (e.g. mod_xxx)
+        /// Default model ID (e.g. model_xxx)
         #[arg(long)]
         model: Option<String>,
 
@@ -148,7 +148,7 @@ pub enum AgentsCommand {
         #[arg(long)]
         description: Option<String>,
 
-        /// Default model ID (e.g. mod_xxx)
+        /// Default model ID (e.g. model_xxx)
         #[arg(long)]
         model: Option<String>,
 
