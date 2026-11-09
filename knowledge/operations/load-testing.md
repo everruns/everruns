@@ -390,8 +390,24 @@ Baselines to start from (numbers, not targets):
 | Hosted, instant model | 2026-10-08, 0.44.0 | turn p50 0.48 s at 10 sessions, 0.89 s at 25, 1.86 s at 50 (includes about 0.15 s network round trip) |
 | Hosted, 0.9 s first token | 2026-10-08, 0.44.0 | turn p50 1.55 s at 25 sessions, 2.13 s at 50, 4.44 s at 100; at 100, worker slots added about 3 s of waiting |
 | Chaos harness, 200 sessions, low-memory release build | 2026-10-12, actor cutover | pickup p50/p95 102/604 ms without kills and 94/496 ms with them (1.3 s/3.2 s while the per-org lease cap held work back; main 53/462 ms); recovery 21 s after a worker kill, 20 s after a server kill; about 475 statements per turn |
+| Local stress bench, 100 agents, prod-shaped | 2026-11-09, main at `5894612c` (#5278) | per turn: 213 statements in 171 transactions, 281 KB of WAL in 20 syncs, 99 ms PostgreSQL CPU, 70 ms server and 52 ms worker CPU, 3.6 MiB of worker memory per running turn; overhead per model call p50 66 ms, p99 2.0 s; no failed turn or incident (median of three runs) |
+| Local stress bench, 500 agents, prod-shaped | 2026-11-09, same build | 9 turns/s on four cores; per turn: 200 statements, 288 KB of WAL in 9 syncs, 66 ms PostgreSQL CPU; overhead per model call p50 0.8 s, p99 9.9 s; no failed turn or incident (one run) |
+| Hosted, 990 agents started together, hosted mix | 2026-11-09, three runs | no failed turn on the server in any run (1,457 to 2,400 turns); overhead per model call p50 244 to 1,246 ms; pickup p99 88 to 104 s; database (2 vCPU) peak 49 to 57% CPU; one worker peak 1.0 to 1.6 cores and 1.0 to 1.6 GiB; each of two servers about 1.1 cores; about 0.1 MB stored in the database per turn |
 
 Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
+
+More gaps found on 2026-11-09. A driver outside the cluster lost 7 to 26% of its turns at 990 agents while the proxy logged no 5xx, so read hosted results from persisted events, not from the driver. The same build gave an overhead per model call of 634 ms in one hosted run and 1,246 ms in the next: a hosted run cannot judge a single change. The per-org session cap and session create rate limit make setup for 8,000 agents take hours, so a hosted run above about 1,000 agents needs a driver inside the cluster and a raised cap first.
+
+### Baseline of 2026-11-09: where data plane v1 stands
+
+The capacity work on data plane v1 (workers, with PostgreSQL as the only record) stopped here by decision. The three 2026-11-09 rows above are the reference a later change, or [data plane v2](../execution/data-plane-v2/index.md), compares against.
+
+- **What it holds.** A turn costs about 100 ms of PostgreSQL CPU, so a 2 vCPU database at 70% runs about 14 turns a second: roughly 500 continuously busy agents on the hosted mix. A burst of 1,000 completes without a failed turn, with the slowest turns waiting about 100 s for a worker.
+- **Distance to 8,000 agents on that hardware.** Against the [8k budget](#local-stress-bench): PostgreSQL CPU is 16 times over, statements 7 times, WAL syncs 2 times. Application CPU is 1.4 times over the budget in `metrics.PROD`, which assumes the node pool grown to its limit; on the three 2 vCPU nodes that ran the hosted test it is 6 times over.
+- **Why cutting stopped.** Five steps (#5257, #5262, #5268, #5272, #5278) took statements per turn from 364 to 213 and PostgreSQL CPU only from 114 to 99 ms: the statements removed were the cheap ones. What remains is the design: a turn appends about 30 event rows (about 170 KB of WAL, model requests included), 74 capability usage rows and about 45 bookkeeping updates. Events must reach the database promptly, the database is the only record and nothing is purged, so those writes stay.
+- **Stored data is its own wall.** At about 0.1 MB per turn, 8,000 busy agents store about 2 TB a day. The bench has no budget for stored data per turn yet; add one before the next capacity claim.
+- **Reading the bench rows.** The bench opens a new session every three turns, and session setup is about a third of its statement time, so its per-turn costs overstate a long-lived session. The worker binary in these runs predates #5272 and #5278; the server binary matches #5278.
+- **Parked.** Skipping the PostgreSQL `NOTIFY` for task wake-ups when NATS carries them removed the notify lock from commits, yet raised overhead per model call (66 to 80 ms at 100 agents, 796 to 918 ms at 500), because the queue moved to WAL writes on the turn path. Retry it only after WAL per turn drops.
 
 ## Local Stress Bench
 
