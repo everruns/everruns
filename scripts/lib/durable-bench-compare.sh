@@ -13,10 +13,19 @@
 # the statements a turn costs PostgreSQL barely move between runs, so growth
 # there is a real change in the platform's database work, not runner noise.
 #
+# Repeated runs. A lane measured once on a shared runner swings by tens of
+# percent between runs (a 2 to 4 second sample catches one checkpoint or one
+# noisy neighbour), which flagged a 39% "regression" on 2026-11-09 that seven
+# local runs could not reproduce. When <current.jsonl> holds several rows for
+# one scenario, the gate compares the run with the median throughput, and the
+# other columns of that row come from the same run.
+#
 # Usage:
 #   durable-bench-compare.sh <current.jsonl> [baseline.jsonl]
 #
 # Environment:
+#   DURABLE_BENCH_MEDIAN_OUT    write the median row of every scenario here
+#                               (the file a baseline refresh copies)
 #   DURABLE_BENCH_MAX_DROP_PCT  allowed throughput drop per scenario (default 30)
 #   DURABLE_BENCH_MAX_STATEMENT_GROWTH_PCT  allowed growth in DB statements per
 #                               turn per scenario (default 15)
@@ -34,6 +43,28 @@ max_growth="${DURABLE_BENCH_MAX_STATEMENT_GROWTH_PCT:-15}"
 if [ ! -s "$current" ]; then
   echo "error: no results in $current"
   exit 1
+fi
+
+# Reduce repeated runs to one row per scenario: the run with the median
+# throughput (the lower middle for an even count), in first-seen order.
+all_runs="$current"
+current="$(mktemp)"
+trap 'rm -f "$current"' EXIT
+jq -c -s '
+  . as $all
+  | reduce $all[] as $r ([]; "\($r.bench)/\($r.scenario)" as $k | if index($k) then . else . + [$k] end)
+  | .[] as $k
+  | [$all[] | select("\(.bench)/\(.scenario)" == $k)]
+  | sort_by(.tasks_per_sec)
+  | .[((length - 1) / 2 | floor)]
+' "$all_runs" >"$current"
+if [ -n "${DURABLE_BENCH_MEDIAN_OUT:-}" ]; then
+  cp "$current" "$DURABLE_BENCH_MEDIAN_OUT"
+fi
+runs="$(jq -s 'group_by("\(.bench)/\(.scenario)") | map(length) | max' "$all_runs")"
+if [ "$runs" -gt 1 ]; then
+  echo "Each row is the median of up to ${runs} runs of its scenario."
+  echo
 fi
 
 if [ ! -s "$baseline" ]; then
