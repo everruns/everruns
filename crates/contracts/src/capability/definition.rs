@@ -74,6 +74,7 @@ use serde_json::Value;
 use crate::capability::error::CapabilityError;
 use crate::capability::id::validate_capability_id;
 
+pub use crate::narration::{ToolNarration, ToolNarrationPhase};
 pub use async_trait::async_trait;
 pub use schemars::{self, JsonSchema};
 pub use serde::{self, Deserialize, Serialize};
@@ -258,6 +259,17 @@ pub trait Handler: Send + Sync + 'static {
         Hints::default()
     }
 
+    /// Human-readable narration for one call, e.g. "Looking up rec_42".
+    ///
+    /// Called for each lifecycle phase. The default returns `None`, which
+    /// keeps the engine's generic, localized fallback ("Running {display
+    /// name}: …"). Arguments are untrusted model output: render only chosen,
+    /// bounded fields and never secrets.
+    fn narrate(&self, narration: &ToolNarration<'_>) -> Option<String> {
+        let _ = narration;
+        None
+    }
+
     /// Execute one call.
     ///
     /// Awaited work is cancelled by dropping this future when the turn stops.
@@ -311,6 +323,12 @@ impl Tool {
     pub async fn invoke(&self, arguments: Value, context: Context) -> Result<Value, Error> {
         self.handler.call(arguments, context).await
     }
+
+    /// The handler's narration for one call; `None` means "use the host's
+    /// generic fallback". See [`Handler::narrate`].
+    pub fn narrate(&self, narration: &ToolNarration<'_>) -> Option<String> {
+        self.handler.narrate(narration)
+    }
 }
 
 impl fmt::Debug for Tool {
@@ -322,6 +340,7 @@ impl fmt::Debug for Tool {
 #[async_trait]
 trait ErasedHandler: Send + Sync {
     async fn call(&self, input: Value, context: Context) -> Result<Value, Error>;
+    fn narrate(&self, narration: &ToolNarration<'_>) -> Option<String>;
 }
 
 struct HandlerAdapter<H>(H);
@@ -342,6 +361,10 @@ impl<H: Handler> ErasedHandler for HandlerAdapter<H> {
                 format!("failed to serialize capability result: {error}"),
             )
         })
+    }
+
+    fn narrate(&self, narration: &ToolNarration<'_>) -> Option<String> {
+        self.0.narrate(narration)
     }
 }
 

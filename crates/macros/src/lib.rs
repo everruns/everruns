@@ -77,6 +77,10 @@ use syn::{
 ///   `true`. `rule` is a closure or function taking `&<Name>Args` (see below)
 ///   and returning `bool`; arguments that do not parse are treated as needing
 ///   approval. An agent with a gated tool and no approver fails to build.
+/// - `#[everruns::tool(narrate = <narrator>)]` sets the call's human-readable
+///   narration (`FunctionTool::narrate`). `narrator` is a closure or function
+///   taking `(&<Name>Args, &ToolNarration)` and returning `Option<String>`;
+///   `None`, or arguments that do not parse, keep the generic fallback.
 ///
 /// # Generated items
 ///
@@ -131,6 +135,7 @@ struct ToolArgs {
     name: Option<String>,
     description: Option<String>,
     approval: Option<Approval>,
+    narrate: Option<Box<Expr>>,
 }
 
 /// The `needs_approval` option: every call, or calls a rule selects.
@@ -151,6 +156,15 @@ impl syn::parse::Parse for ToolArgs {
                 ("needs_approval", syn::Meta::Path(_)) => args.approval = Some(Approval::Always),
                 ("needs_approval", syn::Meta::NameValue(nv)) => {
                     args.approval = Some(Approval::When(Box::new(nv.value)));
+                }
+                ("narrate", syn::Meta::NameValue(nv)) => {
+                    args.narrate = Some(Box::new(nv.value));
+                }
+                ("narrate", other) => {
+                    return Err(syn::Error::new(
+                        other.span(),
+                        "expected `narrate = <narrator>`",
+                    ));
                 }
                 ("name" | "description", syn::Meta::NameValue(nv)) => {
                     let value = lit_str(&nv.value).ok_or_else(|| {
@@ -178,7 +192,7 @@ impl syn::parse::Parse for ToolArgs {
                     return Err(syn::Error::new(
                         path.span(),
                         format!(
-                            "unknown `everruns::tool` option `{other}`; expected `name`, `description`, or `needs_approval`"
+                            "unknown `everruns::tool` option `{other}`; expected `name`, `description`, `needs_approval`, or `narrate`"
                         ),
                     ));
                 }
@@ -362,6 +376,36 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
         },
     };
 
+    let narrate = match args.narrate {
+        None => quote!(),
+        Some(narrator) => quote! {
+            .narrate({
+                // Pin the narrator's argument types so a bare closure infers them.
+                fn __everruns_narrator<
+                    __F: ::core::ops::Fn(
+                            &#args_ident,
+                            &::everruns::ToolNarration<'_>,
+                        ) -> ::core::option::Option<::std::string::String>
+                        + ::core::marker::Send
+                        + ::core::marker::Sync
+                        + 'static,
+                >(narrator: __F) -> __F {
+                    narrator
+                }
+                let __narrator = __everruns_narrator(#narrator);
+                move |__call: &::everruns::ToolNarration<'_>| {
+                    // Arguments the narrator cannot read keep the generic
+                    // fallback narration.
+                    let __parsed = ::everruns::__macro_support::from_value::<#args_ident>(
+                        ::core::clone::Clone::clone(__call.arguments()),
+                    )
+                    .ok()?;
+                    __narrator(&__parsed, __call)
+                }
+            })
+        },
+    };
+
     let expanded = quote! {
         #[derive(
             ::everruns::__macro_support::serde::Deserialize,
@@ -409,6 +453,7 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
                 },
             )
             #approval
+            #narrate
         }
     };
 

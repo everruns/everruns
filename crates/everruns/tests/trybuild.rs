@@ -16,6 +16,8 @@ fn ui() {
     t.pass("tests/ui/pass_advanced_capability.rs");
     #[cfg(feature = "capabilities")]
     t.pass("tests/ui/pass_into_capability.rs");
+    #[cfg(feature = "capabilities")]
+    t.pass("tests/ui/pass_narration.rs");
     t.compile_fail("tests/ui/fail_not_async.rs");
     t.compile_fail("tests/ui/fail_receiver.rs");
     t.compile_fail("tests/ui/fail_generic.rs");

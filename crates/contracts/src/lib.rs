@@ -71,6 +71,7 @@ pub mod model;
 pub mod model_discovery;
 pub mod model_profiles;
 pub mod model_spec;
+pub mod narration;
 pub mod native_async;
 pub mod native_computer;
 pub mod native_web_search;

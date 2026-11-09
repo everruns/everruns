@@ -122,6 +122,7 @@ Use the smallest extension contract that fits the behavior you own.
 | Capability instructions and metadata | No | Yes |
 | Session/workspace identity and locale | No | Curated `Context` accessors |
 | Progress events | No | `Context::progress` |
+| [Narration](#tool-narration) override | `narrate = …` | `Handler::narrate` |
 | Child-work cancellation | Turn future only | `Context::cancellation` |
 | Backend/store/tenancy access | No | No |
 
@@ -269,6 +270,70 @@ Normal awaited work needs no cancellation branch. Cancelling a turn drops the
 handler future. Clone `context.cancellation()` only into child tasks, processes,
 or watchers that might otherwise survive after `execute` is dropped. The signal
 fires on cancellation and on every other call completion path.
+
+## Tool narration
+
+Clients show one human-readable line per tool call phase (started, waiting,
+completed, failed), carried as `narration` on tool events and read back with
+`SessionEvent::narration()`. Every tool gets one without extra code: the
+engine renders a generic, localized line from the tool's display name and, when
+it can pick a safe argument, a short detail, such as `Running Lookup Record`.
+
+Override it when a domain phrase reads better. Every authoring level has the
+same optional hook, and returning `None` keeps the generic line:
+
+- `capability::Handler::narrate(&self, &ToolNarration) -> Option<String>`
+- `FunctionTool::narrate(|call: &ToolNarration| -> Option<String>)`
+- `#[everruns::tool(narrate = |args: &<Name>Args, call: &ToolNarration| …)]`,
+  which receives typed arguments; arguments that do not parse keep the
+  generic line.
+
+`ToolNarration` gives the raw call `arguments()`, the `phase()`, the session
+`locale()`, and, on completion, the model-visible `result()`. The
+`everruns::narration` helpers phrase it the way built-in tools do:
+`safe_arg_str` reads a string argument but never one whose key looks like a
+secret, `truncate` and `narration_detail` bound a value to one short line (the
+latter also strips URL credentials and query strings), and
+`narrate_labeled_action` renders started, completed, and failed verbs with an
+optional detail and a Ukrainian locale variant.
+
+```rust
+use everruns::{capability, narration};
+
+struct Lookup;
+
+#[capability::async_trait]
+impl capability::Handler for Lookup {
+    // Input, Output, Error, name, description, and execute as above.
+
+    fn narrate(&self, call: &capability::ToolNarration<'_>) -> Option<String> {
+        // No id yet: keep the generic line.
+        narration::safe_arg_str(call.arguments(), &["id"])?;
+        Some(narration::narrate_labeled_action(
+            call.arguments(),
+            call.phase(),
+            call.locale(),
+            ("Looking up record", "Looked up record", "Could not look up record"),
+            ("Шукаю запис", "Знайшов запис", "Не вдалося знайти запис"),
+            &["id"],
+        ))
+    }
+}
+
+/// Convert Celsius to Fahrenheit.
+#[everruns::tool(narrate = |args: &FahrenheitArgs, _call: &everruns::ToolNarration<'_>| {
+    Some(format!("Converting {} °C", narration::truncate(&args.celsius.to_string(), 16)))
+})]
+async fn fahrenheit(celsius: f64) -> f64 {
+    celsius * 1.8 + 32.0
+}
+```
+
+Narration arguments are untrusted model output and narration is shown to
+people and stored with session events. Render only fields you chose, keep them
+bounded, and never include credentials or other secrets. Hosts that implement
+the low-level `everruns_core::tools::Tool` trait directly override its
+`narrate` method with the same contract.
 
 ## Security boundary
 
