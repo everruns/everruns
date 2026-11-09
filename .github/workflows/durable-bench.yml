@@ -8,9 +8,11 @@
 #
 # Each job writes one JSON line per scenario (`--summary`) and
 # scripts/lib/durable-bench-compare.sh compares them with
-# crates/durable/benches/baseline.jsonl, failing on a throughput drop. To
-# refresh the baseline, download the `durable-bench-*` artifacts of a trusted
-# run and concatenate their summary.jsonl files into baseline.jsonl.
+# crates/durable/benches/baseline.jsonl, failing on a throughput drop. The
+# engine lanes run three times and gate on the median run, because one 2 to 4
+# second sample on a shared runner swings by tens of percent. To refresh the
+# baseline, download the `durable-bench-*` artifacts of a trusted run and
+# concatenate their median.jsonl files into baseline.jsonl.
 #
 # The `turn-backends` job benches the framework rather than the engine: the
 # facade's `turn_backends` full run, an engine's sessions on the actor runner
@@ -88,7 +90,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U everruns"
+          --health-cmd "pg_isready -U everruns -d everruns_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -118,9 +120,12 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          for bench in ${{ matrix.benches }}; do
-            cargo bench -p everruns-durable --features bench --bench "$bench" -- \
-              --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
+          # Three passes; the compare step gates on each scenario's median run.
+          for pass in 1 2 3; do
+            for bench in ${{ matrix.benches }}; do
+              cargo bench -p everruns-durable --features bench --bench "$bench" -- \
+                --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
+            done
           done
 
       - name: Compare with baseline
@@ -131,7 +136,8 @@ jobs:
           jq -c --arg store "${{ matrix.store }}" \
             'select((.bench | startswith("db_")) == ($store == "postgres"))' \
             crates/durable/benches/baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
-          bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
+          DURABLE_BENCH_MEDIAN_OUT="$RUNNER_TEMP/median.jsonl" \
+            bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results
@@ -141,6 +147,7 @@ jobs:
           name: durable-bench-${{ matrix.store }}
           path: |
             ${{ runner.temp }}/summary.jsonl
+            ${{ runner.temp }}/median.jsonl
             crates/durable/target/benchmark-reports/
           if-no-files-found: warn
 

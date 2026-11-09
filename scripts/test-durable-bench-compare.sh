@@ -43,6 +43,27 @@ if "$COMPARE" "$TMP/empty.jsonl" "$TMP/baseline.jsonl" >/dev/null; then
   fail "an empty run must fail"
 fi
 
+# Repeated runs: the gate compares the median run, so one slow sample among
+# three does not fail it and one fast sample does not hide a real drop.
+{ row steady 500; row other 990; row steady 950; row other 1010; row steady 900; row other 1000; } >"$TMP/one_slow.jsonl"
+out="$(DURABLE_BENCH_MEDIAN_OUT="$TMP/median.jsonl" "$COMPARE" "$TMP/one_slow.jsonl" "$TMP/baseline.jsonl")" ||
+  fail "one slow run out of three must pass: $out"
+grep -q '| b | steady | 900 | 1000 | -10% |' <<<"$out" || fail "the median run is compared: $out"
+grep -q 'median of up to 3 runs' <<<"$out" || fail "repeated runs are announced: $out"
+[ "$(wc -l <"$TMP/median.jsonl")" -eq 2 ] || fail "one median row per scenario is written"
+[ "$(jq -r 'select(.scenario == "other") | .tasks_per_sec' "$TMP/median.jsonl")" = "1000" ] ||
+  fail "the median file holds the median run"
+[ "$(jq -r '.scenario' "$TMP/median.jsonl" | head -1)" = "steady" ] || fail "scenarios keep their first-seen order"
+
+{ row steady 600; row steady 990; row steady 650; } >"$TMP/one_fast.jsonl"
+if out="$("$COMPARE" "$TMP/one_fast.jsonl" "$TMP/baseline.jsonl")"; then
+  fail "two slow runs out of three must fail"
+fi
+{ row steady 600; row steady 990; } >"$TMP/two_runs.jsonl"
+if "$COMPARE" "$TMP/two_runs.jsonl" "$TMP/baseline.jsonl" >/dev/null; then
+  fail "an even count compares the lower middle run"
+fi
+
 # DB statements per turn gate (server turn latency rows).
 db_row() {
   printf '{"bench":"s","scenario":"%s","moniker":"m","smoke":false,"tasks":10,"tasks_per_sec":10,"s2s_p50_ms":1,"s2s_p99_ms":2,"db_statements_per_turn":%s,"db_ms_per_turn":5}\n' "$1" "$2"
