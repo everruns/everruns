@@ -224,8 +224,15 @@ impl Lease {
             .pending
     }
 
-    /// The input a recorded cancel consumes: what was in the inbox when it
-    /// was requested, as a withdraw consumes. Later input starts its own turn.
+    /// The input a recorded cancel consumes: input up to the position the
+    /// authority reported. Later input starts its own turn. The server reports
+    /// the inbox head at the request (a withdraw of everything pending);
+    /// Framework authorities report the targeted admission's own sequence, so
+    /// a message admitted behind the cancelled turn still runs (EVE-1344).
+    /// The turn inbox also stops taking steering once a cancel is reported.
+    /// Limit: a message the turn took as steering before the holder learned
+    /// of the cancel (the cancel landed between two renews) is part of the
+    /// cancelled turn, and its admission resolves with that turn's outcome.
     pub(crate) fn cancelled_inbox(&self) -> i64 {
         let inbox = self.inbox_seq();
         self.pending_cancel()

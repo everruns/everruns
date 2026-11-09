@@ -53,7 +53,13 @@ impl SqliteHosting {
                 },
                 ControlUpdate::Resume=>{state.inbox=i64::from(state.head);state.resume_generation+=1;state.runnable=true;},
                 ControlUpdate::RetryExecution=>{state.suspended=false;state.runnable=true;state.holder=None;state.expires=0;},
-                ControlUpdate::Cancel{input,interrupt}=>{state.target_cancels.insert(input,state.inbox);if interrupt{state.cancel=Some(state.inbox);state.cancel_reported=false;state.runnable=true;}},
+                ControlUpdate::Cancel{input,interrupt}=>{
+                    // The targeted admission's own sequence, not the inbox head:
+                    // input admitted behind it runs as the next turn (EVE-1344).
+                    let position=tx.query_row("SELECT value FROM framework_commands WHERE session=? AND id=?",params![session.to_string(),input.to_string()],|row|row.get::<_,String>(0)).optional().map_err(error)?
+                        .map(decode::<Value>).transpose()?.and_then(|receipt|receipt["sequence"].as_i64()).unwrap_or(state.inbox);
+                    state.target_cancels.insert(input,position);if interrupt{state.cancel=Some(position);state.cancel_reported=false;state.runnable=true;}
+                },
                 ControlUpdate::SelectBranch{branch,ranges,revision,discard}=>{
                     super::lineage::select(tx,session,state,branch,ranges,revision,discard)?;
                     // Proactive-compaction attempts measured another branch.
