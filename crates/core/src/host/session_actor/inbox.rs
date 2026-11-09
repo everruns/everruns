@@ -43,7 +43,7 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
     /// Renew to learn the inbox's newest input; a failed renew is the
     /// renewer's to judge, and the turn goes on with what it knows.
     async fn refresh(&self) {
-        match self.lease.renew().await {
+        match self.lease.refresh().await {
             // The session was deleted (EVE-1235): the lease is lost and the
             // turn stops on it.
             Ok(()) | Err(AgentLoopError::SessionNotFound(_)) => {}
@@ -86,13 +86,15 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
             self.hosts.begin_phase(self.host, self.drive, Phase::Act);
             return Ok(PendingInput::new(pending, Vec::new()));
         }
-        // A gap in the log stops the turn before its input is committed.
-        self.hosts.flush(self.host).await?;
-        self.lease.turn_stored();
+        // `take` already stored `turn.started`. A gap in the log stops the
+        // turn before steering input is committed; with none taken, the
+        // drive's end flushes, so a finishing turn's last events ride on its
+        // terminal event instead of a flush of their own.
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
-        self.hosts.inputs_consumed(self.drive, &inputs).await?;
         if !inputs.is_empty() {
+            self.hosts.flush(self.host).await?;
+            self.hosts.inputs_consumed(self.drive, &inputs).await?;
             self.refresh().await;
         }
         if self.lease.cancel_requested() {

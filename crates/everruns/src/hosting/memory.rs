@@ -272,6 +272,7 @@ impl SessionHosting for MemoryHosting {
     }
     async fn status(&self, id: SessionId) -> Result<HostingStatus> {
         let session = self.session(id);
+        session.counts.count(Op::Read);
         let state = session.control.lock().await;
         Ok(HostingStatus {
             executing: state.holder.is_some()
@@ -409,13 +410,21 @@ impl Ports {
     }
     async fn append(
         &self,
+        request: EventRequest,
+        expected: Option<Option<i32>>,
+    ) -> std::result::Result<Event, EventLogError> {
+        let mut state = self.session.control.lock().await;
+        self.append_locked(&mut state, request, expected).await
+    }
+    async fn append_locked(
+        &self,
+        state: &mut Control,
         mut request: EventRequest,
         expected: Option<Option<i32>>,
     ) -> std::result::Result<Event, EventLogError> {
         self.scope(request.session_id).map_err(log_error)?;
-        let mut state = self.session.control.lock().await;
         if !request.is_dreaming_metadata() {
-            self.check(&state).map_err(log_error)?;
+            self.check(state).map_err(log_error)?;
         } else {
             state.binding(self.session.id).map_err(log_error)?;
         }
@@ -477,6 +486,9 @@ impl Ports {
 impl SessionEpoch for Ports {
     fn renew_poke(&self) -> Option<Arc<tokio::sync::Notify>> {
         Some(self.session.renew_poke.clone())
+    }
+    fn pushes_admissions(&self) -> bool {
+        true
     }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
         self.session.counts.count(Op::Write);
@@ -605,6 +617,19 @@ impl EventLog for Ports {
     ) -> std::result::Result<Event, EventLogError> {
         self.session.counts.count(Op::Write);
         Ports::append(self, request, Some(expected)).await
+    }
+    /// One authority write: the batch commits under one ownership check.
+    async fn append_batch(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
+        self.session.counts.count(Op::Write);
+        let mut state = self.session.control.lock().await;
+        let mut events = Vec::with_capacity(requests.len());
+        for request in requests {
+            events.push(self.append_locked(&mut state, request, None).await?);
+        }
+        Ok(events)
     }
     fn durability(&self) -> EventDurability {
         EventDurability::Volatile

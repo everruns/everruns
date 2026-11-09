@@ -14,6 +14,7 @@ pub mod spi;
 mod admission;
 mod configuration;
 pub mod cutover;
+mod epoch_cache;
 #[cfg(not(target_arch = "wasm32"))]
 pub use configuration::DirectoryEnvironmentFactory;
 #[doc(hidden)]
@@ -628,6 +629,12 @@ pub trait SessionEpoch: Send + Sync + 'static {
     /// between authorities set it before moving one with an open turn.
     fn hand_off(&self) -> Option<Arc<std::sync::atomic::AtomicBool>> {
         None
+    }
+    /// Whether [`Self::renew_poke`] also fires on every input admission
+    /// while the epoch holds, so the driver need not renew to learn its
+    /// inbox (`SessionActorDriver::with_pushed_inbox`).
+    fn pushes_admissions(&self) -> bool {
+        false
     }
     /// Retain a timer obligation under the current epoch. Its activation is
     /// independent of frontend traffic; only Rust interprets expired waits.

@@ -25,7 +25,8 @@ pub(crate) async fn run(
     activation: SessionActivation,
     config: SessionActorConfig,
 ) -> Result<()> {
-    let epoch = activation.epoch;
+    let epoch: Arc<dyn SessionEpoch> =
+        Arc::new(super::epoch_cache::EpochCache::new(activation.epoch));
     expire_waits(engine, session, epoch.as_ref()).await?;
     let rejected = epoch
         .records("rejected/")
@@ -90,6 +91,10 @@ pub(crate) async fn run(
             ));
         }
     };
+    // Lifecycle events ride on the next event a reader waits for (data plane
+    // v2 step 1): one authority write per batch instead of one per event.
+    let emitter = runtime.host_event_emitter();
+    emitter.enable_committed_batches();
     let store = epoch.actor_store();
     let retries = Arc::new(super::retry::ProviderRetries {
         engine: engine.clone(),
@@ -97,6 +102,7 @@ pub(crate) async fn run(
         epoch: epoch.clone(),
     });
     let renew_poke = epoch.renew_poke();
+    let pushes_admissions = renew_poke.is_some() && epoch.pushes_admissions();
     let hand_off = epoch.hand_off();
     let hosts = Arc::new(FrameworkHosts {
         engine: engine.clone(),
@@ -113,8 +119,16 @@ pub(crate) async fn run(
     if let Some(hand_off) = hand_off {
         driver = driver.with_hand_off(hand_off);
     }
+    if pushes_admissions {
+        driver = driver.with_pushed_inbox();
+    }
     everruns_contracts::durable_retry::scope(retries, Box::pin(driver.run_actor(activation.actor)))
         .await;
+    // Held events left by an epoch that ended between barriers. A lost lease
+    // refuses them, which is what a crash at the same point would do.
+    if let Err(error) = emitter.flush().await {
+        tracing::debug!(%error, "held lifecycle events not committed at epoch end");
+    }
     Ok(())
 }
 
@@ -144,6 +158,14 @@ impl ActorHosts for FrameworkHosts {
             }
         }
         self.runtime.clone()
+    }
+
+    async fn flush(&self, host: &Self::Host) -> Result<()> {
+        host.host_event_emitter().flush().await
+    }
+
+    fn abandon(&self, host: &Self::Host) {
+        host.host_event_emitter().abandon();
     }
 
     async fn fresh_turn_id(&self, input: MessageId, proposed: TurnId) -> Result<TurnId> {

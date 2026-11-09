@@ -304,3 +304,128 @@ fn tool_completion_projection_keeps_scalar_json_as_text() {
         .expect("projected result");
     assert_eq!(result, &serde_json::Value::String("123".into()));
 }
+
+/// Records what the live sink saw, in order.
+#[derive(Default)]
+struct SeenSink(std::sync::Mutex<Vec<Event>>);
+
+impl EventSink for SeenSink {
+    fn try_send(&self, event: Event) -> Result<(), EventSinkError> {
+        self.0.lock().unwrap().push(event);
+        Ok(())
+    }
+}
+
+impl SeenSink {
+    fn types(&self) -> Vec<String> {
+        let seen = self.0.lock().unwrap();
+        seen.iter().map(|event| event.event_type.clone()).collect()
+    }
+}
+
+async fn committed(log: &InMemoryEventLog, session_id: SessionId) -> usize {
+    log.read_page(EventReadRequest::new(
+        session_id,
+        EventReadLimit::new(100).unwrap(),
+    ))
+    .await
+    .unwrap()
+    .events
+    .len()
+}
+
+fn reason_started(session_id: SessionId) -> EventRequest {
+    EventRequest::new(
+        session_id,
+        EventContext::empty(),
+        crate::events::ReasonStartedData {
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            metadata: None,
+        },
+    )
+}
+
+#[tokio::test]
+async fn committed_batches_hold_lifecycle_events_until_the_next_barrier() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    let held = emitter.emit(reason_started(session_id)).await.unwrap();
+    assert_eq!(held.sequence, None, "a held event is provisional");
+    assert!(
+        sink.types().is_empty(),
+        "no listener sees an uncommitted event"
+    );
+    assert_eq!(committed(&log, session_id).await, 0);
+
+    let barrier = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        barrier.sequence,
+        Some(2),
+        "the barrier commits after what it carries"
+    );
+    assert_eq!(
+        sink.types(),
+        ["reason.started", "output.message.completed"],
+        "the sink sees committed events in emission order"
+    );
+
+    emitter.emit(reason_started(session_id)).await.unwrap();
+    emitter.flush().await.unwrap();
+    assert_eq!(committed(&log, session_id).await, 3);
+    assert_eq!(sink.types().len(), 3);
+}
+
+#[tokio::test]
+async fn committed_batches_commit_held_events_before_a_live_delta() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    emitter.emit(reason_started(session_id)).await.unwrap();
+    let delta = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageDeltaData {
+                turn_id: TurnId::new(),
+                message_id: MessageId::new(),
+                delta: "h".into(),
+                accumulated: "h".into(),
+                phase: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert_eq!(delta.sequence, None);
+    assert_eq!(committed(&log, session_id).await, 1);
+    assert_eq!(sink.types(), ["reason.started", "output.message.delta"]);
+}
+
+#[tokio::test]
+async fn abandoned_held_events_are_never_committed() {
+    let session_id = SessionId::new();
+    let log = Arc::new(InMemoryEventLog::new());
+    let sink = Arc::new(SeenSink::default());
+    let emitter = HostEventEmitter::new(log.clone(), sink.clone());
+    emitter.enable_committed_batches();
+
+    emitter.emit(reason_started(session_id)).await.unwrap();
+    emitter.abandon();
+    emitter.flush().await.unwrap();
+    assert_eq!(committed(&log, session_id).await, 0);
+    assert!(sink.types().is_empty());
+}

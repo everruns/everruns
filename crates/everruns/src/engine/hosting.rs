@@ -702,6 +702,14 @@ impl Engine {
         );
         let mut ran = false;
         loop {
+            // After a run, ask before claiming: a claim is an authority write,
+            // and most runs leave nothing to claim (data plane v2 step 1).
+            if ran {
+                let status = profile.status(session).await?;
+                if status.suspended || (!status.runnable && status.wake_at.is_none()) {
+                    return Ok(());
+                }
+            }
             let Some(activation) = profile
                 .claim(session, &config.holder, config.lease_ttl)
                 .await?

@@ -185,7 +185,8 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 self.config.lease_ttl,
                 self.config.journal_page,
             )
-            .with_stall_timeout(self.config.stall_timeout),
+            .with_stall_timeout(self.config.stall_timeout)
+            .with_pushed_inbox(self.pushed_inbox),
         );
         let renewer = AbortOnDrop(everruns_contracts::rt::spawn(renew_loop(
             lease.clone(),
@@ -481,6 +482,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             self.hosts
                 .inputs_consumed(&drive, &[input.message_id])
                 .await?;
+            // Not `refresh`: committing the assignment is what turns a cancel
+            // of a still-pending admission into this turn's cancel, and this
+            // renew is how the turn learns it before it starts.
             lease.renew().await?;
             if !lease.cancel_requested() {
                 let mut stop = signals.stop.clone();
@@ -502,7 +506,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 return Ok(Finish::Expire);
             }
             let (execution, plan) = turn_entry_plan(&host, &drive).await?;
-            lease.renew().await?;
+            lease.refresh().await?;
             return self.drive(lease, &host, drive, execution, plan).await;
         };
 

@@ -180,6 +180,8 @@ pub struct SessionActorDriver<H: ActorHosts> {
     /// Set when the holder drains: running turns stop at their next step
     /// boundary and hand the lease back (see `turn.rs`).
     hand_off: Arc<std::sync::atomic::AtomicBool>,
+    /// See [`SessionActorDriver::with_pushed_inbox`].
+    pushed_inbox: bool,
 }
 
 impl<H: ActorHosts> SessionActorDriver<H> {
@@ -195,7 +197,18 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             renew_poke: Arc::new(Notify::new()),
             renew_epoch: everruns_contracts::rt::Instant::now(),
             hand_off: Default::default(),
+            pushed_inbox: false,
         }
+    }
+
+    /// The store pokes the renew poke ([`Self::with_renew_poke`]) on every
+    /// input admission as well as on cancellation. A turn then learns new
+    /// input from the renewer instead of renewing at each inbox check, which
+    /// saves an authority write per check. A poke that comes too late only
+    /// moves the input to the next turn.
+    pub fn with_pushed_inbox(mut self) -> Self {
+        self.pushed_inbox = true;
+        self
     }
 
     /// Share the holder's drain flag. Once it is set, every running turn

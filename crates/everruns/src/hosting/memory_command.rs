@@ -162,11 +162,13 @@ impl MemoryHosting {
                     state.next_input = state.inbox;
                 }
                 state.runnable = true;
+                poke_holder(&state, &session.renew_poke);
             }
             ControlUpdate::Resume => {
                 state.inbox = i64::from(head);
                 state.resume_generation += 1;
                 state.runnable = true;
+                poke_holder(&state, &session.renew_poke);
             }
             ControlUpdate::RetryExecution => {
                 state.suspended = false;
@@ -196,5 +198,15 @@ impl MemoryHosting {
             );
         }
         Ok(plan.reply)
+    }
+}
+
+/// Tell a running holder its inbox moved (`SessionEpoch::pushes_admissions`).
+/// `notify_waiters` stores no permit, so a session with no renewer waiting
+/// does not make its next epoch renew at once; a missed poke only moves the
+/// input to the next turn.
+fn poke_holder(state: &Control, poke: &tokio::sync::Notify) {
+    if state.holder.is_some() {
+        poke.notify_waiters();
     }
 }
