@@ -83,9 +83,50 @@ static COOKIE_FIELD: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid cookie field regex")
 });
 
+// A shell assignment can join quoted/unquoted fragments or escape whitespace.
+// Redact the whole word, not just the first quoted fragment.
+fn cookie_shell_word_end(input: &str, start: usize, encoded: bool) -> (usize, Option<usize>) {
+    let bytes = input.as_bytes();
+    // Commands embedded in serialized text have one extra escaping layer.
+    // Work in logical shell bytes, but keep original offsets for replacement.
+    let next = |offset: usize| {
+        if encoded
+            && bytes[offset] == b'\\'
+            && bytes.get(offset + 1).is_some_and(|b| b"\\\"'".contains(b))
+        {
+            (bytes[offset + 1], offset + 2)
+        } else {
+            (bytes[offset], offset + 1)
+        }
+    };
+    let mut end = start;
+    let mut quote = None;
+    let mut first_close = None;
+    while end < bytes.len() {
+        let (byte, after) = next(end);
+        if byte == b'\\' && quote != Some(b'\'') && after < bytes.len() {
+            end = next(after).1;
+            continue;
+        }
+        if let Some(delimiter) = quote {
+            if byte == delimiter {
+                first_close.get_or_insert(end);
+                quote = None;
+            }
+        } else if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+        } else if byte.is_ascii_whitespace() || b";|&()<>".contains(&byte) {
+            break;
+        }
+        end = after;
+    }
+    (end, first_close)
+}
+
 fn scrub_cookies(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut copied = 0;
+    let encoded_quotes = input.contains(r#"\""#) || input.contains(r"\'");
     for captures in COOKIE_FIELD.captures_iter(input) {
         let Some(field) = captures.get(0) else {
             continue;
@@ -98,6 +139,35 @@ fn scrub_cookies(input: &str) -> String {
         };
         let mut start = field.end();
         let assignment = &captures[4] == "=";
+        if !captures[3].is_empty() {
+            // Pretty-printed JSON may put a quoted header value on a new line.
+            start += input[start..].len() - input[start..].trim_start().len();
+        }
+        let preceding_quote =
+            name.start() > 0 && matches!(input.as_bytes()[name.start() - 1], b'\'' | b'"');
+        if assignment && !preceding_quote {
+            if start == input.len() {
+                continue;
+            }
+            let value_text = &input[start..];
+            let quoted_start = value_text.starts_with(r#"\""#) || value_text.starts_with(r"\'");
+            let quote_len = if quoted_start { 2 } else { 1 };
+            let encoded = encoded_quotes && !matches!(input.as_bytes()[start], b'\'' | b'"');
+            let (mut end, first_close) = cookie_shell_word_end(input, start, encoded);
+            if end == start {
+                continue;
+            }
+            if (quoted_start || matches!(input.as_bytes()[start], b'\'' | b'"'))
+                && first_close == end.checked_sub(quote_len)
+            {
+                start += quote_len;
+                end -= quote_len;
+            }
+            out.push_str(&input[copied..start]);
+            out.push_str(REDACTED);
+            copied = end;
+            continue;
+        }
         // A quote can enclose the value, the entire shell header, or an
         // escaped header inside serialized command arguments.
         let quote_at = |offset: usize| -> Option<(u8, usize)> {
@@ -124,7 +194,7 @@ fn scrub_cookies(input: &str) -> String {
         let bytes = input.as_bytes();
         let mut end = start;
         while end < bytes.len() {
-            if matches!(bytes[end], b'\r' | b'\n') {
+            if delimiter.is_none() && matches!(bytes[end], b'\r' | b'\n') {
                 break;
             }
             if let Some((quote, escapes)) = delimiter {
@@ -134,7 +204,14 @@ fn scrub_cookies(input: &str) -> String {
                         .rev()
                         .take_while(|&&b| b == b'\\')
                         .count();
-                    if slashes == escapes {
+                    let closes = if quote == b'\'' && escapes == 0 && captures[3].is_empty() {
+                        true // Backslashes are literal in single-quoted shell words.
+                    } else if escapes == 0 {
+                        slashes % 2 == 0
+                    } else {
+                        slashes % 4 == 1
+                    };
+                    if closes {
                         end -= escapes;
                         break;
                     }
@@ -147,8 +224,24 @@ fn scrub_cookies(input: &str) -> String {
         let value = &input[start..end];
         // Header prose is not a cookie. Actual headers contain name=value;
         // assignments can also carry opaque values of any length.
-        if value.is_empty() || (!assignment && !value.contains('=') && value != REDACTED) {
+        if value.is_empty()
+            || (!assignment && captures[3].is_empty() && !value.contains('=') && value != REDACTED)
+        {
             continue;
+        }
+        if preceding_quote && captures[3].is_empty() {
+            let escapes =
+                usize::from(name.start() > 1 && input.as_bytes()[name.start() - 2] == b'\\');
+            let word_start = name.start() - escapes - 1;
+            let (word_end, _) = cookie_shell_word_end(input, word_start, escapes > 0);
+            if word_end > end + escapes + 1 {
+                // Concatenated shell fragments form one header argument. Keep
+                // none of its credential suffix, even when quoting changes.
+                out.push_str(&input[copied..word_start]);
+                out.push_str(REDACTED);
+                copied = word_end;
+                continue;
+            }
         }
         out.push_str(&input[copied..start]);
         out.push_str(REDACTED);
@@ -262,6 +355,43 @@ mod tests {
                 r#"curl -H "Cookie: sid=\"abc def\"; csrf=ghi" x"#,
                 r#"curl -H "Cookie: [REDACTED]" x"#,
             ),
+            ("COOKIE='abc'def command", "COOKIE=[REDACTED] command"),
+            (r"COOKIE=abc\ def command", "COOKIE=[REDACTED] command"),
+            (
+                "{\"Cookie\":\n \"sid=abc\"}",
+                "{\"Cookie\":\n \"[REDACTED]\"}",
+            ),
+            (
+                r#"curl -H 'Cookie: sid=abc'"; csrf=ghi" x"#,
+                "curl -H [REDACTED] x",
+            ),
+            (
+                "COOKIE='sid=abc\ncsrf=ghi' command",
+                "COOKIE='[REDACTED]' command",
+            ),
+            (r"COOKIE='abc\' command", "COOKIE='[REDACTED]' command"),
+            (
+                r#"{"Cookie":"sid=abc\\", "safe": true}"#,
+                r#"{"Cookie":"[REDACTED]", "safe": true}"#,
+            ),
+            (r#"{"cookie":"short"}"#, r#"{"cookie":"[REDACTED]"}"#),
+            (
+                r#"export COOKIE=\"sid=abc; csrf=ghi\"; echo ok"#,
+                r#"export COOKIE=\"[REDACTED]\"; echo ok"#,
+            ),
+            (
+                r#"curl -H \"Cookie: sid=abc\"\"; csrf=ghi\" x"#,
+                "curl -H [REDACTED] x",
+            ),
+            (r#"'Cookie: \"sid=abc\"'"#, "[REDACTED]"),
+            (
+                r#"COOKIE=prefix\"sid=abc; csrf=ghi\" command"#,
+                "COOKIE=[REDACTED] command",
+            ),
+            (
+                r#"COOKIE="sid=abc\"; csrf=ghi" command"#,
+                r#"COOKIE="[REDACTED]" command"#,
+            ),
             ("COOKIE=abc command", "COOKIE=[REDACTED] command"),
             ("Cookie: sid=短; csrf=令牌", "Cookie: [REDACTED]"),
             (r#"COOKIE='abc' command"#, r#"COOKIE='[REDACTED]' command"#),
@@ -274,12 +404,15 @@ mod tests {
     #[test]
     fn cookie_words_and_unrelated_assignments_are_not_credentials() {
         for input in [
+            "COOKIE=",
+            "Cookie:",
             "cookie recipe",
             "cookie: chocolate chip",
             "cookie_count=3",
-            "mycookie=abc",
-            "X-Cookie: example",
-            "set-cookie-policy=strict",
+            "mycookie=sid=abc",
+            "écookie=abc",
+            "X-Cookie: sid=abc",
+            "set-cookie-policy=sid=abc",
         ] {
             assert_eq!(scrub_secrets(input), input);
         }
