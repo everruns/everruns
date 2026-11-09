@@ -824,6 +824,34 @@ stress` bench) checked in CI, so a later step can't silently undo it.
   to about 2), renewals that ride on batches, and one claim per activation
   are what brings writes to 5 or fewer.
 
+### Step 1 measurements (2026-11-09)
+
+Same bench, 4 sessions x 1 000 turns: **8 authority writes per chat turn, 5
+waited** (claim, renew, the turn's opening batch, its closing batch,
+release), flat from the second tenth to the last. Where the other 14 went:
+
+- Gone. The separate turn-identity receipt (a fresh input's assignment is
+  its turn identity); the wake time stored again unchanged (the claim
+  returns it); and the session record rewritten by every activation (the
+  synthetic harness and agent definition take session-derived ids, which
+  also stops each turn from adding one more definition to the store).
+- Folded. Lifecycle records ride on the next barrier, and a turn's final
+  answer without tool calls rides with `turn.completed` on `session.idled`.
+  A receipt the next holder can recompute rides on the next lease write:
+  the outcome on the release and, after a clean release, the fresh input's
+  assignment on the renew that reports its cancel.
+- Behind the work. `reason.started`, `output.message.started` and
+  `context.compacted` commit in a background task, chained per session,
+  while the model call runs. Each is counted as a write but not as a
+  waited one.
+
+What keeps this safe: a listener sees an event only after its commit, in
+emission order; every later commit, tail read, steered input and lease
+release commits held and background events first; an answer that calls
+tools commits before any tool runs; a failed background commit fails the
+next commit that waits for it. A crash loses only events and receipts the
+next holder re-emits or recomputes from the log.
+
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share
 the turn driver, so cells need the host bundle (step 2), not a finished
