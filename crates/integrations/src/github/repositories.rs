@@ -466,6 +466,9 @@ const STATUS_SCRIPT: &str = r#"for d in */; do
   if [ -f "$d/AGENTS.md" ]; then notes=1; else notes=0; fi
   printf 'checkout\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$d" "$url" "$branch" "$head" "$changed" "$base" "$ahead" "$unpushed" "$notes"
 done
+# A loop that ends on `continue` (an empty workspace, or a last directory that
+# is not a checkout) reports failure in some shells.
+exit 0
 "#;
 
 fn parse_status(stdout: &str) -> Vec<Checkout> {

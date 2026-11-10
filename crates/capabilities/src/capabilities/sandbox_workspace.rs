@@ -76,6 +76,16 @@ fn with_secret_file(secret_path: &str, command: &str) -> String {
     )
 }
 
+/// Run `script` under POSIX `sh`, whatever shell the provider starts.
+///
+/// Decision: callers of [`SandboxWorkspace`] write POSIX scripts, and a
+/// provider's default shell is not always one. Daytona runs commands under
+/// zsh, where an unmatched glob is an error and unquoted variables are not
+/// split, so a script that is correct in `sh` fails there.
+fn posix_sh(script: &str) -> String {
+    format!("sh -c {}", shell_escape(script))
+}
+
 fn redact(text: String, secret: &str) -> String {
     if secret.is_empty() {
         text
@@ -145,10 +155,10 @@ impl SandboxWorkspace for ManagedSandboxWorkspace {
                         config,
                         &state.instance,
                         &plain(
-                            with_secret_file(
+                            posix_sh(&with_secret_file(
                                 &secret_path,
                                 &translate_workspace_command(command, &root),
-                            ),
+                            )),
                             Some(cwd),
                         ),
                     )
@@ -207,7 +217,7 @@ impl SandboxWorkspace for ManagedSandboxWorkspace {
                 config,
                 &state.instance,
                 &SessionSandboxExecRequest {
-                    command: command.to_string(),
+                    command: posix_sh(command),
                     cwd: Some(
                         cwd.map(str::to_string)
                             .unwrap_or_else(|| workspace_root(&state.instance).to_string()),

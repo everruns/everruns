@@ -79,6 +79,21 @@ is step 6, "Sandbox repositories", of the [GitHub model](../integrations/github-
 Token admission and the accepted exposure are TM-GITHUB-009 in the
 [threat model](../security/threat-model.md).
 
+## Verified, and not yet
+
+Run on a local stack against a real Daytona sandbox with Muse 1.3 Contributor
+(2026-11-09): the harness boots, `repo_status` reports a missing GitHub App
+installation in plain words, and the repository map, structural search and
+language-server tools (TypeScript) work on a checkout in the sandbox. That run
+found that Daytona starts commands under zsh, so the sandbox workspace now runs
+every script under `sh`.
+
+Not verified against GitHub: checkout, fetch and push with an installation
+token. The repository tools are covered by tests that run real git against
+local remotes. The first deployment with a GitHub App connected to an agent
+must run that leg (two writable repositories, one read-only, a push and a
+refused push) before the harness loses its beta tag.
+
 ## Not built yet
 
 - Secrets other than GitHub (package registries, API keys) for full sandboxes.
