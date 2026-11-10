@@ -57,6 +57,7 @@ impl Worker {
         let req = self.request(proto::EmitEventRequest {
             event: Some(schema_event_request_to_proto(&event)),
             actor_fence: Some(self.fence(actor)),
+            return_events: false,
         });
         self.client.emit_event(req).await?;
         Ok(())
