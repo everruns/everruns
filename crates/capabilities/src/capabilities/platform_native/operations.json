@@ -235,6 +235,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"
@@ -8223,6 +8224,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"
@@ -26922,6 +26924,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"
