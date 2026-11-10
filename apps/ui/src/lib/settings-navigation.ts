@@ -11,7 +11,7 @@ import {
   TokenIcon,
   VirtualUserIcon,
 } from "@/components/icons/facet-icons";
-import { Activity, Gauge, Receipt } from "lucide-react";
+import { ChartGantt, Gauge, Receipt } from "lucide-react";
 import { SlackIcon } from "@/components/icons/slack-icon";
 import type { NavigationSection } from "@/lib/navigation";
 import { registryDomainIcons } from "@/lib/registry-navigation";
@@ -69,7 +69,8 @@ export const settingsNavigationSections: NavigationSection[] = [
       {
         name: "Tracing",
         href: "/settings/tracing",
-        icon: Activity,
+        // A trace waterfall, so it does not repeat the pulse line Health uses.
+        icon: ChartGantt,
         keywords: ["braintrust", "otel", "otlp", "traces"],
         description: "Manage agent trace exports",
       },
