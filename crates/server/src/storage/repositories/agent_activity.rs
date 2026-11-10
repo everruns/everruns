@@ -149,7 +149,7 @@ impl Database {
                    MAX(s.last_turn_at) AS last_turn_at
             FROM sessions s
             JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
-            WHERE s.org_id = $1
+            WHERE s.org_id = $1 AND s.deleted_at IS NULL
             GROUP BY a.public_id
             "#,
         )

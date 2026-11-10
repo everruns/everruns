@@ -10,7 +10,6 @@ export interface FeatureFlags {
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;
-  openai_agents_api?: boolean;
   mcp_events?: boolean;
   /** Refuse agent-made changes without a reason. Organization adoption opt-in. */
   agent_change_reasons_required?: boolean;

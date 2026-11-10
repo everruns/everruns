@@ -17,7 +17,7 @@
 //! the act of that turn's own loop may use it ([`for_act`]), and tools the act
 //! runs inline do not see it ([`without`]). So a child turn a tool runs inline
 //! (a subagent) never detaches into its parent's park, and other callers of
-//! the act (native async tools, the Agents API backend) keep running calls to
+//! the act (native async tools) keep running calls to
 //! their end.
 //!
 //! Decision: a call detaches only when nothing else in its turn depends on it

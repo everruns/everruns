@@ -45,7 +45,7 @@ impl Database {
             )
         };
         let filter = format!(
-            "WHERE org_id = $1 AND tags @> $2 {} \
+            "WHERE org_id = $1 AND deleted_at IS NULL AND tags @> $2 {} \
              AND ($3::timestamptz IS NULL OR updated_at >= $3){activity_predicate}",
             if include_archived {
                 ""

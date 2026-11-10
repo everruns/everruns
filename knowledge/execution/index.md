@@ -41,7 +41,6 @@
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.
 * [Lua Execution Capability (experimental)](lua-execution.md) - Experimental Lua execution capability (sandboxed VFS scripting; aims to supersede bashkit_shell).
 * [OpenAI Steering Prototype](openai-steering-prototype.md) - Owned WebSocket experiment, durable updates, and recovery tradeoffs.
-* [OpenAI Agents API Runtime Backend](openai-agents-api-runtime.md) - Mapping, control boundaries, durability, and recommendation for a managed OpenAI loop.
 * [Detached tool calls](detached-tool-calls.md) - Long server-side tool calls leave their turn, so the turn parks and frees its worker slot, lease and memory while the tool works.
 * [Worker history cache](worker-history-cache.md) - A gRPC worker keeps each session's message history and reads only the messages after the last sequence it holds.
 * [Sticky sessions](sticky-sessions.md) - A session's next turn goes back to the worker that ran its last one, whose history cache is warm, unless that worker cannot take it.

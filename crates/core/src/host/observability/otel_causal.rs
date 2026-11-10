@@ -84,9 +84,6 @@ impl OtelEventListener {
                 id.to_string(),
             ));
         }
-        attrs.extend(super::super::provider_attrs::otel_provider_attributes(
-            event,
-        ));
         attrs
     }
 

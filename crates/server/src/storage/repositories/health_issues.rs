@@ -130,7 +130,8 @@ impl Database {
     /// active-turn cap is checked against.
     pub async fn count_org_active_turns(&self, org_id: i64) -> Result<i64> {
         sqlx::query_scalar(
-            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
+            "SELECT COUNT(*)::bigint FROM sessions \
+             WHERE org_id = $1 AND status = 'active' AND deleted_at IS NULL",
         )
         .bind(org_id)
         .fetch_one(&self.pool)

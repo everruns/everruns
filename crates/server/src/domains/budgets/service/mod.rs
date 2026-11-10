@@ -546,48 +546,6 @@ impl BudgetService {
             .await;
     }
 
-    /// Meter usage a provider reported after its generation was billed as an
-    /// explicit unknown (late Agents API usage, EVE-1145). Only the late
-    /// tokens are metered: what the generation's event already debited (its
-    /// priced components) is not charged again. The journal is keyed to the
-    /// generation record, whose unique `(source_type, source_id)` index admits
-    /// it once on PostgreSQL, so a repeated call debits nothing more.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn meter_late_usage(
-        &self,
-        session_id: SessionId,
-        generation_id: uuid::Uuid,
-        turn_id: Option<uuid::Uuid>,
-        event_id: Option<uuid::Uuid>,
-        model: Option<&str>,
-        provider: Option<&str>,
-        usage: &crate::storage::LateGenerationUsage,
-    ) {
-        self.process_llm_generation(
-            GenerationSource {
-                session_id,
-                source_type: LATE_USAGE_SOURCE,
-                source_id: generation_id.to_string(),
-                event_id: None,
-                turn_id,
-                input_message_id: None,
-                ref_id: event_id.unwrap_or(generation_id),
-                provider_id: None,
-                estimated_cost_usd: usage.estimated_cost_usd,
-            },
-            model,
-            provider,
-            usage.input_tokens,
-            usage.output_tokens,
-            usage.cache_read_tokens,
-            usage.cache_creation_tokens,
-            None,
-            None,
-            &[],
-        )
-        .await;
-    }
-
     /// Meter what grading one eval result cost against the budgets of its
     /// case session, the run's cap among them. Keyed to the result, so the
     /// journal's unique source index refuses a second charge for one grade.
@@ -1128,8 +1086,6 @@ impl EventListener for BudgetService {
 // Helpers
 // ============================================================================
 
-/// Journal `source_type` of late usage applied to a generation record.
-pub(crate) const LATE_USAGE_SOURCE: &str = "llm_generation_late_usage";
 /// Journal `source_type` of an observer judge grading a trace score.
 pub(crate) const OBSERVER_GRADING_SOURCE: &str = "observer_grading";
 /// Inspector write-ups of findings (`health_issues/inspector.rs`).
@@ -1148,10 +1104,9 @@ pub(crate) fn is_monitoring_source(source_type: &str) -> bool {
 }
 
 /// What a metered generation is journaled against. An `llm.generation` event
-/// is one source; usage applied to its record later (late Agents API usage,
-/// EVE-1145) is another, journaled under its own source so the two never
-/// collide on the journal's unique `(source_type, source_id)` and
-/// `(kind, event_id)` indexes.
+/// is one source; grading and monitoring calls journal under their own
+/// sources so they never collide on the journal's unique
+/// `(source_type, source_id)` and `(kind, event_id)` indexes.
 pub(crate) struct GenerationSource {
     pub session_id: SessionId,
     pub source_type: &'static str,

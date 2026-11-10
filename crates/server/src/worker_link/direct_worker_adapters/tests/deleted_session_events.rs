@@ -1,7 +1,12 @@
-//! EVE-1235: a worker still emitting for a session the user deleted, renewing
-//! its actor lease on it, or starting a turn queued before the delete, must
-//! get "session not found" naming the session on both transports, never an
+//! EVE-1235: a worker still emitting for a session whose row is gone, renewing
+//! its actor lease on it, or starting a turn queued before it went, must get
+//! "session not found" naming the session on both transports, never an
 //! internal store error or a plain lost lease.
+//!
+//! A session's row goes only when its user or organization is erased; the
+//! tests reproduce that with `purge_session_for_test`. Deleting a session
+//! keeps the row (soft delete): no new turn starts on it, and what a worker
+//! still writes is stored. The last tests here cover that.
 
 use super::test_adapters;
 use crate::services::EventService;
@@ -20,7 +25,7 @@ fn late_event(session_id: SessionId) -> EventRequest {
     )
 }
 
-/// A session that existed, held events, and was then deleted.
+/// A session that existed, held events, and whose row was then erased.
 async fn deleted_session(adapters: &super::DirectWorkerAdapters) -> SessionId {
     let session = adapters
         .db
@@ -35,9 +40,9 @@ async fn deleted_session(adapters: &super::DirectWorkerAdapters) -> SessionId {
     assert!(
         adapters
             .db
-            .delete_session(DEFAULT_ORG_ID, session.id)
+            .purge_session_for_test(DEFAULT_ORG_ID, session.id)
             .await
-            .expect("delete session")
+            .expect("erase session")
     );
     session.id
 }
@@ -193,9 +198,9 @@ async fn leased_then_deleted(adapters: &super::DirectWorkerAdapters) -> (Session
     assert!(
         adapters
             .db
-            .delete_session(DEFAULT_ORG_ID, session_id)
+            .purge_session_for_test(DEFAULT_ORG_ID, session_id)
             .await
-            .expect("delete session")
+            .expect("erase session")
     );
     (session_id, actor.fence)
 }
@@ -300,4 +305,57 @@ async fn fenced_emit_for_a_deleted_session_is_session_not_found() {
         .expect_err("fenced emit for a deleted session must fail");
     assert_eq!(status.code(), tonic::Code::NotFound, "{status:?}");
     assert_eq!(status.message(), format!("Session not found: {session_id}"));
+}
+
+/// Deleting a session keeps its row, so a worker finishing the turn still
+/// stores its events; they stay with the session's history.
+#[tokio::test]
+async fn events_for_a_soft_deleted_session_are_stored() {
+    let adapters = test_adapters();
+    let session_id = adapters.db.create_test_session().await;
+    assert!(
+        adapters
+            .db
+            .delete_session(DEFAULT_ORG_ID, session_id)
+            .await
+            .expect("delete session")
+    );
+
+    adapters
+        .emit_event(late_event(session_id))
+        .await
+        .expect("a late event for a deleted session is stored");
+    let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE session_id = $1")
+        .bind(session_id)
+        .fetch_one(adapters.db.pool())
+        .await
+        .expect("count events");
+    assert_eq!(stored, 1);
+}
+
+/// No turn starts on a deleted session: its context reads as not found, the
+/// signal a worker stops a queued turn on.
+#[tokio::test]
+async fn turn_context_for_a_soft_deleted_session_is_session_not_found() {
+    let adapters = test_adapters();
+    let session_id = adapters.db.create_test_session().await;
+    assert!(
+        adapters
+            .db
+            .delete_session(DEFAULT_ORG_ID, session_id)
+            .await
+            .expect("delete session")
+    );
+
+    let error = match adapters
+        .load_turn_context(DEFAULT_ORG_ID, session_id.uuid())
+        .await
+    {
+        Ok(_) => panic!("turn context for a deleted session must fail"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, AgentLoopError::SessionNotFound(id) if id == session_id),
+        "expected SessionNotFound, got {error:?}"
+    );
 }

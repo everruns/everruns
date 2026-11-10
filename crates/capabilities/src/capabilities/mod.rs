@@ -24,7 +24,6 @@ pub mod knowledge_base;
 pub mod knowledge_index;
 pub mod memory;
 pub mod monitors;
-pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
@@ -265,7 +264,6 @@ pub fn register_hosted_capabilities(
     registry.register(CitationWebCapability);
     registry.register(CitationVerificationCapability);
     // Inert unless the org flag lets it through to the worker snapshot.
-    registry.register(openai_agents_api_runtime::OpenAiAgentsApiRuntimeCapability);
     register_environment_capabilities(registry, grade);
     register_platform_capabilities(registry);
     #[cfg(feature = "container-sandbox")]

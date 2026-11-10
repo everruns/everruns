@@ -106,7 +106,7 @@ pub struct ReasonResult {
     /// `Some(false)` (force serialize). `None` preserves the default schedule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
-    /// A remote tool loop (OpenAI Agents API) paused on a tool call; the turn parks (EVE-1124).
+    /// The reason step paused on a tool call; the turn parks.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub waiting_for_tool_results: bool,
     /// The generation lost tool calls to truncation and the output-truncation

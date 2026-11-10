@@ -67,7 +67,8 @@ impl Database {
         let mut tx = self.pool.begin().await?;
         let row: Option<WaitingTurnResolutionRow> = sqlx::query_as(
             "SELECT status, turn_resolution_id, turn_resolution_lease_expires_at, \
-             turn_resolution_plan FROM sessions WHERE org_id = $1 AND id = $2 FOR UPDATE",
+             turn_resolution_plan FROM sessions \
+             WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE",
         )
         .bind(org_id)
         .bind(session_id)

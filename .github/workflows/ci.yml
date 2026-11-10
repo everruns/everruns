@@ -1851,7 +1851,7 @@ jobs:
         # check. `--nocapture` exposes the generations behind the failure.
         run: doppler run -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --test tool_search_test --all-features -- --nocapture
 
-      # Driver and Agents API live tests (`crates/llm-tests/tests/provider_live`).
+      # Driver live tests (`crates/llm-tests/tests/provider_live`).
       # Unlike the matrix above these never skip: a missing key or exhausted
       # account fails the step, so green means every vendor answered.
       - name: Run provider live tests

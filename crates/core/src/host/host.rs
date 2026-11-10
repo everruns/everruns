@@ -25,11 +25,11 @@ use crate::{
     org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use crate::{
-    CompactionCheckpointStore, agents_api_store::AgentsApiStore,
-    connection_services::ProviderCredentialStore, connection_services::UserConnectionResolver,
-    delegation_services::SessionCreationAuthority, durability::DurableToolResultStore,
-    durability::PartialStreamStore, event_emitter::EventEmitter, execution_loading::AgentStore,
-    execution_loading::HarnessStore, execution_loading::SessionStore, file_services::FileResolver,
+    CompactionCheckpointStore, connection_services::ProviderCredentialStore,
+    connection_services::UserConnectionResolver, delegation_services::SessionCreationAuthority,
+    durability::DurableToolResultStore, durability::PartialStreamStore,
+    event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, file_services::FileResolver,
     image_services::ImageArtifactStore, image_services::ImageResolver,
     native_async_store::NativeAsyncStore, provider_resolution::ProviderStore,
     session_files::SessionFileSystem, session_services::LeasedResourceStore,
@@ -126,11 +126,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn message_store(&self) -> Arc<dyn MessageRetriever>;
 
     fn native_async_store(&self) -> Option<Arc<dyn NativeAsyncStore>> {
-        None
-    }
-
-    /// Durable state for the opt-in OpenAI Agents API backend (EVE-1123).
-    fn agents_api_store(&self) -> Option<Arc<dyn AgentsApiStore>> {
         None
     }
 

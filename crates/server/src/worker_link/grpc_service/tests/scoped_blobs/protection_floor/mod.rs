@@ -262,7 +262,7 @@ async fn floor_is_empty_by_default_and_cannot_be_cleared_or_downgraded() {
             .await
             .is_err()
     );
-    db.delete_session(1, session).await.unwrap();
+    db.purge_session_for_test(1, session).await.unwrap();
     assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), Some(2));
     let server = CombinedServer::start(service, None).await;
     let mut client = WorkerServiceClient::new(server.channel.clone());

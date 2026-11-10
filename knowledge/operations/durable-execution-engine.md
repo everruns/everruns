@@ -265,7 +265,9 @@ an atomic `running → failed` workflow transition; only the winner records
 `workflow.failed`. A failed turn is the actor runtime's to record
 ([Session actors](#session-actors-turn-execution)), not the queue's.
 
-A turn whose session was deleted (before it was claimed or mid-step) is the
+A turn whose session row is gone (its user or organization was erased before
+the turn was claimed or mid-step; deleting a session keeps the row, see
+[Session deletion](../runtime-resources/session-deletion.md)) is the
 exception: there is nothing left to report to. The control plane answers its
 reads and event writes with "session not found" naming the session (a session
 FK violation on event insert included), on both the gRPC and in-process worker

@@ -341,10 +341,6 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.extensions.stores.image_artifacts.clone()
     }
 
-    fn agents_api_store(&self) -> Option<Arc<dyn crate::agents_api_store::AgentsApiStore>> {
-        self.extensions.stores.agents_api.clone()
-    }
-
     fn hosted_mcp_resolver(
         &self,
         _: i64,

@@ -162,7 +162,7 @@ Immutable raw activity fact, written for every usage whether or not a policy cov
 
 The journal stores scope (`org_id`, `user_id`, `principal_id`, `session_id`, `agent_id`, `harness_id`) plus raw `measures` and free-form `metadata`.
 
-A generation can declare billable components beyond its tokens (`cost_components` on `llm.generation`, used by the OpenAI Agents API backend for hosted tools and containers). The meter debits the priced ones and records every component whose amount is unknown in the journal metadata and the ledger's rating metadata as `cost_unknown_components`, so a total never silently treats an unknown amount as zero. A generation whose token usage is unknown but declares components still journals, with zero tokens ([meter](../../crates/server/src/domains/budgets/service/mod.rs), `GenerationMeter`). When the provider reports that usage later (an Agents API turn, EVE-1145), the late tokens are metered once more as their own journal entry, sourced `llm_generation_late_usage` with the generation record's id, so the unique `(source_type, source_id)` index refuses a second late debit of the same generation ([late usage](../execution/openai-agents-api-runtime.md#observability-and-cost)).
+A generation can declare billable components beyond its tokens (`cost_components` on `llm.generation`, used for hosted tools and containers). The meter debits the priced ones and records every component whose amount is unknown in the journal metadata and the ledger's rating metadata as `cost_unknown_components`, so a total never silently treats an unknown amount as zero. A generation whose token usage is unknown but declares components still journals, with zero tokens ([meter](../../crates/server/src/domains/budgets/service/mod.rs), `GenerationMeter`).
 
 ### Usage Ledger
 
@@ -177,9 +177,10 @@ never touched. The append-only trigger permits exactly that shape of update and
 rejects everything else, including a hand-written update that nulls a reference
 while editing another column. Deleting a journal or ledger row is never allowed.
 
-This is why deleting a session no longer fails: before migration 122 the trigger
-rejected the cascade itself, so `DELETE /v1/sessions/{id}` returned 500 for any
-session that had spent anything.
+Deleting a session does not reach this path: it is a soft delete that keeps the
+session row and every reference to it
+([Session deletion](../runtime-resources/session-deletion.md)). The detach
+applies when a row is really erased, with its user or organization.
 
 ## Evaluation Pipeline
 
@@ -239,7 +240,7 @@ cross-org linkage. Ordinary user forks carry lineage only and remain independent
 budget roots. Detached count caps (`max_active_detached_tasks` /
 `max_total_detached_tasks`) remain an independent admission bound (TM-DOS-030).
 
-**Loop gate**: debits are post-hoc, so the loop reads budget status before every provider call instead. Each reason atom first asks the host's `BudgetChecker` (`RuntimeHostAdapter::budget_checker`: direct in the server, gRPC from remote workers, `InProcessRuntimeBuilder::budget_checker` for embedders) once. `exhausted` or `paused` ends the turn before the model runs: the gate emits `budget.exhausted` / `budget.paused` and the canonical error message, and the engine's failed-reason path emits a single `turn.failed` with the `budget_exhausted` / `budget_paused` code. The in-process loop, durable workflows and worker activities all reach the gate through the one reason entry point; the OpenAI Agents API backend applies the same evaluation before each tool batch. A checker error fails open (logged), because an unreachable budget store must not stop every turn. Overshoot is bounded by the one generation already in flight. The checker resolves the full hierarchy (`root session`, `agent channel`, `agent trigger`, `agent`, `user`, `org`) from the session owner and org context.
+**Loop gate**: debits are post-hoc, so the loop reads budget status before every provider call instead. Each reason atom first asks the host's `BudgetChecker` (`RuntimeHostAdapter::budget_checker`: direct in the server, gRPC from remote workers, `InProcessRuntimeBuilder::budget_checker` for embedders) once. `exhausted` or `paused` ends the turn before the model runs: the gate emits `budget.exhausted` / `budget.paused` and the canonical error message, and the engine's failed-reason path emits a single `turn.failed` with the `budget_exhausted` / `budget_paused` code. The in-process loop, durable workflows and worker activities all reach the gate through the one reason entry point. A checker error fails open (logged), because an unreachable budget store must not stop every turn. Overshoot is bounded by the one generation already in flight. The checker resolves the full hierarchy (`root session`, `agent channel`, `agent trigger`, `agent`, `user`, `org`) from the session owner and org context.
 
 ## Ask to continue
 

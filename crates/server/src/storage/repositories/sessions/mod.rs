@@ -222,8 +222,9 @@ impl SessionFilterSql {
 
     /// Filters that are not a facet dimension, so every facet applies them.
     fn common_predicates(&self) -> String {
+        // Every list, facet and stats read leaves deleted sessions out.
         format!(
-            "{}{}{}{}",
+            " AND deleted_at IS NULL{}{}{}{}",
             self.search_predicate,
             self.owner_predicate,
             self.window_predicate,
@@ -303,12 +304,13 @@ impl Database {
         } else {
             match input.parent_session_id {
                 Some(parent) => sqlx::query_scalar::<_, Option<uuid::Uuid>>(
-                    "SELECT root_session_id FROM sessions WHERE id = $1",
+                    "SELECT root_session_id FROM sessions WHERE id = $1 AND deleted_at IS NULL",
                 )
                 .bind(parent.uuid())
                 .fetch_optional(&mut *tx)
                 .await?
-                .flatten()
+                // A deleted parent takes no new subagent sessions.
+                .ok_or_else(|| anyhow::anyhow!("parent session not found"))?
                 .unwrap_or_else(|| parent.uuid()),
                 None => session_id,
             }
@@ -471,7 +473,7 @@ impl Database {
                    COALESCE(w.file_count, 0) AS workspace_file_count
             FROM sessions s
             LEFT JOIN workspaces w ON w.id = s.workspace_id
-            WHERE s.org_id = $1 AND s.id = $2
+            WHERE s.org_id = $1 AND s.id = $2 AND s.deleted_at IS NULL
             "#,
         )
         .bind(org_id)
@@ -687,7 +689,7 @@ impl Database {
 
     pub async fn count_sessions_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
         let (count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1 AND agent_id = $2")
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1 AND agent_id = $2 AND deleted_at IS NULL")
                 .bind(org_id)
                 .bind(agent_id)
                 .fetch_one(&self.pool)
@@ -702,7 +704,7 @@ impl Database {
         harness_id: HarnessId,
     ) -> Result<u64> {
         let (count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1 AND harness_id = $2")
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1 AND harness_id = $2 AND deleted_at IS NULL")
                 .bind(org_id)
                 .bind(harness_id)
                 .fetch_one(&self.pool)
@@ -721,7 +723,7 @@ impl Database {
             r#"
             SELECT harness_id, COUNT(*)::bigint
             FROM sessions
-            WHERE org_id = $1 AND harness_id = ANY($2)
+            WHERE org_id = $1 AND harness_id = ANY($2) AND deleted_at IS NULL
             GROUP BY harness_id
             "#,
         )
@@ -734,10 +736,12 @@ impl Database {
     /// Count sessions in an org (for resource limits). Sessions are hard-deleted
     /// (no soft-delete status), so every stored row counts toward the cap.
     pub async fn count_sessions_for_org(&self, org_id: i64) -> Result<i64> {
-        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1")
-            .bind(org_id)
-            .fetch_one(&self.pool)
-            .await?;
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE org_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await?;
 
         Ok(count)
     }
@@ -754,7 +758,7 @@ impl Database {
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
-            WHERE parent_session_id = $1
+            WHERE parent_session_id = $1 AND deleted_at IS NULL
             ORDER BY created_at ASC
             "#,
         )
@@ -776,7 +780,7 @@ impl Database {
                 END AS status,
                 COUNT(*) AS count
             FROM sessions
-            WHERE org_id = $1
+            WHERE org_id = $1 AND deleted_at IS NULL
             GROUP BY 1
             "#,
         )
@@ -790,7 +794,7 @@ impl Database {
     /// Count non-finished sessions for an org (EVE-508 concurrent session cap).
     pub async fn count_active_sessions_for_org(&self, org_id: i64) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status IN ('active', 'idle', 'started', 'waiting_for_tool_results', 'resolving_tool_results', 'paused')",
+            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status IN ('active', 'idle', 'started', 'waiting_for_tool_results', 'resolving_tool_results', 'paused') AND deleted_at IS NULL",
         )
         .bind(org_id)
         .fetch_one(&self.pool)
@@ -801,7 +805,7 @@ impl Database {
     /// Count sessions currently executing a turn for an org (EVE-508 active turn cap).
     pub async fn count_active_turns_for_org(&self, org_id: i64) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
+            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active' AND deleted_at IS NULL",
         )
         .bind(org_id)
         .fetch_one(&self.pool)
@@ -824,7 +828,8 @@ impl Database {
         // that reference this session (schedules, events) can still insert.
         let existing: Option<WaitingTurnResolutionRow> = sqlx::query_as(
             "SELECT status, turn_resolution_id, turn_resolution_lease_expires_at, \
-             turn_resolution_plan FROM sessions WHERE org_id = $1 AND id = $2 \
+             turn_resolution_plan FROM sessions \
+             WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL \
              FOR NO KEY UPDATE",
         )
         .bind(org_id)
@@ -914,7 +919,7 @@ impl Database {
         // lock wait per turn under a 10-session load test). Cap hits are counted
         // in `everruns_org_active_turn_cap_rejections_total`.
         let active_turns: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
+            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active' AND deleted_at IS NULL",
         )
         .bind(org_id)
         .fetch_one(&mut *tx)
@@ -1037,7 +1042,7 @@ impl Database {
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
-            WHERE org_id = $1 AND tags @> $2
+            WHERE org_id = $1 AND tags @> $2 AND deleted_at IS NULL
             ORDER BY created_at ASC
             LIMIT 1
             "#,
@@ -1071,7 +1076,7 @@ impl Database {
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
-            WHERE org_id = $1 AND channel_id = $2 AND owner_principal_id = $3 AND tags @> $4
+            WHERE org_id = $1 AND channel_id = $2 AND owner_principal_id = $3 AND tags @> $4 AND deleted_at IS NULL
             ORDER BY created_at ASC
             LIMIT 1
             "#,
@@ -1100,7 +1105,7 @@ impl Database {
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
-            WHERE org_id = $1 AND owner_principal_id = $2 AND tags @> $3
+            WHERE org_id = $1 AND owner_principal_id = $2 AND tags @> $3 AND deleted_at IS NULL
             ORDER BY created_at ASC
             LIMIT 1
             "#,
@@ -1129,7 +1134,7 @@ impl Database {
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
-            WHERE org_id = $1 AND app_id = $2 AND owner_principal_id = $3 AND tags @> $4
+            WHERE org_id = $1 AND app_id = $2 AND owner_principal_id = $3 AND tags @> $4 AND deleted_at IS NULL
             ORDER BY created_at ASC
             LIMIT 1
             "#,
@@ -1151,6 +1156,7 @@ impl Database {
             SELECT {SESSION_COLUMNS}
             FROM sessions s
             WHERE s.status = 'active'
+              AND s.deleted_at IS NULL
               AND (
                 EXISTS (SELECT 1 FROM apps a WHERE a.id = s.app_id
                     AND a.org_id = s.org_id AND a.channel_type = 'slack' AND a.status != 'deleted')
@@ -1180,11 +1186,14 @@ impl Database {
             r#"
             SELECT id, org_id
             FROM sessions
-            WHERE (status = 'waiting_for_tool_results' AND updated_at < $1)
-               OR (
+            WHERE deleted_at IS NULL
+              AND (
+                   (status = 'waiting_for_tool_results' AND updated_at < $1)
+                OR (
                     status = 'resolving_tool_results'
                     AND turn_resolution_lease_expires_at <= NOW()
-               )
+                   )
+              )
             "#,
         )
         .bind(cutoff)
@@ -1339,7 +1348,7 @@ impl Database {
             r#"
             UPDATE sessions
             SET archived_at = CASE WHEN $3 THEN COALESCE(archived_at, NOW()) ELSE NULL END
-            WHERE org_id = $1 AND id = $2
+            WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL
             RETURNING {SESSION_COLUMNS}
             "#
         )))
@@ -1407,10 +1416,11 @@ impl Database {
     ) -> Result<Vec<SessionId>> {
         let rows: Vec<(SessionId,)> = sqlx::query_as(
             r#"
-            SELECT session_id
-            FROM pinned_sessions
-            WHERE user_id = $1 AND org_id = $2
-            ORDER BY pinned_at DESC
+            SELECT p.session_id
+            FROM pinned_sessions p
+            JOIN sessions s ON s.id = p.session_id AND s.deleted_at IS NULL
+            WHERE p.user_id = $1 AND p.org_id = $2
+            ORDER BY p.pinned_at DESC
             "#,
         )
         .bind(user_id)

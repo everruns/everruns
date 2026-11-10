@@ -171,12 +171,13 @@ pub const META_RECOMMENDED: everruns_contracts::recommended_models::ProviderReco
             "muse-spark-1.3-contributor",
             "muse-spark-1.3",
             "muse-wonder-1.0",
+            "muse-ember-1.0",
             "muse-spark-1.2",
         ],
         coding_model: "muse-spark-1.3-contributor",
         research_model: "muse-wonder-1.0",
         chat_model: "muse-spark-1.3",
-        small_model: "muse-spark-1.2",
+        small_model: "muse-ember-1.0",
         decision_model: "muse-spark-1.2",
     };
 

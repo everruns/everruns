@@ -65,9 +65,6 @@ pub struct FeatureFlags {
     pub reports: bool,
     /// Machine-payment custody, policy, audit, and paid capability surfaces.
     pub machine_payments: bool,
-    /// OpenAI Agents API runtime backend; internal enrolment is platform-owned.
-    #[serde(default)]
-    pub openai_agents_api: bool,
     #[serde(default)]
     pub docker_capability: bool,
     #[serde(default)]
@@ -243,12 +240,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: MACHINE_PAYMENTS_DEFAULT_GRADE,
     },
     FeatureFlagDefinition {
-        name: "openai_agents_api",
-        label: "OpenAI Agents API runtime",
-        description: "Allows agents with the OpenAI Agents API runtime capability to run their loop through OpenAI's Agents API instead of the native Everruns loop.",
-        grade: FeatureFlagGrade::Internal,
-    },
-    FeatureFlagDefinition {
         name: "docker_capability",
         label: "Docker containers",
         description: "Run agent tools in Docker containers.",
@@ -364,7 +355,6 @@ impl FeatureFlags {
             ),
             ("reports".to_string(), self.reports),
             ("machine_payments".to_string(), self.machine_payments),
-            ("openai_agents_api".to_string(), self.openai_agents_api),
         ]);
         map.extend(
             self.integrations
@@ -397,7 +387,6 @@ impl FeatureFlags {
             "agent_change_reasons_required" => self.agent_change_reasons_required,
             "reports" => self.reports,
             "machine_payments" => self.machine_payments,
-            "openai_agents_api" => self.openai_agents_api,
             _ => self.integrations.get(flag).copied().unwrap_or(false),
         }
     }
@@ -418,7 +407,6 @@ impl FeatureFlags {
             "agent_change_reasons_required" => self.agent_change_reasons_required = enabled,
             "reports" => self.reports = enabled,
             "machine_payments" => self.machine_payments = enabled,
-            "openai_agents_api" => self.openai_agents_api = enabled,
             "docker_capability" => self.docker_capability = enabled,
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
@@ -463,7 +451,6 @@ impl FeatureFlags {
             "skills" => Some("skills"),
             "memory" => Some("memory"),
             "knowledge" | "knowledge_index" | "knowledge_base" => Some("knowledge"),
-            everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
             _ => {
@@ -511,7 +498,6 @@ impl FeatureFlags {
             agent_change_reasons_required: true,
             reports: true,
             machine_payments: true,
-            openai_agents_api: true,
             integrations: everruns_capabilities::integrations_catalog::feature_flag_definitions()
                 .map(|definition| (definition.name.to_string(), true))
                 .collect(),
@@ -700,19 +686,15 @@ mod tests {
                 .for_org(&HashMap::from([(reasons.to_string(), false)]))
                 .is_enabled(reasons)
         );
-        for removed in ["agent_delegation", "webmcp", "typesafe"] {
+        for removed in [
+            "agent_delegation",
+            "webmcp",
+            "typesafe",
+            "openai_agents_api",
+        ] {
             assert!(!is_known_feature_flag(removed), "{removed}");
         }
-        assert_eq!(
-            policy.grade("openai_agents_api"),
-            FeatureFlagGrade::Internal
-        );
-        assert!(
-            !policy
-                .grade("openai_agents_api")
-                .org_configurable(DeploymentGrade::Prod)
-        );
-        assert!(!policy.for_org(&HashMap::new()).openai_agents_api);
+        assert!(!FeatureFlagGrade::Internal.org_configurable(DeploymentGrade::Prod));
         for name in [
             "skills",
             "memory",
@@ -802,7 +784,6 @@ mod tests {
             "lua",
             "lua_code_mode",
             "parallel",
-            "openai_agents_api_runtime",
         ] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");

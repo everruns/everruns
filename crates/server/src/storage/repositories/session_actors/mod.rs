@@ -406,6 +406,7 @@ impl Database {
                 FROM sessions s
                 JOIN session_actors a ON a.session_id = s.id
                 WHERE s.status = 'active'
+                  AND s.deleted_at IS NULL
                   AND s.updated_at < NOW() - $1::float8 * INTERVAL '1 millisecond'
                   AND a.updated_at < NOW() - $1::float8 * INTERVAL '1 millisecond'
                   AND a.runnable_since IS NULL

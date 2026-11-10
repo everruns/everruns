@@ -469,7 +469,9 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "payload_encrypted",
         id_column: "id",
     },
-    // Agents API orchestration state holds private tool arguments and results.
+    // Rows of the removed OpenAI Agents API backend. Nothing reads them, but
+    // the table stays (records are never purged), so key rotation still
+    // re-encrypts them.
     EncryptedColumn {
         table: "agents_api_sessions",
         column: "payload_encrypted",

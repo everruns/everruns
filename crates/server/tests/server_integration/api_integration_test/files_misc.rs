@@ -494,7 +494,13 @@ async fn test_sandbox_targets_say_why_an_absent_target_is_absent() {
 
 #[tokio::test]
 async fn test_org_cannot_set_a_platform_managed_feature_flag() {
-    let server = TestServer::in_memory().await;
+    let policy =
+        everruns_server::records::FeatureFlagPolicy::from_env(everruns_core::DeploymentGrade::Prod)
+            .with_grade(
+                "machine_payments",
+                everruns_server::records::FeatureFlagGrade::Internal,
+            );
+    let server = TestServer::in_memory_with_feature_policy(policy).await;
     let org_id = "org_00000000000000000000000000000001";
 
     // Enabling and disabling are both refused: an org that cannot enrol itself
@@ -503,7 +509,7 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
         let refused: Value = server
             .patch(
                 &format!("/v1/orgs/{org_id}/feature-flags"),
-                json!({ "flags": { "openai_agents_api": wanted } }),
+                json!({ "flags": { "machine_payments": wanted } }),
             )
             .await
             .assert_status(StatusCode::BAD_REQUEST)
@@ -523,5 +529,5 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
         .assert_status(StatusCode::OK)
         .json();
     let flags = settings["flags"].as_array().expect("flags array");
-    assert!(flags.iter().all(|flag| flag["name"] != "openai_agents_api"));
+    assert!(flags.iter().all(|flag| flag["name"] != "machine_payments"));
 }

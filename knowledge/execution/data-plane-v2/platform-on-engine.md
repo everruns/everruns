@@ -55,7 +55,7 @@ Several adapter slots have no field in any of the three.
 | Utility LLM, decisions | blocked | `HostComposition` is fixed inside the Engine |
 | Usage, budgets, payment, rate limits | missing slots | `budget_checker` exists on the runtime builder but the Engine never calls it; **payment authority** and **outbound rate limiter** have no slot |
 | Images and files by reference | missing slots | **Image resolver**, **file resolver**, **image artifact store** |
-| Provider credentials, Agents API store | missing slots | No field |
+| Provider credentials | missing slots | No field |
 | Knowledge auto-context | missing hook | No way to add retrieved context to a turn's input |
 | Detached long tool calls | missing | The worker wraps the run with a tool detacher. The Engine has no equivalent |
 | **Agents from configuration** | **design** | The Engine needs a registered code `Agent`, and a registry miss is a hard error. Closed by step 3: definitions are data the authority keeps and hands over with each activation |
@@ -78,7 +78,7 @@ This needs solving regardless of cells. Once it's done, v1 workers and v2 cells 
 2. **Trusted host extensions.** A single `HostExtensions` bundle, available only to trusted hosts (not a public Framework API), grouped by concern:
    - **Composition:** egress service, utility LLM, decisions.
    - **Authorities:** budget and payment, session creation, outbound rate limiter.
-   - **Stores:** provider credentials, leased resources, durable tool results, session resources, spawn store, image and file resolvers, image artifacts, Agents API store.
+   - **Stores:** provider credentials, leased resources, durable tool results, session resources, spawn store, image and file resolvers, image artifacts.
    - **Resolvers and hooks:** hosted MCP, knowledge auto-context, tool detacher, wait predicate.
 
    `InProcessRuntime` forwards each one to the existing `RuntimeHostAdapter` method. The traits already exist, so this is plumbing. The capability collision rule gets one trusted-only exception: a platform host may **replace** a built-in by id, and must declare that it does. Framework apps keep the rule as it is.

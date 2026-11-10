@@ -16,7 +16,7 @@ A self-hosted API started without `SECRETS_ENCRYPTION_KEY` refused the encrypted
 compaction checkpoint reads of a standalone gRPC worker, so every turn on that
 worker failed with `processing_error`. The worker now asks the API at startup,
 and again on a refused read, whether it can store checkpoints. Without a key it
-runs turns without compaction checkpoints, native async tool journals or the
-OpenAI Agents API runtime, the same way the in-process worker already did, and
+runs turns without compaction checkpoints or native async tool journals,
+the same way the in-process worker already did, and
 logs a warning once. Set the key to keep those features; see
 [Environment variables](/sre/environment-variables/).

@@ -28,6 +28,7 @@
 * [Object Storage Specification](object-storage.md) - Optional S3-compatible blob backend for file/image content.
 * [Session SQL Database Specification](session-sqldb.md) - Session-scoped SQL databases.
 * [Session Export (JSONL)](session-export.md) - Session export to JSONL.
+* [Session deletion](session-deletion.md) - Deleting a session is a soft delete: what stays, what stops, and who still sees it.
 * [Forking Sessions](forking-sessions.md) - Fork a session into an independent copy (history + workspace + state).
 * [Session Source and List Facets](session-source-and-facets.md) - How a session records the way it was started, and how the sessions list filters and counts over it.
 * [Unified Knowledge](knowledge.md) - Single knowledge feature with optional indexing, file mounts, metadata and progressive disclosure.
