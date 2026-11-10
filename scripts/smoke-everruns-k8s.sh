@@ -102,7 +102,7 @@ step "Doctor on the install"
 # cluster checks must pass and the doctor must run in the server pod.
 "$BIN" k8s doctor --name "$NAME" >"$TMP/doctor.log" 2>&1 || true
 cat "$TMP/doctor.log"
-grep -q "Permissions: can install" "$TMP/doctor.log" || fail "doctor did not check the cluster"
+grep -q "Permissions can install" "$TMP/doctor.log" || fail "doctor did not check the cluster"
 grep -q "could not run in the server pod" "$TMP/doctor.log" && fail "the system doctor did not run in the server pod"
 
 step "Uninstall keeps the data; up brings it back"

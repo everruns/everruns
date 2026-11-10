@@ -62,7 +62,7 @@ docker port "everruns-$NAME-caddy-1" 9300 | grep -q '^127.0.0.1:' || fail "no si
 "$BIN" whoami | grep -q "smoke@example.com" || fail "CLI not signed in again after leaving no sign-in"
 
 step "Status and stop"
-"$BIN" docker status --name "$NAME" | grep -q "Health:   healthy" || fail "status is not healthy"
+"$BIN" docker status --name "$NAME" | grep -qE "^Health +healthy" || fail "status is not healthy"
 "$BIN" docker stop --name "$NAME" || fail "stop failed"
 "$BIN" docker stop --name "$NAME" || fail "a second stop failed"
 
