@@ -40,6 +40,7 @@ export const PlaygroundIcon = createFacetIcon("playground");
 export const HarnessDomainIcon = createFacetIcon("harness");
 export const VirtualUserIcon = createFacetIcon("virtualUser");
 export const SessionIcon = createFacetIcon("session");
+export const RoomIcon = createFacetIcon("room");
 export const ExposureIcon = createFacetIcon("exposure");
 export const ModelsIcon = createFacetIcon("models");
 export const SkillsIcon = createFacetIcon("skills");

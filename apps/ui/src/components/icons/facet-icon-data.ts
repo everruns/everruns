@@ -10,6 +10,8 @@ export const facetIconData = {
   harness: { paths: ["M12 3 20 7V13L16 19 12 22 8 19 4 13V7Z", "M8 9H16V15H8Z"] },
   virtualUser: { paths: ["M9 3H15L17 7 15 11H9L7 7Z", "M4 21V17L9 14H15L20 17V21", "M9 18H15"] },
   session: { paths: ["M3 4H21V18H9L3 22Z", "M7 8H17M7 12H13"] },
+  // Two conversations side by side: a room many members speak in.
+  room: { paths: ["M2 3H14V13H7L2 17Z", "M14 8H22V20L18 17H10V13", "M5 7H11"] },
   exposure: {
     paths: [
       "M10 10 12 8 14 10 12 12Z",

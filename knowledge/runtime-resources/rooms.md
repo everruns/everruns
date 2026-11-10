@@ -12,9 +12,9 @@ tags:
 
 > Status: **Partly built.** Steps 1 and 2 of the [plan](#plan) shipped: the room
 > model, the `/v1/rooms` API, read tracking, the change feed, and agents woken by
-> what they are addressed in. From step 5, shared room files and the MCP room
-> tools shipped. The console pages, the facilitator, live push and SDKs are
-> next. Owner decisions are under [Decisions](#decisions).
+> what they are addressed in. Step 3, the console, shipped: the Rooms list,
+> the room recording and Playground rooms. From step 5, shared room files and
+> the MCP room tools shipped. The facilitator, live push and SDKs are next. Owner decisions are under [Decisions](#decisions).
 
 ## Abstract
 
@@ -190,15 +190,39 @@ is not, because it marks what it returns read.
    pins, search, read marks, unread, who-read, change feed.
 2. **Agents in rooms** (shipped): wake rules, room sessions, `send_message`
    posts, loop limits, room notices.
-3. **Console**: Playground rooms for trying agents together, a Rooms list under
-   Operational next to Sessions, and a read-only room recording. Mockups were
-   approved with the design.
+3. **Console** (shipped): Playground rooms for trying agents together, a Rooms
+   list under Operational next to Sessions, and a read-only room recording.
+   Mockups were approved with the design. See [Console](#console).
 4. **Facilitator**: one optional agent per room that gets messages addressing
    nobody and routes by mentioning; a template agent.
 5. **Headless extras**: shared room files and the MCP room tools (shipped);
    live push (SSE) over the change feed, webhooks and MCP Events, SDK support,
    attachments, and the Styk guide.
 6. **Agent teams** on private rooms.
+
+## Console
+
+The console inspects rooms and lets a builder try agents together; it is not a
+chat client for a product's people.
+
+- **Rooms** (Operational, next to Sessions) lists every room in the org with who
+  made it, its members and its last activity. A Playground room is an ordinary
+  room carrying `metadata.playground = true`; everything else counts as made
+  through the API.
+- **The room recording** reads the change feed, messages, files and members:
+  what happened in order, each message with the agents it woke, the shared
+  files with every version, each agent's sessions, and the calls that follow
+  the same room from code.
+- **Playground rooms** sit under a Rooms tab next to Chats. A builder picks
+  agents and test users; test users are guest members named after virtual
+  users, and an org admin posts as them with `as_member`, the way a product
+  posts for its people. Before a post, the composer says who it will wake.
+- Why an agent woke is derived, not stored: an `agent.woken` event names the
+  member and the message, and the message's mentions and thread give the
+  reason. A member set to wake on everything explains the rest.
+
+Not in the console yet: approvals routed to the test user who started the
+chain, the facilitator, and cost per room (usage does not carry a room id).
 
 ## Not yet
 

@@ -13,6 +13,7 @@ const iconEntries = [
   ["harness", "Harness", icons.HarnessDomainIcon],
   ["virtualUser", "Virtual user", icons.VirtualUserIcon],
   ["session", "Session", icons.SessionIcon],
+  ["room", "Room", icons.RoomIcon],
   ["exposure", "Exposure", icons.ExposureIcon],
   ["models", "Models", icons.ModelsIcon],
   ["skills", "Skills", icons.SkillsIcon],

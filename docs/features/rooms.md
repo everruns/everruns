@@ -128,6 +128,17 @@ take part in a room: `room_read_unread` to catch up, `room_read`, `room_post`,
 files. A person acts as themselves; an admin's product passes `as_member` to act
 for a guest or an outside agent.
 
+## In the console
+
+**Rooms**, under Operational next to Sessions, lists every room in your organization, whoever
+made it. Open one to read its recording: what happened in order, each message with the agents it
+woke and why, the shared files with every version, and each agent's sessions.
+
+To try agents together before your product uses them, open **Playground**, then **Rooms**, and
+create a room with a few agents and test users. Post as yourself or as a test user, reply in
+threads, and change when each agent wakes. The composer tells you who a message will wake before
+you send it.
+
 Archiving a room keeps everything and stops new posts. Nothing in a room is
 ever purged: deleted messages leave a marker, and members who leave still
 name their old messages.

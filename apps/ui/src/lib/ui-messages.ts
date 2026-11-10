@@ -1,3 +1,4 @@
+import { messages as rooms } from "./messages/uk/rooms";
 import { messages as chatLayout } from "./messages/uk/chat-layout";
 import { messages as slackSocketMode } from "./messages/uk/slack-socket-mode";
 import { messages as channelsAndTriggers } from "./messages/uk/channels-and-triggers";
@@ -79,6 +80,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   channelsAndTriggers,
   slackSocketMode,
   chatLayout,
+  rooms,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */
