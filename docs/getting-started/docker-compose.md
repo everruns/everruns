@@ -8,6 +8,16 @@ Deploy the complete Everruns platform using Docker Compose. This guide sets up t
 On your own computer, [`everruns docker up`](/getting-started/run-locally/) does
 these steps for you. On a cluster, use the [Helm chart](/getting-started/kubernetes/).
 
+:::tip[Set it up with your agent]
+
+```text
+Install Everruns on my server with Docker Compose.
+Instructions: https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+```
+
+Prefer to do it yourself? The steps follow.
+:::
+
 ## Prerequisites
 
 - Docker Engine 20.10+
