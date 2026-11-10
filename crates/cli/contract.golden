@@ -196,6 +196,7 @@ images list	--context-revision --limit --offset --reason
 k8s doctor	--name
 k8s logs	--name --no-follow <component>
 k8s open	--name
+k8s password	--name
 k8s port-forward	--name
 k8s reset	--name --yes/-y
 k8s status	--name

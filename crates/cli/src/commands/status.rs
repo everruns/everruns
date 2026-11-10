@@ -18,26 +18,28 @@ pub fn run(profile: &str) -> Result<()> {
     };
 
     if let Some(p) = store.profiles.get(profile_name) {
-        println!("Profile: {}", profile_name);
-        println!("API URL: {}", p.api_url);
-        println!(
-            "API Key: {}...{}",
-            &p.api_key[..std::cmp::min(12, p.api_key.len())],
-            if p.api_key.len() > 16 {
-                &p.api_key[p.api_key.len() - 4..]
-            } else {
-                ""
-            }
+        crate::ui::field("Profile", profile_name);
+        crate::ui::field("API URL", &p.api_url);
+        crate::ui::field(
+            "API Key",
+            format!(
+                "{}...{}",
+                &p.api_key[..std::cmp::min(12, p.api_key.len())],
+                if p.api_key.len() > 16 {
+                    &p.api_key[p.api_key.len() - 4..]
+                } else {
+                    ""
+                }
+            ),
         );
         if let Some(email) = &p.user_email {
-            println!(
-                "User:    {} ({})",
-                p.user_name.as_deref().unwrap_or(""),
-                email
+            crate::ui::field(
+                "User",
+                format!("{} ({})", p.user_name.as_deref().unwrap_or(""), email),
             );
         }
         if let Some(org_id) = &p.org_id {
-            println!("Org:     {}", org_id);
+            crate::ui::field("Org", org_id);
         }
     } else {
         let path_hint = credentials_path()
@@ -54,10 +56,11 @@ pub fn run(profile: &str) -> Result<()> {
                 format!(" (looked in {})", display)
             })
             .unwrap_or_default();
-        eprintln!(
-            "Not logged in. Run `everruns login` to authenticate.{}",
-            path_hint
-        );
+        crate::ui::fail(format!(
+            "Not logged in. Run {} to authenticate.{}",
+            crate::ui::cmd("everruns login"),
+            crate::ui::dim(path_hint)
+        ));
         std::process::exit(1);
     }
 

@@ -6,6 +6,7 @@
 //! setup, and `docker compose` is what runs the stack anyway, so there is no
 //! client library to add and no second way to reach the daemon to get wrong.
 
+use crate::ui;
 use std::process::{Command, Output, Stdio};
 
 /// Minimum Compose: profiles with `depends_on` across them need 2.20.
@@ -64,9 +65,12 @@ impl Check {
 
     pub fn print(&self) {
         match &self.outcome {
-            Outcome::Ok(detail) => eprintln!("✓ {}: {detail}", self.name),
-            Outcome::Warn(detail) => eprintln!("! {}: {detail}", self.name),
-            Outcome::Fail { problem, fix } => eprintln!("✗ {}: {problem}\n  {fix}", self.name),
+            Outcome::Ok(detail) => ui::ok(ui::check_line(self.name, detail)),
+            Outcome::Warn(detail) => ui::warn(format!("{}: {detail}", self.name)),
+            Outcome::Fail { problem, fix } => {
+                ui::fail(format!("{}: {problem}", self.name));
+                ui::detail(fix);
+            }
         }
     }
 }

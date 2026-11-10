@@ -18,6 +18,7 @@ Run Everruns in a Kubernetes cluster with the Helm chart.
 | [`k8s open`](#k8s-open) | Open the UI in the browser (through a port-forward when there is no public URL) |
 | [`k8s port-forward`](#k8s-port-forward) | Keep a port-forward open so the CLI and browser reach an install without a public URL. |
 | [`k8s doctor`](#k8s-doctor) | Check the tools and the cluster, and run the system doctor on the server. |
+| [`k8s password`](#k8s-password) | Print the admin password the chart generated. |
 | [`k8s upgrade`](#k8s-upgrade) | Move the install to this CLI's chart version (or --chart-version), backing up a bundled database first. |
 | [`k8s uninstall`](#k8s-uninstall) | Remove the workloads. |
 | [`k8s reset`](#k8s-reset) | Delete the install: workloads, generated secrets, volumes and the CLI profile. |
@@ -113,6 +114,19 @@ Check the tools and the cluster, and run the system doctor on the server.
 
 ```bash
 everruns k8s doctor [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Install name, also the Helm release name. |
+
+
+## k8s password
+
+Print the admin password the chart generated.
+
+```bash
+everruns k8s password [OPTIONS]
 ```
 
 | Flag | Description |

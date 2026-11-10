@@ -55,6 +55,8 @@ ignore.workspace = true
 
 # Interactive prompts
 dialoguer.workspace = true
+console.workspace = true
+indicatif.workspace = true
 
 # Browser launch
 

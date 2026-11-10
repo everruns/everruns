@@ -33,7 +33,9 @@ an Ingress, and an LLM provider key, which it takes from `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` or `OPENROUTER_API_KEY` when set. It checks the cluster first
 (Kubernetes version, permissions in the namespace, a default StorageClass when
 it needs volumes, KEDA when worker autoscaling is on), installs this CLI
-version's chart, waits for the pods, and signs the CLI in as profile `k8s`.
+version's chart, waits for the pods while it shows how many of each are ready,
+and signs the CLI in as profile `k8s`. `everruns k8s password` prints the
+generated admin password for the UI.
 
 Every question has a flag, so it also runs in scripts and CI:
 

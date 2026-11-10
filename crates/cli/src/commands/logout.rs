@@ -9,9 +9,15 @@ pub fn run(profile: &str) -> Result<()> {
 
     if store.remove_profile(profile) {
         store.save()?;
-        eprintln!("Logged out (profile: {})", profile);
+        crate::ui::ok(format!(
+            "Logged out {}",
+            crate::ui::dim(format!("(profile {profile})"))
+        ));
     } else {
-        eprintln!("Not logged in (profile: {})", profile);
+        crate::ui::note(format!(
+            "Not logged in {}",
+            crate::ui::dim(format!("(profile {profile})"))
+        ));
     }
 
     Ok(())

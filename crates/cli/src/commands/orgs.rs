@@ -86,7 +86,10 @@ pub async fn run_select(profile: &str) -> Result<()> {
     }
 
     if orgs.len() == 1 {
-        eprintln!("Only one organization available: {}", orgs[0].name);
+        crate::ui::note(format!(
+            "Only one organization available: {}",
+            crate::ui::bold(&orgs[0].name)
+        ));
         return Ok(());
     }
 
@@ -95,7 +98,7 @@ pub async fn run_select(profile: &str) -> Result<()> {
         .map(|o| format!("{} ({})", o.name, o.role))
         .collect();
 
-    let selection = dialoguer::Select::new()
+    let selection = dialoguer::Select::with_theme(crate::ui::theme())
         .with_prompt("Select organization")
         .items(&items)
         .default(0)
@@ -106,7 +109,10 @@ pub async fn run_select(profile: &str) -> Result<()> {
     store.set_org(&orgs[selection].public_id)?;
     store.save()?;
 
-    eprintln!("Switched to organization: {}", orgs[selection].name);
+    crate::ui::ok(format!(
+        "Switched to organization {}",
+        crate::ui::bold(&orgs[selection].name)
+    ));
 
     Ok(())
 }

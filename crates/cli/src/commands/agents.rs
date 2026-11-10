@@ -228,7 +228,7 @@ pub async fn run(
                     || harness.is_some()
                     || !tag.is_empty()
                 {
-                    eprintln!("Warning: CLI flag overrides are ignored when --file is used");
+                    crate::ui::warn("CLI flag overrides are ignored when --file is used");
                 }
                 import_from_file(
                     api_url,
@@ -297,7 +297,7 @@ pub async fn run(
                     || harness.is_some()
                     || !tag.is_empty()
                 {
-                    eprintln!("Warning: CLI flag overrides are ignored when --file is used");
+                    crate::ui::warn("CLI flag overrides are ignored when --file is used");
                 }
                 import_from_file(
                     api_url,
