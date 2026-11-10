@@ -21,9 +21,11 @@ use uuid::Uuid;
 mod anonymous;
 mod mcp_servers;
 mod models;
+mod provisioning;
 use anonymous::seed_auth_prerequisites;
 use mcp_servers::seed_mcp_servers;
 use models::SEED_MODELS;
+use provisioning::{ensure_default_org_default_model, provision_connected_providers};
 
 /// Well-known UUIDs for seed data
 /// Format: 01933b5a-0000-7000-8000-0000000001xx
@@ -164,6 +166,8 @@ pub struct SeedResult {
     created: usize,
     updated: usize,
     unchanged: usize,
+    /// Providers that just gained a credential and need their models provisioned.
+    connected: Vec<Uuid>,
 }
 
 impl SeedResult {
@@ -171,6 +175,7 @@ impl SeedResult {
         self.created += other.created;
         self.updated += other.updated;
         self.unchanged += other.unchanged;
+        self.connected.extend(other.connected);
     }
 
     fn has_changes(&self) -> bool {
@@ -434,6 +439,15 @@ fn enabled_seed_provider_ids(host_composition: &HostComposition) -> HashSet<Uuid
         .collect()
 }
 
+/// Keep already-existing built-in provider rows current (name, driver).
+///
+/// Decision: seeding never creates a provider row on its own. A provider
+/// appears only when someone connects it, or, for single-tenant/dev, when a
+/// `DEFAULT_*_API_KEY` is materialized from env
+/// ([`seed_default_provider_keys_with_lookup`]). Pre-creating every built-in
+/// driver filled the Providers tab with keyless cards and the model picker
+/// with models nobody could run. Rows created by older versions are kept
+/// (records are never purged) and still refreshed here.
 async fn seed_providers_with_host_composition(
     db: &StorageBackend,
     host_composition: &HostComposition,
@@ -449,6 +463,9 @@ async fn seed_providers_with_host_composition(
                 provider_type = seed.provider_type,
                 "Skipping seed provider because platform definition does not register its driver"
             );
+            continue;
+        }
+        if db.get_provider(DEFAULT_ORG_ID, seed.id).await?.is_none() {
             continue;
         }
         let input = CreateProviderRow {
@@ -545,8 +562,9 @@ where
 /// provider rows (encrypted), so org-scoped execution can resolve them through
 /// the normal fail-closed DB path.
 ///
-/// Only fills providers that have no key configured — an explicitly-set key
-/// (via UI/API) is never overwritten. Idempotent: a provider that has a
+/// Creates the provider when it does not exist yet (the env key is what
+/// connects it), and fills providers that have no key configured; an
+/// explicitly-set key (via UI/API) is never overwritten. Idempotent: a provider that has a
 /// matching `DEFAULT_*_API_KEY` but already has a key set is left untouched and
 /// counted as unchanged. Providers without a matching env var are skipped and
 /// not counted at all.
@@ -587,8 +605,28 @@ where
             continue;
         };
 
+        let encrypted = encryption.encrypt_string(&env_key)?;
         let Some(provider) = db.get_provider(DEFAULT_ORG_ID, seed.id).await? else {
-            // Provider row not seeded (driver not registered for this grade).
+            // First time this key is seen: the env key is what connects the
+            // provider, so create it with the key in one step.
+            db.create_provider_with_id(
+                DEFAULT_ORG_ID,
+                seed.id,
+                CreateProviderRow {
+                    name: seed.name.to_string(),
+                    provider_type: seed.provider_type.to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(encrypted),
+                    settings: None,
+                },
+            )
+            .await?;
+            result.created += 1;
+            result.connected.push(seed.id);
+            tracing::info!(
+                provider = seed.name,
+                "Connected default-org provider from DEFAULT_*_API_KEY (single-tenant/dev)"
+            );
             continue;
         };
 
@@ -598,7 +636,6 @@ where
             continue;
         }
 
-        let encrypted = encryption.encrypt_string(&env_key)?;
         db.update_provider(
             DEFAULT_ORG_ID,
             seed.id,
@@ -613,6 +650,7 @@ where
         )
         .await?;
         result.updated += 1;
+        result.connected.push(seed.id);
         tracing::info!(
             provider = seed.name,
             "Materialized DEFAULT_*_API_KEY into default-org provider (single-tenant/dev)"
@@ -639,6 +677,8 @@ async fn seed_models_with_host_composition(
     // so inserting the seed id would fail on every boot (Sentry EVERRUNS-6).
     // Adopt the existing row instead of forcing the seed id onto it.
     let mut existing_by_provider: HashMap<Uuid, Vec<ModelRow>> = HashMap::new();
+    // Whether each seed provider exists in the default org, and has a key.
+    let mut provider_keyed: HashMap<Uuid, Option<bool>> = HashMap::new();
 
     for seed in SEED_MODELS {
         if !enabled_provider_ids.contains(&seed.provider_id) {
@@ -649,6 +689,22 @@ async fn seed_models_with_host_composition(
             );
             continue;
         }
+        let keyed = match provider_keyed.entry(seed.provider_id) {
+            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
+            std::collections::hash_map::Entry::Vacant(entry) => *entry.insert(
+                db.get_provider(DEFAULT_ORG_ID, seed.provider_id)
+                    .await?
+                    .map(|provider| provider.api_key_set),
+            ),
+        };
+        // The catalog belongs to a provider someone connected; no row, no models.
+        let Some(keyed) = keyed else {
+            continue;
+        };
+        // A model is only offered when its provider can serve it: a keyless
+        // provider's catalog stays listed but disabled, so the enabled list
+        // never shows models nobody can run.
+        let seed_enabled = seed.enabled && keyed;
         let existing = match existing_by_provider.entry(seed.provider_id) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
@@ -662,7 +718,7 @@ async fn seed_models_with_host_composition(
         {
             let unchanged = row.display_name == seed.display_name
                 && row.is_favorite == seed.is_favorite
-                && row.enabled == seed.enabled;
+                && row.enabled == seed_enabled;
             if unchanged {
                 tracing::debug!(
                     model_id = seed.model_id,
@@ -677,7 +733,7 @@ async fn seed_models_with_host_composition(
                     UpdateModel {
                         display_name: Some(seed.display_name.to_string()),
                         is_favorite: Some(seed.is_favorite),
-                        enabled: Some(seed.enabled),
+                        enabled: Some(seed_enabled),
                         ..UpdateModel::default()
                     },
                 )
@@ -701,7 +757,7 @@ async fn seed_models_with_host_composition(
             } else {
                 vec![]
             },
-            enabled: seed.enabled,
+            enabled: seed_enabled,
             is_favorite: seed.is_favorite,
             source: "predefined".to_string(), // Seed models are predefined
             provider_metadata: None,
@@ -854,10 +910,20 @@ pub fn spawn_seed_task_with_host_composition(
                             )
                             .await
                             {
-                                Ok(r) if r.updated > 0 => tracing::info!(
-                                    updated = r.updated,
-                                    "Materialized DEFAULT_*_API_KEY into default-org providers"
-                                ),
+                                Ok(r) if !r.connected.is_empty() => {
+                                    tracing::info!(
+                                        created = r.created,
+                                        updated = r.updated,
+                                        "Materialized DEFAULT_*_API_KEY into default-org providers"
+                                    );
+                                    provision_connected_providers(
+                                        &db,
+                                        encryption,
+                                        &host_composition,
+                                        &r.connected,
+                                    )
+                                    .await;
+                                }
                                 Ok(_) => {}
                                 Err(e) => tracing::warn!(
                                     error = %e,
@@ -876,6 +942,8 @@ pub fn spawn_seed_task_with_host_composition(
                 // Runs inside the seed task (not a separate task) so the default
                 // org row is guaranteed to exist before harness init runs.
                 reconcile_org_harnesses(&db, &built_in_harnesses).await;
+
+                ensure_default_org_default_model(&db, encryption.as_ref(), &host_composition).await;
             }
             Err(e) => {
                 tracing::warn!(
@@ -1084,6 +1152,8 @@ pub async fn seed_all_with_host_composition(
 
 #[cfg(test)]
 mod model_tests;
+#[cfg(test)]
+mod provider_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1132,10 +1202,6 @@ mod tests {
     }
 
     // --- DEFAULT_*_API_KEY materialization (single-tenant/dev) ---
-
-    fn test_encryption() -> EncryptionService {
-        EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap()
-    }
 
     fn auth_config(mode: AuthMode, disable_signup: bool) -> AuthConfig {
         AuthConfig {
@@ -1233,119 +1299,6 @@ mod tests {
             &open_signup,
             |_| None
         ));
-    }
-
-    /// Materialization fills an empty default-org provider with the env key,
-    /// and the key is resolvable through the normal fail-closed DB path.
-    #[tokio::test]
-    async fn materialize_fills_empty_provider_and_resolves() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-
-        // Seed the bare provider rows (no keys).
-        seed_providers_with_host_composition(&db, &platform)
-            .await
-            .unwrap();
-
-        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openai").then(|| "sk-from-env".to_string())
-        })
-        .await
-        .unwrap();
-        assert_eq!(result.updated, 1, "exactly the openai provider is filled");
-
-        // The key round-trips through the same decrypt path the resolver uses.
-        let provider = db
-            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
-            .await
-            .unwrap()
-            .expect("openai provider seeded");
-        assert!(provider.api_key_set);
-        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
-            &db,
-            Some(&encryption),
-            &provider,
-        )
-        .unwrap();
-        assert_eq!(resolved, Some("sk-from-env".to_string()));
-    }
-
-    /// Materialization never overwrites an explicitly-configured key.
-    #[tokio::test]
-    async fn materialize_does_not_clobber_existing_key() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        seed_providers_with_host_composition(&db, &platform)
-            .await
-            .unwrap();
-
-        // User configures their own key.
-        let user_key = encryption.encrypt_string("sk-user-set").unwrap();
-        db.update_provider(
-            DEFAULT_ORG_ID,
-            seed_ids::OPENAI_PROVIDER,
-            UpdateProvider {
-                name: None,
-                provider_type: None,
-                base_url: None,
-                api_key_encrypted: Some(user_key),
-                status: None,
-                settings: None,
-            },
-        )
-        .await
-        .unwrap();
-
-        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openai").then(|| "sk-from-env".to_string())
-        })
-        .await
-        .unwrap();
-        assert_eq!(result.updated, 0);
-        assert_eq!(result.unchanged, 1);
-
-        let provider = db
-            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
-            .await
-            .unwrap()
-            .unwrap();
-        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
-            &db,
-            Some(&encryption),
-            &provider,
-        )
-        .unwrap();
-        assert_eq!(
-            resolved,
-            Some("sk-user-set".to_string()),
-            "user key must be preserved"
-        );
-    }
-
-    /// With no env key set, nothing is materialized (multitenant-safe default
-    /// even if the gate were somehow on).
-    #[tokio::test]
-    async fn materialize_no_env_key_is_noop() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        seed_providers_with_host_composition(&db, &platform)
-            .await
-            .unwrap();
-
-        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |_| None)
-            .await
-            .unwrap();
-        assert_eq!(result.updated, 0);
-
-        let provider = db
-            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(!provider.api_key_set);
     }
 
     // --- Harness seed data ---
@@ -1729,6 +1682,7 @@ mod tests {
     #[tokio::test]
     async fn test_provider_seed_detects_name_change() {
         let db = make_db();
+        super::provider_tests::create_keyless_seed_providers(&db).await;
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();

@@ -97,12 +97,9 @@ def psql(db_url: str, sql: str) -> str | None:
 def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
     """Harness-owned llmsim models plus three agents.
 
-    The seeded llmsim models start disabled, and every server start re-applies
-    the seed, which resets `enabled` back to false. A chaos run restarts a
-    server, so enabling the seeded models would make session creation fail
-    with "Model not found" after the restart. The harness therefore creates
-    its own models under the seeded llmsim provider, which the seed does not
-    touch. llmsim derives behavior from the name: `-realistic` anywhere in it
+    Harness-created models under an llmsim provider (created here when
+    missing) are never touched by the startup seed, so they survive the
+    server restarts a chaos run injects. llmsim derives behavior from the name: `-realistic` anywhere in it
     turns on the agent-shaped workload with default (0.9 s) timing.
     """
     models = api.get("/v1/models", query={"limit": 500})
@@ -115,7 +112,13 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
         if name and name.startswith("llmsim") and m.get("provider_id"):
             provider_id = provider_id or m.get("provider_id")
     if not provider_id:
-        raise RuntimeError(f"no llmsim provider; models: {sorted(by_name)}")
+        # Startup no longer pre-creates built-in providers, so connect llmsim here.
+        providers = api.get("/v1/providers")
+        plist = providers.get("data", providers) if isinstance(providers, dict) else providers
+        existing = next((p for p in plist if p.get("provider_type") == "llmsim"), None)
+        provider_id = (existing or api.post(
+            "/v1/providers", {"name": "LlmSim", "provider_type": "llmsim"}
+        ))["id"]
     want = {"instant": "llmsim-chaos", "realistic": "llmsim-chaos-realistic"}
     model_ids = {}
     for key, name in want.items():
