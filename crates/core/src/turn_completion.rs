@@ -177,6 +177,24 @@ impl ContinuationBudget {
         }
     }
 
+    /// Build a budget from an agent's configured limits.
+    pub fn from_limits(limits: crate::completion_check::ContinuationLimits) -> Self {
+        Self::new(
+            limits.max_turns,
+            limits.max_tokens,
+            Duration::from_secs(limits.max_elapsed_secs),
+        )
+    }
+
+    /// Restart the time window: the last continuation did real work (it ran
+    /// tools without failing). Turns and tokens stay cumulative, so a loop
+    /// that keeps working is still bounded; only a stalled one runs out of
+    /// time. Ported from yolop, where a pinned clock cut long coding tasks
+    /// that kept passing checks at the time limit.
+    pub fn restart_window(&mut self) {
+        self.started = Instant::now();
+    }
+
     /// Rebuild a budget from what a durable log recorded: `turns` and
     /// `tokens` already spent, `elapsed` since the first continuation. A host
     /// that resumes a turn on another worker has no in-memory budget to keep,
@@ -369,6 +387,28 @@ mod tests {
                 "{response}"
             );
         }
+    }
+
+    #[test]
+    fn restarted_window_outlives_the_time_limit_but_not_turns_or_tokens() {
+        let mut budget =
+            ContinuationBudget::from_limits(crate::completion_check::ContinuationLimits {
+                max_turns: 3,
+                max_tokens: 100,
+                max_elapsed_secs: 60,
+            })
+            .resume(0, 0, Duration::from_secs(61));
+        let mut stalled = budget.clone();
+        assert!(!stalled.observe_turn(0), "a pinned clock runs out of time");
+        budget.restart_window();
+        assert!(budget.observe_turn(10));
+        assert!(budget.observe_turn(10));
+        budget.restart_window();
+        assert!(budget.observe_turn(10));
+        assert!(!budget.observe_turn(0), "turns stay cumulative");
+        budget.reset();
+        budget.restart_window();
+        assert!(!budget.observe_turn(101), "tokens stay cumulative");
     }
 
     #[test]

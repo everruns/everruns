@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::runtime::capability_types::AgentCapabilityConfig;
-use crate::runtime::completion_check::CompletionCheck;
+use crate::runtime::completion_check::{CompletionCheck, ContinuationLimits};
 use crate::runtime::conversation::Communication;
 use crate::runtime::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::runtime::network_access::NetworkAccessList;
@@ -70,6 +70,9 @@ pub struct AgentDefinition {
     /// work is unfinished, a bounded automatic continuation.
     #[serde(default, skip_serializing_if = "CompletionCheck::is_default")]
     pub completion_check: CompletionCheck,
+    /// Limits on those continuations; `None` keeps the runtime defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuation_limits: Option<ContinuationLimits>,
     /// Client-side tools registered for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
@@ -102,6 +105,7 @@ impl AgentDefinition {
             max_output_tokens: None,
             communication: Communication::Direct,
             completion_check: CompletionCheck::default(),
+            continuation_limits: None,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
         }

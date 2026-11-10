@@ -65,6 +65,19 @@ carry what the first one saw), so a resumed turn does not get a fresh budget.
 The agent's iteration cap still applies on top. Review-call tokens are not
 counted against it.
 
+The time limit is a window, not a deadline: a continuation that ran tools
+restarts it, while turns and tokens stay cumulative. A long task that keeps
+doing real work is then bounded by turns and tokens, and only a stalled or
+chatty loop runs out of time. Yolop learned this the hard way: a clock pinned to
+the first continuation cut long coding tasks at ten minutes while they were
+still passing checks. Each continuation records the window start and the turn's
+tool count, so the window also survives a resume.
+
+An agent may replace the default limits with `ContinuationLimits`
+(`AgentBuilder::continuation_limits` in core and the facade). It is
+embedder-only for now: platform agents keep the runtime defaults, since a
+coding agent such as yolop is the host that needs different limits.
+
 ## Durability
 
 The check event is written before the continuation input. On resume:
@@ -80,4 +93,6 @@ The check event is written before the continuation input. On resume:
 
 `crates/worker/src/actor_runtime/tests/completion_check.rs` drives the session
 actor with llmsim: continuation then tool call, completed turn not continued,
-setting and origin matrix, budget exhaustion, and both crash points.
+setting and origin matrix, budget exhaustion, agent limits with the restarting
+window, and both crash points. `crates/everruns/tests/facade/completion_check.rs`
+covers the embedder setting.

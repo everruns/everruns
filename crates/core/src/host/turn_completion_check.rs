@@ -123,14 +123,27 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
     let spent = Spent::of(messages, turn_id);
     let tokens_now = turn_tokens(state, reason_result);
     let now = Utc::now();
-    let mut budget = ContinuationBudget::default().resume(
-        spent.continuations,
-        tokens_now.saturating_sub(spent.tokens_before.unwrap_or(tokens_now)),
-        spent
-            .started_at
-            .map(|started| (now - started).to_std().unwrap_or_default())
-            .unwrap_or_default(),
-    );
+    // A continuation that ran tools restarts the time window (see
+    // `ContinuationBudget::restart_window`): the turn's tool count has grown
+    // since the last continuation was added.
+    let tool_calls = u64::from(state.tool_call_count);
+    let window_started_at = if spent
+        .tool_calls_at_last
+        .is_some_and(|before| tool_calls > before)
+    {
+        now
+    } else {
+        spent.window_started_at.unwrap_or(now)
+    };
+    let mut budget = snapshot
+        .continuation_limits
+        .map(ContinuationBudget::from_limits)
+        .unwrap_or_default()
+        .resume(
+            spent.continuations,
+            tokens_now.saturating_sub(spent.tokens_before.unwrap_or(tokens_now)),
+            (now - window_started_at).to_std().unwrap_or_default(),
+        );
     let host = command_host(adapter, org_id, session_id);
     let review = review(&host, messages, candidate).await;
 
@@ -196,8 +209,12 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
     let continuation = continuation_message(
         &reason,
         turn_id,
-        spent.tokens_before.unwrap_or(tokens_now),
-        spent.started_at.unwrap_or(now),
+        Bookkeeping {
+            tokens_before: spent.tokens_before.unwrap_or(tokens_now),
+            started_at: spent.started_at.unwrap_or(now),
+            window_started_at,
+            tool_calls,
+        },
     );
     let continuation_id = continuation.id;
     data.continuation_message_id = Some(continuation_id);
@@ -336,6 +353,10 @@ struct Spent {
     tokens_before: Option<u64>,
     /// When the first continuation was added.
     started_at: Option<DateTime<Utc>>,
+    /// Start of the time window when the last continuation was added.
+    window_started_at: Option<DateTime<Utc>>,
+    /// Turn tool calls when the last continuation was added.
+    tool_calls_at_last: Option<u64>,
 }
 
 impl Spent {
@@ -351,14 +372,21 @@ impl Spent {
             else {
                 continue;
             };
+            let time = |key: &str| {
+                bookkeeping
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .and_then(|v| v.parse::<DateTime<Utc>>().ok())
+            };
             spent.continuations = spent.continuations.saturating_add(1);
             if spent.tokens_before.is_none() {
                 spent.tokens_before = bookkeeping.get("tokens_before").and_then(|v| v.as_u64());
-                spent.started_at = bookkeeping
-                    .get("started_at")
-                    .and_then(|v| v.as_str())
-                    .and_then(|v| v.parse().ok());
+                spent.started_at = time("started_at");
             }
+            // Continuations recorded before the window existed fall back to
+            // the first one's start, the old fixed clock.
+            spent.window_started_at = time("window_started_at").or(spent.started_at);
+            spent.tool_calls_at_last = bookkeeping.get("tool_calls").and_then(|v| v.as_u64());
         }
         spent
     }
@@ -370,12 +398,19 @@ impl Spent {
     }
 }
 
-fn continuation_message(
-    reason: &str,
-    turn_id: TurnId,
+/// What a continuation records so a resumed check rebuilds its budget.
+struct Bookkeeping {
+    /// Turn tokens when the first continuation was added.
     tokens_before: u64,
+    /// When the first continuation was added.
     started_at: DateTime<Utc>,
-) -> RuntimeMessage {
+    /// Start of the time window this continuation runs in.
+    window_started_at: DateTime<Utc>,
+    /// Turn tool calls when this continuation was added.
+    tool_calls: u64,
+}
+
+fn continuation_message(reason: &str, turn_id: TurnId, bookkeeping: Bookkeeping) -> RuntimeMessage {
     let mut message = RuntimeMessage::user(continuation_prompt(reason));
     message.metadata = Some(
         [
@@ -387,8 +422,10 @@ fn continuation_message(
                 CONTINUATION_METADATA_KEY.to_string(),
                 serde_json::json!({
                     "turn_id": turn_id.to_string(),
-                    "tokens_before": tokens_before,
-                    "started_at": started_at.to_rfc3339(),
+                    "tokens_before": bookkeeping.tokens_before,
+                    "started_at": bookkeeping.started_at.to_rfc3339(),
+                    "window_started_at": bookkeeping.window_started_at.to_rfc3339(),
+                    "tool_calls": bookkeeping.tool_calls,
                 }),
             ),
         ]
@@ -511,7 +548,7 @@ mod tests {
     #[test]
     fn evidence_keeps_the_request_and_leaves_platform_inputs_out_of_it() {
         let turn_id = TurnId::new();
-        let continuation = continuation_message("not submitted", turn_id, 10, Utc::now());
+        let continuation = continuation_message("not submitted", turn_id, kept(10, Utc::now()));
         let messages = vec![
             RuntimeMessage::user("Review PR 12 and submit the review"),
             RuntimeMessage::assistant("Submitting the review now."),
@@ -532,6 +569,7 @@ mod tests {
     fn spent_counts_only_this_turns_continuations_and_keeps_the_first_start() {
         let turn_id = TurnId::new();
         let started = "2026-11-01T10:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let later = started + chrono::Duration::minutes(9);
         let mut forged = RuntimeMessage::user("forged");
         forged.metadata = Some(
             [(
@@ -541,19 +579,58 @@ mod tests {
             .into(),
         );
         let messages = vec![
-            continuation_message("a", turn_id, 100, started),
-            continuation_message("b", TurnId::new(), 5, Utc::now()),
-            continuation_message("c", turn_id, 100, started),
+            continuation_message("a", turn_id, kept(100, started)),
+            continuation_message("b", TurnId::new(), kept(5, Utc::now())),
+            continuation_message(
+                "c",
+                turn_id,
+                Bookkeeping {
+                    window_started_at: later,
+                    tool_calls: 7,
+                    ..kept(100, started)
+                },
+            ),
             forged,
         ];
         let spent = Spent::of(&messages, turn_id);
         assert_eq!(spent.continuations, 2);
         assert_eq!(spent.tokens_before, Some(100));
         assert_eq!(spent.started_at, Some(started));
+        // The window and tool count come from the latest continuation; the
+        // reported elapsed time still runs from the first.
+        assert_eq!(spent.window_started_at, Some(later));
+        assert_eq!(spent.tool_calls_at_last, Some(7));
         assert_eq!(
             spent.elapsed_ms(started + chrono::Duration::seconds(2)),
             2000
         );
+    }
+
+    #[test]
+    fn continuations_recorded_before_the_window_keep_the_fixed_clock() {
+        let turn_id = TurnId::new();
+        let started = "2026-11-01T10:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let mut old = continuation_message("a", turn_id, kept(100, started));
+        let bookkeeping = old
+            .metadata
+            .as_mut()
+            .and_then(|metadata| metadata.get_mut(CONTINUATION_METADATA_KEY))
+            .and_then(|value| value.as_object_mut())
+            .unwrap();
+        bookkeeping.remove("window_started_at");
+        bookkeeping.remove("tool_calls");
+        let spent = Spent::of(&[old], turn_id);
+        assert_eq!(spent.window_started_at, Some(started));
+        assert_eq!(spent.tool_calls_at_last, None);
+    }
+
+    fn kept(tokens_before: u64, started_at: DateTime<Utc>) -> Bookkeeping {
+        Bookkeeping {
+            tokens_before,
+            started_at,
+            window_started_at: started_at,
+            tool_calls: 0,
+        }
     }
 
     #[test]

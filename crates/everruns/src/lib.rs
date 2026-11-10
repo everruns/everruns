@@ -102,6 +102,14 @@ pub mod poppy {
 pub mod conversation {
     pub use everruns_core::conversation::*;
 }
+/// When a finishing turn is checked for unfinished work, and how far the
+/// automatic continuations it adds may go; see
+/// [`AgentBuilder::completion_check`](crate::AgentBuilder::completion_check).
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod completion_check {
+    pub use everruns_core::completion_check::*;
+}
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;
 /// Phrasing helpers for application-authored tool narration

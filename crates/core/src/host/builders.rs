@@ -212,6 +212,7 @@ pub struct AgentBuilder {
     max_output_tokens: Option<u32>,
     communication: crate::conversation::Communication,
     completion_check: crate::completion_check::CompletionCheck,
+    continuation_limits: Option<crate::completion_check::ContinuationLimits>,
     tools: Vec<ToolDefinition>,
     mcp_servers: ScopedMcpServers,
 }
@@ -234,6 +235,7 @@ impl AgentBuilder {
             max_output_tokens: None,
             communication: Default::default(),
             completion_check: Default::default(),
+            continuation_limits: None,
             tools: Vec::new(),
             mcp_servers: ScopedMcpServers::default(),
         }
@@ -336,6 +338,16 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the limits on the completion check's continuations (default: the
+    /// runtime's, see [`crate::turn_completion::ContinuationBudget`]).
+    pub fn continuation_limits(
+        mut self,
+        limits: crate::completion_check::ContinuationLimits,
+    ) -> Self {
+        self.continuation_limits = Some(limits);
+        self
+    }
+
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
         self.tools.push(tool);
         self
@@ -371,6 +383,7 @@ impl AgentBuilder {
             max_output_tokens: self.max_output_tokens,
             communication: self.communication,
             completion_check: self.completion_check,
+            continuation_limits: self.continuation_limits,
             tools: self.tools,
             mcp_servers: self.mcp_servers,
         }
