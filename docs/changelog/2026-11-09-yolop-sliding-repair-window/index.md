@@ -1,13 +1,13 @@
 ---
 title: "Yolop stops cutting off long tasks at ten minutes"
 description: "Yolop now restarts the continuation time window on every productive turn, so long tasks that keep working no longer stop at 600 seconds for approval."
+date: 2026-11-09
 kind: fix
 significance: notable
 products: [yolop]
-surfaces: [cli]
-docs:
-  - https://github.com/everruns/yolop/blob/main/docs/features/tools.md#plans-and-completion
+surfaces: [cli, operations]
 links:
+  docs: ["https://github.com/everruns/yolop/blob/main/docs/features/tools.md#plans-and-completion"]
   prs: [everruns/yolop#931]
 ---
 
