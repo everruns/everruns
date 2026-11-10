@@ -331,6 +331,28 @@ mod tests {
         assert!(!names(serde_json::json!({"allow_pull_requests": "yes"})).contains(&open));
     }
 
+    /// The model is offered the tool exactly when execution provides it.
+    #[test]
+    fn pull_request_creation_is_advertised_when_enabled() {
+        let advertised = |config: serde_json::Value| -> Vec<String> {
+            GitHubCapability
+                .tool_definitions_with_config(&config)
+                .iter()
+                .map(|definition| definition.name().to_string())
+                .collect()
+        };
+        let open = "create_github_pull_request".to_string();
+        assert!(!advertised(serde_json::json!({})).contains(&open));
+        let enabled = advertised(serde_json::json!({"allow_pull_requests": true}));
+        assert!(enabled.contains(&open));
+        assert!(enabled.contains(&"upsert_github_comment".to_string()));
+        assert_eq!(
+            enabled.iter().filter(|name| **name == open).count(),
+            1,
+            "advertised once"
+        );
+    }
+
     #[test]
     fn config_is_validated_and_described() {
         let cap = GitHubCapability;
