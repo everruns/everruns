@@ -591,6 +591,24 @@ The `POST /v1/auth/refresh` endpoint accepts the refresh token from two sources 
 
 On success, the old refresh token is deleted (rotation) and a new token pair is returned (both in JSON body and Set-Cookie headers).
 
+### Device-Bound Sessions (DBSC)
+
+Browsers that implement [Device Bound Session Credentials](https://w3c.github.io/webappsec-dbsc/)
+bind a sign-in to a device key so stolen cookies stop working
+([`crates/server/src/auth/dbsc/mod.rs`](../../crates/server/src/auth/dbsc/mod.rs)).
+
+- Every response that issues a new `refresh_token` cookie offers registration. The offer is a
+  response layer (`offer_registration`) rather than per-route code, so every sign-in path is
+  covered, and wrappers mount it on their own sign-in routes. Its path is relative to the
+  request so a proxy prefix (`/api`) survives.
+- Binding turns the refresh-token row into the DBSC session: it stores the public key and a
+  single-use refresh challenge, the browser drops the `refresh_token` cookie, and a
+  `dbsc_session` cookie names the row for sign-out. The bound credential is the existing
+  `access_token` cookie, renewed through `POST /v1/auth/dbsc/refresh` with a signed proof.
+- `POST /v1/auth/refresh` never consumes a bound row, so a refresh token copied before binding
+  dies with it. Deleting a user's refresh tokens ends their bound sessions at the next renewal.
+- Browsers without DBSC, and programmatic clients, keep the classic refresh flow.
+
 ### OAuth Flow
 
 1. User clicks OAuth button (e.g., "Continue with Google")

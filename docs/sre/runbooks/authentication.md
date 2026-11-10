@@ -81,6 +81,29 @@ export AUTH_GITHUB_CLIENT_SECRET=your-github-client-secret
 | `AUTH_JWT_ACCESS_TOKEN_LIFETIME` | No | Access token lifetime in seconds (default: 900) |
 | `AUTH_JWT_REFRESH_TOKEN_LIFETIME` | No | Refresh token lifetime in seconds (default: 2592000) |
 
+### Device-bound sessions
+
+Browser sign-ins support
+[Device Bound Session Credentials](https://w3c.github.io/webappsec-dbsc/)
+(DBSC) with no configuration. In a browser that implements it, currently
+Chrome, the sign-in response offers registration, the browser creates a key
+in its secure hardware, and the server stores the public key with the
+session's refresh token. The browser then drops the 30-day `refresh_token`
+cookie and renews the short-lived `access_token` cookie itself, through
+`POST /v1/auth/dbsc/refresh`, with a proof signed by that key.
+
+A refresh token copied from such a browser is refused, and a copied access
+token works only until it expires (`AUTH_JWT_ACCESS_TOKEN_LIFETIME`). Browsers
+without DBSC keep the refresh cookie and `POST /v1/auth/refresh` as before.
+
+Requirements: HTTPS, and a reverse proxy that forwards
+`Secure-Session-Registration`, `Secure-Session-Challenge`,
+`Secure-Session-Response` and `Sec-Secure-Session-Id` unchanged. The
+registration path is relative, so serving the API under a prefix such as
+`/api` works. Signing out, or deleting the user's refresh tokens (see
+[Force Logout User](#force-logout-user)), ends a device-bound session at its
+next renewal.
+
 ### Feature Toggles
 
 | Variable | Required | Description |

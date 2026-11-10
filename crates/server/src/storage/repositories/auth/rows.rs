@@ -39,6 +39,14 @@ pub struct RefreshTokenRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A refresh token bound to a browser's device key (DBSC, `auth::dbsc`).
+#[derive(Debug, Clone, FromRow)]
+pub struct BoundRefreshTokenRow {
+    pub user_id: Uuid,
+    pub dbsc_alg: String,
+    pub dbsc_public_jwk: serde_json::Value,
+}
+
 /// Input for creating an auth session (legacy)
 #[derive(Debug, Clone)]
 pub struct CreateAuthSessionRow {

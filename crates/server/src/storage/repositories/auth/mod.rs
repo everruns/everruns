@@ -223,6 +223,7 @@ impl Database {
             DELETE FROM refresh_tokens
             WHERE token_hash = $1
               AND expires_at > NOW()
+              AND dbsc_id IS NULL
             RETURNING {RefreshTokenRow}
             "#
         ))
@@ -231,6 +232,123 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    // ============================================
+    // Device-bound refresh tokens (auth::dbsc)
+    // ============================================
+    // A bound row is never consumed by `consume_refresh_token_by_hash`: the
+    // refresh token copied before binding must not outlive it.
+
+    /// Bind an unbound live refresh token to a device key and store its first
+    /// refresh challenge. Returns the user, or None when the token is expired,
+    /// revoked or already bound.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn bind_refresh_token(
+        &self,
+        token_hash: &str,
+        dbsc_id: &str,
+        alg: &str,
+        public_jwk: &serde_json::Value,
+        challenge: &str,
+        challenge_expires_at: DateTime<Utc>,
+    ) -> Result<Option<Uuid>> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            r#"
+            UPDATE refresh_tokens
+            SET dbsc_id = $2, dbsc_alg = $3, dbsc_public_jwk = $4, dbsc_bound_at = NOW(),
+                dbsc_challenge = $5, dbsc_challenge_expires_at = $6
+            WHERE token_hash = $1 AND expires_at > NOW() AND dbsc_id IS NULL
+            RETURNING user_id
+            "#,
+        )
+        .bind(token_hash)
+        .bind(dbsc_id)
+        .bind(alg)
+        .bind(public_jwk)
+        .bind(challenge)
+        .bind(challenge_expires_at)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(user_id,)| user_id))
+    }
+
+    /// A live bound refresh token by its DBSC session identifier.
+    pub async fn bound_refresh_token(&self, dbsc_id: &str) -> Result<Option<BoundRefreshTokenRow>> {
+        let row = sqlx::query_as::<_, BoundRefreshTokenRow>(
+            r#"
+            SELECT user_id, dbsc_alg, dbsc_public_jwk
+            FROM refresh_tokens
+            WHERE dbsc_id = $1 AND expires_at > NOW()
+            "#,
+        )
+        .bind(dbsc_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// The outstanding refresh challenge, storing `fresh` when none is live.
+    /// Reusing a live one means a stranger asking for challenges cannot churn
+    /// the one the browser already holds. None when the session is gone.
+    pub async fn dbsc_refresh_challenge(
+        &self,
+        dbsc_id: &str,
+        fresh: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<Option<String>> {
+        let row: Option<(String,)> = sqlx::query_as(
+            r#"
+            UPDATE refresh_tokens
+            SET dbsc_challenge = CASE WHEN dbsc_challenge_expires_at > NOW()
+                                      THEN dbsc_challenge ELSE $2 END,
+                dbsc_challenge_expires_at = CASE WHEN dbsc_challenge_expires_at > NOW()
+                                                 THEN dbsc_challenge_expires_at ELSE $3 END
+            WHERE dbsc_id = $1 AND expires_at > NOW()
+            RETURNING dbsc_challenge
+            "#,
+        )
+        .bind(dbsc_id)
+        .bind(fresh)
+        .bind(expires_at)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(challenge,)| challenge))
+    }
+
+    /// Consume `challenge` and store `next`. False when it is not the
+    /// session's live challenge: used, stale or never issued.
+    pub async fn consume_dbsc_challenge(
+        &self,
+        dbsc_id: &str,
+        challenge: &str,
+        next: &str,
+        next_expires_at: DateTime<Utc>,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE refresh_tokens
+            SET dbsc_challenge = $3, dbsc_challenge_expires_at = $4
+            WHERE dbsc_id = $1 AND dbsc_challenge = $2
+              AND dbsc_challenge_expires_at > NOW() AND expires_at > NOW()
+            "#,
+        )
+        .bind(dbsc_id)
+        .bind(challenge)
+        .bind(next)
+        .bind(next_expires_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Revoke a bound session (sign-out). Returns whether a row was removed.
+    pub async fn delete_refresh_token_by_dbsc_id(&self, dbsc_id: &str) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM refresh_tokens WHERE dbsc_id = $1")
+            .bind(dbsc_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     pub async fn delete_expired_refresh_tokens(&self) -> Result<u64> {
