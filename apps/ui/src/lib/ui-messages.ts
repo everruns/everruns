@@ -1,3 +1,4 @@
+import { messages as chatLayout } from "./messages/uk/chat-layout";
 import { messages as slackSocketMode } from "./messages/uk/slack-socket-mode";
 import { messages as channelsAndTriggers } from "./messages/uk/channels-and-triggers";
 import { messages as sandboxBuilds } from "./messages/uk/sandbox-builds";
@@ -77,6 +78,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   evalCases,
   channelsAndTriggers,
   slackSocketMode,
+  chatLayout,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

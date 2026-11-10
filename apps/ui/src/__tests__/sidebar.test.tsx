@@ -102,6 +102,15 @@ jest.mock("@/components/layout/sidebar-chat-threads", () => ({
   ),
 }));
 
+let mockAttentionItems: unknown[] = [];
+let mockAttentionError: Error | null = null;
+jest.mock("@/components/home/use-home-attention", () => ({
+  useHomeAttention: () => {
+    if (mockAttentionError) throw mockAttentionError;
+    return { items: mockAttentionItems };
+  },
+}));
+
 jest.mock("@/components/layout/notification-bell", () => ({
   NotificationBell: () => <button type="button" aria-label="Notifications" />,
   NotificationIndicator: () => <span aria-label="Unread notifications" />,
@@ -110,7 +119,6 @@ jest.mock("@/components/layout/notification-bell", () => ({
 
 // Mock feature flags provider
 const mockFeatureFlags = {
-  chat_threads: false,
   evals: true,
   skills: true,
   memory: true,
@@ -152,7 +160,6 @@ describe("Sidebar", () => {
     mockNavigationPending = false;
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
-      chat_threads: false,
       evals: true,
       skills: true,
       memory: true,
@@ -182,11 +189,10 @@ describe("Sidebar", () => {
     });
   });
 
-  it("keeps subchats in navigation when the organization adopts background work", () => {
-    mockFeatureFlags.chat_threads = true;
+  it("lists side chats under Main chat for every organization", () => {
     mockThreads.mockReturnValue([{ id: "side_1", title: "Side conversation" }]);
     render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
+    expect(screen.getByRole("link", { name: "Main chat" })).toHaveAttribute("href", "/chats");
     expect(screen.getByTestId("sidebar-chat-threads")).toBeInTheDocument();
     expect(screen.getByText("Side conversation")).toBeInTheDocument();
   });
@@ -377,7 +383,7 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
+    expect(screen.getByRole("link", { name: "Main chat" })).toHaveAttribute("href", "/chats");
   });
 
   it.each(["/chats", "/chats/new", "/chats/history", "/sessions"])(
@@ -386,7 +392,7 @@ describe("Sidebar", () => {
       mockPathname.mockReturnValue(pathname);
       render(<Sidebar />);
 
-      const chat = screen.getByRole("link", { name: "Chat" });
+      const chat = screen.getByRole("link", { name: "Main chat" });
       const agents = screen.getByRole("link", { name: "Agents" });
       expect(chat).toHaveAttribute("href", "/chats");
       // Chat shares the row inset with every other item. Its hover rail
@@ -518,17 +524,41 @@ describe("Sidebar", () => {
     expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
   });
 
-  it("hangs the thread list directly under the Chats entry", () => {
+  it("hangs the side chats directly under Main chat and starts Building with Overview", () => {
     mockThreads.mockReturnValue([{ id: "sess_1", title: "Standup" }]);
 
     render(<Sidebar />);
 
     const navigation = screen.getByRole("navigation");
     const links = within(navigation).getAllByRole("link");
-    // Home sits above Chat; the thread list hangs under Chat.
-    expect(links[0]).toHaveAttribute("href", "/home");
-    expect(links[1]).toHaveAttribute("href", "/chats");
-    expect(links[2]).toHaveAttribute("href", "/chats/sess_1");
+    expect(links[0]).toHaveAttribute("href", "/chats");
+    expect(links[1]).toHaveAttribute("href", "/chats/sess_1");
+    expect(links[2]).toHaveAttribute("href", "/home");
+    expect(links[2]).toHaveTextContent("Overview");
+  });
+
+  it("shows how many Overview items need attention, and nothing at zero", () => {
+    const { unmount } = render(<Sidebar />);
+    expect(screen.queryByLabelText(/need attention/)).not.toBeInTheDocument();
+    unmount();
+
+    mockAttentionItems = [{ id: "a" }, { id: "b" }];
+    render(<Sidebar />);
+    expect(screen.getByLabelText("2 need attention")).toHaveTextContent("2");
+    mockAttentionItems = [];
+  });
+
+  it("drops the Overview count rather than the sidebar when its data is malformed", () => {
+    mockAttentionError = new TypeError("examples.filter is not a function");
+    const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(<Sidebar />);
+      expect(screen.getByRole("link", { name: /Overview/ })).toHaveAttribute("href", "/home");
+      expect(screen.queryByLabelText(/need attention/)).not.toBeInTheDocument();
+    } finally {
+      mockAttentionError = null;
+      consoleError.mockRestore();
+    }
   });
 
   it("hides System navigation items by default (collapsed)", () => {

@@ -14,13 +14,10 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Eye, Maximize2, Search, X } from "lucide-react";
+import { ArrowLeft, Columns2, Eye, Maximize2, Search, X } from "lucide-react";
 import { Sidebar, MobileSidebar } from "@/components/layout/sidebar";
-import {
-  useFeatureFlag,
-  useFeatureFlags,
-  useFeatureFlagsState,
-} from "@/providers/feature-flags-provider";
+import { useFeatureFlags, useFeatureFlagsState } from "@/providers/feature-flags-provider";
+import { ChatSwitcher } from "@/components/chat/chat-switcher";
 import { OPEN_CHAT_PARAM, useLandingRedirect, withoutOpenChat } from "./landing";
 import { useOrg } from "@/providers/org-provider";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
@@ -56,7 +53,12 @@ import { PageViewRegistryContext, usePageViewRegistry } from "./page-view-state"
 const ChatWorkspace = dynamic(() =>
   import("@/components/chat/chat-workspace").then((module) => module.ChatWorkspace),
 );
+const ChatThreadView = dynamic(() =>
+  import("@/components/chat/chat-thread-view").then((module) => module.ChatThreadView),
+);
 
+// Chat beside app pages is core, not an org opt-in (knowledge/ui/chat-mode.md):
+// clicking Main chat on a page opens it beside that page, /chats is full screen.
 export function ChatModeShell({
   children,
   navigation,
@@ -65,27 +67,9 @@ export function ChatModeShell({
   /** Host-composed sections; the rail retains shared role, feature and policy gates. */
   navigation?: NavigationSection[];
 }) {
-  const enabled = useFeatureFlag("chat_mode");
-  const confirmationPath = usePathname();
-  const confirmationSearch = useSearchParams();
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const { isLoading: flagsLoading } = useFeatureFlagsState();
-  useLandingRedirect(enabled, !orgLoading && !flagsLoading && !!currentOrg);
-  if (!enabled) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <Sidebar className="hidden md:flex" />
-        <MobileSidebar />
-        <main className="min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
-          <ConfirmationProvider
-            scope={`${currentOrg?.public_id}:${confirmationPath}?${confirmationSearch}`}
-          >
-            {children}
-          </ConfirmationProvider>
-        </main>
-      </div>
-    );
-  }
+  useLandingRedirect(!orgLoading && !flagsLoading && !!currentOrg);
   // No UI state, transcript, or page metadata crosses an organization switch.
   return (
     <EnabledShell key={currentOrg?.public_id} navigation={navigation}>
@@ -112,9 +96,20 @@ function EnabledShell({
   const [activeChatId, setActiveChatId] = useState<string>();
   const [visited, setVisited] = useState(false);
   const [hint, setHint] = useState(true);
+  // A thread opened beside the page replaces the page view (the page stays
+  // mounted underneath so its drafts survive) until the person goes back.
+  const [pageThreadId, setPageThreadId] = useState<string>();
+  // Where "Show beside page" returns to from full-screen Chat.
+  const lastPage = useRef<string>("/home");
   useEffect(() => {
     if (fullChat) setVisited(true);
   }, [fullChat]);
+  useEffect(() => {
+    if (chatRoute) return;
+    const query = searchParams.toString();
+    lastPage.current = query ? `${pathname}?${query}` : pathname;
+    setPageThreadId(undefined);
+  }, [chatRoute, pathname, searchParams]);
   const [registrations, setRegistrations] = useState<
     Array<{
       token: string;
@@ -226,22 +221,53 @@ function EnabledShell({
     router.replace(withoutOpenChat(pathname, searchParams), { scroll: false });
   }, [openOnArrival, changeOpen, router, pathname, searchParams]);
 
+  const mainChatId = thread?.id;
+  const selectedChatId = activeChatId ?? mainChatId;
+  const openBeside = useCallback(
+    (chatId?: string) => {
+      setActiveChatId(chatId ?? mainChatId);
+      changeOpen(true);
+    },
+    [changeOpen, mainChatId],
+  );
+  const showFullScreen = useCallback(() => {
+    router.push(
+      selectedChatId && selectedChatId !== mainChatId ? `/chats/${selectedChatId}` : "/chats",
+    );
+  }, [router, selectedChatId, mainChatId]);
+  const showBesidePage = useCallback(() => {
+    changeOpen(true);
+    router.push(lastPage.current);
+  }, [changeOpen, router]);
+  const openThreadBeside = useCallback(
+    (threadId: string) => {
+      setPageThreadId(threadId);
+      changeOpen(true);
+    },
+    [changeOpen],
+  );
+
   useEffect(() => {
+    // Cmd/Ctrl-J opens or closes Chat beside the page (on a Chat route it
+    // focuses the composer). Cmd/Ctrl-Shift-J switches between full screen
+    // and beside the page.
     const shortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
-        event.preventDefault();
-        if (chatRoute) {
-          document
-            .querySelector<HTMLElement>(
-              '.chat-mode-conversation textarea, .chat-mode-conversation [contenteditable="true"]',
-            )
-            ?.focus();
-        } else changeOpen(!open);
-      }
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j") return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (chatRoute) showBesidePage();
+        else showFullScreen();
+      } else if (chatRoute) {
+        document
+          .querySelector<HTMLElement>(
+            '.chat-mode-conversation textarea, .chat-mode-conversation [contenteditable="true"]',
+          )
+          ?.focus();
+      } else changeOpen(!open);
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [changeOpen, open, chatRoute]);
+  }, [changeOpen, open, chatRoute, showBesidePage, showFullScreen]);
 
   return (
     <ChatModeContext.Provider
@@ -255,6 +281,10 @@ function EnabledShell({
         pageAdapter,
         pageViewAdapter: viewAdapter,
         threadId: activeChatId ?? thread?.id,
+        openBeside,
+        showFullScreen,
+        showBesidePage,
+        openThreadBeside,
         actions,
         recordAction,
       }}
@@ -288,18 +318,40 @@ function EnabledShell({
               extraActions={
                 splitOpen ? (
                   <>
-                    <Button variant="ghost" size="sm" onClick={() => changeOpen(false)}>
-                      <ArrowLeft className="size-3.5" /> {ui("Back to app")}
-                    </Button>
-                    <LinkButton
+                    <ChatSwitcher
+                      mainChatId={thread.id}
+                      activeChatId={activeChatId ?? thread.id}
+                      onSelectChat={setActiveChatId}
+                      onSelectThread={openThreadBeside}
+                    />
+                    <Button
                       variant="ghost"
                       size="icon-sm"
-                      href={`/chats/${activeChatId ?? thread.id}`}
-                      aria-label={ui("Open full Chat")}
+                      aria-label={ui("Full screen")}
+                      title={ui("Full screen (⌘⇧J)")}
+                      onClick={showFullScreen}
                     >
                       <Maximize2 className="size-3.5" />
-                    </LinkButton>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={ui("Close chat")}
+                      title={ui("Close chat (⌘J)")}
+                      onClick={() => changeOpen(false)}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
                   </>
+                ) : fullChat ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title={ui("Show beside page (⌘⇧J)")}
+                    onClick={showBesidePage}
+                  >
+                    <Columns2 className="size-3.5" /> {ui("Show beside page")}
+                  </Button>
                 ) : undefined
               }
               notice={
@@ -361,13 +413,13 @@ function EnabledShell({
                     </button>
                   </PageNavigationHint>
                   <PageNavigationHint
-                    label={ui("Open full page")}
+                    label={ui("Full page")}
                     description={ui("Hide Chat and expand the current page.")}
                   >
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={ui("Open full page")}
+                      aria-label={ui("Full page")}
                       onClick={() => changeOpen(false)}
                     >
                       <Maximize2 className="size-3.5" />
@@ -375,7 +427,18 @@ function EnabledShell({
                   </PageNavigationHint>
                 </div>
               )}
-              <main className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
+              {splitOpen && pageThreadId && (
+                <PageThread
+                  threadId={pageThreadId}
+                  coordinatorId={activeChatId ?? thread?.id}
+                  backLabel={page.label}
+                  onBack={() => setPageThreadId(undefined)}
+                />
+              )}
+              <main
+                hidden={splitOpen && !!pageThreadId}
+                className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots"
+              >
                 {fullChat ? null : (
                   <ConfirmationProvider
                     scope={`${currentOrg?.public_id}:${pathname}?${searchParams}`}
@@ -391,6 +454,48 @@ function EnabledShell({
         <IconRail open={splitOpen} navigation={navigation} />
       </div>
     </ChatModeContext.Provider>
+  );
+}
+
+/** A thread opened from Chat while it sits beside a page: shown in the page pane. */
+function PageThread({
+  threadId,
+  coordinatorId,
+  backLabel,
+  onBack,
+}: {
+  threadId: string;
+  coordinatorId?: string;
+  backLabel: string;
+  onBack: () => void;
+}) {
+  const ui = useUiTranslations();
+  return (
+    <section
+      aria-label={ui("Thread")}
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
+    >
+      <ChatThreadView
+        threadId={threadId}
+        coordinatorId={coordinatorId}
+        threadMode
+        extraActions={
+          <>
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft className="size-3.5" /> {backLabel}
+            </Button>
+            <LinkButton
+              variant="ghost"
+              size="icon-sm"
+              href={`/chats/${threadId}`}
+              aria-label={ui("Open thread full screen")}
+            >
+              <Maximize2 className="size-3.5" />
+            </LinkButton>
+          </>
+        }
+      />
+    </section>
   );
 }
 

@@ -1,20 +1,19 @@
-//! Browser-executed form tools for the Adoption-gated Platform Chat workspace.
+//! Browser-executed form tools for Platform Chat beside app pages.
 //! Definitions travel through the ordinary client-tool pause/resume protocol;
 //! the server never executes a UI patch or interprets assistant prose as one.
 
 use crate::domains::agents::record::Agent;
-use crate::storage::StorageBackend;
 use everruns_contracts::tool_types::{ClientSideTool, DeferrablePolicy, ToolDefinition, ToolHints};
 use serde_json::json;
 
 const READ: &str = "read_page_draft";
 const PATCH: &str = "patch_page_draft";
 
-pub(crate) fn add_page_tools(agent: &mut Agent, enabled: bool) {
+pub(crate) fn add_page_tools(agent: &mut Agent) {
     if !agent.is_built_in || agent.name != super::NAME {
         return;
     }
-    update_tools(&mut agent.tools, enabled);
+    update_tools(&mut agent.tools, true);
 }
 
 fn update_tools(tools: &mut Vec<ToolDefinition>, enabled: bool) {
@@ -56,21 +55,9 @@ fn update_tools(tools: &mut Vec<ToolDefinition>, enabled: bool) {
     ));
 }
 
-pub(crate) async fn configure_page_tools(
-    db: &StorageBackend,
-    org_id: i64,
-    agent: &mut Agent,
-) -> anyhow::Result<()> {
-    if agent.is_built_in && agent.name == super::NAME {
-        let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
-            db,
-            org_id,
-            &crate::records::FeatureFlagPolicy::current(),
-        )
-        .await?;
-        add_page_tools(agent, flags.chat_mode);
-    }
-    Ok(())
+/// Page tools are always on for Platform Chat: Chat opens beside every app page.
+pub(crate) fn configure_page_tools(agent: &mut Agent) {
+    add_page_tools(agent);
 }
 
 #[cfg(test)]

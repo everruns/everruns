@@ -19,7 +19,7 @@ const task = {
   state: "running",
 } as SessionTask;
 
-it("opens permanent Chat work in the adopted panel", () => {
+it("opens the chat's work in its Threads panel", () => {
   const openTask = jest.fn();
   render(
     <ChatWorkspaceContext.Provider value={{ sessionId: "session_main", openTask }}>
@@ -27,7 +27,7 @@ it("opens permanent Chat work in the adopted panel", () => {
     </ChatWorkspaceContext.Provider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "View thread" }));
-  expect(openTask).toHaveBeenCalledWith("task_one");
+  expect(openTask).toHaveBeenCalledWith(task);
 });
 
 it("keeps recording navigation outside the adopted permanent conversation", () => {

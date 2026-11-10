@@ -29,11 +29,10 @@ pub async fn features(
         &crate::records::FeatureFlagPolicy::current(),
     )
     .await?;
-    let is_platform_chat = agent.is_built_in && agent.name == crate::platform_chat_agent::NAME;
     let mut result = ChatFeatures::default();
     for config in configs {
         let id = config.capability_id();
-        if !flags.is_agent_capability_enabled(id, is_platform_chat) {
+        if !flags.is_capability_enabled(id) {
             continue;
         }
         if id == "coordination"

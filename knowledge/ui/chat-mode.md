@@ -1,97 +1,113 @@
 ---
 type: Decision
-title: "Page-aware Chat mode"
-description: "How the Adoption-gated split shell connects a Platform Chat instance to the current page, with shared context across app pages and typed draft editing."
+title: "Chat, side chats, threads and Chat beside the page"
+description: "The conversation model (Main chat, side chats, threads), the beside-the-page and full-screen layouts, and how a Platform Chat instance reads and drafts edits on the page next to it."
 tags:
   - ui
   - agents
   - platform-chat
-  - feature-flags
 ---
 
-# Page-aware Chat mode
+# Chat, side chats, threads and Chat beside the page
 
 ## Intent
 
 Operate on the thing beside the conversation. Navigation should not manufacture
 conversation turns; mouse edits and requested Chat edits should stay visible in
-the same workspace. The design exploration supplies the split workspace and
-change markers. The subsequent product decision also connects Chat to the actual
-Agent form: adjacent-page edits stage in that existing draft and use its Save
-and Discard actions. There is no separate Chat draft or per-change acceptance queue.
+the same workspace. Adjacent-page edits stage in that page's existing draft and
+use its Save and Discard actions. There is no separate Chat draft or
+per-change acceptance queue.
 
-The authenticated app shares one context and registration contract. Read-only
-views, editable forms and host-composed pages reuse the same transcript, composer
-and navigation model. Adoption does not make immediate page actions model-callable.
+One logical model, the same for every organization (decided 2026-11-10). The
+earlier `chat_mode` and `chat_threads` Adoption opt-ins hid parts of the intended
+design and are gone; their stored values are ignored. A flag that hides the
+intended design is exactly the confusion this model removes.
 
-## Rollout and ownership
+## Conversations
 
-`chat_mode` is a separate **Adoption** flag, off until the organization opts in.
-It does not require or enroll `chat_threads`. Deployment availability alone must
-never enable it, including during organization loading. Turning it off restores
-the existing shell. The source catalog is
-[`feature_flags.rs`](../../crates/server/src/records/feature_flags.rs).
+| Conversation | What it is | Starts threads | Composer |
+| --- | --- | --- | --- |
+| **Main chat** | The person's permanent Platform Chat instance. Pinned at the top of the sidebar. | Yes | Yes |
+| **Side chat** | A fresh instance of the same managed agent with its own session, transcript, files and threads. | Yes | Yes |
+| **Thread** | Work a chat handed off: a coordination child session with a brief, a checklist and a worker. It belongs to the chat that started it and reports back there. | No | "Reply in thread" only |
+
+Every Platform Chat instance, main or side, is a coordinator: the server turns
+on the coordination capability for every Platform Chat session
+([coordination](../runtime-resources/coordination.md)). The existing parent link
+scopes each thread to the chat instance that started it. API and storage names
+are unchanged: side chats are the existing chat sessions (once called
+"subchats") and threads are coordination child sessions.
+
+Creating a side chat does not fork, seed or copy another transcript. The
+shared/private memory contract still applies; a new conversation is not a new
+identity or a separate organization. An empty draft creates its session only on
+first send; a failed first send reuses that session. Side chats keep normal
+pin/archive behavior.
+
+The sidebar shows **Main chat** (with a live dot while it streams) and a
+**Side chats +** group listing recent side chats. Threads are not in the
+sidebar: each chat's threads live in that chat's Threads panel. There are no
+channels in the sidebar.
+
+## Two layouts for every conversation
 
 The app layout owns one long-lived
 [`ChatModeShell`](../../apps/ui/src/components/chat-mode/chat-mode-shell.tsx)
 and one [`ChatWorkspace`](../../apps/ui/src/components/chat/chat-workspace.tsx).
-Chat and every subchat are full conversation destinations: `/chats` opens the
-permanent conversation; `/chats/{id}` replaces it with the selected instance.
-Neither opens another conversation beside itself. History is a list destination.
-Command/Ctrl-J on a Chat destination focuses its existing composer.
+Moving between layouts only shows and hides panes: nothing remounts, so streams
+and drafts survive.
 
-A **subchat** is a fresh instance of the managed Platform Chat Agent with its own
-session, transcript and workspace files. Creating one does not fork, seed or copy
-another transcript. The shared/private memory contract still applies; a new
-conversation is not a new identity or a separate organization. New subchat and
-recent subchats remain discoverable regardless of either Adoption flag. An empty
-draft creates its session only on first send; a failed first send reuses that
-session. Ordinary subchats keep normal pin/archive behavior.
+1. **Beside the page.** The conversation is on the left, the current page in the
+   middle, and the page rail replaces the sidebar on the right.
+   - Clicking Main chat or a side chat in the sidebar on any app page opens it
+     beside that page instead of navigating to `/chats`. Modifier clicks keep
+     ordinary link behavior.
+   - Links in a reply open in the page pane; they never replace the conversation.
+   - **Main chat ▾** in the conversation header
+     ([`ChatSwitcher`](../../apps/ui/src/components/chat/chat-switcher.tsx))
+     switches between Main chat, side chats and the open chat's threads, and
+     starts a new side chat. The page stays as it is.
+   - **Full page** (page header or rail) hides the conversation; it keeps running.
+2. **Full screen.** `/chats` is Main chat and `/chats/{id}` a side chat or a
+   thread, full width. **Show beside page** returns to the last app page with
+   the conversation beside it. The conversation header's **Full screen** goes the
+   other way.
 
-Arriving at the app (`/`) opens Chat beside [Home](org-home.md) rather than full width;
-`?chat=open` on any app page opens the page-side Chat the same way.
-Command/Ctrl-J on an app page opens the selected personal Chat instance beside
-that page, defaulting to permanent Chat. The shell retains one mounted conversation
-and its composer when moving between full Chat and the page workspace. Back to
-app hides the conversation without tearing down its stream or composer. An
-organization switch destroys the shell's state. The mounted conversation settles
-already-owned page tool requests even after the split closes: the same original
-binding may finish, while navigation returns an unavailable-page result instead
-of leaving the turn waiting or touching a different form. Full Chat never claims
-a new page binding. Delegated child conversations
-are not selected as page editors. Page context is enabled only beside non-Chat
-pages, and the conversation list does not register filters as adjacent-page state.
+Keys: Cmd/Ctrl-J opens or closes Chat beside the page (on a Chat route it
+focuses the composer); Cmd/Ctrl-Shift-J switches between full screen and beside
+the page.
 
-The Subchats panel lists independent conversations. Its optional **Work** tab
-shows delegation and background tasks belonging to the active Chat instance, or
-the validated Platform Chat parent of a delegated child. It never hosts a second
-conversation or a second composer. Existing task links remain usable without
-automatically enabling new delegation.
+Arriving at the app (`/`) opens Main chat beside [Overview](org-home.md);
+`?chat=open` on any app page opens it the same way. An organization switch
+destroys the shell's state. The mounted conversation settles already-owned page
+tool requests even after the split closes: the same original binding may finish,
+while navigation returns an unavailable-page result instead of leaving the turn
+waiting or touching a different form. Full screen never claims a new page
+binding. Threads are not selected as page editors. Page context is enabled only
+beside non-Chat pages.
+
+## Threads panel
+
+In full screen, **Threads · N** in the conversation header toggles a panel on
+the right of the chat. N counts threads that are not resolved. The panel opens
+by itself when the chat starts a new thread. Rows are grouped by what they need
+(Needs you, Working, Ready for review, Open, then Resolved collapsed); a
+coordinator thread is one row titled by its first assignment, with the current
+assignment and its latest status as the preview. Other background work the chat
+started keeps its `?task=` detail view.
+
+Opening a thread shows it in the panel next to the chat, with "← Threads" to go
+back and an expand button for full width; the chat stays on the left so the
+person can steer it. Beside a page, the right side is the page pane: opening a
+thread shows it in place of the page (the page stays mounted underneath), with
+a back button naming the page. Narrow screens use a drawer and open threads full
+screen.
 
 The core **Settings → Chat** page uses the same guarded draft, saved review and
-Undo flow for its independent Chat model. That setting applies to permanent Chat
-and fresh subchats; it does not replace agent/session defaults. A new subchat's
+Undo flow for its independent Chat model. That setting applies to Main chat and
+fresh side chats; it does not replace agent/session defaults. A new side chat's
 model preview waits for organization settings and follows the same default
 selection order as the server. See [model resolution](../foundations/models.md).
-
-### Proposed flag schema (not migrated)
-
-The existing keys remain compatible and retain their current organization
-rollouts. Their labels now describe the behavior: **Chat workspace** (`chat_mode`)
-and **Chat background work** (`chat_threads`). The proposed key cleanup is:
-
-| Surface | Proposed key | Availability |
-| --- | --- | --- |
-| Chat, fresh subchats, history, pin/archive | None | Core, always available |
-| Page-side Chat, page context, draft/review tools | `chat_workspace` | Organization Adoption opt-in; replaces `chat_mode` |
-| Delegation capability and Work panel | `chat_background_work` | Organization Adoption opt-in; replaces `chat_threads` |
-| External public-facing Chat | `public_chat` | Existing independent rollout; unchanged |
-
-There is no master Chat gate and neither Adoption feature depends on the other.
-Voice remains its cross-cutting capability flag. A future migration should resolve
-an explicitly configured new key first, then fall back to its old key when no new
-value exists. Do not OR aliases: an explicit false must win. Preserve enrollment,
-sessions and history; never enroll an organization as part of the rename.
 
 The desktop geometry follows the exploration: up to 600 px Chat on the left,
 the current page in the middle, and a 48 px navigation rail on the right.
@@ -99,7 +115,7 @@ The normal sidebar is 240 px. Widths transition over 280 ms with ease-out;
 reduced motion removes the transition. The grid stays within the viewport;
 automatic transcript scrolling must target its own container rather than scrolling
 ancestor containers and moving the adjacent page. On small screens, Chat takes the content
-area while open and Back to app returns to the mounted page. Agents' columns
+area while open and Full page returns to the mounted page. Agents' columns
 respond to the width of the page pane, not the browser viewport.
 
 Rail destinations and visibility come from the existing navigation model,
@@ -120,7 +136,7 @@ does not prefetch destination content or render hidden, disabled or restricted p
 ## Page context is data
 
 [`ChatModeContext`](../../apps/ui/src/components/chat-mode/chat-mode-context.tsx)
-is an optional page adapter. Every page within the adopted authenticated shell
+is an optional page adapter. Every page within the authenticated shell
 receives a browser binding, route and resource identity. Existing page-title hooks
 supply readable labels. Explicit forms register their own identity and fields;
 registration cleanup removes only its own adapter, so nested pages and dialogs do
@@ -204,9 +220,8 @@ validation and the aggregate size check run before mutation. Opening/closing or
 replacing a form rotates the collection binding. A dialog may take priority over
 the underlying page form, then unmount cleanly back to that page.
 
-After Adoption, Organization, Model defaults and Web search defaults stage both
-mouse and Chat edits locally behind explicit Save/Discard controls. With Adoption
-off they retain autosave. Organization Profile fields, invitation and account names,
+Organization, Model defaults and Web search defaults stage both
+mouse and Chat edits locally behind explicit Save/Discard controls. Organization Profile fields, invitation and account names,
 provider connection metadata, model selection, MCP metadata, schedule editors,
 eval cases, report-builder settings, Playground setup and queue metadata use the
 same draft contract. Channel variants expose typed public configuration while
@@ -242,7 +257,7 @@ a direct server save.
 
 Personal Settings follow the split navigation: Account is the global private account name; Profile is the organization virtual-user profile. Console Profile saves resolve `/me` to the proved self binding before the normal revision guard and journal. Members can review their own profile without management permission; self-service cannot restore lifecycle. Runtime self-service writes share the resource lock, and unrecorded changes invalidate saved Undo. Connections, MCP servers and AI clients retain their existing protected projections.
 
-Every supported existing-resource editor uses the same Adoption-only review
+Every supported existing-resource editor uses the same review
 controller as Agents. A local draft shows Before/After values with field and
 whole-draft Undo. Normal Save stays a user action. Before Save, the browser checks
 the resource revision captured when editing began; the server checks it again
@@ -285,7 +300,7 @@ Dialogs and drawers originating in the right page portal into its stable contain
 Chat, sidebar and global overlays retain their normal portal and modal behavior. While Chat is open they are
 non-modal and outside-pointer dismissal is disabled: focusing Chat keeps the form
 mounted. Explicit Close/Escape still work. The common two-column page body responds
-to the page pane's width. Feature-off pages retain their normal controls and shell.
+to the page pane's width.
 Dialogs scroll within the available page height, keeping Save and Close reachable
 when schedule previews, validation messages or draft diffs increase their content.
 
@@ -312,8 +327,8 @@ actions retain their manual controls. Its layout uses the page pane's width.
 Agent and Harness display translations use a bounded locale-keyed draft schema;
 translations cannot alter execution instructions or stable resource identity.
 They follow the resource's ordinary Save, saved review and guarded Undo. Interface
-language is a separate device preference: Adoption stages it until Save, while
-feature-off behavior still switches immediately. It has no server entity history.
+language is a separate device preference staged until Save. It has no server
+entity history.
 
 Manager notes acquire their own high-priority sheet binding. They are readable
 only when the authorized sheet is open, writable only after Edit, and retain the
@@ -327,9 +342,8 @@ identity only after platform-policy authorization; diagnostic payloads remain ou
 
 The Agent page registers a typed form adapter with the shell. The managed
 Platform Chat receives `read_page_draft` and `patch_page_draft` as ordinary
-[client-side tools](../execution/client-side-tools.md), only when the organization
-has adopted Chat mode. Both the gRPC and in-process worker loading paths enforce
-that gate. Server-resolved tool definitions must survive the internal transport
+[client-side tools](../execution/client-side-tools.md) for every organization.
+Both the gRPC and in-process worker loading paths add them. Server-resolved tool definitions must survive the internal transport
 and the worker projection into portable Agent definitions; adding tools only
 before transport silently loses them in a separate-worker deployment. The tools
 stay directly callable alongside the Bashkit shell.
@@ -416,7 +430,7 @@ Dismissing review markers does not remove that conflict.
 - **Resource history:** shared context and form drafts do not imply saved-change
   attribution or inverse Undo. Add those only with that resource's authorization
   and revision-guarded history contract; do not clone the shell per page.
-- **Model choice:** Chat mode hides the model chip when a model resolves; retain
+- **Model choice:** Chat beside the page hides the model chip when a model resolves; retain
   the recovery picker when none is configured. It uses the existing managed
   session/model resolution instead of creating another model setting.
 

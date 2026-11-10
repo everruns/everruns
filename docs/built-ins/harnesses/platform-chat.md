@@ -11,30 +11,38 @@ access, introduction, conversation starters, and durable operator memory.
 Platform Chat is built in and read-only: you cannot edit, archive, or delete it from the UI
 or the API. Use **Copy** on its page to make an editable Agent from it.
 
-## Chat and subchats
+## Main chat, side chats and threads
 
-The sidebar's **Chat** entry always opens your permanent conversation. It cannot be
-renamed, unpinned, archived, deleted, or reassigned. **New subchat** opens a fresh
-conversation with the same Agent. Its session is created when you send the first
-message; it starts without copied conversation history or workspace files.
+The sidebar's **Main chat** entry is your permanent conversation. It cannot be
+renamed, unpinned, archived, deleted, or reassigned. **Side chats +** opens a
+fresh conversation with the same Agent. Its session is created when you send the
+first message; it starts without copied conversation history or workspace files.
+Each side chat has its own transcript, workspace files and threads. **All chats**
+lists your side chats. Playground conversations and runs with other agents stay
+outside Chat; use Playground to test an Agent or harness.
 
-Each subchat is a new Chat instance with its own transcript and workspace files.
-Selecting a subchat replaces the main conversation; Chat never opens a second
-conversation beside itself. The Subchats panel lists your conversations.
-
-**All chats** lists your subchats. Playground
-conversations and runs with other agents stay outside Chat. Use Playground to select
-an Agent or harness and test its behavior.
+Every chat can hand longer work to a **thread**: a child conversation with a brief,
+a checklist and a worker. Chat tells you when it starts one. **Threads** in the
+conversation header opens the chat's Threads panel on the right, grouped into
+Needs you, Working, Ready for review and Resolved; it opens by itself when a new
+thread starts. Click a thread to open it next to the chat, and steer it by
+telling the chat or replying in the thread. Threads belong to the chat that
+started them.
 
 ## Chat beside your pages
 
-Organization owners and admins can enable **Chat workspace** in **Settings > Features**.
-Open an app page, then press **Command-J** (**Ctrl-J** on Windows and Linux).
-Your selected personal Chat opens beside the page, defaulting to the permanent
-conversation. **Back to app** restores the full page and keeps the conversation
-and composer draft. The sidebar's **Chat** entry opens full Chat; on Chat pages,
-Command/Ctrl-J focuses the existing composer. Page context is attached only
-when Chat is beside an app page.
+On any app page, click **Main chat** (or a side chat) in the sidebar, or press
+**Command-J** (**Ctrl-J** on Windows and Linux). The conversation opens beside the
+page and can see it. Links in Chat's replies open in the page pane, so the
+conversation stays put. **Main chat ▾** in the conversation header switches
+between Main chat, side chats and the open chat's threads; opening a thread
+beside a page shows it in place of the page, with a button back to the page.
+
+Both sides can go full screen. **Full screen** in the conversation header (or
+**Command-Shift-J**) hides the page; **Show beside page** brings back the last
+page you were on. **Full page** hides the conversation, which keeps running.
+Nothing reloads when you switch, so streams and drafts survive. On Chat pages,
+Command/Ctrl-J focuses the existing composer.
 
 Each message shares the current page's identity with Chat. On an Agent page,
 Chat can read the live form, including unsaved instructions and configuration,
@@ -64,7 +72,7 @@ Chat edits one form at a time.
 
 Use the page's existing **Save** or **Create** action to apply a staged change.
 Organization, Model defaults and Web search defaults use explicit **Save** and
-**Discard** controls while Chat workspace is enabled. Chat can also stage supported
+**Discard** controls. Chat can also stage supported
 settings, schedule and eval-case fields, MCP metadata, invitations, report-builder
 choices and Playground setup. Connection credentials, approvals, financial actions
 and operational buttons retain their normal manual controls. Operational context
@@ -81,9 +89,6 @@ New-resource forms still require Create. Undo does not delete newly created
 resources or reverse invitations, payments, issued tokens or queued tasks.
 Protected values keep their manual controls. An inverse that no longer passes
 validation stays visible with an error for review.
-Chat workspace is independent of **Chat background work**, which enables
-delegation and the Work tab. Each Chat instance has its own work. Core Chat,
-subchats and history remain available with either Adoption feature off.
 
 ## Platform access and memory
 
@@ -129,7 +134,7 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | Ask User | Pause for structured user input when required |
 | Error Disclosure | Return detailed platform errors to the managed operator Agent |
 | User MCP Servers | Use the MCP servers the person added for themselves, and add, remove and connect them in chat ([User MCP servers](/features/user-mcp-servers/)) |
-| Coordination | Hand focused work to threads you can open and follow, when the organization has adopted Chat background work |
+| Coordination | Hand focused work to threads you can open and follow, in Main chat and every side chat |
 | Poppy Personal Agent | Talk to companies' agents for the person over the Personal Agent Protocol ([Poppy Personal Agent](/capabilities/poppy-personal-agent/)) |
 | Tool Search | Discover native operations on demand with bounded schema disclosure ([Tool Search](/capabilities/tool-search/)) |
 | Image Generation | Draw images, animated GIFs and SVGs on the organization's default image model ([Image Generation](/capabilities/image-generation/)) |

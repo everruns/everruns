@@ -25,6 +25,7 @@ import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { sideChatNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const [newSideChat, chatHistory] = sideChatNavigation;
 
@@ -48,17 +49,21 @@ function useFrozen<T>(value: T, frozen: boolean): T {
 export function SidebarChatThreads({ pathname }: { pathname: string }) {
   const ui = useUiTranslations();
   const { threads, isLoading } = useChatThreads();
-  usePlatformChatThread({ ensure: true });
   const [interacting, setInteracting] = useState(false);
   const stableThreads = useFrozen<Session[]>(threads, interacting);
-  const visible = stableThreads.slice(0, SIDEBAR_THREAD_LIMIT);
+  const { thread: mainChat } = usePlatformChatThread({ ensure: true });
+  const chatMode = useChatMode();
+  const onChatRoute = pathname === "/chats" || pathname.startsWith("/chats/");
+  // Side chats: every Platform Chat conversation except Main chat.
+  const sideChats = stableThreads.filter((thread) => thread.id !== mainChat?.id);
+  const visible = sideChats.slice(0, SIDEBAR_THREAD_LIMIT);
 
   if (isLoading && visible.length === 0) return null;
 
   return (
     <div
       role="group"
-      aria-label={ui("Subchats")}
+      aria-label={ui("Side chats")}
       className="ml-9 mr-2.5 mb-1"
       onMouseEnter={() => setInteracting(true)}
       onMouseLeave={() => setInteracting(false)}
@@ -67,7 +72,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
     >
       <div className="border-l border-border">
         <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
-          <p className="text-xs font-medium">{ui("Subchats")}</p>
+          <p className="text-xs font-medium">{ui("Side chats")}</p>
           {
             <Link
               href={newSideChat.href}
@@ -89,6 +94,17 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
               href={href}
               prefetch={false}
               aria-current={isActive ? "page" : undefined}
+              onClick={
+                chatMode?.openBeside && !onChatRoute
+                  ? (event) => {
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
+                        return;
+                      // From an app page a side chat opens beside it, like Main chat.
+                      event.preventDefault();
+                      chatMode?.openBeside?.(thread.id);
+                    }
+                  : undefined
+              }
               className={cn(
                 rowClass,
                 isActive
@@ -105,7 +121,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
         })}
       </div>
 
-      {stableThreads.length > SIDEBAR_THREAD_LIMIT && (
+      {sideChats.length > SIDEBAR_THREAD_LIMIT && (
         <Link
           href={chatHistory.href}
           prefetch={false}

@@ -4,7 +4,7 @@ const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
 const HARNESS_ID = "harness_019fd9b43fa37512b8f25226b21c2c8b";
 
-async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent", chat = false) {
+async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
   await page.route("**/api/v1/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
@@ -27,7 +27,6 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent", chat 
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
-        chat_mode: chat,
         evals: true,
         plugins: true,
         voice: false,
@@ -146,9 +145,9 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent", chat 
 }
 
 for (const scenario of [
-  { name: "split page", chat: true, width: 1280, height: 633, open: true },
-  { name: "mobile page", chat: true, width: 390, height: 633, open: false },
-  { name: "workspace off", chat: false, width: 1280, height: 633, open: false },
+  { name: "split page", width: 1280, height: 633, open: true },
+  { name: "mobile page", width: 390, height: 633, open: false },
+  { name: "page alone", width: 1280, height: 633, open: false },
 ]) {
   test(`a trigger row opens its page with Save reachable on ${scenario.name}`, async ({
     page,
@@ -161,7 +160,7 @@ for (const scenario of [
     await context.addCookies([
       { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
     ]);
-    await mockAgentDetailApi(page, "Jokes Agent", scenario.chat);
+    await mockAgentDetailApi(page, "Jokes Agent");
     await page.route(`**/api/v1/agents/${AGENT_ID}/github`, (route) =>
       route.fulfill({
         json: {
@@ -221,7 +220,7 @@ for (const scenario of [
     await expect(message).toHaveValue("Fictional scheduled report");
     await message.fill("Reviewed report");
     const save = page.getByRole("button", { name: "Save", exact: true });
-    const bounds = scenario.chat
+    const bounds = scenario.open
       ? (await page.getByRole("region", { name: "Current page" }).boundingBox())!
       : { x: 0, y: 0, width: scenario.width, height: scenario.height };
     await save.scrollIntoViewIfNeeded();

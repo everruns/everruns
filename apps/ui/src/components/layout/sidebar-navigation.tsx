@@ -6,7 +6,7 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
-import { useState, type ReactNode } from "react";
+import { Component, useState, type ReactNode } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
@@ -18,6 +18,7 @@ import type { NavigationItem, NavigationSection } from "./sidebar";
 import { visibleNavigationSections } from "@/lib/navigation";
 import { useOrg } from "@/providers/org-provider";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { useHomeAttention } from "@/components/home/use-home-attention";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -32,12 +33,44 @@ function NavigationPending() {
   ) : null;
 }
 
+/**
+ * The count renders on every page, so a failure in any of its queries must not
+ * take the page down with it: it just disappears. Overview shows the real error.
+ */
+class QuietBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/** How many items wait on Overview's "Needs attention" list; hidden at zero. */
+function OverviewCount() {
+  const ui = useUiTranslations();
+  const { items } = useHomeAttention();
+  if (items.length === 0) return null;
+  return (
+    <span
+      className="ml-auto min-w-5 bg-primary/10 px-1.5 text-center text-[11px] font-semibold tabular-nums text-primary"
+      aria-label={ui("{value0} need attention", { value0: items.length })}
+    >
+      {items.length}
+    </span>
+  );
+}
+
 function NavLink({ item, pathname }: { item: NavigationItem; pathname: string }) {
   const ui = useUiTranslations();
   const router = useRouter();
   const chatMode = useChatMode();
 
   const activePath = item.activePrefix ?? item.href;
+  // Main chat opens beside the current page; on a Chat route it is a plain link.
+  const onChatRoute = pathname === "/chats" || pathname.startsWith("/chats/");
+  const opensBeside = item.href === "/chats" && !!chatMode?.openBeside && !onChatRoute;
   const isActive = item.exact
     ? pathname === activePath
     : pathname === activePath || pathname.startsWith(`${activePath}/`);
@@ -49,6 +82,15 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
       aria-current={isActive ? "page" : undefined}
       onMouseEnter={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
       onFocus={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
+      onClick={
+        opensBeside
+          ? (event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+              event.preventDefault();
+              chatMode?.openBeside?.();
+            }
+          : undefined
+      }
       className={cn(
         // The active item tracks the route commit. A color transition keeps
         // painting after the page is already on screen, which reads as the
@@ -69,7 +111,14 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
       <item.icon className="icon-sharp h-4 w-4 shrink-0" />
       {ui(item.name)}
       {item.href === "/chats" && chatMode && (
-        <kbd className="ml-auto text-[10px] text-muted-foreground">{ui("⌘J")}</kbd>
+        <kbd className="ml-auto text-[10px] text-muted-foreground" title={ui("⌘⇧J: full screen")}>
+          {ui("⌘J")}
+        </kbd>
+      )}
+      {item.href === "/home" && (
+        <QuietBoundary>
+          <OverviewCount />
+        </QuietBoundary>
       )}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
