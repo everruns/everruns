@@ -54,9 +54,9 @@ authoring is the activity that brings the user to the page.
 
 | Group | Assertion |
 |---|---|
-| **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. [Home](org-home.md) sits above Chat in this group without becoming the landing route. |
+| **Chats** | Where you talk: Main chat, then the Side chats group with its new-side-chat affordance. First, no section header. |
 | **Operational** | Recordings and external exposure: Sessions and Exposures. |
-| **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
+| **Building** | [Overview](org-home.md), then Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. Overview carries a count of the items waiting on it. |
 | **Library** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
 | **Quality** | Evaluation, observation, and reporting. |
 
@@ -119,26 +119,23 @@ See [source and binding policy](../../crates/server/src/domains/sessions/playgro
 
 ## Surface contracts
 
-### Adopted Chat workspace
+### Chat workspace
 
-Chat and fresh **subchats** are unconditional personal conversation surfaces.
-Each subchat is a new instance of the managed Agent, with separate history and
-workspace files. Selecting one replaces the main conversation; it never opens
-beside another Chat. Creation and recent conversations stay in the sidebar.
-The Subchats panel is a list, with search and history links, not another composer.
-
-The **Chat workspace** Adoption feature (`chat_mode`) adds page-side Chat and
-page context only on app pages. Full Chat routes retain one conversation.
-The independent **Chat background work** feature (`chat_threads`) adds delegation
-and the Work tab. Work belongs to the active Chat instance; a delegated child
-uses its validated Chat parent. Both features default off and preserve existing
-organization enrollment. See [flag proposal and ownership](chat-mode.md#proposed-flag-schema-not-migrated).
+**Main chat** and **side chats** are personal conversation surfaces for every
+organization. Each side chat is a new instance of the managed Agent, with
+separate history, workspace files and threads. Selecting one replaces the
+conversation; it never opens beside another chat. Every chat is a coordinator:
+its **Threads** panel on the right lists the threads it started, and a thread
+opens in that panel (or in the page pane when Chat sits beside a page). A
+thread uses its validated chat parent. On app pages the conversation opens
+beside the page; `/chats` routes show it full screen. See
+[Chat, side chats, threads](chat-mode.md).
 
 An idle conversation remains open. Explicit Resolve/Reopen reuse the durable archive
 lifecycle; resolved conversations retain their transcript and require reopening to send.
 Background work retains its existing task lifecycle and input/cancellation controls.
 Failed work needs attention rather than disappearing as resolved. Work cards link directly
-into the panel. Agent, harness, owner, and Playground boundaries remain unchanged.
+into the Threads panel. Agent, harness, owner, and Playground boundaries remain unchanged.
 
 Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx),
 [rollout catalog](../../crates/server/src/records/feature_flags.rs), and
@@ -150,8 +147,8 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   Platform Chat conversation. The permanent conversation cannot be renamed, unpinned,
   archived, deleted, or reassigned. Server resolution and database uniqueness arbitrate
   concurrent tabs and retries; an existing conversation is always adopted.
-  Its sidebar entry remains a prominent navigation control on every route;
-  **New subchat** is the subordinate action for a separate conversation.
+  Its sidebar entry, **Main chat**, remains a prominent navigation control on every route;
+  **New side chat** is the subordinate action for a separate conversation.
 * **Chat has one managed Agent on Generic.** The Agent owns identity, platform access,
   instructions, introduction, and starters. No Agent or harness picker appears in Chat.
   New chat opens an empty draft and creates a fresh side conversation on first send,

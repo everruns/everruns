@@ -1,14 +1,17 @@
 "use client";
 
+// One chat at a time on the left; its Threads on the right
+// (knowledge/ui/chat-mode.md). Every Platform Chat conversation, Main chat and
+// side chats alike, is a coordinator: the Threads panel lists the threads the
+// open chat started, grouped by what they need. Opening a thread shows it in
+// the panel next to the chat, or in the page pane when Chat sits beside a page.
+
 import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Maximize2, MessageSquare, Minimize2, Plus, X } from "lucide-react";
+import { ArrowLeft, Maximize2, Minimize2, Plus, X } from "lucide-react";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
-import { useChatThreads } from "@/hooks/use-chat-threads";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useSession } from "@/hooks/use-sessions";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
 import { ChatThreadView } from "@/components/chat/chat-thread-view";
@@ -17,6 +20,7 @@ import { ChatDraft } from "@/app/(main)/chats/new/new-chat-page-client";
 import { ChatThreadWorkDetail } from "@/components/chat/chat-thread-work-detail";
 import { ChatWorkspaceContext } from "@/components/chat/chat-workspace-context";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,42 +29,31 @@ import {
   THREAD_GROUPS,
   assignmentGroup,
   checklistSummary,
-  conversationGroup,
   coordinatorThreads,
   currentAssignmentLabel,
   isAssignment,
   threadRowTitle,
   workGroup,
 } from "@/lib/chat-thread-work";
-import { isChatThread, threadTitle } from "@/lib/chat-threads";
+import { isChatThread } from "@/lib/chat-threads";
 import { formatRelativeTime } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
-import type { Session, SessionTask } from "@/lib/api/types";
+import type { SessionTask } from "@/lib/api/types";
 
 type WorkRow = {
   id: string;
   title: string;
   preview: string;
   group: string;
-  href: string;
   updated: string;
+  /** Coordinator thread (a child conversation) rather than other background work. */
+  threadId?: string;
   /** Session whose live work report replaces the preview while it runs. */
   liveSessionId?: string;
 };
-function rows(conversations: Session[], tasks: SessionTask[], ownerId?: string): WorkRow[] {
+
+export function threadRows(tasks: SessionTask[]): WorkRow[] {
   return [
-    ...conversations.map((session) => ({
-      id: session.id,
-      title: threadTitle(session),
-      preview: session.output_preview ?? session.preview ?? "",
-      group: conversationGroup(session),
-      href: `/chats/${session.id}`,
-      updated: session.updated_at,
-      liveSessionId:
-        session.status === "active" || session.status === "waiting_for_tool_results"
-          ? session.id
-          : undefined,
-    })),
     // Coordinator threads: one row per thread, opened as a conversation.
     ...coordinatorThreads(tasks).map((thread) => {
       const { threadId, latest } = thread;
@@ -71,15 +64,18 @@ function rows(conversations: Session[], tasks: SessionTask[], ownerId?: string):
         latest.summary ??
         latest.state;
       const current = currentAssignmentLabel(thread);
+      const group = assignmentGroup(latest);
       return {
         id: threadId,
+        threadId,
         title: threadRowTitle(thread),
-        group: assignmentGroup(latest),
+        group,
         preview: current ? `${current} · ${status}` : status,
-        href: `/chats/${threadId}`,
         updated: latest.updated_at,
+        liveSessionId: group === "Working" ? threadId : undefined,
       };
     }),
+    // Other background work the chat started (tools, monitors) keeps its detail view.
     ...tasks
       .filter((task) => !isAssignment(task))
       .map((task) => ({
@@ -92,7 +88,6 @@ function rows(conversations: Session[], tasks: SessionTask[], ownerId?: string):
           task.summary ??
           task.state_detail ??
           task.state,
-        href: `${ownerId ? `/chats/${ownerId}` : "/chats"}?task=${encodeURIComponent(task.id)}`,
         updated: task.updated_at,
       })),
   ].sort((a, b) => b.updated.localeCompare(a.updated));
@@ -120,16 +115,14 @@ export function ChatWorkspace({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const chatMode = useChatMode();
   const { thread, error } = usePlatformChatThread({ ensure: true });
   const [open, setOpen] = useState(false);
-  const backgroundWork = useFeatureFlag("chat_threads");
-  const [tab, setTab] = useState<"subchats" | "work">("subchats");
   const [expanded, setExpanded] = useState(false);
   const [compact, setCompact] = useState(false);
   const [search, setSearch] = useState("");
-  const [offset, setOffset] = useState(0);
+  const [openThreadId, setOpenThreadId] = useState<string>();
   const threadsButton = useRef<HTMLButtonElement>(null);
-  const panelId = useId();
   const chatRoute = pathname === "/chats" || pathname.startsWith("/chats/");
   const segment = chatRoute ? pathname.slice("/chats".length).split("/")[1] : undefined;
   const conversationId = segment && !["new", "history"].includes(segment) ? segment : undefined;
@@ -151,43 +144,44 @@ export function ChatWorkspace({
           !parent.data.parent_session_id
         ? parent.data.id
         : undefined;
+  // Threads belong to the chat that started them; a thread shows its siblings.
   const workOwnerId = personalChat ? currentId : coordinatorId;
   const taskId = chatRoute ? searchParams.get("task") : null;
-  const workTab = (backgroundWork && tab === "work") || !!taskId;
-  const selected = !!taskId;
-  const panelOpen = visible && (open || selected || segment === "history");
   const useDrawer = compact || pageAware;
+  const panelOpen = visible && (open || !!taskId || (!useDrawer && !!openThreadId));
   useEffect(() => {
     if (personalChat && !active.data?.archived_at && currentId) onActiveChatChange?.(currentId);
   }, [personalChat, active.data?.archived_at, currentId, onActiveChatChange]);
   useEffect(() => {
-    // Selecting a conversation replaces the main surface; it never opens a second composer.
-    setOpen(false);
+    // Switching chats starts from that chat's own thread list.
+    setOpenThreadId(undefined);
     setExpanded(false);
   }, [currentId, segment]);
-  const conversations = useChatThreads({
-    enabled: panelOpen && !workTab,
-    includeArchived: true,
-    limit: 20,
-    offset,
-    search,
-  });
-  // Background work belongs to this Chat instance, not to a global conversation.
-  const work = useSessionTasks(panelOpen && workTab ? workOwnerId : undefined);
+  const work = useSessionTasks(workOwnerId);
   const task = work.data?.find((candidate) => candidate.id === taskId);
-  const workRows = rows(
-    workTab ? [] : conversations.threads,
-    workTab ? (work.data ?? []) : [],
-    workOwnerId,
-  );
-  const matchingRows = workRows.filter(
+  const rows = threadRows(work.data ?? []);
+  const openCount = rows.filter((row) => row.group !== "Resolved").length;
+  const matchingRows = rows.filter(
     (row) =>
       row.title.toLowerCase().includes(search.toLowerCase()) ||
       row.preview.toLowerCase().includes(search.toLowerCase()),
   );
 
+  // The panel opens by itself when this chat starts a new thread, so delegated
+  // work is visible without hunting for it. Beside a page it stays closed.
+  const threadCount = coordinatorThreads(work.data ?? []).length;
+  const seenThreads = useRef<{ owner?: string; count: number }>({ count: 0 });
   useEffect(() => {
-    // Below this width the persistent sidebar leaves too little room for two composers.
+    if (!work.data) return;
+    const previous = seenThreads.current;
+    seenThreads.current = { owner: workOwnerId, count: threadCount };
+    if (previous.owner === workOwnerId && threadCount > previous.count && !useDrawer && visible) {
+      setOpen(true);
+    }
+  }, [work.data, workOwnerId, threadCount, useDrawer, visible]);
+
+  useEffect(() => {
+    // Below this width the persistent sidebar leaves too little room for two panes.
     const media = window.matchMedia("(max-width: 1279px)");
     const update = () => setCompact(media.matches);
     update();
@@ -198,81 +192,77 @@ export function ChatWorkspace({
   const close = () => {
     setOpen(false);
     setExpanded(false);
+    setOpenThreadId(undefined);
     if (taskId) router.push(pathname);
     requestAnimationFrame(() => threadsButton.current?.focus());
   };
   const back = () => {
     setOpen(true);
     setExpanded(false);
+    setOpenThreadId(undefined);
     if (taskId) router.push(pathname);
+  };
+  const openThread = (id: string) => {
+    if (pageAware && chatMode?.openThreadBeside) {
+      // Beside a page, the right side is the page pane: the thread takes its place.
+      setOpen(false);
+      chatMode.openThreadBeside(id);
+      return;
+    }
+    if (useDrawer) {
+      router.push(`/chats/${id}`);
+      return;
+    }
+    setOpenThreadId(id);
+    setOpen(true);
+  };
+  const openWork = (id: string) => {
+    const owner = workOwnerId ?? currentId ?? thread?.id;
+    router.push(`/chats/${owner}?task=${encodeURIComponent(id)}`);
   };
 
   if (error) return <ChatErrorAlert message={error.message} />;
   if (!thread || (parentId && parentId !== thread.id && parent.isLoading))
     return <Skeleton className="m-6 h-64" />;
 
-  const panel = (
+  const threadPane = openThreadId ? (
+    <ChatThreadView
+      key={openThreadId}
+      threadId={openThreadId}
+      coordinatorId={workOwnerId}
+      threadMode
+      extraActions={
+        <>
+          <Button variant="ghost" size="sm" onClick={back}>
+            <ArrowLeft className="size-3.5" /> {ui("Threads")}
+          </Button>
+          {!useDrawer && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={expanded ? ui("Restore split view") : ui("Expand thread panel")}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? <Minimize2 /> : <Maximize2 />}
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" aria-label={ui("Close threads")} onClick={close}>
+            <X />
+          </Button>
+        </>
+      }
+    />
+  ) : null;
+
+  const panel = threadPane ?? (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-background">
-      <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
-        {selected && (
+      <div className="flex min-h-14 items-center gap-2 border-b border-border/70 px-3 py-2">
+        {taskId && (
           <Button variant="ghost" size="icon" aria-label={ui("Back to threads")} onClick={back}>
             <ArrowLeft />
           </Button>
         )}
-        <div
-          role="tablist"
-          aria-label={ui("Chat panels")}
-          className="mr-auto flex gap-1"
-          onKeyDown={(event) => {
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-            event.preventDefault();
-            const tabs = Array.from(
-              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
-            );
-            const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
-            const index =
-              event.key === "Home"
-                ? 0
-                : event.key === "End"
-                  ? tabs.length - 1
-                  : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
-            tabs[index]?.focus();
-            tabs[index]?.click();
-          }}
-        >
-          <Button
-            role="tab"
-            id={`${panelId}-subchats`}
-            aria-controls={panelId}
-            tabIndex={workTab ? -1 : 0}
-            aria-selected={!workTab}
-            variant={!workTab ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => {
-              setTab("subchats");
-              if (taskId) router.push(pathname);
-            }}
-          >
-            {ui("Subchats")}
-          </Button>
-          {(backgroundWork || taskId) && (
-            <Button
-              role="tab"
-              id={`${panelId}-work`}
-              aria-controls={panelId}
-              tabIndex={workTab ? 0 : -1}
-              aria-selected={workTab}
-              variant={workTab ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setTab("work")}
-            >
-              {ui("Work")}
-            </Button>
-          )}
-        </div>
-        <LinkButton href="/chats/new" variant="ghost" size="icon" aria-label={ui("New subchat")}>
-          <Plus />
-        </LinkButton>
+        <h2 className="mr-auto text-sm font-semibold">{ui("Threads")}</h2>
         {!useDrawer && (
           <Button
             variant="ghost"
@@ -283,16 +273,11 @@ export function ChatWorkspace({
             {expanded ? <Minimize2 /> : <Maximize2 />}
           </Button>
         )}
-        <Button variant="ghost" size="icon" aria-label={ui("Close subchats")} onClick={close}>
+        <Button variant="ghost" size="icon" aria-label={ui("Close threads")} onClick={close}>
           <X />
         </Button>
       </div>
-      <div
-        role="tabpanel"
-        id={panelId}
-        aria-labelledby={`${panelId}-${workTab ? "work" : "subchats"}`}
-        className="min-h-0 flex-1 overflow-y-auto"
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {taskId ? (
           work.isLoading ? (
             <Skeleton className="m-4 h-40" />
@@ -307,26 +292,21 @@ export function ChatWorkspace({
           )
         ) : (
           <div className="space-y-4 p-3">
-            <Input
-              aria-label={ui("Search threads")}
-              placeholder={ui("Search threads…")}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setOffset(0);
-              }}
-            />
-            {((!workTab && conversations.error) || (workTab && work.error)) && (
-              <ChatErrorAlert message={(conversations.error ?? work.error)!.message} />
+            {rows.length > 6 && (
+              <Input
+                aria-label={ui("Search threads")}
+                placeholder={ui("Search threads…")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             )}
-            {((!workTab && conversations.isLoading) || (workTab && work.isLoading)) && (
-              <Skeleton className="h-20" />
-            )}
-            {!(workTab ? work.isLoading : conversations.isLoading) && matchingRows.length === 0 && (
+            {work.error && <ChatErrorAlert message={work.error.message} />}
+            {work.isLoading && <Skeleton className="h-20" />}
+            {!work.isLoading && matchingRows.length === 0 && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {search
                   ? ui("No matching threads.")
-                  : ui("No threads yet. Start one here, or ask Chat to do some work.")}
+                  : ui("No threads yet. Ask this chat for longer work and it starts one.")}
               </p>
             )}
             {THREAD_GROUPS.map((group) => {
@@ -334,16 +314,16 @@ export function ChatWorkspace({
               if (!entries.length) return null;
               return (
                 <details key={group} open={group !== "Resolved"}>
-                  <summary className="cursor-pointer bg-muted/60 px-2 py-1.5 text-xs font-medium">
-                    {group} <span className="text-muted-foreground">{entries.length}</span>
+                  <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                    {ui(group)} · {entries.length}
                   </summary>
                   <div className="divide-y divide-border/50">
                     {entries.map((row) => (
-                      <Link
-                        href={row.href}
+                      <button
+                        type="button"
                         key={row.id}
-                        prefetch={false}
-                        className="flex min-w-0 items-center gap-3 px-3 py-3 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => (row.threadId ? openThread(row.threadId) : openWork(row.id))}
+                        className="flex w-full min-w-0 items-center gap-3 px-3 py-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium">{row.title}</div>
@@ -358,36 +338,12 @@ export function ChatWorkspace({
                         <span className="shrink-0 text-[11px] text-muted-foreground">
                           {formatRelativeTime(row.updated, displayLocale)}
                         </span>
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 </details>
               );
             })}
-            {!workTab && (conversations.total ?? 0) > 20 && (
-              <div className="flex items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={offset === 0}
-                  onClick={() => setOffset(Math.max(0, offset - 20))}
-                >
-                  {ui("Previous")}
-                </Button>
-                <span>
-                  {offset + 1}–{Math.min(offset + 20, conversations.total!)} {ui("of")}{" "}
-                  {conversations.total} {ui("conversations")}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={offset + 20 >= conversations.total!}
-                  onClick={() => setOffset(offset + 20)}
-                >
-                  {ui("Next")}
-                </Button>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -397,10 +353,8 @@ export function ChatWorkspace({
     <ChatWorkspaceContext.Provider
       value={{
         sessionId: workOwnerId ?? currentId ?? thread.id,
-        openTask: (id) =>
-          router.push(
-            `/chats/${workOwnerId ?? currentId ?? thread.id}?task=${encodeURIComponent(id)}`,
-          ),
+        openTask: (target) =>
+          isAssignment(target) ? openThread(target.links!.child_session_id!) : openWork(target.id),
       }}
     >
       <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
@@ -428,7 +382,7 @@ export function ChatWorkspace({
                     href="/chats/new"
                     variant="ghost"
                     size="icon"
-                    aria-label={ui("New subchat")}
+                    aria-label={ui("New side chat")}
                   >
                     <Plus />
                   </LinkButton>
@@ -439,8 +393,10 @@ export function ChatWorkspace({
                     aria-expanded={panelOpen}
                     onClick={() => (panelOpen ? close() : setOpen(true))}
                   >
-                    <MessageSquare />
-                    {ui("Subchats")}
+                    {ui("Threads")}
+                    {openCount > 0 && (
+                      <span className="tabular-nums text-muted-foreground">· {openCount}</span>
+                    )}
                   </Button>
                 </>
               }
@@ -450,21 +406,21 @@ export function ChatWorkspace({
         {useDrawer ? (
           <Drawer open={panelOpen} onOpenChange={(value) => !value && close()}>
             <DrawerContent
-              className="w-full max-w-none gap-0 p-0 sm:max-w-none"
+              className="w-full max-w-none gap-0 p-0 sm:max-w-md"
               showCloseButton={false}
               finalFocus={threadsButton}
             >
-              <DrawerTitle className="sr-only">{ui("Subchats")}</DrawerTitle>
+              <DrawerTitle className="sr-only">{ui("Threads")}</DrawerTitle>
               {panel}
             </DrawerContent>
           </Drawer>
         ) : (
           panelOpen && (
             <section
-              aria-label={ui("Subchats")}
+              aria-label={ui("Threads")}
               className={cn(
                 "relative z-10 hidden min-h-0 min-w-0 overflow-hidden border-l border-border bg-background xl:flex xl:flex-col",
-                expanded ? "flex-1" : "w-1/2 min-w-[360px]",
+                expanded ? "flex-1" : openThreadId ? "w-1/2 min-w-[420px]" : "w-[420px]",
               )}
             >
               {panel}

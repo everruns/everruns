@@ -231,9 +231,8 @@ pub fn register_hosted_capabilities(
     registry.register(SessionScheduleCapability);
     registry.register(SubagentCapability);
     registry.register(SessionTasksCapability);
-    // Custom agents opt in by adding the capability; Platform Chat's
-    // coordination is gated per org by the server under `chat_threads`.
-    // Registration is unconditional.
+    // Custom agents opt in by adding the capability; Platform Chat (main and
+    // side chats) always coordinates. Registration is unconditional.
     registry.register(CoordinationCapability);
     // Delegation has no feature flag: adding the capability to an agent is
     // the opt-in, like coordination above.

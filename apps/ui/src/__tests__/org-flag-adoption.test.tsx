@@ -11,7 +11,7 @@ jest.mock("@/lib/api/feature-flags", () => ({
   getOrgFeatureFlags: jest.fn(),
 }));
 function Probe() {
-  return <span>{useFeatureFlag("chat_threads") ? "workspace" : "legacy"}</span>;
+  return <span>{useFeatureFlag("monitoring") ? "workspace" : "legacy"}</span>;
 }
 function wrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -25,10 +25,10 @@ function wrapper({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockOrg = undefined;
-  jest.mocked(getFeatureFlags).mockResolvedValue({ chat_threads: true } as FeatureFlags);
+  jest.mocked(getFeatureFlags).mockResolvedValue({ monitoring: true } as FeatureFlags);
   jest
     .mocked(getOrgFeatureFlags)
-    .mockImplementation(async (id) => ({ chat_threads: id === "opted-in" }) as FeatureFlags);
+    .mockImplementation(async (id) => ({ monitoring: id === "opted-in" }) as FeatureFlags);
 });
 it("deployment availability does not enroll an organization", async () => {
   render(<Probe />, { wrapper });

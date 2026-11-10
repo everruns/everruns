@@ -103,31 +103,37 @@ async fn test_org_feature_flags_opt_in() {
     let flags = settings["flags"].as_array().expect("flags array");
     assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
     assert!(flags.iter().all(|flag| flag["label"] != "Platform Chat"));
-    let chat_threads = flags
+    // Chat beside pages and Chat threads are core, not org opt-ins.
+    assert!(
+        flags
+            .iter()
+            .all(|flag| flag["name"] != "chat_threads" && flag["name"] != "chat_mode")
+    );
+    let monitoring = flags
         .iter()
-        .find(|flag| flag["name"] == "chat_threads")
-        .expect("chat_threads adoption setting");
-    assert_eq!(chat_threads["grade"], "adoption");
-    assert_eq!(chat_threads["default_enabled"], false);
-    assert_eq!(chat_threads["effective"], false);
-    assert_eq!(chat_threads["can_manage"], true);
+        .find(|flag| flag["name"] == "monitoring")
+        .expect("monitoring adoption setting");
+    assert_eq!(monitoring["grade"], "adoption");
+    assert_eq!(monitoring["default_enabled"], false);
+    assert_eq!(monitoring["effective"], false);
+    assert_eq!(monitoring["can_manage"], true);
 
     let patched: serde_json::Value = server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            serde_json::json!({ "flags": { "chat_threads": true } }),
+            serde_json::json!({ "flags": { "monitoring": true } }),
         )
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(patched["chat_threads"], true);
+    assert_eq!(patched["monitoring"], true);
 
     let effective: serde_json::Value = server
         .get(&format!("/v1/orgs/{org_id}/feature-flags"))
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(effective["chat_threads"], true);
+    assert_eq!(effective["monitoring"], true);
     assert!(effective.get("mcp_endpoint").is_none());
     assert_eq!(
         effective["machine_payments"],
@@ -137,7 +143,7 @@ async fn test_org_feature_flags_opt_in() {
     server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            json!({ "flags": { "chat_threads": false } }),
+            json!({ "flags": { "monitoring": false } }),
         )
         .await
         .assert_status(StatusCode::OK);
@@ -146,7 +152,7 @@ async fn test_org_feature_flags_opt_in() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(disabled["chat_threads"], false);
+    assert_eq!(disabled["monitoring"], false);
 
     server
         .patch(

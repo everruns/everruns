@@ -93,7 +93,7 @@ const TREES: Record<string, Record<string, unknown[]>> = {
 
 export async function mockKnowledgeApi(
   page: Page,
-  options: { chat?: boolean; work?: boolean; role?: "owner" | "admin" | "member" } = {},
+  options: { role?: "owner" | "admin" | "member" } = {},
 ) {
   const model = {
     id: "model_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -133,8 +133,6 @@ export async function mockKnowledgeApi(
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
         knowledge: true,
-        chat_mode: options.chat ?? false,
-        chat_threads: options.work ?? false,
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };

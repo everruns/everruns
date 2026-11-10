@@ -1,60 +1,52 @@
 ---
 type: Test Case
-title: "TC018: Chat - Subchats and Adopted Background Work"
-description: "Verify independent Chat instances, single-conversation layouts, and separately opted-in background work."
+title: "TC018: Chat - Side Chats and Threads"
+description: "Verify Main chat and side chats as coordinators, the Threads panel on the right, opening threads beside the chat or the page, and the chat switcher."
 tags:
   - everruns
   - test-case
   - ui
   - chats
 ---
-# TC018: Chat - Subchats and Adopted Background Work
+# TC018: Chat - Side Chats and Threads
 
 ## Preconditions
 
 - Canonical DB-backed stack with two organizations and owner/admin plus member accounts.
-- Personal side conversations, archived conversations, and background work exist.
+- No Chat feature is enabled in Settings → Features (there is none to enable).
+- Personal side chats, archived conversations, and background work exist.
 
 ## Steps
 
-1. Test all four combinations of Chat workspace and Chat background work. Confirm Chat,
-   New subchat, recent subchats and history remain available in each combination.
-2. With no subchats, confirm the sidebar still exposes New subchat. Open it and
-   confirm one empty draft replaces the conversation. No session exists before first send.
-3. Send a message; confirm a distinct session and URL, the same managed Agent and
-   execution harness, and no copied transcript or workspace files. Fail and retry the
-   first send; confirm only one session is created.
-4. Switch between permanent Chat and two subchats. Each selection replaces the main
-   transcript; the Subchats panel contains a list, never another composer. Check history,
-   search, pagination, pin/archive and reopening an archived personal conversation.
-5. Enable Chat background work as owner/admin. Confirm a member cannot change enrollment.
-   The Work tab is separate from the Subchats list. Disabling it preserves all conversations.
-6. Start work from subchat A, then switch to B. Confirm each Work view belongs to
-   its own Chat. Open a delegated child; its Work view belongs to its validated parent.
-   Unknown task IDs must never fetch another conversation's work.
-7. Inspect working, input-required, failed and succeeded work. Answer an input request,
-   stop active work and resolve/reopen an idle delegated child. Idle alone is not resolved.
-8. With Chat workspace enabled, navigate from a subchat to an editable Agent. Open
-   page-side Chat with Command/Ctrl-J. Confirm the same personal instance, draft and
-   attachments; inspect its page context. Open full Chat and confirm one conversation,
-   no page context to Chat itself, and no draft loss. A delegated child must not become
-   the page editor when returning to an app page.
-9. Close/back from the Subchats or Work panel. Confirm the selected conversation stays
-   selected; closing work detail removes its task selection rather than resetting Chat.
-10. Verify wide, 390px, light/dark and reduced-motion layouts, drawer focus, and that
-    hiding page-side Chat closes any panel portal. The panel must fit the actual Chat pane.
-11. Send a page-draft request, then open full Chat before its tool result arrives.
-    Confirm it reports that the original form is unavailable, changes no other page,
-    and lets the conversation continue. Repeat by only hiding Chat while staying
-    on the same form: the authorized request may finish on that original draft.
-    A fresh full Chat must never acquire a page binding.
-12. Switch organizations while Chat or a draft is open. Confirm no composer, task,
-    page context or review state crosses organizations; disable enrollment and recheck.
+1. In an organization that never opted into anything, open `/chats`. Confirm Main chat,
+   the **Side chats +** sidebar group, and **Threads** in the conversation header.
+2. With no side chats, confirm the sidebar still exposes **New side chat**. Open it and
+   confirm no session is created until first send.
+3. Ask Main chat for longer work. Confirm it says it is starting a thread, the Threads panel
+   opens by itself on the right, and the row sits under Working with its live status line.
+   **Threads · N** counts unresolved threads.
+4. Switch between Main chat and two side chats. Each selection replaces the transcript;
+   each chat's Threads panel lists only the threads it started. Start a thread from side
+   chat A and confirm it is absent from B and from Main chat.
+5. Click a thread row. Confirm it opens in the right panel next to the chat, with
+   "← Threads", expand-to-full-width and close. The chat stays usable on the left. Answer a
+   thread that needs you and confirm the row moves out of Needs you.
+6. Open an app page and press Command/Ctrl-J. Use **Main chat ▾** to switch to a side chat
+   and to open one of its threads. The thread replaces the page in the page pane with a
+   back button naming the page; going back restores the page with its unsaved edits.
+7. Stop active work and resolve/reopen an idle thread. Idle alone is not resolved; Resolved
+   rows collapse at the bottom of the panel and drop out of the count.
+8. Close/back from the panel. Confirm the selected conversation stays selected; closing a
+   work detail removes its task selection rather than resetting Chat.
+9. Verify wide, 1279px (drawer), 390px, light/dark and reduced-motion layouts, drawer focus,
+   and that hiding page-side Chat closes any panel portal.
+10. Switch organizations while Chat or a thread is open. Confirm no composer, thread, page
+    context or review state crosses organizations.
 
 ## Expected Result
 
-- Adoption is tenant opt-in; deployment availability never enrolls an organization.
-- Permanent Chat remains protected. Idle does not imply resolved.
-- Existing conversations, URLs, and task contracts are reused without copying history.
+- Every organization gets the same model; no flag enrolls or hides it.
+- Main chat remains protected. Idle does not imply resolved.
+- Threads belong to the chat that started them; existing URLs and task contracts are reused.
 - Playground conversations remain outside Chat; task access and mutations retain server authorization.
-- Responsive layouts do not overflow, and closing the mobile drawer restores Chat focus.
+- Responsive layouts do not overflow, and closing the drawer restores focus to Threads.

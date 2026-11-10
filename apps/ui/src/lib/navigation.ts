@@ -72,33 +72,26 @@ export type NavigationSection = {
 };
 
 export const defaultChatsNavigation: NavigationItem[] = [
-  // Home sits above Chat but is not the landing route: Chat is
-  // (knowledge/ui/org-home.md). In the Chat workspace, landing opens Chat with Home beside it.
+  // Main chat is the person's permanent Platform Chat. From any app page it
+  // opens beside that page (knowledge/ui/chat-mode.md); /chats is full screen.
   {
-    name: "Home",
-    description: "What needs attention in this organization, and how its agents ran today.",
-    href: "/home",
-    icon: OrganizationIcon,
-    keywords: ["dashboard", "overview", "attention", "health", "status"],
-  },
-  {
-    name: "Chat",
-    description: "Talk with your personal assistant.",
+    name: "Main chat",
+    description: "Talk with your personal assistant. It opens beside the page you are on.",
     href: "/chats",
     icon: ChatIcon,
     exact: true,
     prominent: true,
-    keywords: ["chats", "global chat", "conversation"],
+    keywords: ["chat", "chats", "global chat", "conversation", "coordinator"],
   },
 ];
 
 // These links are rendered beneath Chat rather than as peer sidebar destinations.
 export const sideChatNavigation: NavigationItem[] = [
   {
-    name: "New subchat",
+    name: "New side chat",
     href: "/chats/new",
     icon: Plus,
-    keywords: ["thread", "conversation", "new side chat", "new chat"],
+    keywords: ["subchat", "conversation", "side chat", "new chat"],
   },
   {
     name: "View all chats",
@@ -128,6 +121,15 @@ export const defaultOperationalNavigation: NavigationItem[] = [
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
+  // Overview (route /home) leads Building: what needs a person across the org,
+  // with the count of waiting items on its sidebar entry (knowledge/ui/org-home.md).
+  {
+    name: "Overview",
+    description: "What needs attention in this organization, and how its agents ran today.",
+    href: "/home",
+    icon: OrganizationIcon,
+    keywords: ["home", "dashboard", "overview", "attention", "health", "status"],
+  },
   {
     name: "Agents",
     description: "Build and configure your AI assistants.",

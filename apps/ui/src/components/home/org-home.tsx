@@ -1,33 +1,26 @@
 "use client";
 
-// Org Home: what needs a person now, then how the agents ran in the last day
+// Org Overview (route /home): what needs a person now, then how the agents ran in the last day
 // (knowledge/ui/org-home.md). Every section reads an endpoint its owning page
-// already uses; Home only merges and ranks. Chat stays the landing route.
+// already uses; Overview only merges and ranks. Chat stays the landing route.
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { OrganizationIcon } from "@/components/icons/facet-icons";
 import { PageContainer, PageMasthead } from "@/components/layout";
-import { useAgentActivity } from "@/hooks/use-agent-activity";
-import { useHealthIssues } from "@/hooks/use-health-issues";
-import { useOrgExposures } from "@/hooks/use-org-exposures";
-import { usePolicies } from "@/hooks/use-policies";
-import { useModels } from "@/hooks/use-providers";
-import { useSandboxFleetStats } from "@/hooks/use-sandbox-fleet";
 import { useFilteredSessions } from "@/hooks/use-sessions";
-import { useSystemDoctor } from "@/hooks/use-system-doctor";
-import { useAgentExamples, useAgents, usePageTitle } from "@/hooks";
-import { attentionItems } from "@/lib/agents-home";
+import { usePageTitle } from "@/hooks";
 import { getMonitoringTimeline } from "@/lib/api/monitoring";
-import { getDisplayName, isArchivedStatus } from "@/lib/entity-lifecycle";
-import { busiestAgents, countOpenIssues, homeAttentionItems, hourlyTotals } from "@/lib/org-home";
+import { isArchivedStatus } from "@/lib/entity-lifecycle";
+import { busiestAgents, countOpenIssues, hourlyTotals } from "@/lib/org-home";
 import { EMPTY_SESSION_FILTERS } from "@/lib/session-filters";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
-import { useLocale, useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
 import { HomeHourlyChart, HomeTimelineCharts } from "./home-activity";
 import { HomeAttention } from "./home-attention";
+import { useHomeAttention } from "./use-home-attention";
 import {
   HomeAgents,
   HomeGetStarted,
@@ -39,28 +32,26 @@ import {
 
 const AGENT_ROWS = 6;
 const RUNNING_ROWS = 5;
-const PAUSED = { ...EMPTY_SESSION_FILTERS, status: ["paused"] };
 const RUNNING = { ...EMPTY_SESSION_FILTERS, status: ["running"] };
 
 export function OrgHome() {
   const ui = useUiTranslations();
-  const { displayLocale } = useLocale();
-  usePageTitle(ui("Home"));
+  usePageTitle(ui("Overview"));
   const { currentOrg } = useOrg();
   const monitoring = useFeatureFlag("monitoring");
-  const durable = usePolicies("durable");
-  const canSeeSystem = !durable.isLoading && !durable.error && durable.can("durable.view");
-
-  const agents = useAgents({ includeArchived: true });
-  const activity = useAgentActivity();
-  const examples = useAgentExamples();
-  const { exposures } = useOrgExposures();
-  const health = useHealthIssues();
-  const models = useModels();
-  const sandboxes = useSandboxFleetStats({});
-  const paused = useFilteredSessions(PAUSED);
+  const {
+    items,
+    agents,
+    activity,
+    health,
+    sandboxes,
+    names,
+    healthIssues,
+    models,
+    channels,
+    doctor,
+  } = useHomeAttention();
   const running = useFilteredSessions(RUNNING);
-  const doctor = useSystemDoctor({ enabled: canSeeSystem });
   const timeline = useQuery({
     queryKey: ["monitoring-timeline", "organization", { range: "24h" }],
     queryFn: () => getMonitoringTimeline("organization", { range: "24h" }),
@@ -68,57 +59,6 @@ export function OrgHome() {
     refetchInterval: 60_000,
     retry: false,
   });
-
-  const names = useMemo(
-    () =>
-      new Map((agents.data ?? []).map((agent) => [agent.id, getDisplayName(agent, displayLocale)])),
-    [agents.data, displayLocale],
-  );
-  const activityById = useMemo(
-    () => new Map((activity.data?.agents ?? []).map((item) => [item.agent_id, item])),
-    [activity.data],
-  );
-  const channels = useMemo(() => exposures.filter((exposure) => !exposure.isTrigger), [exposures]);
-  const healthIssues = useMemo(() => health.data?.data ?? [], [health.data]);
-
-  const items = useMemo(
-    () =>
-      homeAttentionItems({
-        agentItems: attentionItems({
-          agents: agents.data ?? [],
-          exposures: channels,
-          healthIssues,
-          models: new Map((models.data ?? []).map((model) => [model.id, model])),
-          guidedExamples: new Map(
-            (examples.data ?? [])
-              .filter((example) => example.setup)
-              .map((example) => [example.name, example]),
-          ),
-          activity: activity.data ? activityById : undefined,
-        }),
-        healthIssues,
-        pausedSessions: paused.data?.data ?? [],
-        pausedTotal: paused.data?.total ?? 0,
-        activity: activity.data?.agents ?? [],
-        agentNames: names,
-        sandboxStats: sandboxes.data,
-        doctor: canSeeSystem ? doctor.data : undefined,
-      }),
-    [
-      agents.data,
-      channels,
-      healthIssues,
-      models.data,
-      examples.data,
-      activity.data,
-      activityById,
-      paused.data,
-      names,
-      sandboxes.data,
-      canSeeSystem,
-      doctor.data,
-    ],
-  );
 
   // Chat beside Home reads the list it shows, so "what should I look at first"
   // is answered from the same ranking.
@@ -161,7 +101,7 @@ export function OrgHome() {
     <PageContainer className="@container/home">
       <PageMasthead
         icon={<OrganizationIcon />}
-        title={currentOrg?.name ?? ui("Home")}
+        title={currentOrg?.name ?? ui("Overview")}
         description={
           newOrg
             ? ui("Your organization is set up. Here is what to do next.")
@@ -178,7 +118,7 @@ export function OrgHome() {
             hasAgent={activeAgents.length > 0}
             hasChannel={channels.some((exposure) => exposure.state === "live")}
           />
-          <HomeHealth open={openIssues} doctor={canSeeSystem ? doctor.data : undefined} />
+          <HomeHealth open={openIssues} doctor={doctor} />
         </div>
       ) : (
         <>
@@ -200,7 +140,7 @@ export function OrgHome() {
               />
             </div>
             <div className="flex min-w-0 flex-col gap-6">
-              <HomeHealth open={openIssues} doctor={canSeeSystem ? doctor.data : undefined} />
+              <HomeHealth open={openIssues} doctor={doctor} />
               {sandboxes.data && <HomeSandboxes stats={sandboxes.data} />}
             </div>
           </div>
