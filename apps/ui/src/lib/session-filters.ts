@@ -51,6 +51,7 @@ export const SOURCE_LABELS: Record<SessionSource, string> = {
   a2a: "A2A",
   eval: "Eval",
   subagent: "Subagent",
+  room: "Room",
   unknown: "Unknown",
 };
 
