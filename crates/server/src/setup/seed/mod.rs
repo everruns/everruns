@@ -21,9 +21,11 @@ use uuid::Uuid;
 mod anonymous;
 mod mcp_servers;
 mod models;
+mod provisioning;
 use anonymous::seed_auth_prerequisites;
 use mcp_servers::seed_mcp_servers;
 use models::SEED_MODELS;
+use provisioning::{ensure_default_org_default_model, provision_connected_providers};
 
 /// Well-known UUIDs for seed data
 /// Format: 01933b5a-0000-7000-8000-0000000001xx
@@ -658,155 +660,6 @@ where
     Ok(result)
 }
 
-/// Make providers connected from env usable right away, the same way a key
-/// set through the API is: seed their catalog, discover their models, and
-/// enable a starter set when the org has no chat model yet.
-///
-/// Without this an env-connected provider showed "Last synced: Never" and no
-/// discovered models until the background sync first ran. Best-effort: a
-/// provider that rejects the key or is unreachable must not fail startup.
-async fn provision_connected_providers(
-    db: &Arc<StorageBackend>,
-    encryption: &Arc<EncryptionService>,
-    host_composition: &HostComposition,
-    connected: &[Uuid],
-) {
-    if let Err(error) = seed_models_with_host_composition(db, host_composition).await {
-        tracing::warn!(%error, "Seeding models for env-connected providers failed (non-fatal)");
-    }
-    let sync = crate::domains::models::ModelSyncService::new(
-        db.clone(),
-        Arc::new(host_composition.driver_registry().clone()),
-        Some(encryption.clone()),
-    );
-    let models = crate::domains::models::ModelService::new(db.clone());
-    for provider_id in connected {
-        match tokio::time::timeout(
-            ENV_PROVIDER_SYNC_TIMEOUT,
-            sync.sync_provider(DEFAULT_ORG_ID, *provider_id),
-        )
-        .await
-        {
-            Ok(Ok(result)) => tracing::info!(
-                %provider_id,
-                ?result,
-                "Synced models for env-connected provider"
-            ),
-            Ok(Err(error)) => tracing::warn!(
-                %provider_id,
-                %error,
-                "Model sync for env-connected provider failed (non-fatal)"
-            ),
-            Err(_) => tracing::warn!(
-                %provider_id,
-                "Model sync for env-connected provider timed out (non-fatal)"
-            ),
-        }
-        if let Err(error) = models
-            .bootstrap_intelligence(DEFAULT_ORG_ID, *provider_id)
-            .await
-        {
-            tracing::warn!(
-                %provider_id,
-                %error,
-                "Intelligence bootstrap for env-connected provider failed (non-fatal)"
-            );
-        }
-    }
-}
-
-/// Point the default org at a model it can actually run.
-///
-/// The default model falls back to the platform default (an OpenAI model)
-/// when the org never chose one. Older versions seeded and enabled that model
-/// without a key, so an org that connected only OpenRouter kept defaulting to
-/// OpenAI and chat failed with "provider is not set up". Seeding now disables
-/// keyless catalog models, which makes such a default unresolvable; this then
-/// bootstraps from the first connected provider, exactly as connecting it
-/// through the API would have.
-async fn ensure_default_org_default_model(
-    db: &Arc<StorageBackend>,
-    encryption: Option<&Arc<EncryptionService>>,
-    host_composition: &HostComposition,
-) {
-    let resolved = match db.get_default_model(DEFAULT_ORG_ID).await {
-        Ok(model) => model.is_some(),
-        Err(error) => {
-            tracing::warn!(%error, "Default model check failed (non-fatal)");
-            return;
-        }
-    };
-    if resolved {
-        return;
-    }
-    let providers = match db.list_providers(DEFAULT_ORG_ID).await {
-        Ok(providers) => providers,
-        Err(error) => {
-            tracing::warn!(%error, "Default model repair: listing providers failed (non-fatal)");
-            return;
-        }
-    };
-    let models = crate::domains::models::ModelService::new(db.clone());
-    let sync = encryption.map(|encryption| {
-        crate::domains::models::ModelSyncService::new(
-            db.clone(),
-            Arc::new(host_composition.driver_registry().clone()),
-            Some(encryption.clone()),
-        )
-    });
-    // Oldest connection first: the provider the org has relied on longest.
-    for provider in providers.iter().rev().filter(|p| p.api_key_set) {
-        // A provider that never synced may know no chat model yet; discover
-        // its catalog first so there is something to pick.
-        if provider.last_synced_at.is_none()
-            && let Some(sync) = sync.as_ref()
-        {
-            match tokio::time::timeout(
-                ENV_PROVIDER_SYNC_TIMEOUT,
-                sync.sync_provider(DEFAULT_ORG_ID, provider.id.uuid()),
-            )
-            .await
-            {
-                Ok(Ok(result)) => tracing::info!(
-                    provider_id = %provider.id,
-                    ?result,
-                    "Synced never-synced provider before picking a default model"
-                ),
-                Ok(Err(error)) => tracing::warn!(
-                    provider_id = %provider.id,
-                    %error,
-                    "Model sync before default model repair failed (non-fatal)"
-                ),
-                Err(_) => tracing::warn!(
-                    provider_id = %provider.id,
-                    "Model sync before default model repair timed out (non-fatal)"
-                ),
-            }
-        }
-        match models
-            .bootstrap_intelligence(DEFAULT_ORG_ID, provider.id.uuid())
-            .await
-        {
-            Ok(outcome) if outcome.default_model_id.is_some() => {
-                tracing::info!(
-                    provider_id = %provider.id,
-                    "Default org default model set from a connected provider"
-                );
-                return;
-            }
-            Ok(_) => {}
-            Err(error) => tracing::warn!(
-                provider_id = %provider.id,
-                %error,
-                "Default model repair: bootstrap failed (non-fatal)"
-            ),
-        }
-    }
-}
-
-/// Upper bound on one env-connected provider's startup model discovery.
-const ENV_PROVIDER_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
-
 // ---- LLM Model Seeder ----
 
 // The model catalogue lives in `seed/models.rs`.
@@ -1299,6 +1152,8 @@ pub async fn seed_all_with_host_composition(
 
 #[cfg(test)]
 mod model_tests;
+#[cfg(test)]
+mod provider_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1347,10 +1202,6 @@ mod tests {
     }
 
     // --- DEFAULT_*_API_KEY materialization (single-tenant/dev) ---
-
-    fn test_encryption() -> EncryptionService {
-        EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap()
-    }
 
     fn auth_config(mode: AuthMode, disable_signup: bool) -> AuthConfig {
         AuthConfig {
@@ -1448,282 +1299,6 @@ mod tests {
             &open_signup,
             |_| None
         ));
-    }
-
-    /// Rows an older version seeded for every built-in driver, without keys.
-    async fn create_keyless_seed_providers(db: &StorageBackend) {
-        seed_default_organization(db).await.unwrap();
-        for seed in SEED_PROVIDERS {
-            db.create_provider_with_id(
-                DEFAULT_ORG_ID,
-                seed.id,
-                CreateProviderRow {
-                    name: seed.name.to_string(),
-                    provider_type: seed.provider_type.to_string(),
-                    base_url: None,
-                    api_key_encrypted: None,
-                    settings: None,
-                },
-            )
-            .await
-            .unwrap();
-        }
-    }
-
-    /// Materialization fills an empty default-org provider with the env key,
-    /// and the key is resolvable through the normal fail-closed DB path.
-    #[tokio::test]
-    async fn materialize_fills_empty_provider_and_resolves() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-
-        // Seed the bare provider rows (no keys).
-        create_keyless_seed_providers(&db).await;
-
-        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openai").then(|| "sk-from-env".to_string())
-        })
-        .await
-        .unwrap();
-        assert_eq!(result.updated, 1, "exactly the openai provider is filled");
-
-        // The key round-trips through the same decrypt path the resolver uses.
-        let provider = db
-            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
-            .await
-            .unwrap()
-            .expect("openai provider seeded");
-        assert!(provider.api_key_set);
-        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
-            &db,
-            Some(&encryption),
-            &provider,
-        )
-        .unwrap();
-        assert_eq!(resolved, Some("sk-from-env".to_string()));
-    }
-
-    /// Materialization never overwrites an explicitly-configured key.
-    #[tokio::test]
-    async fn materialize_does_not_clobber_existing_key() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        create_keyless_seed_providers(&db).await;
-
-        // User configures their own key.
-        let user_key = encryption.encrypt_string("sk-user-set").unwrap();
-        db.update_provider(
-            DEFAULT_ORG_ID,
-            seed_ids::OPENAI_PROVIDER,
-            UpdateProvider {
-                name: None,
-                provider_type: None,
-                base_url: None,
-                api_key_encrypted: Some(user_key),
-                status: None,
-                settings: None,
-            },
-        )
-        .await
-        .unwrap();
-
-        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openai").then(|| "sk-from-env".to_string())
-        })
-        .await
-        .unwrap();
-        assert_eq!(result.updated, 0);
-        assert_eq!(result.unchanged, 1);
-
-        let provider = db
-            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
-            .await
-            .unwrap()
-            .unwrap();
-        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
-            &db,
-            Some(&encryption),
-            &provider,
-        )
-        .unwrap();
-        assert_eq!(
-            resolved,
-            Some("sk-user-set".to_string()),
-            "user key must be preserved"
-        );
-    }
-
-    /// With no env key set, nothing is materialized (multitenant-safe default
-    /// even if the gate were somehow on).
-    #[tokio::test]
-    async fn materialize_no_env_key_is_noop() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        create_keyless_seed_providers(&db).await;
-
-        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |_| None)
-            .await
-            .unwrap();
-        assert_eq!(result.updated, 0);
-
-        let provider = db
-            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(!provider.api_key_set);
-    }
-
-    /// A fresh install connects nothing: no provider rows, so no catalog
-    /// models either.
-    #[tokio::test]
-    async fn seed_all_creates_no_providers_or_models() {
-        let db = make_db();
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        assert!(db.list_providers(DEFAULT_ORG_ID).await.unwrap().is_empty());
-        assert!(db.list_all_models(DEFAULT_ORG_ID).await.unwrap().is_empty());
-    }
-
-    /// An env key connects its provider on a fresh install, and only that one.
-    #[tokio::test]
-    async fn materialize_creates_missing_provider_with_key() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-
-        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openrouter").then(|| "sk-or-from-env".to_string())
-        })
-        .await
-        .unwrap();
-        assert_eq!(result.created, 1);
-        assert_eq!(result.connected, vec![seed_ids::OPENROUTER_PROVIDER]);
-
-        let providers = db.list_providers(DEFAULT_ORG_ID).await.unwrap();
-        assert_eq!(
-            providers.len(),
-            1,
-            "only the provider with an env key exists"
-        );
-        assert!(providers[0].api_key_set);
-
-        // A second boot leaves it alone.
-        let again = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openrouter").then(|| "sk-or-from-env".to_string())
-        })
-        .await
-        .unwrap();
-        assert!(again.connected.is_empty());
-        assert_eq!(again.unchanged, 1);
-    }
-
-    /// Rows older versions seeded without a key keep their catalog, but none
-    /// of it is enabled: those models cannot run.
-    #[tokio::test]
-    async fn keyless_seed_provider_models_are_disabled() {
-        let db = make_db();
-        create_keyless_seed_providers(&db).await;
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        let models = db.list_all_models(DEFAULT_ORG_ID).await.unwrap();
-        assert!(!models.is_empty(), "catalog is still listed");
-        assert!(
-            models.iter().all(|model| !model.enabled),
-            "no model of a keyless provider is enabled"
-        );
-    }
-
-    /// A connected provider gets the catalog's default-enabled models.
-    #[tokio::test]
-    async fn keyed_seed_provider_models_follow_catalog_defaults() {
-        let db = make_db();
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openai").then(|| "sk-from-env".to_string())
-        })
-        .await
-        .unwrap();
-        seed_models_with_host_composition(&db, &platform)
-            .await
-            .unwrap();
-
-        let models = db
-            .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
-            .await
-            .unwrap();
-        let expected = SEED_MODELS
-            .iter()
-            .filter(|seed| seed.provider_id == seed_ids::OPENAI_PROVIDER && seed.enabled)
-            .count();
-        assert!(expected > 0);
-        assert_eq!(
-            models.iter().filter(|model| model.enabled).count(),
-            expected
-        );
-    }
-
-    /// An org that connected only OpenRouter must not keep defaulting to the
-    /// platform's OpenAI model that an older version seeded without a key.
-    #[tokio::test]
-    async fn default_model_moves_to_a_connected_provider() {
-        let db = Arc::new(make_db());
-        let encryption = test_encryption();
-        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        create_keyless_seed_providers(&db).await;
-        seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
-            (ty == "openrouter").then(|| "sk-or".to_string())
-        })
-        .await
-        .unwrap();
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-
-        // What a sync would have discovered.
-        db.create_model(
-            DEFAULT_ORG_ID,
-            CreateModelRow {
-                provider_id: seed_ids::OPENROUTER_PROVIDER.into(),
-                model_id: "openai/gpt-6-luna".to_string(),
-                display_name: "GPT-6 Luna".to_string(),
-                capabilities: vec![],
-                is_favorite: false,
-                enabled: false,
-                source: "discovered".to_string(),
-                provider_metadata: None,
-            },
-        )
-        .await
-        .unwrap();
-        // The keyless OpenAI platform default no longer resolves.
-        assert!(
-            db.get_default_model(DEFAULT_ORG_ID)
-                .await
-                .unwrap()
-                .is_none()
-        );
-
-        ensure_default_org_default_model(&db, None, &platform).await;
-
-        let default = db
-            .get_default_model(DEFAULT_ORG_ID)
-            .await
-            .unwrap()
-            .expect("the default resolves to a runnable model");
-        assert_eq!(default.provider_id.uuid(), seed_ids::OPENROUTER_PROVIDER);
     }
 
     // --- Harness seed data ---
@@ -2107,7 +1682,7 @@ mod tests {
     #[tokio::test]
     async fn test_provider_seed_detects_name_change() {
         let db = make_db();
-        create_keyless_seed_providers(&db).await;
+        super::provider_tests::create_keyless_seed_providers(&db).await;
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
