@@ -1041,6 +1041,46 @@ first runs found two gaps, now fixed: the session state never reached the
 control plane (sessions stayed "running", tool approvals never paused),
 and live deltas never left the worker (chat showed no typing).
 
+### Step 5 progress (2026-11-10)
+
+funout `0a0c0ec` is ported into `crates/cell` and `crates/cell-testkit`
+against today's Engine: the cell is an `AgentDefinitions` and
+`SessionHosting` profile, definitions travel with their sessions, and the
+fleet scripts (`scripts/cell/`) and a real-model example
+(`examples/cell-assistant`) came along. The storage proof came first, as
+the storage decision below requires. What it checks and what it found:
+
+- **Kill run** (`scripts/cell/chaos.py --cells 2 --sessions 300 --moves
+  100`): `kill -9` of nodes, leaders included, while sessions run 3 to 5
+  tool turns and move live between cells; then every session's log is
+  checked. The first run failed 6 of 300 sessions: three node kills inside
+  one turn tripped the Engine's poison guard, which counted holder deaths
+  even when every lease moved the turn on. The guard now counts deaths
+  without progress
+  ([durable execution engine](../../operations/durable-execution-engine.md),
+  "Poison guard"). Since then 4 of 4 runs pass: 900 to 1 500 turns, up to
+  17 kills (6 of a leader), up to 51 live moves, no tool ran twice.
+- **Log crash tests** (`crates/cell/src/wal_tests.rs`): seeded crashes with
+  torn tails and garbage, and named crash points inside truncation, roll
+  and purge. They found a data-loss bug: truncation deleted the segments
+  before renaming the rewritten log in, so a crash between the two left
+  the node with an empty log. A rewrite now commits by a rename and open
+  finishes it. A tear before the active segment now refuses to open rather
+  than hand Raft a log with a hole. The log and the state machine also pass
+  openraft's own storage suite.
+- **Cell simulation** (`crates/cell/tests/raft_simulation.rs`): three real
+  nodes (log, state machine, openraft) over an in-memory network that
+  drops, delays and partitions messages, with nodes killed and restarted
+  from disk and snapshots every 40 entries. 12 seeds per run, about 400
+  writes each, 5 to 13 kills and 4 to 10 terms per seed: every
+  acknowledged write is on every node, the nodes agree, nothing unwritten
+  appears, and no term has two leaders.
+
+Still open in step 5: exact-replay simulation of the whole node (a
+simulated runtime, so a seed replays bit for bit, with crash points inside
+moves and epochs), the epochs and fencing model, placement generations,
+spend allowances and log shipping.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

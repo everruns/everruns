@@ -1,0 +1,49 @@
+[package]
+name = "everruns-cell"
+description = "Cells: Raft-replicated session authorities for Everruns Engine (data plane v2)."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+
+# Decision: unpublished. Cells are the data plane v2 storage engine, ported
+# from funout 0a0c0ec (knowledge/execution/data-plane-v2/design.md, step 5);
+# nothing outside this repository depends on them until they are proven.
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = "0.2"
+everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs"] }
+everruns-core = { workspace = true, features = ["host"] }
+everruns-contracts.workspace = true
+openraft = { version = "=0.9.25", features = ["serde", "storage-v2"] }
+tokio.workspace = true
+tokio-stream = { workspace = true, features = ["sync"] }
+futures.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+crc32fast = "1.4"
+anyhow.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+rand.workspace = true
+object_store.workspace = true
+url = "2"
+bytes.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+everruns = { workspace = true, features = ["hosting-conformance"] }
+tokio = { workspace = true, features = ["test-util"] }

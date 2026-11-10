@@ -1,0 +1,5 @@
+{
+  "name": "reviewer",
+  "instructions": "You review text. Reply with at most three concrete improvements.",
+  "model": { "provider": "openai", "model": "gpt-6.1-sol" }
+}

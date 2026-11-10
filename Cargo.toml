@@ -35,6 +35,10 @@ members = [
     "crates/serve-build",
     "crates/serve-agentcore",
     "crates/serve-celld",
+    # Data plane v2 cells (unpublished): the storage engine and its testkit.
+    "crates/cell",
+    "crates/cell-testkit",
+    "examples/cell-assistant",
     "examples/support-agent",
     "examples/custom-data-agent",
     "examples/everruns-support-agent",

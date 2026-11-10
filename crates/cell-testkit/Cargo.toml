@@ -1,0 +1,43 @@
+[package]
+name = "everruns-cell-testkit"
+description = "Test-only cell node binary (simulated models) and the chaos and load drivers."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+everruns-cell = { path = "../cell" }
+everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs"] }
+everruns-core = { workspace = true, features = ["host"] }
+everruns-contracts.workspace = true
+everruns-llmsim = { workspace = true, features = ["host"] }
+async-trait.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+reqwest.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+futures.workspace = true
+rand.workspace = true
+uuid.workspace = true
+mimalloc.workspace = true
+
+[[bin]]
+name = "cell-testnode"
+path = "src/bin/testnode.rs"
+
+[[bin]]
+name = "cell-drive"
+path = "src/bin/drive.rs"
+
+[[bin]]
+name = "cell-baseline"
+path = "src/bin/baseline.rs"
