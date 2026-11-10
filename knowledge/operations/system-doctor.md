@@ -82,6 +82,8 @@ enforces manifest limits it does not document, so each server sends its
 worst-case manifests to `apps.manifest.validate` once a day, using any
 connected workspace's configuration token, which the server already keeps
 fresh. The doctor reports the last answer; it never calls Slack itself.
+There is no CI check: CI holds no Slack token, and the daily check against
+production is enough for limits that change rarely.
 
 Two judgments worth keeping:
 

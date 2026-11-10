@@ -739,33 +739,3 @@ mod wiremock_tests {
         );
     }
 }
-
-/// The worst-case manifests, kept as a fixture for checks that run without a
-/// server. The system doctor validates the same manifests with Slack. The
-/// test fails when the fixture no longer matches what the code builds.
-/// Regenerate with `UPDATE_SLACK_MANIFEST_FIXTURE=1 cargo test -p
-/// everruns-server worst_case_manifest_fixture`.
-#[test]
-fn worst_case_manifest_fixture_is_current() {
-    let mut manifests = serde_json::Map::new();
-    for (case, yaml) in worst_case_manifest_yamls() {
-        let manifest: serde_json::Value = serde_yaml::from_str(&yaml).unwrap();
-        manifests.insert(case.to_string(), manifest);
-    }
-    let rendered = format!(
-        "{}\n",
-        serde_json::to_string_pretty(&serde_json::Value::Object(manifests)).unwrap()
-    );
-
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/slack-worst-case-manifests.json");
-    if std::env::var_os("UPDATE_SLACK_MANIFEST_FIXTURE").is_some() {
-        std::fs::write(&path, &rendered).unwrap();
-    }
-    let committed = std::fs::read_to_string(&path).unwrap_or_default();
-    assert!(
-        committed == rendered,
-        "{} is stale; regenerate it with UPDATE_SLACK_MANIFEST_FIXTURE=1 cargo test -p everruns-server worst_case_manifest_fixture",
-        path.display()
-    );
-}
