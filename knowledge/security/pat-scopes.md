@@ -234,7 +234,7 @@ PATs.
 |---|---|
 | REST `/v1` | Decisions 2 and 3. |
 | `/v1/commands` (CLI) | `GET` lists the commands the token can run (the `query` toolset for `read`), each still marked `read_only`. `POST /v1/commands/{name}` checks per command. |
-| `/mcp` with a PAT | `extract_mcp_auth_user` carries the scope. For `read`, `tools/list` returns only tools annotated read-only (`me`, `list_organizations`, `discover`, `query`, `session_get_status`, card and app views), and `tools/call` refuses `execute`, `agent_run`, `session_send_message`, `session_set_secret`, `connect` and mutating app actions. The tool classification is an explicit list in `tool_registry.rs`, kept equal to its `readOnlyHint` annotations by a test, so a hint is never the only control. |
+| `/mcp` with a PAT | `extract_mcp_auth_user` carries the scope. For `read`, `tools/list` returns only tools annotated read-only (`me`, `list_organizations`, `discover`, `query`, `session_get_status`, card and app views, and the room tools that only read), and `tools/call` refuses `execute`, `agent_run`, `session_send_message`, `session_set_secret`, `connect`, mutating app actions and room tools that change something (including `room_read_unread`, which marks messages read). The tool classification is an explicit list in `tool_registry.rs`, kept equal to its `readOnlyHint` annotations by a test, so a hint is never the only control. |
 | MCP OAuth tokens | Unchanged: resource-bound, full user authority on `/mcp` only (TM-MCP-006). If consent-time scopes come later, they reuse the same tool classification. |
 | JWT and cookie sessions | Unchanged. No scope. |
 | Share tokens (`evr_share_`) | Unchanged. Not a principal: anonymous read of one eval run. A `read` PAT cannot create one (`Never`). |

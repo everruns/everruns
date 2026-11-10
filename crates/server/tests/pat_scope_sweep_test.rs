@@ -599,6 +599,12 @@ const READ_ONLY_MCP_TOOLS: &[&str] = &[
     "list_organizations",
     "me",
     "query",
+    "room_file_history",
+    "room_list",
+    "room_list_files",
+    "room_read",
+    "room_read_file",
+    "room_who_read",
     "session_get_status",
     "session_open",
     "session_view",
@@ -693,6 +699,25 @@ async fn surfaces(port: u16, db: &StorageBackend) {
         write["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
         "{write}"
     );
+    // A room tool that changes something is a write, `room_read_unread`
+    // included: it marks what it returns read.
+    for tool in ["room_post", "room_read_unread", "room_write_file"] {
+        let refused = mcp(
+            &client,
+            &base,
+            &read_token,
+            "tools/call",
+            call(
+                tool,
+                serde_json::json!({"room_id":"room_00000000000000000000000000000000"}),
+            ),
+        )
+        .await;
+        assert_eq!(
+            refused["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+            "{tool}: {refused}"
+        );
+    }
     let script = serde_json::json!({ "commands": "list_agents" });
     let denied = mcp(
         &client,

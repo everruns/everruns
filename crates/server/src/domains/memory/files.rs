@@ -88,6 +88,11 @@ impl MemoryFileService {
             .get_memory(org_id, memory_id)
             .await?
             .ok_or(MemoryFsError::MemoryNotFound)?;
+        // A room's files change only through the room, which versions each
+        // change and records who made it; the Memory API would bypass both.
+        if memory.scope == "room" {
+            return Err(MemoryFsError::MemoryNotFound);
+        }
         Ok(memory)
     }
 

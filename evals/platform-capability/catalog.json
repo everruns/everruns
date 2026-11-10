@@ -11108,6 +11108,48 @@
   },
   {
     "category": "rooms",
+    "cli": "rooms files delete",
+    "description": "Delete a file from a room's shared folder. Its versions stay: it can be read at an earlier version or restored.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Delete as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "if_version": {
+          "description": "The version you read; the delete fails when the file changed since.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "The file to delete.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "path"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_room_file",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files",
+    "positional_arg": "room_id",
+    "read_only": false
+  },
+  {
+    "category": "rooms",
     "cli": "rooms messages delete",
     "description": "Delete a message. Its author, or a room owner. A marker stays in its place and replies stay.",
     "input_schema": {
@@ -12141,6 +12183,70 @@
     "name": "dry_run_guardrails",
     "output_shape": "unknown",
     "path": "/v1/capabilities/guardrails/dry-run",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms files edit",
+    "description": "Change part of a text file in a room's shared folder by replacing exact text, without rewriting the rest. Fails, and changes nothing, when the file changed under you.",
+    "input_schema": {
+      "$defs": {
+        "RoomFileEdit": {
+          "description": "One replacement in an edit.",
+          "properties": {
+            "new_text": {
+              "description": "What to put in its place; empty deletes it.",
+              "example": "- [x] Draft the announcement",
+              "type": "string"
+            },
+            "old_text": {
+              "description": "Text to replace. It must occur exactly once in the file.",
+              "example": "- [ ] Draft the announcement",
+              "type": "string"
+            }
+          },
+          "required": [
+            "old_text",
+            "new_text"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "as_member": {
+          "description": "Edit as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edits": {
+          "description": "Replacements, applied in order. Each `old_text` must occur exactly\nonce in the file.",
+          "items": {
+            "$ref": "#/$defs/RoomFileEdit"
+          },
+          "type": "array"
+        },
+        "path": {
+          "description": "The file to change.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "path",
+        "edits"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "edit_room_file",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files/edit",
     "positional_arg": null,
     "read_only": false
   },
@@ -17920,6 +18026,69 @@
   },
   {
     "category": "rooms",
+    "cli": "rooms files history",
+    "description": "List every version of a room file, newest first: who changed it, how, and when. Follows the file across moves.",
+    "input_schema": {
+      "properties": {
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "The file, as it is now or was when deleted.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "path"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_room_file_history",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files/history",
+    "positional_arg": "room_id",
+    "read_only": true
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms files list",
+    "description": "List the files in a room's shared folder, with each file's current version and who made it.",
+    "input_schema": {
+      "properties": {
+        "prefix": {
+          "description": "Only files under this folder, such as `/plans`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_room_files",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files",
+    "positional_arg": "room_id",
+    "read_only": true
+  },
+  {
+    "category": "rooms",
     "cli": "rooms members list",
     "description": "List a room's members.",
     "input_schema": {
@@ -19370,6 +19539,45 @@
     "name": "mark_room_read",
     "output_shape": "unknown",
     "path": "/v1/rooms/{room_id}/read",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms files move",
+    "description": "Move or rename a file in a room's shared folder. The file keeps its history.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Move as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "description": "The file's path now.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "to": {
+          "description": "Its new path. Nothing may be there yet.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "from",
+        "to"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "move_room_file",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files/move",
     "positional_arg": null,
     "read_only": false
   },
@@ -21134,6 +21342,41 @@
   },
   {
     "category": "rooms",
+    "cli": "rooms files read",
+    "description": "Read a file in a room's shared folder, as it is now or at an earlier version.",
+    "input_schema": {
+      "properties": {
+        "path": {
+          "description": "The file, such as `/plans/launch.md`.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "version": {
+          "description": "An earlier version to read; the current one when absent. Works for a\ndeleted file too.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "room_id",
+        "path"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "read_room_file",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files/content",
+    "positional_arg": "room_id",
+    "read_only": true
+  },
+  {
+    "category": "rooms",
     "cli": "rooms unread",
     "description": "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
     "input_schema": {
@@ -21383,6 +21626,46 @@
     "output_shape": "unknown",
     "path": "/v1/history/{entity_ref}/restore",
     "positional_arg": "entity_ref",
+    "read_only": false
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms files restore",
+    "description": "Bring back an earlier version of a room file, also after it was deleted. The restore is a new version, so nothing is lost.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Restore as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "The file, as it is now or was when deleted.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "version": {
+          "description": "The version to bring back. It becomes a new version; nothing is lost.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "room_id",
+        "path",
+        "version"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "restore_room_file",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files/restore",
+    "positional_arg": null,
     "read_only": false
   },
   {
@@ -32186,6 +32469,60 @@
     "name": "write_knowledge_file",
     "output_shape": "unknown",
     "path": "/v1/knowledge/{collection_id}/files",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms files write",
+    "description": "Create a file in a room's shared folder, or replace its whole content. The earlier version is kept.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Write as this member (org admins, for a product acting for its users).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content": {
+          "description": "The whole new content.",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "`text` (default) or `base64`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "if_version": {
+          "description": "The version you read, so a change someone made since is not\noverwritten. `0` writes only when there is no file yet.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "The file, such as `/plans/launch.md`. Folders are created as needed.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "path",
+        "content"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "write_room_file",
+    "output_shape": "unknown",
+    "path": "/v1/rooms/{room_id}/files",
     "positional_arg": null,
     "read_only": false
   }

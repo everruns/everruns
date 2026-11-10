@@ -12376,6 +12376,363 @@
     ]
   },
   {
+    "wire_name": "delete_room_file",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "delete",
+    "description": "Delete a file from a room's shared folder. Its versions stay: it can be read at an earlier version or restored.",
+    "method": "DELETE",
+    "http_path": "/v1/rooms/{room_id}/files",
+    "args": [
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "as_member",
+        "long": "as-member",
+        "kind": "string",
+        "required": false,
+        "help": "Delete as this member (org admins)."
+      },
+      {
+        "field": "if_version",
+        "long": "if-version",
+        "kind": "integer",
+        "required": false,
+        "help": "The version you read; the delete fails when the file changed since."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true,
+        "help": "The file to delete."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a finished draft from a room",
+        "command": "everruns rooms files delete room_01h9 --path /draft.md"
+      }
+    ]
+  },
+  {
+    "wire_name": "edit_room_file",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "edit",
+    "description": "Change part of a text file in a room's shared folder by replacing exact text, without rewriting the rest. Fails, and changes nothing, when the file changed under you.",
+    "method": "POST",
+    "http_path": "/v1/rooms/{room_id}/files/edit",
+    "args": [
+      {
+        "field": "as_member",
+        "long": "as-member",
+        "kind": "string",
+        "required": false,
+        "help": "Edit as this member (org admins)."
+      },
+      {
+        "field": "edits",
+        "long": "edits",
+        "kind": "json",
+        "required": true,
+        "help": "Replacements, applied in order."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true,
+        "help": "The file to change."
+      },
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Tick an item off a room's plan",
+        "command": "everruns rooms files edit --room-id room_01h9 --path /plans/launch.md --edits '[{\"old_text\":\"- [ ] Draft\",\"new_text\":\"- [x] Draft\"}]'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_room_file_history",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "history",
+    "description": "List every version of a room file, newest first: who changed it, how, and when. Follows the file across moves.",
+    "method": "GET",
+    "http_path": "/v1/rooms/{room_id}/files/history",
+    "args": [
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true,
+        "help": "The file, as it is now or was when deleted."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See who changed a room's plan",
+        "command": "everruns rooms files history room_01h9 --path /plans/launch.md"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_room_files",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "list",
+    "description": "List the files in a room's shared folder, with each file's current version and who made it.",
+    "method": "GET",
+    "http_path": "/v1/rooms/{room_id}/files",
+    "args": [
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "prefix",
+        "long": "prefix",
+        "kind": "string",
+        "required": false,
+        "help": "Only files under this folder, such as `/plans`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what notes and plans a room keeps",
+        "command": "everruns rooms files list room_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "move_room_file",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "move",
+    "description": "Move or rename a file in a room's shared folder. The file keeps its history.",
+    "method": "POST",
+    "http_path": "/v1/rooms/{room_id}/files/move",
+    "args": [
+      {
+        "field": "as_member",
+        "long": "as-member",
+        "kind": "string",
+        "required": false,
+        "help": "Move as this member (org admins)."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": true,
+        "help": "The file's path now."
+      },
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": true,
+        "help": "Its new path."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "File a draft plan under plans",
+        "command": "everruns rooms files move --room-id room_01h9 --from /draft.md --to /plans/launch.md"
+      }
+    ]
+  },
+  {
+    "wire_name": "read_room_file",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "read",
+    "description": "Read a file in a room's shared folder, as it is now or at an earlier version.",
+    "method": "GET",
+    "http_path": "/v1/rooms/{room_id}/files/content",
+    "args": [
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true,
+        "help": "The file, such as `/plans/launch.md`."
+      },
+      {
+        "field": "version",
+        "long": "version",
+        "kind": "integer",
+        "required": false,
+        "help": "An earlier version to read; the current one when absent."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read a room's launch plan",
+        "command": "everruns rooms files read room_01h9 --path /plans/launch.md"
+      }
+    ]
+  },
+  {
+    "wire_name": "restore_room_file",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "restore",
+    "description": "Bring back an earlier version of a room file, also after it was deleted. The restore is a new version, so nothing is lost.",
+    "method": "POST",
+    "http_path": "/v1/rooms/{room_id}/files/restore",
+    "args": [
+      {
+        "field": "as_member",
+        "long": "as-member",
+        "kind": "string",
+        "required": false,
+        "help": "Restore as this member (org admins)."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true,
+        "help": "The file, as it is now or was when deleted."
+      },
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "version",
+        "long": "version",
+        "kind": "integer",
+        "required": true,
+        "help": "The version to bring back."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Undo a bad change to a room's plan",
+        "command": "everruns rooms files restore --room-id room_01h9 --path /plans/launch.md --version 2"
+      }
+    ]
+  },
+  {
+    "wire_name": "write_room_file",
+    "path": [
+      "rooms",
+      "files"
+    ],
+    "verb": "write",
+    "description": "Create a file in a room's shared folder, or replace its whole content. The earlier version is kept.",
+    "method": "PUT",
+    "http_path": "/v1/rooms/{room_id}/files",
+    "args": [
+      {
+        "field": "as_member",
+        "long": "as-member",
+        "kind": "string",
+        "required": false,
+        "help": "Write as this member (org admins, for a product acting for its users)."
+      },
+      {
+        "field": "content",
+        "long": "content",
+        "kind": "string",
+        "required": true,
+        "help": "The whole new content."
+      },
+      {
+        "field": "encoding",
+        "long": "encoding",
+        "kind": "string",
+        "required": false,
+        "help": "`text` (default) or `base64`."
+      },
+      {
+        "field": "if_version",
+        "long": "if-version",
+        "kind": "integer",
+        "required": false,
+        "help": "The version you read, so a change someone made since is not overwritten."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true,
+        "help": "The file, such as `/plans/launch.md`."
+      },
+      {
+        "field": "room_id",
+        "long": "room-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a shared plan in a room",
+        "command": "everruns rooms files write --room-id room_01h9 --path /plans/launch.md --content '# Launch plan'"
+      }
+    ]
+  },
+  {
     "wire_name": "get_room",
     "path": [
       "rooms"

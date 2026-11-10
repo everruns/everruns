@@ -36,6 +36,14 @@ pub(super) const READ_ONLY_TOOLS: &[&str] = &[
     "session_open",
     "app_read",
     "app_bootstrap",
+    // Room tools (`room_tools`). `room_read_unread` is not here: it marks
+    // what it returns read.
+    "room_list",
+    "room_read",
+    "room_who_read",
+    "room_list_files",
+    "room_read_file",
+    "room_file_history",
 ];
 
 /// Access class of an MCP tool for personal access token scopes.
@@ -94,6 +102,10 @@ pub fn tool_definitions(
         query_tool(protocol_version, org_id_description),
         execute_tool(protocol_version, org_id_description),
     ];
+    tools.extend(super::room_tools::room_tools(
+        protocol_version,
+        org_id_description,
+    ));
     // Entity cards use the rich tool metadata introduced in MCP 2025-06-18 (and carried
     // forward in 2026-07-28). Older clients negotiate the fallback protocol and
     // don't see card tools.
@@ -757,7 +769,7 @@ fn decide_approval_tool(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn tool(
+pub(super) fn tool(
     protocol_version: &str,
     name: &str,
     title: &str,
@@ -794,7 +806,7 @@ fn read_only_annotations() -> McpToolAnnotations {
     }
 }
 
-fn object_schema(properties: Vec<(&str, Value)>, required: Vec<&str>) -> Value {
+pub(super) fn object_schema(properties: Vec<(&str, Value)>, required: Vec<&str>) -> Value {
     let props = properties
         .into_iter()
         .map(|(name, schema)| (name.to_string(), schema))
@@ -807,7 +819,7 @@ fn object_schema(properties: Vec<(&str, Value)>, required: Vec<&str>) -> Value {
     })
 }
 
-fn with_organization_id(mut schema: Value, description: &str) -> Value {
+pub(super) fn with_organization_id(mut schema: Value, description: &str) -> Value {
     schema["properties"]["organization_id"] = json!({
         "type": "string",
         "description": description,

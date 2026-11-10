@@ -826,3 +826,340 @@ async fn two_agents_answering_each_other_stop_at_the_hop_limit_and_the_room_is_t
         notice.text
     );
 }
+
+// ============================================================================
+// Room files
+// ============================================================================
+
+async fn history(ctx: &Ctx, room_id: &str, path: &str) -> Vec<(i32, String, Option<String>)> {
+    ListRoomFileHistory {
+        room_id: room_id.into(),
+        path: path.into(),
+        limit: None,
+    }
+    .run(ctx)
+    .await
+    .expect("history")
+    .data
+    .into_iter()
+    .map(|v| (v.version, v.action, v.author.map(|a| a.handle)))
+    .collect()
+}
+
+async fn read_file(
+    ctx: &Ctx,
+    room_id: &str,
+    path: &str,
+    version: Option<i32>,
+) -> Result<String, CommandError> {
+    ReadRoomFile {
+        room_id: room_id.into(),
+        path: path.into(),
+        version,
+    }
+    .run(ctx)
+    .await
+    .map(|file| file.content)
+}
+
+fn write(
+    room_id: &str,
+    path: &str,
+    content: &str,
+    if_version: Option<i32>,
+    as_member: Option<&str>,
+) -> WriteRoomFile {
+    WriteRoomFile {
+        room_id: room_id.into(),
+        path: path.into(),
+        content: content.into(),
+        encoding: None,
+        if_version,
+        as_member: as_member.map(Into::into),
+    }
+}
+
+#[tokio::test]
+async fn room_files_keep_every_version_and_who_made_it() {
+    let db = Arc::new(StorageBackend::test_database());
+    let app = ctx(&db, caller(None, OrgRole::Admin));
+    let room = create("Launch", vec![guest("Ana"), guest("Bo")])
+        .run(&app)
+        .await
+        .unwrap();
+    let handles = members_by_handle(&app, &room.id).await;
+    let (ana, bo) = (handles["ana"].as_str(), handles["bo"].as_str());
+
+    // Ana starts a plan in a folder; Bo ticks an item off in place.
+    let first = write(
+        &room.id,
+        "plans/launch.md",
+        "- [ ] Draft\n- [ ] Ship\n",
+        Some(0),
+        Some(ana),
+    )
+    .run(&app)
+    .await
+    .unwrap();
+    assert_eq!(
+        (first.path.as_str(), first.version),
+        ("/plans/launch.md", 1)
+    );
+    let edited = EditRoomFile {
+        room_id: room.id.clone(),
+        path: "/plans/launch.md".into(),
+        edits: vec![RoomFileEdit {
+            old_text: "- [ ] Draft".into(),
+            new_text: "- [x] Draft".into(),
+        }],
+        as_member: Some(bo.into()),
+    }
+    .run(&app)
+    .await
+    .unwrap();
+    assert_eq!(edited.version, 2);
+
+    // A write from a stale read, or a second "create", changes nothing.
+    let stale = write(&room.id, "/plans/launch.md", "lost", Some(1), Some(ana))
+        .run(&app)
+        .await;
+    assert!(stale.unwrap_err().to_string().contains("version 2"));
+    assert!(
+        write(&room.id, "/plans/launch.md", "x", Some(0), Some(ana))
+            .run(&app)
+            .await
+            .is_err()
+    );
+    // A file cannot hide a folder, or a folder a file.
+    assert!(
+        write(&room.id, "/plans", "x", None, Some(ana))
+            .run(&app)
+            .await
+            .is_err()
+    );
+    assert!(
+        write(&room.id, "/plans/launch.md/x", "x", None, Some(ana))
+            .run(&app)
+            .await
+            .is_err()
+    );
+
+    assert_eq!(
+        read_file(&app, &room.id, "/plans/launch.md", None)
+            .await
+            .unwrap(),
+        "- [x] Draft\n- [ ] Ship\n"
+    );
+    assert_eq!(
+        read_file(&app, &room.id, "/plans/launch.md", Some(1))
+            .await
+            .unwrap(),
+        "- [ ] Draft\n- [ ] Ship\n"
+    );
+
+    // Moving keeps the history; deleting keeps every version; restoring
+    // brings the file back as a new version.
+    MoveRoomFile {
+        room_id: room.id.clone(),
+        from: "/plans/launch.md".into(),
+        to: "/launch.md".into(),
+        as_member: Some(ana.into()),
+    }
+    .run(&app)
+    .await
+    .unwrap();
+    DeleteRoomFile {
+        room_id: room.id.clone(),
+        path: "/launch.md".into(),
+        if_version: Some(3),
+        as_member: Some(bo.into()),
+    }
+    .run(&app)
+    .await
+    .unwrap();
+    assert!(read_file(&app, &room.id, "/launch.md", None).await.is_err());
+    assert_eq!(
+        read_file(&app, &room.id, "/launch.md", Some(2))
+            .await
+            .unwrap(),
+        "- [x] Draft\n- [ ] Ship\n"
+    );
+    let restored = RestoreRoomFile {
+        room_id: room.id.clone(),
+        path: "/launch.md".into(),
+        version: 1,
+        as_member: Some(ana.into()),
+    }
+    .run(&app)
+    .await
+    .unwrap();
+    assert_eq!((restored.version, restored.action.as_str()), (5, "restore"));
+    assert_eq!(
+        history(&app, &room.id, "/launch.md").await,
+        vec![
+            (5, "restore".into(), Some("ana".into())),
+            (4, "delete".into(), Some("bo".into())),
+            (3, "move".into(), Some("ana".into())),
+            (2, "write".into(), Some("bo".into())),
+            (1, "write".into(), Some("ana".into())),
+        ]
+    );
+
+    let files = ListRoomFiles {
+        room_id: room.id.clone(),
+        prefix: None,
+    }
+    .run(&app)
+    .await
+    .unwrap();
+    assert_eq!(files.data.len(), 1);
+    assert_eq!(files.data[0].updated_by.as_ref().unwrap().handle, "ana");
+    let under_plans = ListRoomFiles {
+        room_id: room.id.clone(),
+        prefix: Some("/plans".into()),
+    }
+    .run(&app)
+    .await
+    .unwrap();
+    assert!(under_plans.data.is_empty());
+
+    // The change feed says what happened to the files.
+    let feed = ListRoomEvents {
+        room_id: room.id.clone(),
+        after: None,
+        limit: None,
+    }
+    .run(&app)
+    .await
+    .unwrap();
+    let file_events: Vec<&str> = feed
+        .data
+        .iter()
+        .map(|event| event.event_type.as_str())
+        .filter(|kind| kind.starts_with("file."))
+        .collect();
+    assert_eq!(
+        file_events,
+        [
+            "file.written",
+            "file.written",
+            "file.moved",
+            "file.deleted",
+            "file.written"
+        ]
+    );
+
+    // The Memory behind the folder is not reachable through the Memory API,
+    // which would change files without a version.
+    let store = db
+        .ensure_room_memory(DEFAULT_ORG_ID, room.id.parse().unwrap())
+        .await
+        .unwrap();
+    let memory = db
+        .get_memory_by_id(DEFAULT_ORG_ID, store.memory_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let service = crate::domains::memory::files::MemoryFileService::new(db.clone());
+    assert!(
+        service
+            .resolve_memory(DEFAULT_ORG_ID, &memory.public_id)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn an_agent_changes_room_files_through_its_room_session_under_its_own_handle() {
+    use crate::domains::session_files::memory_mounts::MemoryMountRouter;
+
+    let db = Arc::new(StorageBackend::test_database());
+    let scribe = seed_agent(&db, "Scribe").await;
+    let (app, _runner) = waking_ctx(&db, caller(None, OrgRole::Admin));
+    let room = create(
+        "Notes",
+        vec![guest("Ana"), agent_member(&scribe, WakeMode::Mentions)],
+    )
+    .run(&app)
+    .await
+    .unwrap();
+    let ana = members_by_handle(&app, &room.id).await["ana"].clone();
+    write(&room.id, "/notes.md", "# Notes\n", None, Some(&ana))
+        .run(&app)
+        .await
+        .unwrap();
+    let asked = post(
+        &app,
+        &room.id,
+        "@scribe add today's decisions",
+        None,
+        Some(&ana),
+    )
+    .await;
+    let session_id: SessionId = asked.woke[0]
+        .session_id
+        .as_deref()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    // The room session is told where the files are.
+    let session = db
+        .get_session(DEFAULT_ORG_ID, session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(session.system_prompt.unwrap_or_default().contains("/room"));
+
+    // Its file tools see the room's folder at /room and write through it.
+    let router = MemoryMountRouter::new(db.clone());
+    let (mount, inner) = router
+        .route(session_id.uuid(), "/room/notes.md")
+        .await
+        .expect("/room is mounted");
+    assert_eq!(inner, "/notes.md");
+    assert_eq!(
+        router.read_file(&mount, &inner).await.unwrap().unwrap(),
+        b"# Notes\n"
+    );
+    router
+        .write_file(&mount, &inner, b"# Notes\n- Ship on Friday\n".to_vec())
+        .await
+        .unwrap();
+    let (mount, inner) = router
+        .route(session_id.uuid(), "/room/drafts/idea.md")
+        .await
+        .unwrap();
+    router
+        .write_file(&mount, &inner, b"maybe".to_vec())
+        .await
+        .unwrap();
+    assert!(router.delete(&mount, "/drafts", true).await.unwrap());
+
+    assert_eq!(
+        history(&app, &room.id, "/notes.md").await,
+        vec![
+            (2, "write".into(), Some("scribe".into())),
+            (1, "write".into(), Some("ana".into()))
+        ]
+    );
+    assert_eq!(
+        history(&app, &room.id, "/drafts/idea.md").await,
+        vec![
+            (2, "delete".into(), Some("scribe".into())),
+            (1, "write".into(), Some("scribe".into()))
+        ]
+    );
+    assert_eq!(
+        read_file(&app, &room.id, "/notes.md", None).await.unwrap(),
+        "# Notes\n- Ship on Friday\n"
+    );
+
+    // A session that is not a room's has no /room.
+    assert!(
+        router
+            .route(SessionId::new().uuid(), "/room/notes.md")
+            .await
+            .is_none()
+    );
+}

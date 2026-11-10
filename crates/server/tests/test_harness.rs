@@ -1100,6 +1100,15 @@ impl TestServer {
             &built_in_harnesses,
         );
 
+        let rooms_state = api::rooms::AppState {
+            db: db.clone(),
+            encryption: encryption.clone(),
+            capability_service: capability_service.clone(),
+            auth: auth_state.clone(),
+            session_service: messages_state.session_service.clone(),
+            message_service: messages_state.message_service.clone(),
+        };
+
         // Build API routes
         let mut api_routes = Router::new()
             .merge(api::health_issues::routes(api_state.clone()))
@@ -1117,6 +1126,7 @@ impl TestServer {
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
+            .merge(api::rooms::routes(rooms_state))
             .merge(api::session_trace::routes(api_state.clone()))
             .merge(everruns_server::channels::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))

@@ -38,6 +38,7 @@ mod events;
 mod files;
 mod form_elicitation;
 mod resources;
+mod room_tools;
 mod scope;
 mod session_status;
 mod skills;
@@ -798,6 +799,12 @@ async fn handle_tools_call(
                     Ok(org) => tool_execute(&arguments, &org, state).await,
                     Err(e) => Err(e),
                 },
+                name if room_tools::is_room_tool(name) => {
+                    match resolve_org_override(&arguments, auth_user, org, state).await {
+                        Ok(org) => tool_room(name, &arguments, &org, state).await,
+                        Err(e) => Err(e),
+                    }
+                }
                 _ => Err(format!("Unknown tool: {tool_name}")),
             }
         },
@@ -1308,6 +1315,20 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
         catalog_context(org, state),
     )
     .await
+}
+
+/// A room tool: one room command, run as the caller (`room_tools`).
+async fn tool_room(
+    name: &str,
+    args: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<String, String> {
+    let (command, params) = room_tools::command_for(name, args)?;
+    let ctx = catalog_context(org, state).domain_ctx;
+    crate::domains::common::dispatch(command, params, &ctx)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 // ============================================================================

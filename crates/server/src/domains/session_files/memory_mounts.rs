@@ -35,7 +35,9 @@ use uuid::Uuid;
 
 use crate::domains::memory::files::{MemoryFileService, MemoryFsError, NewFileInput};
 use crate::storage::StorageBackend;
-use crate::storage::{CreateMemoryRow, MemoryFileInfoRow, MemoryRow};
+use crate::storage::{
+    CreateMemoryRow, MemoryFileInfoRow, MemoryRow, RoomFileAuthor, RoomFileChange, RoomFileStore,
+};
 use everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID;
 
 /// Mount point of the memory owned by the session's host agent.
@@ -47,6 +49,17 @@ pub const SHARED_MEMORY_MOUNT_PATH: &str = "/memory/shared";
 /// Mount point of the team folder shared by every agent in one run
 /// (`knowledge/runtime-resources/agents-using-agents.md`).
 pub const TEAM_FOLDER_MOUNT_PATH: &str = "/team";
+/// Mount point of a room's shared files in an agent's room session
+/// (`knowledge/runtime-resources/rooms.md`).
+pub const ROOM_FOLDER_MOUNT_PATH: &str = "/room";
+
+/// A room's files mounted in one member's room session: changes go through
+/// the room file store, so each one is versioned under that member.
+#[derive(Debug, Clone, Copy)]
+pub struct RoomMount {
+    pub store: RoomFileStore,
+    pub author: RoomFileAuthor,
+}
 
 /// One resolved mount: where it hangs and which Memory backs it.
 #[derive(Debug, Clone)]
@@ -56,6 +69,8 @@ pub struct MemoryMount {
     pub mount_path: String,
     /// Source-backed Memories are read-only whatever the mount says.
     pub readonly: bool,
+    /// Set for a room's folder: writes are versioned room file changes.
+    pub room: Option<RoomMount>,
 }
 
 impl MemoryMount {
@@ -124,7 +139,7 @@ impl MemoryMountRouter {
         if let Some(cached) = self.cache.read().get(&workspace_id) {
             return cached.clone();
         }
-        let resolved = Arc::new(self.resolve(workspace_id).await.unwrap_or_else(|error| {
+        let (mounts, cacheable) = self.resolve(workspace_id).await.unwrap_or_else(|error| {
             // A resolution failure must not take down file access: fall back to
             // "no mounts", which is the pre-write-through behavior.
             tracing::warn!(
@@ -132,13 +147,19 @@ impl MemoryMountRouter {
                 error = %error,
                 "failed to resolve memory mounts; serving workspace files only"
             );
-            Vec::new()
-        }));
-        self.cache.write().insert(workspace_id, resolved.clone());
+            (Vec::new(), true)
+        });
+        let resolved = Arc::new(mounts);
+        if cacheable {
+            self.cache.write().insert(workspace_id, resolved.clone());
+        }
         resolved
     }
 
-    async fn resolve(&self, workspace_id: Uuid) -> Result<Vec<MemoryMount>> {
+    /// The workspace's mounts, and whether they are final. A room session
+    /// resolved before the wake bound it to its room is not: its `/room`
+    /// mount appears once the binding exists.
+    async fn resolve(&self, workspace_id: Uuid) -> Result<(Vec<MemoryMount>, bool)> {
         let Some(session) = self
             .db
             .get_session_unscoped(everruns_contracts::typed_id::SessionId::from_uuid(
@@ -148,7 +169,7 @@ impl MemoryMountRouter {
         else {
             // A shared workspace, or a workspace with no session: no
             // server-managed memory, by design.
-            return Ok(Vec::new());
+            return Ok((Vec::new(), true));
         };
 
         let mut mounts = Vec::new();
@@ -186,10 +207,38 @@ impl MemoryMountRouter {
             mounts.push(mount_from_row(&memory, TEAM_FOLDER_MOUNT_PATH));
         }
 
+        let mut cacheable = true;
+        match self
+            .db
+            .find_room_agent_session_by_session(session.id)
+            .await?
+        {
+            Some(binding) => {
+                let store = self
+                    .db
+                    .ensure_room_memory(session.org_id, binding.room_id)
+                    .await?;
+                mounts.push(MemoryMount {
+                    org_id: session.org_id,
+                    memory_id: store.memory_id,
+                    mount_path: ROOM_FOLDER_MOUNT_PATH.to_string(),
+                    readonly: false,
+                    room: Some(RoomMount {
+                        store,
+                        author: RoomFileAuthor {
+                            member_id: Some(binding.member_id),
+                            session_id: Some(session.id),
+                        },
+                    }),
+                });
+            }
+            None => cacheable = session.source != "room",
+        }
+
         // Longest mount path first so resolution is unambiguous if one ever
         // nests inside another.
         mounts.sort_by_key(|mount| std::cmp::Reverse(mount.mount_path.len()));
-        Ok(mounts)
+        Ok((mounts, cacheable))
     }
 
     /// The first session of the run whose team folder `session` sees.
@@ -368,6 +417,16 @@ impl MemoryMountRouter {
         content: &str,
     ) -> Result<bool> {
         self.ensure_writable(mount)?;
+        if let Some(room) = mount.room {
+            return match self
+                .write_room(room, inner, content.as_bytes(), Some(0))
+                .await?
+            {
+                RoomFileChange::Done(_) => Ok(true),
+                RoomFileChange::Conflict { .. } => Ok(false),
+                other => Err(room_error(other)),
+            };
+        }
         // Lock lifecycle while atomically creating: an archive or concurrent edit cannot be overwritten.
         let written=sqlx::query("WITH writable AS (SELECT id FROM memories WHERE id=$1 AND org_id=$2 AND status='active' AND NOT is_readonly FOR SHARE) INSERT INTO memory_files(memory_id,path,content,is_directory,size_bytes) SELECT id,$3,$4,false,$5 FROM writable ON CONFLICT(memory_id,path) DO NOTHING")
             .bind(mount.memory_id).bind(mount.org_id).bind(inner).bind(content.as_bytes()).bind(content.len() as i64).execute(self.db.pool()).await?;
@@ -381,6 +440,12 @@ impl MemoryMountRouter {
         content: Vec<u8>,
     ) -> Result<()> {
         self.ensure_writable(mount)?;
+        if let Some(room) = mount.room {
+            return match self.write_room(room, inner, &content, None).await? {
+                RoomFileChange::Done(_) => Ok(()),
+                other => Err(room_error(other)),
+            };
+        }
         let memory = self.memory_row(mount).await?;
         match self
             .files
@@ -433,6 +498,76 @@ impl MemoryMountRouter {
 
     pub async fn delete(&self, mount: &MemoryMount, inner: &str, recursive: bool) -> Result<bool> {
         self.ensure_writable(mount)?;
+        if let Some(room) = mount.room {
+            return self.delete_room(mount, room, inner, recursive).await;
+        }
+        let memory = self.memory_row(mount).await?;
+        match self.files.delete(&memory, inner, recursive).await {
+            Ok(count) => Ok(count > 0),
+            Err(MemoryFsError::NotFound) => Ok(false),
+            Err(error) => Err(map_error(error)),
+        }
+    }
+
+    async fn write_room(
+        &self,
+        room: RoomMount,
+        inner: &str,
+        content: &[u8],
+        expected: Option<i32>,
+    ) -> Result<RoomFileChange> {
+        if content.len() > crate::domains::rooms::MAX_FILE_BYTES {
+            return Err(anyhow!(
+                "A room file is at most {} bytes",
+                crate::domains::rooms::MAX_FILE_BYTES
+            ));
+        }
+        self.db
+            .write_room_file(
+                room.store,
+                inner,
+                content,
+                expected,
+                "write",
+                None,
+                room.author,
+            )
+            .await
+    }
+
+    /// Delete under `/room`: each file is a versioned room file delete, then
+    /// the folders that held them go.
+    async fn delete_room(
+        &self,
+        mount: &MemoryMount,
+        room: RoomMount,
+        inner: &str,
+        recursive: bool,
+    ) -> Result<bool> {
+        let Some(info) = self.stat(mount, inner).await? else {
+            return Ok(false);
+        };
+        if !info.is_directory {
+            return match self
+                .db
+                .delete_room_file(room.store, inner, None, room.author)
+                .await?
+            {
+                RoomFileChange::Done(_) => Ok(true),
+                RoomFileChange::NotFound => Ok(false),
+                other => Err(room_error(other)),
+            };
+        }
+        if recursive {
+            let prefix = format!("{inner}/");
+            for file in self.list_all(mount).await? {
+                if !file.is_directory && file.path.starts_with(&prefix) {
+                    self.db
+                        .delete_room_file(room.store, &file.path, None, room.author)
+                        .await?;
+                }
+            }
+        }
         let memory = self.memory_row(mount).await?;
         match self.files.delete(&memory, inner, recursive).await {
             Ok(count) => Ok(count > 0),
@@ -516,6 +651,16 @@ fn mount_from_row(memory: &MemoryRow, mount_path: &str) -> MemoryMount {
         memory_id: memory.id,
         mount_path: mount_path.to_string(),
         readonly: memory.is_readonly,
+        room: None,
+    }
+}
+
+fn room_error(change: RoomFileChange) -> anyhow::Error {
+    match change {
+        RoomFileChange::Done(_) => anyhow!("room file change succeeded"),
+        RoomFileChange::Conflict { .. } => anyhow!("the room file changed; read it again"),
+        RoomFileChange::NotFound => anyhow!("not found"),
+        RoomFileChange::WrongKind(why) => anyhow!(why),
     }
 }
 
@@ -533,6 +678,7 @@ mod tests {
             memory_id: Uuid::nil(),
             mount_path: path.to_string(),
             readonly: false,
+            room: None,
         }
     }
 

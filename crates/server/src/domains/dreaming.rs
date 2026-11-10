@@ -274,6 +274,7 @@ mod tests {
             memory_id: memory.id,
             mount_path: "/memory/shared".into(),
             readonly: false,
+            room: None,
         };
         let router = MemoryMountRouter::new(db.clone());
         let (a, b) = tokio::join!(

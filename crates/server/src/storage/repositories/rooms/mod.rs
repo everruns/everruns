@@ -8,6 +8,7 @@
 // - Read marks only move forward (`GREATEST`), so a slow client cannot mark
 //   messages unread again by sending an older position.
 
+mod files;
 pub(super) mod rows;
 use rows::*;
 

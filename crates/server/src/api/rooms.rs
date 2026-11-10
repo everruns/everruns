@@ -72,5 +72,13 @@ pub fn routes(state: AppState) -> Router {
         .command::<ReadRoomUnread>()
         .command::<ListRoomMessageReaders>()
         .command::<ListRoomEvents>()
+        .command::<ListRoomFiles>()
+        .command::<ReadRoomFile>()
+        .command::<WriteRoomFile>()
+        .command::<EditRoomFile>()
+        .command::<MoveRoomFile>()
+        .command::<DeleteRoomFile>()
+        .command::<ListRoomFileHistory>()
+        .command::<RestoreRoomFile>()
         .with_state(state)
 }

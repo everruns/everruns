@@ -12,6 +12,7 @@ mod attribution;
 mod capability_mcp_acts_as;
 mod cards;
 mod resources;
+mod rooms;
 mod skills;
 mod status;
 mod tasks;
@@ -430,7 +431,11 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 20, "9 MCP tools plus 11 MCP Apps tools");
+    assert_eq!(
+        tools.len(),
+        31,
+        "9 MCP tools, 11 MCP Apps tools and 11 room tools"
+    );
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");
