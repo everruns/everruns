@@ -2,6 +2,7 @@
 
 ## 2026-11-10
 
+- [Public skills](project/public-skills.md): `skills/` is the single source of truth for public agent skills; plugins and landing carry generated copies, a workflow opens auto-merging sync PRs, and both consumers fail CI on drift. Getting-started pages lead with an example prompt that links the skill.
 - [Engine durable sessions](framework/engine-durable-sessions.md): code-registered SQLite hosts can use a database per session, with parent-owned child registries, routed tasks and schedules, and lossless shared-authority transfer under host session leases.
 
 ## 2026-11-09

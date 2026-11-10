@@ -5,6 +5,7 @@
 * [Release Process Specification](release-process.md) - Release workflow with CHANGELOG.md.
 * [Issue Tracking](issue-tracking.md) - Issue tracking (Linear, OSS project).
 * [Skills Registry Specification](skills-registry.md) - Agent Skills registry.
+* [Public Skills](public-skills.md) - Single source of truth for the public Everruns agent skills, who ships copies, how copies stay in sync, and the getting-started journeys they serve.
 * [Commands System](commands.md) - Slash commands system.
 * [XML Prompt Formatting](xml-prompt-formatting.md) - XML tags for system prompt structure.
 * [Build Artifact Size](build-artifact-size.md) - Why the library crates compile large, and which levers move it.

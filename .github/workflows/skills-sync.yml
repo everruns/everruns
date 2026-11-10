@@ -1,0 +1,41 @@
+name: Sync public skills
+
+# skills/ is the single source of truth for the public Everruns skills
+# (knowledge/project/public-skills.md). Every change on main is copied to the
+# repositories that ship them, as a PR there that merges on its own green CI.
+on:
+  push:
+    branches: [main]
+    paths: ["skills/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skills-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync to everruns/${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [plugins, landing]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+      - name: Open sync PR
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        # The token stays inside this one command; it never reaches GITHUB_ENV.
+        run: |
+          GH_TOKEN="$(doppler secrets get SKILLS_SYNC_GITHUB_TOKEN --plain)"
+          echo "::add-mask::$GH_TOKEN"
+          GH_TOKEN="$GH_TOKEN" scripts/sync-public-skills.sh "${{ matrix.target }}"
