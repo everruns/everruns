@@ -201,6 +201,30 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         fence: &crate::actor_lease_store::ActorFence,
     ) -> Result<Option<Event>>;
 
+    /// [`Self::emit_events_fenced`], returning every event as stored, in
+    /// order, for a caller that answers each append of a batch (the Engine's
+    /// committed batches). The default stores them one write at a time;
+    /// adapters that can return the whole batch from one write override it.
+    async fn emit_events_fenced_all(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &crate::actor_lease_store::ActorFence,
+    ) -> Result<Vec<Event>> {
+        let mut stored = Vec::with_capacity(requests.len());
+        for request in requests {
+            let event = self
+                .emit_events_fenced(vec![request], fence)
+                .await?
+                .ok_or_else(|| {
+                    everruns_contracts::error::AgentLoopError::store(
+                        "the control plane did not return the stored event",
+                    )
+                })?;
+            stored.push(event);
+        }
+        Ok(stored)
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================

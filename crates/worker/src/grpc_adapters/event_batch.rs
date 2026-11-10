@@ -21,6 +21,7 @@ pub(super) fn unfenced_request(request: &EventRequest) -> Result<proto::EmitEven
     Ok(proto::EmitEventRequest {
         event: Some(core_event_request_to_proto(request)?),
         actor_fence: None,
+        return_events: false,
     })
 }
 
@@ -71,6 +72,7 @@ impl GrpcAdapter {
             let grpc_request = proto::EmitEventRequest {
                 event: Some(core_event_request_to_proto(&request)?),
                 actor_fence: Some(proto_fence(fence)),
+                return_events: false,
             };
             let response = self
                 .client
@@ -88,11 +90,53 @@ impl GrpcAdapter {
         self.emit_stream(requests, Some(fence)).await
     }
 
+    /// [`Self::emit_fenced`], answered with every stored event in order:
+    /// one stream, one write per run of durable events on the server.
+    pub(crate) async fn emit_fenced_all(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &ActorFence,
+    ) -> Result<Vec<Event>> {
+        if requests.is_empty() {
+            return Ok(Vec::new());
+        }
+        let expected = requests.len();
+        let response = self.stream(requests, Some(fence), true).await?;
+        // The batch is stored, but a control plane that predates
+        // `return_events` answers only the last event. Retrying would store
+        // it twice, so the epoch ends as if its lease were lost and the next
+        // holder resumes from the log, which has the batch.
+        if response.events.len() != expected {
+            return Err(crate::actor_lease_store::actor_lease_lost(
+                fence.session_id,
+                format!(
+                    "control plane returned {} of {expected} stored events; resume from the log",
+                    response.events.len()
+                ),
+            ));
+        }
+        response
+            .events
+            .into_iter()
+            .map(proto_event_to_core)
+            .collect()
+    }
+
     async fn emit_stream(
         &self,
         requests: Vec<EventRequest>,
         fence: Option<&ActorFence>,
     ) -> Result<Option<Event>> {
+        let response = self.stream(requests, fence, false).await?;
+        response.last_event.map(proto_event_to_core).transpose()
+    }
+
+    async fn stream(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: Option<&ActorFence>,
+        return_events: bool,
+    ) -> Result<proto::EmitEventStreamResponse> {
         let expected = requests.len();
         let messages = requests
             .iter()
@@ -100,6 +144,7 @@ impl GrpcAdapter {
                 Ok(proto::EmitEventRequest {
                     event: Some(core_event_request_to_proto(request)?),
                     actor_fence: fence.map(proto_fence),
+                    return_events,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -118,6 +163,6 @@ impl GrpcAdapter {
                 "control plane stored {processed} of {expected} events"
             )));
         }
-        response.last_event.map(proto_event_to_core).transpose()
+        Ok(response)
     }
 }

@@ -317,6 +317,22 @@ pub struct WorkerRuntimeHost<A: WorkerAdapters> {
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
+    /// The `mcp_*` tools of the turn that answers `input`, the list a worker
+    /// turn gets with its turn context: the agent's and harness's servers,
+    /// the session's, and the sender's own.
+    pub async fn mcp_tool_definitions(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        input: everruns_contracts::typed_id::MessageId,
+    ) -> Result<Vec<everruns_contracts::tool_types::ToolDefinition>> {
+        Ok(self
+            .adapters
+            .load_turn_context_for_execution(org_id, session_id.uuid(), input.uuid())
+            .await?
+            .mcp_tool_definitions)
+    }
+
     /// Wait for the events a phase queued to be stored (see `write_behind`).
     /// Call after the phase, so nothing emitted later lands before them.
     pub async fn flush_events(&self) {

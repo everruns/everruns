@@ -215,6 +215,7 @@ fn fenced_emit(
             fence,
             detached_tool_call_id: None,
         }),
+        return_events: false,
     }
 }
 

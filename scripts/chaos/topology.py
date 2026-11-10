@@ -140,7 +140,6 @@ class Topology:
         token = "chaos-" + os.urandom(12).hex()
         common = {
             "DATABASE_URL": args.database_url,
-            "NATS_URL": args.nats_url,
             "VALKEY_URL": args.valkey_url,
             "AUTH_MODE": "none",
             "DEV_MODE": "false",
@@ -158,6 +157,10 @@ class Topology:
             "SSE_PER_ORG_MAX": "5000",
             "SSE_GLOBAL_MAX": "10000",
         }
+        # `--nats-url none` runs without NATS: one server delivers its live
+        # events in process, so only a multi-server topology needs it.
+        if args.nats_url and args.nats_url != "none":
+            common["NATS_URL"] = args.nats_url
         for i in range(args.servers):
             http_port = int(f"{prefix}{41 + i:02d}")
             # 51 collides with the sandbox agent proxy on 43351 at prefix 433.
@@ -230,6 +233,8 @@ class Topology:
         return {s.name: event_delivery_backend(s.http_port) for s in self.servers}  # type: ignore[attr-defined]
 
     def require_shared_event_delivery(self) -> None:
+        if len(self.servers) < 2:
+            return
         bad = unshared_event_delivery(self.event_delivery())
         if bad:
             raise RuntimeError(

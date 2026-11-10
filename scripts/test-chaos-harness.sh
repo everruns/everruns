@@ -184,5 +184,51 @@ class ApprovalDriverTests(unittest.TestCase):
         self.assertIn("approval: no pending request", run.errors[0])
 
 
+class EngineHostingTests(unittest.TestCase):
+    def test_flags_parse_on_and_off(self):
+        self.assertEqual(chaos_run.org_flags(["engine_hosting=on", "x=off"]), {"engine_hosting": True, "x": False})
+        with self.assertRaises(SystemExit):
+            chaos_run.org_flags(["engine_hosting"])
+
+    def test_org_flags_are_patched_and_checked(self):
+        from api import Api
+
+        calls = []
+        api = Api(["http://127.0.0.1:1"])
+        api.get = lambda path, **kw: {"data": [{"id": "org_1"}]}
+
+        def request(method, path, body=None, **kw):
+            calls.append((method, path, body))
+            return dict(body["flags"])
+
+        api.request = request
+        api.set_org_flags({"engine_hosting": True})
+        self.assertEqual(calls, [("PATCH", "/v1/orgs/org_1/feature-flags/platform",
+                                  {"flags": {"engine_hosting": True}})])
+        api.set_org_flags({})
+        self.assertEqual(len(calls), 1)
+        api.request = lambda *a, **kw: {}
+        with self.assertRaises(RuntimeError):
+            api.set_org_flags({"engine_hosting": True})
+
+    def test_a_session_left_on_the_worker_host_fails(self):
+        rep = Report()
+        hosted = "0123456789abcdef0123456789abcdef"
+        runs = [SimpleNamespace(session_id="session_" + hosted, deltas=12),
+                SimpleNamespace(session_id="session_" + "f" * 32, deltas=0)]
+        with patch.object(chaos_run, "psql", side_effect=[hosted + "\n"]):
+            chaos_run.check_engine_hosted("db", runs, rep)
+        self.assertEqual(rep.counts["engine_hosted_sessions"], 1)
+        self.assertEqual(rep.counts["engine_live_deltas"], 12)
+        self.assertEqual(list(rep.failures), ["not_engine_hosted"])
+
+    def test_no_live_deltas_fails(self):
+        rep = Report()
+        hosted = "0123456789abcdef0123456789abcdef"
+        with patch.object(chaos_run, "psql", side_effect=[hosted]):
+            chaos_run.check_engine_hosted("db", [SimpleNamespace(session_id="session_" + hosted, deltas=0)], rep)
+        self.assertEqual(list(rep.failures), ["no_live_deltas"])
+
+
 unittest.main(verbosity=2)
 PY

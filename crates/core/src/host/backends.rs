@@ -58,6 +58,21 @@ pub trait RuntimeHarnessStore: HarnessStore + Send + Sync {
 pub trait RuntimeSessionStore: SessionStore + SessionMutator + Send + Sync {
     /// Insert or replace a session's portable execution view.
     async fn add_session(&self, session: ExecutionSession) -> Result<()>;
+
+    /// Record the session's execution state (running, waiting on tool
+    /// results, idle) where the host's readers see it.
+    ///
+    /// Decision: the default keeps nothing, as the in-memory store does: a
+    /// Framework application reads state from the event log. A host whose
+    /// clients read a stored state (a control plane listing sessions, or
+    /// waiting for one to go idle) persists it here.
+    async fn set_execution_state(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _state: crate::session::SessionExecutionState,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Provider store contract for runtime lookup and default-model configuration.

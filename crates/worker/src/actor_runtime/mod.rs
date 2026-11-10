@@ -470,7 +470,7 @@ impl<A: WorkerAdapters> WorkerActorHosts<A> {
 /// recorded `tool.completed` (`tool_approval_required`), so a call of it left
 /// unfinished may already have run after the approval, and resume reruns it
 /// only when its tool says that is safe.
-fn waits_on_person(call: &everruns_contracts::tool_types::ToolCall) -> bool {
+pub(crate) fn waits_on_person(call: &everruns_contracts::tool_types::ToolCall) -> bool {
     call.name == APPROVE_TOOL_CALL_TOOL || call.name == CONFIRM_URL_ELICITATION_TOOL
 }
 

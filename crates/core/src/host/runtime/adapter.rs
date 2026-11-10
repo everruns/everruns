@@ -10,15 +10,17 @@ impl RuntimeHostAdapter for InProcessRuntime {
         &self,
         _org_id: i64,
         session_id: SessionId,
-        _status: SessionExecutionState,
+        status: SessionExecutionState,
     ) -> Result<()> {
-        // Not persisted in-process (nothing here observes session.status); the
-        // existence check keeps lifecycle warnings surfacing a missing session.
+        // The existence check keeps lifecycle warnings surfacing a missing
+        // session; the store decides whether the state is kept.
         self.session_store
             .get_session(session_id)
             .await?
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
-        Ok(())
+        self.session_store
+            .set_execution_state(session_id, status)
+            .await
     }
 
     async fn load_resolved_turn(
@@ -53,17 +55,22 @@ impl RuntimeHostAdapter for InProcessRuntime {
         };
 
         // Discover session MCP tools for the LLM (knowledge/integrations/runtime-mcp.md D4).
+        // A host that serves MCP lists them per input instead
+        // (`load_resolved_turn_for_execution`).
         #[cfg(feature = "mcp")]
-        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
-        #[cfg(feature = "mcp")]
-        let mcp_tool_definitions = crate::host::mcp::discover_turn_tool_definitions(
-            &self.mcp_discovery_cache,
-            self.mcp_client(),
-            session_id,
-            &scoped_servers,
-            self.storage_store.as_ref(),
-        )
-        .await;
+        let mcp_tool_definitions = if self.extensions.hooks.mcp.is_some() {
+            vec![]
+        } else {
+            let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+            crate::host::mcp::discover_turn_tool_definitions(
+                &self.mcp_discovery_cache,
+                self.mcp_client(),
+                session_id,
+                &scoped_servers,
+                self.storage_store.as_ref(),
+            )
+            .await
+        };
         #[cfg(not(feature = "mcp"))]
         let mcp_tool_definitions = vec![];
 
@@ -74,21 +81,16 @@ impl RuntimeHostAdapter for InProcessRuntime {
         })
     }
 
-    #[cfg(feature = "mcp")]
     async fn mcp_executor(
         &self,
         _org_id: i64,
         session_id: SessionId,
         _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn crate::McpToolInvoker>> {
-        let session = self.session_store.get_session(session_id).await.ok()??;
-        let agent = match session.agent_id {
-            Some(agent_id) => self.agent_store.get_agent(agent_id).await.ok().flatten(),
-            None => None,
-        };
-        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
-        crate::host::mcp::build_executor(self.mcp_client(), &scoped_servers)
-            .map(|executor| executor as Arc<dyn crate::McpToolInvoker>)
+        if let Some(mcp) = &self.extensions.hooks.mcp {
+            return mcp.executor().await;
+        }
+        self.framework_mcp_executor(session_id).await
     }
 
     fn capability_registry(&self) -> CapabilityRegistry {
@@ -362,6 +364,9 @@ impl RuntimeHostAdapter for InProcessRuntime {
         input_message_id: MessageId,
     ) -> Result<ResolvedTurnInputs> {
         let mut inputs = self.load_resolved_turn(org_id, session_id).await?;
+        if let Some(mcp) = &self.extensions.hooks.mcp {
+            inputs.mcp_tool_definitions = mcp.tool_definitions(input_message_id).await?;
+        }
         if let Some(knowledge) = &self.extensions.hooks.knowledge {
             let configs = crate::runtime_context::resolve_snapshot_capabilities(
                 &inputs.snapshot,
@@ -377,5 +382,32 @@ impl RuntimeHostAdapter for InProcessRuntime {
             .await;
         }
         Ok(inputs)
+    }
+}
+
+impl InProcessRuntime {
+    /// The executor over the session agent's own MCP servers, through the
+    /// Framework MCP client.
+    #[cfg(feature = "mcp")]
+    async fn framework_mcp_executor(
+        &self,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn crate::McpToolInvoker>> {
+        let session = self.session_store.get_session(session_id).await.ok()??;
+        let agent = match session.agent_id {
+            Some(agent_id) => self.agent_store.get_agent(agent_id).await.ok().flatten(),
+            None => None,
+        };
+        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+        crate::host::mcp::build_executor(self.mcp_client(), &scoped_servers)
+            .map(|executor| executor as Arc<dyn crate::McpToolInvoker>)
+    }
+
+    #[cfg(not(feature = "mcp"))]
+    async fn framework_mcp_executor(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn crate::McpToolInvoker>> {
+        None
     }
 }

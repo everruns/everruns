@@ -3,6 +3,37 @@
 use super::*;
 
 #[async_trait]
+impl SessionCreationAuthority for DirectPlatformStore {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn SessionCreationAuthority>> {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(id);
+        Some(Arc::new(bound))
+    }
+
+    async fn authorize_session_creation(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_contracts::error::Result<SessionId> {
+        if session_id != self.session_id {
+            return Err(AgentLoopError::tool(
+                "session-creation authority is scoped to the current session",
+            ));
+        }
+        let caller = self.resolve_caller().await?;
+        crate::domains::sessions::SESSION_MANAGE
+            .evaluate_with(self.permission_resolver.as_ref(), &caller)
+            .map_err(|error| AgentLoopError::tool(error.message))?;
+        let session = self
+            .db
+            .get_session(self.org_id, session_id)
+            .await
+            .map_err(|error| store_error(format!("Failed to load session budget root: {error}")))?
+            .ok_or_else(|| store_error("Session not found for session-creation authority"))?;
+        Ok(session.root_session_id.unwrap_or(session.id))
+    }
+}
+
+#[async_trait]
 impl everruns_capabilities::PlatformStore for DirectPlatformStore {
     fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_capabilities::PlatformStore>> {
         let mut bound = self.clone();

@@ -31,6 +31,7 @@ async fn legacy_stream_admitted_before_cutover_cannot_defer_event_writes_past_it
             &event,
         )),
         actor_fence: None,
+        return_events: false,
     };
     let encoded = message.encode_to_vec();
     let mut frame = vec![0];

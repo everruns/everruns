@@ -10,6 +10,11 @@
 //! - Platform sessions write their files, as they do on the worker's host:
 //!   the workspace policy is read-write (hidden and sensitive paths stay
 //!   closed, which the worker's host does not enforce).
+//! - The platform serves MCP (`HostMcp`): which servers a turn has depends
+//!   on the session and on who sent the input, and their credentials stay
+//!   on the platform. The declaration's servers, which carry `${BINDING}`
+//!   placeholders, are dropped from the Engine agent, so it never connects
+//!   to a server itself.
 //! - Hydration is pure: the organization of an agent key is learned when its
 //!   session is offered ([`PlatformHydrator::bind_key`]), before the Engine
 //!   hydrates, and a key belongs to one organization for its whole life.
@@ -78,7 +83,7 @@ impl<A: WorkerAdapters> PlatformHydrator<A> {
 impl<A: WorkerAdapters> AgentHydrator for PlatformHydrator<A> {
     fn hydrate(&self, definition: &AgentDefinition) -> Result<Hydrated> {
         let org = self.org(&definition.build.agent)?;
-        let package = definition.agent_package()?;
+        let package = without_mcp_servers(definition.agent_package()?)?;
         let config = |error: everruns::PackageError| AgentLoopError::config(error.to_string());
         let mut services = HostServices::new().providers(HostProviders::shared(
             Arc::new(OrgAdapter::new(self.adapters.clone(), org)),
@@ -110,5 +115,48 @@ impl<A: WorkerAdapters> AgentHydrator for PlatformHydrator<A> {
             agent,
             harness: package.session_harness().map_err(config)?,
         })
+    }
+}
+
+/// `package` without its MCP servers, which the platform serves.
+fn without_mcp_servers(package: everruns::AgentPackage) -> Result<everruns::AgentPackage> {
+    if package.manifest().mcp_servers.is_empty() {
+        return Ok(package);
+    }
+    let mut manifest = package.manifest().clone();
+    manifest.mcp_servers = Default::default();
+    everruns::AgentPackage::new(manifest).map_err(|error| AgentLoopError::config(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn package(manifest: serde_json::Value) -> everruns::AgentPackage {
+        everruns::AgentPackage::parse(&manifest.to_string(), everruns::PackageFormat::Json)
+            .expect("package parses")
+    }
+
+    #[test]
+    fn the_engine_agent_carries_none_of_the_declared_mcp_servers() {
+        let declared = package(json!({
+            "schema_version": 1,
+            "name": "docs-helper",
+            "instructions": "Answer from the docs.",
+            "mcp_servers": {
+                "docs": {
+                    "url": "https://docs.example/mcp",
+                    "headers": {"Authorization": "${DOCS_TOKEN}"}
+                }
+            }
+        }));
+        // As declared, the placeholder has no binding on the Engine.
+        assert!(declared.apply_to(everruns::Agent::builder()).is_err());
+
+        let served = without_mcp_servers(declared).unwrap();
+        assert!(served.manifest().mcp_servers.is_empty());
+        assert_eq!(served.manifest().instructions, "Answer from the docs.");
+        assert!(served.apply_to(everruns::Agent::builder()).is_ok());
     }
 }
