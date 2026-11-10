@@ -10,7 +10,8 @@ links:
   docs: [/features/agent-triggers/#completion-check]
 ---
 
-A Framework agent can now opt into the completion check that trigger and
+A Framework agent can now opt into the
+[completion check](/features/agent-triggers/#completion-check) that trigger and
 schedule sessions already get. With `CompletionCheck::Always`, a turn that ends
 on "Fixing the test now" without the fix is reviewed on the agent's own model
 and continues on its own, in the same turn:
