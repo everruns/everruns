@@ -58,7 +58,7 @@ fn test_proto_agent_includes_capability_ids() {
 
     agent.is_built_in = true;
     agent.name = crate::platform_chat_agent::NAME.into();
-    crate::platform_chat_agent::add_page_tools(&mut agent, true);
+    crate::platform_chat_agent::add_page_tools(&mut agent);
     let expected_tools = serde_json::to_value(&agent.tools).unwrap();
 
     // Convert to proto

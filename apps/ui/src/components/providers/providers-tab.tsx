@@ -50,6 +50,24 @@ export function ProvidersTab({
     return grouped;
   }, [models]);
 
+  const isConnected = (p: Provider) => p.api_key_set || p.managed;
+  const connected = visibleProviders.filter(isConnected);
+  const notConnected = visibleProviders.filter((p) => !isConnected(p));
+  const renderCard = (provider: Provider) => (
+    <ProviderCard
+      key={provider.id}
+      provider={provider}
+      models={modelsByProvider.get(provider.id) ?? []}
+      modelsLoading={modelsLoading}
+      siblings={visibleProviders.filter((p) => p.provider_type === provider.provider_type).length}
+      canManage={canManage}
+      isSyncing={syncingId === provider.id}
+      onSetApiKey={setApiKeyProvider}
+      onSyncModels={(p) => void handleSync(p)}
+      onReviewNew={onReviewNew}
+    />
+  );
+
   const handleSync = async (provider: Provider) => {
     setSyncingId(provider.id);
     try {
@@ -91,25 +109,15 @@ export function ProvidersTab({
           )}
         </p>
       )}
+      {!providersLoading && connected.length > 0 && notConnected.length > 0 && (
+        <h3 className="text-sm font-medium">
+          {ui("Connected")} <span className="text-muted-foreground">{connected.length}</span>
+        </h3>
+      )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {providersLoading
           ? [...Array(3)].map((_, index) => <ProviderCardSkeleton key={index} />)
-          : visibleProviders.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                models={modelsByProvider.get(provider.id) ?? []}
-                modelsLoading={modelsLoading}
-                siblings={
-                  visibleProviders.filter((p) => p.provider_type === provider.provider_type).length
-                }
-                canManage={canManage}
-                isSyncing={syncingId === provider.id}
-                onSetApiKey={setApiKeyProvider}
-                onSyncModels={(p) => void handleSync(p)}
-                onReviewNew={onReviewNew}
-              />
-            ))}
+          : connected.map(renderCard)}
         {canManage && !providersLoading && (
           <button
             type="button"
@@ -121,6 +129,17 @@ export function ProvidersTab({
           </button>
         )}
       </div>
+      {!providersLoading && notConnected.length > 0 && (
+        <>
+          <h3 className="mt-4 text-sm font-medium">
+            {ui("Not connected")}{" "}
+            <span className="text-muted-foreground">{notConnected.length}</span>
+          </h3>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {notConnected.map(renderCard)}
+          </div>
+        </>
+      )}
       {!providersLoading && visibleProviders.length === 0 && !canManage && (
         <p className="text-sm text-muted-foreground">
           {ui("No providers are connected yet. Ask an organization admin to connect one.")}

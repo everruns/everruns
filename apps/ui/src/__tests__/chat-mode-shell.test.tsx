@@ -6,11 +6,11 @@ import { defaultNavigationSections } from "@/lib/navigation";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 let mockPathname = "/agents/agent_1";
-let mockEnabled = false;
 let mockCanNavigate = false;
 let mockOrg = "org_1";
 let mockHasRole = true;
 const mockSearch = jest.fn();
+const mockPush = jest.fn();
 const mockQuery = new URLSearchParams();
 function render(ui: ReactNode) {
   const client = new QueryClient();
@@ -23,7 +23,7 @@ function render(ui: ReactNode) {
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
   useSearchParams: () => mockQuery,
-  useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
+  useRouter: () => ({ replace: jest.fn(), push: mockPush }),
 }));
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -61,7 +61,7 @@ jest.mock("next/dynamic", () => ({
     },
 }));
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: () => mockEnabled,
+  useFeatureFlag: () => true,
   useFeatureFlags: () => ({}),
   useFeatureFlagsState: () => ({ flags: {}, isLoading: false }),
 }));
@@ -81,6 +81,9 @@ jest.mock("@/hooks/use-platform-chat-thread", () => ({
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   SessionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+jest.mock("@/components/chat/chat-switcher", () => ({
+  ChatSwitcher: () => <button>Main chat</button>,
+}));
 jest.mock("@/components/layout/sidebar", () => ({
   Sidebar: function SidebarStub() {
     const mode = useChatMode();
@@ -95,7 +98,6 @@ function Page() {
 }
 beforeEach(() => {
   mockPathname = "/agents/agent_1";
-  mockEnabled = false;
   mockCanNavigate = false;
   mockOrg = "org_1";
   mockHasRole = true;
@@ -103,7 +105,6 @@ beforeEach(() => {
 });
 
 it("keeps unavailable pages out of both the rail and the labeled menu", async () => {
-  mockEnabled = true;
   mockHasRole = false;
   const icon = defaultNavigationSections[0].items[0].icon;
   const navigation = [
@@ -133,7 +134,7 @@ it("keeps unavailable pages out of both the rail and the labeled menu", async ()
   }
 });
 
-it("keeps the existing shell when the organization has not opted in", () => {
+it("starts with Chat closed on an app page for every organization", () => {
   render(
     <ChatModeShell>
       <Page />
@@ -144,7 +145,6 @@ it("keeps the existing shell when the organization has not opted in", () => {
 });
 
 it("opens and closes without remounting the current page or losing the chat draft", () => {
-  mockEnabled = true;
   render(
     <ChatModeShell>
       <Page />
@@ -155,7 +155,7 @@ it("opens and closes without remounting the current page or losing the chat draf
   expect(screen.getByText("Chat entry").parentElement).toHaveAttribute("inert");
   expect(screen.getByText("Showing this page to the chat")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Chat draft"), { target: { value: "Keep my draft" } });
-  fireEvent.click(screen.getByText("Back to app"));
+  fireEvent.click(screen.getAllByRole("button", { name: "Full page" })[0]);
   expect(screen.getByText("Page edits 1")).toBeInTheDocument();
   fireEvent.keyDown(window, { key: "j", ctrlKey: true });
   expect(screen.getByLabelText("Chat draft")).toHaveValue("Keep my draft");
@@ -163,7 +163,6 @@ it("opens and closes without remounting the current page or losing the chat draf
 });
 
 it("opens Chat beside the page on arrival with ?chat=open", () => {
-  mockEnabled = true;
   mockQuery.set("chat", "open");
   try {
     render(
@@ -179,7 +178,6 @@ it("opens Chat beside the page on arrival with ?chat=open", () => {
 });
 
 it("resets the chat shell on organization switch", () => {
-  mockEnabled = true;
   const { rerender } = render(
     <ChatModeShell>
       <Page />
@@ -199,7 +197,6 @@ it("resets the chat shell on organization switch", () => {
 });
 
 it("uses the host's navigation sections in the shared rail", () => {
-  mockEnabled = true;
   mockCanNavigate = true;
   const navigation = defaultNavigationSections.map((section) => ({
     ...section,
@@ -221,7 +218,6 @@ it("uses the host's navigation sections in the shared rail", () => {
 });
 
 it("labels a collection of page forms with the page title instead of the last form", () => {
-  mockEnabled = true;
   function MultipleForms() {
     const mode = useChatMode();
     const register = mode?.registerPage;
@@ -258,7 +254,6 @@ it("labels a collection of page forms with the page title instead of the last fo
 });
 
 it("shows one full Chat without page-side Chat or its nested route content", () => {
-  mockEnabled = true;
   mockPathname = "/chats/side";
   render(
     <ChatModeShell>
@@ -277,7 +272,6 @@ it("shows one full Chat without page-side Chat or its nested route content", () 
   expect(screen.getByLabelText("Existing composer")).toHaveFocus();
 });
 it("preserves a conversation draft between full Chat and the page workspace", () => {
-  mockEnabled = true;
   mockPathname = "/chats/session_chat";
   const { rerender } = render(
     <ChatModeShell>
@@ -309,7 +303,6 @@ it("preserves a conversation draft between full Chat and the page workspace", ()
   expect(screen.getByLabelText("Chat draft")).toHaveValue("Draft across views");
 });
 it("shows Chat history without another conversation pane", () => {
-  mockEnabled = true;
   mockPathname = "/chats/history";
   render(
     <ChatModeShell>
@@ -320,4 +313,38 @@ it("shows Chat history without another conversation pane", () => {
   expect(screen.queryByTestId("workspace")).not.toBeInTheDocument();
   fireEvent.keyDown(window, { key: "j", ctrlKey: true });
   expect(screen.queryByTestId("workspace")).not.toBeInTheDocument();
+});
+
+it("switches between Chat beside the page and full screen", () => {
+  mockPathname = "/agents/agent_1";
+  const { rerender } = render(
+    <ChatModeShell>
+      <Page />
+    </ChatModeShell>,
+  );
+  fireEvent.click(screen.getByText("Chat entry"));
+  expect(screen.getByRole("button", { name: "Main chat" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+  expect(mockPush).toHaveBeenLastCalledWith("/chats");
+
+  mockPathname = "/chats";
+  rerender(
+    <ChatModeShell>
+      <Page />
+    </ChatModeShell>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Show beside page/ }));
+  expect(mockPush).toHaveBeenLastCalledWith("/agents/agent_1");
+});
+
+it("toggles full screen with Cmd/Ctrl-Shift-J", () => {
+  render(
+    <ChatModeShell>
+      <Page />
+    </ChatModeShell>,
+  );
+  fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+  expect(screen.getByText("Showing this page to the chat")).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "J", ctrlKey: true, shiftKey: true });
+  expect(mockPush).toHaveBeenLastCalledWith("/chats");
 });

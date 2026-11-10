@@ -52,7 +52,7 @@ pub async fn run(
     .await?;
 
     if !quiet && output.is_text() {
-        println!("You: {}\n", message);
+        println!("{} {}\n", console::style("You:").cyan().bold(), message);
     }
 
     if no_stream {
@@ -91,7 +91,11 @@ pub async fn run(
             Ok(None) => {
                 // Stream ended without turn completion
                 if output.is_text() && !agent_content.is_empty() {
-                    println!("Agent: {}", agent_content);
+                    println!(
+                        "{} {}",
+                        console::style("Agent:").magenta().bold(),
+                        agent_content
+                    );
                 }
                 anyhow::bail!("Event stream ended before turn completed");
             }
@@ -135,7 +139,7 @@ pub async fn run(
                     .or_else(|| event.data.get("tool_name"))
                     .and_then(|t| t.as_str())
                     .unwrap_or("tool");
-                eprintln!("  [{tool}] {message}");
+                eprintln!("  {} {message}", crate::ui::dim(format!("[{tool}]")));
             }
 
             // Handle tool.output.delta event (streamed tool output)
@@ -154,16 +158,28 @@ pub async fn run(
                     .unwrap_or("tool");
                 let trimmed = delta.trim_end_matches('\n');
                 if stream_name == "stderr" {
-                    eprintln!("  [{tool}:stderr] {trimmed}");
+                    eprintln!(
+                        "  {} {}",
+                        crate::ui::dim(format!("[{tool}:stderr]")),
+                        crate::ui::warning(trimmed)
+                    );
                 } else {
-                    eprintln!("  [{tool}] {trimmed}");
+                    eprintln!(
+                        "  {} {}",
+                        crate::ui::dim(format!("[{tool}]")),
+                        crate::ui::dim(trimmed)
+                    );
                 }
             }
 
             // Handle turn.completed event
             if event.event_type == "turn.completed" {
                 if !agent_content.is_empty() {
-                    println!("Agent: {}", agent_content);
+                    println!(
+                        "{} {}",
+                        console::style("Agent:").magenta().bold(),
+                        agent_content
+                    );
                 }
                 return Ok(());
             }
@@ -175,7 +191,8 @@ pub async fn run(
                     .get("error")
                     .and_then(|e| e.as_str())
                     .unwrap_or("Unknown error");
-                eprintln!("\nTurn failed: {}", error);
+                eprintln!();
+                crate::ui::fail(format!("Turn failed: {error}"));
                 anyhow::bail!("Turn failed: {}", error);
             }
         } else {

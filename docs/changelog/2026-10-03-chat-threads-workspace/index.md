@@ -25,4 +25,6 @@ conversation away without losing history, and **Reopen thread** continues it.
 The panel becomes a drawer on mobile. Turning the feature off restores the
 previous Chat and keeps conversations and their URLs.
 
+Since 2026-11-10 threads belong to each chat and there is no opt-in; see
+[Main chat, side chats and threads](/changelog/2026-11-10-main-chat-side-chats-threads/).
 See [Chat and Threads](/features/ui/#chat-and-threads). PR [#4146](https://github.com/everruns/everruns/pull/4146).

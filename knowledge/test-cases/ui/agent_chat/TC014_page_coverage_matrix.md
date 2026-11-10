@@ -26,8 +26,7 @@ An inventory entry is a coverage decision, not a passing manual execution record
 - Disposable fixtures for the route families in the inventory; record resource
   IDs and starting revisions. Never use customer records for mutation scenarios.
 - Chat configured with Muse 1.3 Contributor through OpenRouter.
-- Exercise independent `chat_mode` and `chat_threads` Adoption settings in all
-  four combinations. Enable each tested page's own feature separately.
+- Enable each tested page's own feature separately; Chat itself needs no flag.
 
 ## Test Data
 
@@ -92,7 +91,7 @@ An inventory entry is a coverage decision, not a passing manual execution record
     Verify authorized status projections omit diagnostic payloads.
 13. Repeat the four flag combinations and display modes. Preserve form and Chat
     drafts while opening/closing the split. Full Chat has one composer; history
-    has none. New subchat creates an independent conversation on first send.
+    has none. New side chat creates an independent conversation on first send.
 14. Include Tracing settings and the Agent routing drawer. Destination rows expose
     bounded status metadata without endpoints, credentials or raw delivery errors.
     Stage routing and destination selections; organization defaults keep their

@@ -34,6 +34,14 @@ export interface ChatModeState {
   pageAdapter?: PageDraftAdapter;
   pageViewAdapter?: PageDraftAdapter;
   threadId?: string;
+  /** Show this chat (Main chat when omitted) beside the current page. */
+  openBeside?: (chatId?: string) => void;
+  /** Hide the page and show the conversation full screen. */
+  showFullScreen?: () => void;
+  /** Return from full-screen Chat to the last page, with Chat beside it. */
+  showBesidePage?: () => void;
+  /** Show a thread in the page pane, beside the conversation. */
+  openThreadBeside?: (threadId: string) => void;
   actions: PageAction[];
   recordAction: (label: string) => void;
 }

@@ -1,12 +1,8 @@
 export interface FeatureFlags {
   /** Worker memory consolidation. Organization adoption opt-in. */
   dreaming?: boolean;
-  /** Page-aware split Chat. Organization Adoption opt-in. */
-  chat_mode?: boolean;
   /** Organization execution monitoring. Adoption opt-in. */
   monitoring?: boolean;
-  /** Chat delegation and its background Work panel. Organization Adoption opt-in. */
-  chat_threads?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;

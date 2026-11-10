@@ -103,8 +103,8 @@ export function PageNavigationRail({
                       return (
                         <DropdownMenuItem
                           key={item.href}
-                          aria-label={back ? ui("Back to app") : item.name}
-                          label={back ? ui("Back to app") : item.name}
+                          aria-label={back ? ui("Full page") : item.name}
+                          label={back ? ui("Full page") : item.name}
                           aria-current={!back && isActive(item, pathname) ? "page" : undefined}
                           render={back ? undefined : <Link href={item.href} prefetch={false} />}
                           onClick={back ? onClose : undefined}
@@ -113,7 +113,7 @@ export function PageNavigationRail({
                           <item.icon aria-hidden="true" className="icon-sharp mt-0.5 size-4" />
                           <span>
                             <span className="block font-medium">
-                              {back ? ui("Back to app") : item.name}
+                              {back ? ui("Full page") : item.name}
                             </span>
                             <span className="mt-0.5 block text-xs text-muted-foreground">
                               {back
@@ -141,7 +141,7 @@ export function PageNavigationRail({
               {section.items.map((item) => (
                 <PageNavigationHint
                   key={item.href}
-                  label={item.href === "/chats" ? ui("Back to app") : item.name}
+                  label={item.href === "/chats" ? ui("Full page") : item.name}
                   description={
                     item.href === "/chats"
                       ? ui("Hide Chat and expand the current page.")
@@ -151,7 +151,7 @@ export function PageNavigationRail({
                   {item.href === "/chats" ? (
                     <button
                       type="button"
-                      aria-label={ui("Close Chat mode")}
+                      aria-label={ui("Full page")}
                       onClick={onClose}
                       className={cn(railButton, "text-muted-foreground")}
                     >

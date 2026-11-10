@@ -51,6 +51,10 @@ jest.mock("@/components/layout/sidebar", () => ({
   MobileSidebar: () => <div data-testid="mobile-sidebar">Mobile Sidebar</div>,
 }));
 
+// The chat shell has its own suite; this one covers auth gating around it.
+jest.mock("@/components/chat-mode/chat-mode-shell", () => ({
+  ChatModeShell: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 jest.mock("@/components/command-palette", () => ({
   CommandPalette: () => <div data-testid="command-palette">Command Palette</div>,
 }));

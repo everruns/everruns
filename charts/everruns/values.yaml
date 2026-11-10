@@ -37,8 +37,9 @@ providerKeys:
   openai: ""
   anthropic: ""
   gemini: ""
+  openrouter: ""
   # Or a Secret holding DEFAULT_OPENAI_API_KEY / DEFAULT_ANTHROPIC_API_KEY /
-  # DEFAULT_GEMINI_API_KEY.
+  # DEFAULT_GEMINI_API_KEY / DEFAULT_OPENROUTER_API_KEY.
   existingSecret: ""
 seedDefaultProviderKeys: false
 

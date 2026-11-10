@@ -168,6 +168,23 @@ impl Default for RepositoriesConfig {
 }
 
 impl RepositoriesConfig {
+    /// Whether this configuration lets the agent push anywhere: a writable
+    /// repository, or leave to add one. An agent's GitHub App needs the
+    /// Contents write permission exactly then.
+    pub fn can_push(&self) -> bool {
+        self.add_repositories == AddRepositories::Write
+            || self
+                .repositories
+                .iter()
+                .any(|entry| entry.access == RepositoryAccess::Write)
+    }
+
+    /// [`Self::can_push`] for a stored capability config. A config that does
+    /// not parse grants nothing.
+    pub fn config_can_push(config: &Value) -> bool {
+        Self::parse(config).is_ok_and(|config| config.can_push())
+    }
+
     pub(crate) fn parse(config: &Value) -> Result<Self, String> {
         let parsed: Self = if config.is_null() {
             Self::default()
@@ -299,12 +316,7 @@ impl Capability for RepositoriesCapability {
         if config.add_repositories != AddRepositories::Off {
             tools.push(Box::new(RepoTool::new(RepoAction::Add, &config)));
         }
-        let can_push = config.add_repositories == AddRepositories::Write
-            || config
-                .repositories
-                .iter()
-                .any(|entry| entry.access == RepositoryAccess::Write);
-        if can_push {
+        if config.can_push() {
             tools.push(Box::new(RepoTool::new(RepoAction::Push, &config)));
         }
         tools

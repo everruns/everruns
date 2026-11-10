@@ -61,6 +61,7 @@ pub const MANAGED_KEYS: &[&str] = &[
     "DEFAULT_OPENAI_API_KEY",
     "DEFAULT_ANTHROPIC_API_KEY",
     "DEFAULT_GEMINI_API_KEY",
+    "DEFAULT_OPENROUTER_API_KEY",
     COMPOSE_PROFILES,
     PUBLIC_URL,
     TS_AUTHKEY,
@@ -139,7 +140,7 @@ impl Instance {
             .open(self.dir.join(".lock"))
             .context("Failed to open the instance lock")?;
         if file.try_lock().is_err() {
-            eprintln!("Waiting for another `everruns docker` command on this instance...");
+            crate::ui::note("Waiting for another `everruns docker` command on this instance...");
             file.lock().context("Failed to lock the instance")?;
         }
         Ok(file)

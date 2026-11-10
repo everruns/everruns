@@ -19,7 +19,7 @@ Run Everruns on this machine with Docker.
 | [`docker open`](#docker-open) | Open the local UI in the browser. |
 | [`docker doctor`](#docker-doctor) | Check that Docker is ready, and run the system doctor on a running instance. |
 | [`docker upgrade`](#docker-upgrade) | Move the instance to this CLI's version (or --image-tag), backing up the database first. |
-| [`docker reset`](#docker-reset) | Delete the instance: containers, database and settings. |
+| [`docker destroy`](#docker-destroy) | Delete the instance and everything it made: containers, database, settings. |
 
 ## docker up
 
@@ -34,7 +34,7 @@ everruns docker up [OPTIONS]
 | `--name <NAME>` | Instance name, for more than one local Everruns. |
 | `--auth <AUTH>` | Who signs in. One of `single`, `none`, `accounts`. |
 | `--admin-email <ADMIN_EMAIL>` | Admin email, used to sign in to the UI. |
-| `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `skip`. |
+| `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `openrouter`, `skip`. |
 | `--port <PORT>` | Port for the UI and API on this machine (default 9300) |
 | `--image-tag <IMAGE_TAG>` | Image tag to run, such as v0.48.0 or latest (default: this CLI's version) |
 | `-y`, `--yes` | Accept the default for every question. |
@@ -126,12 +126,12 @@ everruns docker upgrade [OPTIONS]
 | `-y`, `--yes` | Do not ask, also when the move is to an older version. |
 
 
-## docker reset
+## docker destroy
 
-Delete the instance: containers, database and settings. Asks first.
+Delete the instance and everything it made: containers, database, settings. Asks first.
 
 ```bash
-everruns docker reset [OPTIONS]
+everruns docker destroy [OPTIONS]
 ```
 
 | Flag | Description |

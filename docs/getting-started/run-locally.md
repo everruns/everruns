@@ -56,7 +56,7 @@ everruns docker up --yes --auth single --admin-email ci@example.com --provider o
 |---|---|---|
 | Who signs in | `--auth single`, `none` or `accounts` | `single` |
 | Admin email | `--admin-email` | your `git config user.email` |
-| LLM provider | `--provider openai`, `anthropic`, `gemini` or `skip` | the provider whose key is in your shell |
+| LLM provider | `--provider openai`, `anthropic`, `gemini`, `openrouter` or `skip` | the provider whose key is in your shell |
 | Port, only when 9300 is taken | `--port` | the next free port |
 
 **Who signs in:**
@@ -116,10 +116,10 @@ copy it into the `postgres` container and run `pg_restore --clean` against the
 ## Start over
 
 ```bash
-everruns docker reset
+everruns docker destroy
 ```
 
-`reset` deletes the instance: its containers, the database, the settings folder
+`destroy` deletes the instance: its containers, the database, the settings folder
 with the encryption key and backups, and the CLI profile. It asks you to type
 the instance name first; `--yes` skips that for scripts.
 

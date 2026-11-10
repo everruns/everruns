@@ -22,9 +22,6 @@ pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
-    /// Page-aware split Chat. Organization Adoption opt-in.
-    #[serde(default)]
-    pub chat_mode: bool,
     /// Organization-scoped live execution monitoring. Adoption opt-in.
     #[serde(default)]
     pub monitoring: bool,
@@ -81,10 +78,6 @@ pub struct FeatureFlags {
     /// is tier-limited, so chat has not been verified end to end.
     #[serde(default)]
     pub mistral: bool,
-    /// Platform Chat delegation and its background Work panel. Org opt-in.
-    /// Independent subchats are available without this flag.
-    #[serde(default)]
-    pub chat_threads: bool,
     /// Flags declared by integration crates (see
     /// [`everruns_capabilities::integrations_catalog::feature_flag_definitions`]), keyed by
     /// flag name. Serialized flat, next to the platform flags.
@@ -131,12 +124,6 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 /// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
-        name: "chat_mode",
-        label: "Chat workspace",
-        description: "Work with Chat beside app pages, share page context and review changes with guarded Undo.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
         name: "dreaming",
         label: "Dreaming",
         description: "Let Worker harnesses consolidate completed experience into authorized Memory.",
@@ -146,12 +133,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "monitoring",
         label: "Monitoring",
         description: "Monitor live execution, actor leases, and durable progress across your organization.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "chat_threads",
-        label: "Chat background work",
-        description: "Let Chat delegate background work and inspect its progress in the Work panel. Subchats are always available.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -350,8 +331,6 @@ impl FeatureFlags {
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
             ("mistral".to_string(), self.mistral),
-            ("chat_threads".to_string(), self.chat_threads),
-            ("chat_mode".to_string(), self.chat_mode),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
@@ -386,8 +365,6 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
             "mistral" => self.mistral,
-            "chat_threads" => self.chat_threads,
-            "chat_mode" => self.chat_mode,
             "evals" => self.evals,
             "skills" => self.skills,
             "memory" => self.memory,
@@ -426,8 +403,6 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
             "mistral" => self.mistral = enabled,
-            "chat_threads" => self.chat_threads = enabled,
-            "chat_mode" => self.chat_mode = enabled,
             _ => {
                 assert!(
                     everruns_capabilities::integrations_catalog::feature_flag_definitions()
@@ -442,17 +417,6 @@ impl FeatureFlags {
     /// Whether a capability is available under these effective flags.
     pub fn is_capability_enabled(&self, capability_id: &str) -> bool {
         Self::required_for_capability(capability_id).is_none_or(|flag| self.is_enabled(flag))
-    }
-
-    /// Whether a capability configured on an agent is available. Platform
-    /// Chat's coordination rides on `chat_threads` (its Threads panel shows
-    /// the work). Custom agents' `coordination` is ungated: someone has to add
-    /// the capability to the agent, which is already the opt-in.
-    pub fn is_agent_capability_enabled(&self, capability_id: &str, is_platform_chat: bool) -> bool {
-        if is_platform_chat && capability_id == "coordination" {
-            return self.chat_threads;
-        }
-        self.is_capability_enabled(capability_id)
     }
 
     /// Feature flag required by a capability, when one exists.
@@ -499,8 +463,6 @@ impl FeatureFlags {
             container_sandbox: true,
             lua: true,
             mistral: true,
-            chat_threads: true,
-            chat_mode: true,
             evals: true,
             skills: true,
             memory: true,
@@ -532,39 +494,6 @@ mod tests {
             grades: feature_flag_definitions()
                 .map(|def| (def.name.to_string(), grade))
                 .collect(),
-        }
-    }
-
-    #[test]
-    fn chat_mode_is_an_independent_org_adoption_opt_in() {
-        for deployment in [
-            DeploymentGrade::Dev,
-            DeploymentGrade::Preview,
-            DeploymentGrade::Prod,
-        ] {
-            let policy = FeatureFlagPolicy::from_env(deployment);
-            assert_eq!(
-                API_FEATURE_FLAG_DEFINITIONS
-                    .iter()
-                    .find(|flag| flag.name == "chat_mode")
-                    .unwrap()
-                    .grade,
-                FeatureFlagGrade::Adoption
-            );
-            let policy = policy.with_grade("chat_mode", FeatureFlagGrade::Adoption);
-            assert!(policy.deployment_flags().chat_mode);
-            assert!(!policy.for_org(&HashMap::new()).chat_mode);
-            let enrolled = HashMap::from([("chat_mode".to_string(), true)]);
-            let flags = policy.for_org(&enrolled);
-            assert!(flags.chat_mode);
-            assert!(!flags.chat_threads);
-            assert!(flags.to_map().0["chat_mode"]);
-            assert!(
-                !policy
-                    .with_grade("chat_mode", FeatureFlagGrade::Off)
-                    .for_org(&enrolled)
-                    .chat_mode
-            );
         }
     }
 
@@ -682,7 +611,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = ["chat_threads", "evals", "observers", "voice", "knowledge"];
+        let adoption_flags = ["evals", "observers", "voice", "knowledge"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))
@@ -814,22 +743,6 @@ mod tests {
         ] {
             assert!(disabled.is_capability_enabled(capability), "{capability}");
         }
-    }
-
-    #[test]
-    fn platform_chat_coordinates_under_chat_threads_and_custom_agents_ungated() {
-        let threads_only = FeatureFlags {
-            chat_threads: true,
-            ..FeatureFlags::default()
-        };
-        assert!(threads_only.is_agent_capability_enabled("coordination", true));
-        assert!(threads_only.is_agent_capability_enabled("coordination", false));
-
-        let none = FeatureFlags::default();
-        assert!(!none.is_agent_capability_enabled("coordination", true));
-        assert!(none.is_agent_capability_enabled("coordination", false));
-        // Other capabilities ignore the Platform Chat distinction.
-        assert!(!threads_only.is_agent_capability_enabled("skills", true));
     }
 
     #[test]

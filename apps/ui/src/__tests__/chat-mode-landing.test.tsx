@@ -17,13 +17,12 @@ beforeEach(() => {
 });
 
 describe("landing route", () => {
-  it("keeps Chat as the landing route and opens it beside Home in the Chat workspace", () => {
-    expect(landingTarget(false)).toBe("/chats");
-    expect(landingTarget(true)).toBe("/home?chat=open");
+  it("opens Main chat beside Overview on arrival", () => {
+    expect(landingTarget()).toBe("/home?chat=open");
   });
 
-  it("waits for organization flags before choosing", () => {
-    const { rerender } = renderHook(({ ready }) => useLandingRedirect(true, ready), {
+  it("waits for the organization before redirecting", () => {
+    const { rerender } = renderHook(({ ready }) => useLandingRedirect(ready), {
       initialProps: { ready: false },
     });
     expect(replace).not.toHaveBeenCalled();
@@ -33,7 +32,7 @@ describe("landing route", () => {
 
   it("only redirects an arrival, not an ordinary visit to Chat", () => {
     search = new URLSearchParams();
-    renderHook(() => useLandingRedirect(true, true));
+    renderHook(() => useLandingRedirect(true));
     expect(replace).not.toHaveBeenCalled();
   });
 

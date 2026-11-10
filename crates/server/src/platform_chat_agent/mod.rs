@@ -79,9 +79,9 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
         // The person's own MCP servers, used and managed in chat
         // (knowledge/integrations/user-mcp-servers.md).
         ("user_mcp".into(), 15, serde_json::json!({"manage": true})),
-        // Threads: hand work to background sessions and track it in the
-        // Threads panel (knowledge/runtime-resources/coordination.md). The
-        // server keeps it only for orgs with `chat_threads` on.
+        // Threads: every Platform Chat conversation (Main chat and side
+        // chats) hands longer work to threads shown in its Threads panel
+        // (knowledge/runtime-resources/coordination.md).
         (
             "coordination".into(),
             16,

@@ -24,7 +24,8 @@ The sidebar provides access to main sections:
 
 | Section | Description |
 |---------|-------------|
-| Home | What needs attention in the organization, and how its agents ran today |
+| Main chat | Your permanent conversation with Platform Chat; side chats below it |
+| Overview | What needs attention in the organization, and how its agents ran today. Its sidebar entry shows how many items are waiting |
 | Agents | List, create, and manage agents |
 | Virtual users | Manage end-user and service runtime accounts |
 | Capabilities | Browse available capabilities |
@@ -32,26 +33,30 @@ The sidebar provides access to main sections:
 
 ## Chat and Threads
 
-**Chat** opens your permanent conversation with the Platform Chat for managing
-Everruns. Agent testing lives in Playground.
+**Main chat** opens your permanent conversation with Platform Chat for managing
+Everruns. **Side chats** are fresh conversations with the same assistant, each with
+its own history. Agent testing lives in Playground.
 
-Organization owners and admins can opt into **Chat threads** in **Settings → Features**.
-It is an adoption feature, disabled by default. With it enabled, the sidebar contains
-only Chat, and a **Threads** button opens conversations and ongoing work beside the
-permanent conversation. Create a **New thread**, search existing conversations, or open
-work from a **View thread** card. The panel can expand and becomes a full-screen drawer
-on mobile.
+Every chat can start **threads** for longer work. **Threads** in the conversation
+header opens a panel on the right, grouped into Needs you, Working, Ready for review
+and Resolved, and it opens by itself when a new thread starts. Click a thread to open
+it next to the chat. Search threads, expand the panel, or open work from a **View
+thread** card. On narrow screens the panel is a drawer.
 
-Idle conversations remain **Open**. **Resolve thread** puts one away without losing its
+Idle threads remain **Open**. **Resolve thread** puts one away without losing its
 history; **Reopen thread** lets you continue. Background work shows its actual progress,
 input requests, and failures. When a thread reports back, the conversation shows one
 folded line, such as "Releases is done". Open the line to read the report. The
-coordinator still receives the full text and answers in the conversation. Disabling the
-feature restores the existing Chat interface and preserves conversations and their URLs.
+coordinator still receives the full text and answers in the conversation.
 
-## Home
+On any other page, clicking **Main chat** or pressing Command/Ctrl-J opens the
+conversation beside that page. Command/Ctrl-Shift-J switches between that and full
+screen. See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
-**Home** sits above Chat in the sidebar. Chat stays the page you land on.
+## Overview page
+
+**Overview** (formerly Home) is the first entry under Building. A number next to it
+shows how many items need attention. Chat stays the page you land on.
 
 **Needs attention** comes first: one list, most urgent first, built from every place
 that already tracks a problem. It includes agent setup problems (a disabled model, a
@@ -61,15 +66,14 @@ paused at their budget limit, sandboxes that need attention and, for viewers who
 System, failing system checks. Each row links to the page where you fix it. When nothing
 is wrong, the list shrinks to one line.
 
-Below it, Home shows the last 24 hours: sessions running now against the turn limit,
+Below it, Overview shows the last 24 hours: sessions running now against the turn limit,
 turns and the failure rate, channel sessions, people reached and live sandboxes. With
 Monitoring enabled, Activity shows the same parallel-session and turn charts as
 **Monitoring → Timeline**. Then come the busiest agents, the sessions running now, and
 Health and Sandboxes summaries. A new organization sees a short Get started list
 instead.
 
-With the Chat workspace enabled, signing in opens Chat beside Home, so you can ask
-Chat what to look at first.
+Signing in opens Main chat beside Overview, so you can ask Chat what to look at first.
 
 ## Agents
 

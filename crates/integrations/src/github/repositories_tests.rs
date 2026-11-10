@@ -607,3 +607,18 @@ fn remote_urls_map_back_to_repositories() {
     assert_eq!(repo_from_url("https://example.com/acme/app.git"), None);
     assert_eq!(repo_from_url("https://github.com/acme/app/extra"), None);
 }
+
+#[test]
+fn only_a_writable_configuration_can_push() {
+    let can_push = RepositoriesConfig::config_can_push;
+    assert!(!can_push(&Value::Null));
+    assert!(!can_push(
+        &json!({ "repositories": [{ "repo": "acme/docs" }] })
+    ));
+    assert!(can_push(
+        &json!({ "repositories": [{ "repo": "acme/app", "access": "write" }] })
+    ));
+    assert!(can_push(&json!({ "add_repositories": "write" })));
+    // A config that does not parse grants nothing.
+    assert!(!can_push(&json!({ "repositories": "everything" })));
+}

@@ -19,6 +19,7 @@ mod agent_builder;
 mod application_parity;
 mod ask_user;
 mod capability_configuration;
+mod completion_check;
 #[cfg(all(unix, feature = "control"))]
 mod control_attach;
 mod custom_provider;

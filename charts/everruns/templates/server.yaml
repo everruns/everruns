@@ -91,7 +91,7 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ $secret }}, key: {{ . }} } }
             {{- end }}
             {{- $keys := .Values.providerKeys.existingSecret | default (include "everruns.configSecretName" .) }}
-            {{- range list "DEFAULT_OPENAI_API_KEY" "DEFAULT_ANTHROPIC_API_KEY" "DEFAULT_GEMINI_API_KEY" }}
+            {{- range list "DEFAULT_OPENAI_API_KEY" "DEFAULT_ANTHROPIC_API_KEY" "DEFAULT_GEMINI_API_KEY" "DEFAULT_OPENROUTER_API_KEY" }}
             - name: {{ . }}
               valueFrom: { secretKeyRef: { name: {{ $keys }}, key: {{ . }}, optional: true } }
             {{- end }}

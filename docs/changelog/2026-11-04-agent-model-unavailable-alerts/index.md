@@ -20,7 +20,7 @@ under its own spelling, such as OpenRouter's `openai/gpt-6.1-sol`, counts as lis
 **In the UI:** Settings → Health and the bell open an issue that names the agent, model,
 reason and fix, and tells the agent's authors. A missing model's issue says which list
 and id it checked and offers **Sync models**. A broken organization default is one
-issue, not one per agent. See [Home](/features/ui/#home).
+issue, not one per agent. See [Overview](/features/ui/#overview-page).
 
 **In channels:** when a turn fails for that reason, [Slack](/integrations/slack/) and the
 other channels post "This agent is not set up correctly, so it cannot answer right now"

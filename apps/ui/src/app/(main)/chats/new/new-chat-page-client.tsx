@@ -70,7 +70,7 @@ export function ChatDraft({ threadMode = false }: { threadMode?: boolean }) {
       <div className="flex h-full flex-col bg-background bg-brand-dots">
         <div className="border-b border-border/70 bg-background/70 px-6 py-3">
           <h1 className="text-base font-semibold">
-            {threadMode ? ui("New thread") : ui("New subchat")}
+            {threadMode ? ui("New thread") : ui("New side chat")}
           </h1>
           <p className="text-xs text-muted-foreground">
             {ui("A fresh conversation to manage your Everruns organization.")}

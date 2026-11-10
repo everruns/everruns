@@ -57,6 +57,8 @@ pub(super) fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<Age
         completion_check: crate::core::completion_check::CompletionCheck::from_wire(
             proto_agent.completion_check.as_deref(),
         ),
+        // Platform agents keep the runtime's default limits.
+        continuation_limits: None,
         tools: proto_tool_definitions(&proto_agent.tools, "agent")?,
         mcp_servers: Default::default(),
     })

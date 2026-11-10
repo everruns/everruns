@@ -104,10 +104,10 @@ costs summary get	--agent-id --context-revision --from --reason --to
 credential-bindings create	--binding --context-revision --label! --mcp --name --owner-id --reason --scope! --source --usage!
 credential-bindings list	--context-revision --owner-id --reason --scope! --usage!
 credential-bindings revoke	--context-revision --id! --reason --revision!
+docker destroy	--name --yes/-y
 docker doctor	--name
 docker logs	--name --no-follow <service>
 docker open	--name
-docker reset	--name --yes/-y
 docker status	--name
 docker stop	--name
 docker up	--admin-email --auth --image-tag --name --no-open --port --provider --public-url --tunnel --yes/-y
@@ -193,11 +193,12 @@ history restore	--context-revision --entity-ref --expected-revision --fields... 
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason
+k8s destroy	--keep-namespace --name --yes/-y
 k8s doctor	--name
 k8s logs	--name --no-follow <component>
 k8s open	--name
+k8s password	--name
 k8s port-forward	--name
-k8s reset	--name --yes/-y
 k8s status	--name
 k8s uninstall	--name
 k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --timeout --values/-f... --yes/-y

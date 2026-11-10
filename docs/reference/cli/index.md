@@ -19,6 +19,8 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | `--context-revision <N>` | The revision of the entity's manager notes you read (`everruns context get`). The change is refused if the notes changed since. |
 | `-o`, `--output <FORMAT>` | `text` (default), `json` or `yaml`. |
 | `-q`, `--quiet` | Print only the essential identifier, for capturing ids in scripts. |
+| `--color <WHEN>` | `auto` (default), `always` or `never`. `auto` colors a terminal unless `NO_COLOR` is set, `CLICOLOR=0` or `TERM=dumb`; `CLICOLOR_FORCE=1` colors piped output too. |
+| `--no-color` | Same as `--color never`. |
 
 ## Session and account
 

@@ -91,7 +91,7 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
           variant="outline"
           size="sm"
           className="ml-auto"
-          onClick={() => workspace.openTask(task.id)}
+          onClick={() => workspace.openTask(task)}
         >
           {ui("View thread")}
         </Button>

@@ -49,7 +49,7 @@ Verify the settings reviewed beside Chat are the settings saved through ordinary
    Save a choice, inspect Before/After, then Undo it. Clearing the choice restores
    inheritance; neither Save nor Undo changes the agents/sessions default. Refresh
    the setting in another browser while dirty: Save must block until Discard.
-   Open New subchat and verify its model preview follows this Chat default.
+   Open New side chat and verify its model preview follows this Chat default.
 
 ## Expected Result
 

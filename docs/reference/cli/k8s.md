@@ -18,9 +18,10 @@ Run Everruns in a Kubernetes cluster with the Helm chart.
 | [`k8s open`](#k8s-open) | Open the UI in the browser (through a port-forward when there is no public URL) |
 | [`k8s port-forward`](#k8s-port-forward) | Keep a port-forward open so the CLI and browser reach an install without a public URL. |
 | [`k8s doctor`](#k8s-doctor) | Check the tools and the cluster, and run the system doctor on the server. |
+| [`k8s password`](#k8s-password) | Print the admin password the chart generated. |
 | [`k8s upgrade`](#k8s-upgrade) | Move the install to this CLI's chart version (or --chart-version), backing up a bundled database first. |
 | [`k8s uninstall`](#k8s-uninstall) | Remove the workloads. |
-| [`k8s reset`](#k8s-reset) | Delete the install: workloads, generated secrets, volumes and the CLI profile. |
+| [`k8s destroy`](#k8s-destroy) | Delete the install and everything it made: workloads, secrets, volumes, the namespace when nothing else is in it, and the CLI profile. |
 
 ## k8s up
 
@@ -37,7 +38,7 @@ everruns k8s up [OPTIONS]
 | `--namespace <NAMESPACE>` | Namespace, created when missing (default: everruns) |
 | `--auth <AUTH>` | Who signs in. One of `single`, `none`, `accounts`. |
 | `--admin-email <ADMIN_EMAIL>` | Admin email, used to sign in to the UI. |
-| `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `skip`. |
+| `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `openrouter`, `skip`. |
 | `--database-url <DATABASE_URL>` | Your PostgreSQL 15+ URL (postgres://user:password@host:5432/db) |
 | `--bundled-postgres` | Run a single PostgreSQL pod in the cluster, for trying Everruns out (no backups or failover) |
 | `--public-url <PUBLIC_URL>` | Public address people use, such as https://everruns.example.com; adds an Ingress. |
@@ -120,6 +121,19 @@ everruns k8s doctor [OPTIONS]
 | `--name <NAME>` | Install name, also the Helm release name. |
 
 
+## k8s password
+
+Print the admin password the chart generated.
+
+```bash
+everruns k8s password [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Install name, also the Helm release name. |
+
+
 ## k8s upgrade
 
 Move the install to this CLI's chart version (or --chart-version), backing up a bundled database first.
@@ -150,16 +164,17 @@ everruns k8s uninstall [OPTIONS]
 | `--name <NAME>` | Install name, also the Helm release name. |
 
 
-## k8s reset
+## k8s destroy
 
-Delete the install: workloads, generated secrets, volumes and the CLI profile. Asks first.
+Delete the install and everything it made: workloads, secrets, volumes, the namespace when nothing else is in it, and the CLI profile. Asks first.
 
 ```bash
-everruns k8s reset [OPTIONS]
+everruns k8s destroy [OPTIONS]
 ```
 
 | Flag | Description |
 |---|---|
 | `--name <NAME>` | Install name, also the Helm release name. |
+| `--keep-namespace` | Keep the namespace even when nothing else is left in it. |
 | `-y`, `--yes` | Do not ask for the install name (for scripts) |
 

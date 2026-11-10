@@ -103,6 +103,13 @@ const STARTUP_API_ALLOWLIST = new Set([
   "/api/v1/users/me/switch-org",
   "/api/v1/user/preferences/ui.early_access_banner.dismissed",
   "/api/v1/durable/config",
+  // The sidebar's Overview entry counts the items waiting on Overview, so it
+  // reads the same sources as that page on every route.
+  "/api/v1/agents/activity",
+  "/api/v1/agent-examples",
+  "/api/v1/health-issues",
+  "/api/v1/sandboxes/stats",
+  "/api/v1/mcp-servers/config",
 ]);
 
 function isStartupApi(pathname: string) {

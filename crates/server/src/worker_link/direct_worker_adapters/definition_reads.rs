@@ -9,9 +9,8 @@ impl DirectWorkerAdapters {
     ) -> Result<()> {
         self.filter_dreaming(org_id, &mut agent.capabilities)
             .await?;
-        crate::platform_chat_agent::configure_page_tools(&self.db, org_id, agent)
-            .await
-            .map_err(|error| store_error(format!("Failed to resolve page tools: {error}")))
+        crate::platform_chat_agent::configure_page_tools(agent);
+        Ok(())
     }
 
     /// Resolve adoption on every load; no replica-local cache may delay revocation.
