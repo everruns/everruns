@@ -287,8 +287,19 @@ impl super::DirectWorkerAdapters {
         requests: Vec<everruns_core::events::EventRequest>,
         fence: &everruns_worker::ActorFence,
     ) -> Result<Option<everruns_core::events::Event>> {
+        self.emit_fenced_all(requests, fence)
+            .await
+            .map(|events| events.into_iter().last())
+    }
+
+    /// [`Self::emit_fenced`], answering with every stored event.
+    pub(super) async fn emit_fenced_all(
+        &self,
+        requests: Vec<everruns_core::events::EventRequest>,
+        fence: &everruns_worker::ActorFence,
+    ) -> Result<Vec<everruns_core::events::Event>> {
         self.event_service
-            .emit_batch_fenced(
+            .emit_batch_fenced_all(
                 requests,
                 crate::services::ActorAppendFence {
                     holder: &fence.holder,
@@ -297,7 +308,7 @@ impl super::DirectWorkerAdapters {
                 },
             )
             .await
-            .map(|(_, last)| last)
+            .map(|(_, events)| events)
             .map_err(|e| fenced_append_error(fence, e))
     }
 }

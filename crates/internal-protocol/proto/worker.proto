@@ -730,6 +730,11 @@ message EmitEventRequest {
     // nothing. On EmitEventStream every message of the stream carries the
     // same fence. Unset = an unleased write (lifecycle, resolutions).
     optional ActorFence actor_fence = 2;
+    // On a fenced EmitEventStream: answer with every stored event (`events`), not
+    // only the last. Read from the stream's first message. A caller that
+    // needs each event's id and sequence (an Engine batch) sets it; the
+    // worker host's batches do not, so their answers stay small.
+    bool return_events = 3;
 }
 
 // A session actor lease, as its holder presents it.
@@ -750,6 +755,9 @@ message EmitEventStreamResponse {
     int32 events_processed = 1;
     // The last stored event, with id and sequence, when the batch was not empty.
     Event last_event = 2;
+    // Every stored event in order, when the first message set
+    // `return_events`; empty otherwise.
+    repeated Event events = 3;
 }
 
 // Commit an execution ID to prevent duplicate processing on retry

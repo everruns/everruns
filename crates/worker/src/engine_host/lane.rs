@@ -31,6 +31,11 @@ use crate::worker_adapters::WorkerAdapters;
 /// Revisions whose build verdict one worker keeps.
 const VERDICTS: u64 = 10_000;
 
+/// Claim attempts after the first before a lease falls back to the worker
+/// host, waiting `CLAIM_BACKOFF` times 1, 4 and 16 (2.1 s in all).
+const CLAIM_RETRIES: u32 = 3;
+const CLAIM_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// [`EngineLane`] over the platform's Engine session authority.
 pub struct WorkerEngine<A: WorkerAdapters> {
     link: EngineLink,
@@ -118,17 +123,30 @@ impl<A: WorkerAdapters> EngineLane for WorkerEngine<A> {
             holder: self.holder.clone(),
             fence: actor.fence,
         };
-        let binding = match self.link.sessions.claim(session, &lease).await {
-            Ok(EngineClaim::Bound(binding)) => binding,
-            Ok(EngineClaim::Legacy) => return Some(actor),
-            Ok(EngineClaim::Lost) => {
-                debug!(session_id = %session, "Lease lost before its Engine claim");
-                return None;
-            }
-            Err(error) => {
-                warn!(session_id = %session, error = %error,
-                    "Engine claim failed; running the lease on the worker host");
-                return Some(actor);
+        // A failed claim is retried a few times before the lease falls back
+        // to the worker host: a control plane busy for a moment (its pool
+        // full at a burst of leases, CI found) should not move a session off
+        // the Engine. The lease outlives the waits by far.
+        let mut attempt = 0u32;
+        let binding = loop {
+            match self.link.sessions.claim(session, &lease).await {
+                Ok(EngineClaim::Bound(binding)) => break binding,
+                Ok(EngineClaim::Legacy) => return Some(actor),
+                Ok(EngineClaim::Lost) => {
+                    debug!(session_id = %session, "Lease lost before its Engine claim");
+                    return None;
+                }
+                Err(error) if attempt < CLAIM_RETRIES => {
+                    debug!(session_id = %session, error = %error, attempt,
+                        "Engine claim failed; retrying");
+                    tokio::time::sleep(CLAIM_BACKOFF * 4u32.pow(attempt)).await;
+                    attempt += 1;
+                }
+                Err(error) => {
+                    warn!(session_id = %session, error = %error,
+                        "Engine claim failed; running the lease on the worker host");
+                    return Some(actor);
+                }
             }
         };
         self.hydrator.bind_key(&binding.agent_key, actor.org_id);

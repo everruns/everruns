@@ -345,6 +345,7 @@ async fn scoped_reader_cannot_publish_claim_work_fetch_credentials_or_dispatch_c
                 &event,
             )),
             actor_fence: None,
+            return_events: false,
         };
         assert_eq!(
             server

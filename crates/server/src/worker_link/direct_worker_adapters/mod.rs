@@ -608,6 +608,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.emit_fenced(requests, fence).await
     }
 
+    async fn emit_events_fenced_all(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &everruns_worker::ActorFence,
+    ) -> Result<Vec<Event>> {
+        self.emit_fenced_all(requests, fence).await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================

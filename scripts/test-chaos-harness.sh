@@ -214,8 +214,10 @@ class EngineHostingTests(unittest.TestCase):
     def test_a_session_left_on_the_worker_host_fails(self):
         rep = Report()
         hosted = "0123456789abcdef0123456789abcdef"
-        with patch.object(chaos_run, "psql", side_effect=[hosted + "\n", "12\n"]):
-            chaos_run.check_engine_hosted("db", ["session_" + hosted, "session_" + "f" * 32], rep)
+        runs = [SimpleNamespace(session_id="session_" + hosted, deltas=12),
+                SimpleNamespace(session_id="session_" + "f" * 32, deltas=0)]
+        with patch.object(chaos_run, "psql", side_effect=[hosted + "\n"]):
+            chaos_run.check_engine_hosted("db", runs, rep)
         self.assertEqual(rep.counts["engine_hosted_sessions"], 1)
         self.assertEqual(rep.counts["engine_live_deltas"], 12)
         self.assertEqual(list(rep.failures), ["not_engine_hosted"])
@@ -223,8 +225,8 @@ class EngineHostingTests(unittest.TestCase):
     def test_no_live_deltas_fails(self):
         rep = Report()
         hosted = "0123456789abcdef0123456789abcdef"
-        with patch.object(chaos_run, "psql", side_effect=[hosted, "0"]):
-            chaos_run.check_engine_hosted("db", ["session_" + hosted], rep)
+        with patch.object(chaos_run, "psql", side_effect=[hosted]):
+            chaos_run.check_engine_hosted("db", [SimpleNamespace(session_id="session_" + hosted, deltas=0)], rep)
         self.assertEqual(list(rep.failures), ["no_live_deltas"])
 
 

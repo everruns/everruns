@@ -107,10 +107,11 @@ def org_flags(items: list[str]) -> dict[str, bool]:
     return out
 
 
-def check_engine_hosted(database_url: str, session_ids: list[str], rep: Report) -> None:
+def check_engine_hosted(database_url: str, runs: list, rep: Report) -> None:
     """With `engine_hosting` on, every session must have run on the Engine (it
     then has Engine session records). One that stayed on the worker host would
     make the run test the worker host twice."""
+    session_ids = [r.session_id for r in runs if r.session_id]
     got = psql(database_url, "select distinct replace(session_id::text, '-', '') from engine_session_records")
     hosted = set((got or "").split())
     hex_id = {sid: sid.replace("session_", "").replace("-", "") for sid in session_ids}
@@ -120,10 +121,11 @@ def check_engine_hosted(database_url: str, session_ids: list[str], rep: Report) 
             rep.fail("not_engine_hosted", sid, "no Engine session records with engine_hosting on")
     # The Engine never stores deltas; the worker's Engine lane forwards them
     # so live streams show text as it is written. None at all means it stopped.
-    deltas = psql(database_url, "select count(*) from events where event_type = 'output.message.delta'")
-    rep.counts["engine_live_deltas"] = int((deltas or "0").strip() or 0)
+    # Counted from the streams: with NATS the control plane delivers deltas
+    # without storing them.
+    rep.counts["engine_live_deltas"] = sum(getattr(r, "deltas", 0) for r in runs)
     if session_ids and not rep.counts["engine_live_deltas"]:
-        rep.fail("no_live_deltas", "all", "no output.message.delta reached the control plane")
+        rep.fail("no_live_deltas", "all", "no output.message.delta reached a session stream")
 
 
 def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
@@ -337,7 +339,7 @@ def main():
                 pass
             check_session(r, evs, sessions.get(r.session_id), rep, timings)
         if flags.get("engine_hosting"):
-            check_engine_hosted(args.database_url, [r.session_id for r in driver.runs if r.session_id], rep)
+            check_engine_hosted(args.database_url, driver.runs, rep)
         if sampler:
             sampler.stop = True
         # Actor checks only when the build actually leased sessions: main

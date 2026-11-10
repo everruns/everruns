@@ -88,6 +88,7 @@ async fn grpc_emit_reports_deleted_session_as_not_found() {
                     &late_event(session_id),
                 )),
                 actor_fence: None,
+                return_events: false,
             },
         ))
         .await
@@ -299,6 +300,7 @@ async fn fenced_emit_for_a_deleted_session_is_session_not_found() {
                     fence: i64::try_from(fence).unwrap(),
                     detached_tool_call_id: None,
                 }),
+                return_events: false,
             },
         ))
         .await

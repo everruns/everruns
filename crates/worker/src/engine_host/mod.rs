@@ -8,6 +8,7 @@ mod extensions;
 mod files;
 mod hosting;
 mod hydrator;
+mod journal;
 mod lane;
 
 pub use backends::{EventStamp, PlatformEventLog, PlatformSessionStore};
