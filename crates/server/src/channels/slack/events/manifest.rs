@@ -540,8 +540,7 @@ pub(crate) fn urlencoding_encode(s: &str) -> String {
 /// Manifests for the agents most likely to break Slack's limits: very long
 /// names and descriptions, non-ASCII text, characters YAML must escape, the
 /// description production refused, and every starter slot filled. The system
-/// doctor sends each to Slack's `apps.manifest.validate`, and a committed
-/// fixture keeps a copy for checks that run without a server.
+/// doctor sends each to Slack's `apps.manifest.validate` once a day.
 pub(crate) fn worst_case_manifest_yamls() -> Vec<(&'static str, String)> {
     let long_ascii = "Watches agent frameworks for features worth adopting. ".repeat(100);
     let long_cyrillic = "Тримає розпорядок дня дітей і відповідає в Slack. ".repeat(100);
