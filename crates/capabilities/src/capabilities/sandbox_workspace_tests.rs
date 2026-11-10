@@ -96,8 +96,8 @@ impl SessionSandboxProvider for SecretFileTestProvider {
         Ok(())
     }
 
-    /// Plays the shell's part: `: >` creates the file, `rm -f` and the trap
-    /// remove it, and a failing command still runs its trap.
+    /// Plays the shell's part: `mkdir` creates the private directory, `rm -rf`
+    /// and the trap remove it, and a failing command still runs its trap.
     async fn exec(
         &self,
         _context: &dyn SessionSandboxContext,
@@ -108,15 +108,16 @@ impl SessionSandboxProvider for SecretFileTestProvider {
         let command = posix_script(&request.command);
         let exit_code = with_sandbox(&instance.external_id, |sandbox| {
             sandbox.events.push(Event::Exec(command.clone()));
-            if let Some(path) = unquoted_path(&command, ": > '") {
+            if let Some(path) = unquoted_path(&command, "mkdir -- '") {
                 sandbox.files.insert(path);
             }
-            if let Some(path) = unquoted_path(&command, "rm -f -- '") {
-                sandbox.files.remove(&path);
+            if let Some(path) = unquoted_path(&command, "rm -rf -- '") {
+                sandbox.files.retain(|file| !file.starts_with(&path));
             }
-            // The trap removes the file when the wrapped command exits.
+            // The trap removes the directory when the wrapped command exits.
             if let Some(path) = unquoted_path(&command, "EVR_SECRET_FILE='") {
-                sandbox.files.remove(&path);
+                let dir = path.trim_end_matches("/token").to_string();
+                sandbox.files.retain(|file| !file.starts_with(&dir));
             }
             let failed = sandbox.fail_command && command.contains("git fetch");
             i32::from(failed)
@@ -240,6 +241,14 @@ async fn secret_file_is_gone_before_the_checkpoint_and_never_in_a_command() {
     assert_eq!(written.len(), 1);
     let path = written[0];
     assert!(path.starts_with("/tmp/.everruns-secret-"), "{path}");
+    assert!(path.ends_with("/token"), "{path}");
+    let dir = path.trim_end_matches("/token");
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, Event::Exec(c) if c == &format!("umask 077 && mkdir -- '{dir}'"))),
+        "the private directory is created before the upload"
+    );
 
     let execs: Vec<&String> = events
         .iter()
@@ -257,7 +266,7 @@ async fn secret_file_is_gone_before_the_checkpoint_and_never_in_a_command() {
         main.contains(&format!("EVR_SECRET_FILE='{path}'")),
         "{main}"
     );
-    assert!(main.contains("trap 'rm -f -- '\\''"), "{main}");
+    assert!(main.contains("trap 'rm -rf -- '\\''"), "{main}");
     assert!(main.contains("ls /home/sandbox/workspace/app"), "{main}");
 
     let position = |wanted: fn(&Event) -> bool| events.iter().position(wanted).unwrap();
@@ -285,7 +294,7 @@ async fn a_failed_command_still_removes_the_file_before_the_checkpoint() {
     assert!(
         events
             .iter()
-            .any(|e| matches!(e, Event::Exec(c) if c.starts_with("rm -f -- '/tmp/")))
+            .any(|e| matches!(e, Event::Exec(c) if c.starts_with("rm -rf -- '/tmp/")))
     );
     assert_eq!(events.last(), Some(&Event::Checkpoint(vec![])));
 }

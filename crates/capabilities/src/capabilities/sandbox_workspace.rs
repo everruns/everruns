@@ -67,11 +67,11 @@ pub fn install_sandbox_workspace(
 }
 
 /// Wrap `command` so it sees the secret file and always removes it.
-fn with_secret_file(secret_path: &str, command: &str) -> String {
+fn with_secret_file(secret_dir: &str, secret_path: &str, command: &str) -> String {
     let path = shell_escape(secret_path);
-    let trap = shell_escape(&format!("rm -f -- {path}"));
+    let trap = shell_escape(&format!("rm -rf -- {}", shell_escape(secret_dir)));
     format!(
-        "trap {trap} EXIT HUP INT TERM\nchmod 600 -- {path} || exit 1\n\
+        "trap {trap} EXIT HUP INT TERM\n\
          {SECRET_FILE_ENV}={path}; export {SECRET_FILE_ENV}\n(\n{command}\n)"
     )
 }
@@ -118,24 +118,29 @@ impl SandboxWorkspace for ManagedSandboxWorkspace {
         let root = workspace_root(&state.instance).to_string();
         let cwd = resolve_workspace_path(&state.instance, cwd)
             .map_err(ToolExecutionResult::tool_error)?;
-        let secret_path = format!("/tmp/.everruns-secret-{}", uuid::Uuid::new_v4().simple());
-
-        // Create it owner-only before the content arrives, so the upload never
-        // lands in a world-readable file.
+        // Decision: the secret lives in a directory only the command's user
+        // can enter, not in a private file placed straight in /tmp. A
+        // provider's file API may run as another user (E2B's runs as root),
+        // and Linux refuses even root an overwrite of someone else's file in
+        // a sticky directory (`fs.protected_regular`). The directory is
+        // created before the content arrives, so the upload is never readable
+        // by other users.
+        let secret_dir = format!("/tmp/.everruns-secret-{}", uuid::Uuid::new_v4().simple());
+        let secret_path = format!("{secret_dir}/token");
         let created = provider
             .exec(
                 context,
                 config,
                 &state.instance,
                 &plain(
-                    format!("umask 077 && : > {}", shell_escape(&secret_path)),
+                    format!("umask 077 && mkdir -- {}", shell_escape(&secret_dir)),
                     None,
                 ),
             )
             .await?;
         if created.exit_code != 0 {
             return Err(ToolExecutionResult::tool_error(
-                "Could not create a private file in the sandbox",
+                "Could not create a private directory in the sandbox",
             ));
         }
         let ran = match provider
@@ -156,6 +161,7 @@ impl SandboxWorkspace for ManagedSandboxWorkspace {
                         &state.instance,
                         &plain(
                             posix_sh(&with_secret_file(
+                                &secret_dir,
                                 &secret_path,
                                 &translate_workspace_command(command, &root),
                             )),
@@ -174,7 +180,7 @@ impl SandboxWorkspace for ManagedSandboxWorkspace {
                     context,
                     config,
                     &state.instance,
-                    &plain(format!("rm -f -- {}", shell_escape(&secret_path)), None),
+                    &plain(format!("rm -rf -- {}", shell_escape(&secret_dir)), None),
                 )
                 .await;
         }
