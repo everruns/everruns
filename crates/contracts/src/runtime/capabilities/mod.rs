@@ -646,11 +646,37 @@ pub trait Capability: Send + Sync {
 
     /// Returns model-facing definitions configured by this attachment.
     ///
-    /// Configurable tool surfaces override this alongside `tools_with_config`
-    /// so previews and model requests advertise the tools execution provides.
-    /// The default preserves custom definitions, including client-side tools.
-    fn tool_definitions_with_config(&self, _config: &serde_json::Value) -> Vec<ToolDefinition> {
-        self.tool_definitions()
+    /// Decision: the model is offered what execution provides. The default
+    /// starts from [`Self::tool_definitions`], so custom definitions (including
+    /// client-side tools) are kept, then follows `tools_with_config`: a tool
+    /// the config turns off loses its definition, and a tool only the config
+    /// turns on gains one. Without this a capability that gates tools on its
+    /// config (`github` and pull requests, `repositories` and `repo_push`)
+    /// executes them but never shows them to the model.
+    fn tool_definitions_with_config(&self, config: &serde_json::Value) -> Vec<ToolDefinition> {
+        let mut definitions = self.tool_definitions();
+        let unconfigured: std::collections::HashSet<String> = self
+            .tools()
+            .iter()
+            .map(|tool| tool.name().to_string())
+            .collect();
+        let configured = self.tools_with_config(config);
+        let configured_names: std::collections::HashSet<&str> =
+            configured.iter().map(|tool| tool.name()).collect();
+        definitions.retain(|definition| {
+            !unconfigured.contains(definition.name())
+                || configured_names.contains(definition.name())
+        });
+        for tool in &configured {
+            if !unconfigured.contains(tool.name())
+                && !definitions
+                    .iter()
+                    .any(|definition| definition.name() == tool.name())
+            {
+                definitions.push(tool.to_definition());
+            }
+        }
+        definitions
     }
 
     /// Returns mount points to populate in the session filesystem

@@ -622,3 +622,28 @@ fn only_a_writable_configuration_can_push() {
     // A config that does not parse grants nothing.
     assert!(!can_push(&json!({ "repositories": "everything" })));
 }
+
+/// The model is offered `repo_push` and `repo_add` exactly when the config
+/// lets the agent use them.
+#[test]
+fn the_advertised_tools_follow_the_configuration() {
+    let advertised = |config: Value| -> Vec<String> {
+        RepositoriesCapability
+            .tool_definitions_with_config(&config)
+            .iter()
+            .map(|definition| definition.name().to_string())
+            .collect()
+    };
+    assert_eq!(
+        advertised(json!({})),
+        ["repo_status", "repo_sync", "repo_add"]
+    );
+    assert_eq!(
+        advertised(json!({ "repositories": [{ "repo": "acme/app", "access": "write" }] })),
+        ["repo_status", "repo_sync", "repo_add", "repo_push"]
+    );
+    assert_eq!(
+        advertised(json!({ "add_repositories": "off" })),
+        ["repo_status", "repo_sync"]
+    );
+}
