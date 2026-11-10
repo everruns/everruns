@@ -30,7 +30,7 @@ It shows the cluster context and namespace (`everruns` by default) and asks
 before installing. Then it asks who signs in, the admin email, your PostgreSQL
 URL (or a single PostgreSQL pod for trying it out), an optional public URL for
 an Ingress, and an LLM provider key, which it takes from `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY` or `GEMINI_API_KEY` when set. It checks the cluster first
+`ANTHROPIC_API_KEY`, `GEMINI_API_KEY` or `OPENROUTER_API_KEY` when set. It checks the cluster first
 (Kubernetes version, permissions in the namespace, a default StorageClass when
 it needs volumes, KEDA when worker autoscaling is on), installs this CLI
 version's chart, waits for the pods, and signs the CLI in as profile `k8s`.

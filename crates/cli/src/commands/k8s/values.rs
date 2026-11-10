@@ -28,7 +28,7 @@ pub struct Answers {
     pub database: Option<Database>,
     pub public_url: Option<String>,
     pub ingress_class: Option<String>,
-    /// Chart key under `providerKeys` (openai, anthropic, gemini) and the key.
+    /// Chart key under `providerKeys` (openai, anthropic, gemini, openrouter) and the key.
     pub provider_key: Option<(&'static str, String)>,
     pub image_tag: Option<String>,
 }

@@ -56,7 +56,7 @@ everruns docker up --yes --auth single --admin-email ci@example.com --provider o
 |---|---|---|
 | Who signs in | `--auth single`, `none` or `accounts` | `single` |
 | Admin email | `--admin-email` | your `git config user.email` |
-| LLM provider | `--provider openai`, `anthropic`, `gemini` or `skip` | the provider whose key is in your shell |
+| LLM provider | `--provider openai`, `anthropic`, `gemini`, `openrouter` or `skip` | the provider whose key is in your shell |
 | Port, only when 9300 is taken | `--port` | the next free port |
 
 **Who signs in:**

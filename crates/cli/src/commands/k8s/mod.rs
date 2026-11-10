@@ -106,7 +106,7 @@ pub struct UpArgs {
     pub admin_email: Option<String>,
 
     /// LLM provider for the server's default key. The key comes from
-    /// OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY, or a prompt
+    /// OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt
     #[arg(long, value_enum)]
     pub provider: Option<LlmProvider>,
 
@@ -817,13 +817,21 @@ fn ask_public_url(asker: Asker) -> Result<Option<String>> {
     Ok(Some(url))
 }
 
+/// The provider's key under the chart's `providerKeys`.
+fn chart_provider_key(provider: LlmProvider) -> Option<&'static str> {
+    match provider {
+        LlmProvider::Openai => Some("openai"),
+        LlmProvider::Anthropic => Some("anthropic"),
+        LlmProvider::Gemini => Some("gemini"),
+        LlmProvider::Openrouter => Some("openrouter"),
+        LlmProvider::Skip => None,
+    }
+}
+
 /// The chart's `providerKeys` entry for the provider, from the shell or a prompt.
 fn provider_key(provider: LlmProvider, asker: Asker) -> Result<Option<(&'static str, String)>> {
-    let chart_key = match provider {
-        LlmProvider::Openai => "openai",
-        LlmProvider::Anthropic => "anthropic",
-        LlmProvider::Gemini => "gemini",
-        LlmProvider::Skip => return Ok(None),
+    let Some(chart_key) = chart_provider_key(provider) else {
+        return Ok(None);
     };
     let key = match provider.env_key() {
         Some(key) => key,
@@ -1362,5 +1370,35 @@ mod tests {
         assert_eq!(secret_name(&t, &Value::Null), "everruns-generated");
         let v = serde_json::json!({ "secrets": { "existingSecret": "mine" } });
         assert_eq!(secret_name(&t, &v), "mine");
+    }
+
+    /// Every provider `up` offers lands in a chart value the chart turns into
+    /// the server's `DEFAULT_*_API_KEY`, and the server pod reads that key.
+    #[test]
+    fn every_offered_provider_reaches_the_server() {
+        let chart = concat!(env!("CARGO_MANIFEST_DIR"), "/../../charts/everruns");
+        let read = |f: &str| std::fs::read_to_string(format!("{chart}/{f}")).unwrap();
+        let values: serde_yaml::Value = serde_yaml::from_str(&read("values.yaml")).unwrap();
+        let secrets = read("templates/secrets.yaml");
+        let server = read("templates/server.yaml");
+        for provider in LlmProvider::ALL {
+            let Some(key) = chart_provider_key(provider) else {
+                assert_eq!(provider, LlmProvider::Skip);
+                continue;
+            };
+            let env = provider.server_env().unwrap();
+            assert!(
+                values["providerKeys"].get(key).is_some(),
+                "values.yaml has no providerKeys.{key}"
+            );
+            assert!(
+                secrets.contains(&format!("{env}: {{{{ .{key} | quote }}}}")),
+                "secrets.yaml does not map providerKeys.{key} to {env}"
+            );
+            assert!(
+                server.contains(&format!("\"{env}\"")),
+                "server.yaml does not read {env}"
+            );
+        }
     }
 }
