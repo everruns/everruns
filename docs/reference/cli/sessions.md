@@ -22,6 +22,7 @@ Running and archived sessions, their state and participants.
 | [`sessions get`](#sessions-get) | Get session details including status, agent, harness, and model. |
 | [`sessions context`](#sessions-context) | Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation. |
 | [`sessions facets`](#sessions-facets) | Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions. |
+| [`sessions repositories get`](#sessions-repositories-get) | List the repositories checked out in a session's sandbox and what the session changed in each. |
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
@@ -287,6 +288,25 @@ Example:
 ```bash
 # Break the session list down by status, agent and source
 everruns sessions facets --search triage
+```
+
+## sessions repositories get
+
+List the repositories checked out in a session's sandbox and what the session changed in each.
+
+```bash
+everruns sessions repositories get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# See what a coding session changed in each repository
+everruns sessions repositories get session_01h9
 ```
 
 ## sessions stats

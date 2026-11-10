@@ -16142,6 +16142,33 @@
     ]
   },
   {
+    "wire_name": "get_session_repositories",
+    "path": [
+      "sessions",
+      "repositories"
+    ],
+    "verb": "get",
+    "description": "List the repositories checked out in a session's sandbox and what the session changed in each.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/repositories",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what a coding session changed in each repository",
+        "command": "everruns sessions repositories get session_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "list_session_resources",
     "path": [
       "sessions",
