@@ -115,6 +115,8 @@ pub struct Node {
     pub gateway: std::sync::OnceLock<Arc<crate::gateway::Gateway>>,
     /// Sessions whose move this leader is finishing.
     moving: Mutex<HashSet<SessionId>>,
+    /// Ships the committed log to the object store while this node leads.
+    shipper: crate::ship::Shipper,
     /// The cell's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
@@ -125,6 +127,7 @@ impl Node {
     pub async fn start(cfg: NodeConfig, host: Arc<dyn Host>) -> anyhow::Result<Arc<Self>> {
         let shared = Shared::new(cfg.store.clone(), cfg.cell);
         let wal = Wal::open(cfg.data_dir.join("wal"))?;
+        let (shared_store, ship_wal) = (cfg.store.clone(), wal.clone());
         let sm = StateMachine::open(cfg.data_dir.join("snapshots"), shared.clone())?;
         let config = Config {
             cluster_name: format!("cell-{}", cfg.cell),
@@ -196,6 +199,7 @@ impl Node {
                 load: Mutex::default(),
                 gateway: std::sync::OnceLock::new(),
                 moving: Mutex::default(),
+                shipper: crate::ship::Shipper::new(shared_store, cfg.cell, ship_wal),
                 members: parking_lot::RwLock::new(cfg.members.clone()),
                 cfg,
             }
@@ -237,11 +241,31 @@ impl Node {
     }
 
     pub fn spawn_loops(self: &Arc<Self>) {
+        tokio::spawn(self.clone().ship_loop());
         tokio::spawn(self.clone().scheduler_loop());
         tokio::spawn(self.clone().liveness_loop());
         tokio::spawn(self.clone().unload_loop());
         tokio::spawn(self.clone().register_loop());
         tokio::spawn(self.clone().rebalance_loop());
+    }
+
+    /// While this node leads: ship the committed log to the object store
+    /// (see `ship`).
+    async fn ship_loop(self: Arc<Self>) {
+        let mut tick = tokio::time::interval(crate::ship::SHIP_EVERY);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            if !self.is_leader() {
+                self.shipper.reset();
+                continue;
+            }
+            let applied = *self.shared.applied.borrow();
+            self.shipper.observe(applied);
+            if let Err(error) = self.shipper.ship(applied).await {
+                tracing::warn!(cell = self.cfg.cell, %error, "log shipping failed; retrying");
+            }
+        }
     }
 
     /// On the directory cell's leader: move work from the busiest cell to
@@ -755,6 +779,11 @@ impl Node {
         let mut backoff = Duration::from_millis(10);
         loop {
             let attempt = if self.is_leader() {
+                if self.shipper.behind() && admits(&command) {
+                    // Shipping is behind its bound: new work waits (callers
+                    // retry a frozen session) so the loss window holds.
+                    return Ok((Response::Frozen, 0));
+                }
                 self.batcher.submit(command.clone()).await
             } else {
                 match self.leader().and_then(|id| self.member_addr(id)) {
@@ -1322,5 +1351,18 @@ fn release_free_pages() {
     // SAFETY: malloc_trim only releases free heap pages.
     unsafe {
         libc::malloc_trim(0);
+    }
+}
+
+/// Whether `command` admits new work (a new session or new input), which
+/// waits while log shipping is behind. Work already admitted keeps going.
+fn admits(command: &Command) -> bool {
+    use everruns::hosting::spi::session_commands::SessionCommand;
+    match command {
+        Command::Host { command, .. } => matches!(
+            command,
+            SessionCommand::Create { .. } | SessionCommand::Admit { .. }
+        ),
+        _ => false,
     }
 }

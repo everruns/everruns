@@ -428,6 +428,15 @@ impl Shared {
     }
 }
 
+/// An archived snapshot copy (`Store::put_snapshot`) as the cell state it
+/// holds.
+pub fn decode_archived(bytes: &[u8]) -> anyhow::Result<CellState> {
+    let stored: StoredSnapshot = serde_json::from_slice(bytes)?;
+    let mut state: CellState = serde_json::from_slice(&stored.data)?;
+    state.resolve_definitions();
+    Ok(state)
+}
+
 #[derive(Serialize, Deserialize)]
 struct StoredSnapshot {
     meta: SnapshotMeta<NodeId, openraft::BasicNode>,

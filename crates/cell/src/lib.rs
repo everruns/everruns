@@ -34,6 +34,7 @@ pub mod network;
 pub mod node;
 pub mod prof;
 pub mod prom;
+pub mod ship;
 pub mod sm;
 pub mod state;
 pub mod store;

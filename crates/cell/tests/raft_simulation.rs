@@ -10,6 +10,12 @@
 //! - nothing appears that no client wrote;
 //! - no term ever had two leaders.
 //!
+//! The leader also ships the committed log to an object store while the
+//! faults run. At the end every node is lost at once, and the cell is
+//! rebuilt from the store alone (archived snapshot plus shipped log): every
+//! acknowledged write the shipper had reached is in the rebuilt state, and
+//! nothing else that nobody wrote.
+//!
 //! The fault schedule comes from the seed. The interleaving does not
 //! replay bit for bit (openraft draws its own election timeouts and the
 //! fsyncs run on blocking threads); exact replay needs a simulated runtime,
@@ -22,6 +28,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use everruns::SessionId;
+use everruns_cell::ship::Shipper;
 use everruns_cell::sm::{Shared, StateMachine};
 use everruns_cell::state::{Command, Response};
 use everruns_cell::store::Store;
@@ -189,6 +196,9 @@ struct Cell {
     root: tempfile::TempDir,
     router: Arc<Router>,
     shared: Mutex<HashMap<NodeId, Arc<Shared>>>,
+    /// The fleet's object store, shared by every node.
+    store: Store,
+    shippers: Mutex<HashMap<NodeId, Arc<Shipper>>>,
     /// (term, leader) pairs every node ever reported.
     leaders: Arc<Mutex<BTreeMap<u64, BTreeSet<NodeId>>>>,
 }
@@ -199,8 +209,12 @@ impl Cell {
     }
 
     async fn start(&self, node: NodeId) {
-        let shared = Shared::new(Store::open("memory:///").unwrap(), 0);
+        let shared = Shared::new(self.store.clone(), 0);
         let wal = Wal::open(self.dir(node).join("wal")).unwrap();
+        self.shippers.lock().insert(
+            node,
+            Arc::new(Shipper::new(self.store.clone(), 0, wal.clone())),
+        );
         let sm = StateMachine::open(self.dir(node).join("snapshots"), shared.clone()).unwrap();
         let config = Config {
             cluster_name: "sim".into(),
@@ -264,9 +278,10 @@ impl Cell {
         self.router.rafts.lock().get(&node).cloned()
     }
 
-    /// Write through whichever node says it leads. `Some(true)`: the cell
-    /// acknowledged it; `None`: the outcome is unknown.
-    async fn write(&self, command: Command, rng: &mut Rng) -> Option<bool> {
+    /// Write through whichever node says it leads. `Some(Some(index))`: the
+    /// cell acknowledged it at that log index; `None`: the outcome is
+    /// unknown.
+    async fn write(&self, command: Command, rng: &mut Rng) -> Option<Option<u64>> {
         let up = self.up();
         if up.is_empty() {
             return None;
@@ -279,9 +294,31 @@ impl Cell {
             tokio::time::timeout(Duration::from_millis(1500), raft.client_write(command)).await;
         match result {
             // A retry of a write that already landed answers Duplicate.
-            Ok(Ok(response)) => Some(matches!(response.data, Response::Ok | Response::Duplicate)),
+            Ok(Ok(response)) => Some(
+                matches!(response.data, Response::Ok | Response::Duplicate)
+                    .then_some(response.log_id.index),
+            ),
             _ => None,
         }
+    }
+
+    /// One shipping round, on whichever node leads (as `Node::ship_loop`).
+    async fn ship(&self) -> Option<u64> {
+        for node in self.up() {
+            let raft = self.raft(node)?;
+            let shipper = self.shippers.lock().get(&node).cloned()?;
+            if raft.metrics().borrow().current_leader != Some(node) {
+                shipper.reset();
+                continue;
+            }
+            let applied = raft
+                .metrics()
+                .borrow()
+                .last_applied
+                .map_or(0, |id| id.index);
+            return shipper.ship(applied).await.ok();
+        }
+        None
     }
 
     fn directory(&self, node: NodeId) -> HashMap<SessionId, u32> {
@@ -293,8 +330,12 @@ impl Cell {
 
 async fn run(seed: u64) {
     let mut rng = Rng::new(seed);
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::open(&format!("file://{}", root.path().join("store").display())).unwrap();
     let cell = Cell {
-        root: tempfile::tempdir().unwrap(),
+        store,
+        shippers: Mutex::default(),
+        root,
         router: Arc::new(Router {
             rafts: Mutex::default(),
             cut: Mutex::default(),
@@ -316,7 +357,16 @@ async fn run(seed: u64) {
     let mut kills = 0;
     let mut written: HashMap<SessionId, u32> = HashMap::new();
     let mut acked: HashMap<SessionId, u32> = HashMap::new();
+    let mut acked_at: Vec<(SessionId, u32, u64)> = Vec::new();
+    let mut shipped = 0u64;
+    let mut last_ship = tokio::time::Instant::now();
     for step in 0..400u32 {
+        if last_ship.elapsed() >= everruns_cell::ship::SHIP_EVERY {
+            last_ship = tokio::time::Instant::now();
+            if let Some(through) = cell.ship().await {
+                shipped = shipped.max(through);
+            }
+        }
         // One fault decision per step.
         match rng.below(100) {
             0..=3 => {
@@ -358,8 +408,9 @@ async fn run(seed: u64) {
                 previous: 0,
             };
             if let Some(outcome) = cell.write(command, &mut rng).await {
-                if outcome {
+                if let Some(index) = outcome {
                     acked.insert(session, target);
+                    acked_at.push((session, target, index));
                 }
                 break;
             }
@@ -367,6 +418,40 @@ async fn run(seed: u64) {
         }
         tokio::time::sleep(Duration::from_millis(rng.below(30))).await;
     }
+
+    // Disaster: every node is lost at once. Rebuild from the store alone.
+    let up = cell.up();
+    for node in &up {
+        cell.kill(*node).await;
+    }
+    let restored = everruns_cell::ship::restore(&cell.store, 0).await.unwrap();
+    assert!(
+        restored.last >= shipped,
+        "seed {seed}: restore reached {} of {shipped} shipped",
+        restored.last
+    );
+    let mut covered = 0;
+    for (session, target, index) in &acked_at {
+        if *index <= shipped {
+            covered += 1;
+            assert_eq!(
+                restored.state.directory.get(session).map(|p| p.cell),
+                Some(*target),
+                "seed {seed}: restore lost shipped write {session} at {index}"
+            );
+        }
+    }
+    for (session, placed) in &restored.state.directory {
+        assert_eq!(
+            written.get(session),
+            Some(&placed.cell),
+            "seed {seed}: restore holds {session}, which nobody wrote"
+        );
+    }
+    eprintln!(
+        "seed {seed}: restored through {} from a snapshot at {}, {covered} acknowledged writes shipped",
+        restored.last, restored.snapshot
+    );
 
     // Heal: everything up, nothing lost or cut, then let the cell settle.
     cell.router.cut.lock().clear();

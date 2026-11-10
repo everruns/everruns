@@ -1085,6 +1085,17 @@ the storage decision below requires. What it checks and what it found:
   image from; an abandoned move takes the session back two generations up,
   and a prepared copy the directory never committed is dropped. The kill
   run with 300 sessions, 12 kills (7 of a leader) and 48 live moves passes.
+- **Log shipping** (`crates/cell/src/ship.rs`): the leader ships committed
+  entries to the object store every second, a new leader resumes after
+  the highest shipped index, and new sessions and input wait (callers see
+  a frozen session and retry) while shipping is more than 5 s behind.
+  Restore rebuilds a cell from the newest archived snapshot plus the
+  shipped log after it, and refuses a log with a hole. The cell simulation
+  now ships while the faults run, then loses every node at once and
+  restores from the store: on all 12 seeds every acknowledged write the
+  shipper had reached is in the rebuilt state. Still to come with plan
+  step 9: incarnations for a rebuilt cell, shipping before an at-most-once
+  tool runs, and retention tied to restore points.
 - **Epochs and fencing model** (`Epochs` in [models.md](models.md)): the
   cell authority's claim, append, progress and release rules, with
   executors restarting under the same name, late and duplicated messages,
@@ -1095,7 +1106,7 @@ the storage decision below requires. What it checks and what it found:
 
 Still open in step 5: exact-replay simulation of the whole node (a
 simulated runtime, so a seed replays bit for bit, with crash points inside
-moves and epochs), spend allowances and log shipping.
+moves and epochs) and spend allowances.
 
 ### Corrections after the architecture review (2026-11-09)
 

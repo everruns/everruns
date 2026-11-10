@@ -288,6 +288,56 @@ impl Store {
         Ok(())
     }
 
+    /// Every archived snapshot copy of `cell`, as stored.
+    pub async fn snapshots(&self, cell: u32) -> anyhow::Result<Vec<bytes::Bytes>> {
+        let dir = self.key(&format!("cells/{cell}/snapshots"));
+        let copies: Vec<_> = self.inner.list(Some(&dir)).try_collect().await?;
+        let mut out = Vec::with_capacity(copies.len());
+        for meta in copies {
+            out.push(self.get(meta.location).await?);
+        }
+        Ok(out)
+    }
+
+    /// Ship committed log entries `first..=last` of `cell` (see `ship`).
+    /// Idempotent: the same range always holds the same entries.
+    pub async fn put_log(
+        &self,
+        cell: u32,
+        first: u64,
+        last: u64,
+        bytes: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        self.put(self.log_key(cell, first, last), bytes).await
+    }
+
+    /// The shipped ranges of `cell`'s log, sorted by first index.
+    pub async fn shipped(&self, cell: u32) -> anyhow::Result<Vec<(u64, u64)>> {
+        let dir = self.key(&format!("cells/{cell}/log"));
+        let objects: Vec<_> = self.inner.list(Some(&dir)).try_collect().await?;
+        let mut ranges: Vec<(u64, u64)> = objects
+            .iter()
+            .filter_map(|meta| {
+                let (first, last) = meta
+                    .location
+                    .filename()?
+                    .strip_suffix(".json")?
+                    .split_once('-')?;
+                Some((first.parse().ok()?, last.parse().ok()?))
+            })
+            .collect();
+        ranges.sort_unstable();
+        Ok(ranges)
+    }
+
+    pub async fn get_log(&self, cell: u32, first: u64, last: u64) -> anyhow::Result<bytes::Bytes> {
+        self.get(self.log_key(cell, first, last)).await
+    }
+
+    fn log_key(&self, cell: u32, first: u64, last: u64) -> Path {
+        self.key(&format!("cells/{cell}/log/{first:020}-{last:020}.json"))
+    }
+
     async fn put(&self, key: Path, bytes: Vec<u8>) -> anyhow::Result<()> {
         let payload = PutPayload::from(bytes);
         retry(|| async { self.inner.put(&key, payload.clone()).await.map(|_| ()) }).await
