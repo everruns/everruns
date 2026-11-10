@@ -352,6 +352,61 @@ fn instructions(
     response
 }
 
+/// Add the DBSC endpoints to the auth router and wrap it so every new browser
+/// session is offered binding and sign-out revokes a bound session. Refresh
+/// shares the classic refresh limiter; registration is single-use per token.
+pub fn mount(auth_routes: axum::Router, state: BuiltinAuthBackend) -> axum::Router {
+    use axum::routing::post;
+    let endpoints = axum::Router::new()
+        .route(REGISTER_PATH, post(register))
+        .merge(
+            axum::Router::new()
+                .route(REFRESH_PATH, post(refresh))
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    super::routes::rate_limit_refresh,
+                )),
+        )
+        .with_state(state.clone());
+    auth_routes
+        .merge(endpoints)
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            revoke_on_logout,
+        ))
+        .layer(axum::middleware::from_fn(offer_registration))
+}
+
+/// Sign-out for a device-bound browser, which holds no refresh token: the
+/// DBSC session cookie names the row. Revoking it ends the browser's DBSC
+/// session at its next refresh. Best-effort, like the rest of logout.
+async fn revoke_on_logout(
+    State(state): State<BuiltinAuthBackend>,
+    jar: CookieJar,
+    request: Request,
+    next: Next,
+) -> Response {
+    let logout = request.uri().path() == "/v1/auth/logout";
+    if logout
+        && let Some(cookie) = jar.get(SESSION_COOKIE)
+        && let Err(e) = state
+            .db
+            .delete_refresh_token_by_dbsc_id(cookie.value())
+            .await
+    {
+        tracing::warn!(error = %e, "failed to revoke device-bound session on logout");
+    }
+    let response = next.run(request).await;
+    if logout {
+        return (
+            jar.remove(Cookie::build(SESSION_COOKIE).path("/")),
+            response,
+        )
+            .into_response();
+    }
+    response
+}
+
 /// POST /v1/auth/dbsc/start: bind the request's new refresh token to the
 /// browser's device key.
 pub async fn register(

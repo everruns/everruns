@@ -376,7 +376,7 @@ async fn rate_limit_register(
 }
 
 /// Rate limit middleware for refresh endpoint
-async fn rate_limit_refresh(
+pub(crate) async fn rate_limit_refresh(
     State(state): State<BuiltinAuthBackend>,
     req: Request<Body>,
     next: Next,
@@ -447,18 +447,6 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
         .merge(refresh_route)
         .merge(recovery_routes)
         .merge(oauth_routes)
-        // Device Bound Session Credentials. The refresh endpoint shares the
-        // refresh limiter; registration is single-use per token.
-        .route(super::dbsc::REGISTER_PATH, post(super::dbsc::register))
-        .merge(
-            Router::new()
-                .route(super::dbsc::REFRESH_PATH, post(super::dbsc::refresh))
-                .route_layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    rate_limit_refresh,
-                )),
-        )
-        .layer(middleware::from_fn(super::dbsc::offer_registration))
         .with_state(state)
 }
 
@@ -1036,20 +1024,8 @@ pub async fn logout(State(state): State<BuiltinAuthBackend>, jar: CookieJar) -> 
             tracing::warn!(error = %e, "failed to revoke refresh token on logout");
         }
     }
-    // A device-bound browser holds no refresh token; its row is named by the
-    // DBSC session cookie instead. Revoking it ends the browser's DBSC session
-    // at its next refresh.
-    if let Some(cookie) = jar.get(super::dbsc::SESSION_COOKIE)
-        && let Err(e) = state
-            .db
-            .delete_refresh_token_by_dbsc_id(cookie.value())
-            .await
-    {
-        tracing::warn!(error = %e, "failed to revoke device-bound session on logout");
-    }
     jar.remove(Cookie::build("access_token").path("/"))
         .remove(Cookie::build("refresh_token").path("/"))
-        .remove(Cookie::build(super::dbsc::SESSION_COOKIE).path("/"))
 }
 
 /// GET /v1/auth/me - Current user info, with `token_scope` for a PAT. Sets the
