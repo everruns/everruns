@@ -9358,7 +9358,7 @@
           ]
         },
         "capabilities": {
-          "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent.",
+          "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building TurnAgent.",
           "example": [
             {
               "config": {},
@@ -9503,7 +9503,7 @@
           ]
         },
         "system_prompt": {
-          "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent.",
+          "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building TurnAgent.",
           "example": "You are debugging a production incident. Be concise and cite log lines verbatim.",
           "type": [
             "string",

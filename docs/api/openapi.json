@@ -45891,7 +45891,7 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent.",
+            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building TurnAgent.",
             "example": [
               {
                 "config": {},
@@ -46036,7 +46036,7 @@
               "string",
               "null"
             ],
-            "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent.",
+            "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building TurnAgent.",
             "example": "You are debugging a production incident. Be concise and cite log lines verbatim."
           },
           "tags": {
@@ -63801,7 +63801,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+                  "description": "Blueprint ID. When set, reason_activity and act_activity build TurnAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
                   "example": "blueprint_research_pack"
                 },
                 "capabilities": {
@@ -63809,7 +63809,7 @@
                   "items": {
                     "$ref": "#/components/schemas/AgentCapabilityConfig"
                   },
-                  "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
+                  "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building TurnAgent."
                 },
                 "created_at": {
                   "type": "string",
@@ -64092,7 +64092,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
+                  "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building TurnAgent."
                 },
                 "tags": {
                   "type": "array",
@@ -64816,7 +64816,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+                      "description": "Blueprint ID. When set, reason_activity and act_activity build TurnAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
                       "example": "blueprint_research_pack"
                     },
                     "capabilities": {
@@ -64824,7 +64824,7 @@
                       "items": {
                         "$ref": "#/components/schemas/AgentCapabilityConfig"
                       },
-                      "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
+                      "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building TurnAgent."
                     },
                     "created_at": {
                       "type": "string",
@@ -65107,7 +65107,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
+                      "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building TurnAgent."
                     },
                     "tags": {
                       "type": "array",
@@ -72046,7 +72046,7 @@
               "string",
               "null"
             ],
-            "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+            "description": "Blueprint ID. When set, reason_activity and act_activity build TurnAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
             "example": "blueprint_research_pack"
           },
           "capabilities": {
@@ -72054,7 +72054,7 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
+            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building TurnAgent."
           },
           "created_at": {
             "type": "string",
@@ -72337,7 +72337,7 @@
               "string",
               "null"
             ],
-            "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
+            "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building TurnAgent."
           },
           "tags": {
             "type": "array",
@@ -83993,7 +83993,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+                "description": "Blueprint ID. When set, reason_activity and act_activity build TurnAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
                 "example": "blueprint_research_pack"
               },
               "capabilities": {
@@ -84001,7 +84001,7 @@
                 "items": {
                   "$ref": "#/components/schemas/AgentCapabilityConfig"
                 },
-                "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
+                "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building TurnAgent."
               },
               "created_at": {
                 "type": "string",
@@ -84284,7 +84284,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
+                "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building TurnAgent."
               },
               "tags": {
                 "type": "array",
