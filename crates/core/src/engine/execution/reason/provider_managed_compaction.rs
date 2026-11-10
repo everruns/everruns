@@ -314,14 +314,11 @@ fn preflight_fallback_reason(
 ) -> Option<&'static str> {
     assembled.model.provider_managed_reduction_option.as_ref()?;
     if assembled
-        .runtime_agent
+        .turn_agent
         .conversation_context
         .as_deref()
         .is_some_and(|context| !context.is_empty())
-        || assembled
-            .runtime_agent
-            .conversation_context_update
-            .is_some()
+        || assembled.turn_agent.conversation_context_update.is_some()
         || super::context_updates::has_history(&assembled.messages)
     {
         return Some("dynamic_conversation_context");
@@ -333,7 +330,7 @@ fn preflight_fallback_reason(
         &assembled.model.model,
     );
     let mut config =
-        crate::engine::llm_conversions::llm_call_config_from_agent(&assembled.runtime_agent);
+        crate::engine::llm_conversions::llm_call_config_from_agent(&assembled.turn_agent);
     config.reasoning_effort = controls.reasoning_effort;
     assembled
         .model
@@ -407,7 +404,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                     && fallback.model.model == assembled.model.model
                     && fallback.model.provider_managed_reduction_option.is_none() =>
             {
-                fallback.runtime_agent.driver_options.insert(
+                fallback.turn_agent.driver_options.insert(
                     "everruns/provider_managed_reduction_fallback".to_string(),
                     serde_json::json!({"reason":reason}),
                 );
@@ -485,7 +482,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
             .await
         {
             Ok(mut smaller) => {
-                smaller.runtime_agent.max_tokens = Some(max_tokens);
+                smaller.turn_agent.max_tokens = Some(max_tokens);
                 let record = crate::engine::credit_shortfall::Record {
                     emitter: atom.event_emitter.as_ref(),
                     session_id,
@@ -563,7 +560,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                 model,
                 "ReasonAtom: retrying provider capability rejection with legacy history"
             );
-            fallback.runtime_agent.driver_options.insert(
+            fallback.turn_agent.driver_options.insert(
                 "everruns/provider_managed_reduction_fallback".to_string(),
                 serde_json::json!({"reason":"provider_capability_rejected"}),
             );

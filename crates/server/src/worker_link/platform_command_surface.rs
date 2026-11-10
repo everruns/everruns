@@ -458,6 +458,7 @@ mod tests {
             mcp_events: true,
             reports: true,
             machine_payments: true,
+            engine_hosting: false,
             agent_change_reasons_required: false,
             integrations: Default::default(),
         }
@@ -484,6 +485,7 @@ mod tests {
                 mcp_events: true,
                 reports: true,
                 machine_payments: true,
+                engine_hosting: false,
                 agent_change_reasons_required: false,
                 integrations: Default::default(),
             },

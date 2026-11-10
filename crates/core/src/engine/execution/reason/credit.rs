@@ -77,11 +77,11 @@ pub(crate) async fn before_call(
             data.next_check_at = Some(next);
             data.balance_checked = Some(true);
             record.emit(data).await;
-            BeforeCall::Done(Box::new(Ok(quiet(assembled.runtime_agent.max_iterations))))
+            BeforeCall::Done(Box::new(Ok(quiet(assembled.turn_agent.max_iterations))))
         }
         // A replayed check: the next one is already queued and recorded.
         Wait::Queued { .. } => {
-            BeforeCall::Done(Box::new(Ok(quiet(assembled.runtime_agent.max_iterations))))
+            BeforeCall::Done(Box::new(Ok(quiet(assembled.turn_agent.max_iterations))))
         }
         // The refusal path records giving up, as for a refused request.
         Wait::Expired { .. } | Wait::Unavailable => {

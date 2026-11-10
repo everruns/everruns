@@ -43,7 +43,7 @@ Precedence when a session starts, first match wins:
 
 So the same agent can be run on a different harness for one session without editing the agent, while changing it for good means updating the agent.
 
-For the design rationale (why three configuration layers exist), see [Concepts](/getting-started/concepts/#runtimeagent).
+For the design rationale (why three configuration layers exist), see [Concepts](/getting-started/concepts/#turnagent).
 
 ## Built-in harnesses
 
@@ -108,7 +108,7 @@ The system prompt is built from three layers, each wrapped in XML tags:
 
 ![Capability Hierarchy](../images/features/capability-hierarchy.svg)
 
-The merge is associative: a chain of inherited harnesses produces the same `RuntimeAgent` as a single pre-merged harness.
+The merge is associative: a chain of inherited harnesses produces the same `TurnAgent` as a single pre-merged harness.
 
 ### The base system prompt is optional
 

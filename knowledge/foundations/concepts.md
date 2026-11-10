@@ -12,7 +12,7 @@ Everruns is a durable agentic harness engine. This document describes the core e
 
 ## High Level
 
-Harness and Agent are **configuration containers**: they hold capabilities and define behavior. Each Agent stores the Harness it runs on by default. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
+Harness and Agent are **configuration containers**: they hold capabilities and define behavior. Each Agent stores the Harness it runs on by default. At runtime, their configuration merges into a **TurnAgent** which executes inside a Session.
 
 ```mermaid
 graph LR
@@ -20,11 +20,11 @@ graph LR
     Harness -->|has| Capability
     Agent -->|has| Capability
 
-    Harness -.->|assembles| RuntimeAgent
-    Agent -.->|assembles| RuntimeAgent
-    Capability -.->|assembles| RuntimeAgent
+    Harness -.->|assembles| TurnAgent
+    Agent -.->|assembles| TurnAgent
+    Capability -.->|assembles| TurnAgent
 
-    RuntimeAgent -.->|executes in| Session
+    TurnAgent -.->|executes in| Session
 
     AgentChannel -->|exposes| Agent
     AgentChannel -.->|creates| Session
@@ -35,13 +35,13 @@ graph LR
     classDef deploy fill:#e8daef,stroke:#7d3c98,color:#4a235a
 
     class Harness,Agent,Capability config
-    class RuntimeAgent assembly
+    class TurnAgent assembly
     class Session runtime
     class AgentChannel deploy
 ```
 
 - **Solid arrows**: configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
-- **Dashed arrows**: runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
+- **Dashed arrows**: runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a TurnAgent (see [AgentConfigOverlay](#agentconfigoverlay))
 - **Purple**: deployment: an Agent Channel exposes an Agent on an external channel and creates sessions from incoming messages. It replaced the App, which bound a Harness and an Agent to a channel and is now frozen compatibility data — see [Archived Apps](../integrations/apps.md)
 
 ### Harness
@@ -102,7 +102,7 @@ Modular, reusable configuration unit that extends harness, agent, or session beh
 
 ### AgentConfigOverlay
 
-Composable configuration layer shared by Harness, Agent, and Session. Each entity produces an overlay via `From<&T>`; overlays fold bottom-up into a single effective config that `RuntimeAgentBuilder::from_overlay()` resolves into a RuntimeAgent.
+Composable configuration layer shared by Harness, Agent, and Session. Each entity produces an overlay via `From<&T>`; overlays fold bottom-up into a single effective config that `TurnAgentBuilder::from_overlay()` resolves into a TurnAgent.
 
 See `crates/contracts/src/runtime/config_layer.rs` for implementation.
 
@@ -134,13 +134,13 @@ Harnesses support single-parent inheritance. An Agent either stores a pinned lea
                                                        ▼
                                               effective_overlay
                                                        │
-                                        RuntimeAgentBuilder::from_overlay()
+                                        TurnAgentBuilder::from_overlay()
                                                        │
                                                        ▼
-                                                  RuntimeAgent
+                                                  TurnAgent
 ```
 
-The fold is associative, a pre-merged harness chain (single overlay) produces the same RuntimeAgent as the full chain (N overlays). This lets gRPC-backed stores return a single pre-merged harness while DB-backed stores return the raw chain.
+The fold is associative, a pre-merged harness chain (single overlay) produces the same TurnAgent as the full chain (N overlays). This lets gRPC-backed stores return a single pre-merged harness while DB-backed stores return the raw chain.
 
 ### Tool
 

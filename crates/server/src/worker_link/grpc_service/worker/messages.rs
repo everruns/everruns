@@ -226,7 +226,7 @@ impl WorkerServiceImpl {
         };
 
         // Append org-scoped tool definitions first so scoped definitions win on
-        // name collisions when RuntimeAgentBuilder deduplicates with last-wins.
+        // name collisions when TurnAgentBuilder deduplicates with last-wins.
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
             use crate::domains::mcp_servers::user_layer::{
                 UserMcpTurn, merge_turn_scoped_mcp_servers, user_mcp_layer,

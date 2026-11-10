@@ -42,6 +42,8 @@ pub struct GrpcActorLeaseStore {
     /// UNIMPLEMENTED (a server from before batched renewal): renewals then go
     /// one per call, as before.
     no_batch_renewal: Arc<AtomicBool>,
+    /// Where leases the control plane routes to the Engine are recorded.
+    engine_routes: Option<Arc<crate::engine_sessions::EngineRoutes>>,
 }
 
 impl GrpcActorLeaseStore {
@@ -49,7 +51,14 @@ impl GrpcActorLeaseStore {
         Self {
             client,
             no_batch_renewal: Arc::default(),
+            engine_routes: None,
         }
+    }
+
+    /// Record leases routed to the Engine (`LeasedActor.engine`) in `routes`.
+    pub fn with_engine_routes(mut self, routes: Arc<crate::engine_sessions::EngineRoutes>) -> Self {
+        self.engine_routes = Some(routes);
+        self
     }
 
     /// Renew each lease with its own call, concurrently.
@@ -105,10 +114,16 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
                 let session_id = Uuid::parse_str(&session_id.value).map_err(|e| {
                     AgentLoopError::store(format!("Invalid leased actor session_id: {e}"))
                 })?;
+                let fence = fence_from_wire(actor.fence)?;
+                if actor.engine
+                    && let Some(routes) = &self.engine_routes
+                {
+                    routes.route(SessionId::from_uuid(session_id), fence);
+                }
                 Ok(LeasedActor {
                     session_id: SessionId::from_uuid(session_id),
                     org_id: actor.org_id,
-                    fence: fence_from_wire(actor.fence)?,
+                    fence,
                     inbox_seq: actor.inbox_seq,
                     cancel_inbox_seq: cancel_target(actor.cancel_requested, actor.cancel_inbox_seq),
                     consumed_seq: actor.consumed_seq,

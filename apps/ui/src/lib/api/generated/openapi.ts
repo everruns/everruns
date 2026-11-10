@@ -14799,7 +14799,7 @@ export interface components {
       agent_name?: string | null;
       /**
        * @description Session-level capabilities (additive to agent capabilities).
-       *     Applied after agent capabilities when building RuntimeAgent.
+       *     Applied after agent capabilities when building TurnAgent.
        * @example [
        *       {
        *         "config": {},
@@ -14901,7 +14901,7 @@ export interface components {
       source?: string | null;
       /**
        * @description Optional session-level system prompt override.
-       *     Prepended to the agent's system prompt when building RuntimeAgent.
+       *     Prepended to the agent's system prompt when building TurnAgent.
        * @example You are debugging a production incident. Be concise and cite log lines verbatim.
        */
       system_prompt?: string | null;
@@ -24697,14 +24697,14 @@ export interface components {
          */
         blueprint_config?: Record<string, unknown> | null;
         /**
-         * @description Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
+         * @description Blueprint ID. When set, reason_activity and act_activity build TurnAgent
          *     from the blueprint definition instead of from harness_id/agent_id.
          * @example blueprint_research_pack
          */
         blueprint_id?: string | null;
         /**
          * @description Session-level capabilities (additive to agent capabilities).
-         *     Applied after agent capabilities when building RuntimeAgent.
+         *     Applied after agent capabilities when building TurnAgent.
          */
         capabilities?: components["schemas"]["AgentCapabilityConfig"][];
         /**
@@ -24889,7 +24889,7 @@ export interface components {
         status: components["schemas"]["SessionStatus"];
         /**
          * @description Session-level system prompt override.
-         *     Prepended to the agent's system prompt when building RuntimeAgent.
+         *     Prepended to the agent's system prompt when building TurnAgent.
          */
         system_prompt?: string | null;
         /**
@@ -25309,14 +25309,14 @@ export interface components {
          */
         blueprint_config?: Record<string, unknown> | null;
         /**
-         * @description Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
+         * @description Blueprint ID. When set, reason_activity and act_activity build TurnAgent
          *     from the blueprint definition instead of from harness_id/agent_id.
          * @example blueprint_research_pack
          */
         blueprint_id?: string | null;
         /**
          * @description Session-level capabilities (additive to agent capabilities).
-         *     Applied after agent capabilities when building RuntimeAgent.
+         *     Applied after agent capabilities when building TurnAgent.
          */
         capabilities?: components["schemas"]["AgentCapabilityConfig"][];
         /**
@@ -25501,7 +25501,7 @@ export interface components {
         status: components["schemas"]["SessionStatus"];
         /**
          * @description Session-level system prompt override.
-         *     Prepended to the agent's system prompt when building RuntimeAgent.
+         *     Prepended to the agent's system prompt when building TurnAgent.
          */
         system_prompt?: string | null;
         /**
@@ -29261,14 +29261,14 @@ export interface components {
        */
       blueprint_config?: Record<string, unknown> | null;
       /**
-       * @description Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
+       * @description Blueprint ID. When set, reason_activity and act_activity build TurnAgent
        *     from the blueprint definition instead of from harness_id/agent_id.
        * @example blueprint_research_pack
        */
       blueprint_id?: string | null;
       /**
        * @description Session-level capabilities (additive to agent capabilities).
-       *     Applied after agent capabilities when building RuntimeAgent.
+       *     Applied after agent capabilities when building TurnAgent.
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
       /**
@@ -29453,7 +29453,7 @@ export interface components {
       status: components["schemas"]["SessionStatus"];
       /**
        * @description Session-level system prompt override.
-       *     Prepended to the agent's system prompt when building RuntimeAgent.
+       *     Prepended to the agent's system prompt when building TurnAgent.
        */
       system_prompt?: string | null;
       /**
@@ -35904,14 +35904,14 @@ export interface components {
        */
       blueprint_config?: Record<string, unknown> | null;
       /**
-       * @description Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
+       * @description Blueprint ID. When set, reason_activity and act_activity build TurnAgent
        *     from the blueprint definition instead of from harness_id/agent_id.
        * @example blueprint_research_pack
        */
       blueprint_id?: string | null;
       /**
        * @description Session-level capabilities (additive to agent capabilities).
-       *     Applied after agent capabilities when building RuntimeAgent.
+       *     Applied after agent capabilities when building TurnAgent.
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
       /**
@@ -36096,7 +36096,7 @@ export interface components {
       status: components["schemas"]["SessionStatus"];
       /**
        * @description Session-level system prompt override.
-       *     Prepended to the agent's system prompt when building RuntimeAgent.
+       *     Prepended to the agent's system prompt when building TurnAgent.
        */
       system_prompt?: string | null;
       /**

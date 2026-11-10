@@ -37,7 +37,7 @@ Capabilities can be attached at three layers, and the layers stack additively:
 - **Agent**: capabilities for this specific role.
 - **Session**: extras for this one conversation.
 
-See [Why three configuration layers](/getting-started/concepts/#runtimeagent) for how the merge works.
+See [Why three configuration layers](/getting-started/concepts/#turnagent) for how the merge works.
 
 ## Browse the catalog
 

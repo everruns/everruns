@@ -6,7 +6,7 @@ appliesTo: [platform, cloud]
 
 A harness is the base environment for sessions: a system prompt baseline, a default model, and pre-bundled capabilities. Create a custom one when you have a set of defaults you want to share across many agents.
 
-For the design rationale, see [Why three configuration layers](/getting-started/concepts/#runtimeagent).
+For the design rationale, see [Why three configuration layers](/getting-started/concepts/#turnagent).
 
 ## Create a harness via API
 
@@ -77,7 +77,7 @@ everruns sessions create --harness research-assistant --agent agent_...
 
 ## Inheritance
 
-Harnesses support single-parent inheritance, a child harness can extend another, layering on extra capabilities or a longer system prompt. The merge is associative: a chain of N harnesses produces the same `RuntimeAgent` as a single pre-merged harness.
+Harnesses support single-parent inheritance, a child harness can extend another, layering on extra capabilities or a longer system prompt. The merge is associative: a chain of N harnesses produces the same `TurnAgent` as a single pre-merged harness.
 
 This is useful when one team owns a base harness and other teams add their own specialisation on top.
 

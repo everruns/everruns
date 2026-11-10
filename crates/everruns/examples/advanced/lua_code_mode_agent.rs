@@ -99,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Inspect the model-facing tool list: the math tools are hidden.
     let ctx = runtime.load_context(session_id).await?;
-    let visible: Vec<&str> = ctx.runtime_agent.tools.iter().map(|t| t.name()).collect();
+    let visible: Vec<&str> = ctx.turn_agent.tools.iter().map(|t| t.name()).collect();
     println!("Model-visible tools: {visible:?}");
     assert!(visible.contains(&"lua"), "lua must stay directly callable");
     for hidden in ["add", "subtract", "multiply", "divide"] {
@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The hidden tools are still discoverable: their catalog is grafted onto the
     // `lua` tool description so a real model knows what `tools.*` to call.
     let lua_desc = ctx
-        .runtime_agent
+        .turn_agent
         .tools
         .iter()
         .find(|t| t.name() == "lua")

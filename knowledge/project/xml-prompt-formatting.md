@@ -112,14 +112,14 @@ let mut result = format!("<agent-instructions source=\"{}\">\n{}", source, body)
 result.push_str("\n</agent-instructions>");
 ```
 
-#### `RuntimeAgentBuilder::with_capabilities()` (runtime_agent.rs)
+#### `TurnAgentBuilder::with_capabilities()` (turn_agent.rs)
 
 Wraps the base system prompt in `<system-prompt>` tags when capabilities contribute prompts:
 
 ```rust
 if let Some(prefix) = collected.system_prompt_prefix() {
-    self.runtime_agent.system_prompt =
-        compose_system_prompt(&self.runtime_agent.system_prompt, Some(&prefix));
+    self.turn_agent.system_prompt =
+        compose_system_prompt(&self.turn_agent.system_prompt, Some(&prefix));
 }
 ```
 

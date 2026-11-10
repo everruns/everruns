@@ -63,7 +63,7 @@ impl ClaudeToolSearchCapability {
 ///
 /// This is the single source of truth for the native-Claude decision, consulted
 /// by `auto_tool_search`'s runtime dispatch (at capability-collection time) and
-/// by `RuntimeAgentBuilder::build` (when reconciling a hosted config with the
+/// by `TurnAgentBuilder::build` (when reconciling a hosted config with the
 /// model). Native Claude tool_search is an Anthropic Messages-API feature, so the
 /// lookup is against the Anthropic provider profile regardless of how the model
 /// is otherwise routed (a Claude model reached via OpenRouter/Bedrock has the

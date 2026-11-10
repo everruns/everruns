@@ -81,10 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let initial = runtime.load_context(session_id).await?;
     println!("before first turn:");
-    println!("  model: {}", initial.runtime_agent.model);
+    println!("  model: {}", initial.turn_agent.model);
     println!("  messages: {}", initial.messages.len());
     println!("  tools:");
-    for tool in &initial.runtime_agent.tools {
+    for tool in &initial.turn_agent.tools {
         println!("    - {}", tool.name());
     }
 
@@ -93,10 +93,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let after_turn = runtime.load_context(session_id).await?;
     println!("after first turn:");
-    println!("  model: {}", after_turn.runtime_agent.model);
+    println!("  model: {}", after_turn.turn_agent.model);
     println!("  messages: {}", after_turn.messages.len());
     println!("  tools:");
-    for tool in &after_turn.runtime_agent.tools {
+    for tool in &after_turn.turn_agent.tools {
         println!("    - {}", tool.name());
     }
 

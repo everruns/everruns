@@ -159,7 +159,7 @@ async fn turn_options(
         })
         .await
         .expect("turn context resolves")
-        .runtime_agent
+        .turn_agent
         .driver_options
 }
 

@@ -11,7 +11,7 @@
 //! Design decisions:
 //! - Capabilities are defined via the Capability trait for flexibility
 //! - CapabilityRegistry holds all available capability implementations
-//! - apply_capabilities() merges capability contributions into RuntimeAgent
+//! - apply_capabilities() merges capability contributions into TurnAgent
 //! - The agent-loop remains execution-focused; capabilities are applied before execution
 //! - System prompt sections use XML tags for clear boundaries between components.
 //!   This follows Anthropic's recommendation for multi-component prompts and reduces
@@ -28,7 +28,7 @@ use super::*;
 /// Registry that holds all available capability implementations.
 ///
 /// The registry provides access to capabilities by ID and allows
-/// applying multiple capabilities to build a RuntimeAgent.
+/// applying multiple capabilities to build a TurnAgent.
 ///
 /// # Example
 ///

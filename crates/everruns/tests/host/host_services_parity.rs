@@ -156,7 +156,7 @@ async fn host_capability_matches_direct_core_composition() {
     let turn = session.run("probe").await.unwrap();
 
     let direct_tool = direct
-        .runtime_agent
+        .turn_agent
         .tools
         .iter()
         .find(|tool| tool.name() == "probe")
@@ -169,7 +169,7 @@ async fn host_capability_matches_direct_core_composition() {
     assert_eq!(engine_tool.description, direct_tool.description());
     assert_eq!(&engine_tool.parameters, direct_tool.parameters());
 
-    assert!(direct.runtime_agent.system_prompt.contains(ADDITION));
+    assert!(direct.turn_agent.system_prompt.contains(ADDITION));
     assert!(context.instructions.contains(ADDITION));
 
     let direct_commands = direct_commands

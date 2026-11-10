@@ -10,7 +10,7 @@ tags:
 
 # Running platform sessions on the Everruns Engine
 
-Status: approved 2026-11-09; steps 1 to 3 implemented (see design.md "Step 3 measurements"), step 4 next. Part of [design.md](design.md).
+Status: approved 2026-11-09; steps 1 to 3 implemented (see design.md "Step 3 measurements"); step 4 implemented behind the `engine_hosting` org flag (see "Step 4 as built"). Part of [design.md](design.md).
 
 ## Question
 
@@ -91,6 +91,20 @@ This needs solving regardless of cells. Once it's done, v1 workers and v2 cells 
 
    This is the largest step. It is done when every platform feature runs through the Engine in production.
 5. **Cells reuse all of it.** The cell's `SessionHosting` and cell-local adapters supply the same bundle. Data plane v2 then gets every platform feature without per-feature work, and stages 2 and 3 in design.md shrink to the feature-specific state that has to live in the cell: sandbox records, schedules, detached calls.
+
+## Step 4 as built
+
+Workers run a session on the Engine when the control plane binds it: its organization has the `engine_hosting` flag and its agent compiles to a `RuntimeAgent` declaration. Every other lease runs on `WorkerRuntimeHost` as before. Code: `crates/worker/src/engine_host/`.
+
+- **Where it runs.** The worker's batch loop leases the session actor as before. The lease store notes which leases the control plane marked for the Engine, and the Engine lane takes those (`EngineLane` in `actor_runtime`). The claim binds the session at a published revision between turns. A session the Engine cannot serve goes back to the worker host: the claim answers `Legacy`, the claim fails, or this worker cannot build the revision (the verdict is cached per revision).
+- **The Engine never sees a platform id.** The declaration names its model by provider name and model, and its capabilities by id. The worker serves them:
+  - the model through the organization's providers (the provider resolver accepts a unique provider name);
+  - capabilities the Framework does not implement from the platform registry, registered for that agent only;
+  - files from the platform's session file store (`PlatformFilesBackend`).
+
+  The Engine workspace is the platform workspace the session's files live in, under the same id, because the Framework's file tools key a session's files by its workspace. Events the Engine writes are stamped with the platform agent and harness from the binding (`EventStamp`) on their way into the log.
+- **Platform services.** `extensions.rs` fills `HostExtensions` and the tool-context factory from `WorkerRuntimeHost`, so an Engine turn and a worker turn get the same services. Budgets, payment and hosted MCP are chosen by the platform agent from the binding; the Engine's own agent id is ignored. Platform tools are gated on the revision's declared capabilities.
+- **Not yet served** (follow-up before `WorkerRuntimeHost` is removed): the tool detacher, the platform's extra wait kinds in `waits_on_person`, the subagent delegate and tool augmentor, platform credentials for an agent's MCP servers (the declaration carries `${BINDING}` placeholders), and the input's execution context (who the turn acts for). Until they are, the flag stays on only for organizations whose agents do not depend on them.
 
 ## Size and order (estimate)
 

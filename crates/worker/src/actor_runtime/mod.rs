@@ -109,6 +109,22 @@ impl ActorWakeups {
     }
 }
 
+/// The worker's signals to one lease, for a lease another lane runs.
+#[derive(Clone)]
+pub struct LaneSignals {
+    /// Fired when a cancel landed: renew now.
+    pub renew_poke: Arc<Notify>,
+    /// Set when the worker drains: hand the turn off at its next step.
+    pub hand_off: Arc<AtomicBool>,
+}
+
+/// Another way to run a lease (data plane v2 step 4: the Engine). Returns
+/// the lease back for the worker's own host, or `None` once it ran it.
+#[async_trait]
+pub trait EngineLane: Send + Sync + 'static {
+    async fn run(&self, actor: LeasedActor, signals: LaneSignals) -> Option<LeasedActor>;
+}
+
 /// Settings of one worker's actor loop.
 #[derive(Debug, Clone)]
 pub struct ActorRuntimeConfig {
@@ -184,6 +200,8 @@ pub struct ActorRuntime<H: ActorHosts> {
     renewals: Arc<dyn SessionActorStore>,
     /// The clock every turn's periodic renewals tick on, for the same reason.
     renew_epoch: everruns_contracts::rt::Instant,
+    /// Runs the leases the control plane routes to the Engine.
+    engine: Option<Arc<dyn EngineLane>>,
 }
 
 impl<H: ActorHosts> Clone for ActorRuntime<H> {
@@ -198,6 +216,7 @@ impl<H: ActorHosts> Clone for ActorRuntime<H> {
             hand_off: self.hand_off.clone(),
             renewals: self.renewals.clone(),
             renew_epoch: self.renew_epoch,
+            engine: self.engine.clone(),
         }
     }
 }
@@ -215,7 +234,18 @@ impl<H: ActorHosts> ActorRuntime<H> {
             hand_off: Arc::new(AtomicBool::new(false)),
             renewals,
             renew_epoch: everruns_contracts::rt::Instant::now(),
+            engine: None,
         }
+    }
+
+    /// Run the leases the control plane routes to the Engine on the lane
+    /// `make` builds over this worker's batched lease store.
+    pub fn with_engine_lane(
+        mut self,
+        make: impl FnOnce(Arc<dyn SessionActorStore>) -> Arc<dyn EngineLane>,
+    ) -> Self {
+        self.engine = Some(make(self.renewals.clone()));
+        self
     }
 
     /// Detach long tool calls into `detached` (see `detached_calls`).
@@ -243,6 +273,19 @@ impl<H: ActorHosts> ActorRuntime<H> {
 
     /// Run a known actor through the backend-neutral driver.
     pub async fn run_actor(&self, actor: LeasedActor) {
+        let actor = match &self.engine {
+            Some(engine) => {
+                let signals = LaneSignals {
+                    renew_poke: self.renew_poke.clone(),
+                    hand_off: self.hand_off.clone(),
+                };
+                match engine.run(actor, signals).await {
+                    Some(actor) => actor,
+                    None => return,
+                }
+            }
+            None => actor,
+        };
         SessionActorDriver::new(
             self.hosts.clone(),
             self.renewals.clone(),

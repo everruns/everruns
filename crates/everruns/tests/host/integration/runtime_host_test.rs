@@ -684,7 +684,7 @@ pub(super) async fn reason_tool_definitions(
     )
     .await
     .expect("reason context")
-    .runtime_agent
+    .turn_agent
     .tools
 }
 

@@ -332,7 +332,7 @@ See `crates/server/src/storage/repositories/user_connections/rows.rs` for the `U
 | Where are tool results stored? | Events with `event_type` = `tool.completed` |
 | Session status? | Explicit status field (started, active, idle) |
 | Where are capabilities defined? | In-memory registry in API layer |
-| How are capabilities applied? | Resolved at API/service layer, merged into RuntimeAgent |
+| How are capabilities applied? | Resolved at API/service layer, merged into TurnAgent |
 | Where are API keys stored? | Encrypted in database, decrypted at runtime |
 | Environment variables for API keys? | `DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY` as fallbacks |
 

@@ -487,12 +487,12 @@ mod tests {
     #[tokio::test]
     async fn lua_routing_hides_schemas_without_revoking_operations() {
         use everruns_contracts::runtime::capabilities::{CapabilityRegistry, SystemPromptContext};
-        use everruns_contracts::runtime::runtime_agent::RuntimeAgentBuilder;
+        use everruns_contracts::runtime::turn_agent::TurnAgentBuilder;
         use everruns_contracts::typed_id::SessionId;
 
         let mut registry = CapabilityRegistry::new();
         registry.register(LuaCodeModeCapability);
-        let agent = RuntimeAgentBuilder::new()
+        let agent = TurnAgentBuilder::new()
             .with_capabilities(
                 &[LUA_CODE_MODE_CAPABILITY_ID.to_string()],
                 &registry,

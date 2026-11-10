@@ -396,7 +396,7 @@ async fn decide<A: RuntimeHostAdapter>(
             || reruns(
                 call,
                 context
-                    .runtime_agent
+                    .turn_agent
                     .tools
                     .iter()
                     .find(|tool| tool.name() == call.name),
@@ -500,11 +500,11 @@ pub async fn resume_open_turn<A: RuntimeHostAdapter>(
             harness_id: snapshot.harness_id,
             agent_id: snapshot.agent_id,
             tool_calls,
-            tool_definitions: context.runtime_agent.tools.clone(),
+            tool_definitions: context.turn_agent.tools.clone(),
             locale: context.resolved_locale.clone(),
             blueprint_id: snapshot.blueprint_id.clone(),
-            network_access: context.runtime_agent.network_access.clone(),
-            parallel_tool_calls: context.runtime_agent.parallel_tool_calls,
+            network_access: context.turn_agent.network_access.clone(),
+            parallel_tool_calls: context.turn_agent.parallel_tool_calls,
         },
         previous_response_id: None,
         iteration: state.iteration,

@@ -201,7 +201,7 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
     let context = runtime.load_context(session_id).await.unwrap();
     assert!(
         context
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "get_current_time"),
@@ -231,7 +231,7 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
         "platform-only capability should not resolve from runtime defaults"
     );
     assert!(
-        platform_context.runtime_agent.tools.is_empty(),
+        platform_context.turn_agent.tools.is_empty(),
         "unresolved platform-only capability should not contribute tools"
     );
 }
@@ -670,7 +670,7 @@ async fn runtime_exposes_assembled_context() {
     assert_eq!(context.model.model, "llmsim-model");
     assert!(
         context
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "multiply"),
@@ -1174,7 +1174,7 @@ async fn plugin_warnings_are_accessible_on_built_runtime() {
 #[tokio::test]
 async fn load_context_with_plugin_contains_system_prompt() {
     // The docs-researcher agent file is compiled into the system_prompt of the
-    // plugin capability. load_context should return a runtime_agent whose
+    // plugin capability. load_context should return a turn_agent whose
     // assembled system prompt contains "docs-researcher".
     let (runtime, session_id) = runtime_with_microsoft_docs_plugin().await;
 
@@ -1183,7 +1183,7 @@ async fn load_context_with_plugin_contains_system_prompt() {
         .await
         .expect("load_context must succeed");
 
-    let system_prompt = &ctx.runtime_agent.system_prompt;
+    let system_prompt = &ctx.turn_agent.system_prompt;
     assert!(
         system_prompt.contains("docs-researcher"),
         "assembled system prompt must include the docs-researcher agent section, got: {system_prompt}"
@@ -1195,7 +1195,7 @@ async fn load_context_with_plugin_has_skill_mount() {
     // Skills compiled from `skills/microsoft-docs/SKILL.md` must appear as
     // mounts under `/.agents/skills/microsoft-docs/` in the assembled context.
     // We verify by checking the resolved_capability_configs carry the skill
-    // definition, and that the assembled runtime_agent system prompt is non-empty
+    // definition, and that the assembled turn_agent system prompt is non-empty
     // (which confirms the full collection pipeline ran on the hydrated plugin config).
     use everruns_core::DeclarativeCapabilityDefinition;
     use everruns_core::SKILLS_DISCOVERY_PATH;

@@ -110,9 +110,9 @@ pub async fn build_session_context_report(
 ) -> SessionContextReport {
     let mut builder = ContextReportBuilder::default();
 
-    add_system_prompt_breakdown(&mut builder, &assembled.runtime_agent.system_prompt);
+    add_system_prompt_breakdown(&mut builder, &assembled.turn_agent.system_prompt);
 
-    for tool in &assembled.runtime_agent.tools {
+    for tool in &assembled.turn_agent.tools {
         let section_key = classify_tool(tool);
         let tokens = estimate_tool_tokens(tool);
         let (source_id, label) = tool_definition_contribution_source(tool, section_key);
@@ -126,16 +126,14 @@ pub async fn build_session_context_report(
 
     let sections = builder.sections();
     let estimated_input_tokens = sections.iter().map(|section| section.tokens).sum();
-    let context_window_tokens = get_model_profile(
-        &assembled.model.provider_type,
-        &assembled.runtime_agent.model,
-    )
-    .and_then(|profile| profile.limits)
-    .and_then(|limits| u32::try_from(limits.context).ok());
+    let context_window_tokens =
+        get_model_profile(&assembled.model.provider_type, &assembled.turn_agent.model)
+            .and_then(|profile| profile.limits)
+            .and_then(|limits| u32::try_from(limits.context).ok());
 
     SessionContextReport {
         session_id: assembled.snapshot.session_id.to_string(),
-        model: assembled.runtime_agent.model.clone(),
+        model: assembled.turn_agent.model.clone(),
         context_window_tokens,
         estimated_input_tokens,
         sections,

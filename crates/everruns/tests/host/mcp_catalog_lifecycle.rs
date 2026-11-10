@@ -199,14 +199,14 @@ async fn search_reveals_one_tool_from_a_complete_large_mcp_catalog() {
         .expect("initial context loads");
     assert!(
         initial
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "tool_search")
     );
     assert!(
         initial
-            .runtime_agent
+            .turn_agent
             .catalog_tools
             .iter()
             .any(|tool| tool.name() == "mcp_docs"),
@@ -214,7 +214,7 @@ async fn search_reveals_one_tool_from_a_complete_large_mcp_catalog() {
     );
     assert!(
         initial
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .all(|tool| tool.name() != "mcp_docs"),
@@ -232,13 +232,13 @@ async fn search_reveals_one_tool_from_a_complete_large_mcp_catalog() {
         .await
         .expect("context after search loads");
     let complete_catalog: HashSet<_> = after_search
-        .runtime_agent
+        .turn_agent
         .catalog_tools
         .iter()
         .map(|tool| tool.name().to_string())
         .chain(
             after_search
-                .runtime_agent
+                .turn_agent
                 .tools
                 .iter()
                 .filter(|tool| tool.name().starts_with("mcp_docs__"))
@@ -252,19 +252,19 @@ async fn search_reveals_one_tool_from_a_complete_large_mcp_catalog() {
     );
     assert!(
         after_search
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == target),
         "the selected MCP operation becomes available"
     );
     assert!(
-        after_search.runtime_agent.tools.len() <= 5,
+        after_search.turn_agent.tools.len() <= 5,
         "the advertised working set stays within the configured operation plus search-tool bounds"
     );
     assert_eq!(
         after_search
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .find(|tool| tool.name() == target)

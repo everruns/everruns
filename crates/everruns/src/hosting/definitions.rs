@@ -25,9 +25,9 @@
 //!
 
 use super::AgentBuild;
-use crate::{Agent, AgentPackage, Harness, PackageFormat};
+use super::RuntimeAgent;
+use crate::{Agent, AgentPackage, Harness};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use spi::error::{AgentLoopError, Result};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -45,37 +45,43 @@ pub const MAX_DEFINITION_BYTES: usize = 10 * 1024 * 1024;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AgentDefinition {
     /// The agent's stable key and this revision (`build_id`). Sessions bind
-    /// to it as their [`AgentBuild`].
+    /// to it as their [`AgentBuild`]. A platform mints opaque keys and keeps
+    /// the map to its own records: the Engine never sees them.
     #[serde(flatten)]
     pub build: AgentBuild,
-    /// The portable agent package manifest, as JSON
-    /// ([`AgentPackage::to_string`] with [`PackageFormat::Json`]).
-    pub package: Value,
+    /// The agent, as the Engine runs it.
+    pub runtime_agent: RuntimeAgent,
 }
 
 impl AgentDefinition {
-    /// A revision of `agent` from a portable package.
+    /// A revision of `agent`.
+    pub fn new(
+        agent: impl Into<String>,
+        revision: impl Into<String>,
+        runtime_agent: RuntimeAgent,
+    ) -> Self {
+        Self {
+            build: AgentBuild::new(agent, revision),
+            runtime_agent,
+        }
+    }
+
+    /// A revision of `agent` compiled from a portable package.
     pub fn from_package(
         agent: impl Into<String>,
         revision: impl Into<String>,
         package: &AgentPackage,
     ) -> Result<Self> {
-        let package = serde_json::from_str(
-            &package
-                .to_string(PackageFormat::Json)
-                .map_err(|error| AgentLoopError::config(error.to_string()))?,
-        )
-        .map_err(|error| AgentLoopError::config(error.to_string()))?;
-        Ok(Self {
-            build: AgentBuild::new(agent, revision),
-            package,
-        })
+        Ok(Self::new(
+            agent,
+            revision,
+            RuntimeAgent::from_package(package)?,
+        ))
     }
 
-    /// The portable package this revision holds.
+    /// The agent layer of this revision as a package, for hydration.
     pub fn agent_package(&self) -> Result<AgentPackage> {
-        AgentPackage::parse(&self.package.to_string(), PackageFormat::Json)
-            .map_err(|error| AgentLoopError::config(error.to_string()))
+        self.runtime_agent.package()
     }
 
     pub(crate) fn validate(&self) -> Result<()> {
@@ -91,14 +97,14 @@ impl AgentDefinition {
                 "definition agent and revision allow only [A-Za-z0-9_.:-]",
             ));
         }
-        if serde_json::to_vec(&self.package)
+        if serde_json::to_vec(&self.runtime_agent)
             .map_err(|error| AgentLoopError::config(error.to_string()))?
             .len()
             > MAX_DEFINITION_BYTES
         {
             return Err(AgentLoopError::config("definition exceeds 10 MiB"));
         }
-        Ok(())
+        self.runtime_agent.validate()
     }
 }
 

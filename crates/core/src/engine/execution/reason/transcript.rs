@@ -133,7 +133,7 @@ fn ended_by_tools(messages: &[RuntimeMessage], tool: impl Fn(&str) -> bool) -> b
 pub(super) fn ended_by_no_reply_result(
     assembled: &crate::engine::runtime_context::AssembledTurnContext,
 ) -> Option<super::ReasonResult> {
-    let agent = &assembled.runtime_agent;
+    let agent = &assembled.turn_agent;
     if !agent.communication.is_explicit() || !ended_by_communication(&assembled.messages) {
         return None;
     }

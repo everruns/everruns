@@ -120,8 +120,16 @@ impl AgentBuilder {
                 }
                 continue;
             }
+            // A host capability (registered on the host services) is
+            // resolved by name like a Framework one: that is how a host
+            // supplies capabilities only it has, without ids.
+            let host_resolves = self
+                .host_services
+                .as_ref()
+                .is_some_and(|services| services.resolves(reference.id()).is_some());
             if !registry.has(reference.id())
                 && !everruns_core::is_declarative_capability(reference.id())
+                && !host_resolves
             {
                 return Err(failure(
                     "capabilities",

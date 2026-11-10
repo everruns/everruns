@@ -11,6 +11,8 @@ pub mod actor_runtime;
 pub mod adapters;
 pub mod app_builder;
 mod catalog_cli;
+pub mod engine_host;
+pub mod engine_sessions;
 pub mod grpc_actor_lease_store;
 pub mod grpc_adapters;
 mod grpc_balance;

@@ -1394,6 +1394,7 @@ impl ServerAppBuilder {
                 )),
             );
 
+            background::spawn_engine_agent_publisher(&mut supervisor, db.clone());
             background::spawn_model_sync(
                 &mut supervisor,
                 db.clone(),

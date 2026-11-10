@@ -414,7 +414,7 @@ mod tests {
         assert!(memo.changed(first, 1), "a forgotten turn emits again");
     }
     use crate::engine::llm_conversions::llm_call_config_builder_from_agent;
-    use crate::runtime_agent::RuntimeAgent;
+    use crate::turn_agent::TurnAgent;
     use everruns_contracts::model::ReasoningEffort;
 
     #[test]
@@ -457,11 +457,11 @@ mod tests {
 
     #[test]
     fn request_options_capture_sampling_and_streaming_intent() {
-        let agent = RuntimeAgent {
+        let agent = TurnAgent {
             model: "claude-sonnet-4-6".to_string(),
             temperature: Some(0.2),
             max_tokens: Some(1024),
-            ..RuntimeAgent::default()
+            ..TurnAgent::default()
         };
         let config = llm_call_config_builder_from_agent(&agent)
             .reasoning_effort(ReasoningEffort::High)

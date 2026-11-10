@@ -809,6 +809,13 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// leases a runnable session and runs its whole turn, and the session
     /// event log is the only turn state.
     fn actor_lease_store(&self) -> Arc<dyn crate::actor_lease_store::ActorLeaseStore>;
+
+    /// The Engine session authority (data plane v2 step 4). Its routes are
+    /// the ones [`actor_lease_store`](Self::actor_lease_store) records.
+    /// `None` runs every lease on the worker's own host.
+    fn engine_link(&self) -> Option<crate::engine_sessions::EngineLink> {
+        None
+    }
 }
 
 // =============================================================================

@@ -76,6 +76,10 @@ pub struct LeasedActorRow {
     pub attempts: i32,
     /// The inbox position of the pending cancel, `None` when none is pending.
     pub cancel_inbox_seq: Option<i64>,
+    /// The lease runs on the Engine: the session has an Engine binding, or
+    /// its org turned Engine hosting on and it binds at this claim
+    /// (`engine_sessions`).
+    pub engine: bool,
 }
 
 impl LeasedActorRow {

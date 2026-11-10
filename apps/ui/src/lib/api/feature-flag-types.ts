@@ -28,4 +28,6 @@ export interface FeatureFlags {
   mistral?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
+  /** Runs the org's sessions on the Everruns Engine. Platform rollout switch. */
+  engine_hosting?: boolean;
 }

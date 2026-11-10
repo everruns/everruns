@@ -62,6 +62,11 @@ pub struct FeatureFlags {
     pub reports: bool,
     /// Machine-payment custody, policy, audit, and paid capability surfaces.
     pub machine_payments: bool,
+    /// Run the org's sessions on the Engine (data plane v2 step 4).
+    /// Internal: the platform enrols an org; no org manages it. The worker
+    /// lease reads the enrolment row itself (`ENGINE_HOSTING_FLAG`).
+    #[serde(default)]
+    pub engine_hosting: bool,
     #[serde(default)]
     pub docker_capability: bool,
     #[serde(default)]
@@ -221,6 +226,13 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: MACHINE_PAYMENTS_DEFAULT_GRADE,
     },
     FeatureFlagDefinition {
+        name: "engine_hosting",
+        label: "Engine hosting",
+        description: "Runs the organization's sessions on the Everruns Engine. Platform rollout \
+             switch; existing sessions move over between turns.",
+        grade: FeatureFlagGrade::Internal,
+    },
+    FeatureFlagDefinition {
         name: "docker_capability",
         label: "Docker containers",
         description: "Run agent tools in Docker containers.",
@@ -334,6 +346,7 @@ impl FeatureFlags {
             ),
             ("reports".to_string(), self.reports),
             ("machine_payments".to_string(), self.machine_payments),
+            ("engine_hosting".to_string(), self.engine_hosting),
         ]);
         map.extend(
             self.integrations
@@ -364,6 +377,7 @@ impl FeatureFlags {
             "agent_change_reasons_required" => self.agent_change_reasons_required,
             "reports" => self.reports,
             "machine_payments" => self.machine_payments,
+            "engine_hosting" => self.engine_hosting,
             _ => self.integrations.get(flag).copied().unwrap_or(false),
         }
     }
@@ -384,6 +398,7 @@ impl FeatureFlags {
             "agent_change_reasons_required" => self.agent_change_reasons_required = enabled,
             "reports" => self.reports = enabled,
             "machine_payments" => self.machine_payments = enabled,
+            "engine_hosting" => self.engine_hosting = enabled,
             "docker_capability" => self.docker_capability = enabled,
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
@@ -460,6 +475,7 @@ impl FeatureFlags {
             agent_change_reasons_required: true,
             reports: true,
             machine_payments: true,
+            engine_hosting: true,
             integrations: everruns_capabilities::integrations_catalog::feature_flag_definitions()
                 .map(|definition| (definition.name.to_string(), true))
                 .collect(),

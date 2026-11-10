@@ -197,6 +197,9 @@ pub fn sticky_grace() -> Duration {
 const LEASE_ELIGIBLE: &str = r#"
     runnable_since IS NOT NULL
     AND (lease_holder IS NULL OR lease_expires_at <= NOW())
+    -- An Engine session the Engine suspended waits for a person or operator
+    -- (`engine_sessions`).
+    AND engine_suspended_reason IS NULL
     AND NOT EXISTS (
         SELECT 1 FROM detached_tool_calls d
         WHERE d.session_id = session_actors.session_id
@@ -212,6 +215,10 @@ const LEASE_ELIGIBLE: &str = r#"
           AND w.id = $6 AND w.enabled
     ) END
 "#;
+
+/// The org feature flag that moves an org's sessions onto the Engine
+/// (`engine_sessions`). Experimental: off unless an org turns it on.
+pub const ENGINE_HOSTING_FLAG: &str = "engine_hosting";
 
 /// The lease statement. `$1` batch, `$2` scan, `$3` per-org cap, `$4`
 /// holder, `$5` TTL ms, `$6` custom worker, `$7` sticky grace ms.
@@ -283,13 +290,19 @@ static LEASE_SQL: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
             WHERE a.session_id = chosen.session_id
             RETURNING a.session_id, a.org_id, a.lease_fence, a.inbox_seq,
                       a.consumed_seq, a.next_input_seq, a.attempts,
-                      a.cancel_requested_at, a.cancel_inbox_seq, a.runnable_since
+                      a.cancel_requested_at, a.cancel_inbox_seq, a.runnable_since,
+                      a.engine_agent_key
         )
         SELECT session_id, org_id, lease_fence AS fence, inbox_seq,
                consumed_seq, next_input_seq, attempts,
                CASE WHEN cancel_requested_at IS NOT NULL
                     THEN COALESCE(cancel_inbox_seq, inbox_seq)
-               END AS cancel_inbox_seq
+               END AS cancel_inbox_seq,
+               (engine_agent_key IS NOT NULL OR EXISTS (
+                   SELECT 1 FROM org_feature_flags f
+                   WHERE f.org_id = leased.org_id AND f.flag_name = '{ENGINE_HOSTING_FLAG}'
+                     AND f.enabled
+               )) AS engine
         FROM leased
         ORDER BY runnable_since, session_id
         "#
@@ -491,6 +504,8 @@ impl Database {
         // Turns whose detached calls' holders stopped renewing them resume
         // here, on the lease poll every worker runs (`detached`).
         self.sweep_expired_detached_tool_calls().await?;
+        // Engine timers that fell due, on the same poll (`engine_sessions`).
+        self.wake_due_engine_sessions(limit).await?;
         Ok(sqlx::query_as::<_, LeasedActorRow>(LEASE_SQL.as_str())
             .bind(limit)
             .bind(scan)

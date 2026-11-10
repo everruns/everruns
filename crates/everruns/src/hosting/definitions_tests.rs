@@ -7,7 +7,7 @@ use serde_json::json;
 fn revision(revision: &str, reply: &str) -> AgentDefinition {
     AgentDefinition {
         build: AgentBuild::new("helper", revision),
-        package: json!({ "name": "helper", "instructions": reply }),
+        runtime_agent: RuntimeAgent::new(json!({ "name": "helper", "instructions": reply })),
     }
 }
 
@@ -53,11 +53,11 @@ async fn an_unbuildable_definition_is_refused_at_publication() {
     let engine = Engine::builder().hosting(MemoryHosting::default()).build();
     let needs_tool = AgentDefinition {
         build: AgentBuild::new("tooling", "r1"),
-        package: json!({
+        runtime_agent: RuntimeAgent::new(json!({
             "name": "tooling",
             "instructions": "Use the tool.",
             "tools": [{ "name": "lookup", "description": "Look up.", "parameters": { "type": "object" } }]
-        }),
+        })),
     };
     assert!(engine.publish_definition(&needs_tool).await.is_err());
     assert!(
@@ -77,12 +77,12 @@ async fn an_unbuildable_definition_is_refused_at_publication() {
 fn the_package_mapping_hydrates_a_definition() {
     let definition = AgentDefinition {
         build: AgentBuild::new("support", "r1"),
-        package: json!({
+        runtime_agent: RuntimeAgent::new(json!({
             "name": "support",
             "instructions": "Help.",
             "model": { "provider": "openai", "model": "gpt-6.1-sol" },
             "harness": "conversation"
-        }),
+        })),
     };
     // Without host providers a provider-keyed model has nothing to serve it.
     assert!(PackageHydrator::default().hydrate(&definition).is_err());
@@ -135,7 +135,7 @@ async fn hydrated_revisions_are_bounded() {
         .unwrap();
     let other = AgentDefinition {
         build: AgentBuild::new("other", "r1"),
-        package: json!({ "name": "other", "instructions": "other" }),
+        runtime_agent: RuntimeAgent::new(json!({ "name": "other", "instructions": "other" })),
     };
     let session_b = engine.create_from_definition(b, &other).await.unwrap();
     assert_eq!(
@@ -149,11 +149,11 @@ async fn hydrated_revisions_are_bounded() {
 fn with_file(revision: &str) -> AgentDefinition {
     AgentDefinition {
         build: AgentBuild::new("helper", revision),
-        package: json!({
+        runtime_agent: RuntimeAgent::new(json!({
             "name": "helper",
             "instructions": "filed",
             "files": [{ "path": "notes.md", "content": "Remember." }]
-        }),
+        })),
     }
 }
 
@@ -193,7 +193,7 @@ async fn a_session_keeps_its_workspace_when_its_agent_is_edited() {
     // hydrated again and still opens the same workspace.
     let other = AgentDefinition {
         build: AgentBuild::new("other", "r1"),
-        package: json!({ "name": "other", "instructions": "other" }),
+        runtime_agent: RuntimeAgent::new(json!({ "name": "other", "instructions": "other" })),
     };
     engine.publish_definition(&other).await.unwrap();
     assert_eq!(session.send_and_wait("Hi").await.unwrap().response, "three");
@@ -221,7 +221,7 @@ async fn concurrent_agents_over_a_small_cache_never_suspend() {
             let name = format!("agent-{agent}");
             let definition = AgentDefinition {
                 build: AgentBuild::new(name.clone(), "r1"),
-                package: json!({ "name": name, "instructions": name }),
+                runtime_agent: RuntimeAgent::new(json!({ "name": name, "instructions": name })),
             };
             for _ in 0..25 {
                 let id = SessionId::new();
@@ -263,7 +263,9 @@ fn a_member_build_resolves_through_its_lead() {
         store
             .publish(&AgentDefinition {
                 build: AgentBuild::new(lead.agent.clone(), revision),
-                package: json!({ "name": "support", "instructions": revision }),
+                runtime_agent: RuntimeAgent::new(
+                    json!({ "name": "support", "instructions": revision }),
+                ),
             })
             .unwrap();
     }

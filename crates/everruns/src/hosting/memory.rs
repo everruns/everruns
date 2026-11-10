@@ -1267,7 +1267,9 @@ mod definition_tests {
         let profile = MemoryHosting::default();
         let revision = |id: &str| AgentDefinition {
             build: AgentBuild::new("helper", id),
-            package: json!({ "name": "helper", "instructions": id }),
+            runtime_agent: super::RuntimeAgent::new(
+                json!({ "name": "helper", "instructions": id }),
+            ),
         };
         let id = SessionId::new();
         profile.publish_definition(&revision("r1")).await.unwrap();

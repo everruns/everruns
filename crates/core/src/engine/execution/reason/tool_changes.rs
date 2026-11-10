@@ -222,7 +222,7 @@ pub(super) fn prepare_for(
     messages: &[RuntimeMessage],
     provider: &everruns_contracts::DriverId,
     model: &str,
-    agent: &crate::engine::RuntimeAgent,
+    agent: &crate::engine::TurnAgent,
 ) -> ToolChangeReplay {
     let replay = prepare_holding(
         messages,
@@ -689,7 +689,7 @@ mod tests {
         let provider = everruns_contracts::DriverId::Gemini;
         let model = "gemini-unknown";
         let all = vec![tool("a", "A"), tool("b", "B")];
-        let mut agent = crate::engine::RuntimeAgent::new(PROMPT, model);
+        let mut agent = crate::engine::TurnAgent::new(PROMPT, model);
         agent.tools = all.clone();
         let initial = prepare_for(&[RuntimeMessage::user("first")], &provider, model, &agent);
         let mut answer = RuntimeMessage::assistant("done");

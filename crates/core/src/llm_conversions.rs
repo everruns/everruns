@@ -2,7 +2,7 @@
 //! types in `everruns-contracts`.
 //!
 //! These adapters live here (not in `everruns-contracts`) because they depend on
-//! core domain types (`Message`, `RuntimeAgent`). Keeping them
+//! core domain types (`Message`, `TurnAgent`). Keeping them
 //! on the core side keeps the crate dependency one-directional: core depends on
 //! everruns-contracts, never the reverse. The orphan rule also prevents these
 //! from being `From` impls in core (both the `From` trait and the driver types
@@ -24,8 +24,8 @@ use crate::image_services::ResolvedImage;
 // (`RuntimeMessage`, persisted via events) and the request-shaped wire message
 // (`driver_registry::Message`) a driver sends upstream.
 use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolCall;
+use crate::turn_agent::TurnAgent;
 
 /// Convert a [`RuntimeMessage`] into a [`Message`] (text-only; images become
 /// placeholders). For multimodal messages use
@@ -308,23 +308,23 @@ pub fn extract_image_file_ids(msg: &RuntimeMessage) -> Vec<Uuid> {
         .collect()
 }
 
-/// Seed an [`LlmCallConfig`] from a [`RuntimeAgent`]. Fields set later by the
+/// Seed an [`LlmCallConfig`] from a [`TurnAgent`]. Fields set later by the
 /// ReasonAtom (reasoning effort, speed, verbosity, metadata) are left unset.
-pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig {
-    let mut config = LlmCallConfig::new(runtime_agent.model.clone());
-    config.temperature = runtime_agent.temperature;
-    config.max_tokens = runtime_agent.max_tokens;
-    config.tools = runtime_agent.tools.clone();
-    config.tool_search = runtime_agent.tool_search.clone();
-    config.prompt_cache = runtime_agent.prompt_cache.clone();
-    config.driver_options = runtime_agent.driver_options.clone();
-    config.parallel_tool_calls = runtime_agent.parallel_tool_calls;
+pub fn llm_call_config_from_agent(turn_agent: &TurnAgent) -> LlmCallConfig {
+    let mut config = LlmCallConfig::new(turn_agent.model.clone());
+    config.temperature = turn_agent.temperature;
+    config.max_tokens = turn_agent.max_tokens;
+    config.tools = turn_agent.tools.clone();
+    config.tool_search = turn_agent.tool_search.clone();
+    config.prompt_cache = turn_agent.prompt_cache.clone();
+    config.driver_options = turn_agent.driver_options.clone();
+    config.parallel_tool_calls = turn_agent.parallel_tool_calls;
     config
 }
 
-/// Start an [`LlmCallConfigBuilder`] from a [`RuntimeAgent`].
-pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfigBuilder {
-    LlmCallConfigBuilder::from_config(llm_call_config_from_agent(runtime_agent))
+/// Start an [`LlmCallConfigBuilder`] from a [`TurnAgent`].
+pub fn llm_call_config_builder_from_agent(turn_agent: &TurnAgent) -> LlmCallConfigBuilder {
+    LlmCallConfigBuilder::from_config(llm_call_config_from_agent(turn_agent))
 }
 
 #[cfg(test)]
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_resolved_parallel_tool_calls_gating() {
-        let mut config = llm_call_config_from_agent(&RuntimeAgent::new("p", "gpt-5.2"));
+        let mut config = llm_call_config_from_agent(&TurnAgent::new("p", "gpt-5.2"));
 
         // No preference => always None.
         assert_eq!(config.resolved_parallel_tool_calls(true), None);
@@ -383,8 +383,8 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_from_runtime_agent() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
-        let llm_config = llm_call_config_builder_from_agent(&runtime_agent).build();
+        let turn_agent = TurnAgent::new("You are helpful", "gpt-5.2");
+        let llm_config = llm_call_config_builder_from_agent(&turn_agent).build();
 
         assert_eq!(llm_config.model, "gpt-5.2");
         assert!(llm_config.reasoning_effort.is_none());
@@ -394,7 +394,7 @@ mod tests {
         assert!(llm_config.metadata.is_empty());
         // No server tools configured on the agent → none on the call config.
         assert!(llm_config.driver_options.is_empty());
-        let mut populated = RuntimeAgent::new("prompt", "custom-model");
+        let mut populated = TurnAgent::new("prompt", "custom-model");
         populated.temperature = Some(0.25);
         populated.max_tokens = Some(321);
         populated.parallel_tool_calls = Some(false);
@@ -438,13 +438,13 @@ mod tests {
         // Closes the assembly loop: a capability stashes driver-namespaced
         // options on the agent, and the conversion the reason atom uses must
         // carry them through to the driver untouched.
-        let mut runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
+        let mut turn_agent = TurnAgent::new("You are helpful", "openai/gpt-5-mini");
         let stashed = serde_json::json!({"server_tools": [{"type": "web_search"}]});
-        runtime_agent
+        turn_agent
             .driver_options
             .insert("test/routing".to_string(), stashed.clone());
 
-        let llm_config = llm_call_config_from_agent(&runtime_agent);
+        let llm_config = llm_call_config_from_agent(&turn_agent);
         assert_eq!(
             llm_config.driver_options.get("test/routing"),
             Some(&stashed)
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_all_options() {
-        let mut agent = RuntimeAgent::new("prompt", "original-model");
+        let mut agent = TurnAgent::new("prompt", "original-model");
         agent.parallel_tool_calls = Some(false);
         agent.max_tokens = Some(12);
         let config = llm_call_config_builder_from_agent(&agent)

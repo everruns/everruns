@@ -32,6 +32,9 @@ const CACHE_TTL: Duration = Duration::from_secs(3600);
 
 /// Max cache entries. Each org+model combo is one entry.
 const CACHE_MAX_ENTRIES: u64 = 1_000;
+/// How long a provider name an Engine declaration uses stays resolved: a
+/// renamed provider is picked up within this.
+const PROVIDER_NAME_TTL: Duration = Duration::from_secs(60);
 
 mod environment;
 pub use environment::get_default_api_key_from_env;
@@ -162,6 +165,9 @@ pub struct ProviderResolverService {
     /// it declares which drivers implement which [`ServiceKind`]. Empty by
     /// default; the server composition root wires in the platform registry.
     driver_registry: DriverRegistry,
+    /// Provider names Engine declarations resolved, per org (see
+    /// [`Self::runtime_provider_uuid`]).
+    provider_names: Cache<(i64, String), Option<uuid::Uuid>>,
 }
 
 impl ProviderResolverService {
@@ -175,6 +181,10 @@ impl ProviderResolverService {
             encryption,
             cache,
             driver_registry: DriverRegistry::new(),
+            provider_names: Cache::builder()
+                .max_capacity(CACHE_MAX_ENTRIES)
+                .time_to_live(PROVIDER_NAME_TTL)
+                .build(),
         }
     }
 
@@ -643,16 +653,48 @@ impl ProviderResolverService {
         }))
     }
 
+    /// The provider a runtime key names: a provider id, or, for an Engine
+    /// declaration (which names no stored id), the provider's name when
+    /// exactly one of the org's providers has it. Decision: a name two
+    /// providers share resolves to neither; the declaration compiler keeps
+    /// such agents on the worker's own host.
+    async fn runtime_provider_uuid(&self, org_id: i64, key: &str) -> Result<Option<uuid::Uuid>> {
+        if let Ok(id) = key.parse::<ProviderId>() {
+            return Ok(Some(id.uuid()));
+        }
+        let wanted = everruns_contracts::runtime_provider::ProviderKey::new(key);
+        let cache_key = (org_id, wanted.as_str().to_string());
+        if let Some(found) = self.provider_names.get(&cache_key).await {
+            return Ok(found);
+        }
+        let named: Vec<_> = self
+            .db
+            .list_providers(org_id)
+            .await?
+            .into_iter()
+            .filter(|provider| {
+                everruns_contracts::runtime_provider::ProviderKey::new(&provider.name) == wanted
+            })
+            .collect();
+        let found = match named.as_slice() {
+            [provider] => Some(provider.id.uuid()),
+            [] => None,
+            _ => anyhow::bail!("provider name {key} names more than one provider"),
+        };
+        self.provider_names.insert(cache_key, found).await;
+        Ok(found)
+    }
+
     /// Resolve one exact persisted provider for model execution.
     pub async fn resolve_runtime_provider(
         &self,
         org_id: i64,
         provider_id: &str,
     ) -> Result<Option<ResolvedServiceProvider>> {
-        let id: ProviderId = provider_id
-            .parse()
-            .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
-        let Some(provider) = self.db.get_provider_config(org_id, id.uuid()).await? else {
+        let Some(id) = self.runtime_provider_uuid(org_id, provider_id).await? else {
+            return Ok(None);
+        };
+        let Some(provider) = self.db.get_provider_config(org_id, id).await? else {
             return Ok(None);
         };
         let Some(api_key) = self.resolve_api_key(&provider)? else {
@@ -689,10 +731,10 @@ impl ProviderResolverService {
         provider_id: &str,
         session: Option<uuid::Uuid>,
     ) -> Result<Option<ResolvedRuntimeProviderConfig>> {
-        let id: ProviderId = provider_id
-            .parse()
-            .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
-        let Some(provider) = self.db.get_provider_config(org_id, id.uuid()).await? else {
+        let Some(id) = self.runtime_provider_uuid(org_id, provider_id).await? else {
+            return Ok(None);
+        };
+        let Some(provider) = self.db.get_provider_config(org_id, id).await? else {
             return Ok(None);
         };
         crate::domains::user_connections::chatgpt::check_session(&self.db, &provider, session)

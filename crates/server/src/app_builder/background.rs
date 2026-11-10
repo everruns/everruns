@@ -250,6 +250,19 @@ pub(super) fn spawn_dev_task_worker(
 /// providers whose `last_synced_at` is older than the interval. A plain
 /// 24-hour timer restarted with every process, so servers redeployed more
 /// than once a day never synced at all.
+/// Publish platform agents as Engine definitions as they are edited (data
+/// plane v2 step 4).
+pub(super) fn spawn_engine_agent_publisher(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+) {
+    supervisor.spawn(
+        "engine_agent_publisher",
+        RestartPolicy::always_after(Duration::from_secs(5)),
+        move || crate::domains::agent_definitions::run_publisher(db.clone()),
+    );
+}
+
 pub(super) fn spawn_model_sync(
     supervisor: &mut TaskSupervisor,
     db: Arc<StorageBackend>,
@@ -450,6 +463,7 @@ pub(super) async fn start_maintenance(
             connections: deps.connection_resolver.clone(),
         }),
         tool_result_timeouts.backstop_job(),
+        crate::domains::agent_definitions::sweep_job(deps.background_db.clone()),
     ];
     if let Some(store) = cluster_jobs_store {
         let tasks = vec![tool_result_timeouts.deadline_task(store.clone())];

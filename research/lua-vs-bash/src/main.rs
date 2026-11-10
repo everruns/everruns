@@ -233,11 +233,11 @@ async fn dump_prompts(model: &ModelSpec) -> anyhow::Result<()> {
             .build()
             .await?;
         let ctx = runtime.load_context(session_id).await?;
-        let tools: Vec<_> = ctx.runtime_agent.tools.iter().map(|t| t.name()).collect();
+        let tools: Vec<_> = ctx.turn_agent.tools.iter().map(|t| t.name()).collect();
         println!("\n========================================================");
         println!("ARM: {capability}  | tools: {tools:?}");
         println!("========== ASSEMBLED SYSTEM PROMPT ==========");
-        println!("{}", ctx.runtime_agent.system_prompt);
+        println!("{}", ctx.turn_agent.system_prompt);
         println!("========== END ==========");
     }
     Ok(())

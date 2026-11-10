@@ -296,7 +296,7 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
         .expect("context inspection discovers MCP tools");
     assert!(
         context
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "mcp_docs__echo"),
@@ -385,7 +385,7 @@ async fn host_reads_probes_and_watches_mcp_readiness() {
     let context = runtime.load_context(session_id).await.expect("context");
     assert!(
         context
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "mcp_docs__echo")
@@ -452,13 +452,13 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let before = runtime.load_context(session_id).await.unwrap();
     assert!(
         !before
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT")
     );
     assert!(
         !before
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "live_echo")
@@ -466,7 +466,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     assert!(runtime.list_commands(session_id).await.unwrap().is_empty());
     assert!(
         !before
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "mcp_docs__echo")
@@ -502,13 +502,13 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let active = runtime.load_context(session_id).await.unwrap();
     assert!(
         active
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT")
     );
     assert!(
         active
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "live_echo")
@@ -519,7 +519,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     );
     assert!(
         active
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "mcp_docs__echo")
@@ -548,13 +548,13 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let inactive = runtime.load_context(session_id).await.unwrap();
     assert!(
         !inactive
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT")
     );
     assert!(
         !inactive
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "live_echo")
@@ -562,7 +562,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     assert!(runtime.list_commands(session_id).await.unwrap().is_empty());
     assert!(
         !inactive
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "mcp_docs__echo")
@@ -721,14 +721,14 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let registered_only = runtime.load_context(active_session_id).await.unwrap();
     assert!(
         !registered_only
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT"),
         "registering must not change a session that has not activated the capability"
     );
     assert!(
         !registered_only
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "live_echo")
@@ -757,13 +757,13 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let active = runtime.load_context(active_session_id).await.unwrap();
     assert!(
         active
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT")
     );
     assert!(
         active
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "live_echo")
@@ -792,13 +792,13 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let bystander = runtime.load_context(bystander_session_id).await.unwrap();
     assert!(
         !bystander
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT")
     );
     assert!(
         !bystander
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "live_echo")
@@ -820,7 +820,7 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let inactive = runtime.load_context(active_session_id).await.unwrap();
     assert!(
         !inactive
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT")
     );
@@ -838,7 +838,7 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
             .load_context(active_session_id)
             .await
             .unwrap()
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("LIVE_CAPABILITY_PROMPT")
     );
@@ -903,7 +903,7 @@ async fn live_registration_rejects_duplicate_ids_and_alias_collisions() {
         .load_context(session_id)
         .await
         .unwrap()
-        .runtime_agent
+        .turn_agent
         .system_prompt;
     assert!(prompt.contains("LIVE_CAPABILITY_PROMPT"));
     assert!(

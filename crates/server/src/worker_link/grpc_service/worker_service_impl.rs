@@ -136,6 +136,20 @@ delegate! {
     hand_off_actor => handle_hand_off_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
     read_actor_journal => handle_read_actor_journal(proto::ReadActorJournalRequest)
         -> proto::ReadActorJournalResponse;
+
+    // Engine sessions: binding, receipts, suspension and timers on the lease.
+    claim_engine_session => handle_claim_engine_session(proto::ClaimEngineSessionRequest)
+        -> proto::ClaimEngineSessionResponse;
+    get_engine_agent_definition => handle_get_engine_agent_definition(
+        proto::GetEngineAgentDefinitionRequest) -> proto::GetEngineAgentDefinitionResponse;
+    read_engine_session_records => handle_read_engine_session_records(
+        proto::ReadEngineSessionRecordsRequest) -> proto::ReadEngineSessionRecordsResponse;
+    commit_engine_session_record => handle_commit_engine_session_record(
+        proto::CommitEngineSessionRecordRequest) -> proto::EngineSessionWriteResponse;
+    suspend_engine_session => handle_suspend_engine_session(proto::SuspendEngineSessionRequest)
+        -> proto::EngineSessionWriteResponse;
+    schedule_engine_session => handle_schedule_engine_session(proto::ScheduleEngineSessionRequest)
+        -> proto::EngineSessionWriteResponse;
     detach_tool_call => handle_detach_tool_call(proto::DetachToolCallRequest)
         -> proto::DetachToolCallResponse;
     renew_detached_tool_calls => handle_renew_detached_tool_calls(proto::RenewDetachedToolCallsRequest)

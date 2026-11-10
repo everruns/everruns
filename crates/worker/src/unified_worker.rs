@@ -284,6 +284,17 @@ where
             adapters.actor_lease_store(),
             ActorRuntimeConfig::new(config.worker_id.clone()),
         );
+        if let Some(link) = adapters.engine_link() {
+            let (engine_adapters, holder) = (adapters.clone(), config.worker_id.clone());
+            actors = actors.with_engine_lane(move |leases| {
+                Arc::new(crate::engine_host::WorkerEngine::new(
+                    engine_adapters,
+                    link,
+                    leases,
+                    holder,
+                ))
+            });
+        }
         if !config.tool_detach_after.is_zero() && config.max_detached_tool_calls > 0 {
             let emitters = adapters.clone();
             actors = actors.with_detached_calls(Arc::new(DetachedCalls::new(

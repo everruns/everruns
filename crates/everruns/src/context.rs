@@ -115,7 +115,7 @@ impl SessionContext {
             })
             .collect();
         let tools = context
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .map(|tool| ToolInfo {
@@ -130,7 +130,7 @@ impl SessionContext {
             model,
             messages,
             tools,
-            instructions: context.runtime_agent.system_prompt,
+            instructions: context.turn_agent.system_prompt,
             locale: context.resolved_locale,
             plugin_warnings,
             commands: commands

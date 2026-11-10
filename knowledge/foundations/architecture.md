@@ -576,8 +576,8 @@ Capabilities are modular functionality units that extend Agent behavior. See [kn
 3. **Resolution Flow**:
    - Fetch agent's capabilities from `agent_capabilities` table
    - Look up internal capability definitions from registry
-   - Merge system prompts and tools into `RuntimeAgent`
-   - Execute Agent Loop with configured RuntimeAgent
+   - Merge system prompts and tools into `TurnAgent`
+   - Execute Agent Loop with configured TurnAgent
 
 ### API Design
 

@@ -2,6 +2,7 @@ mod actors;
 mod command_context;
 mod construction;
 mod definition_reads;
+pub(crate) mod engine_sessions;
 pub mod files;
 mod image_store;
 mod internal_commands;
@@ -158,10 +159,6 @@ impl BudgetChecker for DirectBudgetChecker {
     }
 }
 
-// =============================================================================
-// DirectWorkerAdapters Implementation
-// =============================================================================
-
 /// Direct storage-backed worker adapters for in-process worker
 #[derive(Clone)]
 pub struct DirectWorkerAdapters {
@@ -197,6 +194,7 @@ pub struct DirectWorkerAdapters {
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
     provider_services: Option<crate::domains::providers::ProviderServices>,
     pub(crate) quota: crate::domains::session_files::limits::QuotaLimits,
+    engine_routes: Arc<everruns_worker::engine_sessions::EngineRoutes>,
 }
 
 impl DirectWorkerAdapters {
@@ -1540,15 +1538,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     fn actor_lease_store(&self) -> Arc<dyn everruns_worker::ActorLeaseStore> {
-        Arc::new(actors::DirectActorLeaseStore {
-            db: self.db.clone(),
-        })
+        engine_sessions::lease_store(self)
+    }
+
+    fn engine_link(&self) -> Option<everruns_worker::engine_sessions::EngineLink> {
+        Some(engine_sessions::link(self))
     }
 }
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
 
 fn string_to_provider_type(s: &str) -> DriverId {
     // FromStr is infallible: unknown ids become External providers, preserving
