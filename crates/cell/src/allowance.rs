@@ -17,6 +17,13 @@
 //!   have run, and money only returns to the balance through a settlement.
 //! - An expired grant stops being spendable at once; what it reserved and
 //!   used stays until the cell reports it closed.
+//! - A metered session in a cell that holds no grant for its tenant (it
+//!   moved here, say, before the control plane granted this cell money)
+//!   is exhausted, not unmetered: only a session with no tenant runs
+//!   without an allowance.
+//! - A session that moves out takes no reservation with it: the leaving
+//!   copy's open reservation, if its executor died mid-call, closes at its
+//!   maximum when the move forwards it.
 //!
 //! Decision: everything here is replicated cell state, changed only by
 //! committed commands, so every replica reports the same usage and a new
@@ -86,9 +93,12 @@ impl Allowances {
     /// Reserve the next provider call of `session` for `tenant`. The reply
     /// is the Engine's budget reading (`BudgetToolResponse`).
     pub fn reserve(&mut self, tenant: Option<&str>, session: SessionId, now_ms: i64) -> Value {
-        let Some(allowance) = tenant.and_then(|t| self.tenants.get_mut(t)) else {
-            // An unmetered session (no tenant, or a tenant with no grants).
+        let Some(tenant) = tenant else {
             return json!({ "status": "no_budgets", "budgets": [] });
+        };
+        let Some(allowance) = self.tenants.get_mut(tenant) else {
+            // Metered, but nothing granted to this cell for the tenant.
+            return json!({ "status": "exhausted", "budgets": [] });
         };
         if allowance.reserved.contains_key(&session) {
             return allowance.reading("active");
@@ -124,8 +134,9 @@ impl Allowances {
         }
     }
 
-    /// A new epoch took `session`: a reservation still open belongs to an
-    /// executor that died mid-call, and counts as spent at its maximum.
+    /// A new epoch took `session`, or the session left this cell: a
+    /// reservation still open belongs to an executor that died mid-call,
+    /// and counts as spent at its maximum.
     pub fn close_dangling(&mut self, tenant: Option<&str>, session: SessionId) {
         let Some(allowance) = tenant.and_then(|t| self.tenants.get_mut(t)) else {
             return;
@@ -277,10 +288,17 @@ mod tests {
     }
 
     #[test]
-    fn unmetered_sessions_are_not_reserved() {
+    fn sessions_without_a_tenant_are_not_reserved() {
         let mut a = Allowances::default();
         let s = SessionId::new();
         assert_eq!(status(&a.reserve(None, s, 0)), "no_budgets");
-        assert_eq!(status(&a.reserve(Some("nobody"), s, 0)), "no_budgets");
+    }
+
+    #[test]
+    fn a_metered_session_with_no_grant_here_is_exhausted() {
+        let mut a = Allowances::default();
+        let s = SessionId::new();
+        assert_eq!(status(&a.reserve(Some("nobody"), s, 0)), "exhausted");
+        assert!(a.tenants.is_empty(), "a refusal records nothing");
     }
 }

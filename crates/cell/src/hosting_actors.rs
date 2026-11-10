@@ -30,16 +30,38 @@ impl everruns_contracts::runtime::tool_execution::BudgetChecker for CellBudget {
         &self,
         _session_id: &str,
     ) -> Result<everruns_contracts::runtime::budget::BudgetToolResponse> {
-        let command = Command::Reserve {
-            session: self.session,
-            now_ms: now_ms(),
-        };
-        match self.inner.propose(self.session, command).await? {
-            Response::Value { value } => serde_json::from_value(value).map_err(store_err),
-            other => Err(store_err(format!("reserve: {other:?}"))),
+        // Decision: fail closed. Engine's gate lets a call run when the
+        // checker errors (fail open), which for a metered session would be
+        // spend no reservation covers. So the cell retries through a leader
+        // change and, if it still has no answer, reads the allowance as
+        // exhausted: the turn ends as budget exhausted instead of spending.
+        let mut delay = Duration::from_millis(50);
+        let mut last = String::new();
+        for attempt in 0..RESERVE_TRIES {
+            if attempt > 0 {
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(Duration::from_secs(1));
+            }
+            let command = Command::Reserve {
+                session: self.session,
+                now_ms: now_ms(),
+            };
+            match self.inner.propose(self.session, command).await {
+                Ok(Response::Value { value }) => {
+                    return serde_json::from_value(value).map_err(store_err);
+                }
+                Ok(other) => last = format!("{other:?}"),
+                Err(error) => last = error.to_string(),
+            }
         }
+        tracing::warn!(session = %self.session, reason = %last, "no reservation; stopping the call");
+        serde_json::from_value(serde_json::json!({ "status": "exhausted", "budgets": [] }))
+            .map_err(store_err)
     }
 }
+
+/// Reservation attempts before a call is refused (about 5 s with backoff).
+const RESERVE_TRIES: usize = 9;
 
 #[async_trait]
 impl SessionActorStore for Ports {

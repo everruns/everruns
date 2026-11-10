@@ -340,6 +340,7 @@ fn an_abandoned_move_takes_the_session_back_above_the_move() {
         Command::Thaw {
             session,
             generation: Some(3),
+            to: None,
         },
     ));
     refused(apply(&mut directory, place(session, B, 2, 1)));
@@ -433,4 +434,22 @@ fn a_shard_hand_over_keeps_the_newer_placement() {
             generation: 2
         }
     );
+}
+
+#[test]
+fn a_running_move_is_never_retargeted() {
+    // Found by the protocol simulation: the directory committed A's move
+    // to B, then a late freeze "to A" retargeted the leaving copy, and the
+    // next driver thawed it in A while B ran the session.
+    let session = SessionId::new();
+    let mut a = holding(session, 1);
+    let to = |cell| Command::Freeze {
+        session,
+        to: Some(cell),
+    };
+    ok(apply(&mut a, to(B)));
+    assert!(matches!(apply(&mut a, to(B)), Response::Duplicate));
+    assert!(matches!(apply(&mut a, to(A)), Response::Frozen));
+    assert!(matches!(apply(&mut a, to(C)), Response::Frozen));
+    assert_eq!(a.sessions[&session].moving_to, Some(B));
 }

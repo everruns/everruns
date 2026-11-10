@@ -1120,11 +1120,38 @@ the storage decision below requires. What it checks and what it found:
   the control plane endpoint and a per-model maximum (price times prompt
   and `max_tokens`) are plan step 7. An end-to-end test runs a real cell
   node: a tenant that can't cover one call gets no model call, one that
-  can runs the whole turn, and the ledger closes every reservation.
+  can runs the whole turn, and the ledger closes every reservation. Three
+  holes are closed: a session that moves out closes its leaving copy's
+  open reservation at its maximum; a metered session in a cell with no
+  grant for its tenant is exhausted, not unmetered; and a budget check the
+  cell can't answer (after retrying through a leader change for about
+  5 s) stops the call, because Engine's gate lets a call run when the
+  check errors.
+- **Protocol simulation** (`crates/cell/tests/protocol_simulation.rs`):
+  three cells and a directory as real `CellState`s, with executors,
+  clients, a rebalancer and move drivers that run the node's own move
+  rules (now pure functions in `crates/cell/src/moves.rs`). One network
+  delays, reorders, duplicates and drops every command and reply;
+  executors and drivers die mid-step; proposers' clocks lag by up to a
+  lease. Nothing reads the wall clock, so a seed replays exactly, and each
+  of 40 seeds runs twice and must end the same. It checks the models'
+  invariants at every step (one live copy, the one the directory names;
+  writes only from growing epochs; reservations only for sessions the
+  cell holds, never over the grant) and, after the faults stop, that every
+  acknowledged write survived. About 3 300 moves per run. It found three
+  move bugs the kill runs had missed, each fixed with a rule in
+  `state.rs` and a failing check when the rule is taken out: a late freeze
+  could retarget a move the directory had already committed, and the next
+  driver thawed the leaving copy while the target ran the session; a late
+  thaw of an earlier freeze did the same; and a write from an epoch the
+  driver's clock called expired could land after the copy was taken and
+  be lost. A move now ends the epoch through the log (`Revoke`) before it
+  copies the session, never retargets, and thaws only the freeze it names.
 
-Still open in step 5: exact-replay simulation of the whole node (a
-simulated runtime, so a seed replays bit for bit, with crash points inside
-moves and epochs).
+Still open in step 5: running the whole node (openraft, the log, the
+object store) under a simulated runtime with crash points, so the Raft
+simulation replays bit for bit too; the protocol simulation covers the
+layer above it.
 
 ### Corrections after the architecture review (2026-11-09)
 

@@ -31,6 +31,7 @@ pub mod gateway;
 pub mod host;
 pub mod hosting;
 pub mod metrics;
+pub mod moves;
 pub mod network;
 pub mod node;
 pub mod prof;

@@ -990,17 +990,28 @@ impl Node {
     /// back here at `g + 2`, above anything the move may have installed.
     async fn finish_move(&self, session: SessionId, to: CellId) -> anyhow::Result<()> {
         if to == self.cfg.cell {
-            self.propose(Command::Thaw {
-                session,
-                generation: None,
-            })
-            .await?;
+            self.propose(crate::moves::unfreeze(self.cfg.cell, session))
+                .await?;
             return Ok(());
         }
         let gateway = self
             .gateway
             .get()
             .ok_or_else(|| anyhow::anyhow!("no gateway to reach cell {to}"))?;
+        // End the epoch through the log first, so nothing writes to the
+        // leaving copy after it is taken (see `Command::Revoke`).
+        match self
+            .propose(Command::Revoke {
+                session,
+                now_ms: now_ms(),
+            })
+            .await?
+            .0
+        {
+            Response::Ok => {}
+            Response::Moved { .. } | Response::NotFound => return Ok(()), // already forwarded
+            other => anyhow::bail!("revoke: {other:?}"),
+        }
         // History stays in the object store; only metadata and the
         // unflushed tail travel.
         let Some(image) = self.shared.image(session, 0, true).await else {
@@ -1008,8 +1019,7 @@ impl Node {
         };
         let mut image = image?;
         let leaving = image.generation;
-        let generation = leaving + 1;
-        image.generation = generation;
+        image.generation = leaving + 1;
         let imported = gateway
             .propose(
                 to,
@@ -1020,30 +1030,17 @@ impl Node {
             )
             .await
             .map_err(|(status, error)| anyhow::anyhow!("import: {status} {error}"))?;
-        let (cell, target) = match imported {
-            Response::Ok | Response::Duplicate => (to, generation),
-            Response::Rejected { reason } => {
-                tracing::warn!(%session, to, %reason, "target refused the session; abandoning the move");
-                (self.cfg.cell, leaving + 2)
-            }
-            other => anyhow::bail!("import refused: {other:?}"),
-        };
+        if let Response::Rejected { reason } = &imported {
+            tracing::warn!(%session, to, %reason, "target refused the session; abandoning the move");
+        }
+        let proposed = crate::moves::after_import(self.cfg.cell, to, leaving, &imported)
+            .map_err(anyhow::Error::msg)?;
         let placed = gateway
-            .place_entry(session, cell, target, leaving)
+            .place_entry(session, proposed.cell, proposed.generation, leaving)
             .await
             .map_err(|(status, error)| anyhow::anyhow!("place: {status} {error}"))?;
-        let current = match placed {
-            Response::Ok | Response::Duplicate => Placed {
-                cell,
-                generation: target,
-            },
-            // Another try of this move (an earlier leader's, or one to a
-            // different target) already committed: finish that one.
-            Response::Placement {
-                current: Some(current),
-            } if current.generation > leaving => current,
-            other => anyhow::bail!("place refused: {other:?}"),
-        };
+        let current =
+            crate::moves::after_place(leaving, proposed, &placed).map_err(anyhow::Error::msg)?;
         self.settle_move(session, leaving, current).await
     }
 
@@ -1055,40 +1052,27 @@ impl Node {
         leaving: u64,
         current: Placed,
     ) -> anyhow::Result<()> {
+        for (cell, command) in crate::moves::settle(self.cfg.cell, session, leaving, current) {
+            let response = if cell == self.cfg.cell {
+                self.propose(command).await?.0
+            } else {
+                let gateway = self
+                    .gateway
+                    .get()
+                    .ok_or_else(|| anyhow::anyhow!("no gateway to reach cell {cell}"))?;
+                gateway
+                    .propose(cell, &command)
+                    .await
+                    .map_err(|(status, error)| anyhow::anyhow!("{status} {error}"))?
+            };
+            if !crate::moves::step_done(&response) {
+                anyhow::bail!("move step refused by cell {cell}: {response:?}");
+            }
+        }
         if current.cell == self.cfg.cell {
-            self.propose(Command::Thaw {
-                session,
-                generation: Some(current.generation),
-            })
-            .await?;
             tracing::info!(%session, "move abandoned; session stays");
             return Ok(());
         }
-        let gateway = self
-            .gateway
-            .get()
-            .ok_or_else(|| anyhow::anyhow!("no gateway to reach cell {}", current.cell))?;
-        if current.generation == leaving + 1 {
-            let activated = gateway
-                .propose(
-                    current.cell,
-                    &Command::Activate {
-                        session,
-                        generation: current.generation,
-                    },
-                )
-                .await
-                .map_err(|(status, error)| anyhow::anyhow!("activate: {status} {error}"))?;
-            if !matches!(activated, Response::Ok | Response::Duplicate) {
-                anyhow::bail!("activate refused: {activated:?}");
-            }
-        }
-        self.propose(Command::Forward {
-            session,
-            cell: current.cell,
-            generation: leaving + 1,
-        })
-        .await?;
         tracing::info!(%session, to = current.cell, "session moved");
         Ok(())
     }
@@ -1128,17 +1112,10 @@ impl Node {
             .placement(session)
             .await
             .map_err(|(status, error)| anyhow::anyhow!("locate: {status} {error}"))?;
-        let command = match current {
-            Some(p) if p.cell == self.cfg.cell && p.generation == generation => Command::Activate {
-                session,
-                generation,
-            },
-            Some(p) if p.cell != self.cfg.cell && p.generation >= generation => Command::Drop {
-                session,
-                cell: p.cell,
-                generation: p.generation,
-            },
-            _ => return Ok(()),
+        let Some(command) =
+            crate::moves::settle_prepared(self.cfg.cell, session, generation, current)
+        else {
+            return Ok(());
         };
         self.propose(command).await?;
         Ok(())

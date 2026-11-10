@@ -182,12 +182,10 @@ impl Shared {
         let mut image = {
             let state = self.state.read();
             let s = state.sessions.get(&session)?;
-            let mut image = self::stub(s);
             if stub {
-                image.events = s.resident_after(s.flushed()).to_vec();
-                return Some(Ok(image));
+                return Some(Ok(move_image(s)));
             }
-            image
+            self::stub(s)
         };
         match self.read_events(session, after).await? {
             Ok(events) => {
@@ -479,6 +477,14 @@ const COMPACT_AT: usize = 16;
 
 /// Store a running turn's events once this many are not stored yet.
 const FLUSH_BUSY_AT: i32 = 64;
+
+/// What a move carries of a session: its metadata and the events the
+/// object store doesn't hold yet (history stays in the store).
+pub fn move_image(s: &SessionState) -> SessionState {
+    let mut image = stub(s);
+    image.events = s.resident_after(s.flushed()).to_vec();
+    image
+}
 
 /// A session's metadata without its resident events.
 fn stub(s: &SessionState) -> SessionState {

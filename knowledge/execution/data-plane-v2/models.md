@@ -41,6 +41,18 @@ already started leaving. The design now has distinct **prepared** and
 **leaving** states, activation only from prepared, and an abandoned move
 that takes the unit back through the directory at a higher generation.
 
+## What the models missed
+
+The protocol simulation (`crates/cell/tests/protocol_simulation.rs`) runs
+the real state machine under the same faults and found three move bugs
+`Moves` could not, because the model has no freeze or thaw commands of its
+own and no epoch inside a move: a late freeze retargeting a committed move,
+a late thaw of an earlier freeze, and a write from an epoch that looked
+expired to the driver landing after the copy. The model starts a move at
+"leaving"; the code has to get there safely, which is now the simulation's
+job. A model change worth making when `Moves` is next touched: freeze and
+thaw as separate, delayable messages, and an epoch that the move revokes.
+
 ## Next models
 
 `Epochs` came with plan step 5. It records one accepted limit: an epoch

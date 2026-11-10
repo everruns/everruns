@@ -154,14 +154,30 @@ pub enum Command {
         #[serde(default)]
         to: Option<CellId>,
     },
+    /// A move is about to copy the frozen `session`: end its epoch, so no
+    /// write lands in the leaving copy after the copy is taken. Refused
+    /// (`Frozen`) while the epoch is leased at `now_ms`; it hands off at
+    /// its next step boundary, or expires.
+    ///
+    /// Decision: the move checks expiry through the log, not on the
+    /// driver's clock. An epoch the driver's clock calls expired can look
+    /// current to a proposer whose clock is behind (the `Epochs` model's
+    /// `Unexpire`), and its late write would land after the copy and be
+    /// lost on forward (found by the protocol simulation).
+    Revoke { session: SessionId, now_ms: i64 },
     /// Undo a freeze. With `generation`, a move that was abandoned after
     /// it may have installed a copy elsewhere: the directory already took
     /// the session back at that generation (above the abandoned move's), so
-    /// that copy can never be activated.
+    /// that copy can never be activated. Without, a freeze that never
+    /// became a move: `to` must be the target the copy is frozen for, so a
+    /// late thaw of an earlier freeze can't thaw a copy a later move
+    /// already committed elsewhere (found by the protocol simulation).
     Thaw {
         session: SessionId,
         #[serde(default)]
         generation: Option<u64>,
+        #[serde(default)]
+        to: Option<CellId>,
     },
     /// Install a session moved from another cell, prepared: it runs nothing
     /// until `Activate`. Only a generation newer than any copy this cell
@@ -889,6 +905,12 @@ impl CellState {
                 let Some(state) = self.sessions.get(&session) else {
                     return self.missing(session);
                 };
+                // A prepared copy runs nothing. A frozen one may: its epoch
+                // runs on to the next step boundary, and that step's call
+                // is reserved here, where it settles.
+                if state.placement == Placement::Prepared {
+                    return Response::Frozen;
+                }
                 let tenant = state.tenant.clone();
                 Response::Value {
                     value: self.allowances.reserve(tenant.as_deref(), session, now_ms),
@@ -1064,20 +1086,51 @@ impl CellState {
                 if state.placement == Placement::Prepared {
                     return Response::Frozen;
                 }
+                // A move already running is never retargeted: it may have
+                // committed in the directory already, and a late freeze
+                // back to this cell would thaw the leaving copy while the
+                // target runs the session (two owners; found by the
+                // protocol simulation). It finishes, or is abandoned
+                // through the directory.
+                if state.placement == Placement::Frozen {
+                    return if state.moving_to == to {
+                        Response::Duplicate
+                    } else {
+                        Response::Frozen
+                    };
+                }
                 state.placement = Placement::Frozen;
                 state.moving_to = to;
                 changes.push(Change::Session(session));
                 Response::Ok
             }
+            Command::Revoke { session, now_ms } => {
+                let Some(state) = self.session_mut(session) else {
+                    return self.missing(session);
+                };
+                if state.placement != Placement::Frozen || state.authority.executing(now_ms) {
+                    return Response::Frozen;
+                }
+                if state.authority.holder.take().is_some() {
+                    changes.push(Change::Session(session));
+                }
+                Response::Ok
+            }
             Command::Thaw {
                 session,
                 generation,
+                to,
             } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
                 if state.placement != Placement::Frozen {
                     return Response::Duplicate;
+                }
+                if generation.is_none() && state.moving_to != to {
+                    return Response::Rejected {
+                        reason: "thaw of another freeze".into(),
+                    };
                 }
                 if let Some(generation) = generation {
                     if generation <= state.generation {
@@ -1152,7 +1205,12 @@ impl CellState {
                         };
                     }
                 }
-                self.sessions.remove(&session);
+                // The move waited for the epoch to hand off or expire; a
+                // reservation still open is a call that died mid-way.
+                if let Some(left) = self.sessions.remove(&session) {
+                    self.allowances
+                        .close_dangling(left.tenant.as_deref(), session);
+                }
                 self.forwarded.insert(
                     session,
                     Left {
