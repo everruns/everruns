@@ -5,7 +5,7 @@
 //! running it again is safe and fast, and it repairs what is missing instead of
 //! starting over. Secrets are never regenerated and upgrades never happen as a
 //! side effect: moving to a new image tag runs migrations, so it is asked for
-//! explicitly with `upgrade`. `reset` is the one command that deletes data,
+//! explicitly with `upgrade`. `destroy` is the one command that deletes data,
 //! and it asks for the instance name first.
 
 mod checks;
@@ -61,8 +61,8 @@ pub enum DockerCommand {
     /// Move the instance to this CLI's version (or --image-tag), backing up the database first
     Upgrade(UpgradeArgs),
 
-    /// Delete the instance: containers, database and settings. Asks first
-    Reset(ResetArgs),
+    /// Delete the instance and everything it made: containers, database, settings. Asks first
+    Destroy(DestroyArgs),
 }
 
 #[derive(Args)]
@@ -84,7 +84,7 @@ pub struct UpgradeArgs {
 }
 
 #[derive(Args)]
-pub struct ResetArgs {
+pub struct DestroyArgs {
     #[command(flatten)]
     pub instance: InstanceArgs,
 
@@ -287,7 +287,7 @@ pub async fn run(command: DockerCommand) -> Result<()> {
         DockerCommand::Open(args) => open(&args),
         DockerCommand::Doctor(args) => doctor(&args),
         DockerCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
-        DockerCommand::Reset(args) => reset(&args),
+        DockerCommand::Destroy(args) => destroy(&args),
     }
 }
 
@@ -508,7 +508,21 @@ async fn up(args: UpArgs) -> Result<()> {
             "Sign in",
             ui::dim("none (only this machine can reach it)").to_string(),
         )),
-        AuthChoice::Single | AuthChoice::Accounts if first_run => {
+        // A single admin login has nothing else to sign in with, so its
+        // password is shown on every run; with accounts it is the bootstrap
+        // admin's and is shown only when it was generated.
+        AuthChoice::Single => {
+            rows.push(("Sign in", email.clone()));
+            rows.push((
+                "Password",
+                format!(
+                    "{} {}",
+                    ui::bold(s.value(settings::ADMIN_PASSWORD).unwrap_or_default()),
+                    ui::dim("(also in .env)")
+                ),
+            ));
+        }
+        AuthChoice::Accounts if first_run => {
             rows.push(("Sign in", email.clone()));
             rows.push((
                 "Password",
@@ -519,7 +533,7 @@ async fn up(args: UpArgs) -> Result<()> {
                 ),
             ));
         }
-        AuthChoice::Single | AuthChoice::Accounts => {
+        AuthChoice::Accounts => {
             rows.push(("Sign in", email.clone()));
             rows.push((
                 "Password",
@@ -1201,7 +1215,7 @@ fn backup(docker: &str, inst: &Instance, tag: &str) -> Result<std::path::PathBuf
 
 /// Delete everything the instance has: containers, the database volume, the
 /// settings folder (with the encryption key and backups) and its CLI profile.
-fn reset(args: &ResetArgs) -> Result<()> {
+fn destroy(args: &DestroyArgs) -> Result<()> {
     let inst = Instance::new(&args.instance.name)?;
     let docker = checks::program();
     // Without a settings folder there can still be containers and a volume
@@ -1209,7 +1223,7 @@ fn reset(args: &ResetArgs) -> Result<()> {
     let has_project = project_exists(&docker, &inst);
     if !inst.dir.exists() && !has_project {
         ui::note(format!(
-            "Nothing to reset: no local instance '{}'.",
+            "Nothing to destroy: no local instance '{}'.",
             inst.name
         ));
         return Ok(());

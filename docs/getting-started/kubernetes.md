@@ -55,8 +55,9 @@ chart keeps its secrets in the cluster and Helm keeps the values.
 Without a public URL, `everruns k8s port-forward` keeps the install reachable
 at `http://localhost:9300` for the browser and the CLI, and `everruns k8s open`
 opens it. `status`, `logs [server|worker|ui|proxy]` and `doctor` show what it
-is doing; `uninstall` removes the workloads and keeps the data; `reset`
-deletes everything after you type the install's name. All commands:
+is doing; `uninstall` removes the workloads and keeps the data; `destroy`
+deletes everything after you type the install's name, including the namespace
+when nothing else is in it. All commands:
 [`everruns k8s`](/reference/cli/k8s/).
 
 ## Install with Helm

@@ -14,7 +14,8 @@ Setting up Everruns with [`everruns docker up`](/getting-started/docker-compose/
 or [`everruns k8s up`](/getting-started/kubernetes/) now reads like a checklist.
 Checks and answers get a green ✔, warnings stand out in yellow and failures in red with the fix
 under them, and the run ends in one box with the address, how to sign in and
-the next command to type.
+the next command to type. With a single admin sign-in, the box shows the
+password itself.
 
 ![everruns docker up: checks, answered questions, containers starting, and a summary box with the UI address and password](./docker-up@2x.png)
 
@@ -22,6 +23,10 @@ the next command to type.
 server 1/2`), so a slow rollout says what it is waiting on. The new
 `everruns k8s password` prints the generated admin password instead of a long
 `kubectl` line. Both commands also offer OpenRouter as the LLM provider.
+
+`reset` is now `destroy`, in both `docker` and `k8s`, since it deletes the
+install rather than clearing its data. On Kubernetes it also removes the
+namespace once nothing but Kubernetes' own defaults is left in it.
 
 The rest of the [CLI](/features/cli/) follows suit ([every command](/reference/cli/)): status pages, sign-in,
 `chat`, tables and errors. Color is off when output is piped, with `--no-color`

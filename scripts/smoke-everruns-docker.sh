@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run `everruns docker up` end to end with a CLI built from this checkout:
 # first run (no prompts), CLI signed in, a second run that changes nothing,
-# a sign-in mode switch, stop, an upgrade with its backup, and reset.
+# a sign-in mode switch, stop, an upgrade with its backup, and destroy.
 #
 # Uses published images like the Compose smoke (EVERRUNS_TAG, default
 # `latest`); the CLI under test is the local build. Settings and credentials go
@@ -81,12 +81,12 @@ else
 fi
 "$BIN" whoami | grep -q "smoke@example.com" || fail "CLI not signed in after the upgrade"
 
-step "Reset deletes everything, and only after --yes"
-"$BIN" docker reset --name "$NAME" </dev/null && fail "reset went ahead without --yes"
-"$BIN" docker reset --name "$NAME" --yes || fail "reset failed"
-[ -e "$XDG_DATA_HOME/everruns/docker/$NAME" ] && fail "reset left the settings folder"
-docker volume ls -q --filter "label=com.docker.compose.project=everruns-$NAME" | grep -q . && fail "reset left volumes"
-grep -q "local-$NAME" "$XDG_CONFIG_HOME/everruns/credentials.json" && fail "reset left the CLI profile"
-"$BIN" docker reset --name "$NAME" --yes || fail "a second reset failed"
+step "Destroy deletes everything, and only after --yes"
+"$BIN" docker destroy --name "$NAME" </dev/null && fail "destroy went ahead without --yes"
+"$BIN" docker destroy --name "$NAME" --yes || fail "destroy failed"
+[ -e "$XDG_DATA_HOME/everruns/docker/$NAME" ] && fail "destroy left the settings folder"
+docker volume ls -q --filter "label=com.docker.compose.project=everruns-$NAME" | grep -q . && fail "destroy left volumes"
+grep -q "local-$NAME" "$XDG_CONFIG_HOME/everruns/credentials.json" && fail "destroy left the CLI profile"
+"$BIN" docker destroy --name "$NAME" --yes || fail "a second destroy failed"
 
 step "everruns docker smoke passed"

@@ -3,7 +3,7 @@
 # the cluster in the current kube context (CI uses kind): first install with
 # no prompts, CLI signed in through a port-forward, a second run that keeps
 # the generated secrets, the hosted shape through --set, uninstall and a
-# reinstall that asks nothing and keeps the data, and reset.
+# reinstall that asks nothing and keeps the data, and destroy.
 #
 # The chart comes from this checkout (`--chart charts/everruns`), the images
 # are published ones (EVERRUNS_TAG, default `latest`). Settings and CLI
@@ -112,13 +112,14 @@ up || fail "up after uninstall failed"
 [ "$before" = "$(secrets)" ] || fail "reinstall changed the generated secrets"
 with_forward signed_in || fail "the CLI profile does not work after reinstall"
 
-step "Reset deletes everything, and only after --yes"
-"$BIN" k8s reset --name "$NAME" </dev/null && fail "reset went ahead without --yes"
-"$BIN" k8s reset --name "$NAME" --yes || fail "reset failed"
-[ -e "$XDG_DATA_HOME/everruns/k8s/$NAME" ] && fail "reset left the local record"
-kubectl -n "$NS" get secret "$NAME-everruns-generated" >/dev/null 2>&1 && fail "reset left the generated secrets"
-kubectl -n "$NS" get pvc -l "app.kubernetes.io/instance=$NAME" -o name | grep -q . && fail "reset left volumes"
-grep -q "\"$PROFILE\"" "$XDG_CONFIG_HOME/everruns/credentials.json" && fail "reset left the CLI profile"
-"$BIN" k8s reset --name "$NAME" --yes || fail "a second reset failed"
+step "Destroy deletes everything, the namespace too, and only after --yes"
+"$BIN" k8s destroy --name "$NAME" </dev/null && fail "destroy went ahead without --yes"
+"$BIN" k8s destroy --name "$NAME" --yes || fail "destroy failed"
+[ -e "$XDG_DATA_HOME/everruns/k8s/$NAME" ] && fail "destroy left the local record"
+kubectl -n "$NS" get secret "$NAME-everruns-generated" >/dev/null 2>&1 && fail "destroy left the generated secrets"
+kubectl -n "$NS" get pvc -l "app.kubernetes.io/instance=$NAME" -o name | grep -q . && fail "destroy left volumes"
+grep -q "\"$PROFILE\"" "$XDG_CONFIG_HOME/everruns/credentials.json" && fail "destroy left the CLI profile"
+kubectl get namespace "$NS" >/dev/null 2>&1 && fail "destroy left the namespace"
+"$BIN" k8s destroy --name "$NAME" --yes || fail "a second destroy failed"
 
 step "everruns k8s smoke passed"

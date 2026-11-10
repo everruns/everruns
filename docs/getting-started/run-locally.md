@@ -116,10 +116,10 @@ copy it into the `postgres` container and run `pg_restore --clean` against the
 ## Start over
 
 ```bash
-everruns docker reset
+everruns docker destroy
 ```
 
-`reset` deletes the instance: its containers, the database, the settings folder
+`destroy` deletes the instance: its containers, the database, the settings folder
 with the encryption key and backups, and the CLI profile. It asks you to type
 the instance name first; `--yes` skips that for scripts.
 

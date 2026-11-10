@@ -16,6 +16,7 @@
 //!   open.
 
 mod cluster;
+mod destroy;
 mod rollout;
 mod values;
 
@@ -79,8 +80,9 @@ pub enum K8sCommand {
     /// Remove the workloads. The database, its volumes and the generated secrets are kept
     Uninstall(InstanceArgs),
 
-    /// Delete the install: workloads, generated secrets, volumes and the CLI profile. Asks first
-    Reset(ResetArgs),
+    /// Delete the install and everything it made: workloads, secrets, volumes, the namespace
+    /// when nothing else is in it, and the CLI profile. Asks first
+    Destroy(DestroyArgs),
 }
 
 #[derive(Args)]
@@ -192,9 +194,13 @@ pub struct UpgradeArgs {
 }
 
 #[derive(Args)]
-pub struct ResetArgs {
+pub struct DestroyArgs {
     #[command(flatten)]
     pub instance: InstanceArgs,
+
+    /// Keep the namespace even when nothing else is left in it
+    #[arg(long)]
+    pub keep_namespace: bool,
 
     /// Do not ask for the install name (for scripts)
     #[arg(long, short = 'y')]
@@ -216,7 +222,7 @@ pub async fn run(command: K8sCommand) -> Result<()> {
         K8sCommand::Password(args) => password(&args),
         K8sCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
         K8sCommand::Uninstall(args) => uninstall(&args),
-        K8sCommand::Reset(args) => reset(&args),
+        K8sCommand::Destroy(args) => destroy::destroy(&args),
     }
 }
 
@@ -575,12 +581,25 @@ async fn up(args: UpArgs) -> Result<()> {
 
     let ui_url = public.clone().unwrap_or_else(|| local_url(port));
     let mut rows = vec![("UI", ui::cmd(&ui_url).to_string())];
-    if auth != AuthChoice::None {
-        rows.push(("Sign in", email.clone()));
-        rows.push((
-            "Password",
-            ui::cmd(format!("everruns k8s password{}", inst.name_flag())).to_string(),
-        ));
+    let again = ui::cmd(format!("everruns k8s password{}", inst.name_flag()));
+    match auth {
+        AuthChoice::None => {}
+        // A single admin login is the only way in, so show the password itself.
+        AuthChoice::Single => {
+            rows.push(("Sign in", email.clone()));
+            rows.push((
+                "Password",
+                format!(
+                    "{}  {}",
+                    ui::bold(&password),
+                    ui::dim(format!("(again: {again})"))
+                ),
+            ));
+        }
+        AuthChoice::Accounts => {
+            rows.push(("Sign in", email.clone()));
+            rows.push(("Password", again.to_string()));
+        }
     }
     rows.push(if signed_in.current {
         ("CLI", ui::cmd("everruns agents list").to_string())
@@ -1233,80 +1252,8 @@ fn uninstall(args: &InstanceArgs) -> Result<()> {
          brings it back as it was. {2} deletes them.",
         target.fullname(),
         ui::cmd(format!("everruns k8s up{}", inst.name_flag())),
-        ui::cmd(format!("everruns k8s reset{}", inst.name_flag()))
+        ui::cmd(format!("everruns k8s destroy{}", inst.name_flag()))
     ));
-    Ok(())
-}
-
-/// Delete everything the install has in the cluster and on this machine.
-fn reset(args: &ResetArgs) -> Result<()> {
-    let Some((inst, record)) = existing(&args.instance)? else {
-        return Ok(());
-    };
-    let target = record.target();
-    if !args.yes {
-        if !std::io::stdin().is_terminal() {
-            bail!(
-                "no terminal to ask on; pass --yes to delete '{}'",
-                inst.name
-            );
-        }
-        ui::warn(format!(
-            "This deletes Everruns '{}' in {}/{}: its workloads, the generated secrets with the \
-             encryption key, the bundled database and its backups on this machine, and CLI profile '{}'.",
-            inst.name,
-            target.context,
-            target.namespace,
-            inst.profile()
-        ));
-        let typed: String = dialoguer::Input::with_theme(crate::ui::theme())
-            .with_prompt(format!("Type '{}' to delete it", inst.name))
-            .interact_text()
-            .context("Failed to read the answer")?;
-        if typed.trim() != inst.name {
-            bail!("not deleted");
-        }
-    }
-    if target.release_values()?.is_some() {
-        let status = target
-            .helm()
-            .args(["uninstall", &target.release, "--wait"])
-            .status()
-            .context("Failed to run helm")?;
-        if !status.success() {
-            bail!("`helm uninstall` failed");
-        }
-    }
-    let full = target.fullname();
-    let secrets = [format!("{full}-generated"), format!("{full}-internal")];
-    let mut cmd = target.kubectl();
-    cmd.args(["delete", "secret", "--ignore-not-found"]);
-    cmd.args(&secrets);
-    if !cmd.status().context("Failed to run kubectl")?.success() {
-        bail!("deleting the generated secrets failed");
-    }
-    let volumes = target
-        .kubectl()
-        .args([
-            "delete",
-            "pvc",
-            "--ignore-not-found",
-            "--selector",
-            &target.selector(None),
-        ])
-        .status()
-        .context("Failed to run kubectl")?;
-    if !volumes.success() {
-        bail!("deleting the volumes failed");
-    }
-    if docker::forget_profile(&inst.profile())? {
-        ui::ok(format!("Removed CLI profile '{}'.", inst.profile()));
-    }
-    if inst.dir.exists() {
-        std::fs::remove_dir_all(&inst.dir)
-            .with_context(|| format!("Failed to remove {}", inst.dir.display()))?;
-    }
-    ui::ok(format!("Deleted '{}'.", inst.name));
     Ok(())
 }
 

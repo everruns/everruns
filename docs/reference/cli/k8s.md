@@ -21,7 +21,7 @@ Run Everruns in a Kubernetes cluster with the Helm chart.
 | [`k8s password`](#k8s-password) | Print the admin password the chart generated. |
 | [`k8s upgrade`](#k8s-upgrade) | Move the install to this CLI's chart version (or --chart-version), backing up a bundled database first. |
 | [`k8s uninstall`](#k8s-uninstall) | Remove the workloads. |
-| [`k8s reset`](#k8s-reset) | Delete the install: workloads, generated secrets, volumes and the CLI profile. |
+| [`k8s destroy`](#k8s-destroy) | Delete the install and everything it made: workloads, secrets, volumes, the namespace when nothing else is in it, and the CLI profile. |
 
 ## k8s up
 
@@ -164,16 +164,17 @@ everruns k8s uninstall [OPTIONS]
 | `--name <NAME>` | Install name, also the Helm release name. |
 
 
-## k8s reset
+## k8s destroy
 
-Delete the install: workloads, generated secrets, volumes and the CLI profile. Asks first.
+Delete the install and everything it made: workloads, secrets, volumes, the namespace when nothing else is in it, and the CLI profile. Asks first.
 
 ```bash
-everruns k8s reset [OPTIONS]
+everruns k8s destroy [OPTIONS]
 ```
 
 | Flag | Description |
 |---|---|
 | `--name <NAME>` | Install name, also the Helm release name. |
+| `--keep-namespace` | Keep the namespace even when nothing else is left in it. |
 | `-y`, `--yes` | Do not ask for the install name (for scripts) |
 
