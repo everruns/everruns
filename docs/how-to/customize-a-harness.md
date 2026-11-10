@@ -6,7 +6,7 @@ appliesTo: [platform, cloud]
 
 A harness is the base environment for sessions: a system prompt baseline, a default model, and pre-bundled capabilities. Create a custom one when you have a set of defaults you want to share across many agents.
 
-For the design rationale, see [Why three configuration layers](/getting-started/concepts/#runtimeagent).
+For the design rationale, see [Why three configuration layers](/getting-started/concepts/#turnagent).
 
 ## Create a harness via API
 

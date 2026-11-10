@@ -43,7 +43,7 @@ Precedence when a session starts, first match wins:
 
 So the same agent can be run on a different harness for one session without editing the agent, while changing it for good means updating the agent.
 
-For the design rationale (why three configuration layers exist), see [Concepts](/getting-started/concepts/#runtimeagent).
+For the design rationale (why three configuration layers exist), see [Concepts](/getting-started/concepts/#turnagent).
 
 ## Built-in harnesses
 
