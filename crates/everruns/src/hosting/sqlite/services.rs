@@ -73,7 +73,7 @@ impl AuthorityServices {
     /// Schedules of one org. With a journal, the store records timers in the
     /// session log; the runner's store has none, since a delivery is itself
     /// an admission in that log.
-    fn schedules(
+    pub(super) fn schedules(
         &self,
         org: i64,
         journal: Option<Arc<dyn everruns_core::host::EventLog>>,
@@ -117,7 +117,11 @@ fn ownership(task: &SessionTask) -> TaskOwnership {
 
 impl SqliteHosting {
     pub(super) fn task_registry(&self) -> Arc<dyn SessionTaskRegistry> {
-        self.services.recovery.clone()
+        if self.directory.is_some() {
+            Arc::new(super::session_directory::RoutedTasks(self.clone(), true))
+        } else {
+            self.services.recovery.clone()
+        }
     }
 
     /// Attach the authority's task registry, child-session store and wakes
@@ -576,6 +580,16 @@ mod tests {
     /// hosted sessions of the parent's build, with a durable parent link.
     #[tokio::test]
     async fn hosted_child_sessions_keep_their_build_and_parent_across_restart() {
+        child_restart(false).await;
+    }
+
+    #[tokio::test]
+    async fn isolated_child_sessions_keep_their_build_and_parent_across_restart() {
+        child_restart(true).await;
+    }
+
+    async fn child_restart(isolated: bool) {
+        let parent = SessionId::new();
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("authority.db");
         let build = AgentBuild::new("assistant", "child-v1");
@@ -586,12 +600,16 @@ mod tests {
                 .build()
                 .unwrap()
         };
-        let profile = SqliteHosting::open(&path).unwrap();
+        let profile = if isolated {
+            SqliteHosting::open_session(directory.path(), parent)
+        } else {
+            SqliteHosting::open(&path)
+        }
+        .unwrap();
         let engine = crate::Engine::builder()
             .hosting(profile.clone())
             .register(build.clone(), agent())
             .build();
-        let parent = SessionId::new();
         engine.create_registered(parent, &build).await.unwrap();
         let runner = HostedSessionRunner {
             engine: engine.downgrade(),
@@ -643,7 +661,12 @@ mod tests {
         drop(runner);
         drop(engine);
 
-        let restarted = SqliteHosting::open(&path).unwrap();
+        let restarted = if isolated {
+            SqliteHosting::open_session(directory.path(), parent)
+        } else {
+            SqliteHosting::open(&path)
+        }
+        .unwrap();
         let binding = restarted.status(child.id).await.unwrap().binding;
         assert_eq!(binding.behavior, build);
         assert_eq!(
@@ -659,6 +682,30 @@ mod tests {
             .unwrap();
         assert_eq!(record.parent_session_id, Some(parent));
         assert_eq!(record.title.as_deref(), Some("Thread"));
+        if isolated {
+            let children = restarted.registered_sessions().unwrap();
+            assert_eq!(children.len(), 2);
+            for id in [parent, child.id] {
+                let db = crate::sqlite::open(SqliteHosting::session_db_path(directory.path(), id))
+                    .unwrap();
+                let owners: i64 = db
+                    .query_row(
+                        "SELECT count(*) FROM framework_authority WHERE session<>?",
+                        [id.to_string()],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(owners, 0);
+            }
+            let parent_record = restarted
+                .reader(child.id)
+                .session_store
+                .get_session(parent)
+                .await
+                .unwrap();
+            // The parent has not activated in this fixture, so no projected record yet.
+            assert!(parent_record.is_none());
+        }
     }
 }
 

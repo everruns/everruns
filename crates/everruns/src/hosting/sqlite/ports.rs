@@ -31,7 +31,10 @@ impl SessionEpoch for Ports {
     }
     fn backends(&self) -> HostBackends {
         let mut backends = HostBackends::in_memory();
-        backends.dreaming_store = Arc::new(self.hosting.clone());
+        backends.dreaming_store = Arc::new(super::session_directory::SessionDreaming(
+            self.hosting.clone(),
+            self.session,
+        ));
         backends.event_log = Arc::new(self.clone());
         backends.session_store = Arc::new(self.clone());
         backends.storage_store = Arc::new(self.clone());

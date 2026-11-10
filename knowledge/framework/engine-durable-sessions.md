@@ -27,6 +27,20 @@ single-domain SQLite and `ObjectHosting` share the session actor driver. The
 [shared Agent example](../../crates/durable-object/examples/shared/agent.rs)
 imports only `everruns`; native and Wasm bootstraps supply hosting and transport.
 
+SQLite code-registered hosts can isolate transaction domains per session using
+[`SqliteHosting::open_session`](../../crates/everruns/src/hosting/sqlite/session_directory.rs).
+The parent owns a child registry; each child owns its journal, receipts, tasks
+and schedules. Supervision follows that registry instead of scanning unrelated
+sessions. The shared-file profile remains available for hosts that explicitly
+choose one transaction domain. Session-directory mode does not publish shared
+agent definitions, that requires a separate control plane.
+
+Moving an existing shared authority is a canonical-state transfer, never a
+JSONL replay. A host-supplied exclusive session lease covers every transfer,
+including children opened during recovery. Live epochs and shared maintenance
+state refuse transfer. The original source remains unchanged; a completed
+session database is published atomically and reopened independently.
+
 Framework lifecycle receipts conservatively record uncertain effects. Approval
 batches and client results target a retained logical turn; repeated provider call
 ids cannot authorize a later turn. Rust interprets expired waits after independent
