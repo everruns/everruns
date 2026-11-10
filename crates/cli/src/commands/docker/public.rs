@@ -276,12 +276,12 @@ pub fn ensure_token(s: &mut Settings, plan: &Plan, can_ask: bool) -> Result<()> 
             plan.tunnel.token_help()
         );
     }
-    eprintln!(
+    crate::ui::note(format!(
         "{}: {}",
         plan.tunnel.token_label(),
         plan.tunnel.token_help()
-    );
-    let value = dialoguer::Password::new()
+    ));
+    let value = dialoguer::Password::with_theme(crate::ui::theme())
         .with_prompt(plan.tunnel.token_label())
         .interact()
         .context("Failed to read the token")?;
@@ -348,10 +348,10 @@ pub async fn discover_url(compose: impl Fn() -> Command, service: TunnelService)
             );
         }
         if !told && started.elapsed() > Duration::from_secs(3) {
-            eprintln!(
+            crate::ui::note(format!(
                 "Waiting for the {} tunnel to report its address...",
                 service.profile
-            );
+            ));
             told = true;
         }
         tokio::time::sleep(Duration::from_secs(2)).await;

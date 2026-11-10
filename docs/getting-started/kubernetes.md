@@ -33,7 +33,9 @@ an Ingress, and an LLM provider key, which it takes from `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` or `OPENROUTER_API_KEY` when set. It checks the cluster first
 (Kubernetes version, permissions in the namespace, a default StorageClass when
 it needs volumes, KEDA when worker autoscaling is on), installs this CLI
-version's chart, waits for the pods, and signs the CLI in as profile `k8s`.
+version's chart, waits for the pods while it shows how many of each are ready,
+and signs the CLI in as profile `k8s`. `everruns k8s password` prints the
+generated admin password for the UI.
 
 Every question has a flag, so it also runs in scripts and CI:
 
@@ -53,8 +55,9 @@ chart keeps its secrets in the cluster and Helm keeps the values.
 Without a public URL, `everruns k8s port-forward` keeps the install reachable
 at `http://localhost:9300` for the browser and the CLI, and `everruns k8s open`
 opens it. `status`, `logs [server|worker|ui|proxy]` and `doctor` show what it
-is doing; `uninstall` removes the workloads and keeps the data; `reset`
-deletes everything after you type the install's name. All commands:
+is doing; `uninstall` removes the workloads and keeps the data; `destroy`
+deletes everything after you type the install's name, including the namespace
+when nothing else is in it. All commands:
 [`everruns k8s`](/reference/cli/k8s/).
 
 ## Install with Helm

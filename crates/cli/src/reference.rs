@@ -65,7 +65,9 @@ fn index_page(groups: &[&Command], top_level: &[&Command]) -> String {
          | `--reason <TEXT>` | Why you are making this change. Recorded in the changed entity's history; give one on every command that changes something. |\n\
          | `--context-revision <N>` | The revision of the entity's manager notes you read (`everruns context get`). The change is refused if the notes changed since. |\n\
          | `-o`, `--output <FORMAT>` | `text` (default), `json` or `yaml`. |\n\
-         | `-q`, `--quiet` | Print only the essential identifier, for capturing ids in scripts. |\n\n",
+         | `-q`, `--quiet` | Print only the essential identifier, for capturing ids in scripts. |\n\
+         | `--color <WHEN>` | `auto` (default), `always` or `never`. `auto` colors a terminal unless `NO_COLOR` is set, `CLICOLOR=0` or `TERM=dumb`; `CLICOLOR_FORCE=1` colors piped output too. |\n\
+         | `--no-color` | Same as `--color never`. |\n\n",
     );
     if !top_level.is_empty() {
         page.push_str("## Session and account\n\n| Command | What it does |\n|---|---|\n");

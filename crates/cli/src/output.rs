@@ -41,7 +41,8 @@ impl OutputFormat {
 
 /// Print a simple key-value pair for text output
 pub fn print_field(label: &str, value: &str) {
-    println!("{:<14} {}", format!("{}:", label), value);
+    let label = format!("{:<14}", format!("{}:", label));
+    println!("{} {}", console::style(label).dim(), value);
 }
 
 /// Print a table header
@@ -51,7 +52,7 @@ pub fn print_table_header(columns: &[(&str, usize)]) {
         .map(|(name, width)| format!("{:<width$}", name, width = width))
         .collect::<Vec<_>>()
         .join("  ");
-    println!("{}", header);
+    println!("{}", crate::ui::header(header.trim_end()));
 }
 
 /// Print a table row

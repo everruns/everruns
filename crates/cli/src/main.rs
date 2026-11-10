@@ -15,6 +15,7 @@ mod events;
 mod output;
 #[cfg(test)]
 mod reference;
+mod ui;
 mod user_dirs;
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
@@ -39,6 +40,15 @@ pub struct Cli {
     /// Suppress non-essential output
     #[arg(long, short, global = true)]
     pub quiet: bool,
+
+    /// When to color output. `auto` colors a terminal unless NO_COLOR is set
+    /// or CLICOLOR=0; CLICOLOR_FORCE colors anything
+    #[arg(long, global = true, value_enum, default_value_t = ui::ColorChoice::Auto)]
+    pub color: ui::ColorChoice,
+
+    /// Same as --color never
+    #[arg(long, global = true)]
+    pub no_color: bool,
 
     /// Profile name for credential storage (default: the profile you signed
     /// in to last)
@@ -135,10 +145,17 @@ pub enum OrgsCommand {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> std::process::ExitCode {
     // Every failure passes through one place that explains the ones a person
-    // can act on, such as a read-only token refused a write.
-    Box::pin(run()).await.map_err(commands::api::explain)
+    // can act on, such as a read-only token refused a write. Printed like
+    // Rust's own `Error: {:?}` (with its "Caused by" list), in red on a terminal.
+    match Box::pin(run()).await.map_err(commands::api::explain) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{} {e:?}", ui::bad("Error:").bold());
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 async fn run() -> anyhow::Result<()> {
@@ -149,6 +166,14 @@ async fn run() -> anyhow::Result<()> {
     // the same global flags and the same help as a hand-written one.
     let root = contract::augment(Cli::command());
     let matches = root.clone().get_matches();
+    ui::init(if matches.get_flag("no_color") {
+        ui::ColorChoice::Never
+    } else {
+        matches
+            .get_one::<ui::ColorChoice>("color")
+            .copied()
+            .unwrap_or_default()
+    });
 
     let output_format = output::OutputFormat::from_str(
         matches

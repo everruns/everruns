@@ -112,7 +112,7 @@ fn decide_current(store: &CredentialStore, profile: &str, switch: SwitchPolicy) 
     Ok(match switch {
         SwitchPolicy::Always => true,
         SwitchPolicy::Never => false,
-        SwitchPolicy::Ask => dialoguer::Confirm::new()
+        SwitchPolicy::Ask => dialoguer::Confirm::with_theme(crate::ui::theme())
             .with_prompt(format!(
                 "Use this instance for CLI commands? (now: profile '{other}')"
             ))

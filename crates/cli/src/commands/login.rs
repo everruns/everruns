@@ -208,15 +208,13 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     });
 
     // 4. Open browser
-    eprintln!("Opening browser for login...");
-    eprintln!("If your browser doesn't open, visit:");
-    eprintln!("  {}", start.auth_url);
-    eprintln!();
-    eprintln!("Waiting for login...");
+    crate::ui::note("Opening the browser to sign in. If it does not open, visit:");
+    eprintln!("  {}", crate::ui::cmd(&start.auth_url));
 
     if crate::browser::open(&start.auth_url).is_err() {
-        eprintln!("(Could not open browser automatically)");
+        crate::ui::warn("Could not open the browser automatically");
     }
+    crate::ui::note("Waiting for you to sign in...");
 
     // 5. Wait for the callback (with timeout)
     let code = tokio::time::timeout(std::time::Duration::from_secs(300), code_rx)
@@ -273,15 +271,15 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     store.current_profile = profile.to_string();
     store.save()?;
 
-    eprintln!();
-    eprintln!(
-        "Logged in as {} ({})",
-        exchange.user.name, exchange.user.email
-    );
-    eprintln!(
-        "Credentials saved to {:?}",
-        crate::auth::credentials_path()?
-    );
+    crate::ui::ok(format!(
+        "Logged in as {} {}",
+        crate::ui::bold(&exchange.user.name),
+        crate::ui::dim(format!("({})", exchange.user.email))
+    ));
+    crate::ui::detail(format!(
+        "Credentials saved to {}",
+        crate::auth::credentials_path()?.display()
+    ));
 
     Ok(())
 }
@@ -290,7 +288,7 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
 async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
     eprintln!("Paste your personal access token (starts with evr_pat_):");
 
-    let api_key: String = dialoguer::Input::new()
+    let api_key: String = dialoguer::Input::with_theme(crate::ui::theme())
         .with_prompt("Personal access token")
         .validate_with(|input: &String| -> std::result::Result<(), String> {
             if input.starts_with("evr_pat_") && input.len() > 10 {
@@ -352,9 +350,16 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
     store.current_profile = profile.to_string();
     store.save()?;
 
-    eprintln!("Logged in as {} ({})", me.name, me.email);
+    crate::ui::ok(format!(
+        "Logged in as {} {}",
+        crate::ui::bold(&me.name),
+        crate::ui::dim(format!("({})", me.email))
+    ));
     if let Some(scope) = me.token_scope.as_deref() {
-        eprintln!("Access: {}", crate::commands::whoami::access_label(scope));
+        crate::ui::detail(format!(
+            "Access: {}",
+            crate::commands::whoami::access_label(scope)
+        ));
     }
     Ok(())
 }
@@ -366,7 +371,10 @@ pub(crate) fn select_org(orgs: &[OrgInfo]) -> Result<String> {
     }
 
     if orgs.len() == 1 {
-        eprintln!("Using organization: {}", orgs[0].name);
+        crate::ui::ok(format!(
+            "Using organization {}",
+            crate::ui::bold(&orgs[0].name)
+        ));
         return Ok(orgs[0].public_id.clone());
     }
 
@@ -375,7 +383,7 @@ pub(crate) fn select_org(orgs: &[OrgInfo]) -> Result<String> {
         .map(|o| format!("{} ({})", o.name, o.role))
         .collect();
 
-    let selection = dialoguer::Select::new()
+    let selection = dialoguer::Select::with_theme(crate::ui::theme())
         .with_prompt("Select organization")
         .items(&items)
         .default(0)

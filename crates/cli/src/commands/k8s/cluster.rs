@@ -6,6 +6,7 @@
 //! which a Kubernetes client crate would have to reimplement.
 //! `EVERRUNS_KUBECTL` and `EVERRUNS_HELM` name other binaries.
 
+use crate::ui;
 use std::process::{Child, Command, Output, Stdio};
 
 use anyhow::{Context, Result, bail};
@@ -213,9 +214,9 @@ impl Check {
 
     pub fn print(&self) {
         match &self.outcome {
-            Outcome::Ok(msg) => eprintln!("✓ {}: {msg}", self.name),
-            Outcome::Warn(msg) => eprintln!("! {}: {msg}", self.name),
-            Outcome::Fail(msg) => eprintln!("✗ {}: {msg}", self.name),
+            Outcome::Ok(msg) => ui::ok(ui::check_line(self.name, msg)),
+            Outcome::Warn(msg) => ui::warn(format!("{}: {msg}", self.name)),
+            Outcome::Fail(msg) => ui::fail(format!("{}: {msg}", self.name)),
         }
     }
 }

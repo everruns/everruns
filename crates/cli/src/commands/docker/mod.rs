@@ -5,7 +5,7 @@
 //! running it again is safe and fast, and it repairs what is missing instead of
 //! starting over. Secrets are never regenerated and upgrades never happen as a
 //! side effect: moving to a new image tag runs migrations, so it is asked for
-//! explicitly with `upgrade`. `reset` is the one command that deletes data,
+//! explicitly with `upgrade`. `destroy` is the one command that deletes data,
 //! and it asks for the instance name first.
 
 mod checks;
@@ -18,6 +18,7 @@ use std::net::TcpListener;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::ui;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 
@@ -60,8 +61,8 @@ pub enum DockerCommand {
     /// Move the instance to this CLI's version (or --image-tag), backing up the database first
     Upgrade(UpgradeArgs),
 
-    /// Delete the instance: containers, database and settings. Asks first
-    Reset(ResetArgs),
+    /// Delete the instance and everything it made: containers, database, settings. Asks first
+    Destroy(DestroyArgs),
 }
 
 #[derive(Args)]
@@ -83,7 +84,7 @@ pub struct UpgradeArgs {
 }
 
 #[derive(Args)]
-pub struct ResetArgs {
+pub struct DestroyArgs {
     #[command(flatten)]
     pub instance: InstanceArgs,
 
@@ -286,7 +287,7 @@ pub async fn run(command: DockerCommand) -> Result<()> {
         DockerCommand::Open(args) => open(&args),
         DockerCommand::Doctor(args) => doctor(&args),
         DockerCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
-        DockerCommand::Reset(args) => reset(&args),
+        DockerCommand::Destroy(args) => destroy(&args),
     }
 }
 
@@ -304,10 +305,11 @@ impl Asker {
 }
 
 async fn up(args: UpArgs) -> Result<()> {
+    let inst = Instance::new(&args.instance.name)?;
+    ui::banner("docker up", &[("instance", &inst.name)]);
     let docker = checks::program();
     require_docker(&docker, true)?;
 
-    let inst = Instance::new(&args.instance.name)?;
     inst.ensure_dir()?;
     let _lock = inst.lock()?;
 
@@ -317,6 +319,9 @@ async fn up(args: UpArgs) -> Result<()> {
     };
     let mut s = Settings::load(&inst.env_path())?;
     let first_run = s.is_empty();
+    if first_run {
+        ui::section("Setup");
+    }
 
     // Who signs in.
     let auth = match args.auth {
@@ -401,10 +406,10 @@ async fn up(args: UpArgs) -> Result<()> {
         .as_deref()
         .is_some_and(|u| u.starts_with("http://"))
     {
-        eprintln!(
-            "Note: {} is plain http. Slack and OAuth callbacks need https.",
+        ui::warn(format!(
+            "{} is plain http. Slack and OAuth callbacks need https.",
             public_plan.url.as_deref().unwrap_or_default()
-        );
+        ));
     }
 
     // Image tag.
@@ -422,11 +427,11 @@ async fn up(args: UpArgs) -> Result<()> {
     inst.write_compose()?;
 
     if first_run {
-        eprintln!(
-            "Settings: {} (keep .env: it holds the encryption key)",
-            inst.dir.display()
-        );
+        ui::ok(format!("Settings saved to {}", inst.dir.display()));
+        ui::detail("Keep its .env: it holds the encryption key.");
     }
+
+    ui::section("Starting");
 
     // Start or update the containers. Compose leaves running containers whose
     // configuration did not change alone, so this is the idempotent step.
@@ -480,65 +485,120 @@ async fn up(args: UpArgs) -> Result<()> {
         creds,
         switch,
     ))
-    .await
-    .context("The server is up, but signing the CLI in failed")?;
+    .await;
+    let signed_in = match signed_in {
+        Ok(s) => {
+            ui::ok(format!(
+                "CLI signed in as {} {}",
+                s.email,
+                ui::dim(format!("(profile {})", s.profile))
+            ));
+            s
+        }
+        Err(e) => {
+            return Err(e.context("The server is up, but signing the CLI in failed"));
+        }
+    };
 
     let url = format!("http://localhost:{port}");
-    eprintln!();
-    eprintln!("Everruns {} is running at {url}", health.version);
+    let mut rows = vec![("UI", ui::cmd(&url).to_string())];
+    let mut notes: Vec<String> = Vec::new();
     match auth {
-        AuthChoice::None => eprintln!("  Sign-in: none (only this machine can reach it)"),
-        AuthChoice::Single | AuthChoice::Accounts if first_run => eprintln!(
-            "  Sign in: {email} / {}  (shown once; also in {})",
-            s.value(settings::ADMIN_PASSWORD).unwrap_or_default(),
-            inst.env_path().display()
-        ),
-        AuthChoice::Single | AuthChoice::Accounts => eprintln!(
-            "  Sign in: {email} (password in {})",
-            inst.env_path().display()
-        ),
+        AuthChoice::None => rows.push((
+            "Sign in",
+            ui::dim("none (only this machine can reach it)").to_string(),
+        )),
+        // A single admin login has nothing else to sign in with, so its
+        // password is shown on every run; with accounts it is the bootstrap
+        // admin's and is shown only when it was generated.
+        AuthChoice::Single => {
+            rows.push(("Sign in", email.clone()));
+            rows.push((
+                "Password",
+                format!(
+                    "{} {}",
+                    ui::bold(s.value(settings::ADMIN_PASSWORD).unwrap_or_default()),
+                    ui::dim("(also in .env)")
+                ),
+            ));
+        }
+        AuthChoice::Accounts if first_run => {
+            rows.push(("Sign in", email.clone()));
+            rows.push((
+                "Password",
+                format!(
+                    "{} {}",
+                    ui::bold(s.value(settings::ADMIN_PASSWORD).unwrap_or_default()),
+                    ui::dim("(shown once; also in .env)")
+                ),
+            ));
+        }
+        AuthChoice::Accounts => {
+            rows.push(("Sign in", email.clone()));
+            rows.push((
+                "Password",
+                ui::dim(format!(
+                    "AUTH_ADMIN_PASSWORD in {}",
+                    inst.env_path().display()
+                ))
+                .to_string(),
+            ));
+        }
     }
     if let Some(public_url) = &public_url {
         if public::reachable(public_url).await {
-            eprintln!("  Public address: {public_url}");
+            rows.push(("Public", ui::cmd(public_url).to_string()));
         } else {
-            eprintln!(
-                "  Public address: {public_url} (not answering yet; {})",
-                public::unreachable_hint(public_plan.tunnel)
-            );
+            rows.push((
+                "Public",
+                format!(
+                    "{} {}",
+                    ui::cmd(public_url),
+                    ui::warning("(not answering yet)")
+                ),
+            ));
+            notes.push(public::unreachable_hint(public_plan.tunnel).to_string());
         }
         if public_plan
             .service
             .is_some_and(|t| t.profile == "cloudflare-quick")
         {
-            eprintln!(
-                "  This quick tunnel's address changes whenever it restarts; run \
-                 `everruns docker up{}` again to pick up the new one.",
-                name_flag(&inst.name)
-            );
+            notes.push(format!(
+                "This quick tunnel's address changes whenever it restarts; run {} again to pick up the new one.",
+                ui::cmd(format!("everruns docker up{}", name_flag(&inst.name)))
+            ));
         }
     }
-    if signed_in.current {
-        eprintln!(
-            "  CLI: signed in as {} (profile '{}'), try `everruns agents list`",
-            signed_in.email, signed_in.profile
-        );
+    rows.push(if signed_in.current {
+        ("CLI", ui::cmd("everruns agents list").to_string())
     } else {
-        eprintln!(
-            "  CLI: profile '{}'; use it with `everruns --profile {} agents list`",
-            signed_in.profile, signed_in.profile
-        );
-    }
+        (
+            "CLI",
+            ui::cmd(format!(
+                "everruns --profile {} agents list",
+                signed_in.profile
+            ))
+            .to_string(),
+        )
+    });
     if tag != cli_tag && tag != "latest" {
-        eprintln!(
-            "  This instance runs {tag}; this CLI is {cli_tag}. Move to it with \
-             `everruns docker upgrade{}` (backs up the database, then runs migrations).",
-            name_flag(&inst.name)
-        );
+        notes.push(format!(
+            "This instance runs {tag}; this CLI is {cli_tag}. Move to it with {} \
+             (backs up the database, then runs migrations).",
+            ui::cmd(format!("everruns docker upgrade{}", name_flag(&inst.name)))
+        ));
+    }
+    ui::summary(
+        &format!("Everruns {} is running", health.version),
+        "on Docker",
+        &rows,
+    );
+    for note in notes {
+        ui::warn(note);
     }
 
     if first_run && asker.interactive && !args.no_open && crate::browser::open(&url).is_err() {
-        eprintln!("  Open {url} in your browser.");
+        ui::note(format!("Open {} in your browser.", ui::cmd(&url)));
     }
     Ok(())
 }
@@ -546,6 +606,12 @@ async fn up(args: UpArgs) -> Result<()> {
 fn require_docker(docker: &str, verbose: bool) -> Result<()> {
     let results = checks::run(docker);
     let failed = results.iter().any(checks::Check::failed);
+    if results
+        .iter()
+        .any(|c| verbose || failed || !matches!(c.outcome, checks::Outcome::Ok(_)))
+    {
+        ui::section("Docker checks");
+    }
     for check in &results {
         if verbose || failed || !matches!(check.outcome, checks::Outcome::Ok(_)) {
             check.print();
@@ -629,7 +695,7 @@ fn choose_port(wanted: u16, bind: &str, explicit: bool, asker: Asker) -> Result<
             format!("port {wanted} is in use and no nearby port is free; use --port")
         })?;
     if asker.can_ask() {
-        let ok = dialoguer::Confirm::new()
+        let ok = dialoguer::Confirm::with_theme(crate::ui::theme())
             .with_prompt(format!("Port {wanted} is in use. Use {next} instead?"))
             .default(true)
             .interact()
@@ -640,7 +706,7 @@ fn choose_port(wanted: u16, bind: &str, explicit: bool, asker: Asker) -> Result<
     } else if !asker.yes {
         bail!("port {wanted} is in use; pick another with --port (or pass --yes to take {next})");
     } else {
-        eprintln!("Port {wanted} is in use; using {next}.");
+        ui::warn(format!("Port {wanted} is in use; using {next}."));
     }
     Ok(next)
 }
@@ -657,7 +723,9 @@ fn resolve_tag(docker: &str, cli_tag: &str) -> String {
     if exists {
         cli_tag.to_string()
     } else {
-        eprintln!("No published images for {cli_tag} yet; using `latest`.");
+        ui::warn(format!(
+            "No published images for {cli_tag} yet; using `latest`."
+        ));
         "latest".to_string()
     }
 }
@@ -672,18 +740,20 @@ async fn wait_healthy(docker: &str, inst: &Instance, port: u16) -> Result<Health
         .build()?;
     let url = format!("http://127.0.0.1:{port}/health");
     let started = Instant::now();
-    let mut told = false;
+    let spinner =
+        ui::Spinner::start("Waiting for the server (the first start runs database migrations)");
     loop {
         if let Ok(resp) = http.get(&url).send().await
             && resp.status().is_success()
         {
             let body: serde_json::Value = resp.json().await.unwrap_or_default();
+            spinner.done("Server is healthy");
             return Ok(Health {
                 version: body["version"].as_str().unwrap_or("").to_string(),
             });
         }
         if started.elapsed() > HEALTH_TIMEOUT {
-            eprintln!("The server did not become healthy. Its last log lines:");
+            spinner.failed("The server did not become healthy. Its last log lines:");
             let _ = compose(docker, inst)
                 .args(["logs", "--tail", "40", "server"])
                 .status();
@@ -691,10 +761,6 @@ async fn wait_healthy(docker: &str, inst: &Instance, port: u16) -> Result<Health
                 "{url} did not answer within {}s; see `everruns docker logs server`",
                 HEALTH_TIMEOUT.as_secs()
             );
-        }
-        if !told && started.elapsed() > Duration::from_secs(3) {
-            eprintln!("Waiting for the server (the first start runs database migrations)...");
-            told = true;
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -706,7 +772,7 @@ pub(crate) fn ask_auth(asker: Asker) -> Result<AuthChoice> {
     }
     let options = [AuthChoice::Single, AuthChoice::None, AuthChoice::Accounts];
     let labels: Vec<&str> = options.iter().map(|o| o.label()).collect();
-    let pick = dialoguer::Select::new()
+    let pick = dialoguer::Select::with_theme(crate::ui::theme())
         .with_prompt("Who signs in?")
         .items(&labels)
         .default(0)
@@ -732,7 +798,7 @@ pub(crate) fn ask_email(asker: Asker) -> Result<String> {
     if !asker.can_ask() {
         return no_prompt(asker, "--admin-email", default);
     }
-    dialoguer::Input::new()
+    dialoguer::Input::with_theme(crate::ui::theme())
         .with_prompt("Admin email")
         .default(default)
         .validate_with(|e: &String| {
@@ -762,7 +828,7 @@ pub(crate) fn ask_provider(asker: Asker) -> Result<LlmProvider> {
     let default = detected
         .and_then(|d| LlmProvider::ALL.iter().position(|p| *p == d))
         .unwrap_or(0);
-    let pick = dialoguer::Select::new()
+    let pick = dialoguer::Select::with_theme(crate::ui::theme())
         .with_prompt("LLM provider")
         .items(&labels)
         .default(default)
@@ -775,7 +841,7 @@ fn set_provider(s: &mut Settings, provider: LlmProvider, asker: Asker) -> Result
     if let Some(var) = provider.server_env() {
         let key = match provider.env_key() {
             Some(key) => key,
-            None if asker.can_ask() => dialoguer::Password::new()
+            None if asker.can_ask() => dialoguer::Password::with_theme(crate::ui::theme())
                 .with_prompt(format!("{} API key", provider.label()))
                 .interact()
                 .context("Failed to read the key")?,
@@ -820,10 +886,10 @@ fn name_flag(name: &str) -> String {
 }
 
 fn not_set_up(args: &InstanceArgs) {
-    eprintln!(
-        "No local instance yet. Run `everruns docker up{}`.",
-        name_flag(&args.name)
-    );
+    ui::note(format!(
+        "No local instance yet. Run {}.",
+        ui::cmd(format!("everruns docker up{}", name_flag(&args.name)))
+    ));
 }
 
 fn port_of(s: &Settings) -> u16 {
@@ -865,24 +931,21 @@ async fn status(args: &InstanceArgs) -> Result<()> {
         None => "none yet (run `everruns docker up`)".to_string(),
     };
 
-    println!("Instance: {}", inst.name);
-    println!("URL:      http://localhost:{port}");
+    ui::field("Instance", &inst.name);
+    ui::field("URL", format!("http://localhost:{port}"));
     if let Some(public_url) = s.value(settings::PUBLIC_URL) {
         let via = s
             .value(settings::TUNNEL)
             .filter(|t| *t != "none")
             .map(|t| format!(" (through {t})"))
             .unwrap_or_default();
-        println!("Public:   {public_url}{via}");
+        ui::field("Public", format!("{public_url}{via}"));
     }
-    println!("Health:   {health}");
-    println!(
-        "Version:  {}",
-        s.value(settings::IMAGE_TAG).unwrap_or("unknown")
-    );
-    println!("Sign-in:  {auth}");
-    println!("Profile:  {profile_line}");
-    println!("Settings: {}", inst.dir.display());
+    ui::field("Health", health);
+    ui::field("Version", s.value(settings::IMAGE_TAG).unwrap_or("unknown"));
+    ui::field("Sign-in", auth);
+    ui::field("Profile", profile_line);
+    ui::field("Settings", inst.dir.display());
     println!();
     let _ = compose(&docker, &inst)
         .args(["ps", "--all", "--format", "table {{.Service}}\t{{.Status}}"])
@@ -902,7 +965,10 @@ fn stop(args: &InstanceArgs) -> Result<()> {
     if !status.success() {
         bail!("`docker compose stop` failed");
     }
-    eprintln!("Stopped. Data is kept; `everruns docker up` starts it again.");
+    ui::ok(format!(
+        "Stopped. Data is kept; {} starts it again.",
+        ui::cmd("everruns docker up")
+    ));
     Ok(())
 }
 
@@ -941,6 +1007,7 @@ fn open(args: &InstanceArgs) -> Result<()> {
 fn doctor(args: &InstanceArgs) -> Result<()> {
     let docker = checks::program();
     let results = checks::run(&docker);
+    ui::section("Docker");
     for check in &results {
         check.print();
     }
@@ -952,22 +1019,30 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
         let bind = s.value(settings::BIND).unwrap_or("0.0.0.0");
         let running = running_services(&docker, &inst);
         if running.iter().any(|s| s == "caddy") {
-            eprintln!("✓ Port: {port} is this instance's");
+            ui::ok(ui::check_line(
+                "Port",
+                &format!("{port} is this instance's"),
+            ));
         } else if port_free(bind, port) {
-            eprintln!("✓ Port: {port} is free");
+            ui::ok(ui::check_line("Port", &format!("{port} is free")));
         } else {
-            eprintln!(
-                "✗ Port: {port} is used by something else\n  Pick another with `everruns docker up --port <port>`"
-            );
+            ui::fail(format!("Port: {port} is used by something else"));
+            ui::detail(format!(
+                "Pick another with {}",
+                ui::cmd("everruns docker up --port <port>")
+            ));
             bail!("port {port} is taken");
         }
         if running.iter().any(|s| s == "server") {
             system_doctor(&docker, &inst)?;
         }
     } else if port_free("0.0.0.0", DEFAULT_PORT) {
-        eprintln!("✓ Port: {DEFAULT_PORT} is free");
+        ui::ok(ui::check_line("Port", &format!("{DEFAULT_PORT} is free")));
     } else {
-        eprintln!("! Port: {DEFAULT_PORT} is in use; `everruns docker up` will offer another");
+        ui::warn(format!(
+            "Port: {DEFAULT_PORT} is in use; {} will offer another",
+            ui::cmd("everruns docker up")
+        ));
     }
     Ok(())
 }
@@ -976,7 +1051,7 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
 /// itself, so run the system doctor inside the server container. It needs no
 /// sign-in there and sees the same settings the server does.
 fn system_doctor(docker: &str, inst: &Instance) -> Result<()> {
-    eprintln!();
+    ui::section("Server");
     let output = compose(docker, inst)
         .args(["exec", "-T", "server", "/app/everruns-server", "--doctor"])
         .stderr(Stdio::piped())
@@ -985,9 +1060,10 @@ fn system_doctor(docker: &str, inst: &Instance) -> Result<()> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     // Images from before the doctor reject the flag.
     if stderr.contains("unexpected argument") {
-        eprintln!(
-            "! System doctor: this server version has none; `everruns docker upgrade` adds it"
-        );
+        ui::warn(format!(
+            "System doctor: this server version has none; {} adds it",
+            ui::cmd("everruns docker upgrade")
+        ));
         return Ok(());
     }
     print!("{}", String::from_utf8_lossy(&output.stdout));
@@ -1023,7 +1099,7 @@ async fn upgrade(args: UpgradeArgs) -> Result<()> {
     let current = s.value(settings::IMAGE_TAG).unwrap_or("latest").to_string();
     // `latest` moves under the same name, so it always pulls.
     if target == current && target != "latest" {
-        eprintln!("Already on {current}.");
+        ui::ok(format!("Already on {current}."));
         return Ok(());
     }
     if is_downgrade(&current, &target) {
@@ -1042,7 +1118,7 @@ async fn upgrade(args: UpgradeArgs) -> Result<()> {
 
     if !args.no_backup {
         let file = backup(&docker, &inst, &current)?;
-        eprintln!("Backed up the database to {}", file.display());
+        ui::ok(format!("Backed up the database to {}", file.display()));
     }
 
     s.set(settings::IMAGE_TAG, &target);
@@ -1068,7 +1144,10 @@ async fn upgrade(args: UpgradeArgs) -> Result<()> {
         bail!("`docker compose up` failed; see the output above");
     }
     let health = wait_healthy(&docker, &inst, port_of(&s)).await?;
-    eprintln!("Everruns is now on {}.", display_version(&health, &target));
+    ui::ok(ui::bold(format!(
+        "Everruns is now on {}.",
+        display_version(&health, &target)
+    )));
     Ok(())
 }
 
@@ -1136,14 +1215,17 @@ fn backup(docker: &str, inst: &Instance, tag: &str) -> Result<std::path::PathBuf
 
 /// Delete everything the instance has: containers, the database volume, the
 /// settings folder (with the encryption key and backups) and its CLI profile.
-fn reset(args: &ResetArgs) -> Result<()> {
+fn destroy(args: &DestroyArgs) -> Result<()> {
     let inst = Instance::new(&args.instance.name)?;
     let docker = checks::program();
     // Without a settings folder there can still be containers and a volume
     // from a folder deleted by hand, so check Docker for the project too.
     let has_project = project_exists(&docker, &inst);
     if !inst.dir.exists() && !has_project {
-        eprintln!("Nothing to reset: no local instance '{}'.", inst.name);
+        ui::note(format!(
+            "Nothing to destroy: no local instance '{}'.",
+            inst.name
+        ));
         return Ok(());
     }
     require_docker(&docker, false)?;
@@ -1159,13 +1241,13 @@ fn reset(args: &ResetArgs) -> Result<()> {
                 inst.name
             );
         }
-        eprintln!(
+        ui::warn(format!(
             "This deletes the local instance '{}': its containers, database and settings \
              in {}, including the backups.",
             inst.name,
             inst.dir.display()
-        );
-        let typed: String = dialoguer::Input::new()
+        ));
+        let typed: String = dialoguer::Input::with_theme(crate::ui::theme())
             .with_prompt(format!("Type '{}' to delete it", inst.name))
             .allow_empty(true)
             .interact_text()
@@ -1204,9 +1286,9 @@ fn reset(args: &ResetArgs) -> Result<()> {
     }
     let removed_profile = forget_profile(&inst.profile())?;
 
-    eprintln!("Deleted the local instance '{}'.", inst.name);
+    ui::ok(format!("Deleted the local instance '{}'.", inst.name));
     if removed_profile {
-        eprintln!("Removed the CLI profile '{}'.", inst.profile());
+        ui::ok(format!("Removed the CLI profile '{}'.", inst.profile()));
     }
     Ok(())
 }
@@ -1286,7 +1368,7 @@ pub(crate) fn confirm(asker: Asker, reason: &str, flag: &str) -> Result<bool> {
     if !asker.interactive {
         bail!("{reason} No terminal to ask on; pass {flag} to go ahead");
     }
-    dialoguer::Confirm::new()
+    dialoguer::Confirm::with_theme(crate::ui::theme())
         .with_prompt(format!("{reason} Continue?"))
         .default(false)
         .interact()
