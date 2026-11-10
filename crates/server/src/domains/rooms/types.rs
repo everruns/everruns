@@ -241,7 +241,9 @@ pub struct RoomMessage {
     pub session_id: Option<String>,
     /// Where it opens in the builder's product (the room's `link_template`).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "https://desk.example.com/rooms/room_01933b5a000070008000000000000001/m/rmsg_01933b5a000070008000000000000002")]
+    #[schema(
+        example = "https://desk.example.com/rooms/room_01933b5a000070008000000000000001/m/rmsg_01933b5a000070008000000000000002"
+    )]
     pub url: Option<String>,
     /// When it was posted.
     #[schema(example = "2026-11-10T15:04:05Z")]
