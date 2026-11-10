@@ -70,6 +70,7 @@ fi
 
 capture="$TEST_DIR/capture"
 PATH="$TEST_DIR/bin:$PATH" \
+  DOPPLER_TOKEN=test-only-not-a-token \
   PORT_PREFIX=271 \
   AUTH_MODE=none \
   SECRETS_ENCRYPTION_KEY='test-only-not-a-secret' \
@@ -86,6 +87,7 @@ actual="$(<"$capture")"
 env -u SECRETS_ENCRYPTION_KEY \
   -u SECRETS_ENCRYPTION_KEY_PREVIOUS \
   PATH="$TEST_DIR/bin:$PATH" \
+  DOPPLER_TOKEN=test-only-not-a-token \
   LOCAL_DEVELOPMENT_SECRETS_DIR="$TEST_DIR/secrets" \
   PORT_PREFIX=272 \
   AUTH_MODE=none \
@@ -103,12 +105,25 @@ IFS='|' read -r prefix auth openai anthropic generated previous command <<< "$ac
 [ "$(stat -c '%a' "$TEST_DIR/secrets/secrets-encryption-key-272")" = 600 ]
 
 env -u SECRETS_ENCRYPTION_KEY -u SECRETS_ENCRYPTION_KEY_PREVIOUS \
-  PATH="$TEST_DIR/bin:$PATH" LOCAL_DEVELOPMENT_SECRETS_DIR="$TEST_DIR/secrets" \
+  PATH="$TEST_DIR/bin:$PATH" DOPPLER_TOKEN=test-only-not-a-token LOCAL_DEVELOPMENT_SECRETS_DIR="$TEST_DIR/secrets" \
   PORT_PREFIX=272 AUTH_MODE=none AGENT_START_CAPTURE="$capture" \
   "$PROJECT_ROOT/scripts/start-agent-dev.sh"
 restarted="$(<"$capture")"
 [ "$restarted" = "$actual" ] || {
   echo "FAIL: local encryption key changed across restarts" >&2
+  exit 1
+}
+
+# Contributors without Doppler: the stub doppler rejects `configure`, so the
+# script must start from the caller's own provider keys.
+env -u DOPPLER_TOKEN PATH="$TEST_DIR/bin:$PATH" \
+  PORT_PREFIX=273 AUTH_MODE=none OPENAI_API_KEY=caller-openai \
+  SECRETS_ENCRYPTION_KEY='test-only-not-a-secret' AGENT_START_CAPTURE="$capture" \
+  "$PROJECT_ROOT/scripts/start-agent-dev.sh" 2>/dev/null
+expected='273|none|caller-openai||test-only-not-a-secret||start-all --no-watch'
+actual="$(<"$capture")"
+[ "$actual" = "$expected" ] || {
+  echo "FAIL: startup without Doppler: expected '$expected', got '$actual'" >&2
   exit 1
 }
 

@@ -3,6 +3,16 @@ title: Quickstart
 description: Install everruns and run a real agent against a live model provider in about five minutes.
 ---
 
+:::tip[Set it up with your agent]
+
+```text
+Add an Everruns agent with a typed tool to this Rust project and run it once.
+Instructions: https://everruns.com/.well-known/agent-skills/everruns-framework/SKILL.md
+```
+
+Prefer to do it yourself? The steps follow.
+:::
+
 ## Install
 
 Add the application-facing crate with a model provider:

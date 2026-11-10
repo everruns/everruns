@@ -9,7 +9,7 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 ## Prerequisites
 
 - An active Agent.
-- A public HTTPS Everruns origin configured through `PUBLIC_APP_URL`.
+- A way for Slack to reach Everruns. Socket Mode needs no public address; a Request URL needs a public HTTPS origin in `PUBLIC_APP_URL`. See [Socket Mode or Request URL](/capabilities/slack/#socket-mode-or-request-url).
 - Permission to install an app in a Slack workspace.
 
 ## Add the Channel
@@ -73,7 +73,7 @@ connection from **Settings** > **Slack workspaces**.
 4. Approve Slack's consent screen. The workspace is already selected.
 5. If one-click setup is unavailable, return to **Channels and triggers**, expand the channel, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
 
-Publish first because Slack verifies the manifest's channel Request URL when it creates the Slack app. New installs use `/v1/channels/{channel_id}/slack/events`.
+Publish first because, for a Request URL channel, Slack verifies the manifest's channel Request URL when it creates the Slack app. A Socket Mode channel also needs its app-level token pasted under **Configure**; see [Socket Mode or Request URL](/capabilities/slack/#socket-mode-or-request-url). New installs use `/v1/channels/{channel_id}/slack/events`.
 
 The Slack app uses the agent's avatar as its icon. With one-click setup, Everruns sets the icon when it creates the app, again once the app is installed, and whenever you change the avatar in **Branding**. When this deployment's API is reachable on the public internet, Slack fetches that image; otherwise Everruns uploads the 512 px PNG. A Slack app created from the manifest by hand keeps Slack's default icon: upload the avatar's 512 px PNG (`/v1/avatars/{avatar_id}/square-512.png`) under **Basic Information** in Slack.
 

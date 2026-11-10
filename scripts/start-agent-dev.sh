@@ -38,16 +38,23 @@ case "${AUTH_MODE:-}" in
     ;;
 esac
 
-if [ "${1:-}" != "--doppler-injected" ]; then
-  if ! command -v doppler >/dev/null 2>&1; then
-    echo "doppler is required. Run ./scripts/init-cloud-env.sh, then configure Doppler." >&2
-    exit 1
-  fi
+# Maintainers keep provider keys in Doppler. Contributors outside the project have
+# no Doppler access, so without a configured Doppler the stack starts from the
+# caller's own environment (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) instead.
+doppler_configured() {
+  command -v doppler >/dev/null 2>&1 || return 1
+  [ -n "${DOPPLER_TOKEN:-}" ] && return 0
+  [ -n "$(doppler configure get token --plain 2>/dev/null || true)" ]
+}
 
-  # Doppler secrets normally win over the caller environment. Preserve the two
-  # caller-owned selectors so a Doppler config cannot silently move or re-auth the stack.
-  exec doppler run --preserve-env="PORT_PREFIX,AUTH_MODE" -- \
-    "$PROJECT_ROOT/scripts/start-agent-dev.sh" --doppler-injected
+if [ "${1:-}" != "--doppler-injected" ]; then
+  if doppler_configured; then
+    # Doppler secrets normally win over the caller environment. Preserve the two
+    # caller-owned selectors so a Doppler config cannot silently move or re-auth the stack.
+    exec doppler run --preserve-env="PORT_PREFIX,AUTH_MODE" -- \
+      "$PROJECT_ROOT/scripts/start-agent-dev.sh" --doppler-injected
+  fi
+  echo "Doppler is not configured; using provider keys from your environment." >&2
 fi
 
 for command_name in cargo node just sqlx pnpm caddy nats-server; do

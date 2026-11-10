@@ -12,6 +12,16 @@ time, generates the secrets, waits until the server is healthy and signs the
 CLI in to it. Running it again is safe: it starts what is stopped, repairs what
 is missing and leaves everything else alone.
 
+:::tip[Set it up with your agent]
+
+```text
+Install Everruns on this machine with Docker and sign me in.
+Instructions: https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+```
+
+Prefer to do it yourself? The steps follow.
+:::
+
 ## Prerequisites
 
 - Docker Engine 20.10+ with Compose 2.20+ (Docker Desktop, OrbStack or Colima

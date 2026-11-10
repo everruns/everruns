@@ -1,51 +1,73 @@
 # Contributing to Everruns
 
+## Set it up with your agent
+
+[AGENTS.md](./AGENTS.md) and [`knowledge/`](./knowledge/index.md) are written
+for coding agents. Example prompt a person gives their agent:
+
+```text
+Clone everruns/everruns, follow AGENTS.md to start the dev stack, and find me
+a small open issue I could fix.
+```
+
 ## Local Development Setup
 
 ### Prerequisites
 
-- Docker & Docker Compose (for PostgreSQL)
-- Rust 1.96.0 toolchain for repo development
-- Rust 1.94.0 minimum supported Rust version for published crates
-- Node.js 18+ (for UI)
+- Rust 1.96.0 toolchain for repo development (1.94.0 is the minimum supported
+  Rust version for published crates)
+- Node.js 18+ and pnpm (for the UI)
 - [just](https://github.com/casey/just) command runner
-- OpenAI or Anthropic API key (for LLM calls)
+- An OpenAI or Anthropic API key in your environment (for LLM calls)
 
-### Configuration
+PostgreSQL, Valkey and NATS run as local processes; `just init` installs them.
+No Docker is needed. Maintainers keep secrets in Doppler; you do not need it.
 
-Copy `.env.example` to `.env` and configure as needed:
-
-```bash
-cp .env.example .env
-```
-
-### Quick Start (Full Mode)
+### Start the stack
 
 ```bash
-# Install all dependencies (first time only)
+# First time: dependencies, PostgreSQL, Valkey, NATS, UI packages
 just init
 
-# Start all services (Postgres, API, Worker, UI)
-just start-all
+# Pick a port prefix from 1 to 654; 271 serves the app at http://localhost:27100
+PORT_PREFIX=271 AUTH_MODE=none ./scripts/start-agent-dev.sh
 ```
 
-Services available at:
-- **App**: http://localhost:9300
-- **API**: http://localhost:9300/api/...
-### Quick Start (DEV_MODE - No Database)
-
-For quick UI development without PostgreSQL:
+Without Doppler the script uses `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` from
+your shell and creates a private local encryption key. Check it is up:
 
 ```bash
-just start-dev
+curl -fsS http://localhost:27100/health
 ```
 
-Uses in-memory storage (data lost on restart). Ideal for UI development.
+Stop it with Ctrl+C, or `PORT_PREFIX=271 just stop-all` from another shell.
+`AUTH_MODE=none` gives the anonymous user admin access, for local development
+only. For UI-only work without PostgreSQL, `just start-dev` uses in-memory
+storage.
 
-### Stop Services
+## Fork and stay in sync
+
+Everruns is MIT-licensed, so you can fork it for your own platform as well as
+for pull requests.
 
 ```bash
-just stop-all
+gh repo fork everruns/everruns --clone
+cd everruns
+git remote -v          # origin = your fork, upstream = everruns/everruns
+git fetch upstream
+git rebase upstream/main
+```
+
+Keep the LICENSE file and its copyright notice. When you ship your fork under
+your own name, change the product name and logo where people see them, so no
+one mistakes it for this project. Changes that help everyone are welcome back
+as pull requests.
+
+Example prompt a person gives their agent:
+
+```text
+Fork everruns/everruns to my GitHub account, set it up so I can pull upstream
+changes, and run my fork locally by following its CONTRIBUTING.md.
 ```
 
 ## Commits
@@ -106,17 +128,14 @@ This runs:
 just <command>
 
 # Lifecycle
-start-all     # Start everything
+start-all     # Start everything (scripts/start-agent-dev.sh wraps it)
 stop-all      # Stop all services
-start         # Start Docker services only
-stop          # Stop Docker services
-
-# Services
-api           # Start API server
-ui            # Start UI dev server
+start-infra   # Start PostgreSQL, Valkey and NATS only
+stop-infra    # Stop them
 
 # Database
-reset         # Reset database (wipes all data)
+reset         # Reset the prefix's local data (wipes it)
+new-migration # Create a migration with a UTC timestamp version
 
 # Quality
 check         # Run format, lint, tests
@@ -147,11 +166,8 @@ pre-pr        # Run all pre-PR checks
 Migrations are **auto-applied on server startup**. No manual migration step needed.
 
 ```bash
-# Create a new migration
-sqlx migrate add -r <migration_name>
-
-# Check migration status (via admin container)
-docker run --rm -e DATABASE_URL="$DATABASE_URL" everruns-admin migrate-info
+# Create a new migration (UTC timestamp version)
+just new-migration <migration_name>
 ```
 
 Rules:
@@ -183,11 +199,8 @@ We use `cargo-deny` to ensure permissive licenses only.
 ## Debugging
 
 ```bash
-# Database access
-docker exec -it everruns-postgres psql -U everruns -d everruns
-
 # Verbose logs
-RUST_LOG=debug just api
+RUST_LOG=debug PORT_PREFIX=271 AUTH_MODE=none ./scripts/start-agent-dev.sh
 ```
 
 ## Getting Help

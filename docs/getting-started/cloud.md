@@ -16,6 +16,16 @@ your own provider keys.
 This page takes you from sign-up to a first agent turn, then explains how
 credit works.
 
+:::tip[Set it up with your agent]
+
+```text
+Connect my coding agent to the Everruns demo instance and help me build my
+first agent. Instructions: https://everruns.com/agent-setup/prompt.md
+```
+
+Prefer to do it yourself? The steps follow.
+:::
+
 ## 1. Sign up
 
 Open [app.everruns.com](https://app.everruns.com) and sign in. Verify your email

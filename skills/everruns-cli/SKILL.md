@@ -4,7 +4,7 @@ description: Use the everruns command tree to inspect and manage agents, session
 license: MIT
 metadata:
   category: platform
-  version: "1.1"
+  version: "1.2"
   docs: https://everruns.com/docs/features/cli/
 ---
 
@@ -17,8 +17,11 @@ replacement for live flags, IDs, or output fields.
 ## Identify the command environment
 
 **Installed CLI.** Sign in with `everruns login` in the user's terminal, then
-check `everruns status` and `everruns whoami`. Cloud defaults to
-`https://app.everruns.com/api`; `--api-url` selects a self-hosted API. Inspect
+check `everruns status` and `everruns whoami`. `everruns docker up` and
+`everruns k8s up` sign the CLI in to the person's own install (profiles
+`local` and `k8s`); `--api-url` selects another deployment. Without a profile
+the CLI targets the demo instance at `https://app.everruns.com/api`, which is a
+demo, not a hosted service. Inspect
 `everruns orgs --help` to select the requested organization when necessary.
 Use `-o json` for pipelines; normal CLI output defaults to text. Never request
 or embed a credential in chat, agent instructions, files, or examples.
