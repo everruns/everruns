@@ -43,7 +43,8 @@ type RepositoryState = "pushed" | "pending" | "unchanged";
 
 export function repositoryState(repository: SessionRepository): RepositoryState {
   const ahead = repository.commits_ahead_of_base ?? 0;
-  const changed = ahead > 0 || repository.uncommitted_files > 0 || repository.files.length > 0;
+  const changed =
+    ahead > 0 || repository.uncommitted_files > 0 || (repository.files?.length ?? 0) > 0;
   if (!changed) return "unchanged";
   const pushed = repository.commits_not_pushed === 0 && repository.uncommitted_files === 0;
   return pushed ? "pushed" : "pending";
@@ -180,14 +181,16 @@ function RepositorySection({
           )}
         </span>
       </div>
-      {repository.files.length > 0 && (
+      {(repository.files?.length ?? 0) > 0 && (
         <div className="mt-3 pl-5">
           <ul>
-            {repository.files.map((file) => (
+            {(repository.files ?? []).map((file) => (
               <FileRow key={file.path} file={file} />
             ))}
           </ul>
-          {repository.diff && <Diff diff={repository.diff} truncated={repository.diff_truncated} />}
+          {repository.diff && (
+            <Diff diff={repository.diff} truncated={repository.diff_truncated === true} />
+          )}
         </div>
       )}
     </section>
