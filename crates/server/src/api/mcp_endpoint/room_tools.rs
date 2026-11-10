@@ -350,6 +350,20 @@ pub(super) fn command_for(name: &str, arguments: &Value) -> Result<(&'static str
     Ok((command, Value::Object(params)))
 }
 
+/// Run a room tool: one room command, as the caller.
+pub(super) async fn call(
+    name: &str,
+    args: &Value,
+    org: &crate::auth::ResolvedOrg,
+    state: &super::AppState,
+) -> Result<String, String> {
+    let (command, params) = command_for(name, args)?;
+    let ctx = super::catalog_context(org, state).domain_ctx;
+    crate::domains::common::dispatch(command, params, &ctx)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

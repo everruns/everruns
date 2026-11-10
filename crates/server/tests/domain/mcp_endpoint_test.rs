@@ -1,8 +1,7 @@
 //! Integration tests for the MCP endpoint (POST /mcp)
 //!
-//! Tests the Everruns MCP server: JSON-RPC protocol, Tier 1 tools
-//! (agent_run, session_send_message, session_get_status), and Tier 2 tools
-//! (discover, execute with catalog operations).
+//! Tests the Everruns MCP server: JSON-RPC protocol, Tier 1 tools (agent_run,
+//! session_send_message, session_get_status), Tier 2 tools and room tools.
 //!
 //! Run with: cargo test -p everruns-server --test domain mcp_endpoint_test:: -- --test-threads=1
 //!
@@ -431,11 +430,7 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(
-        tools.len(),
-        31,
-        "9 MCP tools, 11 MCP Apps tools and 11 room tools"
-    );
+    assert_eq!(tools.len(), 31, "9 MCP, 11 MCP Apps and 11 room tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");
