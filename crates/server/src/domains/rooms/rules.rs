@@ -359,6 +359,40 @@ pub fn agent_post_hops(woken_by_hops: i32) -> i32 {
     woken_by_hops.saturating_add(1)
 }
 
+/// Longest room file path, in characters.
+pub const MAX_FILE_PATH_CHARS: usize = 512;
+
+/// A room file path as stored: from the folder's root, with a leading `/`.
+/// `notes.md` and `/notes.md` are the same file. Rejects `.`, `..`, empty
+/// segments and control characters.
+pub fn clean_file_path(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    let path = trimmed.trim_end_matches('/');
+    let path = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    if path == "/" {
+        return Err("path names no file".into());
+    }
+    if path.chars().count() > MAX_FILE_PATH_CHARS {
+        return Err(format!(
+            "path is longer than {MAX_FILE_PATH_CHARS} characters"
+        ));
+    }
+    if path.chars().any(char::is_control) {
+        return Err("path has a control character".into());
+    }
+    if path[1..]
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return Err("path has an empty, '.' or '..' segment".into());
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -595,5 +629,21 @@ mod tests {
         for scope in [SessionScope::Thread, SessionScope::Room] {
             assert_eq!(SessionScope::parse(scope.as_str()), scope);
         }
+    }
+
+    #[test]
+    fn file_paths_are_rooted_and_cannot_escape() {
+        assert_eq!(clean_file_path("notes.md").unwrap(), "/notes.md");
+        assert_eq!(
+            clean_file_path("/plans/launch.md").unwrap(),
+            "/plans/launch.md"
+        );
+        assert_eq!(clean_file_path("/plans/").unwrap(), "/plans");
+        assert!(clean_file_path("/").is_err());
+        assert!(clean_file_path("../etc/passwd").is_err());
+        assert!(clean_file_path("/a//b").is_err());
+        assert!(clean_file_path("/a/./b").is_err());
+        assert!(clean_file_path("/a b.md").is_ok());
+        assert!(clean_file_path("/a\u{0}b").is_err());
     }
 }

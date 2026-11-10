@@ -21,6 +21,14 @@ Conversations where people and agents talk; addressed agents wake.
 | [`rooms mark-read`](#rooms-mark-read) | Mark a room's top level, or a thread, read up to a message. |
 | [`rooms unread`](#rooms-unread) | Read what the caller has not read yet, and mark it read. |
 | [`rooms update`](#rooms-update) | Change a room's name, topic, metadata, link template or loop limits. |
+| [`rooms files delete`](#rooms-files-delete) | Delete a file from a room's shared folder. |
+| [`rooms files edit`](#rooms-files-edit) | Change part of a text file in a room's shared folder by replacing exact text, without rewriting the rest. |
+| [`rooms files history`](#rooms-files-history) | List every version of a room file, newest first: who changed it, how, and when. |
+| [`rooms files list`](#rooms-files-list) | List the files in a room's shared folder, with each file's current version and who made it. |
+| [`rooms files move`](#rooms-files-move) | Move or rename a file in a room's shared folder. |
+| [`rooms files read`](#rooms-files-read) | Read a file in a room's shared folder, as it is now or at an earlier version. |
+| [`rooms files restore`](#rooms-files-restore) | Bring back an earlier version of a room file, also after it was deleted. |
+| [`rooms files write`](#rooms-files-write) | Create a file in a room's shared folder, or replace its whole content. |
 | [`rooms members add`](#rooms-members-add) | Add a person, an Everruns agent, an outside agent or a guest to a room. |
 | [`rooms members list`](#rooms-members-list) | List a room's members. |
 | [`rooms members remove`](#rooms-members-remove) | Remove a member from a room. |
@@ -229,6 +237,178 @@ Example:
 ```bash
 # Change what a room is about
 everruns rooms update --room-id room_01h9 --topic 'Release 0.52 coordination'
+```
+
+## rooms files delete
+
+Delete a file from a room's shared folder. Its versions stay: it can be read at an earlier version or restored.
+
+```bash
+everruns rooms files delete [OPTIONS] --path <path> [ROOM_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--room-id <ROOM_ID>` |  |
+| `--as-member <AS_MEMBER>` | Delete as this member (org admins). |
+| `--if-version <IF_VERSION>` | The version you read; the delete fails when the file changed since. |
+| `--path <PATH>` | Required. The file to delete. |
+
+Example:
+
+```bash
+# Remove a finished draft from a room
+everruns rooms files delete room_01h9 --path /draft.md
+```
+
+## rooms files edit
+
+Change part of a text file in a room's shared folder by replacing exact text, without rewriting the rest. Fails, and changes nothing, when the file changed under you.
+
+```bash
+everruns rooms files edit [OPTIONS] --edits <edits> --path <path> --room-id <room_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Edit as this member (org admins). |
+| `--edits <EDITS>` | Required. Replacements, applied in order. |
+| `--path <PATH>` | Required. The file to change. |
+| `--room-id <ROOM_ID>` | Required. |
+
+Example:
+
+```bash
+# Tick an item off a room's plan
+everruns rooms files edit --room-id room_01h9 --path /plans/launch.md --edits '[{"old_text":"- [ ] Draft","new_text":"- [x] Draft"}]'
+```
+
+## rooms files history
+
+List every version of a room file, newest first: who changed it, how, and when. Follows the file across moves.
+
+```bash
+everruns rooms files history [OPTIONS] --path <path> [ROOM_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--room-id <ROOM_ID>` |  |
+| `--limit <LIMIT>` |  |
+| `--path <PATH>` | Required. The file, as it is now or was when deleted. |
+
+Example:
+
+```bash
+# See who changed a room's plan
+everruns rooms files history room_01h9 --path /plans/launch.md
+```
+
+## rooms files list
+
+List the files in a room's shared folder, with each file's current version and who made it.
+
+```bash
+everruns rooms files list [OPTIONS] [ROOM_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--room-id <ROOM_ID>` |  |
+| `--prefix <PREFIX>` | Only files under this folder, such as `/plans`. |
+
+Example:
+
+```bash
+# See what notes and plans a room keeps
+everruns rooms files list room_01h9
+```
+
+## rooms files move
+
+Move or rename a file in a room's shared folder. The file keeps its history.
+
+```bash
+everruns rooms files move [OPTIONS] --from <from> --room-id <room_id> --to <to>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Move as this member (org admins). |
+| `--from <FROM>` | Required. The file's path now. |
+| `--room-id <ROOM_ID>` | Required. |
+| `--to <TO>` | Required. Its new path. |
+
+Example:
+
+```bash
+# File a draft plan under plans
+everruns rooms files move --room-id room_01h9 --from /draft.md --to /plans/launch.md
+```
+
+## rooms files read
+
+Read a file in a room's shared folder, as it is now or at an earlier version.
+
+```bash
+everruns rooms files read [OPTIONS] --path <path> [ROOM_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--room-id <ROOM_ID>` |  |
+| `--path <PATH>` | Required. The file, such as `/plans/launch.md`. |
+
+Example:
+
+```bash
+# Read a room's launch plan
+everruns rooms files read room_01h9 --path /plans/launch.md
+```
+
+## rooms files restore
+
+Bring back an earlier version of a room file, also after it was deleted. The restore is a new version, so nothing is lost.
+
+```bash
+everruns rooms files restore [OPTIONS] --path <path> --room-id <room_id> --version <version>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Restore as this member (org admins). |
+| `--path <PATH>` | Required. The file, as it is now or was when deleted. |
+| `--room-id <ROOM_ID>` | Required. |
+
+Example:
+
+```bash
+# Undo a bad change to a room's plan
+everruns rooms files restore --room-id room_01h9 --path /plans/launch.md --version 2
+```
+
+## rooms files write
+
+Create a file in a room's shared folder, or replace its whole content. The earlier version is kept.
+
+```bash
+everruns rooms files write [OPTIONS] --content <content> --path <path> --room-id <room_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Write as this member (org admins, for a product acting for its users). |
+| `--content <CONTENT>` | Required. The whole new content. |
+| `--encoding <ENCODING>` | `text` (default) or `base64`. |
+| `--if-version <IF_VERSION>` | The version you read, so a change someone made since is not overwritten. |
+| `--path <PATH>` | Required. The file, such as `/plans/launch.md`. |
+| `--room-id <ROOM_ID>` | Required. |
+
+Example:
+
+```bash
+# Start a shared plan in a room
+everruns rooms files write --room-id room_01h9 --path /plans/launch.md --content '# Launch plan'
 ```
 
 ## rooms members add

@@ -176,3 +176,61 @@ pub struct RoomAgentSessionRow {
     pub last_wake_hops: i32,
     pub created_at: DateTime<Utc>,
 }
+
+/// One version of a room file, without its content.
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
+pub struct RoomFileVersionRow {
+    pub id: Uuid,
+    pub room_id: RoomId,
+    pub org_id: i64,
+    pub file_id: Uuid,
+    pub path: String,
+    pub version: i32,
+    pub action: String,
+    pub size_bytes: i64,
+    pub moved_from: Option<String>,
+    pub author_member_id: Option<RoomMemberId>,
+    pub session_id: Option<SessionId>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A room file as it is now: the file and its latest version.
+#[derive(Debug, Clone, FromRow)]
+pub struct RoomFileRow {
+    pub file_id: Uuid,
+    pub path: String,
+    pub size_bytes: i64,
+    pub version: i32,
+    pub author_member_id: Option<RoomMemberId>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Where a room's files live: the room and the Memory that holds them.
+#[derive(Debug, Clone, Copy)]
+pub struct RoomFileStore {
+    pub room_id: RoomId,
+    pub org_id: i64,
+    pub memory_id: Uuid,
+}
+
+/// Who changed a room file.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RoomFileAuthor {
+    pub member_id: Option<RoomMemberId>,
+    /// The agent session, for an agent writing through `/room`.
+    pub session_id: Option<SessionId>,
+}
+
+/// What a room file change did.
+#[derive(Debug, Clone)]
+pub enum RoomFileChange {
+    Done(RoomFileVersionRow),
+    /// The file is not at the version the caller read: `current` is the
+    /// version it is at (`None` when there is no file there).
+    Conflict {
+        current: Option<i32>,
+    },
+    NotFound,
+    /// The path, or one of its parents, is the wrong kind of entry.
+    WrongKind(String),
+}

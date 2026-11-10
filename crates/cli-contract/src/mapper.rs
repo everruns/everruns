@@ -325,6 +325,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "rooms",
         "Conversations where people and agents talk; addressed agents wake.",
     ),
+    (
+        "rooms files",
+        "A room's shared files, edited in place with every version kept.",
+    ),
     ("rooms members", "People, agents and guests in a room."),
     (
         "rooms messages",

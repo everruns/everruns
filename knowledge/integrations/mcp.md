@@ -708,7 +708,7 @@ MCP clients authenticate via OAuth 2.1 Bearer tokens, which don't carry org cont
 
 ### Per-Call `organization_id` Override
 
-All org-scoped tools (`agent_run`, `session_send_message`, `session_get_status`, `agent_get_card`, `discover`, `query`, `execute`) accept an optional `organization_id` parameter (format: `org_{32-hex}`). The `2026-07-28` Tasks methods (`tasks/get`, `tasks/update`, `tasks/cancel`) accept it as a request param too, resolved through the same path. When provided:
+All org-scoped tools (`agent_run`, `session_send_message`, `session_get_status`, `agent_get_card`, `discover`, `query`, `execute`, and the room tools in [Rooms](../runtime-resources/rooms.md#mcp)) accept an optional `organization_id` parameter (format: `org_{32-hex}`). The `2026-07-28` Tasks methods (`tasks/get`, `tasks/update`, `tasks/cancel`) accept it as a request param too, resolved through the same path. When provided:
 
 1. User membership is validated against the database (not stale JWT claims)
 2. A `ResolvedOrg` is constructed for the target org

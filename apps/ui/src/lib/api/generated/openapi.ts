@@ -6844,6 +6844,134 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/rooms/{room_id}/files": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List a room's shared files
+     * @description List the files in a room's shared folder, with each file's current version and who made it.
+     */
+    get: operations["list_room_files"];
+    /**
+     * Write a room file
+     * @description Create a file in a room's shared folder, or replace its whole content. The earlier version is kept.
+     */
+    put: operations["write_room_file"];
+    post?: never;
+    /**
+     * Delete a room file
+     * @description Delete a file from a room's shared folder. Its versions stay: it can be read at an earlier version or restored.
+     */
+    delete: operations["delete_room_file"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/files/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a room file
+     * @description Read a file in a room's shared folder, as it is now or at an earlier version.
+     */
+    get: operations["read_room_file"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/files/edit": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Edit part of a room file
+     * @description Change part of a text file in a room's shared folder by replacing exact text, without rewriting the rest. Fails, and changes nothing, when the file changed under you.
+     */
+    post: operations["edit_room_file"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/files/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a room file's history
+     * @description List every version of a room file, newest first: who changed it, how, and when. Follows the file across moves.
+     */
+    get: operations["list_room_file_history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/files/move": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Move or rename a room file
+     * @description Move or rename a file in a room's shared folder. The file keeps its history.
+     */
+    post: operations["move_room_file"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/files/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Restore an earlier version of a room file
+     * @description Bring back an earlier version of a room file, also after it was deleted. The restore is a new version, so nothing is lost.
+     */
+    post: operations["restore_room_file"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/rooms/{room_id}/members": {
     parameters: {
       query?: never;
@@ -27765,6 +27893,119 @@ export interface components {
        * @example 120
        */
       next_after: number;
+    };
+    /** @description A file in a room's shared folder, as it is now. */
+    RoomFile: {
+      /**
+       * @description Path in the room's folder, from its root.
+       * @example /plans/launch.md
+       */
+      path: string;
+      /**
+       * Format: int64
+       * @description Size of the current content, in bytes.
+       * @example 2048
+       */
+      size_bytes: number;
+      /**
+       * Format: date-time
+       * @description When the file last changed.
+       * @example 2026-11-10T09:30:00Z
+       */
+      updated_at: string;
+      updated_by?: components["schemas"]["RoomAuthor"] | null;
+      /**
+       * Format: int32
+       * @description The file's current version; every change adds one.
+       * @example 3
+       */
+      version: number;
+    };
+    /** @description A room file's content at one version. */
+    RoomFileContent: {
+      author?: components["schemas"]["RoomAuthor"] | null;
+      /**
+       * @description The content, in `encoding`.
+       * @example # Launch plan
+       *
+       *     - [ ] Draft the announcement
+       */
+      content: string;
+      /**
+       * @description `text` (UTF-8) or `base64` (anything else).
+       * @example text
+       */
+      encoding: string;
+      /**
+       * @description Path of the file at that version.
+       * @example /plans/launch.md
+       */
+      path: string;
+      /**
+       * Format: int64
+       * @description Size of the content, in bytes.
+       * @example 2048
+       */
+      size_bytes: number;
+      /**
+       * Format: date-time
+       * @description When that version was made.
+       * @example 2026-11-10T09:30:00Z
+       */
+      updated_at: string;
+      /**
+       * Format: int32
+       * @description The version read.
+       * @example 3
+       */
+      version: number;
+    };
+    /** @description A room file's history, newest first. */
+    RoomFileHistoryResponse: {
+      /** @description Versions, newest first. */
+      data: components["schemas"]["RoomFileVersion"][];
+    };
+    /** @description A room's files. */
+    RoomFileListResponse: {
+      /** @description The files, by path. */
+      data: components["schemas"]["RoomFile"][];
+    };
+    /** @description One version of a room file: one change and who made it. */
+    RoomFileVersion: {
+      /**
+       * @description `write`, `move`, `delete` or `restore`.
+       * @example write
+       */
+      action: string;
+      author?: components["schemas"]["RoomAuthor"] | null;
+      /**
+       * Format: date-time
+       * @description When the change was made.
+       * @example 2026-11-10T09:30:00Z
+       */
+      created_at: string;
+      /**
+       * @description For a move: where the file was before.
+       * @example /plan.md
+       */
+      moved_from?: string | null;
+      /**
+       * @description Path of the file after this change.
+       * @example /plans/launch.md
+       */
+      path: string;
+      /**
+       * Format: int64
+       * @description Size of the content after this change, in bytes; 0 for a delete.
+       * @example 2048
+       */
+      size_bytes: number;
+      /**
+       * Format: int32
+       * @description Version number, from 1, per file.
+       * @example 3
+       */
+      version: number;
     };
     /** @description A page of rooms. */
     RoomListResponse: {
@@ -54696,6 +54937,212 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["RoomEventListResponse"];
+        };
+      };
+    };
+  };
+  list_room_files: {
+    parameters: {
+      query?: {
+        /** @description Only files under this folder, such as `/plans`. */
+        prefix?: string;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileListResponse"];
+        };
+      };
+    };
+  };
+  write_room_file: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileVersion"];
+        };
+      };
+    };
+  };
+  delete_room_file: {
+    parameters: {
+      query: {
+        /** @description The file to delete. */
+        path: string;
+        /** @description The version you read; the delete fails when the file changed since. */
+        if_version?: number;
+        /** @description Delete as this member (org admins). */
+        as_member?: string;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileVersion"];
+        };
+      };
+    };
+  };
+  read_room_file: {
+    parameters: {
+      query: {
+        /** @description The file, such as `/plans/launch.md`. */
+        path: string;
+        /**
+         * @description An earlier version to read; the current one when absent. Works for a
+         *     deleted file too.
+         */
+        version?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileContent"];
+        };
+      };
+    };
+  };
+  edit_room_file: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileVersion"];
+        };
+      };
+    };
+  };
+  list_room_file_history: {
+    parameters: {
+      query: {
+        /** @description The file, as it is now or was when deleted. */
+        path: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileHistoryResponse"];
+        };
+      };
+    };
+  };
+  move_room_file: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileVersion"];
+        };
+      };
+    };
+  };
+  restore_room_file: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFileVersion"];
         };
       };
     };

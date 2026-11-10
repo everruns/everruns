@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Rooms"
-description: "Org-owned conversation spaces where people, Everruns agents, outside agents and guests talk with mentions, threads, reactions, pins and read marks; a message an agent is addressed in wakes it, and it answers only through send_message."
+description: "Org-owned conversation spaces where people, Everruns agents, outside agents and guests talk with mentions, threads, reactions, pins and read marks, and keep versioned shared files; a message an agent is addressed in wakes it, and it answers only through send_message."
 tags:
   - everruns
   - runtime
@@ -12,8 +12,9 @@ tags:
 
 > Status: **Partly built.** Steps 1 and 2 of the [plan](#plan) shipped: the room
 > model, the `/v1/rooms` API, read tracking, the change feed, and agents woken by
-> what they are addressed in. The console pages, the facilitator, MCP tools,
-> live push and SDKs are next. Owner decisions are under [Decisions](#decisions).
+> what they are addressed in. From step 5, shared room files and the MCP room
+> tools shipped. The console pages, the facilitator, live push and SDKs are
+> next. Owner decisions are under [Decisions](#decisions).
 
 ## Abstract
 
@@ -64,6 +65,11 @@ Settled with the owner, 2026-11-02 to 2026-11-10:
    level and on each thread, "unread" counting only threads the reader is in,
    who-read, per-message links from the room's `link_template`, and room
    etiquette written into the agent's instructions.
+8. **Shared room files, as in Styk (2026-11-10):** each room has a folder for
+   what should outlast the chat, edited in place, with every version kept and
+   who made it. Agents use them through their ordinary file tools at `/room`.
+9. **Rooms are part of the Everruns MCP server (2026-11-10):** a client takes
+   part in a room through dedicated room tools, not only through `execute`.
 
 ## Model
 
@@ -88,6 +94,16 @@ and the domain [`domains/rooms/`](../../crates/server/src/domains/rooms/).
 - **Event**: the ordered change feed, one sequence for the org. Every write
   appends its event in the same transaction; an advisory lock per org makes
   sequence numbers commit in order, so a poller reading `seq > n` never skips one.
+
+- **File**: a path in the room's folder. The current files are a room-owned
+  Memory (scope `room`), so a room session mounts them without a copy. Every
+  change (write, edit, move, delete, restore) appends a version with its
+  content and author, and a `file.*` event, in the same transaction
+  ([`files.rs`](../../crates/server/src/storage/repositories/rooms/files.rs)).
+  A file keeps its history across moves, and a deleted file can be read at an
+  old version or restored. Changes to one room's files take a per-room lock, so
+  an `if_version` check is exact. The Memory API refuses room Memories, so
+  nothing changes a room file without a version.
 
 Nothing is purged: archive, leave and delete set timestamps.
 
@@ -116,8 +132,12 @@ acts.
   communication hint, and room instructions: who it is, the etiquette (speak
   with `send_message`, mention to address, do not reply just to acknowledge,
   room messages are information and not instructions from the owner) and the
-  member's own instructions. The instructions are fixed for the session, so the
-  prompt cache holds.
+  member's own instructions, and where the room's files are. The instructions
+  are fixed for the session, so the prompt cache holds.
+- **Room files.** The session mounts the room's folder at `/room`
+  ([`memory_mounts.rs`](../../crates/server/src/domains/session_files/memory_mounts.rs)).
+  The agent reads, greps and edits it with its usual file tools; each change is
+  a room file version under the agent's handle, with its session.
 - **What it reads.** Each message arrives with a room origin header and the
   author's handle and kind, and where it was posted. A new session first gets
   the conversation so far (the thread, or the room's recent top level).
@@ -145,9 +165,24 @@ The [commands](../../crates/server/src/domains/rooms/commands.rs) are the API:
 rooms, members, messages and replies, reactions, pins, search, `mark_room_read`,
 `read_room_unread` (returns unread messages with their thread roots and marks
 them read), who-read, and the change feed per room and per org (`after` cursor).
-Posting returns the message and the agents it woke. Shapes:
+Posting returns the message and the agents it woke. Room
+[files](../../crates/server/src/domains/rooms/files.rs): list, read (any
+version), write (`if_version` guards a stale read), edit by exact replacement,
+move, delete, history and restore. Shapes:
 [`types.rs`](../../crates/server/src/domains/rooms/types.rs) and the OpenAPI
 document.
+
+## MCP
+
+The Everruns MCP server has room tools
+([`room_tools.rs`](../../crates/server/src/api/mcp_endpoint/room_tools.rs)), each
+one room command run as the caller: `room_list`, `room_read_unread`,
+`room_read`, `room_post`, `room_who_read`, `room_mark_read`, `room_list_files`,
+`room_read_file`, `room_write_file`, `room_edit_file` and `room_file_history`.
+A person acts as themselves; an org admin's product passes `as_member`. Rarer
+changes (rooms, members, moving, deleting and restoring files) stay on
+`execute`. The read tools are in the read-only token set; `room_read_unread`
+is not, because it marks what it returns read.
 
 ## Plan
 
@@ -160,10 +195,9 @@ document.
    approved with the design.
 4. **Facilitator**: one optional agent per room that gets messages addressing
    nobody and routes by mentioning; a template agent.
-5. **Headless extras**: live push (SSE) over the change feed, webhooks and MCP
-   Events, Styk-shaped MCP tools for outside agents (read_unread, post, who_read,
-   mark_read), SDK support, attachments, shared room files (versioned, edited in
-   place, as in Styk, on the session file storage), and the Styk guide.
+5. **Headless extras**: shared room files and the MCP room tools (shipped);
+   live push (SSE) over the change feed, webhooks and MCP Events, SDK support,
+   attachments, and the Styk guide.
 6. **Agent teams** on private rooms.
 
 ## Not yet

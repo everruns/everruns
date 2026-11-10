@@ -26473,6 +26473,388 @@
         }
       }
     },
+    "/v1/rooms/{room_id}/files": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List a room's shared files",
+        "description": "List the files in a room's shared folder, with each file's current version and who made it.",
+        "operationId": "list_room_files",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "prefix",
+            "in": "query",
+            "description": "Only files under this folder, such as `/plans`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Write a room file",
+        "description": "Create a file in a room's shared folder, or replace its whole content. The earlier version is kept.",
+        "operationId": "write_room_file",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileVersion"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Delete a room file",
+        "description": "Delete a file from a room's shared folder. Its versions stay: it can be read at an earlier version or restored.",
+        "operationId": "delete_room_file",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The file to delete.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "if_version",
+            "in": "query",
+            "description": "The version you read; the delete fails when the file changed since.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "as_member",
+            "in": "query",
+            "description": "Delete as this member (org admins).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileVersion"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/files/content": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Read a room file",
+        "description": "Read a file in a room's shared folder, as it is now or at an earlier version.",
+        "operationId": "read_room_file",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The file, such as `/plans/launch.md`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "An earlier version to read; the current one when absent. Works for a\ndeleted file too.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileContent"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/files/edit": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Edit part of a room file",
+        "description": "Change part of a text file in a room's shared folder by replacing exact text, without rewriting the rest. Fails, and changes nothing, when the file changed under you.",
+        "operationId": "edit_room_file",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileVersion"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/files/history": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Read a room file's history",
+        "description": "List every version of a room file, newest first: who changed it, how, and when. Follows the file across moves.",
+        "operationId": "list_room_file_history",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The file, as it is now or was when deleted.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileHistoryResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/files/move": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Move or rename a room file",
+        "description": "Move or rename a file in a room's shared folder. The file keeps its history.",
+        "operationId": "move_room_file",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileVersion"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/files/restore": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Restore an earlier version of a room file",
+        "description": "Bring back an earlier version of a room file, also after it was deleted. The restore is a new version, so nothing is lost.",
+        "operationId": "restore_room_file",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFileVersion"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/rooms/{room_id}/members": {
       "get": {
         "tags": [
@@ -69543,6 +69925,202 @@
             "format": "int64",
             "description": "Pass as `after` to read on.",
             "example": 120
+          }
+        }
+      },
+      "RoomFile": {
+        "type": "object",
+        "description": "A file in a room's shared folder, as it is now.",
+        "required": [
+          "path",
+          "version",
+          "size_bytes",
+          "updated_at"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path in the room's folder, from its root.",
+            "example": "/plans/launch.md"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size of the current content, in bytes.",
+            "example": 2048
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the file last changed.",
+            "example": "2026-11-10T09:30:00Z"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomAuthor",
+                "description": "Who made the current version, when a member did."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The file's current version; every change adds one.",
+            "example": 3
+          }
+        }
+      },
+      "RoomFileContent": {
+        "type": "object",
+        "description": "A room file's content at one version.",
+        "required": [
+          "path",
+          "version",
+          "encoding",
+          "content",
+          "size_bytes",
+          "updated_at"
+        ],
+        "properties": {
+          "author": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomAuthor",
+                "description": "Who made that version."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content": {
+            "type": "string",
+            "description": "The content, in `encoding`.",
+            "example": "# Launch plan\n\n- [ ] Draft the announcement\n"
+          },
+          "encoding": {
+            "type": "string",
+            "description": "`text` (UTF-8) or `base64` (anything else).",
+            "example": "text"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path of the file at that version.",
+            "example": "/plans/launch.md"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size of the content, in bytes.",
+            "example": 2048
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When that version was made.",
+            "example": "2026-11-10T09:30:00Z"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The version read.",
+            "example": 3
+          }
+        }
+      },
+      "RoomFileHistoryResponse": {
+        "type": "object",
+        "description": "A room file's history, newest first.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomFileVersion"
+            },
+            "description": "Versions, newest first."
+          }
+        }
+      },
+      "RoomFileListResponse": {
+        "type": "object",
+        "description": "A room's files.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomFile"
+            },
+            "description": "The files, by path."
+          }
+        }
+      },
+      "RoomFileVersion": {
+        "type": "object",
+        "description": "One version of a room file: one change and who made it.",
+        "required": [
+          "path",
+          "version",
+          "action",
+          "size_bytes",
+          "created_at"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "`write`, `move`, `delete` or `restore`.",
+            "example": "write"
+          },
+          "author": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomAuthor",
+                "description": "The member who made the change."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the change was made.",
+            "example": "2026-11-10T09:30:00Z"
+          },
+          "moved_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For a move: where the file was before.",
+            "example": "/plan.md"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path of the file after this change.",
+            "example": "/plans/launch.md"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size of the content after this change, in bytes; 0 for a delete.",
+            "example": 2048
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Version number, from 1, per file.",
+            "example": 3
           }
         }
       },

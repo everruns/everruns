@@ -69,6 +69,9 @@ pub enum MemoryScope {
     /// A run's team folder, owned by the run's first session and mounted at
     /// `/team` in every session of the run. Not listed with org memories.
     Run,
+    /// A room's shared files, mounted at `/room` in its agents' room
+    /// sessions. Changed only through the room, which versions every change.
+    Room,
 }
 
 impl std::fmt::Display for MemoryScope {
@@ -78,6 +81,7 @@ impl std::fmt::Display for MemoryScope {
             MemoryScope::Agent => write!(f, "agent"),
             MemoryScope::User => write!(f, "user"),
             MemoryScope::Run => write!(f, "run"),
+            MemoryScope::Room => write!(f, "room"),
         }
     }
 }
@@ -88,6 +92,7 @@ impl From<&str> for MemoryScope {
             "agent" => MemoryScope::Agent,
             "user" => MemoryScope::User,
             "run" => MemoryScope::Run,
+            "room" => MemoryScope::Room,
             _ => MemoryScope::Org,
         }
     }

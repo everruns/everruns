@@ -851,6 +851,11 @@ pub fn declared(name: &str) -> Change {
         | "delete_room_message"
         | "react_to_room_message"
         | "pin_room_message" => Change::Exempt("room conversation traffic, not configuration"),
+        // Room files keep every version, with its author, in `room_file_versions`.
+        "write_room_file" | "edit_room_file" | "move_room_file" | "delete_room_file"
+        | "restore_room_file" => {
+            Change::Exempt("room files keep their own version history with authors")
+        }
         "mark_room_read" | "read_room_unread" => {
             Change::Exempt("read state of the caller's own room position")
         }

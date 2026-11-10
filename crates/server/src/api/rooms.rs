@@ -45,6 +45,19 @@ impl AppState {
 impl_auth_state!(AppState);
 impl_dispatchable!(AppState);
 
+/// The rooms routes on the shared API services, waking agents through the
+/// message routes' session and message services.
+pub fn routes_from(api: &super::state::ApiState, messages: &super::messages::AppState) -> Router {
+    routes(AppState {
+        db: api.db.clone(),
+        encryption: api.encryption.clone(),
+        capability_service: api.capability_service.clone(),
+        auth: api.auth.clone(),
+        session_service: messages.session_service.clone(),
+        message_service: messages.message_service.clone(),
+    })
+}
+
 pub fn routes(state: AppState) -> Router {
     Router::new()
         // The org-wide feed is registered before `/v1/rooms/{room_id}` reads.
@@ -72,5 +85,13 @@ pub fn routes(state: AppState) -> Router {
         .command::<ReadRoomUnread>()
         .command::<ListRoomMessageReaders>()
         .command::<ListRoomEvents>()
+        .command::<ListRoomFiles>()
+        .command::<ReadRoomFile>()
+        .command::<WriteRoomFile>()
+        .command::<EditRoomFile>()
+        .command::<MoveRoomFile>()
+        .command::<DeleteRoomFile>()
+        .command::<ListRoomFileHistory>()
+        .command::<RestoreRoomFile>()
         .with_state(state)
 }

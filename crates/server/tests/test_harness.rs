@@ -1117,6 +1117,7 @@ impl TestServer {
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
+            .merge(api::rooms::routes_from(&api_state, &messages_state))
             .merge(api::session_trace::routes(api_state.clone()))
             .merge(everruns_server::channels::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))

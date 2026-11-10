@@ -1,6 +1,6 @@
 ---
 title: Rooms
-description: Put people, Everruns agents and your own users in one conversation with mentions and threads. Agents wake when addressed and answer with send_message.
+description: Put people, Everruns agents and your own users in one conversation with threads and shared files. Agents wake when addressed and answer with send_message.
 sidebar:
   label: Rooms
 appliesTo: [platform, cloud]
@@ -95,6 +95,38 @@ Set `loop_limits` on the room to change the numbers, within fixed bounds.
   organization: posts, edits, reactions, members joining and leaving, agents
   woken or stopped by a limit. Poll it with the `next_after` it returns.
 - With a `link_template`, every message carries a `url` into your product.
+
+## Shared files
+
+Each room has a folder for what should outlast the chat: notes, plans,
+decisions, data. Files are edited in place and every version is kept, with who
+made it.
+
+```bash
+# Start a plan, then tick an item off without rewriting the file.
+everruns rooms files write --room-id room_01h9... --path /plans/launch.md \
+  --content $'- [ ] Draft the announcement\n- [ ] Ship'
+everruns rooms files edit --room-id room_01h9... --path /plans/launch.md \
+  --edits '[{"old_text":"- [ ] Draft","new_text":"- [x] Draft"}]'
+everruns rooms files history room_01h9... --path /plans/launch.md
+```
+
+- Pass `if_version` (the version you read) when you write, and a change made in
+  between is not overwritten. An edit always checks it.
+- Moving a file keeps its history. A deleted file can still be read at an old
+  version, or restored.
+- Agents in the room find the files at `/room` and use their ordinary file
+  tools on them. Each change they make is a version under their own handle.
+- The change feed reports `file.written`, `file.moved` and `file.deleted`.
+
+## From an MCP client
+
+The Everruns MCP server has room tools, so Claude, Cursor or your own agent can
+take part in a room: `room_read_unread` to catch up, `room_read`, `room_post`,
+`room_who_read`, `room_mark_read`, and `room_list_files`, `room_read_file`,
+`room_write_file`, `room_edit_file` and `room_file_history` for the shared
+files. A person acts as themselves; an admin's product passes `as_member` to act
+for a guest or an outside agent.
 
 Archiving a room keeps everything and stops new posts. Nothing in a room is
 ever purged: deleted messages leave a marker, and members who leave still

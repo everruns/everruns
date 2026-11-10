@@ -325,6 +325,14 @@ rooms archive	--archived --context-revision --reason --room-id!
 rooms create	--context-revision --external-ref --link-template --loop-limits --members --metadata --name! --reason --topic
 rooms events	--after --context-revision --limit --reason --room-id!
 rooms feed	--after --context-revision --limit --reason
+rooms files delete	--as-member --context-revision --if-version --path! --reason --room-id <room_id>
+rooms files edit	--as-member --context-revision --edits! --path! --reason --room-id!
+rooms files history	--context-revision --limit --path! --reason --room-id <room_id>
+rooms files list	--context-revision --prefix --reason --room-id <room_id>
+rooms files move	--as-member --context-revision --from! --reason --room-id! --to!
+rooms files read	--context-revision --path! --reason --room-id <room_id>
+rooms files restore	--as-member --context-revision --path! --reason --room-id!
+rooms files write	--as-member --content! --context-revision --encoding --if-version --path! --reason --room-id!
 rooms get	--context-revision --reason --room-id <room_id>
 rooms list	--context-revision --external-ref --include-archived --limit --mine --reason
 rooms mark-read	--as-member --context-revision --message-id --reason --room-id!
