@@ -42,6 +42,7 @@ import {
   Download,
   ExternalLink,
   Folder,
+  GitBranch,
   MessageSquare,
   ShieldCheck,
   Sparkles,
@@ -56,7 +57,15 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey = "trace" | "approvals" | "agents" | "work" | "events" | "files" | "cost";
+export type SessionNavKey =
+  | "trace"
+  | "approvals"
+  | "agents"
+  | "work"
+  | "events"
+  | "changes"
+  | "files"
+  | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -277,6 +286,17 @@ export function buildSessionNavigation({
       icon: Activity,
       badge: tabBadge(eventCount),
     },
+    // What a coding session changed in each repository it works on.
+    ...(hasFeature("repositories")
+      ? [
+          {
+            key: "changes" as const,
+            label: "Changes",
+            href: `${basePath}/changes`,
+            icon: GitBranch,
+          },
+        ]
+      : []),
     ...(hasFiles
       ? [
           {
@@ -424,7 +444,9 @@ export function SessionHeader({
         className="mb-1.5"
         items={[
           { label: backLabel, href: backHref },
-          { label: session.title || ui("Session {value0}", { value0: shortenId(session.id) }) },
+          {
+            label: session.title || ui("Session {value0}", { value0: shortenId(session.id) }),
+          },
         ]}
       />
 

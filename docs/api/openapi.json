@@ -31540,6 +31540,48 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/repositories": {
+      "get": {
+        "tags": [
+          "session-sandbox"
+        ],
+        "summary": "Get session repositories",
+        "description": "List the repositories checked out in the session's sandbox and what the session changed in each. Reads a running sandbox only; it never starts or resumes one.",
+        "operationId": "get_session_repositories",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories and their changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRepositoriesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/resolved-model": {
       "get": {
         "tags": [
@@ -75344,6 +75386,147 @@
           "host",
           "member"
         ]
+      },
+      "SessionRepositoriesResponse": {
+        "type": "object",
+        "description": "What a session changed in the repositories checked out in its sandbox.",
+        "required": [
+          "sandbox_state",
+          "repositories"
+        ],
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionRepository"
+            }
+          },
+          "sandbox_state": {
+            "type": "string",
+            "description": "`running` when the checkouts were read. Any other value (`paused`,\n`not_started`, `none`, ...) means the sandbox was left alone and\n`repositories` is empty.",
+            "example": "running"
+          },
+          "work_branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The branch the agent works on in every writable repository.",
+            "example": "everruns/bdaf0ce2"
+          }
+        }
+      },
+      "SessionRepository": {
+        "type": "object",
+        "description": "One checkout under `/workspace`.",
+        "required": [
+          "path",
+          "access",
+          "branch",
+          "on_work_branch",
+          "base_branch",
+          "uncommitted_files"
+        ],
+        "properties": {
+          "access": {
+            "type": "string",
+            "description": "`read`, `write`, or `none` when the session's settings do not list it.",
+            "example": "write"
+          },
+          "base_branch": {
+            "type": "string",
+            "example": "main"
+          },
+          "branch": {
+            "type": "string",
+            "example": "everruns/bdaf0ce2"
+          },
+          "commits_ahead_of_base": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Absent when the base branch is not known locally.",
+            "minimum": 0
+          },
+          "commits_not_pushed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Absent when the branch was never pushed.",
+            "minimum": 0
+          },
+          "diff": {
+            "type": "string",
+            "description": "Unified diff against the base branch, cut at a fixed size."
+          },
+          "diff_truncated": {
+            "type": "boolean"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionRepositoryFile"
+            },
+            "description": "Files that differ from the base branch, committed or not."
+          },
+          "on_work_branch": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string",
+            "example": "/workspace/app"
+          },
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`owner/name`, when the checkout's remote is a GitHub repository.",
+            "example": "acme/app"
+          },
+          "uncommitted_files": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "SessionRepositoryFile": {
+        "type": "object",
+        "required": [
+          "path",
+          "committed"
+        ],
+        "properties": {
+          "additions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Absent for binary and new untracked files.",
+            "minimum": 0
+          },
+          "committed": {
+            "type": "boolean"
+          },
+          "deletions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string",
+            "example": "src/config.rs"
+          }
+        }
       },
       "SessionResolvedModelResponse": {
         "type": "object",

@@ -178,4 +178,63 @@ export const messages: Readonly<Record<string, string>> = {
   "Your subchats for managing Everruns.": "Ваші субчати для керування Everruns.",
   "Retry window expired. Review this conversation before sending again.":
     "Термін повторної спроби минув. Перегляньте цю розмову перед повторним надсиланням.",
+  "no changes": "без змін",
+  "1 commit ahead of {base}": "на 1 коміт попереду {base}",
+  "{count} commits ahead of {base}": "комітів попереду {base}: {count}",
+  "1 file not committed": "1 файл не закомічено",
+  "{count} files not committed": "не закомічено файлів: {count}",
+  pushed: "запушено",
+  "not pushed": "не запушено",
+  "read only, the agent cannot push here": "лише читання, агент не може сюди пушити",
+  "not committed": "не закомічено",
+  "Show diff": "Показати diff",
+  "The diff is cut here. The file list above is complete.":
+    "Diff тут обрізано. Список файлів вище повний.",
+  "View pull request #{number}": "Переглянути pull request #{number}",
+  "The agent pushes; you review": "Агент пушить, ви перевіряєте",
+  "This session has no repositories.": "У цієї сесії немає репозиторіїв.",
+  "The sandbox is not running, so there is nothing to read. Changes show here while it runs; pushed work stays on GitHub.":
+    "Пісочниця не запущена, тож читати нічого. Зміни видно тут, поки вона працює; запушена робота лишається на GitHub.",
+  "No repository is checked out yet. The agent checks them out when it starts work.":
+    "Жоден репозиторій ще не отримано. Агент отримує їх, коли починає роботу.",
+  "Read from the sandbox. The agent commits and pushes; you review.":
+    "Прочитано з пісочниці. Агент комітить і пушить, ви перевіряєте.",
+  "Could not read the repositories from the sandbox.":
+    "Не вдалося прочитати репозиторії з пісочниці.",
+  Read: "Читання",
+  Write: "Запис",
+  "Enter a repository as owner/name.": "Введіть репозиторій як owner/name.",
+  "This repository is already in the list.": "Цей репозиторій уже є у списку.",
+  "This agent does not allow adding repositories.": "Цей агент не дозволяє додавати репозиторії.",
+  "Branch for {repo}": "Гілка для {repo}",
+  "default branch": "типова гілка",
+  "Access for {repo}": "Доступ для {repo}",
+  "read only for this agent": "лише читання для цього агента",
+  "Remove {repo}": "Вилучити {repo}",
+  private: "приватний",
+  "Add repository": "Додати репозиторій",
+  "Search repositories": "Пошук репозиторіїв",
+  "No repositories yet. Add the ones this chat should work on.":
+    "Репозиторіїв ще немає. Додайте ті, з якими має працювати цей чат.",
+  "This agent has no repositories set.": "Для цього агента не задано репозиторіїв.",
+  "Starts from the agent's repositories. With write access the agent pushes its own branch and can open a pull request.":
+    "Починається з репозиторіїв агента. З доступом на запис агент надсилає власну гілку і може відкрити pull request.",
+  "This agent has no GitHub identity yet, so it cannot clone private repositories or push.":
+    "Цей агент ще не має ідентичності GitHub, тому не може клонувати приватні репозиторії чи надсилати зміни.",
+  "GitHub identity:": "Ідентичність GitHub:",
+  " · installed on {account}": " · встановлено в {account}",
+  "Missing permissions: {list}": "Бракує дозволів: {list}",
+  "Default repositories": "Типові репозиторії",
+  "Checked out side by side in every new session.": "Розгортаються поруч у кожній новій сесії.",
+  "Agent may add repositories": "Агент може додавати репозиторії",
+  "During a session, when the work needs another one.":
+    "Під час сесії, коли для роботи потрібен ще один.",
+  "Read and write": "Читання і запис",
+  "Work branch prefix": "Префікс робочої гілки",
+  "The agent pushes only to its own branch, never by force.":
+    "Агент надсилає лише у власну гілку і ніколи примусово.",
+  "Commit author and history": "Автор комітів та історія",
+  "Commit author name": "Ім’я автора комітів",
+  "Commit author email": "Електронна пошта автора комітів",
+  "History depth, in commits": "Глибина історії, у комітах",
 };

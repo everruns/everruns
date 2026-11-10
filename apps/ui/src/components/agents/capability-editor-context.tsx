@@ -10,6 +10,8 @@ import { createContext, useContext } from "react";
 export interface CapabilityEditorContextValue {
   /** The agent's default model id; empty means the organization's default model. */
   modelId?: string;
+  /** The agent being edited; unset while it does not exist yet. */
+  agentId?: string;
 }
 
 export const CapabilityEditorContext = createContext<CapabilityEditorContextValue>({});

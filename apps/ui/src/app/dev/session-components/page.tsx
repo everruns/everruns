@@ -22,6 +22,21 @@ import { sessionSandboxScenarios } from "@/app/dev/_fixtures/session-sandbox-fix
 import { buildApprovalEpisodes } from "@/lib/approval-episodes";
 import type { Event } from "@/lib/api/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useState } from "react";
+import {
+  repositoriesAgentConfig,
+  repositoriesAgentId,
+  repositoriesGitHubStatus,
+  repositoriesIdentityId,
+  repositoriesReachable,
+  sessionRepositoriesFixture,
+} from "@/app/dev/_fixtures/repositories-fixtures";
+import { CapabilityEditorContext } from "@/components/agents/capability-editor-context";
+import { RepositoriesConfigEditor } from "@/components/agents/repositories-config-editor";
+import { SessionRepositoriesPicker } from "@/components/repositories/session-repositories-picker";
+import { SessionRepositories } from "@/components/session/session-repositories";
+import { queryKeys } from "@/lib/query-keys";
+import { readRepositoriesConfig, type RepositoryEntry } from "@/lib/repositories-config";
 
 // The panel fetches its own data, so the showcase seeds the cache instead of
 // mocking the client. Same component, same query key, no network.
@@ -33,6 +48,73 @@ function seededClient(sessionId: string, sandbox: unknown) {
   });
   client.setQueryData(["session-sandbox", sessionId], sandbox);
   return client;
+}
+
+// Same components as the agent page, the new-chat form and the session's
+// Changes tab, with the GitHub queries seeded so no API is needed.
+function RepositoriesShowcase() {
+  const ui = useUiTranslations();
+  const [config, setConfig] = useState<Record<string, unknown>>(repositoriesAgentConfig);
+  const [picked, setPicked] = useState<RepositoryEntry[]>(
+    readRepositoriesConfig(repositoriesAgentConfig).repositories,
+  );
+  const [client] = useState(() => {
+    const seeded = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    seeded.setQueryData(
+      queryKeys.agentGithub.status(repositoriesAgentId),
+      repositoriesGitHubStatus,
+    );
+    seeded.setQueryData(
+      queryKeys.agentGithub.repositories(repositoriesIdentityId),
+      repositoriesReachable,
+    );
+    return seeded;
+  });
+  return (
+    <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-foreground">{ui("Repositories")}</h2>
+        <p className="text-sm text-muted-foreground">
+          {ui("Agent settings, the new-chat picker and the session Changes tab.")}
+        </p>
+      </div>
+      <QueryClientProvider client={client}>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div
+            className="border border-border bg-background p-4"
+            data-showcase="repositories-settings"
+          >
+            <CapabilityEditorContext.Provider value={{ agentId: repositoriesAgentId }}>
+              <RepositoriesConfigEditor config={config} onChange={setConfig} />
+            </CapabilityEditorContext.Provider>
+          </div>
+          <div
+            className="border border-border bg-background p-4"
+            data-showcase="repositories-picker"
+          >
+            <SessionRepositoriesPicker
+              agentId={repositoriesAgentId}
+              agentConfig={repositoriesAgentConfig}
+              value={picked}
+              onChange={setPicked}
+            />
+          </div>
+        </div>
+      </QueryClientProvider>
+      <div className="border border-border bg-background" data-showcase="repositories-changes">
+        <SessionRepositories
+          sandboxState="running"
+          repositories={sessionRepositoriesFixture}
+          toolResultTexts={["https://github.com/acme/coding-test-lib/pull/14"]}
+          loading={false}
+          refreshing={false}
+          onRefresh={() => {}}
+        />
+      </div>
+    </section>
+  );
 }
 
 export default function DevSessionComponentsPage() {
@@ -167,6 +249,7 @@ export default function DevSessionComponentsPage() {
             ))}
           </div>
         </section>
+        <RepositoriesShowcase />
       </div>
     </DevPageShell>
   );

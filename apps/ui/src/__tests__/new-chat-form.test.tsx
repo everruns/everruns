@@ -5,7 +5,9 @@ import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
 import type { SandboxPolicy } from "@/lib/api/types";
 
-jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+}));
 
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -27,6 +29,13 @@ jest.mock("@/hooks/use-providers", () => ({
     isError: false,
   }),
   useProvidersConfig: () => ({ data: { policies: {} }, isLoading: false }),
+}));
+
+// The repository picker asks which repositories the agent's GitHub identity
+// reaches; none are known here, so names are typed.
+jest.mock("@/hooks/use-agent-github", () => ({
+  useAgentGitHub: () => ({ data: { connected: false, identity_id: null } }),
+  useGitHubRepositories: () => ({ data: undefined }),
 }));
 
 jest.mock("@/hooks/use-sessions", () => ({
@@ -73,7 +82,10 @@ jest.mock("@/components/ui/select", () => {
     mockReact.Children.forEach(node, (child: mockReact.ReactNode) => {
       if (!mockReact.isValidElement(child)) return;
       if ((child.type as { isSelectItem?: boolean }).isSelectItem) {
-        const props = child.props as { value: string; children: mockReact.ReactNode };
+        const props = child.props as {
+          value: string;
+          children: mockReact.ReactNode;
+        };
         options.push(
           <option key={props.value} value={props.value}>
             {props.children}
@@ -157,9 +169,15 @@ function setup({
     name: string;
     display_name: string;
     sandbox_policy?: SandboxPolicy;
-    effective_harness?: { name: string };
+    effective_harness?: { name: string; id?: string };
+    capabilities?: Array<{ ref: string; config?: unknown }>;
   }>;
-  harnesses?: Array<{ id: string; name: string; display_name: string }>;
+  harnesses?: Array<{
+    id: string;
+    name: string;
+    display_name: string;
+    capabilities?: Array<{ ref: string }>;
+  }>;
 } = {}) {
   mockUseAgents.mockReturnValue({ data: agents, isLoading: false });
   mockUseHarnesses.mockReturnValue({ data: harnesses, isLoading: false });
@@ -316,7 +334,9 @@ describe("NewPlaygroundChatForm", () => {
           sandbox_policy: {
             mode: "fixed",
             default: "build",
-            templates: { build: { target: { kind: "managed", provider: "daytona" } } },
+            templates: {
+              build: { target: { kind: "managed", provider: "daytona" } },
+            },
           },
         },
       ],
@@ -423,5 +443,126 @@ describe("NewPlaygroundChatForm", () => {
       target: { value: "agent:agent_1" },
     });
     expect(screen.getByRole("button", { name: /Start Playground chat/ })).toBeDisabled();
+  });
+  describe("repositories", () => {
+    const coder = {
+      id: "agent_1",
+      name: "coder",
+      display_name: "Coder",
+      capabilities: [
+        {
+          ref: "repositories",
+          config: {
+            repositories: [{ repo: "acme/app", access: "write" }, { repo: "acme/docs" }],
+            branch_prefix: "work/",
+          },
+        },
+      ],
+    };
+
+    it("starts on the agent's own repositories without a session config", async () => {
+      setup({ agents: [coder] });
+      render(<NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" />);
+
+      expect(screen.getByText("acme/app")).toBeInTheDocument();
+      expect(screen.getByText("acme/docs")).toBeInTheDocument();
+      // A repository the agent only reads cannot be made writable for one chat.
+      expect(screen.queryByRole("group", { name: "Access for acme/docs" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
+
+      await waitFor(() =>
+        expect(mutateAsync).toHaveBeenCalledWith({
+          request: {
+            agent_id: "agent_1",
+            source: "playground",
+            playground_user_id: "identity_customer",
+          },
+        }),
+      );
+    });
+
+    it("sends the picked set as the session's own config, keeping the agent's other settings", async () => {
+      setup({ agents: [coder] });
+      render(<NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Remove acme/docs" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Add repository" }), {
+        target: { value: "https://github.com/acme/tools.git" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
+
+      await waitFor(() =>
+        expect(mutateAsync).toHaveBeenCalledWith({
+          request: {
+            agent_id: "agent_1",
+            capabilities: [
+              {
+                ref: "repositories",
+                config: {
+                  repositories: [{ repo: "acme/app", access: "write" }, { repo: "acme/tools" }],
+                  branch_prefix: "work/",
+                },
+              },
+            ],
+            source: "playground",
+            playground_user_id: "identity_customer",
+          },
+        }),
+      );
+    });
+
+    it("offers no way to add a repository when the agent turned that off", () => {
+      setup({
+        agents: [
+          {
+            ...coder,
+            capabilities: [
+              {
+                ref: "repositories",
+                config: {
+                  repositories: [{ repo: "acme/app" }],
+                  add_repositories: "off",
+                },
+              },
+            ],
+          },
+        ],
+      });
+      render(<NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" />);
+
+      expect(screen.getByText("acme/app")).toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: "Add repository" })).toBeNull();
+    });
+
+    it("shows the picker for an agent whose harness works on repositories", () => {
+      setup({
+        agents: [
+          {
+            id: "agent_1",
+            name: "coder",
+            display_name: "Coder",
+            effective_harness: { id: "harness_coding", name: "coding" },
+          },
+        ],
+        harnesses: [
+          {
+            id: "harness_coding",
+            name: "coding",
+            display_name: "Coding",
+            capabilities: [{ ref: "repositories" }],
+          },
+        ],
+      });
+      render(<NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" />);
+
+      expect(screen.getByRole("textbox", { name: "Add repository" })).toBeInTheDocument();
+    });
+
+    it("shows no repositories for an agent that does not work on them", () => {
+      render(<NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" />);
+
+      expect(screen.queryByText("Repositories")).toBeNull();
+    });
   });
 });

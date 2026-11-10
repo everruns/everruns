@@ -85,6 +85,7 @@
     "sandboxes/(tabs)/templates/page.tsx",
     "sessions/[sessionId]/agents/page.tsx",
     "sessions/[sessionId]/approvals/page.tsx",
+    "sessions/[sessionId]/changes/page.tsx",
     "sessions/[sessionId]/cost/page.tsx",
     "sessions/[sessionId]/events/page.tsx",
     "sessions/[sessionId]/files/page.tsx",

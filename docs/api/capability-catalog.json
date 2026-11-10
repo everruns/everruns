@@ -1300,7 +1300,9 @@
       "dependencies": [],
       "docs_slug": "repositories",
       "feature_flag": null,
-      "features": [],
+      "features": [
+        "repositories"
+      ],
       "grades": [
         "prod",
         "dev"

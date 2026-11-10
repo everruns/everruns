@@ -53,7 +53,9 @@ const MAX_DEPTH: u64 = 10_000;
 const MAX_REPOSITORIES: usize = 20;
 const MAX_ERROR_BYTES: usize = 1_500;
 const MAX_INSTRUCTIONS_BYTES: usize = 16 * 1024;
-const STATUS_TIMEOUT_MS: u64 = 60_000;
+/// Session feature this capability contributes.
+pub const REPOSITORIES_FEATURE: &str = "repositories";
+pub(super) const STATUS_TIMEOUT_MS: u64 = 60_000;
 const DEFAULT_BRANCH_PREFIX: &str = "everruns/";
 const DEFAULT_COMMIT_NAME: &str = "Everruns Agent";
 /// `.invalid` is reserved: the address names no mailbox and no GitHub account.
@@ -265,7 +267,7 @@ impl RepositoriesConfig {
     }
 
     /// The session's work branch: the prefix plus the session's short id.
-    fn work_branch(&self, session: SessionId) -> String {
+    pub(super) fn work_branch(&self, session: SessionId) -> String {
         let id = session.uuid().simple().to_string();
         let short = &id[id.len().saturating_sub(8)..];
         format!("{}{short}", self.branch_prefix)
@@ -299,6 +301,11 @@ impl Capability for RepositoriesCapability {
 
     fn category(&self) -> Option<&str> {
         Some("Integrations")
+    }
+
+    /// Lets the session page offer its per-repository Changes tab.
+    fn features(&self) -> Vec<&'static str> {
+        vec![REPOSITORIES_FEATURE]
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -434,7 +441,7 @@ fn tail(text: &str) -> &str {
     &text[start..]
 }
 
-fn sandbox(
+pub(super) fn sandbox(
     context: &ToolContext,
 ) -> Result<std::sync::Arc<dyn SandboxWorkspace>, ToolExecutionResult> {
     context
@@ -451,8 +458,8 @@ fn sandbox(
 /// A checkout as the sandbox reports it. Everything here is the agent's to
 /// change, so it informs and never authorizes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Checkout {
-    directory: String,
+pub(super) struct Checkout {
+    pub(super) directory: String,
     repo: Option<String>,
     branch: String,
     head: String,
@@ -518,7 +525,7 @@ fn parse_status(stdout: &str) -> Vec<Checkout> {
         .collect()
 }
 
-async fn checkouts(
+pub(super) async fn checkouts(
     sandbox: &dyn SandboxWorkspace,
     context: &ToolContext,
 ) -> Result<(String, Vec<Checkout>), ToolExecutionResult> {
@@ -769,7 +776,11 @@ async fn instructions(
     Some(text)
 }
 
-fn checkout_json(checkout: &Checkout, config: &RepositoriesConfig, work_branch: &str) -> Value {
+pub(super) fn checkout_json(
+    checkout: &Checkout,
+    config: &RepositoriesConfig,
+    work_branch: &str,
+) -> Value {
     let access = checkout
         .repo
         .as_deref()

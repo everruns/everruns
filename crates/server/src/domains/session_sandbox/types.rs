@@ -72,3 +72,58 @@ impl From<everruns_capabilities::session_sandbox::SessionSandboxStatus>
         }
     }
 }
+
+/// What a session changed in the repositories checked out in its sandbox.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SessionRepositoriesResponse {
+    /// `running` when the checkouts were read. Any other value (`paused`,
+    /// `not_started`, `none`, ...) means the sandbox was left alone and
+    /// `repositories` is empty.
+    #[schema(example = "running")]
+    pub sandbox_state: String,
+    /// The branch the agent works on in every writable repository.
+    #[schema(example = "everruns/bdaf0ce2")]
+    pub work_branch: Option<String>,
+    pub repositories: Vec<SessionRepository>,
+}
+
+/// One checkout under `/workspace`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SessionRepository {
+    /// `owner/name`, when the checkout's remote is a GitHub repository.
+    #[schema(example = "acme/app")]
+    pub repo: Option<String>,
+    #[schema(example = "/workspace/app")]
+    pub path: String,
+    /// `read`, `write`, or `none` when the session's settings do not list it.
+    #[schema(example = "write")]
+    pub access: String,
+    #[schema(example = "everruns/bdaf0ce2")]
+    pub branch: String,
+    pub on_work_branch: bool,
+    #[schema(example = "main")]
+    pub base_branch: String,
+    pub uncommitted_files: u64,
+    /// Absent when the base branch is not known locally.
+    pub commits_ahead_of_base: Option<u64>,
+    /// Absent when the branch was never pushed.
+    pub commits_not_pushed: Option<u64>,
+    /// Files that differ from the base branch, committed or not.
+    #[serde(default)]
+    pub files: Vec<SessionRepositoryFile>,
+    /// Unified diff against the base branch, cut at a fixed size.
+    #[serde(default)]
+    pub diff: String,
+    #[serde(default)]
+    pub diff_truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SessionRepositoryFile {
+    #[schema(example = "src/config.rs")]
+    pub path: String,
+    /// Absent for binary and new untracked files.
+    pub additions: Option<u64>,
+    pub deletions: Option<u64>,
+    pub committed: bool,
+}
