@@ -114,7 +114,8 @@ test("searches Talk as and counterparts with keyboard, paging, and stable select
   await page.getByRole("button", { name: "Load more virtual users" }).click();
   await expect(page.getByRole("option", { name: "Zara Quinn" })).toBeVisible();
   await search.fill("nobody");
-  await expect(page.getByRole("status")).toHaveText("No results found");
+  // Chat's page tools can add their own status notice to the page, so match by text.
+  await expect(page.getByRole("status").filter({ hasText: "No results found" })).toBeVisible();
   await expect(talk).toHaveText("Alice Rivers");
   await search.fill("Zara");
   await expect(page.getByRole("option", { name: "Zara Quinn" })).toBeVisible();
