@@ -5,16 +5,18 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 pub use crate::domains::session_sandbox::types::{
-    ManageSessionSandboxRequest, ManageSessionSandboxResponse, SessionSandboxAction,
-    SessionSandboxStatusValue,
+    ManageSessionSandboxRequest, ManageSessionSandboxResponse, SessionRepositoriesResponse,
+    SessionRepository, SessionRepositoryFile, SessionSandboxAction, SessionSandboxStatusValue,
 };
-use crate::domains::session_sandbox::{ManageSessionSandbox, SessionSandboxService};
+use crate::domains::session_sandbox::{
+    GetSessionRepositories, ManageSessionSandbox, SessionSandboxService,
+};
 use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    routing::post,
+    routing::{get, post},
 };
 use everruns_core::Caller;
 use std::sync::Arc;
@@ -61,6 +63,10 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/sessions/{session_id}/sandbox", post(manage_sandbox))
+        .route(
+            "/v1/sessions/{session_id}/repositories",
+            get(get_session_repositories),
+        )
         .with_state(state)
 }
 
@@ -92,5 +98,30 @@ pub async fn manage_sandbox(
         }
         .run(&state.ctx(&org))
         .await?,
+    ))
+}
+
+#[utoipa::path(
+    description = "List the repositories checked out in the session's sandbox and what the session changed in each. Reads a running sandbox only; it never starts or resumes one.",
+    get,
+    path = "/v1/sessions/{session_id}/repositories",
+    params(
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Repositories and their changes", body = SessionRepositoriesResponse),
+        (status = 404, description = "Session not found"),
+    ),
+    tag = "session-sandbox"
+)]
+pub async fn get_session_repositories(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ApiResult<SessionRepositoriesResponse> {
+    Ok(Json(
+        GetSessionRepositories { session_id }
+            .run(&state.ctx(&org))
+            .await?,
     ))
 }

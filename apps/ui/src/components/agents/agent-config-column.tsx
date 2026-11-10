@@ -111,7 +111,10 @@ export function AgentConfigColumn({
             <ChatChangeMark field="capabilities" className="flex flex-col gap-1.5">
               {editing ? (
                 <CapabilityEditorContext.Provider
-                  value={{ modelId: agentModelId(draft.fields.default_model_id, organization) }}
+                  value={{
+                    modelId: agentModelId(draft.fields.default_model_id, organization),
+                    agentId: agent.id,
+                  }}
                 >
                   <CapabilitySelector
                     capabilities={allCapabilities}

@@ -376,6 +376,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::task_webhooks::update_webhook,
         api::task_webhooks::delete_webhook,
         api::session_sandbox::manage_sandbox,
+        api::session_sandbox::get_session_repositories,
         api::org_feature_flags::get_platform_feature_flag_settings,
         api::org_feature_flags::update_platform_feature_flags,
         api::sandbox_templates::get_session_sandbox,
@@ -818,6 +819,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::session_sandbox::SessionSandboxStatusValue,
             api::session_sandbox::ManageSessionSandboxRequest,
             api::session_sandbox::ManageSessionSandboxResponse,
+            api::session_sandbox::SessionRepositoriesResponse,
+            api::session_sandbox::SessionRepository,
+            api::session_sandbox::SessionRepositoryFile,
             // Session Git types
             api::session_git::CommitRequest, api::session_git::LogQuery,
             api::session_git::DiffQuery, api::session_git::CreateBranchRequest,

@@ -39,6 +39,13 @@ import {
 } from "@/components/ui/select";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { useAgents, useHarnesses } from "@/hooks";
+import { SessionRepositoriesPicker } from "@/components/repositories/session-repositories-picker";
+import {
+  REPOSITORIES_CAPABILITY_ID,
+  readRepositoriesConfig,
+  sessionRepositoriesConfig,
+  type RepositoryEntry,
+} from "@/lib/repositories-config";
 import { useCreateSession } from "@/hooks/use-sessions";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { isHarnessDeprecated } from "@/lib/harness-deprecation";
@@ -86,6 +93,8 @@ export function NewPlaygroundChatForm({
       !isHarnessDeprecated(harness),
   );
   const [sandbox, setSandbox] = useState("");
+  // `undefined` until the person touches the list: the agent's own set applies.
+  const [repositories, setRepositories] = useState<RepositoryEntry[] | undefined>(undefined);
   const [dryRun, setDryRun] = useState(initialDryRun);
   const [error, setError] = useState<string | null>(null);
   const optionsLoading = agentsLoading || harnessesLoading;
@@ -103,6 +112,21 @@ export function NewPlaygroundChatForm({
   const sandboxMode =
     selectedAgent?.sandbox_policy?.mode ?? (sandboxNames.length > 1 ? "selectable" : "fixed");
   const selectedSandbox = sandbox || selectedAgent?.sandbox_policy?.default || "";
+  // An agent works on repositories when it, or the harness it runs on, carries
+  // the capability. The agent's own config is the usual set.
+  const isRepositories = (capability: { ref: string }) =>
+    capability.ref === REPOSITORIES_CAPABILITY_ID;
+  const agentRepositoriesConfig = selectedAgent?.capabilities?.find(isRepositories)?.config;
+  const harnessId = selectedAgent?.effective_harness?.id;
+  const worksOnRepositories =
+    !!selectedAgent &&
+    (selectedAgent.capabilities?.some(isRepositories) === true ||
+      (!!harnessId &&
+        allHarnesses
+          .find((harness) => harness.id === harnessId)
+          ?.capabilities?.some(isRepositories) === true));
+  const pickedRepositories =
+    repositories ?? readRepositoriesConfig(agentRepositoriesConfig).repositories;
 
   const selectCounterpart = (value: string) => {
     setSelection(value);
@@ -110,6 +134,7 @@ export function NewPlaygroundChatForm({
       ? agents.find((candidate) => candidate.id === value.slice(AGENT_VALUE_PREFIX.length))
       : undefined;
     setSandbox(agent?.sandbox_policy?.default ?? "");
+    setRepositories(undefined);
   };
 
   usePageReadContext({
@@ -142,7 +167,12 @@ export function NewPlaygroundChatForm({
     entityType: "playground_chat",
     label: ui("New Playground chat"),
     enabled: !optionsLoading,
-    values: { counterpart: selection, sandbox, dry_run: dryRun, end_user_id: endUserId ?? "" },
+    values: {
+      counterpart: selection,
+      sandbox,
+      dry_run: dryRun,
+      end_user_id: endUserId ?? "",
+    },
     readonlyFields: ["end_user_id"],
     baseline: JSON.stringify([initialAgentId, initialDryRun, endUserId]),
     dirty: !!selection || dryRun !== initialDryRun || !!sandbox,
@@ -174,6 +204,17 @@ export function NewPlaygroundChatForm({
       ? { harness_name: selection.slice(HARNESS_VALUE_PREFIX.length) }
       : { agent_id: selection.slice(AGENT_VALUE_PREFIX.length) };
 
+    const repositoriesConfig =
+      worksOnRepositories && repositories
+        ? sessionRepositoriesConfig(agentRepositoriesConfig, repositories)
+        : undefined;
+    const capabilities = [
+      ...(dryRun ? [{ ref: "dry_run", config: {} }] : []),
+      ...(repositoriesConfig
+        ? [{ ref: REPOSITORIES_CAPABILITY_ID, config: repositoriesConfig }]
+        : []),
+    ];
+
     try {
       const session = await createSession.mutateAsync({
         request: {
@@ -181,7 +222,7 @@ export function NewPlaygroundChatForm({
           ...(selectedAgent?.sandbox_policy && selectedSandbox && sandboxMode !== "fixed"
             ? { sandbox: { use: selectedSandbox } }
             : {}),
-          ...(dryRun ? { capabilities: [{ ref: "dry_run", config: {} }] } : {}),
+          ...(capabilities.length > 0 ? { capabilities } : {}),
           source: "playground",
           playground_user_id: endUserId,
         },
@@ -273,6 +314,15 @@ export function NewPlaygroundChatForm({
             <span className="text-muted-foreground">{ui("Sandbox:")} </span>
             {ui("Bashkit Virtual Workspace · fixed by Bashkit Worker")}
           </div>
+        ) : null}
+        {worksOnRepositories && selectedAgent ? (
+          <SessionRepositoriesPicker
+            agentId={selectedAgent.id}
+            agentConfig={agentRepositoriesConfig}
+            value={pickedRepositories}
+            onChange={setRepositories}
+            disabled={createSession.isPending}
+          />
         ) : null}
         {children}
         <div className="flex items-start gap-2">

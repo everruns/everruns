@@ -6,6 +6,9 @@
 import { api } from "./client";
 import type {
   ManageSessionSandboxResponse,
+  SessionRepositoriesResponse,
+  SessionRepository,
+  SessionRepositoryFile,
   SandboxFleetDetail,
   SandboxFleetItem,
   SandboxFleetPage,
@@ -16,6 +19,9 @@ import type {
 } from "./types";
 
 export type {
+  SessionRepositoriesResponse,
+  SessionRepository,
+  SessionRepositoryFile,
   SandboxFleetDetail,
   SandboxFleetItem,
   SandboxFleetPage,
@@ -100,4 +106,12 @@ export async function manageSessionSandbox(
   return (
     await api.post<ManageSessionSandboxResponse>(`/v1/sessions/${sessionId}/sandbox`, { action })
   ).data;
+}
+
+/** Repositories checked out in a session's sandbox, with what the session changed. */
+export async function getSessionRepositories(
+  sessionId: string,
+): Promise<SessionRepositoriesResponse> {
+  return (await api.get<SessionRepositoriesResponse>(`/v1/sessions/${sessionId}/repositories`))
+    .data;
 }

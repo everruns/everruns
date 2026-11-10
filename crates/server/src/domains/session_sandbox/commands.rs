@@ -1,10 +1,14 @@
 use super::queries as q;
-use super::types::{ManageSessionSandboxResponse, SessionSandboxAction, SessionSandboxStatusValue};
+use super::types::{
+    ManageSessionSandboxResponse, SessionRepositoriesResponse, SessionSandboxAction,
+    SessionSandboxStatusValue,
+};
 use crate::domains::common::*;
 use everruns_capabilities::session_sandbox::{
     delete_session_sandbox, ensure_session_sandbox_running, pause_session_sandbox,
 };
 use serde::Deserialize;
+use serde_json::json;
 use utoipa::ToSchema;
 
 fn manage_response_from_state(
@@ -374,5 +378,135 @@ mod tests {
         .unwrap();
         assert!(!deleted.exists);
         assert!(deleted.deleted);
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct GetSessionRepositories {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+}
+
+/// API name of a stored sandbox state; the fleet view uses the same names.
+fn sandbox_state_name(observed: &str) -> &'static str {
+    match observed {
+        "ready" => "running",
+        "paused" => "paused",
+        "lost" => "lost",
+        "provisioning" => "starting",
+        "failed" => "failed",
+        "absent" => "not_started",
+        _ => "deleted",
+    }
+}
+
+#[command(
+    name = "get_session_repositories",
+    category = "session_sandbox",
+    description = "List the repositories checked out in a session's sandbox and what the session changed in each.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/repositories",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    positional = "session_id",
+    cli = CliRoute::new(&["sessions", "repositories"], "get").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See what a coding session changed in each repository", "everruns sessions repositories get session_01h9")]),
+)]
+impl Command for GetSessionRepositories {
+    type Output = SessionRepositoriesResponse;
+
+    async fn execute(self, ctx: &Ctx) -> Result<SessionRepositoriesResponse, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        q::verify_session_access(ctx, session_id).await?;
+
+        let empty = |sandbox_state: &str| SessionRepositoriesResponse {
+            sandbox_state: sandbox_state.to_string(),
+            work_branch: None,
+            repositories: Vec::new(),
+        };
+        let Some(capabilities) =
+            crate::domains::sandbox_templates::queries::effective_session_capabilities(
+                &ctx.db, session_id,
+            )
+            .await?
+        else {
+            return Err(CommandError::not_found("Session not found"));
+        };
+        let Some(repositories) = capabilities.iter().find(|capability| {
+            capability.capability_id() == everruns_integrations::github::REPOSITORIES_CAPABILITY_ID
+        }) else {
+            return Ok(empty("none"));
+        };
+        // Decision: a page view never starts or resumes a sandbox. Only a
+        // running one is read; anything else is reported as it is.
+        let state = match ctx.db.get_primary_sandbox(session_id).await? {
+            Some(record) => sandbox_state_name(&record.observed_state),
+            None => "not_started",
+        };
+        if state != "running" {
+            return Ok(empty(state));
+        }
+
+        let service = q::session_sandbox_service(ctx)?;
+        let mut tool_context = service.tool_context(session_id).await;
+        everruns_capabilities::capabilities::install_sandbox_workspace(
+            &mut tool_context.extensions,
+            &capabilities,
+        );
+        // Unguessable to the sandbox, so a checkout cannot forge a section.
+        let marker = uuid::Uuid::new_v4().simple().to_string();
+        let changes = everruns_integrations::github::read_repository_changes(
+            &tool_context,
+            repositories.config_value(),
+            &marker,
+        )
+        .await
+        .map_err(CommandError::bad_request)?;
+        let mut response: SessionRepositoriesResponse = serde_json::from_value(json!({
+            "sandbox_state": state,
+            "work_branch": changes["work_branch"],
+            "repositories": changes["repositories"],
+        }))
+        .map_err(|error| CommandError::internal(anyhow::anyhow!(error)))?;
+        response.repositories.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod repositories_tests {
+    use super::*;
+
+    #[test]
+    fn only_a_ready_sandbox_reads_as_running() {
+        assert_eq!(sandbox_state_name("ready"), "running");
+        for other in [
+            "paused",
+            "lost",
+            "provisioning",
+            "failed",
+            "absent",
+            "deleted",
+        ] {
+            assert_ne!(sandbox_state_name(other), "running");
+        }
+    }
+
+    #[test]
+    fn the_sandbox_report_maps_onto_the_response() {
+        let response: SessionRepositoriesResponse = serde_json::from_value(json!({
+            "sandbox_state": "running",
+            "work_branch": "everruns/bdaf0ce2",
+            "repositories": [{
+                "repo": "acme/app", "path": "/workspace/app", "access": "write",
+                "branch": "everruns/bdaf0ce2", "on_work_branch": true, "head_sha": "abc",
+                "base_branch": "main", "uncommitted_files": 1,
+                "commits_ahead_of_base": 1, "commits_not_pushed": null,
+                "has_agents_md": false,
+                "files": [{"path": "a.rs", "additions": 2, "deletions": null, "committed": true}],
+                "diff": "diff --git", "diff_truncated": false
+            }]
+        }))
+        .unwrap();
+        assert_eq!(response.repositories[0].files[0].additions, Some(2));
+        assert_eq!(response.repositories[0].commits_not_pushed, None);
     }
 }
