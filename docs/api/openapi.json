@@ -67087,13 +67087,15 @@
         ],
         "properties": {
           "message": {
-            "$ref": "#/components/schemas/RoomMessage"
+            "$ref": "#/components/schemas/RoomMessage",
+            "description": "The posted message."
           },
           "woke": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoomWake"
-            }
+            },
+            "description": "Agent members the message addressed, and what happened to each."
           }
         }
       },
@@ -69368,36 +69370,45 @@
         ],
         "properties": {
           "archived": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the room is archived: it keeps everything but takes no posts and wakes no agents.",
+            "example": false
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the room was created.",
+            "example": "2026-11-10T15:04:05Z"
           },
           "external_ref": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The builder's own id for this room."
+            "description": "The builder's own id for this room.",
+            "example": "ticket-4521"
           },
           "id": {
             "type": "string",
-            "description": "Prefixed room id (`room_...`)."
+            "description": "Prefixed room id (`room_...`).",
+            "example": "room_01933b5a000070008000000000000001"
           },
           "last_message_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the last message was posted.",
+            "example": "2026-11-10T15:04:05Z"
           },
           "link_template": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Where a message opens in the builder's product; `{room_id}`,\n`{message_id}` and `{thread_id}` are filled in to make each message's\n`url`."
+            "description": "Where a message opens in the builder's product; `{room_id}`,\n`{message_id}` and `{thread_id}` are filled in to make each message's\n`url`.",
+            "example": "https://desk.example.com/rooms/{room_id}/m/{message_id}"
           },
           "loop_limits": {
             "$ref": "#/components/schemas/LoopLimits",
@@ -69407,17 +69418,23 @@
             "description": "Free-form data the builder keeps with the room."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Room name.",
+            "example": "Support desk"
           },
           "topic": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "What the room is about.",
+            "example": "Customer escalations"
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the room last changed.",
+            "example": "2026-11-10T15:04:05Z"
           }
         }
       },
@@ -69432,16 +69449,23 @@
         ],
         "properties": {
           "display_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Name shown with the message.",
+            "example": "Triage agent"
           },
           "handle": {
-            "type": "string"
+            "type": "string",
+            "description": "Mention name, written `@handle`.",
+            "example": "triage"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Member id of the author.",
+            "example": "rmem_01933b5a000070008000000000000003"
           },
           "kind": {
-            "$ref": "#/components/schemas/RoomMemberKind"
+            "$ref": "#/components/schemas/RoomMemberKind",
+            "description": "Person, Everruns agent, outside agent or guest."
           }
         }
       },
@@ -69458,37 +69482,50 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When it happened.",
+            "example": "2026-11-10T15:04:05Z"
           },
-          "data": {},
+          "data": {
+            "description": "Details of the change; the shape depends on `type`."
+          },
           "member_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The member it is about or by, if any.",
+            "example": "rmem_01933b5a000070008000000000000003"
           },
           "message_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The message it is about, if any.",
+            "example": "rmsg_01933b5a000070008000000000000002"
           },
           "room_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The room it happened in.",
+            "example": "room_01933b5a000070008000000000000001"
           },
           "seq": {
             "type": "integer",
             "format": "int64",
-            "description": "Position in the org's room feed; read on with `after`."
+            "description": "Position in the org's room feed; read on with `after`.",
+            "example": 120
           },
           "type": {
             "type": "string",
-            "description": "`room.created`, `room.updated`, `room.archived`, `room.unarchived`,\n`member.joined`, `member.left`, `message.posted`, `message.edited`,\n`message.deleted`, `message.pinned`, `message.unpinned`,\n`reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`."
+            "description": "`room.created`, `room.updated`, `room.archived`, `room.unarchived`,\n`member.joined`, `member.left`, `message.posted`, `message.edited`,\n`message.deleted`, `message.pinned`, `message.unpinned`,\n`reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.",
+            "example": "message.posted"
           }
         }
       },
       "RoomEventListResponse": {
         "type": "object",
+        "description": "A page of a room change feed.",
         "required": [
           "data",
           "next_after"
@@ -69498,17 +69535,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoomEvent"
-            }
+            },
+            "description": "Events, in order."
           },
           "next_after": {
             "type": "integer",
             "format": "int64",
-            "description": "Pass as `after` to read on."
+            "description": "Pass as `after` to read on.",
+            "example": 120
           }
         }
       },
       "RoomListResponse": {
         "type": "object",
+        "description": "A page of rooms.",
         "required": [
           "data"
         ],
@@ -69517,7 +69557,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Room"
-            }
+            },
+            "description": "Rooms, most recently active first."
           }
         }
       },
@@ -69542,42 +69583,55 @@
               "string",
               "null"
             ],
-            "description": "The agent's id, for an Everruns agent."
+            "description": "The agent's id, for an Everruns agent.",
+            "example": "agent_01933b5a000070008000000000000005"
           },
           "display_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Name shown with the member's messages.",
+            "example": "Triage agent"
           },
           "handle": {
             "type": "string",
-            "description": "Mention name, written `@handle`."
+            "description": "Mention name, written `@handle`.",
+            "example": "triage"
           },
           "id": {
             "type": "string",
-            "description": "Prefixed member id (`rmem_...`)."
+            "description": "Prefixed member id (`rmem_...`).",
+            "example": "rmem_01933b5a000070008000000000000003"
           },
           "instructions": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Extra instructions an agent member gets in this room."
+            "description": "Extra instructions an agent member gets in this room.",
+            "example": "Answer billing questions only."
           },
           "joined_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the member joined.",
+            "example": "2026-11-10T15:04:05Z"
           },
           "kind": {
-            "$ref": "#/components/schemas/RoomMemberKind"
+            "$ref": "#/components/schemas/RoomMemberKind",
+            "description": "Person, Everruns agent, outside agent or guest."
           },
           "left": {
             "type": "boolean",
-            "description": "Whether the member left. Left members still name their old messages."
+            "description": "Whether the member left. Left members still name their old messages.",
+            "example": false
           },
           "role": {
-            "$ref": "#/components/schemas/RoomMemberRole"
+            "$ref": "#/components/schemas/RoomMemberRole",
+            "description": "Owner or member."
           },
           "room_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The room this member belongs to.",
+            "example": "room_01933b5a000070008000000000000001"
           },
           "session_scope": {
             "$ref": "#/components/schemas/SessionScope",
@@ -69588,7 +69642,8 @@
               "string",
               "null"
             ],
-            "description": "The person's user id, for a person."
+            "description": "The person's user id, for a person.",
+            "example": "user_01933b5a000070008000000000000004"
           },
           "wake": {
             "$ref": "#/components/schemas/WakeMode",
@@ -69608,6 +69663,7 @@
       },
       "RoomMemberListResponse": {
         "type": "object",
+        "description": "A room's members.",
         "required": [
           "data"
         ],
@@ -69616,7 +69672,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoomMember"
-            }
+            },
+            "description": "Members, in the order they joined."
           }
         }
       },
@@ -69637,10 +69694,14 @@
         ],
         "properties": {
           "handle": {
-            "type": "string"
+            "type": "string",
+            "description": "Mention name as written.",
+            "example": "triage"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Member id of the mentioned member.",
+            "example": "rmem_01933b5a000070008000000000000003"
           }
         }
       },
@@ -69673,85 +69734,108 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When it was posted.",
+            "example": "2026-11-10T15:04:05Z"
           },
           "deleted": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether it was deleted; a marker stays in its place.",
+            "example": false
           },
           "edited_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When it was last edited.",
+            "example": "2026-11-10T15:04:05Z"
           },
           "hops": {
             "type": "integer",
             "format": "int32",
-            "description": "Agent posts in a row up to this message (0 when a person wrote it)."
+            "description": "Agent posts in a row up to this message (0 when a person wrote it).",
+            "example": 0
           },
           "id": {
             "type": "string",
-            "description": "Prefixed message id (`rmsg_...`)."
+            "description": "Prefixed message id (`rmsg_...`).",
+            "example": "rmsg_01933b5a000070008000000000000002"
           },
           "last_reply_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When its thread last got a reply.",
+            "example": "2026-11-10T15:04:05Z"
           },
           "mentions": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoomMention"
-            }
+            },
+            "description": "Members the text mentions, resolved when it was posted."
           },
           "pinned": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether it is pinned to the room.",
+            "example": false
           },
           "reactions": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoomReaction"
-            }
+            },
+            "description": "Reactions, one entry per emoji."
           },
           "reply_count": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Replies in its thread, for a top-level message.",
+            "example": 3
           },
           "room_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The room it was posted in.",
+            "example": "room_01933b5a000070008000000000000001"
           },
           "session_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The agent session that wrote it, for agent posts."
+            "description": "The agent session that wrote it, for agent posts.",
+            "example": "session_01933b5a000070008000000000000006"
           },
           "text": {
             "type": "string",
-            "description": "Markdown. Empty once deleted."
+            "description": "Markdown. Empty once deleted.",
+            "example": "@triage can you check ticket 4521?"
           },
           "thread_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The thread it is a reply in (its root message); absent at the top level."
+            "description": "The thread it is a reply in (its root message); absent at the top level.",
+            "example": "rmsg_01933b5a000070008000000000000002"
           },
           "url": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Where it opens in the builder's product (the room's `link_template`)."
+            "description": "Where it opens in the builder's product (the room's `link_template`).",
+            "example": "https://desk.example.com/rooms/room_01933b5a000070008000000000000001/m/rmsg_01933b5a000070008000000000000002"
           }
         }
       },
       "RoomMessageListResponse": {
         "type": "object",
+        "description": "A page of messages.",
         "required": [
           "data",
           "has_more"
@@ -69761,11 +69845,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoomMessage"
-            }
+            },
+            "description": "Messages, oldest first."
           },
           "has_more": {
             "type": "boolean",
-            "description": "Whether older messages exist before the first one returned."
+            "description": "Whether older messages exist before the first one returned.",
+            "example": false
           }
         }
       },
@@ -69780,16 +69866,24 @@
         "properties": {
           "count": {
             "type": "integer",
+            "description": "How many members added it.",
+            "example": 2,
             "minimum": 0
           },
           "emoji": {
-            "type": "string"
+            "type": "string",
+            "description": "The emoji, as text.",
+            "example": "👀"
           },
           "member_ids": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Members who added it.",
+            "example": [
+              "rmem_01933b5a000070008000000000000003"
+            ]
           }
         }
       },
@@ -69803,11 +69897,14 @@
         "properties": {
           "read_through": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "How far the reader has read.",
+            "example": "2026-11-10T15:04:05Z"
           },
           "scope_id": {
             "type": "string",
-            "description": "The room id for the top level, or a thread's root message id."
+            "description": "The room id for the top level, or a thread's root message id.",
+            "example": "room_01933b5a000070008000000000000001"
           }
         }
       },
@@ -69821,19 +69918,26 @@
         ],
         "properties": {
           "handle": {
-            "type": "string"
+            "type": "string",
+            "description": "Its mention name.",
+            "example": "ana-lopez"
           },
           "member_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The reader.",
+            "example": "rmem_01933b5a000070008000000000000003"
           },
           "read_through": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "How far it has read.",
+            "example": "2026-11-10T15:04:05Z"
           }
         }
       },
       "RoomReadersResponse": {
         "type": "object",
+        "description": "Who has read a message, and who has not.",
         "required": [
           "read_by",
           "not_read_by"
@@ -69868,11 +69972,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoomMessage"
-            }
+            },
+            "description": "Unread messages, oldest first."
           },
           "has_more": {
             "type": "boolean",
-            "description": "Whether more unread messages remain after this page."
+            "description": "Whether more unread messages remain after this page.",
+            "example": false
           },
           "threads": {
             "type": "array",
@@ -69893,21 +69999,27 @@
         ],
         "properties": {
           "handle": {
-            "type": "string"
+            "type": "string",
+            "description": "Its mention name.",
+            "example": "triage"
           },
           "member_id": {
-            "type": "string"
+            "type": "string",
+            "description": "The agent member.",
+            "example": "rmem_01933b5a000070008000000000000003"
           },
           "outcome": {
             "type": "string",
-            "description": "`woken`, or the loop limit that stopped it (`hops`, `agent_hourly`,\n`room_hourly`), or `failed`."
+            "description": "`woken`, or the loop limit that stopped it (`hops`, `agent_hourly`,\n`room_hourly`), or `failed`.",
+            "example": "woken"
           },
           "session_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The agent's session for this conversation."
+            "description": "The agent's session for this conversation.",
+            "example": "session_01933b5a000070008000000000000006"
           }
         }
       },

@@ -26339,7 +26339,9 @@ export interface components {
     PolicyStepAction: "notify" | "ask" | "stop";
     /** @description A posted message and the agents it woke. */
     PostRoomMessageResponse: {
+      /** @description The posted message. */
       message: components["schemas"]["RoomMessage"];
+      /** @description Agent members the message addressed, and what happened to each. */
       woke: components["schemas"]["RoomWake"][];
     };
     /** @description Request body for posting an inbound task message. */
@@ -27638,48 +27640,110 @@ export interface components {
     RiskLevel: "low" | "medium" | "high";
     /** @description An org-owned conversation space for people and agents. */
     Room: {
+      /**
+       * @description Whether the room is archived: it keeps everything but takes no posts and wakes no agents.
+       * @example false
+       */
       archived: boolean;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the room was created.
+       * @example 2026-11-10T15:04:05Z
+       */
       created_at: string;
-      /** @description The builder's own id for this room. */
+      /**
+       * @description The builder's own id for this room.
+       * @example ticket-4521
+       */
       external_ref?: string | null;
-      /** @description Prefixed room id (`room_...`). */
+      /**
+       * @description Prefixed room id (`room_...`).
+       * @example room_01933b5a000070008000000000000001
+       */
       id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the last message was posted.
+       * @example 2026-11-10T15:04:05Z
+       */
       last_message_at?: string | null;
       /**
        * @description Where a message opens in the builder's product; `{room_id}`,
        *     `{message_id}` and `{thread_id}` are filled in to make each message's
        *     `url`.
+       * @example https://desk.example.com/rooms/{room_id}/m/{message_id}
        */
       link_template?: string | null;
       /** @description Loop limits in force. */
       loop_limits: components["schemas"]["LoopLimits"];
       /** @description Free-form data the builder keeps with the room. */
       metadata: unknown;
+      /**
+       * @description Room name.
+       * @example Support desk
+       */
       name: string;
+      /**
+       * @description What the room is about.
+       * @example Customer escalations
+       */
       topic?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the room last changed.
+       * @example 2026-11-10T15:04:05Z
+       */
       updated_at: string;
     };
     /** @description Who wrote a message, as the message shows it. */
     RoomAuthor: {
+      /**
+       * @description Name shown with the message.
+       * @example Triage agent
+       */
       display_name: string;
+      /**
+       * @description Mention name, written `@handle`.
+       * @example triage
+       */
       handle: string;
+      /**
+       * @description Member id of the author.
+       * @example rmem_01933b5a000070008000000000000003
+       */
       id: string;
+      /** @description Person, Everruns agent, outside agent or guest. */
       kind: components["schemas"]["RoomMemberKind"];
     };
     /** @description One entry of a room's change feed. */
     RoomEvent: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When it happened.
+       * @example 2026-11-10T15:04:05Z
+       */
       created_at: string;
+      /** @description Details of the change; the shape depends on `type`. */
       data: unknown;
+      /**
+       * @description The member it is about or by, if any.
+       * @example rmem_01933b5a000070008000000000000003
+       */
       member_id?: string | null;
+      /**
+       * @description The message it is about, if any.
+       * @example rmsg_01933b5a000070008000000000000002
+       */
       message_id?: string | null;
+      /**
+       * @description The room it happened in.
+       * @example room_01933b5a000070008000000000000001
+       */
       room_id: string;
       /**
        * Format: int64
        * @description Position in the org's room feed; read on with `after`.
+       * @example 120
        */
       seq: number;
       /**
@@ -27687,41 +27751,79 @@ export interface components {
        *     `member.joined`, `member.left`, `message.posted`, `message.edited`,
        *     `message.deleted`, `message.pinned`, `message.unpinned`,
        *     `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.
+       * @example message.posted
        */
       type: string;
     };
+    /** @description A page of a room change feed. */
     RoomEventListResponse: {
+      /** @description Events, in order. */
       data: components["schemas"]["RoomEvent"][];
       /**
        * Format: int64
        * @description Pass as `after` to read on.
+       * @example 120
        */
       next_after: number;
     };
+    /** @description A page of rooms. */
     RoomListResponse: {
+      /** @description Rooms, most recently active first. */
       data: components["schemas"]["Room"][];
     };
     /** @description A member of a room. */
     RoomMember: {
-      /** @description The agent's id, for an Everruns agent. */
+      /**
+       * @description The agent's id, for an Everruns agent.
+       * @example agent_01933b5a000070008000000000000005
+       */
       agent_id?: string | null;
+      /**
+       * @description Name shown with the member's messages.
+       * @example Triage agent
+       */
       display_name: string;
-      /** @description Mention name, written `@handle`. */
+      /**
+       * @description Mention name, written `@handle`.
+       * @example triage
+       */
       handle: string;
-      /** @description Prefixed member id (`rmem_...`). */
+      /**
+       * @description Prefixed member id (`rmem_...`).
+       * @example rmem_01933b5a000070008000000000000003
+       */
       id: string;
-      /** @description Extra instructions an agent member gets in this room. */
+      /**
+       * @description Extra instructions an agent member gets in this room.
+       * @example Answer billing questions only.
+       */
       instructions?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the member joined.
+       * @example 2026-11-10T15:04:05Z
+       */
       joined_at: string;
+      /** @description Person, Everruns agent, outside agent or guest. */
       kind: components["schemas"]["RoomMemberKind"];
-      /** @description Whether the member left. Left members still name their old messages. */
+      /**
+       * @description Whether the member left. Left members still name their old messages.
+       * @example false
+       */
       left: boolean;
+      /** @description Owner or member. */
       role: components["schemas"]["RoomMemberRole"];
+      /**
+       * @description The room this member belongs to.
+       * @example room_01933b5a000070008000000000000001
+       */
       room_id: string;
       /** @description Which conversation an agent member keeps. */
       session_scope: components["schemas"]["SessionScope"];
-      /** @description The person's user id, for a person. */
+      /**
+       * @description The person's user id, for a person.
+       * @example user_01933b5a000070008000000000000004
+       */
       user_id?: string | null;
       /** @description When an agent member is woken. */
       wake: components["schemas"]["WakeMode"];
@@ -27731,7 +27833,9 @@ export interface components {
      * @enum {string}
      */
     RoomMemberKind: "person" | "agent" | "outside_agent" | "guest";
+    /** @description A room's members. */
     RoomMemberListResponse: {
+      /** @description Members, in the order they joined. */
       data: components["schemas"]["RoomMember"][];
     };
     /**
@@ -27741,66 +27845,159 @@ export interface components {
     RoomMemberRole: "owner" | "member";
     /** @description A member a message mentions. */
     RoomMention: {
+      /**
+       * @description Mention name as written.
+       * @example triage
+       */
       handle: string;
+      /**
+       * @description Member id of the mentioned member.
+       * @example rmem_01933b5a000070008000000000000003
+       */
       id: string;
     };
     /** @description A message in a room. */
     RoomMessage: {
       author?: components["schemas"]["RoomAuthor"] | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When it was posted.
+       * @example 2026-11-10T15:04:05Z
+       */
       created_at: string;
+      /**
+       * @description Whether it was deleted; a marker stays in its place.
+       * @example false
+       */
       deleted: boolean;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When it was last edited.
+       * @example 2026-11-10T15:04:05Z
+       */
       edited_at?: string | null;
       /**
        * Format: int32
        * @description Agent posts in a row up to this message (0 when a person wrote it).
+       * @example 0
        */
       hops: number;
-      /** @description Prefixed message id (`rmsg_...`). */
+      /**
+       * @description Prefixed message id (`rmsg_...`).
+       * @example rmsg_01933b5a000070008000000000000002
+       */
       id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When its thread last got a reply.
+       * @example 2026-11-10T15:04:05Z
+       */
       last_reply_at?: string | null;
+      /** @description Members the text mentions, resolved when it was posted. */
       mentions: components["schemas"]["RoomMention"][];
+      /**
+       * @description Whether it is pinned to the room.
+       * @example false
+       */
       pinned: boolean;
+      /** @description Reactions, one entry per emoji. */
       reactions: components["schemas"]["RoomReaction"][];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Replies in its thread, for a top-level message.
+       * @example 3
+       */
       reply_count: number;
+      /**
+       * @description The room it was posted in.
+       * @example room_01933b5a000070008000000000000001
+       */
       room_id: string;
-      /** @description The agent session that wrote it, for agent posts. */
+      /**
+       * @description The agent session that wrote it, for agent posts.
+       * @example session_01933b5a000070008000000000000006
+       */
       session_id?: string | null;
-      /** @description Markdown. Empty once deleted. */
+      /**
+       * @description Markdown. Empty once deleted.
+       * @example @triage can you check ticket 4521?
+       */
       text: string;
-      /** @description The thread it is a reply in (its root message); absent at the top level. */
+      /**
+       * @description The thread it is a reply in (its root message); absent at the top level.
+       * @example rmsg_01933b5a000070008000000000000002
+       */
       thread_id?: string | null;
-      /** @description Where it opens in the builder's product (the room's `link_template`). */
+      /**
+       * @description Where it opens in the builder's product (the room's `link_template`).
+       * @example https://desk.example.com/rooms/room_01933b5a000070008000000000000001/m/rmsg_01933b5a000070008000000000000002
+       */
       url?: string | null;
     };
+    /** @description A page of messages. */
     RoomMessageListResponse: {
+      /** @description Messages, oldest first. */
       data: components["schemas"]["RoomMessage"][];
-      /** @description Whether older messages exist before the first one returned. */
+      /**
+       * @description Whether older messages exist before the first one returned.
+       * @example false
+       */
       has_more: boolean;
     };
     /** @description One emoji on a message, with who added it. */
     RoomReaction: {
+      /**
+       * @description How many members added it.
+       * @example 2
+       */
       count: number;
+      /**
+       * @description The emoji, as text.
+       * @example 👀
+       */
       emoji: string;
+      /**
+       * @description Members who added it.
+       * @example [
+       *       "rmem_01933b5a000070008000000000000003"
+       *     ]
+       */
       member_ids: string[];
     };
     /** @description A reader's position in one scope. */
     RoomReadMark: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description How far the reader has read.
+       * @example 2026-11-10T15:04:05Z
+       */
       read_through: string;
-      /** @description The room id for the top level, or a thread's root message id. */
+      /**
+       * @description The room id for the top level, or a thread's root message id.
+       * @example room_01933b5a000070008000000000000001
+       */
       scope_id: string;
     };
     /** @description One reader of a scope. */
     RoomReader: {
+      /**
+       * @description Its mention name.
+       * @example ana-lopez
+       */
       handle: string;
+      /**
+       * @description The reader.
+       * @example rmem_01933b5a000070008000000000000003
+       */
       member_id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description How far it has read.
+       * @example 2026-11-10T15:04:05Z
+       */
       read_through: string;
     };
+    /** @description Who has read a message, and who has not. */
     RoomReadersResponse: {
       /** @description Members who have not, the author left out. */
       not_read_by: components["schemas"]["RoomAuthor"][];
@@ -27812,22 +28009,38 @@ export interface components {
      *     context, already marked read.
      */
     RoomUnreadResponse: {
+      /** @description Unread messages, oldest first. */
       data: components["schemas"]["RoomMessage"][];
-      /** @description Whether more unread messages remain after this page. */
+      /**
+       * @description Whether more unread messages remain after this page.
+       * @example false
+       */
       has_more: boolean;
       /** @description Root messages of the threads the unread replies belong to. */
       threads: components["schemas"]["RoomMessage"][];
     };
     /** @description An agent member a message woke, or did not wake because of a limit. */
     RoomWake: {
+      /**
+       * @description Its mention name.
+       * @example triage
+       */
       handle: string;
+      /**
+       * @description The agent member.
+       * @example rmem_01933b5a000070008000000000000003
+       */
       member_id: string;
       /**
        * @description `woken`, or the loop limit that stopped it (`hops`, `agent_hourly`,
        *     `room_hourly`), or `failed`.
+       * @example woken
        */
       outcome: string;
-      /** @description The agent's session for this conversation. */
+      /**
+       * @description The agent's session for this conversation.
+       * @example session_01933b5a000070008000000000000006
+       */
       session_id?: string | null;
     };
     /** @description Request to rotate an agent key. */
