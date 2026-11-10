@@ -65,6 +65,17 @@ impl SessionActorStore for SettledStore {
             .await
     }
 
+    async fn record_actor_progress(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: u64,
+    ) -> Result<bool> {
+        self.inner
+            .record_actor_progress(session_id, holder, fence)
+            .await
+    }
+
     async fn hand_off_actor(
         &self,
         session_id: SessionId,

@@ -429,3 +429,95 @@ async fn a_takeover_applies_a_targeted_cancel_only_to_the_turn_of_its_input() {
         "A's cancel does not reach B's turn"
     );
 }
+
+/// Counts progress reports; renews succeed.
+#[derive(Default)]
+struct Progress(std::sync::atomic::AtomicUsize);
+
+#[async_trait]
+impl SessionActorStore for Progress {
+    async fn renew_actor_lease(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: Duration,
+        _consumed: i64,
+    ) -> Result<Option<ActorRenewal>> {
+        Ok(Some(ActorRenewal {
+            inbox_seq: 1,
+            cancel_inbox_seq: None,
+        }))
+    }
+    async fn record_actor_progress(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+    ) -> Result<bool> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok(true)
+    }
+    async fn release_actor(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed: i64,
+    ) -> Result<ActorRelease> {
+        unreachable!("the progress tests never release")
+    }
+    async fn read_actor_journal(
+        &self,
+        _id: SessionId,
+        _after: Option<i32>,
+        _limit: u32,
+    ) -> Result<ActorJournal> {
+        unreachable!("the progress tests read nothing")
+    }
+}
+
+/// The cell's chaos run: node kills cut one long turn off three times while
+/// every lease moved it on, and the poison guard sealed it. A lease after a
+/// death reports progress once, at its second stored boundary (the first
+/// only follows the resume's repair); the first lease never reports.
+#[tokio::test]
+async fn a_resumed_lease_reports_progress_once_after_a_step_it_ran() {
+    let store = Arc::new(Progress::default());
+    let resumed = Lease::new(
+        store.clone(),
+        "worker".into(),
+        &LeasedActor {
+            attempts: 2,
+            ..leased()
+        },
+        Duration::from_secs(3),
+        3,
+    );
+    resumed.step_stored().await;
+    assert_eq!(
+        store.0.load(Ordering::SeqCst),
+        0,
+        "the resume's own repair is not progress"
+    );
+    resumed.step_stored().await;
+    resumed.step_stored().await;
+    assert_eq!(store.0.load(Ordering::SeqCst), 1, "reported once");
+    assert!(!resumed.is_lost());
+
+    let first = Lease::new(
+        store.clone(),
+        "worker".into(),
+        &leased(),
+        Duration::from_secs(3),
+        3,
+    );
+    for _ in 0..3 {
+        first.step_stored().await;
+    }
+    assert_eq!(
+        store.0.load(Ordering::SeqCst),
+        1,
+        "a first lease has nothing to reset"
+    );
+}

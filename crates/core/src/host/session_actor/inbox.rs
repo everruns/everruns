@@ -71,6 +71,7 @@ impl<H: ActorHosts> ActorInbox<'_, H> {
         // A gap in the log stops the turn before its input is committed.
         self.hosts.flush(self.host).await?;
         self.lease.turn_stored();
+        self.lease.step_stored().await;
         self.refresh().await;
         // A cancel the renew already reported ends the turn before it takes
         // more input: a message admitted behind a cancelled turn is not part

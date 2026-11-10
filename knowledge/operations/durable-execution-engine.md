@@ -482,6 +482,16 @@ production and DEV_MODE alike; the worker side is
   idled nothing and released, so the session stayed `active` for days
   (production, 2026-10-29). The reasoning is next to the code in
   [`turn.rs`](../../crates/core/src/host/session_actor/turn.rs).
+  Progress after a death restarts the count: a lease after a death reports
+  progress once, when a step it started is stored, and the store counts
+  from that lease again (`SessionActorStore::record_actor_progress`). Without
+  it, three node kills inside one long turn sealed a turn that every lease
+  moved on (data plane v2 cell chaos run, 6 of 300 sessions). A turn that
+  kills its holder at the same step never stores one, so it is still sealed.
+  The Framework's memory and SQLite stores and the cell implement it; the
+  PostgreSQL platform store keeps counting every lease until it does. Why
+  the second boundary and not any append: see
+  [`lease.rs`](../../crates/core/src/host/session_actor/lease.rs).
 - **Per-org fairness order.** A lease call counts each org's held leases and
   takes actors of orgs under the cap (default 32) first, oldest first; an
   org's actors past it fill only the room left. It orders, it never holds

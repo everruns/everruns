@@ -27,6 +27,17 @@
 //!   (`fence`), checked by the control plane in the insert's transaction, so
 //!   a write still in flight when the lease was lost cannot land after
 //!   another holder took the session.
+//! - Progress after a death resets the poison guard. The guard counts
+//!   leases since the last release, so three holder deaths inside one long
+//!   turn sealed it even when every lease moved it on (the cell's chaos run:
+//!   node kills, not the turn, cut it off three times). A lease after a death
+//!   (`attempts > 1`) reports progress once, when a step it started is
+//!   stored ([`Lease::step_stored`]): its second phase boundary, since the
+//!   first only follows the resume's own repair of the cut-off call. A turn
+//!   that kills its holder at the same step never gets there, so it is still
+//!   sealed. Rejected: reporting progress on every lease (a write per turn
+//!   for the rare case) and resetting on any append (a resume always appends
+//!   its repair, so a poison turn would look alive).
 //! - A cancel targets the turn it was requested for: the control plane reports
 //!   the inbox position it was requested at, and the lease raises `cancel`
 //!   only for a turn whose input is at or before it. The cancel stays on the
@@ -105,6 +116,13 @@ pub(crate) struct Lease {
     /// The renewer is poked on every admission, so an in-turn inbox check
     /// may rely on its renewals (see [`Lease::refresh`]).
     pushed_inbox: bool,
+    /// The lease follows a holder's death: it reports progress once (module
+    /// notes).
+    resumed: bool,
+    /// Phase boundaries this lease stored.
+    boundaries: std::sync::atomic::AtomicU32,
+    /// Progress was reported, or need not be.
+    progress_reported: std::sync::atomic::AtomicBool,
 }
 
 /// What decides whether a pending cancel ends this lease's turn.
@@ -147,6 +165,9 @@ impl Lease {
                 turn_input: None,
             }),
             pushed_inbox: false,
+            resumed: actor.attempts > 1,
+            boundaries: std::sync::atomic::AtomicU32::new(0),
+            progress_reported: std::sync::atomic::AtomicBool::new(actor.attempts <= 1),
         }
     }
 
@@ -282,6 +303,30 @@ impl Lease {
     /// its input may be committed.
     pub(crate) fn turn_stored(&self) {
         self.unstarted_input.store(0, Ordering::SeqCst);
+    }
+
+    /// A phase boundary's events are stored. On a lease after a death, the
+    /// second one is progress: report it once so the poison guard counts
+    /// from this lease again (module notes). A failed report only leaves
+    /// the count as it was.
+    pub(crate) async fn step_stored(&self) {
+        let boundaries = self.boundaries.fetch_add(1, Ordering::SeqCst) + 1;
+        if !self.resumed || boundaries < 2 || self.progress_reported.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        match self
+            .store
+            .record_actor_progress(self.session_id, &self.holder, self.fence)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                self.lost.send_replace(true);
+            }
+            Err(error) => {
+                tracing::warn!(session_id = %self.session_id, error = %error, "Recording a resumed turn's progress failed");
+            }
+        }
     }
 
     /// Run the lease's turn again from the log (a retry after a
