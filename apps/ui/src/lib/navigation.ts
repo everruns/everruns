@@ -25,6 +25,7 @@ import {
   PlaygroundIcon,
   QueueIcon,
   ReportIcon,
+  RoomIcon,
   SandboxIcon,
   ScheduleIcon,
   SessionIcon,
@@ -117,6 +118,15 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     href: "/sessions",
     icon: SessionIcon,
     keywords: ["recordings", "conversation", "transcript"],
+  },
+  // Rooms are a building block like sessions: apps make them, the console
+  // lists them for inspection (knowledge/runtime-resources/rooms.md).
+  {
+    name: "Rooms",
+    description: "Inspect the rooms where people and agents talk together.",
+    href: "/rooms",
+    icon: RoomIcon,
+    keywords: ["room", "board", "channel", "conversation", "group", "styk", "facilitator"],
   },
 ];
 
