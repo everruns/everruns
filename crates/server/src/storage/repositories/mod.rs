@@ -57,6 +57,8 @@ mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;
 mod declarative_capabilities;
 pub use declarative_capabilities::rows::*;
+mod engine_agents;
+pub use engine_agents::{EngineAgentKeyRow, EngineAgentPublishRow};
 mod entity_changes;
 mod evals;
 pub use evals::rows::*;

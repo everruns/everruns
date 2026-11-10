@@ -124,7 +124,42 @@ impl Database {
             .fetch_one(&mut *tx)
             .await?;
         tx.commit().await?;
+        self.enqueue_engine_agent_change(&row).await;
         Ok(row)
+    }
+
+    /// Queue the Engine definitions an entity edit can change (data plane v2
+    /// step 4). Every command-made edit lands here, so no edit path has its
+    /// own publish hook to forget. Best effort: a missed enqueue is caught by
+    /// the publisher's periodic sweep.
+    async fn enqueue_engine_agent_change(&self, row: &EntityChangeRow) {
+        let agent = match row.entity_kind.as_str() {
+            "agent" => Some(
+                row.entity_ref
+                    .parse::<everruns_contracts::typed_id::AgentId>()
+                    .ok()
+                    .map(|id| id.uuid()),
+            ),
+            // What every agent of the org compiles with: harness chains,
+            // defaults, models and providers, skills, MCP servers.
+            "harness"
+            | "organization"
+            | "organization_network"
+            | "model"
+            | "provider"
+            | "skill"
+            | "mcp_server" => Some(None),
+            _ => None,
+        };
+        let Some(agent) = agent else {
+            return;
+        };
+        if let Err(error) = self
+            .enqueue_engine_agent_publish(row.org_id, agent, None, &row.entity_kind)
+            .await
+        {
+            tracing::warn!(%error, "engine agent publish not queued");
+        }
     }
 
     pub async fn latest_entity_revision(
