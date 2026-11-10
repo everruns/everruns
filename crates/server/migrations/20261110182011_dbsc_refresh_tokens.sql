@@ -1,4 +1,4 @@
--- Device Bound Session Credentials (crates/server/src/auth/dbsc.rs). A bound
+-- Device Bound Session Credentials (crates/server/src/auth/dbsc/mod.rs). A bound
 -- refresh token is the browser's DBSC session: it stores the device's public
 -- key and the outstanding refresh challenge. NULL dbsc_id means unbound;
 -- `/v1/auth/refresh` only consumes unbound rows.

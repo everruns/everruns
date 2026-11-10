@@ -595,7 +595,7 @@ On success, the old refresh token is deleted (rotation) and a new token pair is 
 
 Browsers that implement [Device Bound Session Credentials](https://w3c.github.io/webappsec-dbsc/)
 bind a sign-in to a device key so stolen cookies stop working
-([`crates/server/src/auth/dbsc.rs`](../../crates/server/src/auth/dbsc.rs)).
+([`crates/server/src/auth/dbsc/mod.rs`](../../crates/server/src/auth/dbsc/mod.rs)).
 
 - Every response that issues a new `refresh_token` cookie offers registration. The offer is a
   response layer (`offer_registration`) rather than per-route code, so every sign-in path is

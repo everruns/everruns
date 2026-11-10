@@ -532,5 +532,4 @@ pub async fn refresh(
 }
 
 #[cfg(test)]
-#[path = "dbsc_tests.rs"]
 mod tests;
