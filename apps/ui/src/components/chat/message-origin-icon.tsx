@@ -5,6 +5,7 @@
 import {
   CalendarClock,
   Cog,
+  MessagesSquare,
   RefreshCw,
   RotateCcw,
   SmilePlus,
@@ -22,5 +23,6 @@ export const ORIGIN_ICON: Record<MessageOriginKind, LucideIcon> = {
   task_wake: RefreshCw,
   reaction: SmilePlus,
   turn_continuation: RotateCcw,
+  room: MessagesSquare,
   system: Cog,
 };

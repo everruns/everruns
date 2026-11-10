@@ -18,6 +18,7 @@
 * [Session titles](session-titles.md) - Automatic naming, sparse admission, model defaults, and explicit ownership.
 * [Session Tasks](session-tasks.md) - Session task registry for background work.
 * [Coordination](coordination.md) - Coordinator agents hand work to threads and keep the person's view of it.
+* [Rooms](rooms.md) - Org-owned spaces where people and agents talk; messages that address an agent wake it, and it answers through send_message.
 * [Session Participants](session-participants.md) - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff).
 * [Session Resource Registry](session-resources.md) - Session resource registry.
 * [Leased Resources](leased-resources.md) - Generic lease primitive.

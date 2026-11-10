@@ -33,6 +33,9 @@ pub(super) struct Listeners {
     pub mcp_events: Arc<domains::mcp_servers::McpEventsService>,
     pub mcp_event_triggers: Arc<crate::domains::agent_triggers::McpEventTriggers>,
     pub thread_turns: Arc<listeners::coordination::ThreadTurnListener>,
+    /// Posts room agents' `send_message` into their room; bound to the
+    /// session and message services once they exist.
+    pub room_posts: Arc<domains::rooms::RoomPostListener>,
     pub automatic_titles: Arc<listeners::automatic_session_titles::AutomaticSessionTitlesListener>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
@@ -67,6 +70,7 @@ pub(super) fn build(
         &auth_state,
     );
     let thread_turns = Arc::new(listeners::coordination::ThreadTurnListener::new(db.clone()));
+    let room_posts = Arc::new(domains::rooms::RoomPostListener::new(db.clone()));
     let automatic_titles = Arc::new(
         listeners::automatic_session_titles::AutomaticSessionTitlesListener::new(
             db.clone(),
@@ -92,6 +96,7 @@ pub(super) fn build(
         Arc::new(listeners::TurnLatencyListener::new(db.clone())),
         Arc::new(listeners::SessionTraceListener::new(db.clone())),
         thread_turns.clone(),
+        room_posts.clone(),
         automatic_titles.clone(),
     ];
     // Reporting facts, fed from the listener feed's later tier.
@@ -121,7 +126,7 @@ pub(super) fn build(
                         database.clone(),
                         enc.as_ref().clone(),
                     ));
-                let connection_resolver = Some(super::build_connection_resolver(
+                let connection_resolver = Some(super::integrations::build_connection_resolver(
                     &db,
                     enc,
                     &auth_config,
@@ -203,6 +208,7 @@ pub(super) fn build(
         mcp_events,
         mcp_event_triggers,
         thread_turns,
+        room_posts,
         automatic_titles,
         session_sandbox_service,
         notification_service,

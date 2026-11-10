@@ -57,6 +57,9 @@ pub enum MessageOriginKind {
     Reaction,
     /// A completion check found the turn's work unfinished and continued it.
     TurnContinuation,
+    /// Members of a room wrote it: the room woke this agent member with what
+    /// was said there.
+    Room,
 }
 
 impl MessageOriginKind {
@@ -71,6 +74,7 @@ impl MessageOriginKind {
             Self::System => "system",
             Self::Reaction => "reaction",
             Self::TurnContinuation => "turn_continuation",
+            Self::Room => "room",
         }
     }
 
@@ -84,6 +88,7 @@ impl MessageOriginKind {
             Self::System => "System",
             Self::Reaction => "Reaction",
             Self::TurnContinuation => "Automatic continuation",
+            Self::Room => "Room",
         }
     }
 }
