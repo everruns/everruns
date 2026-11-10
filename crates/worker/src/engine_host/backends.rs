@@ -6,7 +6,11 @@
 //!   worker's own host folds. Reads page the actor journal; writes are
 //!   fenced by the actor lease exactly as the worker's own turns are, so a
 //!   holder that lost its lease writes nothing and its driver hears of it
-//!   (`ActorFence::observe`).
+//!   (`ActorFence::observe`). A batch of appends is one fenced write that
+//!   answers with every stored event, as the worker's own turns write.
+//! - A writer keeps the epoch's journal tail ([`JournalTail`]): reads of
+//!   recent history are answered from it after one read of what follows
+//!   its head, or with no read for a snapshot it already holds.
 //! - The Engine names the agent it runs by its own key. The platform's
 //!   events name the platform's agent and harness, as a worker turn's do,
 //!   so this port stamps them on the events that carry them
@@ -28,11 +32,13 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use crate::actor_lease_store::{ActorFence, SessionActorStore};
 use crate::core::events::{Event, EventData, EventRequest};
 use crate::core::host::{
-    EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
-    EventReader, RuntimeSessionStore, SessionMutator,
+    DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDurability, EventLog, EventLogError, EventPage,
+    EventReadRequest, EventReader, RuntimeSessionStore, SessionMutator,
 };
 use crate::core::{ExecutionSession, SessionStore};
 use crate::worker_adapters::WorkerAdapters;
+
+use super::journal::JournalTail;
 
 fn backend(error: impl std::fmt::Display) -> EventLogError {
     EventLogError::Backend {
@@ -90,6 +96,8 @@ pub struct PlatformEventLog<A: WorkerAdapters> {
     /// The lease writes present; the epoch swaps in the driver's fence (its
     /// lost signal) with this worker's holder.
     fence: Option<Arc<Mutex<ActorFence>>>,
+    /// The epoch's journal tail; a reader keeps none.
+    tail: Option<JournalTail>,
 }
 
 impl<A: WorkerAdapters> PlatformEventLog<A> {
@@ -104,6 +112,7 @@ impl<A: WorkerAdapters> PlatformEventLog<A> {
             journal,
             stamp,
             fence: Some(fence),
+            tail: Some(JournalTail::default()),
         }
     }
 
@@ -113,6 +122,7 @@ impl<A: WorkerAdapters> PlatformEventLog<A> {
             journal,
             stamp: EventStamp::default(),
             fence: None,
+            tail: None,
         }
     }
 
@@ -137,12 +147,18 @@ impl<A: WorkerAdapters> EventReader for PlatformEventLog<A> {
         let pinned = request
             .cursor()
             .and_then(EventCursor::snapshot_high_watermark);
+        if let Some(page) = self.cached_page(&request, after, pinned).await? {
+            return Ok(page);
+        }
         let limit = u32::try_from(request.limit().get()).unwrap_or(u32::MAX);
         let journal = self
             .journal
             .read_actor_journal(session, Some(after), limit)
             .await
             .map_err(backend)?;
+        if let Some(tail) = &self.tail {
+            tail.record(after, &journal.events);
+        }
         let watermark = pinned.unwrap_or(journal.head_sequence.unwrap_or(0));
         let mut last = after;
         let mut events = Vec::with_capacity(journal.events.len());
@@ -166,6 +182,89 @@ impl<A: WorkerAdapters> EventReader for PlatformEventLog<A> {
             .transpose()?;
         EventPage::new(events, next, watermark)
     }
+
+    async fn last_sequence(
+        &self,
+        session_id: SessionId,
+    ) -> std::result::Result<Option<i32>, EventLogError> {
+        let Some(tail) = &self.tail else {
+            return Ok(None);
+        };
+        self.refresh(tail, session_id).await
+    }
+}
+
+impl<A: WorkerAdapters> PlatformEventLog<A> {
+    /// Bring the tail up to the log's head: one read of what follows the
+    /// cached head. The newest sequence cached, `None` without a tail.
+    async fn refresh(
+        &self,
+        tail: &JournalTail,
+        session: SessionId,
+    ) -> std::result::Result<Option<i32>, EventLogError> {
+        let Some(mut head) = tail.head() else {
+            return Ok(None);
+        };
+        loop {
+            let journal = self
+                .journal
+                .read_actor_journal(session, Some(head), DEFAULT_EVENT_READ_LIMIT as u32)
+                .await
+                .map_err(backend)?;
+            let last = journal.events.last().and_then(|event| event.sequence);
+            tail.record(head, &journal.events);
+            let Some(newer) = tail.head_after(head) else {
+                return Ok(None);
+            };
+            if last.is_some_and(|last| last != newer) {
+                // The read did not continue the tail: answer from the log.
+                return Ok(None);
+            }
+            if journal.has_more && newer > head {
+                head = newer;
+            } else {
+                return Ok(Some(newer));
+            }
+        }
+    }
+
+    /// The page the tail answers: a snapshot it holds at once, any other
+    /// read after one read of what follows its head. `None` when the read
+    /// goes to the control plane.
+    async fn cached_page(
+        &self,
+        request: &EventReadRequest,
+        after: i32,
+        pinned: Option<i32>,
+    ) -> std::result::Result<Option<EventPage>, EventLogError> {
+        let Some(tail) = &self.tail else {
+            return Ok(None);
+        };
+        let session = request.session_id();
+        let Some(cached_head) = tail.head_after(after) else {
+            return Ok(None);
+        };
+        let watermark = match pinned {
+            Some(watermark) if watermark <= cached_head => watermark,
+            _ => match self.refresh(tail, session).await? {
+                Some(head) if tail.head_after(after).is_some() => pinned.unwrap_or(head),
+                _ => return Ok(None),
+            },
+        };
+        let keep = |event: &Event| {
+            request
+                .types()
+                .is_none_or(|types| types.contains(&event.event_type.as_str()))
+        };
+        let Some(page) = tail.page(after, watermark, request.limit().get(), keep) else {
+            return Ok(None);
+        };
+        let next = page
+            .more
+            .then(|| EventCursor::continuation(session, page.last, watermark))
+            .transpose()?;
+        EventPage::new(page.events, next, watermark).map(Some)
+    }
 }
 
 #[async_trait]
@@ -178,9 +277,44 @@ impl<A: WorkerAdapters> EventLog for PlatformEventLog<A> {
             .emit_events_fenced(vec![request], &fence)
             .await;
         fence.observe(&stored);
-        stored
+        let event = stored
             .map_err(backend)?
-            .ok_or_else(|| backend("the control plane did not return the stored event"))
+            .ok_or_else(|| backend("the control plane did not return the stored event"))?;
+        if let Some(tail) = &self.tail {
+            tail.appended(std::slice::from_ref(&event));
+        }
+        Ok(event)
+    }
+
+    async fn append_batch(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> std::result::Result<Vec<Event>, EventLogError> {
+        if requests.is_empty() {
+            return Ok(Vec::new());
+        }
+        let fence = self.fence()?;
+        let count = requests.len();
+        let requests = requests
+            .into_iter()
+            .map(|mut request| {
+                self.stamp.apply(&mut request);
+                request
+            })
+            .collect();
+        let stored = self.adapters.emit_events_fenced_all(requests, &fence).await;
+        fence.observe(&stored);
+        let events = stored.map_err(backend)?;
+        if events.len() != count {
+            return Err(backend(format!(
+                "the control plane returned {} of {count} stored events",
+                events.len()
+            )));
+        }
+        if let Some(tail) = &self.tail {
+            tail.appended(&events);
+        }
+        Ok(events)
     }
 
     async fn append_conditional(
@@ -262,5 +396,18 @@ impl<A: WorkerAdapters> RuntimeSessionStore for PlatformSessionStore<A> {
             .unwrap_or_else(|p| p.into_inner())
             .insert(session.id, session);
         Ok(())
+    }
+
+    /// The platform reads a session's state from its record (the sessions
+    /// page, waits for idle, tool-approval prompts), so it goes to the
+    /// control plane as on the worker host.
+    async fn set_execution_state(
+        &self,
+        session_id: SessionId,
+        state: everruns_contracts::runtime::SessionExecutionState,
+    ) -> Result<()> {
+        self.adapters
+            .set_session_status(self.org_id, session_id.uuid(), &state.to_string())
+            .await
     }
 }

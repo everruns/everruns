@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use Everruns in research, please cite it as below."
+title: "Everruns: an open-source agent framework and durable runtime"
+type: software
+authors:
+  - family-names: "Chalyi"
+    given-names: "Mykhailo"
+    website: "https://chaliy.name"
+  - name: "Everruns contributors"
+repository-code: "https://github.com/everruns/everruns"
+url: "https://everruns.com"
+license: MIT
+keywords:
+  - ai-agents
+  - durable-execution
+  - rust
+  - agent-runtime

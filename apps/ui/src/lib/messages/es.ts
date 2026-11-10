@@ -1,3 +1,4 @@
+import { messages as rooms } from "./es/rooms";
 import { messages as chatLayout } from "./es/chat-layout";
 import { messages as slackSocketMode } from "./es/slack-socket-mode";
 import { messages as channelsAndTriggers } from "./es/channels-and-triggers";
@@ -74,4 +75,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   channelsAndTriggers,
   slackSocketMode,
   chatLayout,
+  rooms,
 );

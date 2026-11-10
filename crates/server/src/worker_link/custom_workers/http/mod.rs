@@ -479,6 +479,7 @@ async fn emit(
                 &event,
             )),
             actor_fence: Some(fence(holder, actor)),
+            return_events: false,
         },
     )?)
     .await?;

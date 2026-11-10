@@ -76,7 +76,7 @@ them already turns on its provider's search, that configuration is used.
 - **Providers**: a card per way the organization can search. **Model provider search** lists which
   connected model providers offer it and its price; each search account shows whether its key is
   set and its place in Automatic; a deployment that pays for a search provider itself (Everruns
-  search on Everruns Cloud) shows it with its price; **Free search** is always there. Admins connect an account with
+  search on the Everruns demo instance) shows it with its price; **Free search** is always there. Admins connect an account with
   **Connect search provider**, and test, rotate or disconnect it from its card.
 - **Defaults**: the default provider, the Automatic order (move entries up or down; free search
   stays last), **Allow model provider search** with its cost, what happens when a provider fails,

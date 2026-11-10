@@ -14,7 +14,8 @@ const resources: Record<string, { type: string; roots: string[] }> = {
   },
   harnesses: { type: "harness", roots: ["harnesses", "harness", "harness-examples"] },
   sessions: { type: "session", roots: ["sessions", "session"] },
-  playground: { type: "session", roots: ["playground", "sessions", "session"] },
+  playground: { type: "session", roots: ["playground", "sessions", "session", "rooms"] },
+  rooms: { type: "room", roots: ["rooms"] },
   chats: { type: "session", roots: ["chat-threads", "session"] },
   models: { type: "model", roots: ["models", "providers", "model-profiles", "decision-default"] },
   "web-search": {

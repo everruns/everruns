@@ -31,6 +31,12 @@ use crate::worker_adapters::WorkerAdapters;
 /// Revisions whose build verdict one worker keeps.
 const VERDICTS: u64 = 10_000;
 
+/// Claim attempts after the first before the lane gives a lease up, waiting
+/// `CLAIM_BACKOFF` times 1, 4 and 16 (2.1 s in all, well inside the lease's
+/// TTL).
+const CLAIM_RETRIES: u32 = 3;
+const CLAIM_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// [`EngineLane`] over the platform's Engine session authority.
 pub struct WorkerEngine<A: WorkerAdapters> {
     link: EngineLink,
@@ -76,10 +82,11 @@ impl<A: WorkerAdapters> WorkerEngine<A> {
         }
     }
 
-    /// Whether this worker can build `build`.
-    async fn buildable(&self, build: &AgentBuild) -> bool {
+    /// Whether this worker can build `build`; `None` when the revision could
+    /// not be read.
+    async fn buildable(&self, build: &AgentBuild) -> Option<bool> {
         if let Some(verdict) = self.buildable.get(build) {
-            return verdict;
+            return Some(verdict);
         }
         let verdict = match self.hosting.agent_definitions().definition(build).await {
             Ok(Some(definition)) => match self.hydrator.hydrate(&definition) {
@@ -99,11 +106,11 @@ impl<A: WorkerAdapters> WorkerEngine<A> {
             // next time.
             Err(error) => {
                 warn!(error = %error, "Failed to read an Engine revision");
-                return false;
+                return None;
             }
         };
         self.buildable.insert(build.clone(), verdict);
-        verdict
+        Some(verdict)
     }
 }
 
@@ -118,23 +125,41 @@ impl<A: WorkerAdapters> EngineLane for WorkerEngine<A> {
             holder: self.holder.clone(),
             fence: actor.fence,
         };
-        let binding = match self.link.sessions.claim(session, &lease).await {
-            Ok(EngineClaim::Bound(binding)) => binding,
-            Ok(EngineClaim::Legacy) => return Some(actor),
-            Ok(EngineClaim::Lost) => {
-                debug!(session_id = %session, "Lease lost before its Engine claim");
-                return None;
-            }
-            Err(error) => {
-                warn!(session_id = %session, error = %error,
-                    "Engine claim failed; running the lease on the worker host");
-                return Some(actor);
+        // A failed claim is retried a few times: a control plane busy for a
+        // moment (its pool full at a burst of leases, CI found) should not
+        // cost a session its turn. When it stays unreachable (a server
+        // restarting), the lane gives the lease up rather than run the
+        // session on the worker host: the lease expires as after a crash and
+        // the session is leased again, still on the Engine. Only a revision
+        // the Engine cannot build moves a session to the worker host.
+        let mut attempt = 0u32;
+        let binding = loop {
+            match self.link.sessions.claim(session, &lease).await {
+                Ok(EngineClaim::Bound(binding)) => break binding,
+                Ok(EngineClaim::Legacy) => return Some(actor),
+                Ok(EngineClaim::Lost) => {
+                    debug!(session_id = %session, "Lease lost before its Engine claim");
+                    return None;
+                }
+                Err(error) if attempt < CLAIM_RETRIES => {
+                    debug!(session_id = %session, error = %error, attempt,
+                        "Engine claim failed; retrying");
+                    tokio::time::sleep(CLAIM_BACKOFF * 4u32.pow(attempt)).await;
+                    attempt += 1;
+                }
+                Err(error) => {
+                    warn!(session_id = %session, error = %error,
+                        "Engine claim failed; leaving the lease to expire");
+                    return None;
+                }
             }
         };
         self.hydrator.bind_key(&binding.agent_key, actor.org_id);
         let build = AgentBuild::new(binding.agent_key.clone(), binding.revision.clone());
-        if !self.buildable(&build).await {
-            return Some(actor);
+        match self.buildable(&build).await {
+            Some(true) => {}
+            Some(false) => return Some(actor),
+            None => return None,
         }
         self.files.bind_session(
             session,

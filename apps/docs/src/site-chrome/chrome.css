@@ -665,3 +665,9 @@
 [data-theme='dark'] .er-h-logo {
   filter: invert(1);
 }
+
+.er-chrome .er-f-tagline a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

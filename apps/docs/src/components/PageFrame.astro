@@ -102,7 +102,7 @@ const header = siteHeader.replace(
   }
 
   // Collapse: once the site header has scrolled out of view, the docs bar
-  // shows the logo and Try Demo itself (styles in docs-layout.css).
+  // shows the logo and the GitHub button itself (styles in docs-layout.css).
   const bar = document.querySelector<HTMLElement>("[data-er-docs-bar]");
   if (bar) {
     const update = () => bar.toggleAttribute("data-compact", window.scrollY > 64);

@@ -40,11 +40,15 @@ impl WorkerServiceImpl {
         // The first message's fence is the stream's; every message must carry
         // the same one (a holder never mixes leased and unleased writes).
         let mut fence: Option<Option<ActorFence>> = None;
+        let mut return_events = false;
 
         // Collect all event requests from the stream, converting proto to core types
         while let Some(req) = stream.message().await? {
             match &fence {
-                None => fence = Some(req.actor_fence.clone()),
+                None => {
+                    fence = Some(req.actor_fence.clone());
+                    return_events = req.return_events;
+                }
                 Some(first) if *first != req.actor_fence => {
                     return Err(Status::invalid_argument(
                         "every message of an event stream must carry the same actor fence",
@@ -77,22 +81,30 @@ impl WorkerServiceImpl {
         super::super::authority::admit_ingress(&self.db, &authority).await?;
 
         // Emit all events through the EventService
-        let (events_processed, last_event) = match fence.flatten() {
+        let (events_processed, events) = match fence.flatten() {
             Some(fence) => self
                 .event_service
-                .emit_batch_fenced(event_requests, append_fence(&fence))
+                .emit_batch_fenced_all(event_requests, append_fence(&fence))
                 .await
                 .map_err(fenced_append_status)?,
-            None => self
-                .event_service
-                .emit_batch_returning_last(event_requests)
-                .await
-                .map_err(|e| emit_error_status(e, "Failed to store events"))?,
+            None => {
+                let (count, last) = self
+                    .event_service
+                    .emit_batch_returning_last(event_requests)
+                    .await
+                    .map_err(|e| emit_error_status(e, "Failed to store events"))?;
+                (count, last.into_iter().collect())
+            }
         };
 
         Ok(Response::new(EmitEventStreamResponse {
             events_processed,
-            last_event: last_event.as_ref().map(schema_event_to_proto),
+            last_event: events.last().map(schema_event_to_proto),
+            events: if return_events {
+                events.iter().map(schema_event_to_proto).collect()
+            } else {
+                Vec::new()
+            },
         }))
     }
 

@@ -411,7 +411,7 @@ impl AuthBackend for BuiltinAuthBackend {
     }
 
     fn auth_routes(&self) -> Option<Router> {
-        let auth_routes = routes::routes(self.clone());
+        let auth_routes = super::dbsc::mount(routes::routes(self.clone()), self.clone());
         let auth_state =
             super::middleware::AuthState::new(self.config.clone(), Arc::new(self.clone()));
         let api_base_url = self.config.base_url.trim_end_matches('/').to_string();

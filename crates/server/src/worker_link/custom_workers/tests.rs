@@ -214,6 +214,7 @@ async fn custom_events_use_canonical_storage_and_require_the_owning_invocation()
     let req = proto::EmitEventRequest {
         event: Some(schema_event_request_to_proto(&event)),
         actor_fence: journal(session, actor.fence).actor_fence,
+        return_events: false,
     };
     let stored = svc
         .emit_event(request(req.clone()))
@@ -395,6 +396,7 @@ async fn lifecycle_events_reach_live_delivery_and_trace_listeners() {
         request(proto::EmitEventRequest {
             event: Some(schema_event_request_to_proto(&event)),
             actor_fence: journal(session, actor.fence).actor_fence,
+            return_events: false,
         })
     };
     svc.emit_event(emit(event)).await.unwrap();

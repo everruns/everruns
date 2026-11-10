@@ -449,7 +449,13 @@ stays the final check after a deploy.
   output.
 - **Sweeps.** `--sweep env:KEY=a,b` (server and worker environment),
   `--sweep pg:KEY=a,b` (PostgreSQL settings) and `--sweep arg:NAME=a,b` (bench
-  arguments such as `servers` or `fsync-delay-ms`). Repeated axes form a grid.
+  arguments such as `servers` or `fsync-delay-ms`). `--sweep flag:NAME=off,on`
+  (or a fixed `--flag NAME=on`) enrols the bench org in a platform-managed
+  feature flag: `flag:engine_hosting=off,on` compares the worker host with the
+  Engine lane (data plane v2 step 4) on the same load, and the
+  `engine_sessions` column shows how many sessions actually ran on the Engine.
+  Repeated axes form a grid. One server (`--servers 1`) needs no NATS, so the
+  bench runs without `nats-server` when it is not installed.
   Results go to `target/stress/<time>/results.jsonl` and a Markdown table.
   Each point also writes `statements.tsv` (every statement, per turn, with its
   WAL) and `tables.tsv` (row writes per table, per turn): a cut is checked
@@ -491,6 +497,10 @@ the server (`worker_link::grpc_service::http2`).
 
 - **Topology.** Two API servers and three gRPC workers (`DEV_MODE=false`, `AUTH_MODE=none`), workers spread round robin over the servers' gRPC ports. JetStream is required: without it each server falls back to in-process event delivery, a session's SSE stream on one server misses the events the other server persists, and the approval driver never sees the request it must answer, so that session stays parked and reads as a lost turn. The harness refuses to start unless every server reports `nats` event delivery, and fails the run if a restarted server comes back without it. Each process logs to its own file in the run directory, with a marker line at every start and kill. Provider keys are stripped from the environment, so only llmsim can answer.
 - **Load.** N sessions (default 200) round robin over both servers, in a fixed mix: plain turns, tool turns (llmsim scenario markers), a second message sent mid-turn (steering), tool approvals (`tool_approval` capability in protective mode), and cancels followed by a new message. Each message carries a `client_message_id`, so a retry after a killed server is deduplicated by the server.
+- **Hosts.** `--flag engine_hosting=on` runs every session on the Engine lane
+  (data plane v2 step 4) instead of the worker host, with the same load, kills
+  and assertions, and fails a session that has no Engine session records, so a
+  silent fallback to the worker host cannot pass as an Engine run.
 - **Chaos.** `--chaos "kill:worker-0@15,restart:worker-0@21,kill:server-1@35,restart:server-1@41"` by default; `--no-chaos` runs the same load with no kills.
 - **Assertions.** Every user message gets exactly one completed turn, or a cancelled one when it was cancelled. No turn has two terminal events, and no events follow a terminal event, apart from session lifecycle events and the cancel note. No duplicate assistant output, and every steered message is read by a later reason step. Every session ends idle. No session runs on two workers at once: on the step engine this is checked from worker task spans; on the actor runtime it is checked from `session_actors` lease samples (fence order, takeovers before expiry) and from per-worker activity spans in the logs. The run prints PASS or FAIL with counts and offending session ids, and exits non-zero on FAIL.
 
@@ -503,7 +513,9 @@ the server (`worker_link::grpc_service::http2`).
   custom `--rust-log` filters must retain these records.
 - **Metrics.** Turns per second, end-to-end latency p50/p95/p99 per session kind, pickup latency, recovery time per kill (when the last turn open at the kill ended), and PostgreSQL statements per terminal turn (`pg_stat_statements`, when it is preloaded).
 
-- **CI.** [`chaos.yml`](../../.github/workflows/chaos.yml) runs it at 60 sessions with the kill schedule on pull requests that touch the server, worker, core or internal protocol crates (or the harness), and on demand. It builds release binaries with the low-memory settings (no LTO, 16 codegen units, no debug info) under its own cache key and gates only on the assertions; latency and statement counts go to the job summary, since shared runners are too noisy to gate on them.
+- **CI.** `ci.yml`'s chaos job runs both hosts on the shared CI binaries
+  (main batches, harness changes, and changes to the Engine lane or its
+  server-side records). [`chaos.yml`](../../.github/workflows/chaos.yml) runs it at 60 sessions with the kill schedule on pull requests that touch the server, worker, core or internal protocol crates (or the harness), and on demand. It builds release binaries with the low-memory settings (no LTO, 16 codegen units, no debug info) under its own cache key and gates only on the assertions; latency and statement counts go to the job summary, since shared runners are too noisy to gate on them.
 
 The harness reads `session_actors` and the `durable_workflow_instances` session mapping directly; everything else goes through the API. Run artifacts (`result.json`, `runs.json`, per-process logs) stay in the run directory for evidence.
 

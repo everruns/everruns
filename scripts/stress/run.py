@@ -78,8 +78,10 @@ def parse_args(argv=None):
                    help="pin roles to cores (1/4 PostgreSQL, 1/2 servers, 1/4 workers) and add a 1 ms flush delay")
     p.add_argument("--env", action="append", default=[], help="KEY=VALUE for every server and worker")
     p.add_argument("--pg", action="append", default=[], help="PostgreSQL setting KEY=VALUE")
+    p.add_argument("--flag", action="append", default=[],
+                   help="org feature flag NAME=on|off for the bench org, e.g. engine_hosting=on")
     p.add_argument("--sweep", action="append", default=[],
-                   help="env:KEY=a,b | pg:KEY=a,b | arg:NAME=a,b; repeat for a grid")
+                   help="env:KEY=a,b | pg:KEY=a,b | arg:NAME=a,b | flag:NAME=off,on; repeat for a grid")
     p.add_argument("--idle-seconds", type=float, default=20.0,
                    help="measure background rates this long before the load, and subtract them")
     p.add_argument("--port-prefix", default=os.environ.get("PORT_PREFIX", "434"))
@@ -118,8 +120,10 @@ def sweep_points(sweeps: list[str]) -> list[list[tuple[str, str, str]]]:
     for s in sweeps:
         kind, _, rest = s.partition(":")
         key, _, values = rest.partition("=")
-        if kind not in ("env", "pg", "arg") or not key or not values:
-            raise SystemExit(f"bad --sweep {s!r}; use env:KEY=a,b, pg:KEY=a,b or arg:NAME=a,b")
+        if kind not in ("env", "pg", "arg", "flag") or not key or not values:
+            raise SystemExit(f"bad --sweep {s!r}; use env:KEY=a,b, pg:KEY=a,b, arg:NAME=a,b or flag:NAME=off,on")
+        if kind == "flag" and not set(values.split(",")) <= {"on", "off"}:
+            raise SystemExit(f"bad --sweep {s!r}; an org feature flag sweeps over off,on")
         axes.append([(kind, key, v) for v in values.split(",")])
     return [list(point) for point in itertools.product(*axes)] if axes else [[]]
 
@@ -131,16 +135,23 @@ def label(point) -> str:
 def apply_point(args, point):
     a = argparse.Namespace(**vars(args))
     env, pg = kv(args.env), kv(args.pg)
+    a.flags = dict(kv(args.flag))
     for kind, key, value in point:
         if kind == "env":
             env[key] = value
         elif kind == "pg":
             pg[key] = value
+        elif kind == "flag":
+            a.flags[key] = value
         else:
             name = key.replace("-", "_")
             current = getattr(a, name)
             setattr(a, name, type(current)(value) if current is not None else value)
     return a, env, pg
+
+
+def flag_values(flags: dict[str, str]) -> dict[str, bool]:
+    return {name: value == "on" for name, value in flags.items()}
 
 
 def configure(topo: Topology, env: dict[str, str], cpus: dict[str, str]) -> None:
@@ -186,7 +197,7 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
     if shutil.which("valkey-cli"):
         subprocess.run(["valkey-cli", "-p", str(valkey_port), "FLUSHALL"], capture_output=True)
     a.database_url = pg.url
-    a.nats_url = f"nats://127.0.0.1:{nats_port}"
+    a.nats_url = f"nats://127.0.0.1:{nats_port}" if a.nats else "none"
     a.valkey_url = f"redis://127.0.0.1:{valkey_port}"
     a.secrets_key = "kek-local-v1:" + base64.b64encode(b"everruns-stress-bench-local-key!"[:32]).decode()
     cpus = kv(a.cpus.split(",")) if a.cpus else {}
@@ -196,6 +207,7 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
         topo.start()
         topo.require_shared_event_delivery()
         model_ids, _ = chaos_fixtures()(Api(topo.base_urls), a)
+        Api(topo.base_urls).set_org_flags(flag_values(a.flags))
         procs = {"server": [s.popen.pid for s in topo.servers], "worker": [w.popen.pid for w in topo.workers]}
         # One session and turn before measuring: the first session on a fresh
         # database creates the user's principals, and hundreds racing to do
@@ -230,6 +242,9 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
         worker_growth = load["rss_peak_mib"].get("worker", 0) - load["rss_idle_mib"].get("worker", 0)
         result = {
             "label": label(point),
+            # Which host ran the turns: a flag point that silently stayed on the
+            # worker host would compare the worker host with itself.
+            "engine_sessions": metrics.engine_sessions(pg),
             "point": {f"{kind}:{k}": v for kind, k, v in point},
             "sessions": a.sessions, "servers": a.servers, "workers": a.workers,
             "worker_slots": a.worker_slots, "mix": a.mix, "cpus": a.cpus, "fsync_delay_ms": a.fsync_delay_ms,
@@ -262,7 +277,7 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
 
 COLUMNS = [
     ("label", "point"), ("turns", "turns"), ("failed_turns", "failed"), ("driver_errors", "drv err"),
-    ("incident_count", "incidents"),
+    ("incident_count", "incidents"), ("engine_sessions", "engine sessions"),
     ("overhead_per_call_ms_p50", "ovh/call p50"), ("overhead_per_call_ms_p99", "p99"),
     ("pickup_ms_p50", "pickup p50"), ("pickup_ms_p99", "p99"),
     ("commits_per_turn", "xacts/turn"), ("wal_syncs_per_turn", "WAL syncs/turn"), ("wal_kb_per_turn", "WAL KB/turn"),
@@ -309,7 +324,12 @@ def main(argv=None) -> int:
     cpus = kv(args.cpus.split(",")) if args.cpus else {}
     pg = infra.Postgres(infra_root, int(f"{prefix}32"), cpus.get("postgres"))
     pg.init()
-    daemons = [infra.nats(infra_root, nats_port, nats_monitor_port), infra.valkey(infra_root, valkey_port)]
+    # One server needs no NATS: event delivery falls back to in-process, as
+    # scripts/lib/infra.sh does when nats-server is missing.
+    args.nats = args.servers > 1 or shutil.which("nats-server") is not None
+    daemons = [infra.valkey(infra_root, valkey_port)]
+    if args.nats:
+        daemons.append(infra.nats(infra_root, nats_port, nats_monitor_port))
     for d in daemons:
         d.start()
     results = []
@@ -318,7 +338,7 @@ def main(argv=None) -> int:
         for i, point in enumerate(points):
             print(f"[stress] point {i + 1}/{len(points)}: {label(point)}", flush=True)
             r = run_point(args, point, pg, valkey_port, nats_port, os.path.join(run_dir, f"point-{i + 1}"),
-                          nats_monitor_port)
+                          nats_monitor_port if args.nats else None)
             results.append(r)
             with open(os.path.join(run_dir, "results.jsonl"), "a") as f:
                 f.write(json.dumps(r) + "\n")

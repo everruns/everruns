@@ -159,6 +159,12 @@ TURN_EVENTS = ("input.message", "turn.started", "llm.generation", "act.completed
                "turn.completed", "turn.failed", "turn.cancelled", "turn.sealed")
 
 
+def engine_sessions(pg) -> int:
+    """Sessions whose turns ran on the Engine: each has Engine session records."""
+    rows = pg.psql("stress", "SELECT count(DISTINCT session_id) FROM engine_session_records")
+    return int(rows[0][0]) if rows and rows[0] and rows[0][0] else 0
+
+
 def turn_rows(pg) -> list[list[str]]:
     types = ", ".join(f"'{t}'" for t in TURN_EVENTS)
     return pg.psql("stress", (

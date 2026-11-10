@@ -86,3 +86,90 @@ fn oversize_input_is_bounded_and_does_not_collide_silently() {
     assert!(mapped >= 2);
     assert_ne!(mapped, DEFAULT_ORG_ID);
 }
+
+/// A session store that keeps execution state.
+struct StateKeeping {
+    inner: crate::host::InMemorySessionStore,
+    states: std::sync::Mutex<Vec<SessionExecutionState>>,
+}
+
+#[async_trait]
+impl SessionStore for StateKeeping {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
+        self.inner.get_session(session_id).await
+    }
+}
+
+#[async_trait]
+impl SessionMutator for StateKeeping {
+    async fn update_session_title(
+        &self,
+        session_id: SessionId,
+        title: String,
+    ) -> Result<ExecutionSession> {
+        self.inner.update_session_title(session_id, title).await
+    }
+}
+
+#[async_trait]
+impl RuntimeSessionStore for StateKeeping {
+    async fn add_session(&self, session: ExecutionSession) -> Result<()> {
+        RuntimeSessionStore::add_session(&self.inner, session).await
+    }
+
+    async fn set_execution_state(
+        &self,
+        _session_id: SessionId,
+        state: SessionExecutionState,
+    ) -> Result<()> {
+        self.states.lock().unwrap().push(state);
+        Ok(())
+    }
+}
+
+/// The turn's state changes reach a store that keeps them (a control plane
+/// whose clients read session state), and a missing session still fails.
+#[tokio::test]
+async fn execution_state_reaches_a_store_that_keeps_it() {
+    let store = Arc::new(StateKeeping {
+        inner: crate::host::InMemorySessionStore::new(),
+        states: Default::default(),
+    });
+    let session = SessionId::new();
+    RuntimeSessionStore::add_session(
+        store.as_ref(),
+        ExecutionSession::new(
+            session,
+            everruns_contracts::typed_id::WorkspaceId::new(),
+            everruns_contracts::typed_id::HarnessId::new(),
+        ),
+    )
+    .await
+    .unwrap();
+    let runtime = InProcessRuntimeBuilder::new()
+        .model_spec(everruns_contracts::model_spec::ModelSpec::on(
+            "test", "model",
+        ))
+        .backends(HostBackends::in_memory().with_session_store(store.clone()))
+        .build()
+        .await
+        .unwrap();
+    RuntimeHostAdapter::set_session_status(&runtime, 1, session, SessionExecutionState::Idle)
+        .await
+        .unwrap();
+    assert_eq!(
+        *store.states.lock().unwrap(),
+        vec![SessionExecutionState::Idle]
+    );
+    assert!(
+        RuntimeHostAdapter::set_session_status(
+            &runtime,
+            1,
+            SessionId::new(),
+            SessionExecutionState::Idle
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(store.states.lock().unwrap().len(), 1);
+}

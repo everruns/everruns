@@ -225,7 +225,7 @@ coordination capability does not qualify.
 ```
 
 Choose who can sign in. **Open access** admits anyone who can register and sign
-in with the deployment's identity provider. On Everruns Cloud that is an
+in with the deployment's identity provider. On the Everruns demo instance that is an
 [Everruns ID](https://id.everruns.com). **Single user + invites** admits one
 email address plus the people you list. **Organization users** admits current
 members of this organization. Someone who is not included is turned away at

@@ -17,8 +17,12 @@
 
 use std::sync::Arc;
 
+use crate::McpToolInvoker;
+use async_trait::async_trait;
+use everruns_contracts::error::Result;
 use everruns_contracts::hosted_mcp::HostedMcpResolver;
 use everruns_contracts::knowledge::KnowledgeRuntime;
+use everruns_contracts::tool_types::ToolDefinition;
 use everruns_contracts::typed_id::{AgentId, MessageId};
 
 use crate::delegation_services::{SessionCreationAuthority, SubagentSpawnStore};
@@ -127,6 +131,26 @@ pub struct HookExtensions {
     /// Tool calls that wait on a person, so resume may run them again; adds
     /// to the runtime's own predicate.
     pub waits_on_person: Option<WaitsOnPerson>,
+    /// The turn's MCP servers, served by the host in place of the agent's
+    /// declared ones.
+    pub mcp: Option<Arc<dyn HostMcp>>,
+}
+
+/// MCP a trusted host serves: its own server registry, credentials, OAuth
+/// grants and egress. Stability: experimental.
+///
+/// Decision: with this slot the runtime discovers and calls no MCP server
+/// itself, so one turn never sees two lists of the same servers. The host
+/// decides which servers a turn has (they can depend on who sent the input),
+/// lists their tools once per turn and runs the calls; the turn binds the
+/// executor to its input with [`McpToolInvoker::for_execution`] as it does
+/// any other.
+#[async_trait]
+pub trait HostMcp: Send + Sync {
+    /// The `mcp_*` tools of the turn that answers `input`.
+    async fn tool_definitions(&self, input: MessageId) -> Result<Vec<ToolDefinition>>;
+    /// Runs the turn's `mcp_*` calls; `None` when the host has no MCP.
+    async fn executor(&self) -> Option<Arc<dyn McpToolInvoker>>;
 }
 
 /// Whether the turn's `knowledge` capability is configured `automatic`.

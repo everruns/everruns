@@ -81,6 +81,7 @@ async fn event(
     proto::EmitEventRequest {
         event: Some(schema_event_request_to_proto(&event)),
         actor_fence: journal(session, fence).actor_fence,
+        return_events: false,
     }
 }
 

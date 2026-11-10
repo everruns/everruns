@@ -277,6 +277,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .await
     }
 
+    async fn emit_events_fenced_all(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &crate::actor_lease_store::ActorFence,
+    ) -> Result<Vec<Event>> {
+        GrpcAdapter::new(self.client.clone())
+            .emit_fenced_all(requests, fence)
+            .await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================

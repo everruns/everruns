@@ -16,7 +16,7 @@ storage. People keep using the usual chat UI, session API, work reports and SSE.
 Start with the [custom data-agent walkthrough](/framework/examples/custom-data-agent/).
 It uses the Everruns Framework, a real OpenAI model and a private SQLite database.
 You can replace its runtime with another framework or entirely custom code.
-Customer image hosting in Everruns Cloud is not enabled.
+Hosting your own worker images on the Everruns demo instance is not enabled.
 
 ## Where it appears in the UI
 
@@ -324,7 +324,7 @@ sample's region filter is a query parameter, not a per-Slack-user access policy.
 | Arbitrary database writes and other side effects | Implementation must provide idempotency and recovery; sample tool is read-only. |
 | Images, files and multimodal input | Sample extracts text only; custom implementations must add attachment handling and authorization. |
 | Client tools, mid-turn steering, delegation and background work | Outside the sample's supported contract. |
-| Hosting customer images in Everruns Cloud | Not enabled. |
+| Hosting your own worker images on the Everruns demo instance | Not enabled. |
 
 ## 5. Run the full smoke test
 

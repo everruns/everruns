@@ -68,6 +68,9 @@ class SessionRun:
     messages: list[SentMessage] = field(default_factory=list)
     approvals: int = 0
     cancels: list[float] = field(default_factory=list)
+    # Live text the session's stream showed (`output.message.delta`, never
+    # stored when NATS carries ephemeral events).
+    deltas: int = 0
     errors: list[str] = field(default_factory=list)
     started_at: float = 0.0
     finished_at: float = 0.0
@@ -322,6 +325,10 @@ class Driver:
             run.errors.append(f"driver exception: {e!r}")
         finally:
             stream.close()
+            with stream.cond:
+                run.deltas = sum(
+                    1 for ev in stream.events if ev.get("event_type") == "output.message.delta"
+                )
             run.finished_at = time.time()
         return run
 

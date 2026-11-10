@@ -1002,6 +1002,45 @@ fixing the Engine further or keeping funout's own turn driver inside cells
 (losing the shared-code benefit). That decision is made on measured
 numbers, not before.
 
+### Step 4 measurements (2026-11-10)
+
+The gate runs locally, not in production. `just stress --servers 1
+--workers 2 --sessions 300 --sweep flag:engine_hosting=off,on` drives the
+hosted mix (llmsim) on one machine: 900 turns per point, none failed, and
+301 of 301 sessions ran on the Engine in the `on` point.
+
+| Per turn | Worker host | Engine lane | Change |
+|---|---|---|---|
+| Overhead per model call, p50 / p99 | 325 / 3 614 ms | 1 286 / 3 695 ms | 4x at p50 |
+| Pickup, p50 | 858 ms | 1 820 ms | 2.1x |
+| Database commits | 169 | 236 | +40% |
+| Statements | 217 | 286 | +32% |
+| WAL | 343 KB | 344 KB | same |
+| PostgreSQL CPU | 113 ms | 154 ms | +37% |
+| Server + worker CPU | 153 ms | 234 ms | +52% |
+
+**The step 4 gate does not hold yet** ("the 8k budgets of today's bench
+not regressed"). The statement profile names the causes:
+
+- **Events are written one at a time.** The worker host writes about 27
+  events in 13 batches per turn; the Engine lane makes 29 single-event
+  writes, which doubles `event_sequences` updates (30 to 58 per turn). The
+  Engine's committed batches stop at `PlatformEventLog`, which has no
+  `append_batch` because the worker's fenced write returns only the last
+  stored event.
+- **The journal is re-read from the start.** 23 journal reads per turn
+  return 960 rows, plus a `MAX(sequence)` per read: the Engine reads the
+  session's history through the lease store's journal page instead of from
+  its tail.
+- **Repeated lookups.** Session rows are read 12 times per turn (6 on the
+  worker host) and Engine session records 11 times.
+
+Correctness holds under kills: the chaos harness's Engine leg (30
+sessions, a worker SIGKILL) passes with every session on the Engine. Its
+first runs found two gaps, now fixed: the session state never reached the
+control plane (sessions stayed "running", tool approvals never paused),
+and live deltas never left the worker (chat showed no typing).
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

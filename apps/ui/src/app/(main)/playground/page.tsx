@@ -39,6 +39,7 @@ import {
   SectionTabs,
 } from "@/components/layout/page-layout";
 import { cn } from "@/lib/utils";
+import { PlaygroundTabs } from "@/components/rooms/playground-tabs";
 
 const PAGE_SIZE = 20;
 
@@ -124,6 +125,7 @@ function PlaygroundLibrary() {
           </LinkButton>
         }
       />
+      <PlaygroundTabs value="chats" />
       <PageControlStrip className="flex flex-wrap items-center gap-2">
         <SearchInput
           containerClassName="w-64"

@@ -277,6 +277,11 @@ jobs:
               - 'crates/server/src/domains/sessions/commands/**'
               - 'crates/server/src/api/channel_api.rs'
               - 'crates/server/src/channels/a2a/mod.rs'
+              # The Engine lane runs the harness's sessions with engine_hosting on.
+              - 'crates/worker/src/engine_host/**'
+              - 'crates/worker/src/engine_sessions.rs'
+              - 'crates/server/src/domains/agent_definitions/**'
+              - 'crates/server/src/storage/repositories/engine_sessions/**'
               - '.github/workflows/chaos.yml'
               - '.github/workflows/ci.yml'
             sdk_compat:
@@ -2141,8 +2146,19 @@ jobs:
   # Only main may launch binaries with live credentials. Ordinary Rust pushes
   # retain the server/worker llmsim coverage without fetching provider keys.
   chaos-test:
-    name: Chaos Harness (shared CI binaries)
+    name: Chaos Harness (shared CI binaries, ${{ matrix.host }} host)
     runs-on: ubuntu-latest
+    # Both session hosts take the same kills: the worker host, and the Engine
+    # lane an org gets with `engine_hosting` on (data plane v2 step 4). The
+    # Engine leg fails any session that stayed on the worker host.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - host: worker
+          host_flag: ''
+        - host: engine
+          host_flag: --flag engine_hosting=on
     needs:
     - changes
     - build-binaries
@@ -2159,14 +2175,14 @@ jobs:
       SESSIONS: '60'
       CHAOS_FLAG: ''
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         ref: ${{ needs.changes.outputs.revision }}
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: everruns-server
         path: ./bin
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: everruns-worker
         path: ./bin
@@ -2213,14 +2229,14 @@ jobs:
           --database-url "$DATABASE_URL" \
           --sessions "$SESSIONS" \
           --run-dir "$RUNNER_TEMP/chaos-run" \
-          $CHAOS_FLAG
+          $CHAOS_FLAG ${{ matrix.host_flag }}
     - name: Summarize
       if: always()
       run: |
         result="$RUNNER_TEMP/chaos-run/result.json"
         [ -f "$result" ] || exit 0
         {
-          echo "### Chaos harness: $(jq -r .verdict "$result")"
+          echo "### Chaos harness (${{ matrix.host }} host): $(jq -r .verdict "$result")"
           echo
           echo '```json'
           jq '{chaos, metrics: (.metrics | {sessions, turns_completed, turns_per_second, latency_ms, recovery, pg_statements_per_turn, per_worker}), failures: (.failures | map_values(length))}' "$result"
@@ -2228,9 +2244,9 @@ jobs:
         } >> "$GITHUB_STEP_SUMMARY"
     - name: Upload run directory
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
-        name: chaos-run
+        name: chaos-run-${{ matrix.host }}
         path: ${{ runner.temp }}/chaos-run
         if-no-files-found: warn
         retention-days: 7

@@ -608,6 +608,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.emit_fenced(requests, fence).await
     }
 
+    async fn emit_events_fenced_all(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &everruns_worker::ActorFence,
+    ) -> Result<Vec<Event>> {
+        self.emit_fenced_all(requests, fence).await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -1588,37 +1596,6 @@ pub struct DirectPlatformStore {
     permission_resolver: Arc<dyn PermissionResolver>,
     connector_registry: everruns_contracts::connector::ConnectorRegistry,
     provider_services: crate::domains::providers::ProviderServices,
-}
-
-#[async_trait]
-impl SessionCreationAuthority for DirectPlatformStore {
-    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn SessionCreationAuthority>> {
-        let mut bound = self.clone();
-        bound.input_message_id = Some(id);
-        Some(Arc::new(bound))
-    }
-
-    async fn authorize_session_creation(
-        &self,
-        session_id: SessionId,
-    ) -> everruns_contracts::error::Result<SessionId> {
-        if session_id != self.session_id {
-            return Err(AgentLoopError::tool(
-                "session-creation authority is scoped to the current session",
-            ));
-        }
-        let caller = self.resolve_caller().await?;
-        crate::domains::sessions::SESSION_MANAGE
-            .evaluate_with(self.permission_resolver.as_ref(), &caller)
-            .map_err(|error| AgentLoopError::tool(error.message))?;
-        let session = self
-            .db
-            .get_session(self.org_id, session_id)
-            .await
-            .map_err(|error| store_error(format!("Failed to load session budget root: {error}")))?
-            .ok_or_else(|| store_error("Session not found for session-creation authority"))?;
-        Ok(session.root_session_id.unwrap_or(session.id))
-    }
 }
 
 mod platform_store;

@@ -186,3 +186,85 @@ async fn automatic_knowledge_adds_evidence_only_when_configured() {
     add_automatic_knowledge(&Knowledge, &manual, session, input, &mut messages).await;
     assert_eq!(messages.len(), 1);
 }
+
+struct PlatformTools(Arc<Mutex<Vec<MessageId>>>);
+#[async_trait]
+impl crate::McpToolInvoker for PlatformTools {
+    async fn invoke(&self, call: &ToolCall) -> Result<everruns_contracts::tool_types::ToolResult> {
+        let mut result = everruns_contracts::tool_types::ToolResult::error("served by the host");
+        result.tool_call_id = call.id.clone();
+        Ok(result)
+    }
+}
+#[async_trait]
+impl HostMcp for PlatformTools {
+    async fn tool_definitions(&self, input: MessageId) -> Result<Vec<ToolDefinition>> {
+        self.0.lock().unwrap().push(input);
+        Ok(vec![ToolDefinition::ClientSide(
+            everruns_contracts::tool_types::ClientSideTool::new(
+                "mcp_docs__search",
+                "Search the docs",
+                serde_json::json!({"type": "object"}),
+            ),
+        )])
+    }
+    async fn executor(&self) -> Option<Arc<dyn crate::McpToolInvoker>> {
+        Some(Arc::new(PlatformTools(self.0.clone())))
+    }
+}
+
+#[tokio::test]
+async fn a_host_that_serves_mcp_lists_the_tools_per_input_and_runs_the_calls() {
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let mut extensions = HostExtensions::default();
+    extensions.hooks.mcp = Some(Arc::new(PlatformTools(asked.clone())));
+    let runtime = builder()
+        .backends(crate::host::HostBackends::in_memory().with_extensions(extensions))
+        .single_session(|session| session)
+        .build()
+        .await
+        .unwrap();
+    let session = runtime.default_session_id().unwrap();
+    let input = MessageId::new();
+
+    let turn = runtime
+        .load_resolved_turn_for_execution(1, session, input)
+        .await
+        .unwrap();
+    let names: Vec<_> = turn
+        .mcp_tool_definitions
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect();
+    assert_eq!(names, ["mcp_docs__search"]);
+    assert_eq!(
+        *asked.lock().unwrap(),
+        [input],
+        "listed for the turn's input"
+    );
+
+    let executor = runtime.mcp_executor(1, session, None).await.unwrap();
+    let call = ToolCall {
+        id: "c".into(),
+        name: "mcp_docs__search".into(),
+        arguments: serde_json::json!({}),
+    };
+    let result = executor.invoke(&call).await.unwrap();
+    assert_eq!(result.error.as_deref(), Some("served by the host"));
+}
+
+#[tokio::test]
+async fn without_the_slot_the_runtime_has_no_host_mcp() {
+    let runtime = builder()
+        .single_session(|session| session)
+        .build()
+        .await
+        .unwrap();
+    let session = runtime.default_session_id().unwrap();
+    let turn = runtime
+        .load_resolved_turn_for_execution(1, session, MessageId::new())
+        .await
+        .unwrap();
+    assert!(turn.mcp_tool_definitions.is_empty());
+    assert!(runtime.mcp_executor(1, session, None).await.is_none());
+}

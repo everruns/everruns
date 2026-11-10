@@ -13,13 +13,36 @@
 //!   and the Engine's argument is ignored.
 //! - The tool context gates platform tools on the declared capabilities, the
 //!   list the agent's revision names.
+//! - The platform's person-facing calls (an approval prompt, a URL
+//!   elicitation consent) wait on a person on the Engine too, so a turn
+//!   resumed after a crash asks again instead of settling them as lost.
+//! - Long tool calls detach as on the worker host without a slot here: the
+//!   lease's task provides the worker's detacher (`tool_detach::provide`) and
+//!   the Engine activates in that task.
+//! - Subagents, session tasks, schedules, connections and shell hooks come
+//!   from the worker host too. The platform's turn tools (a child session's
+//!   report tools, a thread's worker tools) look up other sessions, its
+//!   parent and the parent's tasks, so they read the platform's session and
+//!   file stores ([`PlatformTools`]), never the Engine's, which holds only
+//!   this session's id-free record.
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use everruns_capabilities::{PlatformStoreSubagentDelegate, PlatformToolAugmentor};
 use everruns_contracts::CapabilityRef;
-use everruns_contracts::typed_id::{AgentId, SessionId};
+use everruns_contracts::error::Result;
+use everruns_contracts::tool_types::ToolDefinition;
+use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
 
-use crate::host::{HostBackends, HostExtensions, RuntimeHostAdapter, ToolContextRequest};
+use crate::core::execution_loading::SessionStore;
+use crate::core::session_files::SessionFileSystem;
+use crate::core::session_task::SessionTaskRegistry;
+use crate::core::tools::ToolRegistry;
+use crate::host::{
+    HostBackends, HostExtensions, HostMcp, HostToolAugmentor, RuntimeHostAdapter,
+    ToolContextRequest,
+};
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::worker_adapters::WorkerAdapters;
 
@@ -72,11 +95,39 @@ pub fn with_platform_services<A: WorkerAdapters>(
     extensions.hooks.hosted_mcp = Some(Arc::new(move |_, input| {
         mcp.hosted_mcp_resolver(org, session, agent, input)
     }));
+    extensions.hooks.mcp = Some(Arc::new(PlatformMcp {
+        host: host.clone(),
+        org_id: org,
+        session_id: session,
+        agent_id: agent,
+    }));
     extensions.hooks.knowledge = adapters.knowledge_runtime(org);
+    extensions.hooks.waits_on_person = Some(Arc::new(crate::actor_runtime::waits_on_person));
 
-    let tools = host;
+    let mut backends = backends;
+    if let Some(registry) = host.session_task_registry(org) {
+        backends = backends.with_session_task_registry(registry);
+    }
+    if let Some(resolver) = host.connection_resolver(org) {
+        backends = backends.with_connection_resolver(resolver);
+    }
+    if let Some(store) = host.native_async_store() {
+        backends = backends.with_native_async_store(store);
+    }
+    let schedules = adapters.clone();
+    let delegate = adapters.clone();
+    let hooks = host.clone();
+    let tools = host.clone();
     backends
         .with_extensions(extensions)
+        .with_schedule_store_factory(Arc::new(move |org_id| schedules.schedule_store(org_id)))
+        .with_subagent_delegate_factory(Arc::new(move |org_id, session_id| {
+            Arc::new(PlatformStoreSubagentDelegate(
+                delegate.platform_store(org_id, session_id),
+            ))
+        }))
+        .with_bash_hook_dispatcher_factory(Arc::new(move |_| hooks.bash_hook_dispatcher(org)))
+        .with_tool_augmentor(Arc::new(PlatformTools { host, org_id: org }))
         .with_tool_context_extensions_factory(Arc::new(move |org_id, session_id| {
             tools.tool_context_extensions(ToolContextRequest {
                 org_id,
@@ -84,4 +135,85 @@ pub fn with_platform_services<A: WorkerAdapters>(
                 resolved_capabilities: &capabilities,
             })
         }))
+}
+
+/// The platform's MCP servers for the session's turns: the ones a worker
+/// turn gets, listed by the control plane for the turn's input (the agent's,
+/// the harness's, the session's and the sender's own servers) and called
+/// with the platform's credentials, OAuth grants and egress guard.
+struct PlatformMcp<A: WorkerAdapters> {
+    host: WorkerRuntimeHost<A>,
+    org_id: i64,
+    session_id: SessionId,
+    agent_id: Option<AgentId>,
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> HostMcp for PlatformMcp<A> {
+    async fn tool_definitions(&self, input: MessageId) -> Result<Vec<ToolDefinition>> {
+        self.host
+            .mcp_tool_definitions(self.org_id, self.session_id, input)
+            .await
+    }
+
+    async fn executor(&self) -> Option<Arc<dyn crate::core::McpToolInvoker>> {
+        self.host
+            .mcp_executor(self.org_id, self.session_id, self.agent_id)
+            .await
+    }
+}
+
+/// The platform's turn tools over the platform's session and file stores.
+struct PlatformTools<A: WorkerAdapters> {
+    host: WorkerRuntimeHost<A>,
+    org_id: i64,
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> HostToolAugmentor for PlatformTools<A> {
+    fn disabled_hook_contributions(
+        &self,
+        capability_id: &str,
+        config: &serde_json::Value,
+    ) -> Vec<String> {
+        PlatformToolAugmentor.disabled_hook_contributions(capability_id, config)
+    }
+
+    async fn augment_reason_tools(
+        &self,
+        session_id: SessionId,
+        _engine_sessions: Arc<dyn SessionStore>,
+        task_registry: Option<Arc<dyn SessionTaskRegistry>>,
+        definitions: &mut Vec<ToolDefinition>,
+    ) -> Result<()> {
+        PlatformToolAugmentor
+            .augment_reason_tools(
+                session_id,
+                self.host.session_store(self.org_id),
+                task_registry,
+                definitions,
+            )
+            .await
+    }
+
+    async fn augment_act_tools(
+        &self,
+        session_id: SessionId,
+        _engine_sessions: Arc<dyn SessionStore>,
+        task_registry: Option<Arc<dyn SessionTaskRegistry>>,
+        _engine_files: Arc<dyn SessionFileSystem>,
+        requested_definitions: &[ToolDefinition],
+        registry: &mut ToolRegistry,
+    ) -> Result<()> {
+        PlatformToolAugmentor
+            .augment_act_tools(
+                session_id,
+                self.host.session_store(self.org_id),
+                task_registry,
+                self.host.file_store(self.org_id),
+                requested_definitions,
+                registry,
+            )
+            .await
+    }
 }
