@@ -33,6 +33,22 @@ class Sweep(unittest.TestCase):
             with self.assertRaises(SystemExit, msg=bad):
                 stress.sweep_points([bad])
 
+    def test_flag_axis_sweeps_off_and_on(self):
+        points = stress.sweep_points(["flag:engine_hosting=off,on"])
+        self.assertEqual(points, [[("flag", "engine_hosting", "off")], [("flag", "engine_hosting", "on")]])
+        with self.assertRaises(SystemExit):
+            stress.sweep_points(["flag:engine_hosting=yes"])
+
+    def test_flag_point_overrides_the_fixed_flag(self):
+        args = stress.parse_args(ARGS + ["--flag", "engine_hosting=off"])
+        a, _, _ = stress.apply_point(args, [("flag", "engine_hosting", "on")])
+        self.assertEqual(a.flags, {"engine_hosting": "on"})
+        self.assertEqual(args.flag, ["engine_hosting=off"])
+
+    def test_flag_values_are_booleans(self):
+        self.assertEqual(stress.flag_values({"engine_hosting": "on", "x": "off"}),
+                         {"engine_hosting": True, "x": False})
+
     def test_point_overrides_keep_argument_types(self):
         args = stress.parse_args(ARGS + ["--env", "X=1", "--pg", "commit_delay=0"])
         a, env, pg = stress.apply_point(args, [("arg", "servers", "1"), ("arg", "fsync-delay-ms", "2.5"),

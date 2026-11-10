@@ -3,6 +3,7 @@
 //! builds platform declarations and the session-files Environment.
 
 mod backends;
+mod deltas;
 mod extensions;
 mod files;
 mod hosting;

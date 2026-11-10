@@ -67,6 +67,9 @@ def parse_args():
     p.add_argument("--rust-log", default="info,everruns_worker::actor_runtime=debug,everruns_core::host::session_actor=debug")
     p.add_argument("--chaos", default=DEFAULT_CHAOS, help="comma list of kill|restart:<proc>@<seconds>")
     p.add_argument("--no-chaos", action="store_true")
+    p.add_argument("--flag", action="append", default=[],
+                   help="org feature flag NAME=on|off for the harness org; engine_hosting=on runs every "
+                        "session on the Engine and fails sessions that stayed on the worker host")
     p.add_argument("--only", choices=["plain", "tools", "midturn", "cancel", "approval"])
     p.add_argument("--plain-turns", type=int, default=3)
     p.add_argument("--turn-timeout", type=float, default=120)
@@ -92,6 +95,35 @@ def psql(db_url: str, sql: str) -> str | None:
         return out.stdout.strip() if out.returncode == 0 else None
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+
+def org_flags(items: list[str]) -> dict[str, bool]:
+    out = {}
+    for item in items:
+        name, _, value = item.partition("=")
+        if value not in ("on", "off"):
+            raise SystemExit(f"--flag {item!r}: use NAME=on or NAME=off")
+        out[name] = value == "on"
+    return out
+
+
+def check_engine_hosted(database_url: str, session_ids: list[str], rep: Report) -> None:
+    """With `engine_hosting` on, every session must have run on the Engine (it
+    then has Engine session records). One that stayed on the worker host would
+    make the run test the worker host twice."""
+    got = psql(database_url, "select distinct replace(session_id::text, '-', '') from engine_session_records")
+    hosted = set((got or "").split())
+    hex_id = {sid: sid.replace("session_", "").replace("-", "") for sid in session_ids}
+    rep.counts["engine_hosted_sessions"] = sum(1 for h in hex_id.values() if h in hosted)
+    for sid, h in hex_id.items():
+        if h not in hosted:
+            rep.fail("not_engine_hosted", sid, "no Engine session records with engine_hosting on")
+    # The Engine never stores deltas; the worker's Engine lane forwards them
+    # so live streams show text as it is written. None at all means it stopped.
+    deltas = psql(database_url, "select count(*) from events where event_type = 'output.message.delta'")
+    rep.counts["engine_live_deltas"] = int((deltas or "0").strip() or 0)
+    if session_ids and not rep.counts["engine_live_deltas"]:
+        rep.fail("no_live_deltas", "all", "no output.message.delta reached the control plane")
 
 
 def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
@@ -222,6 +254,8 @@ def main():
             raise RuntimeError(f"workers not registered: {sorted(want_ids - set((got or '').split()))}")
         api = Api(topo.base_urls)
         model_ids, agents = setup_fixtures(api, args)
+        flags = org_flags(args.flag)
+        api.set_org_flags(flags)
         driver = Driver(api, args, model_ids, agents)
 
         have_pss = psql(args.database_url, "select pg_stat_statements_reset()") is not None
@@ -302,6 +336,8 @@ def main():
             except Exception:  # noqa: BLE001
                 pass
             check_session(r, evs, sessions.get(r.session_id), rep, timings)
+        if flags.get("engine_hosting"):
+            check_engine_hosted(args.database_url, [r.session_id for r in driver.runs if r.session_id], rep)
         if sampler:
             sampler.stop = True
         # Actor checks only when the build actually leased sessions: main

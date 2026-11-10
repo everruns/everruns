@@ -10,15 +10,17 @@ impl RuntimeHostAdapter for InProcessRuntime {
         &self,
         _org_id: i64,
         session_id: SessionId,
-        _status: SessionExecutionState,
+        status: SessionExecutionState,
     ) -> Result<()> {
-        // Not persisted in-process (nothing here observes session.status); the
-        // existence check keeps lifecycle warnings surfacing a missing session.
+        // The existence check keeps lifecycle warnings surfacing a missing
+        // session; the store decides whether the state is kept.
         self.session_store
             .get_session(session_id)
             .await?
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
-        Ok(())
+        self.session_store
+            .set_execution_state(session_id, status)
+            .await
     }
 
     async fn load_resolved_turn(

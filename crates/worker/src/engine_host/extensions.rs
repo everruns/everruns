@@ -13,6 +13,12 @@
 //!   and the Engine's argument is ignored.
 //! - The tool context gates platform tools on the declared capabilities, the
 //!   list the agent's revision names.
+//! - The platform's person-facing calls (an approval prompt, a URL
+//!   elicitation consent) wait on a person on the Engine too, so a turn
+//!   resumed after a crash asks again instead of settling them as lost.
+//! - Long tool calls detach as on the worker host without a slot here: the
+//!   lease's task provides the worker's detacher (`tool_detach::provide`) and
+//!   the Engine activates in that task.
 
 use std::sync::Arc;
 
@@ -73,6 +79,7 @@ pub fn with_platform_services<A: WorkerAdapters>(
         mcp.hosted_mcp_resolver(org, session, agent, input)
     }));
     extensions.hooks.knowledge = adapters.knowledge_runtime(org);
+    extensions.hooks.waits_on_person = Some(Arc::new(crate::actor_runtime::waits_on_person));
 
     let tools = host;
     backends

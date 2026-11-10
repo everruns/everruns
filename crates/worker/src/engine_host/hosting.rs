@@ -26,6 +26,7 @@ use everruns_contracts::typed_id::{MessageId, SessionId};
 use serde_json::Value;
 
 use super::backends::{EventStamp, PlatformEventLog, PlatformSessionStore};
+use super::deltas::PlatformDeltas;
 use super::extensions::{PlatformTurn, with_platform_services};
 use crate::actor_lease_store::{
     ActorFence, ActorJournal, ActorLeaseRenewal, ActorRelease, ActorRenewal, LeasedActor,
@@ -263,15 +264,17 @@ impl<A: WorkerAdapters> SessionHosting for PlatformHosting<A> {
             self.holder.clone(),
             offer.actor.fence,
         )));
+        let stamp = EventStamp {
+            agent_id: offer.binding.event_agent_id,
+            harness_id: offer.binding.event_harness_id,
+        };
+        let deltas = PlatformDeltas::start(self.adapters.clone(), fence.clone(), stamp.clone());
         let backends = HostBackends::in_memory()
             .with_event_log(Arc::new(PlatformEventLog::writer(
                 self.adapters.clone(),
                 self.leases.clone(),
                 fence.clone(),
-                EventStamp {
-                    agent_id: offer.binding.event_agent_id,
-                    harness_id: offer.binding.event_harness_id,
-                },
+                stamp,
             )))
             .with_session_store(Arc::new(PlatformSessionStore::new(
                 self.adapters.clone(),
@@ -315,6 +318,7 @@ impl<A: WorkerAdapters> SessionHosting for PlatformHosting<A> {
             renew_poke: offer.signals.renew_poke.clone(),
             hand_off: offer.signals.hand_off.clone(),
             wake_at_ms: offer.binding.wake_at_ms,
+            deltas,
         };
         Ok(Some(SessionActivation {
             binding,
@@ -339,6 +343,7 @@ struct PlatformEpoch {
     renew_poke: Option<Arc<tokio::sync::Notify>>,
     hand_off: Option<Arc<AtomicBool>>,
     wake_at_ms: Option<i64>,
+    deltas: Arc<PlatformDeltas>,
 }
 
 impl PlatformEpoch {
@@ -359,6 +364,10 @@ impl SessionEpoch for PlatformEpoch {
 
     fn claimed_wake_at(&self) -> Option<Option<i64>> {
         Some(self.wake_at_ms)
+    }
+
+    fn live_deltas(&self) -> Option<Arc<dyn everruns::hosting::LiveDeltaSink>> {
+        Some(self.deltas.clone())
     }
 
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {

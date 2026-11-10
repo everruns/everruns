@@ -263,4 +263,17 @@ impl<A: WorkerAdapters> RuntimeSessionStore for PlatformSessionStore<A> {
             .insert(session.id, session);
         Ok(())
     }
+
+    /// The platform reads a session's state from its record (the sessions
+    /// page, waits for idle, tool-approval prompts), so it goes to the
+    /// control plane as on the worker host.
+    async fn set_execution_state(
+        &self,
+        session_id: SessionId,
+        state: everruns_contracts::runtime::SessionExecutionState,
+    ) -> Result<()> {
+        self.adapters
+            .set_session_status(self.org_id, session_id.uuid(), &state.to_string())
+            .await
+    }
 }

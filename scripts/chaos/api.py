@@ -99,6 +99,20 @@ class Api:
     def post(self, path, body=None, **kw):
         return self.request("POST", path, body=body, **kw)
 
+    def set_org_flags(self, flags: dict[str, bool]) -> None:
+        """Enrol the harness org in platform-managed feature flags (`engine_hosting`
+        moves its sessions onto the Engine). AUTH_MODE=none makes the caller a
+        platform user of its one org. Raises when a flag did not take."""
+        if not flags:
+            return
+        orgs = self.get("/v1/orgs")
+        items = orgs.get("data", orgs) if isinstance(orgs, dict) else orgs
+        org = items[0].get("id") or items[0]["public_id"]
+        effective = self.request("PATCH", f"/v1/orgs/{org}/feature-flags/platform", body={"flags": flags})
+        wrong = {name: effective.get(name) for name, on in flags.items() if bool(effective.get(name)) != on}
+        if wrong:
+            raise RuntimeError(f"org feature flags did not take: {wrong}")
+
     def events(self, session_id: str, after_sequence: int | None = None) -> list[dict]:
         """All persisted events of a session, oldest first, paging forward."""
         out: list[dict] = []
