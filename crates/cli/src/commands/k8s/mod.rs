@@ -16,9 +16,11 @@
 //!   open.
 
 mod cluster;
+mod destroy;
+mod rollout;
 mod values;
 
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -29,7 +31,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::commands::docker::{self, Asker, AuthChoice, LlmProvider, signin};
+use crate::ui;
 use cluster::{Target, cluster_checks, tool_checks};
+use rollout::helm_apply;
 use values::{Answers, Database, Known};
 
 const CHART_OCI: &str = "oci://ghcr.io/everruns/charts/everruns";
@@ -67,14 +71,18 @@ pub enum K8sCommand {
     /// Check the tools and the cluster, and run the system doctor on the server
     Doctor(InstanceArgs),
 
+    /// Print the admin password the chart generated
+    Password(InstanceArgs),
+
     /// Move the install to this CLI's chart version (or --chart-version), backing up a bundled database first
     Upgrade(UpgradeArgs),
 
     /// Remove the workloads. The database, its volumes and the generated secrets are kept
     Uninstall(InstanceArgs),
 
-    /// Delete the install: workloads, generated secrets, volumes and the CLI profile. Asks first
-    Reset(ResetArgs),
+    /// Delete the install and everything it made: workloads, secrets, volumes, the namespace
+    /// when nothing else is in it, and the CLI profile. Asks first
+    Destroy(DestroyArgs),
 }
 
 #[derive(Args)]
@@ -186,9 +194,13 @@ pub struct UpgradeArgs {
 }
 
 #[derive(Args)]
-pub struct ResetArgs {
+pub struct DestroyArgs {
     #[command(flatten)]
     pub instance: InstanceArgs,
+
+    /// Keep the namespace even when nothing else is left in it
+    #[arg(long)]
+    pub keep_namespace: bool,
 
     /// Do not ask for the install name (for scripts)
     #[arg(long, short = 'y')]
@@ -207,9 +219,10 @@ pub async fn run(command: K8sCommand) -> Result<()> {
         K8sCommand::Open(args) => open(&args).await,
         K8sCommand::PortForward(args) => port_forward(&args).await,
         K8sCommand::Doctor(args) => doctor(&args),
+        K8sCommand::Password(args) => password(&args),
         K8sCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
         K8sCommand::Uninstall(args) => uninstall(&args),
-        K8sCommand::Reset(args) => reset(&args),
+        K8sCommand::Destroy(args) => destroy::destroy(&args),
     }
 }
 
@@ -314,6 +327,11 @@ fn asker(yes: bool) -> Asker {
 
 fn require(checks: &[cluster::Check], verbose: bool, what: &str) -> Result<()> {
     let failed = checks.iter().any(cluster::Check::failed);
+    let shown =
+        |c: &cluster::Check| verbose || failed || !matches!(c.outcome, cluster::Outcome::Ok(_));
+    if checks.iter().any(shown) {
+        ui::section(&format!("{what} checks"));
+    }
     for check in checks {
         if verbose || failed || !matches!(check.outcome, cluster::Outcome::Ok(_)) {
             check.print();
@@ -346,6 +364,14 @@ async fn up(args: UpArgs) -> Result<()> {
     let moved = saved
         .as_ref()
         .is_none_or(|r| r.context != context || r.namespace != namespace);
+    ui::banner(
+        "k8s up",
+        &[
+            ("cluster", &context),
+            ("namespace", &namespace),
+            ("release", &inst.name),
+        ],
+    );
     if moved {
         let reason = format!(
             "Install Everruns '{}' into cluster context '{context}', namespace '{namespace}'?",
@@ -365,6 +391,9 @@ async fn up(args: UpArgs) -> Result<()> {
     let known_value = current.clone().unwrap_or(Value::Null);
     let known = Known(&known_value);
     let first_install = current.is_none();
+    if first_install {
+        ui::section("Setup");
+    }
 
     // Questions, each only when the release does not answer it already.
     let mut answers = Answers::default();
@@ -441,7 +470,7 @@ async fn up(args: UpArgs) -> Result<()> {
     require(
         &cluster_checks(&target, bundled, autoscaling),
         first_install,
-        "The cluster",
+        "Cluster",
     )?;
 
     // The chart. A rerun keeps the deployed version; only `upgrade` moves it.
@@ -486,17 +515,11 @@ async fn up(args: UpArgs) -> Result<()> {
     };
     inst.save(&record)?;
 
-    eprintln!(
-        "{} {} in {}/{}...",
-        if first_install {
-            "Installing"
-        } else {
-            "Updating"
-        },
-        inst.name,
-        target.context,
-        target.namespace
-    );
+    ui::section(if first_install {
+        "Installing"
+    } else {
+        "Updating"
+    });
     helm_apply(
         &target,
         &chart,
@@ -541,72 +564,114 @@ async fn up(args: UpArgs) -> Result<()> {
         creds,
         switch,
     ))
-    .await
-    .context("Everruns is up, but signing the CLI in failed")?;
+    .await;
+    let signed_in = match signed_in {
+        Ok(s) => {
+            ui::ok(format!(
+                "CLI signed in as {} {}",
+                s.email,
+                ui::dim(format!("(profile {})", s.profile))
+            ));
+            s
+        }
+        Err(e) => {
+            return Err(e.context("Everruns is up, but signing the CLI in failed"));
+        }
+    };
 
     let ui_url = public.clone().unwrap_or_else(|| local_url(port));
-    eprintln!();
-    eprintln!(
-        "Everruns {} is running in {}/{}",
-        health, target.context, target.namespace
+    let mut rows = vec![("UI", ui::cmd(&ui_url).to_string())];
+    let again = ui::cmd(format!("everruns k8s password{}", inst.name_flag()));
+    match auth {
+        AuthChoice::None => {}
+        // A single admin login is the only way in, so show the password itself.
+        AuthChoice::Single => {
+            rows.push(("Sign in", email.clone()));
+            rows.push((
+                "Password",
+                format!(
+                    "{}  {}",
+                    ui::bold(&password),
+                    ui::dim(format!("(again: {again})"))
+                ),
+            ));
+        }
+        AuthChoice::Accounts => {
+            rows.push(("Sign in", email.clone()));
+            rows.push(("Password", again.to_string()));
+        }
+    }
+    rows.push(if signed_in.current {
+        ("CLI", ui::cmd("everruns agents list").to_string())
+    } else {
+        (
+            "CLI",
+            ui::cmd(format!(
+                "everruns --profile {} agents list",
+                signed_in.profile
+            ))
+            .to_string(),
+        )
+    });
+    ui::summary(
+        &format!("Everruns {health} is running"),
+        &format!("in {}/{}", target.context, target.namespace),
+        &rows,
     );
-    eprintln!("  UI: {ui_url}");
     if public.is_none() {
-        eprintln!(
-            "  Reach it with `everruns k8s port-forward{}` (no public URL; pass --public-url to add an Ingress)",
-            inst.name_flag()
-        );
-    }
-    if auth != AuthChoice::None {
-        eprintln!(
-            "  Sign in: {email}; password: kubectl --context {} -n {} get secret {} -o jsonpath='{{.data.AUTH_ADMIN_PASSWORD}}' | base64 -d",
-            target.context,
-            target.namespace,
-            secret_name(&target, &values)
-        );
-    }
-    if first_install && values["secrets"]["existingSecret"].as_str().is_none() {
-        eprintln!(
-            "  Back up Secret {} with the database: it holds the key that encrypts stored provider keys and secrets.",
-            secret_name(&target, &values)
-        );
+        ui::warn(format!(
+            "No public URL: open it with {}, or rerun with {} for an Ingress.",
+            ui::cmd(format!("everruns k8s open{}", inst.name_flag())),
+            ui::cmd("--public-url")
+        ));
     }
     if bundled {
-        eprintln!(
-            "  The bundled PostgreSQL has no backups or failover; use --database-url for anything you keep."
-        );
+        ui::warn(format!(
+            "The bundled PostgreSQL has no backups or failover; use {} for anything you keep.",
+            ui::cmd("--database-url")
+        ));
     }
-    if signed_in.current {
-        eprintln!(
-            "  CLI: signed in as {} (profile '{}'), try `everruns agents list`",
-            signed_in.email, signed_in.profile
-        );
-    } else {
-        eprintln!(
-            "  CLI: profile '{}'; use it with `everruns --profile {} agents list`",
-            signed_in.profile, signed_in.profile
-        );
+    if first_install && values["secrets"]["existingSecret"].as_str().is_none() {
+        ui::warn(format!(
+            "Back up Secret {} with the database: it holds the key that encrypts stored provider keys and secrets.",
+            ui::bold(secret_name(&target, &values))
+        ));
     }
     if let Some(v) = &version
         && *v != cli_version()
     {
-        eprintln!(
-            "  This install runs chart {v}; this CLI is {}. Move to it with `everruns k8s upgrade{}`.",
+        ui::warn(format!(
+            "This install runs chart {v}; this CLI is {}. Move to it with {}.",
             cli_version(),
-            inst.name_flag()
-        );
+            ui::cmd(format!("everruns k8s upgrade{}", inst.name_flag()))
+        ));
     }
 
-    if first_install && asker.interactive && !args.no_open {
-        if let Some(url) = &public {
-            let _ = crate::browser::open(url);
-        } else {
-            eprintln!(
-                "  Open it: `everruns k8s open{}` keeps a port-forward open and opens the browser.",
-                inst.name_flag()
-            );
-        }
+    if first_install
+        && asker.interactive
+        && !args.no_open
+        && let Some(url) = &public
+    {
+        let _ = crate::browser::open(url);
     }
+    Ok(())
+}
+
+/// `everruns k8s password`: the generated admin password, for the UI.
+fn password(args: &InstanceArgs) -> Result<()> {
+    let Some((_inst, record)) = existing(args)? else {
+        return Ok(());
+    };
+    let target = record.target();
+    let values = target
+        .release_values()?
+        .context("not installed; `everruns k8s up` installs it")?;
+    if Known(&values).auth() == Some(AuthChoice::None) {
+        ui::note("This install has no sign-in; nothing to show.");
+        return Ok(());
+    }
+    let password = target.secret_value(&secret_name(&target, &values), "AUTH_ADMIN_PASSWORD")?;
+    println!("{password}");
     Ok(())
 }
 
@@ -650,56 +715,6 @@ fn require_chart(chart: &str, version: &str) -> Result<()> {
     Ok(())
 }
 
-/// `helm upgrade --install` with the values on stdin, so the database URL and
-/// provider keys never touch this machine's disk.
-fn helm_apply(
-    target: &Target,
-    chart: &str,
-    version: Option<&str>,
-    values: &Value,
-    set: &[String],
-    files: &[PathBuf],
-    timeout: &str,
-) -> Result<()> {
-    let mut cmd = target.helm();
-    cmd.args(["upgrade", "--install", &target.release, chart]);
-    if let Some(v) = version {
-        cmd.args(["--version", v]);
-    }
-    cmd.args([
-        "--create-namespace",
-        "--wait",
-        "--timeout",
-        timeout,
-        "--values",
-        "-",
-    ]);
-    for f in files {
-        cmd.arg("--values").arg(f);
-    }
-    for s in set {
-        cmd.args(["--set", s]);
-    }
-    let mut child = cmd
-        .stdin(Stdio::piped())
-        .spawn()
-        .context("Failed to run helm")?;
-    child
-        .stdin
-        .take()
-        .context("helm has no stdin")?
-        .write_all(serde_json::to_string(values)?.as_bytes())
-        .context("Failed to pass the values to helm")?;
-    let status = child.wait().context("Failed to run helm")?;
-    if !status.success() {
-        bail!(
-            "`helm upgrade --install` failed; see the output above. `everruns k8s status` and \
-             `everruns k8s logs server` show what the pods are doing"
-        );
-    }
-    Ok(())
-}
-
 /// A URL that reaches the install: the public one when it answers, else a
 /// port-forward kept alive by the returned guard.
 async fn reach(
@@ -711,7 +726,9 @@ async fn reach(
         if health(url).await.is_ok() {
             return Ok((url.trim_end_matches('/').to_string(), None));
         }
-        eprintln!("{url} does not answer yet (DNS or Ingress); signing in through a port-forward.");
+        ui::warn(format!(
+            "{url} does not answer yet (DNS or Ingress); signing in through a port-forward."
+        ));
     }
     if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
         // Most likely an `everruns k8s port-forward` already running.
@@ -752,13 +769,13 @@ async fn health(url: &str) -> Result<String> {
 
 fn ask_yes(asker: Asker, question: &str, flag: &str) -> Result<bool> {
     if asker.yes {
-        eprintln!("{question} yes ({flag})");
+        ui::ok(format!("{question} {}", ui::dim(format!("yes ({flag})"))));
         return Ok(true);
     }
     if !asker.interactive {
         bail!("{question} No terminal to ask on; pass {flag} to go ahead");
     }
-    dialoguer::Confirm::new()
+    dialoguer::Confirm::with_theme(crate::ui::theme())
         .with_prompt(question)
         .default(true)
         .interact()
@@ -778,7 +795,7 @@ fn ask_database(asker: Asker) -> Result<Database> {
         "My own PostgreSQL 15+ (a managed database or an operator such as CloudNativePG)",
         "A single PostgreSQL pod in the cluster, for trying it out (no backups or failover)",
     ];
-    let pick = dialoguer::Select::new()
+    let pick = dialoguer::Select::with_theme(crate::ui::theme())
         .with_prompt("Database")
         .items(options)
         .default(0)
@@ -787,7 +804,7 @@ fn ask_database(asker: Asker) -> Result<Database> {
     if pick == 1 {
         return Ok(Database::Bundled);
     }
-    let url: String = dialoguer::Password::new()
+    let url: String = dialoguer::Password::with_theme(crate::ui::theme())
         .with_prompt("PostgreSQL URL (postgres://user:password@host:5432/db)")
         .interact()
         .context("Failed to read the URL")?;
@@ -802,7 +819,7 @@ fn ask_public_url(asker: Asker) -> Result<Option<String>> {
     if !asker.can_ask() {
         return Ok(None);
     }
-    let url: String = dialoguer::Input::new()
+    let url: String = dialoguer::Input::with_theme(crate::ui::theme())
         .with_prompt("Public URL with an Ingress, such as https://everruns.example.com (empty: reach it with a port-forward)")
         .allow_empty(true)
         .interact_text()
@@ -835,7 +852,7 @@ fn provider_key(provider: LlmProvider, asker: Asker) -> Result<Option<(&'static 
     };
     let key = match provider.env_key() {
         Some(key) => key,
-        None if asker.can_ask() => dialoguer::Password::new()
+        None if asker.can_ask() => dialoguer::Password::with_theme(crate::ui::theme())
             .with_prompt(format!("{} API key", provider.label()))
             .interact()
             .context("Failed to read the key")?,
@@ -859,9 +876,10 @@ fn existing(args: &InstanceArgs) -> Result<Option<(Instance, Record)>> {
             } else {
                 format!(" --name {}", args.name)
             };
-            eprintln!(
-                "No Kubernetes install set up from this machine. Install one with `everruns k8s up{flag}`."
-            );
+            ui::note(format!(
+                "No Kubernetes install set up from this machine. Install one with {}.",
+                ui::cmd(format!("everruns k8s up{flag}"))
+            ));
             Ok(None)
         }
     }
@@ -873,30 +891,50 @@ async fn status(args: &InstanceArgs) -> Result<()> {
     };
     let target = record.target();
     let values = target.release_values()?;
-    eprintln!(
-        "Install '{}' in context {}, namespace {}",
-        inst.name, record.context, record.namespace
+    ui::banner(
+        "k8s status",
+        &[
+            ("cluster", &record.context),
+            ("namespace", &record.namespace),
+            ("release", &inst.name),
+        ],
     );
     let Some(values) = values else {
-        eprintln!(
-            "  Not installed (uninstalled, or the namespace is gone). `everruns k8s up{}` installs it again.",
-            inst.name_flag()
-        );
+        ui::warn(format!(
+            "Not installed (uninstalled, or the namespace is gone). {} installs it again.",
+            ui::cmd(format!("everruns k8s up{}", inst.name_flag()))
+        ));
         return Ok(());
     };
     if let Some(v) = target.deployed_chart_version() {
-        eprintln!("  Chart: {v}");
+        ui::stderr_field("Chart", v);
     }
     let public = Known(&values).public_url().map(str::to_string);
     match &public {
         Some(url) => match health(url).await {
-            Ok(v) => eprintln!("  {url}: healthy ({v})"),
-            Err(e) => eprintln!("  {url}: not answering ({e})"),
+            Ok(v) => ui::stderr_field(
+                "URL",
+                format!("{} {}", ui::cmd(url), ui::good(format!("healthy ({v})"))),
+            ),
+            Err(e) => ui::stderr_field(
+                "URL",
+                format!(
+                    "{} {}",
+                    ui::cmd(url),
+                    ui::bad(format!("not answering ({e})"))
+                ),
+            ),
         },
-        None => eprintln!(
-            "  No public URL; reach it with `everruns k8s port-forward{}` on {}",
-            inst.name_flag(),
-            local_url(record.port)
+        None => ui::stderr_field(
+            "URL",
+            format!(
+                "{} {}",
+                ui::cmd(local_url(record.port)),
+                ui::dim(format!(
+                    "through `everruns k8s port-forward{}`",
+                    inst.name_flag()
+                ))
+            ),
         ),
     }
     let store = crate::auth::CredentialStore::load().unwrap_or_default();
@@ -906,9 +944,9 @@ async fn status(args: &InstanceArgs) -> Result<()> {
         } else {
             ""
         };
-        eprintln!("  CLI profile: {}{current}", inst.profile());
+        ui::stderr_field("Profile", format!("{}{}", inst.profile(), ui::dim(current)));
     }
-    eprintln!();
+    ui::section("Pods");
     let status = target
         .kubectl()
         .args([
@@ -961,10 +999,11 @@ fn logs(args: &InstanceArgs, component: Option<&str>, no_follow: bool) -> Result
 /// stops only this process would otherwise leave kubectl holding the port,
 /// forwarding to a pod that may be gone.
 async fn forward_foreground(target: &Target, port: u16) -> Result<()> {
-    eprintln!(
-        "Everruns at {} (Ctrl+C to stop the port-forward)",
-        local_url(port)
-    );
+    ui::ok(format!(
+        "Everruns at {} {}",
+        ui::cmd(local_url(port)),
+        ui::dim("(Ctrl+C to stop the port-forward)")
+    ));
     let mut cmd = tokio::process::Command::from(target.kubectl());
     cmd.args([
         "port-forward",
@@ -1025,7 +1064,7 @@ async fn open(args: &InstanceArgs) -> Result<()> {
     let values = target.release_values()?.unwrap_or(Value::Null);
     if let Some(url) = Known(&values).public_url() {
         if crate::browser::open(url).is_err() {
-            eprintln!("Open {url} in your browser.");
+            ui::note(format!("Open {} in your browser.", ui::cmd(url)));
         }
         return Ok(());
     }
@@ -1035,13 +1074,14 @@ async fn open(args: &InstanceArgs) -> Result<()> {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(2));
         if crate::browser::open(&opener).is_err() {
-            eprintln!("Open {opener} in your browser.");
+            ui::note(format!("Open {} in your browser.", ui::cmd(&opener)));
         }
     });
     forward_foreground(&target, record.port).await
 }
 
 fn doctor(args: &InstanceArgs) -> Result<()> {
+    ui::section("Tools");
     let tools = tool_checks();
     for c in &tools {
         c.print();
@@ -1056,6 +1096,7 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
     let values = target.release_values()?.unwrap_or(Value::Null);
     let known = Known(&values);
     let checks = cluster_checks(&target, known.bundled_postgres(), known.autoscaling());
+    ui::section("Cluster");
     for c in &checks {
         c.print();
     }
@@ -1067,7 +1108,7 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
 
 /// The server's own doctor, run inside its pod so it sees what the server sees.
 fn system_doctor(target: &Target) -> Result<()> {
-    eprintln!();
+    ui::section("Server");
     let output = target
         .kubectl()
         .args([
@@ -1119,7 +1160,7 @@ async fn upgrade(args: UpgradeArgs) -> Result<()> {
     let target_version = args.chart_version.clone().unwrap_or_else(cli_version);
     let current = target.deployed_chart_version().unwrap_or_default();
     if current == target_version {
-        eprintln!("Already on chart {current}.");
+        ui::ok(format!("Already on chart {current}."));
         return Ok(());
     }
     let asker = asker(args.yes);
@@ -1136,14 +1177,14 @@ async fn upgrade(args: UpgradeArgs) -> Result<()> {
     let known = Known(&values);
     if known.bundled_postgres() && !args.no_backup {
         let file = backup(&inst, &target, &current)?;
-        eprintln!("Backed up the database to {}", file.display());
+        ui::ok(format!("Backed up the database to {}", file.display()));
     } else if !known.bundled_postgres() {
-        eprintln!("Back up your database before this if you have not: migrations only go forward.");
+        ui::warn("Back up your database before this if you have not: migrations only go forward.");
     }
-    eprintln!(
-        "Moving {} from chart {current} to {target_version}...",
+    ui::section(&format!(
+        "Moving {} from chart {current} to {target_version}",
         inst.name
-    );
+    ));
     helm_apply(
         &target,
         &record.chart,
@@ -1153,7 +1194,9 @@ async fn upgrade(args: UpgradeArgs) -> Result<()> {
         &[],
         &args.timeout,
     )?;
-    eprintln!("Everruns is now on chart {target_version}.");
+    ui::ok(ui::bold(format!(
+        "Everruns is now on chart {target_version}."
+    )));
     Ok(())
 }
 
@@ -1203,84 +1246,14 @@ fn uninstall(args: &InstanceArgs) -> Result<()> {
     if !status.success() {
         bail!("`helm uninstall` failed");
     }
-    eprintln!(
-        "Removed the workloads. Kept: the generated secrets ({0}-generated, {0}-internal) and the \
-         database volume, so `everruns k8s up{1}` brings it back as it was. `everruns k8s reset{1}` deletes them.",
+    ui::ok("Removed the workloads.");
+    ui::detail(format!(
+        "Kept: the generated secrets ({0}-generated, {0}-internal) and the database volume, so {1} \
+         brings it back as it was. {2} deletes them.",
         target.fullname(),
-        inst.name_flag()
-    );
-    Ok(())
-}
-
-/// Delete everything the install has in the cluster and on this machine.
-fn reset(args: &ResetArgs) -> Result<()> {
-    let Some((inst, record)) = existing(&args.instance)? else {
-        return Ok(());
-    };
-    let target = record.target();
-    if !args.yes {
-        if !std::io::stdin().is_terminal() {
-            bail!(
-                "no terminal to ask on; pass --yes to delete '{}'",
-                inst.name
-            );
-        }
-        eprintln!(
-            "This deletes Everruns '{}' in {}/{}: its workloads, the generated secrets with the \
-             encryption key, the bundled database and its backups on this machine, and CLI profile '{}'.",
-            inst.name,
-            target.context,
-            target.namespace,
-            inst.profile()
-        );
-        let typed: String = dialoguer::Input::new()
-            .with_prompt(format!("Type '{}' to delete it", inst.name))
-            .interact_text()
-            .context("Failed to read the answer")?;
-        if typed.trim() != inst.name {
-            bail!("not deleted");
-        }
-    }
-    if target.release_values()?.is_some() {
-        let status = target
-            .helm()
-            .args(["uninstall", &target.release, "--wait"])
-            .status()
-            .context("Failed to run helm")?;
-        if !status.success() {
-            bail!("`helm uninstall` failed");
-        }
-    }
-    let full = target.fullname();
-    let secrets = [format!("{full}-generated"), format!("{full}-internal")];
-    let mut cmd = target.kubectl();
-    cmd.args(["delete", "secret", "--ignore-not-found"]);
-    cmd.args(&secrets);
-    if !cmd.status().context("Failed to run kubectl")?.success() {
-        bail!("deleting the generated secrets failed");
-    }
-    let volumes = target
-        .kubectl()
-        .args([
-            "delete",
-            "pvc",
-            "--ignore-not-found",
-            "--selector",
-            &target.selector(None),
-        ])
-        .status()
-        .context("Failed to run kubectl")?;
-    if !volumes.success() {
-        bail!("deleting the volumes failed");
-    }
-    if docker::forget_profile(&inst.profile())? {
-        eprintln!("Removed CLI profile '{}'.", inst.profile());
-    }
-    if inst.dir.exists() {
-        std::fs::remove_dir_all(&inst.dir)
-            .with_context(|| format!("Failed to remove {}", inst.dir.display()))?;
-    }
-    eprintln!("Deleted '{}'.", inst.name);
+        ui::cmd(format!("everruns k8s up{}", inst.name_flag())),
+        ui::cmd(format!("everruns k8s destroy{}", inst.name_flag()))
+    ));
     Ok(())
 }
 

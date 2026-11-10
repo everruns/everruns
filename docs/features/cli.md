@@ -151,6 +151,8 @@ everruns agents list -o yaml
 
 `--quiet` suppresses headers and prints only the essential identifier, useful for capturing IDs in shell variables.
 
+Output is colored on a terminal and plain when piped. `--no-color` (or `--color never`) turns color off, and so do the usual variables: `NO_COLOR`, `CLICOLOR=0` and `TERM=dumb`. `CLICOLOR_FORCE=1` keeps color in piped output.
+
 ## Platform commands
 
 Every other command comes from the same command contract that agents use in their shell and through MCP `execute`, so the spelling, flags and validation are identical everywhere. Run `everruns --help`, `everruns <noun> --help` or `everruns <noun> <verb> --help` to browse them, or read the [CLI command reference](/reference/cli/), which is generated from the same help.

@@ -19,7 +19,7 @@ Run Everruns on this machine with Docker.
 | [`docker open`](#docker-open) | Open the local UI in the browser. |
 | [`docker doctor`](#docker-doctor) | Check that Docker is ready, and run the system doctor on a running instance. |
 | [`docker upgrade`](#docker-upgrade) | Move the instance to this CLI's version (or --image-tag), backing up the database first. |
-| [`docker reset`](#docker-reset) | Delete the instance: containers, database and settings. |
+| [`docker destroy`](#docker-destroy) | Delete the instance and everything it made: containers, database, settings. |
 
 ## docker up
 
@@ -126,12 +126,12 @@ everruns docker upgrade [OPTIONS]
 | `-y`, `--yes` | Do not ask, also when the move is to an older version. |
 
 
-## docker reset
+## docker destroy
 
-Delete the instance: containers, database and settings. Asks first.
+Delete the instance and everything it made: containers, database, settings. Asks first.
 
 ```bash
-everruns docker reset [OPTIONS]
+everruns docker destroy [OPTIONS]
 ```
 
 | Flag | Description |

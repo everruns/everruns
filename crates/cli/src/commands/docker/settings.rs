@@ -140,7 +140,7 @@ impl Instance {
             .open(self.dir.join(".lock"))
             .context("Failed to open the instance lock")?;
         if file.try_lock().is_err() {
-            eprintln!("Waiting for another `everruns docker` command on this instance...");
+            crate::ui::note("Waiting for another `everruns docker` command on this instance...");
             file.lock().context("Failed to lock the instance")?;
         }
         Ok(file)

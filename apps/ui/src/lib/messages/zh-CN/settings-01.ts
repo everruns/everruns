@@ -353,4 +353,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Organization research model": "组织研究模型",
   'The strongest model for hard reasoning and long research. Agents set to "Organization research model" run on it.':
     "用于复杂推理和长时间研究的最强模型。设置为“组织研究模型”的代理会使用它。",
+  Connect: "连接",
+  Connected: "已连接",
+  "Connect it to use its models": "连接后即可使用其模型",
 };

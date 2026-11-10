@@ -100,7 +100,7 @@ fn read_provider_api_key(api_key_stdin: bool) -> Result<String> {
         return Ok(api_key);
     }
 
-    Password::new()
+    Password::with_theme(crate::ui::theme())
         .with_prompt("Provider API key")
         .allow_empty_password(false)
         .interact()

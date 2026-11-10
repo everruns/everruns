@@ -132,8 +132,8 @@ If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API
 
 1. Open http://localhost:9300
 2. Open **Models** > **Providers** (also available from Settings)
-3. Click **Set key** on your provider, such as OpenRouter, and enter an inference
-   API key. Use an existing limited key, never an OpenRouter management key.
+3. Click **Connect provider**, choose a provider such as OpenRouter, and enter an
+   inference API key. Use an existing limited key, never an OpenRouter management key.
 4. Wait for the key verification result, then click **Save Credentials**
 5. Sync the provider's models if needed, enable a model that supports chat and tools,
    and select it under **Defaults**. For OpenRouter, `openai/gpt-6-luna` is a

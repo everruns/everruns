@@ -17,7 +17,7 @@ Docker, asks who signs in (just you, nobody, or accounts), your admin email and
 an LLM provider, then generates the secrets, waits until the server is healthy
 and signs the CLI in as profile `local`. Running it again starts what is
 stopped and leaves the rest alone. `everruns docker upgrade` backs up the
-database and moves the instance to the CLI's version; `everruns docker reset`
+database and moves the instance to the CLI's version; `everruns docker destroy`
 deletes it after you type its name.
 
 ```bash
