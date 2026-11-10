@@ -321,6 +321,30 @@ reports saved update	--context-revision --reason --report-id! --request!
 resources grants grant	--constraints --consumer-id --consumer-scope! --context-revision --expires-at --id! --reason --usage!
 resources grants list	--context-revision --id! --reason
 resources grants revoke	--context-revision --grant-id! --id! --reason
+rooms archive	--archived --context-revision --reason --room-id!
+rooms create	--context-revision --external-ref --link-template --loop-limits --members --metadata --name! --reason --topic
+rooms events	--after --context-revision --limit --reason --room-id!
+rooms feed	--after --context-revision --limit --reason
+rooms get	--context-revision --reason --room-id <room_id>
+rooms list	--context-revision --external-ref --include-archived --limit --mine --reason
+rooms mark-read	--as-member --context-revision --message-id --reason --room-id!
+rooms members add	--agent-id --context-revision --display-name --handle --instructions --kind! --reason --role --room-id! --session-scope --user-id --wake
+rooms members list	--context-revision --include-left --reason --room-id <room_id>
+rooms members remove	--context-revision --member-id! --reason --room-id!
+rooms members update	--context-revision --display-name --instructions --member-id! --reason --role --room-id! --session-scope --wake
+rooms messages delete	--as-member --context-revision --message-id! --reason --room-id!
+rooms messages edit	--as-member --context-revision --message-id! --reason --room-id! --text!
+rooms messages get	--context-revision --message-id! --reason --room-id!
+rooms messages list	--after --before --context-revision --limit --reason --room-id <room_id>
+rooms messages pin	--as-member --context-revision --message-id! --pinned --reason --room-id!
+rooms messages pinned	--context-revision --reason --room-id <room_id>
+rooms messages post	--as-member --context-revision --reason --reply-to --room-id! --text!
+rooms messages react	--add --as-member --context-revision --emoji! --message-id! --reason --room-id!
+rooms messages readers	--context-revision --message-id! --reason --room-id!
+rooms messages replies	--after --before --context-revision --limit --message-id! --reason --room-id!
+rooms messages search	--context-revision --limit --q! --reason --room-id!
+rooms unread	--as-member --context-revision --limit --peek --reason --room-id!
+rooms update	--context-revision --link-template --loop-limits --metadata --name --reason --room-id! --topic
 sandbox-targets list	--context-revision --reason
 sandbox-template-metadata get	--context-revision --id! --reason
 sandbox-template-metadata update	--context-revision --description --display-name --id! --reason

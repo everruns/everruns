@@ -542,6 +542,27 @@ impl IdMarker for NotificationIdMarker {
     const PREFIX: &'static str = "notification";
 }
 
+/// Marker for Room IDs (org-owned conversation spaces for people and agents)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RoomIdMarker;
+impl IdMarker for RoomIdMarker {
+    const PREFIX: &'static str = "room";
+}
+
+/// Marker for Room member IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RoomMemberIdMarker;
+impl IdMarker for RoomMemberIdMarker {
+    const PREFIX: &'static str = "rmem";
+}
+
+/// Marker for Room message IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RoomMessageIdMarker;
+impl IdMarker for RoomMessageIdMarker {
+    const PREFIX: &'static str = "rmsg";
+}
+
 /// Marker for Memory IDs (org-scoped named Memories)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MemoryIdMarker;
@@ -759,6 +780,12 @@ pub type AppId = TypedId<AppIdMarker>;
 pub type AgentChannelId = TypedId<AgentChannelIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
+/// Room ID (`room_` prefix)
+pub type RoomId = TypedId<RoomIdMarker>;
+/// Room member ID (`rmem_` prefix)
+pub type RoomMemberId = TypedId<RoomMemberIdMarker>;
+/// Room message ID (`rmsg_` prefix)
+pub type RoomMessageId = TypedId<RoomMessageIdMarker>;
 /// Memory ID (org-scoped named Memory)
 pub type MemoryId = TypedId<MemoryIdMarker>;
 /// Workspace ID (org-scoped named Workspace)

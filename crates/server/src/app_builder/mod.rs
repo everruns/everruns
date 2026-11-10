@@ -55,32 +55,6 @@ pub(crate) type MigrationFn =
 type BackgroundTaskFn =
     Box<dyn FnOnce(ServerContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-fn github_app_token_minter(
-    auth_config: &auth::AuthConfig,
-) -> Option<crate::storage::GitHubAppTokenMinter> {
-    auth_config.github_connection.as_ref().map(|config| {
-        crate::storage::GitHubAppTokenMinter::new(config.app_id.clone(), config.private_key.clone())
-            .with_user_client(crate::github_user_token::GitHubUserClient::new(
-                config.client_id.as_deref(),
-                config.client_secret.as_deref(),
-            ))
-    })
-}
-
-pub(super) fn build_connection_resolver(
-    db: &Arc<StorageBackend>,
-    encryption: &Arc<EncryptionService>,
-    auth_config: &auth::AuthConfig,
-    egress: Arc<dyn everruns_core::EgressService>,
-) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
-    Arc::new(crate::storage::DbConnectionResolver::new(
-        db.as_ref().clone(),
-        encryption.as_ref().clone(),
-        github_app_token_minter(auth_config),
-        egress,
-    ))
-}
-
 fn spawn_background_tasks(
     supervisor: &mut TaskSupervisor,
     server_context: &ServerContext,
@@ -539,6 +513,7 @@ impl ServerAppBuilder {
             mcp_events,
             mcp_event_triggers,
             thread_turns,
+            room_posts,
             automatic_titles,
             session_sandbox_service,
             notification_service,
@@ -657,6 +632,10 @@ impl ServerAppBuilder {
             auth_state.clone(),
             event_delivery.clone(),
             sse_tracker.clone(),
+        );
+        room_posts.bind(
+            messages_state.session_service.clone(),
+            messages_state.message_service.clone(),
         );
         let tool_results_state = api::tool_results::AppState::new(
             db.clone(),
@@ -949,6 +928,14 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
+        let rooms_state = api::rooms::AppState {
+            db: db.clone(),
+            encryption: encryption.clone(),
+            capability_service: capability_service.clone(),
+            auth: auth_state.clone(),
+            session_service: messages_state.session_service.clone(),
+            message_service: messages_state.message_service.clone(),
+        };
         let mut agent_triggers_state = api::agent_triggers::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1121,6 +1108,7 @@ impl ServerAppBuilder {
             .merge(api::harness_examples::routes(harness_examples_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
+            .merge(api::rooms::routes(rooms_state))
             .merge(api::messages::routes(messages_state))
             .merge(crate::channels::voice::routes(voice_state))
             .merge(api::tool_results::routes(tool_results_state))

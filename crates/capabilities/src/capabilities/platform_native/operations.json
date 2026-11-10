@@ -122,6 +122,145 @@
     "read_only": false
   },
   {
+    "description": "Add a person, an Everruns agent, an outside agent or a guest to a room. Owners and org admins only.",
+    "input_schema": {
+      "$defs": {
+        "RoomMemberInput": {
+          "description": "A member to add, by kind.",
+          "properties": {
+            "agent_id": {
+              "description": "For an Everruns agent: its id.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Shown name; the person's or agent's own name when absent. Required for\noutside agents and guests.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "handle": {
+              "description": "Mention name; derived from the display name when absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "instructions": {
+              "description": "Extra instructions an agent member gets in this room.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/RoomMemberKind"
+            },
+            "role": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RoomMemberRole"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "session_scope": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SessionScope",
+                  "description": "Which conversation an agent member keeps. Default `thread`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "user_id": {
+              "description": "For a person: their user id.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "wake": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/WakeMode",
+                  "description": "When an agent member is woken. Default `mentions`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "RoomMemberKind": {
+          "description": "Kind of room member.",
+          "enum": [
+            "person",
+            "agent",
+            "outside_agent",
+            "guest"
+          ],
+          "type": "string"
+        },
+        "RoomMemberRole": {
+          "description": "Role of a member in its room.",
+          "enum": [
+            "owner",
+            "member"
+          ],
+          "type": "string"
+        },
+        "SessionScope": {
+          "description": "Which conversation an agent member keeps in a room.",
+          "enum": [
+            "thread",
+            "room"
+          ],
+          "type": "string"
+        },
+        "WakeMode": {
+          "description": "When an agent member is woken.",
+          "enum": [
+            "mentions",
+            "everything",
+            "never"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/RoomMemberInput"
+        },
+        {
+          "properties": {
+            "room_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "room_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "add_room_member",
+    "read_only": false
+  },
+  {
     "description": "Add a member participant to a session.",
     "input_schema": {
       "$defs": {
@@ -951,6 +1090,26 @@
       "type": "object"
     },
     "name": "archive_knowledge",
+    "read_only": false
+  },
+  {
+    "description": "Archive a room (or bring it back with archived=false). An archived room keeps everything but takes no posts and wakes no agents.",
+    "input_schema": {
+      "properties": {
+        "archived": {
+          "description": "`false` brings an archived room back.",
+          "type": "boolean"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "archive_room",
     "read_only": false
   },
   {
@@ -7925,6 +8084,206 @@
     "read_only": false
   },
   {
+    "description": "Create a room where people and agents talk. The caller becomes its first owner; members can be added in the same call.",
+    "input_schema": {
+      "$defs": {
+        "LoopLimits": {
+          "description": "Loop limits in force in one room.",
+          "properties": {
+            "max_agent_posts_hour": {
+              "description": "Agent posts in one room per hour.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "max_hops": {
+              "description": "Agent posts in a row before agents stop being woken.",
+              "format": "int32",
+              "type": "integer"
+            },
+            "max_wakes_per_agent_hour": {
+              "description": "Wakes of one agent in one room per hour.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "max_hops",
+            "max_wakes_per_agent_hour",
+            "max_agent_posts_hour"
+          ],
+          "type": "object"
+        },
+        "RoomMemberInput": {
+          "description": "A member to add, by kind.",
+          "properties": {
+            "agent_id": {
+              "description": "For an Everruns agent: its id.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Shown name; the person's or agent's own name when absent. Required for\noutside agents and guests.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "handle": {
+              "description": "Mention name; derived from the display name when absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "instructions": {
+              "description": "Extra instructions an agent member gets in this room.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/RoomMemberKind"
+            },
+            "role": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RoomMemberRole"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "session_scope": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SessionScope",
+                  "description": "Which conversation an agent member keeps. Default `thread`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "user_id": {
+              "description": "For a person: their user id.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "wake": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/WakeMode",
+                  "description": "When an agent member is woken. Default `mentions`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "RoomMemberKind": {
+          "description": "Kind of room member.",
+          "enum": [
+            "person",
+            "agent",
+            "outside_agent",
+            "guest"
+          ],
+          "type": "string"
+        },
+        "RoomMemberRole": {
+          "description": "Role of a member in its room.",
+          "enum": [
+            "owner",
+            "member"
+          ],
+          "type": "string"
+        },
+        "SessionScope": {
+          "description": "Which conversation an agent member keeps in a room.",
+          "enum": [
+            "thread",
+            "room"
+          ],
+          "type": "string"
+        },
+        "WakeMode": {
+          "description": "When an agent member is woken.",
+          "enum": [
+            "mentions",
+            "everything",
+            "never"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Create a room. The person creating it becomes its first owner.",
+      "properties": {
+        "external_ref": {
+          "description": "Your own id for this room (a ticket, a project). Unique in the org.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "link_template": {
+          "description": "Where a message opens in your product: `{room_id}`, `{message_id}`\nand `{thread_id}` are filled in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loop_limits": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LoopLimits",
+              "description": "Loop limits; defaults apply when absent."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "members": {
+          "description": "Members to add right away.",
+          "items": {
+            "$ref": "#/$defs/RoomMemberInput"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "description": "Free-form data kept with the room, up to 16 KB."
+        },
+        "name": {
+          "type": "string"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "create_room",
+    "read_only": false
+  },
+  {
     "description": "Create an org-scoped saved report definition.",
     "input_schema": {
       "$defs": {
@@ -10106,6 +10465,32 @@
     "read_only": false
   },
   {
+    "description": "Delete a message. Its author, or a room owner. A marker stays in its place and replies stay.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "message_id"
+      ],
+      "type": "object"
+    },
+    "name": "delete_room_message",
+    "read_only": false
+  },
+  {
     "description": "Delete an org-scoped saved report definition.",
     "input_schema": {
       "properties": {
@@ -10923,6 +11308,36 @@
       "type": "object"
     },
     "name": "dry_run_guardrails",
+    "read_only": false
+  },
+  {
+    "description": "Change a message's text. Its author, or a room owner. Editing never wakes agents again.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "message_id",
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "edit_room_message",
     "read_only": false
   },
   {
@@ -12474,6 +12889,43 @@
       "default": null
     },
     "name": "get_reporting_diagnostics",
+    "read_only": true
+  },
+  {
+    "description": "Get a room.",
+    "input_schema": {
+      "properties": {
+        "room_id": {
+          "description": "Prefixed room id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_room",
+    "read_only": true
+  },
+  {
+    "description": "Get one message.",
+    "input_schema": {
+      "properties": {
+        "message_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "message_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_room_message",
     "read_only": true
   },
   {
@@ -15279,6 +15731,31 @@
     "read_only": true
   },
   {
+    "description": "Read the change feed of every room in the org, in order. Poll with after=next_after.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "description": "Read events after this position (`next_after` of the last page).",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_org_room_events",
+    "read_only": true
+  },
+  {
     "description": "List background tasks across every session in the org.",
     "input_schema": {
       "description": "List background tasks across every session in the caller's org.\n\nOrg-scoped observability query (EVE-583): unlike `ListSessionTasks`, this is\nnot bound to a single session. The org is taken from the authenticated\ncaller (`ctx.org_id()`), never from input, so the result is always scoped to\nthe caller's tenant.",
@@ -15536,6 +16013,214 @@
       "type": "object"
     },
     "name": "list_resource_grants",
+    "read_only": true
+  },
+  {
+    "description": "Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "description": "Read events after this position (`next_after` of the last page).",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_room_events",
+    "read_only": true
+  },
+  {
+    "description": "List a room's members.",
+    "input_schema": {
+      "properties": {
+        "include_left": {
+          "description": "Include members who left.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_room_members",
+    "read_only": true
+  },
+  {
+    "description": "Who has read a message, and who has not.",
+    "input_schema": {
+      "properties": {
+        "message_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "message_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_room_message_readers",
+    "read_only": true
+  },
+  {
+    "description": "Read a room's top-level messages, oldest first. Without a position, the newest page.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "description": "Messages after this time (read forward).",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "Messages before this time (page backwards).",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_room_messages",
+    "read_only": true
+  },
+  {
+    "description": "List a room's pinned messages, most recently pinned first.",
+    "input_schema": {
+      "properties": {
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_room_pins",
+    "read_only": true
+  },
+  {
+    "description": "Read the replies in a message's thread, oldest first.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "message_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_room_replies",
+    "read_only": true
+  },
+  {
+    "description": "List the org's rooms, most recently active first.",
+    "input_schema": {
+      "properties": {
+        "external_ref": {
+          "description": "The room with this external_ref.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "include_archived": {
+          "description": "Include archived rooms.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mine": {
+          "description": "Only rooms the caller is a member of.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_rooms",
     "read_only": true
   },
   {
@@ -16472,6 +17157,35 @@
     "read_only": false
   },
   {
+    "description": "Mark a room's top level, or a thread, read up to a message. Marks only move forward.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message_id": {
+          "description": "Mark read up to and including this message, in its scope (the top\nlevel, or its thread). Without it, the whole top level up to now.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "mark_room_read",
+    "read_only": false
+  },
+  {
     "description": "Move or rename a file in the session filesystem.",
     "input_schema": {
       "$defs": {
@@ -16597,6 +17311,36 @@
       "type": "object"
     },
     "name": "pause_agent",
+    "read_only": false
+  },
+  {
+    "description": "Pin a message to the room, or unpin it with pinned=false. Any member can pin.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "pinned": {
+          "description": "`false` unpins.",
+          "type": "boolean"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "message_id"
+      ],
+      "type": "object"
+    },
+    "name": "pin_room_message",
     "read_only": false
   },
   {
@@ -16954,6 +17698,41 @@
       "type": "object"
     },
     "name": "plan_agent_costs",
+    "read_only": false
+  },
+  {
+    "description": "Post a message in a room, at the top level or as a reply. Returns the message and the agents it woke.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Post as this member (org admins: a builder's product posting for a\nguest or an outside agent).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reply_to": {
+          "description": "Reply in the thread of this message (replies are one level deep: a\nreply to a reply lands in the same thread).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "text": {
+          "description": "Markdown. `@handle` mentions a member; mentioning an agent wakes it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "post_room_message",
     "read_only": false
   },
   {
@@ -18023,6 +18802,74 @@
     "read_only": false
   },
   {
+    "description": "Add a reaction to a message, or remove it with add=false. Reactions never wake agents.",
+    "input_schema": {
+      "properties": {
+        "add": {
+          "description": "`false` removes the reaction.",
+          "type": "boolean"
+        },
+        "as_member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "emoji": {
+          "description": "An emoji, or a short name such as `+1`.",
+          "type": "string"
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "message_id",
+        "emoji"
+      ],
+      "type": "object"
+    },
+    "name": "react_to_room_message",
+    "read_only": false
+  },
+  {
+    "description": "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "peek": {
+          "description": "Look without marking read.",
+          "type": "boolean"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "read_room_unread",
+    "read_only": false
+  },
+  {
     "description": "Turn down a suggested fix, saying why. The agent is not changed.",
     "input_schema": {
       "$defs": {
@@ -18087,6 +18934,26 @@
       "type": "object"
     },
     "name": "remove_message_reaction",
+    "read_only": false
+  },
+  {
+    "description": "Remove a member from a room. Their messages stay. Owners and org admins can remove anyone; a person can leave on their own.",
+    "input_schema": {
+      "properties": {
+        "member_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "member_id"
+      ],
+      "type": "object"
+    },
+    "name": "remove_room_member",
     "read_only": false
   },
   {
@@ -18750,6 +19617,34 @@
       ]
     },
     "name": "search_knowledge_collections",
+    "read_only": true
+  },
+  {
+    "description": "Find messages in a room by text, newest first.",
+    "input_schema": {
+      "properties": {
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "q": {
+          "description": "Text to find, case-insensitive.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "q"
+      ],
+      "type": "object"
+    },
+    "name": "search_room_messages",
     "read_only": true
   },
   {
@@ -25685,6 +26580,170 @@
       "type": "object"
     },
     "name": "update_provider",
+    "read_only": false
+  },
+  {
+    "description": "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
+    "input_schema": {
+      "$defs": {
+        "LoopLimits": {
+          "description": "Loop limits in force in one room.",
+          "properties": {
+            "max_agent_posts_hour": {
+              "description": "Agent posts in one room per hour.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "max_hops": {
+              "description": "Agent posts in a row before agents stop being woken.",
+              "format": "int32",
+              "type": "integer"
+            },
+            "max_wakes_per_agent_hour": {
+              "description": "Wakes of one agent in one room per hour.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "max_hops",
+            "max_wakes_per_agent_hour",
+            "max_agent_posts_hour"
+          ],
+          "type": "object"
+        }
+      },
+      "description": "Change a room. Only provided fields change; send `\"\"` to clear the topic\nor the link template.",
+      "properties": {
+        "link_template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loop_limits": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LoopLimits"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {},
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "name": "update_room",
+    "read_only": false
+  },
+  {
+    "description": "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
+    "input_schema": {
+      "$defs": {
+        "RoomMemberRole": {
+          "description": "Role of a member in its room.",
+          "enum": [
+            "owner",
+            "member"
+          ],
+          "type": "string"
+        },
+        "SessionScope": {
+          "description": "Which conversation an agent member keeps in a room.",
+          "enum": [
+            "thread",
+            "room"
+          ],
+          "type": "string"
+        },
+        "WakeMode": {
+          "description": "When an agent member is woken.",
+          "enum": [
+            "mentions",
+            "everything",
+            "never"
+          ],
+          "type": "string"
+        }
+      },
+      "properties": {
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "instructions": {
+          "description": "Send `\"\"` to clear.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "member_id": {
+          "type": "string"
+        },
+        "role": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RoomMemberRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "session_scope": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SessionScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wake": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/WakeMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "room_id",
+        "member_id"
+      ],
+      "type": "object"
+    },
+    "name": "update_room_member",
     "read_only": false
   },
   {

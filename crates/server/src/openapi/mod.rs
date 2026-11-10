@@ -987,6 +987,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         (name = "agents", description = "Agent management endpoints"),
         (name = "sessions", description = "Session management endpoints"),
         (name = "messages", description = "Message management endpoints"),
+        (name = "rooms", description = "Rooms: org-owned conversations where people, agents and guests talk, and addressed agents are woken"),
         (name = "voice", description = "Voice calls to agents through voice channels"),
         (name = "events", description = "Event streaming endpoints (SSE)"),
         (name = "providers", description = "Provider management endpoints. Providers and their models share the models permission (`org:models:*`)."),

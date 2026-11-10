@@ -283,10 +283,27 @@ impl From<&ExecutionSession> for AgentConfigOverlay {
             max_iterations: s.max_iterations,
             parallel_tool_calls: s.parallel_tool_calls,
             max_output_tokens: None,
-            communication: None,
+            communication: session_communication(s),
             mcp_servers: s.mcp_servers.clone(),
         }
     }
+}
+
+/// Session hint key that overrides how the agent talks in this session.
+pub const COMMUNICATION_HINT: &str = "communication";
+
+/// The session's `communication` hint, when set to a known mode.
+///
+/// Decision: the agent owns its communication mode, and a surface may only
+/// override it when the surface cannot work otherwise. Rooms are that case:
+/// in a room an agent's every completed message would be posted and wake the
+/// other agents, so a room session sets `explicit` and the agent speaks only
+/// through `send_message`.
+fn session_communication(
+    s: &ExecutionSession,
+) -> Option<crate::runtime::conversation::Communication> {
+    let value = s.hints.as_ref()?.get(COMMUNICATION_HINT)?;
+    serde_json::from_value(value.clone()).ok()
 }
 
 #[cfg(test)]
@@ -737,6 +754,26 @@ mod tests {
             session.parallel_tool_calls = expected.parallel_tool_calls;
             session.mcp_servers = expected.mcp_servers.clone();
             assert_overlay(AgentConfigOverlay::from(&session), expected);
+        }
+    }
+
+    #[test]
+    fn the_communication_hint_overrides_the_agent_only_when_it_names_a_mode() {
+        use crate::runtime::conversation::Communication;
+        for (hint, expected) in [
+            (None, None),
+            (Some(json!("explicit")), Some(Communication::Explicit)),
+            (Some(json!("direct")), Some(Communication::Direct)),
+            (Some(json!("loud")), None),
+            (Some(json!(true)), None),
+        ] {
+            let mut session = ExecutionSession::new(
+                crate::runtime::typed_id::SessionId::new(),
+                crate::runtime::typed_id::WorkspaceId::new(),
+                crate::runtime::typed_id::HarnessId::new(),
+            );
+            session.hints = hint.map(|value| [(COMMUNICATION_HINT.to_string(), value)].into());
+            assert_eq!(AgentConfigOverlay::from(&session).communication, expected);
         }
     }
 }

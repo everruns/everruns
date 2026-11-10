@@ -316,4 +316,5 @@ export const messages: Readonly<Record<string, string>> = {
   "{names} reacted {emoji}": "{names} 回应了 {emoji}",
   "Remove your {emoji}": "移除你的 {emoji}",
   Reaction: "回应",
+  Room: "房间",
 };

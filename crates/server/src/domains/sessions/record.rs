@@ -141,6 +141,8 @@ pub enum SessionSource {
     Eval,
     /// Spawned as a subagent / delegated peer of another session.
     Subagent,
+    /// An agent member woken by a room (knowledge/runtime-resources/rooms.md).
+    Room,
     /// Origin not recorded (pre-migration rows that could not be inferred).
     #[default]
     Unknown,
@@ -159,6 +161,7 @@ impl SessionSource {
         SessionSource::A2a,
         SessionSource::Eval,
         SessionSource::Subagent,
+        SessionSource::Room,
         SessionSource::Unknown,
     ];
 
@@ -175,6 +178,7 @@ impl SessionSource {
             SessionSource::A2a => "a2a",
             SessionSource::Eval => "eval",
             SessionSource::Subagent => "subagent",
+            SessionSource::Room => "room",
             SessionSource::Unknown => "unknown",
         }
     }

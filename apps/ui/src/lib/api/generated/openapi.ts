@@ -6742,6 +6742,350 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/rooms": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the org's rooms, most recently active first */
+    get: operations["list_rooms"];
+    put?: never;
+    /**
+     * Create a room where people and agents talk
+     * @description Create a room where people and agents talk. The caller becomes its first owner; members can be added in the same call.
+     */
+    post: operations["create_room"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the change feed of every room in the org, in order
+     * @description Read the change feed of every room in the org, in order. Poll with after=next_after.
+     */
+    get: operations["list_org_room_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a room */
+    get: operations["get_room"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change a room's name, topic or settings
+     * @description Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.
+     */
+    patch: operations["update_room"];
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Archive a room (or bring it back with archived=false)
+     * @description Archive a room (or bring it back with archived=false). An archived room keeps everything but takes no posts and wakes no agents.
+     */
+    post: operations["archive_room"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a room's change feed
+     * @description Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.
+     */
+    get: operations["list_room_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/members": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a room's members */
+    get: operations["list_room_members"];
+    put?: never;
+    /**
+     * Add a member to a room
+     * @description Add a person, an Everruns agent, an outside agent or a guest to a room. Owners and org admins only.
+     */
+    post: operations["add_room_member"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/members/{member_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove a member from a room
+     * @description Remove a member from a room. Their messages stay. Owners and org admins can remove anyone; a person can leave on their own.
+     */
+    delete: operations["remove_room_member"];
+    options?: never;
+    head?: never;
+    /**
+     * Change a room member's settings
+     * @description Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.
+     */
+    patch: operations["update_room_member"];
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a room's top-level messages, oldest first
+     * @description Read a room's top-level messages, oldest first. Without a position, the newest page.
+     */
+    get: operations["list_room_messages"];
+    put?: never;
+    /**
+     * Post a message in a room, at the top level or as a reply
+     * @description Post a message in a room, at the top level or as a reply. Returns the message and the agents it woke.
+     */
+    post: operations["post_room_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/messages/{message_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get one message */
+    get: operations["get_room_message"];
+    put?: never;
+    post?: never;
+    /**
+     * Delete a message
+     * @description Delete a message. Its author, or a room owner. A marker stays in its place and replies stay.
+     */
+    delete: operations["delete_room_message"];
+    options?: never;
+    head?: never;
+    /**
+     * Change a message's text
+     * @description Change a message's text. Its author, or a room owner. Editing never wakes agents again.
+     */
+    patch: operations["edit_room_message"];
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/messages/{message_id}/pin": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pin a message to the room, or unpin it with pinned=false
+     * @description Pin a message to the room, or unpin it with pinned=false. Any member can pin.
+     */
+    post: operations["pin_room_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/messages/{message_id}/reactions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add a reaction to a message, or remove it with add=false
+     * @description Add a reaction to a message, or remove it with add=false. Reactions never wake agents.
+     */
+    post: operations["react_to_room_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/messages/{message_id}/readers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Who has read a message, and who has not */
+    get: operations["list_room_message_readers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/messages/{message_id}/replies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the replies in a message's thread, oldest first */
+    get: operations["list_room_replies"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/pins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a room's pinned messages, most recently pinned first */
+    get: operations["list_room_pins"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/read": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Mark a room's top level, or a thread, read up to a message
+     * @description Mark a room's top level, or a thread, read up to a message. Marks only move forward.
+     */
+    post: operations["mark_room_read"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/search": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Find messages in a room by text, newest first */
+    get: operations["search_room_messages"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/rooms/{room_id}/unread": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Read and mark a room's unread messages
+     * @description Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.
+     */
+    post: operations["read_room_unread"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sandbox-targets": {
     parameters: {
       query?: never;
@@ -22187,6 +22531,24 @@ export interface components {
        */
       authorize_url: string;
     };
+    /** @description Loop limits in force in one room. */
+    LoopLimits: {
+      /**
+       * Format: int64
+       * @description Agent posts in one room per hour.
+       */
+      max_agent_posts_hour: number;
+      /**
+       * Format: int32
+       * @description Agent posts in a row before agents stop being woken.
+       */
+      max_hops: number;
+      /**
+       * Format: int64
+       * @description Wakes of one agent in one room per hour.
+       */
+      max_wakes_per_agent_hour: number;
+    };
     /** @description Request body for the `manage_session_sandbox` operation. */
     ManageSessionSandboxRequest: {
       /** @description Action to take on the sandbox (`reset`, `delete`, etc.). */
@@ -25975,6 +26337,13 @@ export interface components {
      * @enum {string}
      */
     PolicyStepAction: "notify" | "ask" | "stop";
+    /** @description A posted message and the agents it woke. */
+    PostRoomMessageResponse: {
+      /** @description The posted message. */
+      message: components["schemas"]["RoomMessage"];
+      /** @description Agent members the message addressed, and what happened to each. */
+      woke: components["schemas"]["RoomWake"][];
+    };
     /** @description Request body for posting an inbound task message. */
     PostTaskMessageBody: {
       /** @description Structured message parts (alternative to `text`). */
@@ -27269,6 +27638,411 @@ export interface components {
      * @enum {string}
      */
     RiskLevel: "low" | "medium" | "high";
+    /** @description An org-owned conversation space for people and agents. */
+    Room: {
+      /**
+       * @description Whether the room is archived: it keeps everything but takes no posts and wakes no agents.
+       * @example false
+       */
+      archived: boolean;
+      /**
+       * Format: date-time
+       * @description When the room was created.
+       * @example 2026-11-10T15:04:05Z
+       */
+      created_at: string;
+      /**
+       * @description The builder's own id for this room.
+       * @example ticket-4521
+       */
+      external_ref?: string | null;
+      /**
+       * @description Prefixed room id (`room_...`).
+       * @example room_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description When the last message was posted.
+       * @example 2026-11-10T15:04:05Z
+       */
+      last_message_at?: string | null;
+      /**
+       * @description Where a message opens in the builder's product; `{room_id}`,
+       *     `{message_id}` and `{thread_id}` are filled in to make each message's
+       *     `url`.
+       * @example https://desk.example.com/rooms/{room_id}/m/{message_id}
+       */
+      link_template?: string | null;
+      /** @description Loop limits in force. */
+      loop_limits: components["schemas"]["LoopLimits"];
+      /** @description Free-form data the builder keeps with the room. */
+      metadata: unknown;
+      /**
+       * @description Room name.
+       * @example Support desk
+       */
+      name: string;
+      /**
+       * @description What the room is about.
+       * @example Customer escalations
+       */
+      topic?: string | null;
+      /**
+       * Format: date-time
+       * @description When the room last changed.
+       * @example 2026-11-10T15:04:05Z
+       */
+      updated_at: string;
+    };
+    /** @description Who wrote a message, as the message shows it. */
+    RoomAuthor: {
+      /**
+       * @description Name shown with the message.
+       * @example Triage agent
+       */
+      display_name: string;
+      /**
+       * @description Mention name, written `@handle`.
+       * @example triage
+       */
+      handle: string;
+      /**
+       * @description Member id of the author.
+       * @example rmem_01933b5a000070008000000000000003
+       */
+      id: string;
+      /** @description Person, Everruns agent, outside agent or guest. */
+      kind: components["schemas"]["RoomMemberKind"];
+    };
+    /** @description One entry of a room's change feed. */
+    RoomEvent: {
+      /**
+       * Format: date-time
+       * @description When it happened.
+       * @example 2026-11-10T15:04:05Z
+       */
+      created_at: string;
+      /** @description Details of the change; the shape depends on `type`. */
+      data: unknown;
+      /**
+       * @description The member it is about or by, if any.
+       * @example rmem_01933b5a000070008000000000000003
+       */
+      member_id?: string | null;
+      /**
+       * @description The message it is about, if any.
+       * @example rmsg_01933b5a000070008000000000000002
+       */
+      message_id?: string | null;
+      /**
+       * @description The room it happened in.
+       * @example room_01933b5a000070008000000000000001
+       */
+      room_id: string;
+      /**
+       * Format: int64
+       * @description Position in the org's room feed; read on with `after`.
+       * @example 120
+       */
+      seq: number;
+      /**
+       * @description `room.created`, `room.updated`, `room.archived`, `room.unarchived`,
+       *     `member.joined`, `member.left`, `message.posted`, `message.edited`,
+       *     `message.deleted`, `message.pinned`, `message.unpinned`,
+       *     `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.
+       * @example message.posted
+       */
+      type: string;
+    };
+    /** @description A page of a room change feed. */
+    RoomEventListResponse: {
+      /** @description Events, in order. */
+      data: components["schemas"]["RoomEvent"][];
+      /**
+       * Format: int64
+       * @description Pass as `after` to read on.
+       * @example 120
+       */
+      next_after: number;
+    };
+    /** @description A page of rooms. */
+    RoomListResponse: {
+      /** @description Rooms, most recently active first. */
+      data: components["schemas"]["Room"][];
+    };
+    /** @description A member of a room. */
+    RoomMember: {
+      /**
+       * @description The agent's id, for an Everruns agent.
+       * @example agent_01933b5a000070008000000000000005
+       */
+      agent_id?: string | null;
+      /**
+       * @description Name shown with the member's messages.
+       * @example Triage agent
+       */
+      display_name: string;
+      /**
+       * @description Mention name, written `@handle`.
+       * @example triage
+       */
+      handle: string;
+      /**
+       * @description Prefixed member id (`rmem_...`).
+       * @example rmem_01933b5a000070008000000000000003
+       */
+      id: string;
+      /**
+       * @description Extra instructions an agent member gets in this room.
+       * @example Answer billing questions only.
+       */
+      instructions?: string | null;
+      /**
+       * Format: date-time
+       * @description When the member joined.
+       * @example 2026-11-10T15:04:05Z
+       */
+      joined_at: string;
+      /** @description Person, Everruns agent, outside agent or guest. */
+      kind: components["schemas"]["RoomMemberKind"];
+      /**
+       * @description Whether the member left. Left members still name their old messages.
+       * @example false
+       */
+      left: boolean;
+      /** @description Owner or member. */
+      role: components["schemas"]["RoomMemberRole"];
+      /**
+       * @description The room this member belongs to.
+       * @example room_01933b5a000070008000000000000001
+       */
+      room_id: string;
+      /** @description Which conversation an agent member keeps. */
+      session_scope: components["schemas"]["SessionScope"];
+      /**
+       * @description The person's user id, for a person.
+       * @example user_01933b5a000070008000000000000004
+       */
+      user_id?: string | null;
+      /** @description When an agent member is woken. */
+      wake: components["schemas"]["WakeMode"];
+    };
+    /**
+     * @description Kind of room member.
+     * @enum {string}
+     */
+    RoomMemberKind: "person" | "agent" | "outside_agent" | "guest";
+    /** @description A room's members. */
+    RoomMemberListResponse: {
+      /** @description Members, in the order they joined. */
+      data: components["schemas"]["RoomMember"][];
+    };
+    /**
+     * @description Role of a member in its room.
+     * @enum {string}
+     */
+    RoomMemberRole: "owner" | "member";
+    /** @description A member a message mentions. */
+    RoomMention: {
+      /**
+       * @description Mention name as written.
+       * @example triage
+       */
+      handle: string;
+      /**
+       * @description Member id of the mentioned member.
+       * @example rmem_01933b5a000070008000000000000003
+       */
+      id: string;
+    };
+    /** @description A message in a room. */
+    RoomMessage: {
+      author?: components["schemas"]["RoomAuthor"] | null;
+      /**
+       * Format: date-time
+       * @description When it was posted.
+       * @example 2026-11-10T15:04:05Z
+       */
+      created_at: string;
+      /**
+       * @description Whether it was deleted; a marker stays in its place.
+       * @example false
+       */
+      deleted: boolean;
+      /**
+       * Format: date-time
+       * @description When it was last edited.
+       * @example 2026-11-10T15:04:05Z
+       */
+      edited_at?: string | null;
+      /**
+       * Format: int32
+       * @description Agent posts in a row up to this message (0 when a person wrote it).
+       * @example 0
+       */
+      hops: number;
+      /**
+       * @description Prefixed message id (`rmsg_...`).
+       * @example rmsg_01933b5a000070008000000000000002
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description When its thread last got a reply.
+       * @example 2026-11-10T15:04:05Z
+       */
+      last_reply_at?: string | null;
+      /** @description Members the text mentions, resolved when it was posted. */
+      mentions: components["schemas"]["RoomMention"][];
+      /**
+       * @description Whether it is pinned to the room.
+       * @example false
+       */
+      pinned: boolean;
+      /** @description Reactions, one entry per emoji. */
+      reactions: components["schemas"]["RoomReaction"][];
+      /**
+       * Format: int32
+       * @description Replies in its thread, for a top-level message.
+       * @example 3
+       */
+      reply_count: number;
+      /**
+       * @description The room it was posted in.
+       * @example room_01933b5a000070008000000000000001
+       */
+      room_id: string;
+      /**
+       * @description The agent session that wrote it, for agent posts.
+       * @example session_01933b5a000070008000000000000006
+       */
+      session_id?: string | null;
+      /**
+       * @description Markdown. Empty once deleted.
+       * @example @triage can you check ticket 4521?
+       */
+      text: string;
+      /**
+       * @description The thread it is a reply in (its root message); absent at the top level.
+       * @example rmsg_01933b5a000070008000000000000002
+       */
+      thread_id?: string | null;
+      /**
+       * @description Where it opens in the builder's product (the room's `link_template`).
+       * @example https://desk.example.com/rooms/room_01933b5a000070008000000000000001/m/rmsg_01933b5a000070008000000000000002
+       */
+      url?: string | null;
+    };
+    /** @description A page of messages. */
+    RoomMessageListResponse: {
+      /** @description Messages, oldest first. */
+      data: components["schemas"]["RoomMessage"][];
+      /**
+       * @description Whether older messages exist before the first one returned.
+       * @example false
+       */
+      has_more: boolean;
+    };
+    /** @description One emoji on a message, with who added it. */
+    RoomReaction: {
+      /**
+       * @description How many members added it.
+       * @example 2
+       */
+      count: number;
+      /**
+       * @description The emoji, as text.
+       * @example 👀
+       */
+      emoji: string;
+      /**
+       * @description Members who added it.
+       * @example [
+       *       "rmem_01933b5a000070008000000000000003"
+       *     ]
+       */
+      member_ids: string[];
+    };
+    /** @description A reader's position in one scope. */
+    RoomReadMark: {
+      /**
+       * Format: date-time
+       * @description How far the reader has read.
+       * @example 2026-11-10T15:04:05Z
+       */
+      read_through: string;
+      /**
+       * @description The room id for the top level, or a thread's root message id.
+       * @example room_01933b5a000070008000000000000001
+       */
+      scope_id: string;
+    };
+    /** @description One reader of a scope. */
+    RoomReader: {
+      /**
+       * @description Its mention name.
+       * @example ana-lopez
+       */
+      handle: string;
+      /**
+       * @description The reader.
+       * @example rmem_01933b5a000070008000000000000003
+       */
+      member_id: string;
+      /**
+       * Format: date-time
+       * @description How far it has read.
+       * @example 2026-11-10T15:04:05Z
+       */
+      read_through: string;
+    };
+    /** @description Who has read a message, and who has not. */
+    RoomReadersResponse: {
+      /** @description Members who have not, the author left out. */
+      not_read_by: components["schemas"]["RoomAuthor"][];
+      /** @description Members who have read up to the message. */
+      read_by: components["schemas"]["RoomReader"][];
+    };
+    /**
+     * @description Messages a member has not read yet, each with its thread root for
+     *     context, already marked read.
+     */
+    RoomUnreadResponse: {
+      /** @description Unread messages, oldest first. */
+      data: components["schemas"]["RoomMessage"][];
+      /**
+       * @description Whether more unread messages remain after this page.
+       * @example false
+       */
+      has_more: boolean;
+      /** @description Root messages of the threads the unread replies belong to. */
+      threads: components["schemas"]["RoomMessage"][];
+    };
+    /** @description An agent member a message woke, or did not wake because of a limit. */
+    RoomWake: {
+      /**
+       * @description Its mention name.
+       * @example triage
+       */
+      handle: string;
+      /**
+       * @description The agent member.
+       * @example rmem_01933b5a000070008000000000000003
+       */
+      member_id: string;
+      /**
+       * @description `woken`, or the loop limit that stopped it (`hops`, `agent_hourly`,
+       *     `room_hourly`), or `failed`.
+       * @example woken
+       */
+      outcome: string;
+      /**
+       * @description The agent's session for this conversation.
+       * @example session_01933b5a000070008000000000000006
+       */
+      session_id?: string | null;
+    };
     /** @description Request to rotate an agent key. */
     RotateAgentKeyRequest: {
       /**
@@ -29954,6 +30728,11 @@ export interface components {
      */
     SessionSandboxStatusValue: "running" | "paused" | "lost";
     /**
+     * @description Which conversation an agent member keeps in a room.
+     * @enum {string}
+     */
+    SessionScope: "thread" | "room";
+    /**
      * @description How a session came into existence.
      *
      *     Closed set: the sessions facet rail enumerates every variant, so the value
@@ -29976,6 +30755,7 @@ export interface components {
       | "a2a"
       | "eval"
       | "subagent"
+      | "room"
       | "unknown";
     /** @description Data for session.started event */
     SessionStartedData: {
@@ -34517,6 +35297,11 @@ export interface components {
       /** @description Prefixed voice connection identifier this transcript belongs to. */
       voice_connection_id: string;
     };
+    /**
+     * @description When an agent member is woken.
+     * @enum {string}
+     */
+    WakeMode: "mentions" | "everything" | "never";
     /** @description An organization's web search defaults. */
     WebSearchDefaults: {
       /**
@@ -53730,6 +54515,623 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_rooms: {
+    parameters: {
+      query?: {
+        /** @description Include archived rooms. */
+        include_archived?: boolean;
+        /** @description Only rooms the caller is a member of. */
+        mine?: boolean;
+        /** @description The room with this external_ref. */
+        external_ref?: string;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomListResponse"];
+        };
+      };
+    };
+  };
+  create_room: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Room"];
+        };
+      };
+      /** @description external_ref is already used by another room */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_org_room_events: {
+    parameters: {
+      query?: {
+        /** @description Read events after this position (`next_after` of the last page). */
+        after?: number;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomEventListResponse"];
+        };
+      };
+    };
+  };
+  get_room: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Room"];
+        };
+      };
+      /** @description Room not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_room: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Room"];
+        };
+      };
+    };
+  };
+  archive_room: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Room"];
+        };
+      };
+    };
+  };
+  list_room_events: {
+    parameters: {
+      query?: {
+        /** @description Read events after this position (`next_after` of the last page). */
+        after?: number;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomEventListResponse"];
+        };
+      };
+    };
+  };
+  list_room_members: {
+    parameters: {
+      query?: {
+        /** @description Include members who left. */
+        include_left?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemberListResponse"];
+        };
+      };
+    };
+  };
+  add_room_member: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMember"];
+        };
+      };
+      /** @description Handle taken, or already a member */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  remove_room_member: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMember"];
+        };
+      };
+    };
+  };
+  update_room_member: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMember"];
+        };
+      };
+    };
+  };
+  list_room_messages: {
+    parameters: {
+      query?: {
+        /** @description Messages before this time (page backwards). */
+        before?: string;
+        /** @description Messages after this time (read forward). */
+        after?: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessageListResponse"];
+        };
+      };
+    };
+  };
+  post_room_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PostRoomMessageResponse"];
+        };
+      };
+    };
+  };
+  get_room_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessage"];
+        };
+      };
+    };
+  };
+  delete_room_message: {
+    parameters: {
+      query?: {
+        as_member?: string;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessage"];
+        };
+      };
+    };
+  };
+  edit_room_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessage"];
+        };
+      };
+    };
+  };
+  pin_room_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessage"];
+        };
+      };
+    };
+  };
+  react_to_room_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessage"];
+        };
+      };
+    };
+  };
+  list_room_message_readers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomReadersResponse"];
+        };
+      };
+    };
+  };
+  list_room_replies: {
+    parameters: {
+      query?: {
+        before?: string;
+        after?: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessageListResponse"];
+        };
+      };
+    };
+  };
+  list_room_pins: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessageListResponse"];
+        };
+      };
+    };
+  };
+  mark_room_read: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomReadMark"];
+        };
+      };
+    };
+  };
+  search_room_messages: {
+    parameters: {
+      query: {
+        /** @description Text to find, case-insensitive. */
+        q: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMessageListResponse"];
+        };
+      };
+    };
+  };
+  read_room_unread: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomUnreadResponse"];
+        };
       };
     };
   };

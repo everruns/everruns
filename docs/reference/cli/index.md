@@ -66,6 +66,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`providers`](/reference/cli/providers/) | LLM providers and their credentials. |
 | [`reports`](/reference/cli/reports/) | Usage and cost reporting: queries, saved reports, catalog. |
 | [`resources`](/reference/cli/resources/) | Access to credentials and connections. |
+| [`rooms`](/reference/cli/rooms/) | Conversations where people and agents talk; addressed agents wake. |
 | [`sandbox-targets`](/reference/cli/sandbox-targets/) | Sandbox providers this deployment offers. |
 | [`sandbox-template-metadata`](/reference/cli/sandbox-template-metadata/) | Sandbox Template names and descriptions, without execution settings. |
 | [`sandbox-templates`](/reference/cli/sandbox-templates/) | Reusable sandbox configurations and their provider snapshots. |

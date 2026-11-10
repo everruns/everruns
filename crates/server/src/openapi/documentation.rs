@@ -37,10 +37,11 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
     (
         "sessions-workspaces",
         "Sessions & workspaces",
-        "Manage execution sessions and their files, tasks, storage, databases and managed sandboxes.",
+        "Manage execution sessions and rooms, and their files, tasks, storage, databases and managed sandboxes.",
         &[
             "sessions",
             "messages",
+            "rooms",
             "events",
             "Files",
             "images",

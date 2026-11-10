@@ -26155,6 +26155,1146 @@
         }
       }
     },
+    "/v1/rooms": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List the org's rooms, most recently active first",
+        "operationId": "list_rooms",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived rooms.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "description": "Only rooms the caller is a member of.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "external_ref",
+            "in": "query",
+            "description": "The room with this external_ref.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Create a room where people and agents talk",
+        "description": "Create a room where people and agents talk. The caller becomes its first owner; members can be added in the same call.",
+        "operationId": "create_room",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "external_ref is already used by another room"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/events": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Read the change feed of every room in the org, in order",
+        "description": "Read the change feed of every room in the org, in order. Poll with after=next_after.",
+        "operationId": "list_org_room_events",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Read events after this position (`next_after` of the last page).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomEventListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Get a room",
+        "operationId": "get_room",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Room not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Change a room's name, topic or settings",
+        "description": "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
+        "operationId": "update_room",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/archive": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Archive a room (or bring it back with archived=false)",
+        "description": "Archive a room (or bring it back with archived=false). An archived room keeps everything but takes no posts and wakes no agents.",
+        "operationId": "archive_room",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/events": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Read a room's change feed",
+        "description": "Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.",
+        "operationId": "list_room_events",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Read events after this position (`next_after` of the last page).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomEventListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/members": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List a room's members",
+        "operationId": "list_room_members",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_left",
+            "in": "query",
+            "description": "Include members who left.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemberListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Add a member to a room",
+        "description": "Add a person, an Everruns agent, an outside agent or a guest to a room. Owners and org admins only.",
+        "operationId": "add_room_member",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMember"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Handle taken, or already a member"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/members/{member_id}": {
+      "delete": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Remove a member from a room",
+        "description": "Remove a member from a room. Their messages stay. Owners and org admins can remove anyone; a person can leave on their own.",
+        "operationId": "remove_room_member",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMember"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Change a room member's settings",
+        "description": "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
+        "operationId": "update_room_member",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMember"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/messages": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Read a room's top-level messages, oldest first",
+        "description": "Read a room's top-level messages, oldest first. Without a position, the newest page.",
+        "operationId": "list_room_messages",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Messages before this time (page backwards).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Messages after this time (read forward).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessageListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Post a message in a room, at the top level or as a reply",
+        "description": "Post a message in a room, at the top level or as a reply. Returns the message and the agents it woke.",
+        "operationId": "post_room_message",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostRoomMessageResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/messages/{message_id}": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Get one message",
+        "operationId": "get_room_message",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessage"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Delete a message",
+        "description": "Delete a message. Its author, or a room owner. A marker stays in its place and replies stay.",
+        "operationId": "delete_room_message",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "as_member",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessage"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Change a message's text",
+        "description": "Change a message's text. Its author, or a room owner. Editing never wakes agents again.",
+        "operationId": "edit_room_message",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessage"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/messages/{message_id}/pin": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Pin a message to the room, or unpin it with pinned=false",
+        "description": "Pin a message to the room, or unpin it with pinned=false. Any member can pin.",
+        "operationId": "pin_room_message",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessage"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/messages/{message_id}/reactions": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Add a reaction to a message, or remove it with add=false",
+        "description": "Add a reaction to a message, or remove it with add=false. Reactions never wake agents.",
+        "operationId": "react_to_room_message",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessage"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/messages/{message_id}/readers": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Who has read a message, and who has not",
+        "operationId": "list_room_message_readers",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomReadersResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/messages/{message_id}/replies": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Read the replies in a message's thread, oldest first",
+        "operationId": "list_room_replies",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessageListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/pins": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List a room's pinned messages, most recently pinned first",
+        "operationId": "list_room_pins",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessageListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/read": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Mark a room's top level, or a thread, read up to a message",
+        "description": "Mark a room's top level, or a thread, read up to a message. Marks only move forward.",
+        "operationId": "mark_room_read",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomReadMark"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/search": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Find messages in a room by text, newest first",
+        "operationId": "search_room_messages",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Text to find, case-insensitive.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMessageListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/rooms/{room_id}/unread": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Read and mark a room's unread messages",
+        "description": "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
+        "operationId": "read_room_unread",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomUnreadResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sandbox-targets": {
       "get": {
         "tags": [
@@ -59162,6 +60302,32 @@
           }
         }
       },
+      "LoopLimits": {
+        "type": "object",
+        "description": "Loop limits in force in one room.",
+        "required": [
+          "max_hops",
+          "max_wakes_per_agent_hour",
+          "max_agent_posts_hour"
+        ],
+        "properties": {
+          "max_agent_posts_hour": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Agent posts in one room per hour."
+          },
+          "max_hops": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Agent posts in a row before agents stop being woken."
+          },
+          "max_wakes_per_agent_hour": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Wakes of one agent in one room per hour."
+          }
+        }
+      },
       "ManageSessionSandboxRequest": {
         "type": "object",
         "description": "Request body for the `manage_session_sandbox` operation.",
@@ -65912,6 +67078,27 @@
           "stop"
         ]
       },
+      "PostRoomMessageResponse": {
+        "type": "object",
+        "description": "A posted message and the agents it woke.",
+        "required": [
+          "message",
+          "woke"
+        ],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/RoomMessage",
+            "description": "The posted message."
+          },
+          "woke": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomWake"
+            },
+            "description": "Agent members the message addressed, and what happened to each."
+          }
+        }
+      },
       "PostTaskMessageBody": {
         "type": "object",
         "description": "Request body for posting an inbound task message.",
@@ -68168,6 +69355,673 @@
           "high"
         ],
         "example": "low"
+      },
+      "Room": {
+        "type": "object",
+        "description": "An org-owned conversation space for people and agents.",
+        "required": [
+          "id",
+          "name",
+          "metadata",
+          "loop_limits",
+          "archived",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Whether the room is archived: it keeps everything but takes no posts and wakes no agents.",
+            "example": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the room was created.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "external_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The builder's own id for this room.",
+            "example": "ticket-4521"
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed room id (`room_...`).",
+            "example": "room_01933b5a000070008000000000000001"
+          },
+          "last_message_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the last message was posted.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "link_template": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where a message opens in the builder's product; `{room_id}`,\n`{message_id}` and `{thread_id}` are filled in to make each message's\n`url`.",
+            "example": "https://desk.example.com/rooms/{room_id}/m/{message_id}"
+          },
+          "loop_limits": {
+            "$ref": "#/components/schemas/LoopLimits",
+            "description": "Loop limits in force."
+          },
+          "metadata": {
+            "description": "Free-form data the builder keeps with the room."
+          },
+          "name": {
+            "type": "string",
+            "description": "Room name.",
+            "example": "Support desk"
+          },
+          "topic": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the room is about.",
+            "example": "Customer escalations"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the room last changed.",
+            "example": "2026-11-10T15:04:05Z"
+          }
+        }
+      },
+      "RoomAuthor": {
+        "type": "object",
+        "description": "Who wrote a message, as the message shows it.",
+        "required": [
+          "id",
+          "handle",
+          "display_name",
+          "kind"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "Name shown with the message.",
+            "example": "Triage agent"
+          },
+          "handle": {
+            "type": "string",
+            "description": "Mention name, written `@handle`.",
+            "example": "triage"
+          },
+          "id": {
+            "type": "string",
+            "description": "Member id of the author.",
+            "example": "rmem_01933b5a000070008000000000000003"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RoomMemberKind",
+            "description": "Person, Everruns agent, outside agent or guest."
+          }
+        }
+      },
+      "RoomEvent": {
+        "type": "object",
+        "description": "One entry of a room's change feed.",
+        "required": [
+          "seq",
+          "room_id",
+          "type",
+          "data",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it happened.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "data": {
+            "description": "Details of the change; the shape depends on `type`."
+          },
+          "member_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member it is about or by, if any.",
+            "example": "rmem_01933b5a000070008000000000000003"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The message it is about, if any.",
+            "example": "rmsg_01933b5a000070008000000000000002"
+          },
+          "room_id": {
+            "type": "string",
+            "description": "The room it happened in.",
+            "example": "room_01933b5a000070008000000000000001"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Position in the org's room feed; read on with `after`.",
+            "example": 120
+          },
+          "type": {
+            "type": "string",
+            "description": "`room.created`, `room.updated`, `room.archived`, `room.unarchived`,\n`member.joined`, `member.left`, `message.posted`, `message.edited`,\n`message.deleted`, `message.pinned`, `message.unpinned`,\n`reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.",
+            "example": "message.posted"
+          }
+        }
+      },
+      "RoomEventListResponse": {
+        "type": "object",
+        "description": "A page of a room change feed.",
+        "required": [
+          "data",
+          "next_after"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomEvent"
+            },
+            "description": "Events, in order."
+          },
+          "next_after": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Pass as `after` to read on.",
+            "example": 120
+          }
+        }
+      },
+      "RoomListResponse": {
+        "type": "object",
+        "description": "A page of rooms.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Room"
+            },
+            "description": "Rooms, most recently active first."
+          }
+        }
+      },
+      "RoomMember": {
+        "type": "object",
+        "description": "A member of a room.",
+        "required": [
+          "id",
+          "room_id",
+          "kind",
+          "handle",
+          "display_name",
+          "role",
+          "wake",
+          "session_scope",
+          "left",
+          "joined_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's id, for an Everruns agent.",
+            "example": "agent_01933b5a000070008000000000000005"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Name shown with the member's messages.",
+            "example": "Triage agent"
+          },
+          "handle": {
+            "type": "string",
+            "description": "Mention name, written `@handle`.",
+            "example": "triage"
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed member id (`rmem_...`).",
+            "example": "rmem_01933b5a000070008000000000000003"
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Extra instructions an agent member gets in this room.",
+            "example": "Answer billing questions only."
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the member joined.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RoomMemberKind",
+            "description": "Person, Everruns agent, outside agent or guest."
+          },
+          "left": {
+            "type": "boolean",
+            "description": "Whether the member left. Left members still name their old messages.",
+            "example": false
+          },
+          "role": {
+            "$ref": "#/components/schemas/RoomMemberRole",
+            "description": "Owner or member."
+          },
+          "room_id": {
+            "type": "string",
+            "description": "The room this member belongs to.",
+            "example": "room_01933b5a000070008000000000000001"
+          },
+          "session_scope": {
+            "$ref": "#/components/schemas/SessionScope",
+            "description": "Which conversation an agent member keeps."
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The person's user id, for a person.",
+            "example": "user_01933b5a000070008000000000000004"
+          },
+          "wake": {
+            "$ref": "#/components/schemas/WakeMode",
+            "description": "When an agent member is woken."
+          }
+        }
+      },
+      "RoomMemberKind": {
+        "type": "string",
+        "description": "Kind of room member.",
+        "enum": [
+          "person",
+          "agent",
+          "outside_agent",
+          "guest"
+        ]
+      },
+      "RoomMemberListResponse": {
+        "type": "object",
+        "description": "A room's members.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMember"
+            },
+            "description": "Members, in the order they joined."
+          }
+        }
+      },
+      "RoomMemberRole": {
+        "type": "string",
+        "description": "Role of a member in its room.",
+        "enum": [
+          "owner",
+          "member"
+        ]
+      },
+      "RoomMention": {
+        "type": "object",
+        "description": "A member a message mentions.",
+        "required": [
+          "id",
+          "handle"
+        ],
+        "properties": {
+          "handle": {
+            "type": "string",
+            "description": "Mention name as written.",
+            "example": "triage"
+          },
+          "id": {
+            "type": "string",
+            "description": "Member id of the mentioned member.",
+            "example": "rmem_01933b5a000070008000000000000003"
+          }
+        }
+      },
+      "RoomMessage": {
+        "type": "object",
+        "description": "A message in a room.",
+        "required": [
+          "id",
+          "room_id",
+          "text",
+          "mentions",
+          "reactions",
+          "reply_count",
+          "pinned",
+          "deleted",
+          "hops",
+          "created_at"
+        ],
+        "properties": {
+          "author": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomAuthor",
+                "description": "Absent for a room notice."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was posted.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "Whether it was deleted; a marker stays in its place.",
+            "example": false
+          },
+          "edited_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was last edited.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "hops": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Agent posts in a row up to this message (0 when a person wrote it).",
+            "example": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed message id (`rmsg_...`).",
+            "example": "rmsg_01933b5a000070008000000000000002"
+          },
+          "last_reply_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When its thread last got a reply.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMention"
+            },
+            "description": "Members the text mentions, resolved when it was posted."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Whether it is pinned to the room.",
+            "example": false
+          },
+          "reactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomReaction"
+            },
+            "description": "Reactions, one entry per emoji."
+          },
+          "reply_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Replies in its thread, for a top-level message.",
+            "example": 3
+          },
+          "room_id": {
+            "type": "string",
+            "description": "The room it was posted in.",
+            "example": "room_01933b5a000070008000000000000001"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent session that wrote it, for agent posts.",
+            "example": "session_01933b5a000070008000000000000006"
+          },
+          "text": {
+            "type": "string",
+            "description": "Markdown. Empty once deleted.",
+            "example": "@triage can you check ticket 4521?"
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The thread it is a reply in (its root message); absent at the top level.",
+            "example": "rmsg_01933b5a000070008000000000000002"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where it opens in the builder's product (the room's `link_template`).",
+            "example": "https://desk.example.com/rooms/room_01933b5a000070008000000000000001/m/rmsg_01933b5a000070008000000000000002"
+          }
+        }
+      },
+      "RoomMessageListResponse": {
+        "type": "object",
+        "description": "A page of messages.",
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMessage"
+            },
+            "description": "Messages, oldest first."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "Whether older messages exist before the first one returned.",
+            "example": false
+          }
+        }
+      },
+      "RoomReaction": {
+        "type": "object",
+        "description": "One emoji on a message, with who added it.",
+        "required": [
+          "emoji",
+          "count",
+          "member_ids"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "How many members added it.",
+            "example": 2,
+            "minimum": 0
+          },
+          "emoji": {
+            "type": "string",
+            "description": "The emoji, as text.",
+            "example": "👀"
+          },
+          "member_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Members who added it.",
+            "example": [
+              "rmem_01933b5a000070008000000000000003"
+            ]
+          }
+        }
+      },
+      "RoomReadMark": {
+        "type": "object",
+        "description": "A reader's position in one scope.",
+        "required": [
+          "scope_id",
+          "read_through"
+        ],
+        "properties": {
+          "read_through": {
+            "type": "string",
+            "format": "date-time",
+            "description": "How far the reader has read.",
+            "example": "2026-11-10T15:04:05Z"
+          },
+          "scope_id": {
+            "type": "string",
+            "description": "The room id for the top level, or a thread's root message id.",
+            "example": "room_01933b5a000070008000000000000001"
+          }
+        }
+      },
+      "RoomReader": {
+        "type": "object",
+        "description": "One reader of a scope.",
+        "required": [
+          "member_id",
+          "handle",
+          "read_through"
+        ],
+        "properties": {
+          "handle": {
+            "type": "string",
+            "description": "Its mention name.",
+            "example": "ana-lopez"
+          },
+          "member_id": {
+            "type": "string",
+            "description": "The reader.",
+            "example": "rmem_01933b5a000070008000000000000003"
+          },
+          "read_through": {
+            "type": "string",
+            "format": "date-time",
+            "description": "How far it has read.",
+            "example": "2026-11-10T15:04:05Z"
+          }
+        }
+      },
+      "RoomReadersResponse": {
+        "type": "object",
+        "description": "Who has read a message, and who has not.",
+        "required": [
+          "read_by",
+          "not_read_by"
+        ],
+        "properties": {
+          "not_read_by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomAuthor"
+            },
+            "description": "Members who have not, the author left out."
+          },
+          "read_by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomReader"
+            },
+            "description": "Members who have read up to the message."
+          }
+        }
+      },
+      "RoomUnreadResponse": {
+        "type": "object",
+        "description": "Messages a member has not read yet, each with its thread root for\ncontext, already marked read.",
+        "required": [
+          "data",
+          "threads",
+          "has_more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMessage"
+            },
+            "description": "Unread messages, oldest first."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "Whether more unread messages remain after this page.",
+            "example": false
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMessage"
+            },
+            "description": "Root messages of the threads the unread replies belong to."
+          }
+        }
+      },
+      "RoomWake": {
+        "type": "object",
+        "description": "An agent member a message woke, or did not wake because of a limit.",
+        "required": [
+          "member_id",
+          "handle",
+          "outcome"
+        ],
+        "properties": {
+          "handle": {
+            "type": "string",
+            "description": "Its mention name.",
+            "example": "triage"
+          },
+          "member_id": {
+            "type": "string",
+            "description": "The agent member.",
+            "example": "rmem_01933b5a000070008000000000000003"
+          },
+          "outcome": {
+            "type": "string",
+            "description": "`woken`, or the loop limit that stopped it (`hops`, `agent_hourly`,\n`room_hourly`), or `failed`.",
+            "example": "woken"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's session for this conversation.",
+            "example": "session_01933b5a000070008000000000000006"
+          }
+        }
       },
       "RotateAgentKeyRequest": {
         "type": "object",
@@ -73220,6 +75074,14 @@
           "lost"
         ]
       },
+      "SessionScope": {
+        "type": "string",
+        "description": "Which conversation an agent member keeps in a room.",
+        "enum": [
+          "thread",
+          "room"
+        ]
+      },
       "SessionSource": {
         "type": "string",
         "description": "How a session came into existence.\n\nClosed set: the sessions facet rail enumerates every variant, so the value\nis typed rather than a free-form string. Ingress paths set it server-side —\nclients may only declare the two variants they can legitimately be\n(`Chat` and `Api`), which keeps a facet like \"started by a schedule\"\ntrustworthy. Rows that predate the column, or whose origin could not be\ninferred at backfill time, carry `Unknown`.",
@@ -73235,6 +75097,7 @@
           "a2a",
           "eval",
           "subagent",
+          "room",
           "unknown"
         ]
       },
@@ -81790,6 +83653,15 @@
           }
         }
       },
+      "WakeMode": {
+        "type": "string",
+        "description": "When an agent member is woken.",
+        "enum": [
+          "mentions",
+          "everything",
+          "never"
+        ]
+      },
       "WebSearchDefaults": {
         "type": "object",
         "description": "An organization's web search defaults.",
@@ -85472,6 +87344,11 @@
       "x-displayName": "Messages"
     },
     {
+      "name": "rooms",
+      "description": "Rooms: org-owned conversations where people, agents and guests talk, and addressed agents are woken",
+      "x-displayName": "Rooms"
+    },
+    {
       "name": "events",
       "description": "Event streaming endpoints (SSE)",
       "x-displayName": "Events"
@@ -85687,6 +87564,7 @@
       "tags": [
         "sessions",
         "messages",
+        "rooms",
         "events",
         "Files",
         "images",
@@ -85699,7 +87577,7 @@
         "workspace",
         "workspace-filesystem"
       ],
-      "x-description": "Manage execution sessions and their files, tasks, storage, databases and managed sandboxes.",
+      "x-description": "Manage execution sessions and rooms, and their files, tasks, storage, databases and managed sandboxes.",
       "x-slug": "sessions-workspaces"
     },
     {

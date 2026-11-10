@@ -840,6 +840,20 @@ pub fn declared(name: &str) -> Change {
             "runtime credential operations are write-only and use payload-free resource audit",
         ),
         "mark_notification_viewed" => Change::Exempt("read state of the caller's own inbox"),
+        // Rooms keep their own ordered change feed (`room_events`), which
+        // records every one of these with who did it.
+        "create_room" | "update_room" | "archive_room" | "add_room_member"
+        | "update_room_member" | "remove_room_member" => {
+            Change::Exempt("rooms record their own changes in the room's event feed")
+        }
+        "post_room_message"
+        | "edit_room_message"
+        | "delete_room_message"
+        | "react_to_room_message"
+        | "pin_room_message" => Change::Exempt("room conversation traffic, not configuration"),
+        "mark_room_read" | "read_room_unread" => {
+            Change::Exempt("read state of the caller's own room position")
+        }
         "check_health_issue" | "snooze_health_issue" | "dismiss_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
         }

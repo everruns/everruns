@@ -322,6 +322,15 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Explicit, bounded permission to use a resource.",
     ),
     (
+        "rooms",
+        "Conversations where people and agents talk; addressed agents wake.",
+    ),
+    ("rooms members", "People, agents and guests in a room."),
+    (
+        "rooms messages",
+        "Posts, replies, reactions, pins and readers in a room.",
+    ),
+    (
         "sandbox-template-metadata",
         "Sandbox Template names and descriptions, without execution settings.",
     ),
