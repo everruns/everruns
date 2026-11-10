@@ -43,7 +43,7 @@ everruns --version
 
 ## Configure
 
-The CLI defaults to [Everruns Cloud](https://app.everruns.com) at `https://app.everruns.com/api`. Sign in once:
+The CLI defaults to the [Everruns demo instance](https://app.everruns.com) at `https://app.everruns.com/api`. Sign in once:
 
 ```bash
 everruns login          # opens the browser for OAuth

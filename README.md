@@ -6,17 +6,22 @@
 [![CI](https://github.com/everruns/everruns/actions/workflows/ci.yml/badge.svg)](https://github.com/everruns/everruns/actions/workflows/ci.yml)
 [![Repo: Agent Friendly](https://img.shields.io/badge/Repo-Agent%20Friendly-blue)](AGENTS.md)
 
-**Build capable AI agents in Rust. Run them where they belong.**
+**Build capable AI agents in Rust. Run them on your own machines.**
 
-Everruns is an open-source framework for building AI agents directly in Rust
-applications. Define agents, attach models and typed tools, run multi-turn
-sessions, and observe execution through one application-facing API.
+Everruns is an open-source framework and durable runtime for AI agents in Rust.
+Define agents, attach models and typed tools, run multi-turn sessions, and
+observe execution through one application-facing API.
 
-Use the framework in your application. When you need a shared runtime and
-production operations, run the Everruns platform yourself or use
-[Everruns Demo](https://app.everruns.com).
+It is a free, non-commercial project by [Mykhailo Chalyi](https://chaliy.name)
+and contributors, pre-1.0, and part of the
+[Everruns community ecosystem](https://everruns.com/projects/) of open-source
+AI projects. There is no company behind it and no paid edition. Talk to us on
+[Discord](https://everruns.com/discord/everruns).
 
-[Build with the framework](https://everruns.com/docs/framework/quickstart/) · [Read the docs](https://everruns.com/docs/framework/) · [Try Demo](https://everruns.com/docs/getting-started/cloud/)
+Use the framework in your application. When you need a shared runtime, run the
+Everruns platform yourself on your machine, a server or Kubernetes.
+
+[Build with the framework](https://everruns.com/docs/framework/quickstart/) · [Run it yourself](https://everruns.com/docs/getting-started/introduction/#self-hosted) · [Read the docs](https://everruns.com/docs/framework/)
 
 <p align="center">
   <img src="./assets/readme/banner.png" alt="Everruns" width="100%" />
@@ -54,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name("assistant")
         .instructions("Use current_time when asked about time. Be concise.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5-mini")
+        .model("gpt-6.1-sol")
         .tool(current_time())
         .build()?;
 
@@ -89,18 +94,35 @@ loop explicit and embeddable:
 
 ## Choose how you run Everruns
 
-| Framework | Self-hosted platform | Everruns Demo |
-| --- | --- | --- |
-| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[On your machine →](https://everruns.com/docs/getting-started/run-locally/) · [Docker Compose →](https://everruns.com/docs/getting-started/docker-compose/) · [Kubernetes →](https://everruns.com/docs/getting-started/kubernetes/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) | Explore the hosted open-source platform with available promotional credit or your own provider keys.<br><br>[Everruns Demo quickstart →](https://everruns.com/docs/getting-started/cloud/) · [Try Demo →](https://app.everruns.com) |
+| Framework | Self-hosted platform |
+| --- | --- |
+| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[On your machine →](https://everruns.com/docs/getting-started/run-locally/) · [Docker Compose →](https://everruns.com/docs/getting-started/docker-compose/) · [Kubernetes →](https://everruns.com/docs/getting-started/kubernetes/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) |
+
+No server to spare? Look around the [demo instance](https://app.everruns.com)
+([quickstart](https://everruns.com/docs/getting-started/cloud/)). It runs the
+same open-source code and is a demo, not a hosted service.
 
 ### Platform capabilities
 
-The Platform, self-hosted or on Everruns Demo, adds durable execution, a stateless worker
+The Platform, self-hosted or on the demo instance, adds durable execution, a stateless worker
 pool, a web UI, and a remote API. It also publishes agents to Slack, web chat,
 A2A, webhooks, schedules, voice, HTTP, and MCP; manages organizations and
 permissions; and supports observation, budgeting, and evaluation.
 
 [Platform capabilities](https://everruns.com/docs/features/capabilities/) · [Channels](https://everruns.com/docs/features/channels/) · [Durable execution](https://everruns.com/docs/explanation/durable-execution/) · [Observability](https://everruns.com/docs/observability/)
+
+## How can I support this project?
+
+Everruns is a free, non-commercial community project. There are many ways to help:
+
+- Use Everruns and tell us how it went on [Discord](https://everruns.com/discord/everruns) or by email ([mykhailo@everruns.com](mailto:mykhailo@everruns.com))
+- Take one of the [open research questions](https://everruns.com/research/) and share what you measured
+- Report bugs and rough edges in [GitHub Issues](https://github.com/everruns/everruns/issues)
+- Star the repository, it helps other people find it
+- Write a blog post or share the agent you built
+- Help with the [documentation](https://everruns.com/docs/) by asking questions or sending PRs
+- Contribute code (see below, and say hi on [Discord](https://everruns.com/discord/everruns))
+- Talk about Everruns around you
 
 ## Documentation
 
@@ -126,18 +148,6 @@ and, where feasible, test coverage.
 - [Threat model](./knowledge/security/threat-model.md) — full analysis, mitigation status, and accepted risks
 - [Security testing](./knowledge/security/security-testing.md) — threat-model tests, failure injection, DeepSec scanning, and supply-chain checks
 - [Security policy](./SECURITY.md) — report a vulnerability
-
-## How can I support this project?
-
-Everruns is a free, open-source hobby project. There are many ways to help:
-
-- Use Everruns and tell us how it went on [Discord](https://everruns.com/discord/everruns) or by email ([mykhailo@everruns.com](mailto:mykhailo@everruns.com))
-- Report bugs and rough edges in [GitHub Issues](https://github.com/everruns/everruns/issues)
-- Star the repository, it helps other people find it
-- Write a blog post or share the agent you built
-- Help with the [documentation](https://everruns.com/docs/) by asking questions or sending PRs
-- Contribute code (see below, and say hi on [Discord](https://everruns.com/discord/everruns))
-- Talk about Everruns around you
 
 ## Contributing
 

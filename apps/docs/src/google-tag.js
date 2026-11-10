@@ -25,7 +25,7 @@ document.addEventListener(
     }
     const name =
       host === "app.everruns.com"
-        ? "cloud_signup_click"
+        ? "demo_click"
         : host === "github.com" && link.href.includes("/everruns")
           ? "github_click"
           : null;

@@ -38,7 +38,7 @@ Enforcement is **post-hoc**: the check runs after each LLM call, not before. Thi
 
 USD budgets use real per-model pricing, so the same dollar limit buys far more turns on a small model than on a frontier one.
 
-These session and agent budgets are limits you set. They are separate from the prepaid credit balance of an organization on Everruns Cloud, which pays for the built-in model provider and stops it at zero balance.
+These session and agent budgets are limits you set. They are separate from the prepaid credit balance of an organization on the Everruns demo instance, which pays for the built-in model provider and stops it at zero balance.
 
 ## Soft Limits and Pausing
 

@@ -50,7 +50,7 @@ everruns agents list -o json \
 
 ## Authenticate and configure the API URL
 
-The CLI targets Everruns Cloud (`https://app.everruns.com/api`) by default. Sign in once:
+The CLI targets the Everruns demo instance (`https://app.everruns.com/api`) by default. Sign in once:
 
 ```bash
 everruns login           # browser sign-in

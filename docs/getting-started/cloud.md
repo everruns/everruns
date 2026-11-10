@@ -6,10 +6,12 @@ sidebar:
 appliesTo: [cloud]
 ---
 
-[Everruns Demo](https://app.everruns.com) runs the Everruns Platform for you:
-the API, the workers, the database, and the UI. You create agents and sessions;
-Everruns operates the infrastructure. Explore with available promotional
-credit for built-in models, or connect your own provider keys.
+[Everruns Demo](https://app.everruns.com) is a demo instance of the same
+open-source code you can run yourself. It is not a hosted service: use it to
+look around, then [run your own](/getting-started/docker-compose/) with Docker Compose or
+Kubernetes. The demo runs the API, the workers, the database, and the UI for
+you. Explore with available promotional credit for built-in models, or connect
+your own provider keys.
 
 This page takes you from sign-up to a first agent turn, then explains how
 credit works.

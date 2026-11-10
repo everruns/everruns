@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-These guides target the Everruns Platform (Everruns Cloud or self-hosted). Framework guides live under [/framework/](/framework/).
+These guides target the Everruns Platform (the Everruns demo instance or self-hosted). Framework guides live under [/framework/](/framework/).
 
 Each how-to here solves one concrete problem. They assume you already understand the basics (read the [Tutorials](/tutorials/run-an-agent/) first) and they don't try to teach concepts (see [Explanation](/explanation/) for that).
 
