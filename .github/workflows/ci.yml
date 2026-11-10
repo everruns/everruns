@@ -2175,14 +2175,14 @@ jobs:
       SESSIONS: '60'
       CHAOS_FLAG: ''
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         ref: ${{ needs.changes.outputs.revision }}
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: everruns-server
         path: ./bin
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: everruns-worker
         path: ./bin
@@ -2244,7 +2244,7 @@ jobs:
         } >> "$GITHUB_STEP_SUMMARY"
     - name: Upload run directory
       if: always()
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: chaos-run-${{ matrix.host }}
         path: ${{ runner.temp }}/chaos-run
