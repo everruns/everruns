@@ -3,7 +3,7 @@
 import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
 
 import Link from "next/link";
-import { Key, RefreshCw, Settings2, Sparkles } from "lucide-react";
+import { Key, Plug, RefreshCw, Settings2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -42,10 +42,10 @@ export function ProviderCard(props: ProviderCardProps) {
 
 function providerStatus(provider: Provider): { label: string; dot: string } {
   if (provider.status === "disabled") return { label: "Disabled", dot: "bg-muted-foreground/50" };
-  if (!provider.api_key_set) {
-    return { label: "Needs a key", dot: "bg-warning" };
+  if (!provider.api_key_set && !provider.managed) {
+    return { label: "Not connected", dot: "border border-muted-foreground/60" };
   }
-  return { label: "Active", dot: "bg-success" };
+  return { label: "Connected", dot: "bg-success" };
 }
 
 function ProviderCardContent({
@@ -76,6 +76,9 @@ function ProviderCardContent({
   const modelsHref = `/models?provider=${encodeURIComponent(provider.id)}`;
 
   const description = getProviderDescription(provider.provider_type);
+  // A provider without a credential cannot serve anything yet: render it as a
+  // quiet, compact placeholder so connected providers read as the real ones.
+  const connected = provider.api_key_set || provider.managed;
   const credential = provider.managed
     ? "Host managed"
     : provider.api_key_set
@@ -84,6 +87,7 @@ function ProviderCardContent({
 
   return (
     <EntityCard
+      className={connected ? undefined : "border-dashed bg-transparent shadow-none"}
       icon={
         <IconTile
           size="md"
@@ -119,7 +123,7 @@ function ProviderCardContent({
           )}
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
             <span aria-hidden className={`size-1.5 rounded-full ${status.dot}`} />
-            {status.label}
+            {ui(status.label)}
           </span>
         </>
       }
@@ -129,7 +133,9 @@ function ProviderCardContent({
         <EntityCardFooter
           className="min-h-12 flex-nowrap"
           meta={
-            modelsLoading ? (
+            !connected ? (
+              <span>{ui("Connect it to use its models")}</span>
+            ) : modelsLoading ? (
               <Skeleton className="h-4 w-36" />
             ) : (
               <Link href={modelsHref} className="text-primary hover:underline">
@@ -146,8 +152,10 @@ function ProviderCardContent({
             <div className="flex items-center gap-1.5">
               {canEditCredential && !provider.api_key_set && (
                 <Button size="sm" onClick={() => onSetApiKey(provider)}>
-                  <Key className="icon-sharp size-3.5" />
-                  {ui("Set key")}
+                  {/* "Connect", not "Set key": the dialog also offers OAuth
+                      sign-in where the driver supports it (OpenRouter). */}
+                  <Plug className="icon-sharp size-3.5" />
+                  {ui("Connect")}
                 </Button>
               )}
               {canEditCredential && provider.api_key_set && (
@@ -197,28 +205,34 @@ function ProviderCardContent({
           whatever the description length, including providers without one. */}
       <div className="flex h-full flex-col gap-3">
         {description && <p className="line-clamp-2 text-sm text-foreground/75">{description}</p>}
-        <div className="mt-auto space-y-1.5">
-          <EntityCardDetail label={<span className="inline-block w-20">{ui("Services")}</span>}>
-            <span className="truncate">{services.join(", ") || "—"}</span>
-          </EntityCardDetail>
-          <EntityCardDetail label={<span className="inline-block w-20">{ui("Credentials")}</span>}>
-            <span className={provider.api_key_set ? "truncate" : "truncate text-warning"}>
-              {credential}
-            </span>
-          </EntityCardDetail>
-          <EntityCardDetail label={<span className="inline-block w-20">{ui("Endpoint")}</span>}>
-            <span className="min-w-0 truncate font-mono" title={provider.base_url}>
-              {provider.base_url ?? ui("Driver default")}
-            </span>
-          </EntityCardDetail>
-          <EntityCardDetail label={<span className="inline-block w-20">{ui("Last synced")}</span>}>
-            <span>
-              {provider.last_synced_at
-                ? formatRelativeTime(provider.last_synced_at, displayLocale)
-                : ui("Never")}
-            </span>
-          </EntityCardDetail>
-        </div>
+        {connected && (
+          <div className="mt-auto space-y-1.5">
+            <EntityCardDetail label={<span className="inline-block w-20">{ui("Services")}</span>}>
+              <span className="truncate">{services.join(", ") || "—"}</span>
+            </EntityCardDetail>
+            <EntityCardDetail
+              label={<span className="inline-block w-20">{ui("Credentials")}</span>}
+            >
+              <span className={provider.api_key_set ? "truncate" : "truncate text-warning"}>
+                {credential}
+              </span>
+            </EntityCardDetail>
+            <EntityCardDetail label={<span className="inline-block w-20">{ui("Endpoint")}</span>}>
+              <span className="min-w-0 truncate font-mono" title={provider.base_url}>
+                {provider.base_url ?? ui("Driver default")}
+              </span>
+            </EntityCardDetail>
+            <EntityCardDetail
+              label={<span className="inline-block w-20">{ui("Last synced")}</span>}
+            >
+              <span>
+                {provider.last_synced_at
+                  ? formatRelativeTime(provider.last_synced_at, displayLocale)
+                  : ui("Never")}
+              </span>
+            </EntityCardDetail>
+          </div>
+        )}
         {canManage && newCount > 0 && (
           <button
             type="button"

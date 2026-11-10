@@ -164,6 +164,8 @@ pub struct SeedResult {
     created: usize,
     updated: usize,
     unchanged: usize,
+    /// Providers that just gained a credential and need their models provisioned.
+    connected: Vec<Uuid>,
 }
 
 impl SeedResult {
@@ -171,6 +173,7 @@ impl SeedResult {
         self.created += other.created;
         self.updated += other.updated;
         self.unchanged += other.unchanged;
+        self.connected.extend(other.connected);
     }
 
     fn has_changes(&self) -> bool {
@@ -434,6 +437,15 @@ fn enabled_seed_provider_ids(host_composition: &HostComposition) -> HashSet<Uuid
         .collect()
 }
 
+/// Keep already-existing built-in provider rows current (name, driver).
+///
+/// Decision: seeding never creates a provider row on its own. A provider
+/// appears only when someone connects it, or, for single-tenant/dev, when a
+/// `DEFAULT_*_API_KEY` is materialized from env
+/// ([`seed_default_provider_keys_with_lookup`]). Pre-creating every built-in
+/// driver filled the Providers tab with keyless cards and the model picker
+/// with models nobody could run. Rows created by older versions are kept
+/// (records are never purged) and still refreshed here.
 async fn seed_providers_with_host_composition(
     db: &StorageBackend,
     host_composition: &HostComposition,
@@ -449,6 +461,9 @@ async fn seed_providers_with_host_composition(
                 provider_type = seed.provider_type,
                 "Skipping seed provider because platform definition does not register its driver"
             );
+            continue;
+        }
+        if db.get_provider(DEFAULT_ORG_ID, seed.id).await?.is_none() {
             continue;
         }
         let input = CreateProviderRow {
@@ -545,8 +560,9 @@ where
 /// provider rows (encrypted), so org-scoped execution can resolve them through
 /// the normal fail-closed DB path.
 ///
-/// Only fills providers that have no key configured — an explicitly-set key
-/// (via UI/API) is never overwritten. Idempotent: a provider that has a
+/// Creates the provider when it does not exist yet (the env key is what
+/// connects it), and fills providers that have no key configured; an
+/// explicitly-set key (via UI/API) is never overwritten. Idempotent: a provider that has a
 /// matching `DEFAULT_*_API_KEY` but already has a key set is left untouched and
 /// counted as unchanged. Providers without a matching env var are skipped and
 /// not counted at all.
@@ -587,8 +603,28 @@ where
             continue;
         };
 
+        let encrypted = encryption.encrypt_string(&env_key)?;
         let Some(provider) = db.get_provider(DEFAULT_ORG_ID, seed.id).await? else {
-            // Provider row not seeded (driver not registered for this grade).
+            // First time this key is seen: the env key is what connects the
+            // provider, so create it with the key in one step.
+            db.create_provider_with_id(
+                DEFAULT_ORG_ID,
+                seed.id,
+                CreateProviderRow {
+                    name: seed.name.to_string(),
+                    provider_type: seed.provider_type.to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(encrypted),
+                    settings: None,
+                },
+            )
+            .await?;
+            result.created += 1;
+            result.connected.push(seed.id);
+            tracing::info!(
+                provider = seed.name,
+                "Connected default-org provider from DEFAULT_*_API_KEY (single-tenant/dev)"
+            );
             continue;
         };
 
@@ -598,7 +634,6 @@ where
             continue;
         }
 
-        let encrypted = encryption.encrypt_string(&env_key)?;
         db.update_provider(
             DEFAULT_ORG_ID,
             seed.id,
@@ -613,6 +648,7 @@ where
         )
         .await?;
         result.updated += 1;
+        result.connected.push(seed.id);
         tracing::info!(
             provider = seed.name,
             "Materialized DEFAULT_*_API_KEY into default-org provider (single-tenant/dev)"
@@ -621,6 +657,155 @@ where
 
     Ok(result)
 }
+
+/// Make providers connected from env usable right away, the same way a key
+/// set through the API is: seed their catalog, discover their models, and
+/// enable a starter set when the org has no chat model yet.
+///
+/// Without this an env-connected provider showed "Last synced: Never" and no
+/// discovered models until the background sync first ran. Best-effort: a
+/// provider that rejects the key or is unreachable must not fail startup.
+async fn provision_connected_providers(
+    db: &Arc<StorageBackend>,
+    encryption: &Arc<EncryptionService>,
+    host_composition: &HostComposition,
+    connected: &[Uuid],
+) {
+    if let Err(error) = seed_models_with_host_composition(db, host_composition).await {
+        tracing::warn!(%error, "Seeding models for env-connected providers failed (non-fatal)");
+    }
+    let sync = crate::domains::models::ModelSyncService::new(
+        db.clone(),
+        Arc::new(host_composition.driver_registry().clone()),
+        Some(encryption.clone()),
+    );
+    let models = crate::domains::models::ModelService::new(db.clone());
+    for provider_id in connected {
+        match tokio::time::timeout(
+            ENV_PROVIDER_SYNC_TIMEOUT,
+            sync.sync_provider(DEFAULT_ORG_ID, *provider_id),
+        )
+        .await
+        {
+            Ok(Ok(result)) => tracing::info!(
+                %provider_id,
+                ?result,
+                "Synced models for env-connected provider"
+            ),
+            Ok(Err(error)) => tracing::warn!(
+                %provider_id,
+                %error,
+                "Model sync for env-connected provider failed (non-fatal)"
+            ),
+            Err(_) => tracing::warn!(
+                %provider_id,
+                "Model sync for env-connected provider timed out (non-fatal)"
+            ),
+        }
+        if let Err(error) = models
+            .bootstrap_intelligence(DEFAULT_ORG_ID, *provider_id)
+            .await
+        {
+            tracing::warn!(
+                %provider_id,
+                %error,
+                "Intelligence bootstrap for env-connected provider failed (non-fatal)"
+            );
+        }
+    }
+}
+
+/// Point the default org at a model it can actually run.
+///
+/// The default model falls back to the platform default (an OpenAI model)
+/// when the org never chose one. Older versions seeded and enabled that model
+/// without a key, so an org that connected only OpenRouter kept defaulting to
+/// OpenAI and chat failed with "provider is not set up". Seeding now disables
+/// keyless catalog models, which makes such a default unresolvable; this then
+/// bootstraps from the first connected provider, exactly as connecting it
+/// through the API would have.
+async fn ensure_default_org_default_model(
+    db: &Arc<StorageBackend>,
+    encryption: Option<&Arc<EncryptionService>>,
+    host_composition: &HostComposition,
+) {
+    let resolved = match db.get_default_model(DEFAULT_ORG_ID).await {
+        Ok(model) => model.is_some(),
+        Err(error) => {
+            tracing::warn!(%error, "Default model check failed (non-fatal)");
+            return;
+        }
+    };
+    if resolved {
+        return;
+    }
+    let providers = match db.list_providers(DEFAULT_ORG_ID).await {
+        Ok(providers) => providers,
+        Err(error) => {
+            tracing::warn!(%error, "Default model repair: listing providers failed (non-fatal)");
+            return;
+        }
+    };
+    let models = crate::domains::models::ModelService::new(db.clone());
+    let sync = encryption.map(|encryption| {
+        crate::domains::models::ModelSyncService::new(
+            db.clone(),
+            Arc::new(host_composition.driver_registry().clone()),
+            Some(encryption.clone()),
+        )
+    });
+    // Oldest connection first: the provider the org has relied on longest.
+    for provider in providers.iter().rev().filter(|p| p.api_key_set) {
+        // A provider that never synced may know no chat model yet; discover
+        // its catalog first so there is something to pick.
+        if provider.last_synced_at.is_none()
+            && let Some(sync) = sync.as_ref()
+        {
+            match tokio::time::timeout(
+                ENV_PROVIDER_SYNC_TIMEOUT,
+                sync.sync_provider(DEFAULT_ORG_ID, provider.id.uuid()),
+            )
+            .await
+            {
+                Ok(Ok(result)) => tracing::info!(
+                    provider_id = %provider.id,
+                    ?result,
+                    "Synced never-synced provider before picking a default model"
+                ),
+                Ok(Err(error)) => tracing::warn!(
+                    provider_id = %provider.id,
+                    %error,
+                    "Model sync before default model repair failed (non-fatal)"
+                ),
+                Err(_) => tracing::warn!(
+                    provider_id = %provider.id,
+                    "Model sync before default model repair timed out (non-fatal)"
+                ),
+            }
+        }
+        match models
+            .bootstrap_intelligence(DEFAULT_ORG_ID, provider.id.uuid())
+            .await
+        {
+            Ok(outcome) if outcome.default_model_id.is_some() => {
+                tracing::info!(
+                    provider_id = %provider.id,
+                    "Default org default model set from a connected provider"
+                );
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(
+                provider_id = %provider.id,
+                %error,
+                "Default model repair: bootstrap failed (non-fatal)"
+            ),
+        }
+    }
+}
+
+/// Upper bound on one env-connected provider's startup model discovery.
+const ENV_PROVIDER_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ---- LLM Model Seeder ----
 
@@ -639,6 +824,8 @@ async fn seed_models_with_host_composition(
     // so inserting the seed id would fail on every boot (Sentry EVERRUNS-6).
     // Adopt the existing row instead of forcing the seed id onto it.
     let mut existing_by_provider: HashMap<Uuid, Vec<ModelRow>> = HashMap::new();
+    // Whether each seed provider exists in the default org, and has a key.
+    let mut provider_keyed: HashMap<Uuid, Option<bool>> = HashMap::new();
 
     for seed in SEED_MODELS {
         if !enabled_provider_ids.contains(&seed.provider_id) {
@@ -649,6 +836,22 @@ async fn seed_models_with_host_composition(
             );
             continue;
         }
+        let keyed = match provider_keyed.entry(seed.provider_id) {
+            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
+            std::collections::hash_map::Entry::Vacant(entry) => *entry.insert(
+                db.get_provider(DEFAULT_ORG_ID, seed.provider_id)
+                    .await?
+                    .map(|provider| provider.api_key_set),
+            ),
+        };
+        // The catalog belongs to a provider someone connected; no row, no models.
+        let Some(keyed) = keyed else {
+            continue;
+        };
+        // A model is only offered when its provider can serve it: a keyless
+        // provider's catalog stays listed but disabled, so the enabled list
+        // never shows models nobody can run.
+        let seed_enabled = seed.enabled && keyed;
         let existing = match existing_by_provider.entry(seed.provider_id) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
@@ -662,7 +865,7 @@ async fn seed_models_with_host_composition(
         {
             let unchanged = row.display_name == seed.display_name
                 && row.is_favorite == seed.is_favorite
-                && row.enabled == seed.enabled;
+                && row.enabled == seed_enabled;
             if unchanged {
                 tracing::debug!(
                     model_id = seed.model_id,
@@ -677,7 +880,7 @@ async fn seed_models_with_host_composition(
                     UpdateModel {
                         display_name: Some(seed.display_name.to_string()),
                         is_favorite: Some(seed.is_favorite),
-                        enabled: Some(seed.enabled),
+                        enabled: Some(seed_enabled),
                         ..UpdateModel::default()
                     },
                 )
@@ -701,7 +904,7 @@ async fn seed_models_with_host_composition(
             } else {
                 vec![]
             },
-            enabled: seed.enabled,
+            enabled: seed_enabled,
             is_favorite: seed.is_favorite,
             source: "predefined".to_string(), // Seed models are predefined
             provider_metadata: None,
@@ -854,10 +1057,20 @@ pub fn spawn_seed_task_with_host_composition(
                             )
                             .await
                             {
-                                Ok(r) if r.updated > 0 => tracing::info!(
-                                    updated = r.updated,
-                                    "Materialized DEFAULT_*_API_KEY into default-org providers"
-                                ),
+                                Ok(r) if !r.connected.is_empty() => {
+                                    tracing::info!(
+                                        created = r.created,
+                                        updated = r.updated,
+                                        "Materialized DEFAULT_*_API_KEY into default-org providers"
+                                    );
+                                    provision_connected_providers(
+                                        &db,
+                                        encryption,
+                                        &host_composition,
+                                        &r.connected,
+                                    )
+                                    .await;
+                                }
                                 Ok(_) => {}
                                 Err(e) => tracing::warn!(
                                     error = %e,
@@ -876,6 +1089,8 @@ pub fn spawn_seed_task_with_host_composition(
                 // Runs inside the seed task (not a separate task) so the default
                 // org row is guaranteed to exist before harness init runs.
                 reconcile_org_harnesses(&db, &built_in_harnesses).await;
+
+                ensure_default_org_default_model(&db, encryption.as_ref(), &host_composition).await;
             }
             Err(e) => {
                 tracing::warn!(
@@ -1235,6 +1450,26 @@ mod tests {
         ));
     }
 
+    /// Rows an older version seeded for every built-in driver, without keys.
+    async fn create_keyless_seed_providers(db: &StorageBackend) {
+        seed_default_organization(db).await.unwrap();
+        for seed in SEED_PROVIDERS {
+            db.create_provider_with_id(
+                DEFAULT_ORG_ID,
+                seed.id,
+                CreateProviderRow {
+                    name: seed.name.to_string(),
+                    provider_type: seed.provider_type.to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+    }
+
     /// Materialization fills an empty default-org provider with the env key,
     /// and the key is resolvable through the normal fail-closed DB path.
     #[tokio::test]
@@ -1244,9 +1479,7 @@ mod tests {
         let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
 
         // Seed the bare provider rows (no keys).
-        seed_providers_with_host_composition(&db, &platform)
-            .await
-            .unwrap();
+        create_keyless_seed_providers(&db).await;
 
         let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
             (ty == "openai").then(|| "sk-from-env".to_string())
@@ -1277,9 +1510,7 @@ mod tests {
         let db = make_db();
         let encryption = test_encryption();
         let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        seed_providers_with_host_composition(&db, &platform)
-            .await
-            .unwrap();
+        create_keyless_seed_providers(&db).await;
 
         // User configures their own key.
         let user_key = encryption.encrypt_string("sk-user-set").unwrap();
@@ -1331,9 +1562,7 @@ mod tests {
         let db = make_db();
         let encryption = test_encryption();
         let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
-        seed_providers_with_host_composition(&db, &platform)
-            .await
-            .unwrap();
+        create_keyless_seed_providers(&db).await;
 
         let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |_| None)
             .await
@@ -1346,6 +1575,155 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(!provider.api_key_set);
+    }
+
+    /// A fresh install connects nothing: no provider rows, so no catalog
+    /// models either.
+    #[tokio::test]
+    async fn seed_all_creates_no_providers_or_models() {
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+        assert!(db.list_providers(DEFAULT_ORG_ID).await.unwrap().is_empty());
+        assert!(db.list_all_models(DEFAULT_ORG_ID).await.unwrap().is_empty());
+    }
+
+    /// An env key connects its provider on a fresh install, and only that one.
+    #[tokio::test]
+    async fn materialize_creates_missing_provider_with_key() {
+        let db = make_db();
+        let encryption = test_encryption();
+        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
+            (ty == "openrouter").then(|| "sk-or-from-env".to_string())
+        })
+        .await
+        .unwrap();
+        assert_eq!(result.created, 1);
+        assert_eq!(result.connected, vec![seed_ids::OPENROUTER_PROVIDER]);
+
+        let providers = db.list_providers(DEFAULT_ORG_ID).await.unwrap();
+        assert_eq!(
+            providers.len(),
+            1,
+            "only the provider with an env key exists"
+        );
+        assert!(providers[0].api_key_set);
+
+        // A second boot leaves it alone.
+        let again = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
+            (ty == "openrouter").then(|| "sk-or-from-env".to_string())
+        })
+        .await
+        .unwrap();
+        assert!(again.connected.is_empty());
+        assert_eq!(again.unchanged, 1);
+    }
+
+    /// Rows older versions seeded without a key keep their catalog, but none
+    /// of it is enabled: those models cannot run.
+    #[tokio::test]
+    async fn keyless_seed_provider_models_are_disabled() {
+        let db = make_db();
+        create_keyless_seed_providers(&db).await;
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+        let models = db.list_all_models(DEFAULT_ORG_ID).await.unwrap();
+        assert!(!models.is_empty(), "catalog is still listed");
+        assert!(
+            models.iter().all(|model| !model.enabled),
+            "no model of a keyless provider is enabled"
+        );
+    }
+
+    /// A connected provider gets the catalog's default-enabled models.
+    #[tokio::test]
+    async fn keyed_seed_provider_models_follow_catalog_defaults() {
+        let db = make_db();
+        let encryption = test_encryption();
+        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+        seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
+            (ty == "openai").then(|| "sk-from-env".to_string())
+        })
+        .await
+        .unwrap();
+        seed_models_with_host_composition(&db, &platform)
+            .await
+            .unwrap();
+
+        let models = db
+            .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .await
+            .unwrap();
+        let expected = SEED_MODELS
+            .iter()
+            .filter(|seed| seed.provider_id == seed_ids::OPENAI_PROVIDER && seed.enabled)
+            .count();
+        assert!(expected > 0);
+        assert_eq!(
+            models.iter().filter(|model| model.enabled).count(),
+            expected
+        );
+    }
+
+    /// An org that connected only OpenRouter must not keep defaulting to the
+    /// platform's OpenAI model that an older version seeded without a key.
+    #[tokio::test]
+    async fn default_model_moves_to_a_connected_provider() {
+        let db = Arc::new(make_db());
+        let encryption = test_encryption();
+        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
+        create_keyless_seed_providers(&db).await;
+        seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
+            (ty == "openrouter").then(|| "sk-or".to_string())
+        })
+        .await
+        .unwrap();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        // What a sync would have discovered.
+        db.create_model(
+            DEFAULT_ORG_ID,
+            CreateModelRow {
+                provider_id: seed_ids::OPENROUTER_PROVIDER.into(),
+                model_id: "openai/gpt-6-luna".to_string(),
+                display_name: "GPT-6 Luna".to_string(),
+                capabilities: vec![],
+                is_favorite: false,
+                enabled: false,
+                source: "discovered".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+        // The keyless OpenAI platform default no longer resolves.
+        assert!(
+            db.get_default_model(DEFAULT_ORG_ID)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        ensure_default_org_default_model(&db, None, &platform).await;
+
+        let default = db
+            .get_default_model(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .expect("the default resolves to a runnable model");
+        assert_eq!(default.provider_id.uuid(), seed_ids::OPENROUTER_PROVIDER);
     }
 
     // --- Harness seed data ---
@@ -1729,6 +2107,7 @@ mod tests {
     #[tokio::test]
     async fn test_provider_seed_detects_name_change() {
         let db = make_db();
+        create_keyless_seed_providers(&db).await;
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();

@@ -1446,8 +1446,15 @@ path as any user-configured key.
 
 Rules:
 
-- Only the **default org's** seed providers are filled, and only slots that have
-  **no** key, a key configured via UI/API is never overwritten.
+- Startup never creates a keyless provider. The env key is what connects a
+  built-in provider: a missing default-org row is created with the key, an
+  existing keyless row is filled, and a key configured via UI/API is never
+  overwritten. A provider connected this way is provisioned like one connected
+  through the API (model sync, then intelligence bootstrap).
+- Seeded catalog models exist only for providers that exist, and stay disabled
+  while their provider has no key, so the platform default model cannot resolve
+  to a provider nobody connected. When the default org's default model resolves
+  to nothing, startup bootstraps it from the first connected provider.
 - Requires the encryption service (`SECRETS_ENCRYPTION_KEY`); if absent, the step
   is skipped with a warning.
 - Gated by `materialize_env_provider_keys_allowed`:

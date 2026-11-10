@@ -8,12 +8,31 @@ fn make_db() -> StorageBackend {
     StorageBackend::test_database()
 }
 
+/// Seeding only catalogs models for a connected provider: connect OpenAI.
+async fn connect_openai(db: &StorageBackend) {
+    let encryption = crate::storage::EncryptionService::new(
+        "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        &[],
+    )
+    .unwrap();
+    let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
+    seed_all(db, DeploymentGrade::Dev, &SeedAuthContext::default())
+        .await
+        .unwrap();
+    seed_default_provider_keys_with_lookup(db, &encryption, &platform, |ty| {
+        (ty == "openai").then(|| "sk-test".to_string())
+    })
+    .await
+    .unwrap();
+}
+
 /// Discovery can catalogue a model under a generated id before the seed
 /// entry for it exists. Seeding must adopt that row rather than trip the
 /// `(provider_id, model_id)` unique index on every boot.
 #[tokio::test]
 async fn test_seed_all_adopts_model_discovered_before_seed() {
     let db = make_db();
+    connect_openai(&db).await;
     // Seed once so the provider rows exist, then plant a discovered twin
     // of a seed model under a different id.
     seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
@@ -80,6 +99,7 @@ async fn test_seed_all_adopts_model_discovered_before_seed() {
 #[tokio::test]
 async fn test_model_seed_detects_display_name_change() {
     let db = make_db();
+    connect_openai(&db).await;
     let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
         .await
         .unwrap();

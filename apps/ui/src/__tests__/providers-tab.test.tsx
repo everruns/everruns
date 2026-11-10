@@ -129,8 +129,12 @@ describe("ProvidersTab", () => {
       "/models/providers/provider-1",
     );
     expect(screen.getByText("Configured")).toBeInTheDocument();
-    expect(screen.getByText("Not set")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Set key/ })).toBeInTheDocument();
+    // A provider without a key sits apart, as a compact card offering Connect.
+    expect(screen.getByRole("heading", { name: /Connected/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Not connected/ })).toBeInTheDocument();
+    expect(screen.getByText("Connect it to use its models")).toBeInTheDocument();
+    expect(screen.queryByText("Not set")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Update key for OpenAI Production" }),
     ).toBeInTheDocument();
@@ -153,7 +157,7 @@ describe("ProvidersTab", () => {
     renderTab({ canManage: false });
     expect(screen.getByText(/Only organization admins connect/)).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Set key|Update key|Sync models/ }),
+      screen.queryByRole("button", { name: /^Connect$|Update key|Sync models/ }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /new model/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Connect provider" })).not.toBeInTheDocument();
