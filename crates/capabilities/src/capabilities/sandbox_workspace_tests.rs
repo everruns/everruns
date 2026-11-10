@@ -105,7 +105,7 @@ impl SessionSandboxProvider for SecretFileTestProvider {
         instance: &SessionSandboxInstance,
         request: &SessionSandboxExecRequest,
     ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
-        let command = request.command.clone();
+        let command = posix_script(&request.command);
         let exit_code = with_sandbox(&instance.external_id, |sandbox| {
             sandbox.events.push(Event::Exec(command.clone()));
             if let Some(path) = unquoted_path(&command, ": > '") {
@@ -315,4 +315,30 @@ async fn rejects_a_cwd_outside_the_workspace() {
             .await
             .is_err()
     );
+}
+
+/// What `sh -c '<script>'` runs: the script with its quoting undone. A command
+/// that is not wrapped is returned as written.
+fn posix_script(command: &str) -> String {
+    command
+        .strip_prefix("sh -c '")
+        .and_then(|rest| rest.strip_suffix('\''))
+        .map(|script| script.replace("'\\''", "'"))
+        .unwrap_or_else(|| command.to_string())
+}
+
+#[test]
+fn scripts_run_under_posix_sh_whatever_the_provider_shell() {
+    // Daytona starts zsh, where a glob that matches nothing is an error.
+    let script =
+        "for d in no-such-dir-*/; do [ -d \"$d/.git\" ] || continue; done\necho 'it''s done'";
+    let wrapped = posix_sh(script);
+    assert!(wrapped.starts_with("sh -c '"), "{wrapped}");
+    assert_eq!(posix_script(&wrapped), script);
+    let output = std::process::Command::new("sh")
+        .args(["-c", &wrapped])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "its done\n");
 }

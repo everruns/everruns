@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! GitHub capabilities for Everruns.
 //!
-//! This crate registers two capabilities through Everruns' inventory plugin
+//! This crate registers three capabilities through Everruns' inventory plugin
 //! system:
 //!
 //! - `github` gives the host agent tools for one pull request at a time: read
@@ -9,6 +9,8 @@
 //!   date. This is what a pull request summarizer or reviewer agent uses.
 //! - `github_scout` is blueprint-only: it adds no host tools and contributes the
 //!   `github_scout` agent blueprint.
+//! - `repositories` is the set of repositories a session works on: checked out
+//!   side by side in the sandbox, with one work branch per session.
 //!
 //! `github_scout` runs as a read-only child agent with private GitHub REST API
 //! tools for code search, file reads, and issue or pull request search. Tool
@@ -36,6 +38,7 @@ mod client;
 mod fix_pull_requests;
 mod issues;
 mod pull_requests;
+mod repositories;
 mod reviews;
 mod tools;
 
@@ -54,6 +57,10 @@ use issues::UpsertGitHubIssueTool;
 use pull_requests::{
     GetGitHubPullRequestDiffTool, GetGitHubPullRequestTool, UpsertGitHubCommentTool,
 };
+pub use repositories::{
+    AddRepositories, REPOSITORIES_CAPABILITY_ID, RepositoriesCapability, RepositoriesConfig,
+    RepositoryAccess, RepositoryEntry,
+};
 use reviews::SubmitGitHubReviewTool;
 use tools::{ReadGitHubFileTool, SearchGitHubCodeTool, SearchGitHubIssuesTool};
 
@@ -66,6 +73,10 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
         feature_flag: None,
         factory: || Box::new(GitHubScoutCapability),
+    },
+    IntegrationPlugin {
+        feature_flag: None,
+        factory: || Box::new(RepositoriesCapability),
     },
 ];
 pub const GITHUB_API_BASE: &str = "https://api.github.com";

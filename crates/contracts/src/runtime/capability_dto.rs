@@ -196,6 +196,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "sandbox_fleet" => Some("sandbox-fleet"),
         "github" => Some("github"),
         "github_scout" => Some("github-scout"),
+        "repositories" => Some("repositories"),
         "session_file_system" => Some("file-system"),
         "infinity_context" => Some("infinity-context"),
         "image_generation" => Some("image-generation"),

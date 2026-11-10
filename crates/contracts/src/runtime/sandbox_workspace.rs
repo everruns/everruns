@@ -17,6 +17,9 @@ use crate::tools::ToolExecutionResult;
 pub const SECRET_FILE_ENV: &str = "EVR_SECRET_FILE";
 
 /// Runs commands in the session's primary sandbox.
+///
+/// Every command is a POSIX `sh` script: an implementation runs it under `sh`
+/// even when the provider's default shell is another one.
 #[async_trait]
 pub trait SandboxWorkspace: Send + Sync {
     /// The workspace root as the model sees it.
