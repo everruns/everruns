@@ -1,6 +1,6 @@
 ---
 title: Moving to Platform or Cloud
-description: What carries over when a Framework agent moves to a self-hosted Everruns Platform or Everruns Cloud, what has to be rebuilt, and what stays behind.
+description: What carries over when a Framework agent moves to a self-hosted Everruns Platform or the Everruns demo instance, what has to be rebuilt, and what stays behind.
 ---
 
 The Framework and the Platform run the same runtime, so an agent's behavior
@@ -10,7 +10,7 @@ is code. A Platform agent is configuration stored by the server, so anything
 your Framework app expresses as Rust (function tools, custom capabilities,
 lifecycle closures, an approver) is rebuilt with a Platform mechanism instead.
 
-Everruns Cloud is the hosted Platform. Everything here applies to both, except
+The Everruns demo instance runs the Platform for you, as a demo of the open-source code rather than a hosted service. Everything here applies to both, except
 that Cloud runs the production deployment grade: capabilities marked dev-only,
 such as [Computer Use](/capabilities/computer-use/), are not offered there.
 

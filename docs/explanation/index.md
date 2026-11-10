@@ -18,6 +18,7 @@ Read these when:
 - [Concepts](/getting-started/concepts/), a glossary of the entity model: harnesses, agents, sessions, capabilities, and how they compose into a runtime.
 - [The agentic loop](/explanation/agentic-loop/), the reason–act cycle, execution phases, and why turns are bounded.
 - [Architecture](/explanation/architecture/), control plane, workers, and the API-first design.
+- [How Everruns differs](/explanation/how-everruns-differs/), where Everruns sits next to hosted agent services, graph frameworks, TypeScript frameworks and general durable execution engines.
 - [Durable execution](/explanation/durable-execution/), why agents survive crashes, and the trade-offs of a PostgreSQL-backed engine.
 - [Events as the primary store](/explanation/events/), why an append-only event log is the source of truth, not a side-channel.
 - [Command path](/explanation/command-path/), how the REST API, CLI, MCP and agents all reach the same platform commands, and where they differ.

@@ -14,7 +14,7 @@ Every route on this page is relative to the agent base URL. The channel's page i
 
 | Host | Agent base URL |
 |---|---|
-| Everruns Cloud | `https://app.everruns.com/api/v1/channels/{channel_id}` |
+| The Everruns demo instance | `https://app.everruns.com/api/v1/channels/{channel_id}` |
 | Self-hosted Platform | `https://your-everruns-host/api/v1/channels/{channel_id}` |
 | A [serve](/framework/serve/) app | `http://localhost:3000/v1/channels/{agent}` |
 

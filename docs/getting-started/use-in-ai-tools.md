@@ -93,7 +93,7 @@ agent runs commands there directly, which is faster than going through MCP.
 
 ## Use a self-hosted deployment
 
-The plugin points at Everruns Cloud. For your own deployment, keep the plugin's
+The plugin points at the Everruns demo instance. For your own deployment, keep the plugin's
 skills and register your server's MCP endpoint under the same name, for
 example with Claude Code:
 

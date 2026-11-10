@@ -12,7 +12,7 @@ appliesTo: [framework]
 | **Features** | `file_system` (enables the Files tab) |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/), backed by a real directory |
 
-**Availability:** Framework (embedder) only. Not available in self-hosted Platform or Everruns Cloud.
+**Availability:** Framework (embedder) only. Not available in self-hosted Platform or the Everruns demo instance.
 
 Run bash commands as real child processes on the machine the agent is running
 on. Unlike [Bashkit Shell](/capabilities/bashkit-shell/), the toolchain is real:

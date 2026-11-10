@@ -134,7 +134,7 @@ A conversation entry reconstructed from the event log. There is no separate mess
 
 ### LLM provider
 
-A configured API provider such as OpenAI or Anthropic. Providers store encrypted API keys and contain models. See [Providers](/providers/). On Everruns Cloud a built-in Everruns provider works without your own keys.
+A configured API provider such as OpenAI or Anthropic. Providers store encrypted API keys and contain models. See [Providers](/providers/). On the Everruns demo instance a built-in Everruns provider works without your own keys.
 
 ### LLM model
 
