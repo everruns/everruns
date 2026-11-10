@@ -113,7 +113,7 @@ pub struct UpArgs {
     pub admin_email: Option<String>,
 
     /// LLM provider for the server's default key. The key comes from
-    /// OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY, or a prompt
+    /// OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt
     #[arg(long, value_enum)]
     pub provider: Option<LlmProvider>,
 
@@ -211,29 +211,37 @@ pub enum LlmProvider {
     Openai,
     Anthropic,
     Gemini,
+    Openrouter,
     /// Add a provider later in the UI
     Skip,
 }
 
 impl LlmProvider {
-    pub(crate) const ALL: [LlmProvider; 4] =
-        [Self::Openai, Self::Anthropic, Self::Gemini, Self::Skip];
+    pub(crate) const ALL: [LlmProvider; 5] = [
+        Self::Openai,
+        Self::Anthropic,
+        Self::Gemini,
+        Self::Openrouter,
+        Self::Skip,
+    ];
 
     pub(crate) fn key_env(self) -> Option<&'static str> {
         match self {
             Self::Openai => Some("OPENAI_API_KEY"),
             Self::Anthropic => Some("ANTHROPIC_API_KEY"),
             Self::Gemini => Some("GEMINI_API_KEY"),
+            Self::Openrouter => Some("OPENROUTER_API_KEY"),
             Self::Skip => None,
         }
     }
 
     /// The server variable that seeds the provider's default key.
-    fn server_env(self) -> Option<&'static str> {
+    pub(crate) fn server_env(self) -> Option<&'static str> {
         match self {
             Self::Openai => Some("DEFAULT_OPENAI_API_KEY"),
             Self::Anthropic => Some("DEFAULT_ANTHROPIC_API_KEY"),
             Self::Gemini => Some("DEFAULT_GEMINI_API_KEY"),
+            Self::Openrouter => Some("DEFAULT_OPENROUTER_API_KEY"),
             Self::Skip => None,
         }
     }
@@ -243,6 +251,7 @@ impl LlmProvider {
             Self::Openai => "openai",
             Self::Anthropic => "anthropic",
             Self::Gemini => "gemini",
+            Self::Openrouter => "openrouter",
             Self::Skip => "skip",
         }
     }
@@ -252,6 +261,7 @@ impl LlmProvider {
             Self::Openai => "OpenAI",
             Self::Anthropic => "Anthropic",
             Self::Gemini => "Gemini",
+            Self::Openrouter => "OpenRouter",
             Self::Skip => "Skip, I'll add one in the UI",
         }
     }

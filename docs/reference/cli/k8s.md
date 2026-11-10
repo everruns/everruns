@@ -37,7 +37,7 @@ everruns k8s up [OPTIONS]
 | `--namespace <NAMESPACE>` | Namespace, created when missing (default: everruns) |
 | `--auth <AUTH>` | Who signs in. One of `single`, `none`, `accounts`. |
 | `--admin-email <ADMIN_EMAIL>` | Admin email, used to sign in to the UI. |
-| `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `skip`. |
+| `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `openrouter`, `skip`. |
 | `--database-url <DATABASE_URL>` | Your PostgreSQL 15+ URL (postgres://user:password@host:5432/db) |
 | `--bundled-postgres` | Run a single PostgreSQL pod in the cluster, for trying Everruns out (no backups or failover) |
 | `--public-url <PUBLIC_URL>` | Public address people use, such as https://everruns.example.com; adds an Ingress. |
