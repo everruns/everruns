@@ -1075,11 +1075,18 @@ the storage decision below requires. What it checks and what it found:
   writes each, 5 to 13 kills and 4 to 10 terms per seed: every
   acknowledged write is on every node, the nodes agree, nothing unwritten
   appears, and no term has two leaders.
+- **Epochs and fencing model** (`Epochs` in [models.md](models.md)): the
+  cell authority's claim, append, progress and release rules, with
+  executors restarting under the same name, late and duplicated messages,
+  and a proposer clock that can move back. It holds the journal to one
+  writer and the poison guard to "seal after exactly K deaths without
+  progress". Three bug configurations keep failing: fencing by holder name,
+  the guard before the fix, and progress reports accepted from any epoch.
 
 Still open in step 5: exact-replay simulation of the whole node (a
 simulated runtime, so a seed replays bit for bit, with crash points inside
-moves and epochs), the epochs and fencing model, placement generations,
-spend allowances and log shipping.
+moves and epochs), placement generations, spend allowances and log
+shipping.
 
 ### Corrections after the architecture review (2026-11-09)
 

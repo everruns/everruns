@@ -4,7 +4,8 @@
 # Every model has a "safe" configuration that must pass and a "bug"
 # configuration that reproduces the design flaw the model exists for (the
 # funout move race, feed records keyed by Raft index alone, grants released
-# on expiry). A bug configuration that stops failing means the model no
+# on expiry, epochs fenced by holder name, the poison guard's progress
+# rules). A bug configuration that stops failing means the model no
 # longer checks what it claims to, so it fails this script too.
 #
 # Usage: scripts/check-tla-models.sh            (downloads TLC once)
@@ -33,6 +34,10 @@ CHECKS=(
   "Grants GrantsExpiryReleases fail"
   "Feed Feed pass"
   "Feed FeedByIndexOnly fail"
+  "Epochs Epochs pass"
+  "Epochs EpochsFencedByName fail"
+  "Epochs EpochsCountEveryLease fail"
+  "Epochs EpochsUnfencedProgress fail"
 )
 
 status=0
