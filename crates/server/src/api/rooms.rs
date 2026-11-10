@@ -25,6 +25,8 @@ pub struct AppState {
     pub auth: AuthState,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    /// Checks agents set to wake on relevant messages.
+    pub relevance: Option<Arc<crate::services::relevance::RelevanceChecker>>,
 }
 
 impl AppState {
@@ -39,6 +41,7 @@ impl AppState {
         .with_feature_flags(org.feature_flags.clone())
         .with_session_service(self.session_service.clone())
         .with_message_service(self.message_service.clone())
+        .with_relevance(self.relevance.clone())
     }
 }
 
@@ -55,6 +58,7 @@ pub fn routes_from(api: &super::state::ApiState, messages: &super::messages::App
         auth: api.auth.clone(),
         session_service: messages.session_service.clone(),
         message_service: messages.message_service.clone(),
+        relevance: None,
     })
 }
 

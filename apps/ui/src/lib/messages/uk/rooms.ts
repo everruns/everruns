@@ -81,6 +81,8 @@ export const messages: Readonly<Record<string, string>> = {
   "unpinned a message": "відкріплює повідомлення",
   reacted: "реагує",
   "removed a reaction": "прибирає реакцію",
+  "checked a message and woke": "перевірив повідомлення і прокинувся",
+  "checked a message and stayed quiet": "перевірив повідомлення і промовчав",
   "woke for a message": "прокидається на повідомлення",
   "was not woken: a loop limit stopped it": "не прокинувся: його зупинив ліміт циклу",
   "changed a file": "змінює файл",
@@ -146,4 +148,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Open the agent's session": "Відкрити сесію агента",
   "Inspect the rooms where people and agents talk together.":
     "Переглядайте кімнати, де люди й агенти спілкуються разом.",
+  "Relevant messages": "Релевантні повідомлення",
+  "relevant to it": "стосується агента",
+  Listened: "Слухали",
+  "stayed quiet": "не відповів",
+  "check unavailable": "перевірка недоступна",
+  "Listening for relevant messages": "Слухають релевантні повідомлення",
 };

@@ -9,7 +9,7 @@
 use super::queries::{self as q, RoomView};
 use super::rules::{self, LoopLimits, SessionScope, WakeMode};
 use super::types::*;
-use super::wake::{Waker, wake_agents};
+use super::wake::{RelevanceRun, Waker, wake_agents};
 use crate::domains::common::*;
 use crate::storage::{
     CreateRoomMemberRow, CreateRoomMessageRow, CreateRoomRow, RoomMemberRow, RoomMessageRow,
@@ -750,6 +750,11 @@ impl Command for PostRoomMessage {
                         db: &ctx.db,
                         sessions,
                         messages,
+                        relevance: ctx.relevance.clone().map(|checker| RelevanceRun {
+                            checker,
+                            sessions: sessions.clone(),
+                            messages: messages.clone(),
+                        }),
                     },
                     &view,
                     &row,

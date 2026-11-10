@@ -8,6 +8,7 @@ pub mod fixes;
 pub mod inspector;
 pub mod model_health;
 pub mod quality;
+pub mod relevance_fallback;
 pub mod self_healing;
 pub mod service;
 pub mod types;

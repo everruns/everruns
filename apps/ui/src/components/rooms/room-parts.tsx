@@ -8,7 +8,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { useUiTranslations } from "@/providers/locale-provider";
 import type { Room, RoomMember, RoomMemberKind, WakeMode } from "@/lib/api/rooms";
-import { roomSource, type MessageWake } from "@/lib/rooms";
+import { roomSource, type MessageListen, type MessageWake } from "@/lib/rooms";
 import { cn } from "@/lib/utils";
 
 const KIND_TILE: Record<RoomMemberKind, string> = {
@@ -68,6 +68,8 @@ export function useWakeModeLabel() {
         return ui("Mentions and threads");
       case "everything":
         return ui("Every message");
+      case "relevant":
+        return ui("Relevant messages");
       case "never":
         return ui("Never wakes");
     }
@@ -80,6 +82,42 @@ export function RoomSourceBadge({ room }: { room: Pick<Room, "metadata" | "exter
     <Badge variant="outline">{ui("Playground")}</Badge>
   ) : (
     <Badge variant="accent">{ui("API")}</Badge>
+  );
+}
+
+/** A check's confidence as the chips show it, such as "(94%)". */
+function percent(probability?: number): string {
+  return probability === undefined ? "" : `(${Math.round(probability * 100)}%)`;
+}
+
+/** One chip per agent a relevance check left quiet, with the check's confidence. */
+export function ListenChips({
+  listens,
+  members,
+}: {
+  listens: MessageListen[];
+  members: Map<string, RoomMember>;
+}) {
+  const ui = useUiTranslations();
+  if (listens.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+      <span className="text-muted-foreground">{ui("Listened")}</span>
+      {listens.map((listen) => {
+        const name = members.get(listen.memberId)?.display_name ?? listen.handle;
+        const why = listen.unavailable
+          ? ui("check unavailable")
+          : [ui("stayed quiet"), percent(listen.probability)].filter(Boolean).join(" ");
+        return (
+          <span
+            key={listen.memberId}
+            className="inline-flex items-center border border-border px-1.5 py-0.5 text-muted-foreground"
+          >
+            {`${name} · ${why}`}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -103,6 +141,8 @@ export function WakeChips({
         return ui("reply in its thread");
       case "everything":
         return ui("wakes on every message");
+      case "relevant":
+        return [ui("relevant to it"), percent(wake.probability)].filter(Boolean).join(" ");
       case "limited":
         return `${ui("stopped by a limit")}: ${wake.limit ?? ""}`.trim();
       case "failed":

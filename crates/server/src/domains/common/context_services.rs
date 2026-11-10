@@ -176,6 +176,14 @@ impl Ctx {
         self
     }
 
+    pub fn with_relevance(
+        mut self,
+        checker: Option<Arc<crate::services::relevance::RelevanceChecker>>,
+    ) -> Self {
+        self.relevance = checker;
+        self
+    }
+
     pub fn with_health_check_service(
         mut self,
         service: Arc<crate::domains::agents::AgentHealthCheckService>,

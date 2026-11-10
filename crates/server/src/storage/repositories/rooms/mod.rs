@@ -1034,6 +1034,23 @@ impl Database {
         .await?)
     }
 
+    /// Events of `event_type` in a room since `since`, any member.
+    pub async fn count_room_events_since(
+        &self,
+        room_id: RoomId,
+        event_type: &str,
+        since: DateTime<Utc>,
+    ) -> Result<i64> {
+        Ok(sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM room_events WHERE room_id = $1 AND event_type = $2 AND created_at >= $3",
+        )
+        .bind(room_id)
+        .bind(event_type)
+        .bind(since)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     pub async fn find_room_agent_session_by_session(
         &self,
         session_id: crate::kernel_imports::contracts::typed_id::SessionId,

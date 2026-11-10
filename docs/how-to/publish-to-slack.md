@@ -38,7 +38,7 @@ The Slack endpoint editor shows a **Response policy** selector:
 - **Relevant messages** also responds to clear requests within the agent's purpose,
   including contextual thread follow-ups. Unrelated and uncertain messages stay silent.
 
-Relevant messages requires a decision model. By default that is the deployment's Decisions
+Relevant messages works best with a decision model. By default that is the deployment's Decisions
 service: for Jev, set `UTILITY_TYPESAFE_API_KEY` and select `UTILITY_DECISION_DRIVER=typesafe`.
 An organization can use its own model instead: pick a **Default decision model** on the Models
 page and set **System decisions** to **This organization's model**. The check then runs on your
@@ -46,10 +46,12 @@ provider account. In a thread that already has a session it counts against that 
 budget and usage. A message that would start a new session is checked before any session
 exists, so it is not budget-checked.
 
-Mentions and direct messages work without a classifier. A missing classifier or a failed
-decision leaves unmentioned messages silent, without posting an acknowledgement or running the
-agent. An organization that chose its own model stays silent when that model is missing or
-failing; it never falls back to the deployment's model.
+Without a decision model, the agent's own chat model answers the check, with a shorter purpose
+and fewer earlier messages, and **Settings → Health** shows an issue until a decision model is
+set up. That also applies to an organization that chose its own model but has none selected:
+it never falls back to the deployment's model. Mentions and direct messages need no check. A
+failed or slow check (2 seconds for a decision model, 8 for the agent's model) leaves the
+message silent, without posting an acknowledgement or running the agent.
 
 The Agent's **Communication** setting controls what an accepted turn posts to
 Slack: a Direct Agent posts its replies, and an Explicit Agent posts only what it

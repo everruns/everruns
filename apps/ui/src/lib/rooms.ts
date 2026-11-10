@@ -4,10 +4,11 @@
 // - The console inspects rooms that apps make and drives Playground rooms; it is
 //   not a chat client. A Playground room is an ordinary room that carries
 //   `metadata.playground = true`, so the same API and the same recording apply.
-// - Why an agent woke is derived from what the server records: an `agent.woken`
-//   event names the member and the message; the message's mentions and thread
-//   say why. The server does not store a reason, and a member's wake setting
-//   explains the rest ("everything").
+// - Why an agent woke is the `agent.woken` event's `reason`. Events recorded
+//   before the server stored one fall back to the message's mentions and
+//   thread, and a member's wake setting explains the rest ("everything").
+// - An agent set to `relevant` that a check left quiet is an `agent.considered`
+//   event with `decision: "quiet"`: the recording shows it listened.
 // - Test users in a Playground room are guest members named after virtual
 //   users. An org admin posts as them with `as_member`, as a product posts for
 //   its own people.
@@ -48,7 +49,9 @@ export function countMembers(members: RoomMember[]): MemberCounts {
 }
 
 /** Why a wake happened, or what stopped it. */
-export type WakeReason = "mentioned" | "thread" | "everything" | "limited" | "failed";
+export type WakeReason = "mentioned" | "thread" | "everything" | "relevant" | "limited" | "failed";
+
+const STORED_REASONS: readonly WakeReason[] = ["mentioned", "thread", "everything", "relevant"];
 
 export interface MessageWake {
   memberId: string;
@@ -57,6 +60,27 @@ export interface MessageWake {
   /** The limit that stopped it, for `limited`. */
   limit?: string;
   sessionId?: string;
+  /** The relevance check's confidence, for `relevant`. */
+  probability?: number;
+}
+
+/** An agent a relevance check left quiet on a message. */
+export interface MessageListen {
+  memberId: string;
+  handle: string;
+  /** The check's confidence that the message was for it. */
+  probability?: number;
+  /** No check could be made: no model answered in time. */
+  unavailable: boolean;
+}
+
+function eventData(event: RoomEvent): Record<string, unknown> {
+  return (event.data as Record<string, unknown> | null | undefined) ?? {};
+}
+
+function eventProbability(event: RoomEvent): number | undefined {
+  const value = eventData(event).probability;
+  return typeof value === "number" ? value : undefined;
 }
 
 function eventSessionId(event: RoomEvent): string | undefined {
@@ -78,13 +102,22 @@ export function wakesByMessage(
   const byId = new Map(messages.map((message) => [message.id, message]));
   const memberById = new Map(members.map((member) => [member.id, member]));
   const result = new Map<string, MessageWake[]>();
+  // A relevant wake's confidence is on the check that led to it.
+  const confidence = new Map<string, number>();
+  for (const event of events) {
+    const probability = eventProbability(event);
+    if (event.type === "agent.considered" && probability !== undefined)
+      confidence.set(`${event.message_id}:${event.member_id}`, probability);
+  }
   for (const event of events) {
     if (event.type !== "agent.woken" && event.type !== "agent.limited") continue;
     if (!event.message_id || !event.member_id) continue;
     const member = memberById.get(event.member_id);
     const message = byId.get(event.message_id);
+    const stored = eventData(event).reason;
     let reason: WakeReason;
     if (event.type === "agent.limited") reason = "limited";
+    else if (STORED_REASONS.includes(stored as WakeReason)) reason = stored as WakeReason;
     else if (message?.mentions.some((mention) => mention.id === event.member_id))
       reason = "mentioned";
     else if (message?.thread_id) reason = "thread";
@@ -96,8 +129,35 @@ export function wakesByMessage(
       reason,
       limit: event.type === "agent.limited" ? eventLimit(event) : undefined,
       sessionId: eventSessionId(event),
+      probability:
+        reason === "relevant"
+          ? confidence.get(`${event.message_id}:${event.member_id}`)
+          : undefined,
     });
     result.set(event.message_id, wakes);
+  }
+  return result;
+}
+
+/** The agents relevance checks left quiet, keyed by message id. */
+export function listensByMessage(
+  events: RoomEvent[],
+  members: RoomMember[],
+): Map<string, MessageListen[]> {
+  const memberById = new Map(members.map((member) => [member.id, member]));
+  const result = new Map<string, MessageListen[]>();
+  for (const event of events) {
+    if (event.type !== "agent.considered" || !event.message_id || !event.member_id) continue;
+    const data = eventData(event);
+    if (data.decision !== "quiet") continue;
+    const listens = result.get(event.message_id) ?? [];
+    listens.push({
+      memberId: event.member_id,
+      handle: memberById.get(event.member_id)?.handle ?? event.member_id,
+      probability: eventProbability(event),
+      unavailable: data.error === "unavailable",
+    });
+    result.set(event.message_id, listens);
   }
   return result;
 }
@@ -167,7 +227,12 @@ export function draftWakes(
   text: string,
   members: RoomMember[],
   replying: boolean,
-): { mentioned: RoomMember[]; everything: RoomMember[]; thread: boolean } {
+): {
+  mentioned: RoomMember[];
+  everything: RoomMember[];
+  listening: RoomMember[];
+  thread: boolean;
+} {
   const handles = new Set(mentionedHandles(text));
   const agents = members.filter((member) => member.kind === "agent" && !member.left);
   return {
@@ -175,6 +240,9 @@ export function draftWakes(
       (agent) => handles.has(agent.handle.toLowerCase()) && agent.wake !== "never",
     ),
     everything: agents.filter((agent) => agent.wake === "everything"),
+    listening: agents.filter(
+      (agent) => agent.wake === "relevant" && !handles.has(agent.handle.toLowerCase()),
+    ),
     thread: replying,
   };
 }

@@ -62,6 +62,10 @@ export function RoomActivityTable({
         return ui("removed a reaction");
       case "agent.woken":
         return ui("woke for a message");
+      case "agent.considered":
+        return data.decision === "woke"
+          ? ui("checked a message and woke")
+          : ui("checked a message and stayed quiet");
       case "agent.limited":
         return `${ui("was not woken: a loop limit stopped it")} (${String(data.limit ?? "")})`;
       case "file.written":

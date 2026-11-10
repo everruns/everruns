@@ -62,9 +62,16 @@ export function RoomComposer({
       ...wakes.mentioned,
       ...wakes.everything.filter((a) => !wakes.mentioned.includes(a)),
     ];
-    if (names.length)
-      return `${ui("Wakes")}: ${names.map((agent) => agent.display_name).join(", ")}`;
-    if (wakes.thread) return ui("Wakes the agents already in this thread");
+    const listening = wakes.listening.filter((agent) => !names.includes(agent));
+    const listeners = listening.length
+      ? `${ui("Listening for relevant messages")}: ${listening.map((agent) => agent.display_name).join(", ")}`
+      : "";
+    const woken = names.length
+      ? `${ui("Wakes")}: ${names.map((agent) => agent.display_name).join(", ")}`
+      : wakes.thread
+        ? ui("Wakes the agents already in this thread")
+        : "";
+    if (woken || listeners) return [woken, listeners].filter(Boolean).join(" · ");
     return ui("Nobody mentioned: nobody wakes. Type @ and an agent's handle.");
   })();
 
