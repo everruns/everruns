@@ -383,6 +383,7 @@ fn model(answer: &str, calls: Vec<Vec<ToolCall>>) -> LlmSimConfig {
 /// How a [`Fixture`]'s agent and session are set up.
 struct Setup {
     completion_check: crate::core::completion_check::CompletionCheck,
+    continuation_limits: Option<crate::core::completion_check::ContinuationLimits>,
     /// The session was started by a trigger or schedule.
     unattended: bool,
     max_iterations: usize,
@@ -394,6 +395,7 @@ impl Default for Setup {
     fn default() -> Self {
         Self {
             completion_check: Default::default(),
+            continuation_limits: None,
             unattended: false,
             max_iterations: 8,
             schedules: None,
@@ -442,13 +444,17 @@ impl Fixture {
                     .capability(TEST_CAPABILITY)
                     .build(),
             )
-            .agent(
-                AgentBuilder::new("actor-agent", "Use the tools when asked.")
+            .agent({
+                let agent = AgentBuilder::new("actor-agent", "Use the tools when asked.")
                     .id(agent_id)
                     .max_iterations(setup.max_iterations)
-                    .completion_check(setup.completion_check)
-                    .build(),
-            )
+                    .completion_check(setup.completion_check);
+                match setup.continuation_limits {
+                    Some(limits) => agent.continuation_limits(limits),
+                    None => agent,
+                }
+                .build()
+            })
             .session(session)
             .provider_with_default_model(
                 Provider::new(

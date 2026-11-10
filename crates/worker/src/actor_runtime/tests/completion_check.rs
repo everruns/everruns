@@ -4,7 +4,7 @@
 use everruns_llmsim::{SimToolCall, SimTurn};
 
 use super::*;
-use crate::core::completion_check::CompletionCheck;
+use crate::core::completion_check::{CompletionCheck, ContinuationLimits};
 use crate::core::events::{
     CompletionCheckAction, CompletionVerdict, EventData, TurnCompletionCheckedData,
 };
@@ -255,6 +255,58 @@ async fn an_exhausted_budget_stops_continuing() {
     assert_eq!(actions(&checks), expected);
     assert_eq!(fixture.continuations().await.len(), 6);
     assert_eq!(fixture.model_calls(), 15);
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    fixture.assert_idle();
+}
+
+/// The agent's own limits replace the defaults, and the time limit is a
+/// window a continuation restarts by running tools (ported from yolop, where a
+/// pinned clock cut long coding tasks that kept working). Every model call
+/// takes half a second against a one-second window: the window restarted by
+/// the tool-running continuation lets a second one through (a pinned clock
+/// would be at two seconds there), and the idle one after it runs out.
+#[tokio::test]
+async fn agent_limits_apply_and_only_tool_work_restarts_the_time_window() {
+    let fixture = Fixture::with_setup(
+        LlmSimConfig::scripted(vec![
+            tool("read_inbox"),
+            say("Reviewing."),
+            verdict("in_progress", "Nothing was submitted yet."),
+            tool("read_inbox"),
+            say("Still reviewing."),
+            verdict("in_progress", "Nothing was submitted yet."),
+            say("Almost there."),
+            verdict("in_progress", "Nothing was submitted yet."),
+        ])
+        .with_response_delay(std::time::Duration::from_millis(500)),
+        Setup {
+            max_iterations: 20,
+            continuation_limits: Some(ContinuationLimits {
+                max_turns: 5,
+                max_tokens: 1_000_000,
+                max_elapsed_secs: 1,
+            }),
+            ..unattended()
+        },
+    )
+    .await;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Review the pull request.").await;
+
+    assert_eq!(run_until_idle(&worker).await, 1);
+
+    let checks = fixture.checks().await;
+    let in_progress = Some(CompletionVerdict::InProgress);
+    assert_eq!(
+        actions(&checks),
+        vec![
+            (in_progress, CompletionCheckAction::Continued, 1),
+            (in_progress, CompletionCheckAction::Continued, 2),
+            (in_progress, CompletionCheckAction::BudgetExhausted, 2),
+        ]
+    );
+    assert!(checks.iter().all(|check| check.max_continuations == 5));
+    assert_eq!(fixture.continuations().await.len(), 2);
     assert_eq!(fixture.count("turn.completed").await, 1);
     fixture.assert_idle();
 }

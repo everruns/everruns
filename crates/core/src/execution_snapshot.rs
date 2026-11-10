@@ -130,6 +130,10 @@ pub struct ResolvedExecutionSnapshot {
         skip_serializing_if = "crate::completion_check::CompletionCheck::is_default"
     )]
     pub completion_check: crate::completion_check::CompletionCheck,
+    /// Limits on the check's continuations; agent-owned, `None` keeps the
+    /// runtime defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuation_limits: Option<crate::completion_check::ContinuationLimits>,
     /// No person is watching the session (trigger or schedule origin).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unattended: bool,
@@ -227,6 +231,7 @@ impl ResolvedExecutionSnapshot {
             completion_check: agent
                 .map(|agent| agent.completion_check)
                 .unwrap_or_default(),
+            continuation_limits: agent.and_then(|agent| agent.continuation_limits),
             unattended: session.unattended,
             output_streaming: session
                 .hints

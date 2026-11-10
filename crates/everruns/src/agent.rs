@@ -11,6 +11,7 @@
 
 mod builder;
 mod communication;
+mod completion_check;
 mod members;
 mod package;
 
@@ -400,6 +401,8 @@ pub struct Agent {
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     communication: crate::conversation::Communication,
+    completion_check: everruns_core::completion_check::CompletionCheck,
+    continuation_limits: Option<everruns_core::completion_check::ContinuationLimits>,
     memory_directories: Vec<(String, PathBuf)>,
     workspace_root: Option<PathBuf>,
     default_workspace: crate::default_workspace::DefaultWorkspace,
@@ -917,7 +920,11 @@ impl Agent {
         // harness link lives on the session, not the definition.
         let mut agent = RuntimeAgentBuilder::new(&self.name, &self.instructions)
             .capabilities(capabilities.clone())
-            .communication(self.communication);
+            .communication(self.communication)
+            .completion_check(self.completion_check);
+        if let Some(limits) = self.continuation_limits {
+            agent = agent.continuation_limits(limits);
+        }
         if let Some(parallel) = self.parallel_tool_calls {
             agent = agent.parallel_tool_calls(parallel);
         }
@@ -1167,6 +1174,8 @@ pub struct AgentBuilder {
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     communication: crate::conversation::Communication,
+    completion_check: everruns_core::completion_check::CompletionCheck,
+    continuation_limits: Option<everruns_core::completion_check::ContinuationLimits>,
     memory_directories: Vec<(String, PathBuf)>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,

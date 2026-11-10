@@ -65,6 +65,24 @@ impl CompletionCheck {
     }
 }
 
+/// Limits on the automatic continuations one request may get, when the
+/// defaults do not fit the agent (a coding agent spends far more tokens per
+/// continuation than a reviewer). Unset keeps the runtime defaults.
+///
+/// The time limit is a window, not a deadline: a continuation that ran tools
+/// restarts it, so a long task that keeps working is bounded by turns and
+/// tokens, while a stalled or chatty loop runs out of time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ContinuationLimits {
+    /// Most automatic continuations after the original turn.
+    pub max_turns: u32,
+    /// Most tokens the continuations may spend together.
+    pub max_tokens: u64,
+    /// Seconds a continuation may run without tool work before the request
+    /// stops.
+    pub max_elapsed_secs: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -328,6 +328,8 @@ impl Agent {
             max_output_tokens: self.max_output_tokens,
             communication: self.communication,
             completion_check: self.completion_check,
+            // Embedder-only: platform agents keep the runtime's default limits.
+            continuation_limits: None,
             tools: self.tools.clone(),
             mcp_servers: self.mcp_servers.clone(),
         }

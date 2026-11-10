@@ -852,6 +852,8 @@ impl AgentBuilder {
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
             communication: self.communication,
+            completion_check: self.completion_check,
+            continuation_limits: self.continuation_limits,
             memory_directories: self.memory_directories,
             workspace_root: self.workspace_root,
             default_workspace,
