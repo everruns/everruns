@@ -102,8 +102,13 @@ pub enum AgentsCommand {
         description: Option<String>,
 
         /// Default model ID (e.g. model_xxx)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "model_role")]
         model: Option<String>,
+
+        /// Follow an organization model instead of --model: `research` runs on
+        /// the organization research model
+        #[arg(long, value_parser = ["research"])]
+        model_role: Option<String>,
 
         /// Harness ID or name (e.g. harness_xxx or "generic").
         /// Omit to default to the org's generic harness.
@@ -149,8 +154,13 @@ pub enum AgentsCommand {
         description: Option<String>,
 
         /// Default model ID (e.g. model_xxx)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "model_role")]
         model: Option<String>,
+
+        /// Follow an organization model instead of --model: `research` runs on
+        /// the organization research model
+        #[arg(long, value_parser = ["research"])]
+        model_role: Option<String>,
 
         /// Harness ID or name (e.g. harness_xxx or "generic")
         #[arg(long, short = 'H')]
@@ -196,6 +206,7 @@ pub async fn run(
             system_prompt,
             description,
             model,
+            model_role,
             harness,
             tag,
             reason,
@@ -204,6 +215,7 @@ pub async fn run(
                 && system_prompt.is_none()
                 && description.is_none()
                 && model.is_none()
+                && model_role.is_none()
                 && harness.is_none()
                 && tag.is_empty();
             let file = resolve_agent_file(file, use_default_file);
@@ -212,6 +224,7 @@ pub async fn run(
                     || system_prompt.is_some()
                     || description.is_some()
                     || model.is_some()
+                    || model_role.is_some()
                     || harness.is_some()
                     || !tag.is_empty()
                 {
@@ -243,6 +256,7 @@ pub async fn run(
                     system_prompt,
                     description,
                     model,
+                    model_role,
                     harness,
                     tag,
                     reason,
@@ -259,6 +273,7 @@ pub async fn run(
             system_prompt,
             description,
             model,
+            model_role,
             harness,
             tag,
             reason,
@@ -268,6 +283,7 @@ pub async fn run(
                 && system_prompt.is_none()
                 && description.is_none()
                 && model.is_none()
+                && model_role.is_none()
                 && harness.is_none()
                 && tag.is_empty();
             let file = resolve_agent_file(file, use_default_file);
@@ -277,6 +293,7 @@ pub async fn run(
                     || system_prompt.is_some()
                     || description.is_some()
                     || model.is_some()
+                    || model_role.is_some()
                     || harness.is_some()
                     || !tag.is_empty()
                 {
@@ -310,6 +327,7 @@ pub async fn run(
                     system_prompt,
                     description,
                     model,
+                    model_role,
                     harness,
                     tag,
                     reason,
@@ -1035,6 +1053,7 @@ async fn save_from_flags(
     system_prompt: Option<String>,
     description: Option<String>,
     model: Option<String>,
+    model_role: Option<String>,
     harness: Option<String>,
     tags: Vec<String>,
     reason: Option<String>,
@@ -1055,6 +1074,7 @@ async fn save_from_flags(
             system_prompt,
             description,
             model,
+            model_role,
             harness,
             tags,
         ),
@@ -1090,12 +1110,14 @@ async fn save_from_flags(
 /// `create_agent` params from CLI flags. `--harness` takes a strict harness id
 /// (`harness_<32-hex>`) or an addressable name (e.g. `generic`), detected the
 /// same way as `sessions create --harness`.
+#[allow(clippy::too_many_arguments)]
 fn agent_params(
     agent_id: Option<&str>,
     name: String,
     system_prompt: String,
     description: Option<String>,
     model: Option<String>,
+    model_role: Option<String>,
     harness: Option<String>,
     tags: Vec<String>,
 ) -> serde_json::Value {
@@ -1108,6 +1130,9 @@ fn agent_params(
     }
     if let Some(model) = model {
         params["default_model_id"] = model.into();
+    }
+    if let Some(role) = model_role {
+        params["model_role"] = role.into();
     }
     match harness {
         Some(h) if is_prefixed_id(&h, "harness") => params["harness_id"] = h.into(),

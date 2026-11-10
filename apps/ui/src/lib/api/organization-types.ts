@@ -1,6 +1,10 @@
 /** Full organization details (from API) */
 export interface Organization {
   small_model_id?: string | null;
+  /** Research model; null means Automatic. */
+  research_model_id?: string | null;
+  /** What the research model resolves to now (selection, Automatic pick, or default model). */
+  effective_research_model_id?: string | null;
   /** Independent model for the built-in Everruns Chat; null inherits the org default. */
   chat_model_id?: string | null;
   id: string;
@@ -24,6 +28,8 @@ export interface Organization {
 /** Request to update an organization */
 export interface UpdateOrganizationRequest {
   small_model_id?: string | null;
+  /** Research model; null returns to Automatic. */
+  research_model_id?: string | null;
   /** Independent model for the built-in Everruns Chat; null inherits the org default. */
   chat_model_id?: string | null;
   name?: string;

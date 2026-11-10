@@ -83,6 +83,27 @@ run an A/B comparison per session.
   rather than running on another organization's credentials.
 
 
+## Organization research model
+
+Under **Models → Defaults**, the **Research model** row names the
+organization's strongest model for hard reasoning and long research. Agents
+set to **Organization research model** in their model picker run on it, so
+moving every research agent to a new flagship is one change.
+
+Left on **Automatic**, it resolves when used: Anthropic's recommended research
+model (Claude Fable 5.2) when an Anthropic provider is connected, else OpenAI's
+(GPT-6 Astra), else another connected provider's recommendation, else the
+default model. The row shows what Automatic picks today.
+
+Use `PATCH /v1/orgs/{org_id}` to set `research_model_id`, or `null` to return
+to Automatic. The response's `effective_research_model_id` is the model it
+resolves to now. An agent follows it with `model_role: "research"`, which
+replaces `default_model_id`:
+
+```bash
+everruns agents update agent_01h9 --name researcher --instructions "Research and cite sources" --model-role research
+```
+
 ## Organization small-model default
 
 Under **Models → Defaults**, admins can select a **Small model** for lightweight

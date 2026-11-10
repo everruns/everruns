@@ -161,6 +161,7 @@ everruns agents create [OPTIONS]
 | `--instructions <SYSTEM_PROMPT>` | System prompt (required if no --file) |
 | `--description <DESCRIPTION>` | Agent description. |
 | `--model <MODEL>` | Default model ID (e.g. model_xxx) |
+| `--model-role <MODEL_ROLE>` | Follow an organization model instead of --model: `research` runs on the organization research model. One of `research`. |
 | `-H`, `--harness <HARNESS>` | Harness ID or name (e.g. harness_xxx or "generic"). Omit to default to the org's generic harness. |
 | `-t`, `--tag <TAG>` | Tag. Repeat for each, or pass one JSON array of strings. Repeatable. |
 
@@ -183,6 +184,7 @@ everruns agents update [OPTIONS] [AGENT_ID]
 | `--instructions <SYSTEM_PROMPT>` | System prompt. |
 | `--description <DESCRIPTION>` | Agent description. |
 | `--model <MODEL>` | Default model ID (e.g. model_xxx) |
+| `--model-role <MODEL_ROLE>` | Follow an organization model instead of --model: `research` runs on the organization research model. One of `research`. |
 | `-H`, `--harness <HARNESS>` | Harness ID or name (e.g. harness_xxx or "generic") |
 | `-t`, `--tag <TAG>` | Tag. Repeat for each, or pass one JSON array of strings. Repeatable. |
 
@@ -459,6 +461,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--max-iterations <MAX_ITERATIONS>` | Maximum number of LLM iterations per turn for this agent. |
 | `--max-output-tokens <MAX_OUTPUT_TOKENS>` | Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ... |
 | `--mcpServers <MCPSERVERS>` |  |
+| `--model-role <MODEL_ROLE>` |  |
 | `--name <NAME>` | Required. Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |
 | `--owner-agent-id <OWNER_AGENT_ID>` | Agent this one is created as part of ("Created here" on that agent's Agents tab). |

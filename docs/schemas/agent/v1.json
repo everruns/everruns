@@ -338,6 +338,13 @@
             }
           ]
         },
+        "model_role": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Organization model the agent follows instead of `model`, such as\n`research` for the host's research model. Hosts without model roles\nuse their default model."
+        },
         "name": {
           "type": "string",
           "description": "Stable agent name used for destination lookup; resource IDs are not portable.",

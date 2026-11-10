@@ -61,6 +61,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     .await
     .unwrap();
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -284,6 +285,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     .await
     .unwrap();
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -961,6 +963,7 @@ async fn starter_files_are_copied_into_new_sessions() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -1094,6 +1097,7 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -1363,6 +1367,7 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),

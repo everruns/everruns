@@ -77,6 +77,8 @@ fn derived(kind: EntityKind) -> &'static [&'static str] {
             "stale",
             "is_new",
         ],
+        // Resolved from the org's models when Automatic.
+        EntityKind::Organization => &["effective_research_model_id"],
         _ => &[],
     }
 }

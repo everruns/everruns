@@ -197,6 +197,11 @@ pub struct Manifest {
     #[serde(deserialize_with = "model")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<PackageModel>))]
     pub model: Option<ModelSpec>,
+    /// Organization model the agent follows instead of `model`, such as
+    /// `research` for the host's research model. Hosts without model roles
+    /// use their default model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_role: Option<String>,
     /// Named harness requirement. Omission uses the host's default harness.
     #[serde(
         default,

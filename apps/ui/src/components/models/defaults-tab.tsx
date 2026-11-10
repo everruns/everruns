@@ -45,6 +45,7 @@ const PROVIDER_SERVICES: { key: string; label: string; description: string }[] =
 const defaultsSchema = z.strictObject({
   default_model_id: z.string(),
   small_model_id: z.string(),
+  research_model_id: z.string(),
   system_decisions: z.enum(["deployment", "organization"]),
   realtime_provider_id: z.string(),
   embeddings_provider_id: z.string(),
@@ -56,6 +57,9 @@ const imageSchema = z.strictObject({ image_model_id: z.string() });
 export const PLATFORM_IMAGE_DEFAULT_LABEL = "Platform default · GPT Image 2.6 Flare";
 
 export const PLATFORM_DEFAULT_LABEL = "Platform default · GPT-6 Luna";
+
+/** Picker value for an unset research model, which resolves automatically. */
+const AUTOMATIC = "automatic";
 
 /** Why a chosen default model cannot be used right now, or null when it can. */
 export function modelDefaultProblem(
@@ -126,6 +130,7 @@ export function DefaultsTab({
     values: {
       default_model_id: org?.default_model_id ?? "",
       small_model_id: org?.small_model_id ?? "",
+      research_model_id: org?.research_model_id ?? "",
       system_decisions: org?.system_decisions ?? "deployment",
       realtime_provider_id: org?.default_provider_per_service?.realtime ?? "",
       embeddings_provider_id: org?.default_provider_per_service?.embeddings ?? "",
@@ -142,6 +147,7 @@ export function DefaultsTab({
       await updateOrg.mutateAsync({
         default_model_id: values.default_model_id || null,
         small_model_id: values.small_model_id || null,
+        research_model_id: values.research_model_id || null,
         system_decisions: values.system_decisions,
         default_provider_per_service: services,
       });
@@ -216,6 +222,34 @@ export function DefaultsTab({
         .sort(compareByRecency)
         .map((model) => ({ value: model.id, label: modelLabel(model) })),
     [models, currentSmallModelId],
+  );
+  const currentResearchModelId = settings.adopted
+    ? settings.values.research_model_id
+    : org?.research_model_id;
+  // Unset means Automatic: the server resolves it from the connected providers'
+  // recommended research models and reports the result.
+  const automaticResearchModel = models.find(
+    (model) => model.id === org?.effective_research_model_id,
+  );
+  const automaticResearchLabel = automaticResearchModel
+    ? `${ui("Automatic")} · ${modelLabel(automaticResearchModel)}`
+    : ui("Automatic");
+  const researchModelOptions = useMemo(
+    () => [
+      { value: AUTOMATIC, label: automaticResearchLabel },
+      ...models
+        .filter(
+          (model) =>
+            model.id === currentResearchModelId ||
+            (model.enabled &&
+              !model.stale &&
+              isChatModel(model) &&
+              model.provider_type !== "chatgpt"),
+        )
+        .sort(compareByRecency)
+        .map((model) => ({ value: model.id, label: modelLabel(model) })),
+    ],
+    [models, currentResearchModelId, automaticResearchLabel],
   );
   const decisionOptions = useMemo(
     () =>
@@ -329,6 +363,29 @@ export function DefaultsTab({
                 : void run(() => updateOrg.mutateAsync({ small_model_id: value || null }))
             }
             placeholder={ui("Not set · titles use session model")}
+            searchPlaceholder="Search chat models…"
+            disabled={busy}
+          />
+        </DefaultRow>
+        <DefaultRow
+          label={ui("Research model")}
+          description={ui(
+            'The strongest model for hard reasoning and long research. Agents set to "Organization research model" run on it.',
+          )}
+          problem={modelDefaultProblem(currentResearchModelId, models)}
+        >
+          <Combobox
+            options={researchModelOptions}
+            value={currentResearchModelId || AUTOMATIC}
+            onValueChange={(picked) => {
+              const value = picked === AUTOMATIC ? "" : picked;
+              if (settings.adopted) {
+                settings.setValues({ ...settings.values, research_model_id: value });
+              } else {
+                void run(() => updateOrg.mutateAsync({ research_model_id: value || null }));
+              }
+            }}
+            placeholder={automaticResearchLabel}
             searchPlaceholder="Search chat models…"
             disabled={busy}
           />

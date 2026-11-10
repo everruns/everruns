@@ -12,6 +12,7 @@ use super::tests_support::*;
 
 async fn create_agent(ctx: &Ctx, name: &str, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
     crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         localizations: Default::default(),
         service_virtual_user_id: None,

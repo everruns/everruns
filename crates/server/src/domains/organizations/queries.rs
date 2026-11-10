@@ -41,6 +41,9 @@ pub async fn build_organization_response(
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
         small_model_id: settings.as_ref().and_then(|s| s.small_model_id),
         chat_model_id: settings.as_ref().and_then(|s| s.chat_model_id),
+        research_model_id: settings.as_ref().and_then(|s| s.research_model_id),
+        effective_research_model_id: super::research_model::effective_research_model_id(db, org_id)
+            .await?,
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings

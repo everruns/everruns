@@ -302,6 +302,9 @@ jest.mock("@/hooks/use-change-history", () => ({
 }));
 
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
+jest.mock("@/hooks/use-organizations", () => ({
+  useOrganization: () => ({ data: { id: "org_1", effective_research_model_id: null } }),
+}));
 jest.mock("@/hooks/use-agent-github", () => ({
   useAgentGitHub: () => ({
     data: { connected: true, bot_login: "reviewer[bot]" },

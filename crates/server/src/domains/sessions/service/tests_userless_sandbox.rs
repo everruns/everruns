@@ -28,6 +28,7 @@ async fn userless_session_binds_session_user_template_to_sole_org_account() {
     }))
     .unwrap();
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        model_role: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),

@@ -25,6 +25,15 @@ pub struct OrganizationResponse {
     /// Optional small chat model, independent of the main chat and decision defaults.
     #[schema(value_type = Option<String>)]
     pub small_model_id: Option<everruns_contracts::typed_id::ModelId>,
+    /// Research model: the org's strongest model for hard reasoning and long
+    /// research. None means Automatic.
+    #[schema(value_type = Option<String>)]
+    pub research_model_id: Option<everruns_contracts::typed_id::ModelId>,
+    /// The model the research model resolves to now: the selection, else the
+    /// Automatic pick (Anthropic's recommended research model, then OpenAI's,
+    /// then another provider's), else the default model.
+    #[schema(value_type = Option<String>)]
+    pub effective_research_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Default harness to preselect in the UI.
     #[schema(value_type = Option<String>)]
     pub default_harness_id: Option<everruns_contracts::typed_id::HarnessId>,
@@ -100,6 +109,11 @@ pub struct UpdateOrganizationRequest {
     #[serde(default, deserialize_with = "double_option")]
     #[schema(value_type = Option<String>)]
     pub small_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
+    /// Research model for agents set to "Organization research model". Omit to
+    /// preserve; null returns to Automatic. Must be an enabled shared chat model.
+    #[serde(default, deserialize_with = "double_option")]
+    #[schema(value_type = Option<String>)]
+    pub research_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
     /// Default harness to preselect in the UI for new sessions.
     /// Mutually exclusive with `default_harness_name`.
     #[serde(skip_serializing_if = "Option::is_none")]

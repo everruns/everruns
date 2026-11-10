@@ -24,6 +24,7 @@ import {
 } from "@/lib/form-validation";
 import { joinTags } from "@/lib/tags";
 import { DEFAULT_COMMUNICATION, normalizeCommunication } from "@/lib/agent-communication";
+import { agentModelRequest, agentModelValue } from "@/lib/agent-model-role";
 import type {
   Agent,
   AgentCapabilityConfig,
@@ -85,7 +86,7 @@ function fieldsFromAgent(agent: Agent | undefined): AgentDraftFields {
     system_prompt: agent.system_prompt,
     tags: joinTags(agent.tags),
     harness_id: agent.effective_harness?.id || agent.harness_id || "",
-    default_model_id: agent.default_model_id || "",
+    default_model_id: agentModelValue(agent),
     communication: normalizeCommunication(agent.communication),
     max_output_tokens: agent.max_output_tokens ? String(agent.max_output_tokens) : "",
   };
@@ -202,7 +203,7 @@ export function useAgentDraft(agent: Agent | undefined) {
         system_prompt: data.system_prompt,
         tags: parseTagList(data.tags),
         ...(harnessChanged && { harness_id: data.harness_id }),
-        default_model_id: data.default_model_id,
+        ...agentModelRequest(data.default_model_id, initialFields.default_model_id),
         ...(communicationChanged && {
           communication: normalizeCommunication(fields.communication),
         }),

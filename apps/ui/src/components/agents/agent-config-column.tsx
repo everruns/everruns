@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { TagInput } from "@/components/ui/tag-input";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { ModelPicker } from "@/components/models/model-picker";
+import { useOrganization } from "@/hooks/use-organizations";
+import { RESEARCH_MODEL_OPTION, agentModelId } from "@/lib/agent-model-role";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { CommunicationSelect } from "@/components/agents/communication-select";
 import { getCommunicationOption, normalizeCommunication } from "@/lib/agent-communication";
@@ -38,6 +40,8 @@ interface AgentConfigColumnProps {
   readOnly: boolean;
   allCapabilities: Capability[];
   defaultModel?: ModelWithProvider;
+  /** The model the organization research model resolves to now. */
+  researchModel?: ModelWithProvider;
   onStartEdit: () => void;
   moreRows: AgentMoreRow[];
   onOpenRow: (id: string) => void;
@@ -53,6 +57,7 @@ export function AgentConfigColumn({
   readOnly,
   allCapabilities,
   defaultModel,
+  researchModel,
   onStartEdit,
   moreRows,
   onOpenRow,
@@ -61,6 +66,7 @@ export function AgentConfigColumn({
 }: AgentConfigColumnProps) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
+  const { data: organization } = useOrganization();
   const chatChanges = useChatChanges();
   // Any control change starts (or continues) the page-level edit.
   const edit = <T,>(apply: (value: T) => void) => {
@@ -105,7 +111,7 @@ export function AgentConfigColumn({
             <ChatChangeMark field="capabilities" className="flex flex-col gap-1.5">
               {editing ? (
                 <CapabilityEditorContext.Provider
-                  value={{ modelId: draft.fields.default_model_id }}
+                  value={{ modelId: agentModelId(draft.fields.default_model_id, organization) }}
                 >
                   <CapabilitySelector
                     capabilities={allCapabilities}
@@ -148,11 +154,23 @@ export function AgentConfigColumn({
               </Label>
               {readOnly ? (
                 <span className="text-[13px] text-muted-foreground">
-                  {defaultModel?.display_name ?? ui("Organization default")}
+                  {agent.model_role === "research"
+                    ? [ui("Organization research model"), defaultModel?.display_name]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : (defaultModel?.display_name ?? ui("Organization default"))}
                 </span>
               ) : (
                 <ModelPicker
                   id="default-model"
+                  additionalOptions={[
+                    {
+                      value: RESEARCH_MODEL_OPTION,
+                      label: [ui("Organization research model"), researchModel?.display_name]
+                        .filter(Boolean)
+                        .join(" · "),
+                    },
+                  ]}
                   value={draft.fields.default_model_id}
                   onChange={edit((value: string) => draft.setField("default_model_id", value))}
                   placeholder={ui("Use default model")}

@@ -398,6 +398,12 @@ impl CommandMeta {
 static DEFAULT_DRIVER_REGISTRY: LazyLock<Arc<DriverRegistry>> =
     LazyLock::new(|| Arc::new(everruns_worker::create_driver_registry()));
 
+/// The built-in driver registry, for static driver metadata such as curated
+/// model recommendations.
+pub(crate) fn default_driver_registry() -> Arc<DriverRegistry> {
+    DEFAULT_DRIVER_REGISTRY.clone()
+}
+
 #[cfg(test)]
 pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
     // Built from the flag map so a new flag is covered without editing this helper.

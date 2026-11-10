@@ -1094,22 +1094,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?;
 
         // Explicit bindings win before the applicable organization default.
-        let mut model_id = session
-            .model_id
-            .or(agent.as_ref().and_then(|a| a.default_model_id))
-            .or(harness.as_ref().and_then(|h| h.default_model_id));
-        if model_id.is_none()
-            && let Some(agent) = agent.as_ref()
-        {
-            model_id = crate::platform_chat_agent::org_chat_model_id(
-                &self.db,
-                org_id,
-                &agent.name,
-                agent.is_built_in,
-            )
-            .await
-            .map_err(|e| store_error(format!("Failed to resolve Chat model: {e}")))?;
-        }
+        let model_id = crate::domains::organizations::research_model::turn_model_id(
+            &self.db,
+            org_id,
+            session.model_id,
+            agent.as_ref(),
+            harness.as_ref().and_then(|h| h.default_model_id),
+        )
+        .await
+        .map_err(|e| store_error(format!("Failed to resolve model: {e}")))?;
         let model = if let Some(model_id) = model_id {
             self.get_model_spec(org_id, model_id.uuid()).await?
         } else {
