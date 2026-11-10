@@ -1074,7 +1074,10 @@ the storage decision below requires. What it checks and what it found:
   from disk and snapshots every 40 entries. 12 seeds per run, about 400
   writes each, 5 to 13 kills and 4 to 10 terms per seed: every
   acknowledged write is on every node, the nodes agree, nothing unwritten
-  appears, and no term has two leaders.
+  appears, and no node ever follows an older leader than it followed
+  before. (Not "one leader per term": openraft 0.9 without
+  `single-term-leader` lets two candidates win one term, the higher node
+  id taking over, and a loaded machine makes that happen.)
 - **Placement generations** (`crates/cell/src/state.rs`,
   `state_moves_tests.rs`): moves now follow the `Moves` model. A session's
   copy carries a generation that only grows; an imported copy is prepared
@@ -1103,10 +1106,25 @@ the storage decision below requires. What it checks and what it found:
   writer and the poison guard to "seal after exactly K deaths without
   progress". Three bug configurations keep failing: fencing by holder name,
   the guard before the fix, and progress reports accepted from any epoch.
+- **Spend allowances** (`crates/cell/src/allowance.rs`, the `Grants`
+  model): grants per tenant live in replicated cell state, so every
+  replica and a new leader agree on what was spent. The cell plugs into
+  the budget gate Engine already has (the host's budget authority), with
+  no platform ids in the agent model: before each provider call it
+  reserves the grant's per-call maximum, a call that doesn't fit never
+  starts and the turn ends as budget exhausted, and each `llm.generation`
+  event settles the reservation at its real cost (anything above counts
+  as an overrun). A reservation left open by an executor that died counts
+  as spent at its maximum when the next epoch claims the session. Grants
+  come in through the cell API for now (`/cell/tenants/{tenant}/grants`);
+  the control plane endpoint and a per-model maximum (price times prompt
+  and `max_tokens`) are plan step 7. An end-to-end test runs a real cell
+  node: a tenant that can't cover one call gets no model call, one that
+  can runs the whole turn, and the ledger closes every reservation.
 
 Still open in step 5: exact-replay simulation of the whole node (a
 simulated runtime, so a seed replays bit for bit, with crash points inside
-moves and epochs) and spend allowances.
+moves and epochs).
 
 ### Corrections after the architecture review (2026-11-09)
 

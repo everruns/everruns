@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use everruns_contracts::typed_id::{EventId, SessionId};
-use everruns_core::events::{Event, EventRequest};
+use everruns_core::events::{Event, EventData, EventRequest};
 use openraft::{BasicNode, LogId, StoredMembership};
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +49,18 @@ pub enum Command {
         now_ms: i64,
         seed: EventId,
     },
+    /// Bill `session`'s spend to `tenant`. Set once, right after create,
+    /// before the session takes input; a different tenant is refused.
+    Assign { session: SessionId, tenant: String },
+    /// Take a spend allowance grant for `tenant` (see `allowance`).
+    Grant {
+        tenant: String,
+        grant_id: String,
+        grant: crate::allowance::Grant,
+    },
+    /// Reserve `session`'s next provider call; the reply is the Engine's
+    /// budget reading.
+    Reserve { session: SessionId, now_ms: i64 },
     /// Engine's claim: a new epoch for `holder` on `node`, if the session
     /// owes work and no unexpired epoch holds it.
     Claim {
@@ -342,6 +354,9 @@ pub struct SessionState {
     #[serde(default)]
     pub authority: crate::authority::Authority,
     pub placement: Placement,
+    /// The tenant this session's spend is billed to (`None`: unmetered).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant: Option<String>,
     /// Placement generation of this copy. It only grows: every move takes
     /// the next one, an abandoned move the one after.
     #[serde(default)]
@@ -523,6 +538,9 @@ pub struct CellState {
     /// point at theirs with `definition_ref`. Empty in memory.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub definitions: std::collections::BTreeMap<String, serde_json::Value>,
+    /// Spend allowances, per tenant.
+    #[serde(default)]
+    pub allowances: crate::allowance::Allowances,
     /// Commands arriving in pieces, by id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub parts: std::collections::BTreeMap<uuid::Uuid, Assembly>,
@@ -832,8 +850,48 @@ impl CellState {
                 }
                 let value = state.claim(&holder, node, ttl_ms, now_ms);
                 changes.push(Change::Session(session));
+                if value.is_some() {
+                    let tenant = state.tenant.clone();
+                    self.allowances.close_dangling(tenant.as_deref(), session);
+                }
                 Response::Value {
                     value: value.unwrap_or_default(),
+                }
+            }
+            Command::Assign { session, tenant } => {
+                let Some(state) = self.session_mut(session) else {
+                    return self.missing(session);
+                };
+                match &state.tenant {
+                    Some(current) if *current == tenant => Response::Duplicate,
+                    Some(current) => Response::Rejected {
+                        reason: format!("session is billed to {current}"),
+                    },
+                    None => {
+                        state.tenant = Some(tenant);
+                        changes.push(Change::Session(session));
+                        Response::Ok
+                    }
+                }
+            }
+            Command::Grant {
+                tenant,
+                grant_id,
+                grant,
+            } => {
+                if self.allowances.grant(&tenant, &grant_id, grant) {
+                    Response::Ok
+                } else {
+                    Response::Duplicate
+                }
+            }
+            Command::Reserve { session, now_ms } => {
+                let Some(state) = self.sessions.get(&session) else {
+                    return self.missing(session);
+                };
+                let tenant = state.tenant.clone();
+                Response::Value {
+                    value: self.allowances.reserve(tenant.as_deref(), session, now_ms),
                 }
             }
             Command::Renew {
@@ -899,7 +957,7 @@ impl CellState {
                     return self.missing(session);
                 };
                 let applied = state.append(fence, event_id, request, expected, now_ms);
-                Self::applied(session, applied, changes)
+                self.applied(session, applied, changes)
             }
             Command::Write {
                 session,
@@ -912,7 +970,7 @@ impl CellState {
                 };
                 let applied = state.write(fence, change, now_ms);
                 changes.push(Change::Session(session));
-                Self::applied(session, applied, changes)
+                self.applied(session, applied, changes)
             }
             Command::Locate { session } => {
                 if let Some(to) = self.sealed.get(&shard_of(session)) {
@@ -1145,6 +1203,7 @@ impl CellState {
     }
 
     fn applied(
+        &mut self,
         session: SessionId,
         applied: crate::authority::Applied,
         changes: &mut Vec<Change>,
@@ -1152,6 +1211,12 @@ impl CellState {
         use crate::authority::Applied;
         match applied {
             Applied::Done(value, events) => {
+                for event in &events {
+                    if let Some(micros) = generation_cost_micros(event) {
+                        let tenant = self.sessions.get(&session).and_then(|s| s.tenant.clone());
+                        self.allowances.settle(tenant.as_deref(), session, micros);
+                    }
+                }
                 for event in events {
                     changes.push(Change::Event(session, std::sync::Arc::new(event)));
                 }
@@ -1169,6 +1234,21 @@ impl CellState {
             None => Response::NotFound,
         }
     }
+}
+
+/// What a provider call cost, from its `llm.generation` event, in micro
+/// dollars (0 when the provider reported no cost).
+fn generation_cost_micros(event: &Event) -> Option<i64> {
+    let EventData::LlmGeneration(data) = &event.data else {
+        return None;
+    };
+    let usd = data
+        .metadata
+        .usage
+        .as_ref()
+        .and_then(|u| u.effective_cost_usd())
+        .unwrap_or(0.0);
+    Some((usd * 1_000_000.0).ceil() as i64)
 }
 
 #[cfg(test)]

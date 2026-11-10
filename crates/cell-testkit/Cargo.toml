@@ -30,6 +30,9 @@ rand.workspace = true
 uuid.workspace = true
 mimalloc.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [[bin]]
 name = "cell-testnode"
 path = "src/bin/testnode.rs"

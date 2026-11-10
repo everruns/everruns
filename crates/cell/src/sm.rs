@@ -492,6 +492,7 @@ fn stub(s: &SessionState) -> SessionState {
         events: Vec::new(),
         authority: s.authority.clone(),
         placement: s.placement,
+        tenant: s.tenant.clone(),
         generation: s.generation,
         moving_to: s.moving_to,
         turn_start: s.turn_start,
@@ -593,6 +594,7 @@ impl StateMachine {
             sealed: state.sealed.clone(),
             parts: state.parts.clone(),
             definitions: Default::default(),
+            allowances: state.allowances.clone(),
         }
     }
 }

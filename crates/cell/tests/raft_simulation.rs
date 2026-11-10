@@ -8,7 +8,13 @@
 //! - every write the cell acknowledged is in every node's state;
 //! - every node's state is the same (state machine safety);
 //! - nothing appears that no client wrote;
-//! - no term ever had two leaders.
+//! - no node ever saw the committed leader go backwards.
+//!
+//! Decision: the check is per leader id, not per term. openraft 0.9 runs
+//! without `single-term-leader`, so a leader id is (term, node) and two
+//! candidates can both win one term, the higher node id taking over; a
+//! busy machine makes that split election happen. What Raft safety needs
+//! is that a node only ever follows a newer leader id than the last one.
 //!
 //! The leader also ships the committed log to an object store while the
 //! faults run. At the end every node is lost at once, and the cell is
@@ -199,8 +205,10 @@ struct Cell {
     /// The fleet's object store, shared by every node.
     store: Store,
     shippers: Mutex<HashMap<NodeId, Arc<Shipper>>>,
-    /// (term, leader) pairs every node ever reported.
-    leaders: Arc<Mutex<BTreeMap<u64, BTreeSet<NodeId>>>>,
+    /// Every committed (term, leader) a node reported, and any report
+    /// older than one the same node made before.
+    leaders: Arc<Mutex<BTreeSet<(u64, NodeId)>>>,
+    regressions: Arc<Mutex<Vec<String>>>,
 }
 
 impl Cell {
@@ -241,19 +249,29 @@ impl Cell {
         )
         .await
         .unwrap();
-        // Record every leader each node sees, per term.
+        // Record every committed leader this node sees; it must only move
+        // forward, across restarts too (the vote is on disk).
         let mut metrics = raft.metrics();
         let leaders = self.leaders.clone();
+        let regressions = self.regressions.clone();
+        let mut last = metrics
+            .borrow()
+            .current_leader
+            .map(|leader| (metrics.borrow().vote.leader_id().term, leader));
         tokio::spawn(async move {
             while metrics.changed().await.is_ok() {
                 let m = metrics.borrow().clone();
-                if let Some(leader) = m.current_leader {
-                    leaders
+                let Some(leader) = m.current_leader else {
+                    continue;
+                };
+                let seen = (m.vote.leader_id().term, leader);
+                if last.is_some_and(|last| seen < last) {
+                    regressions
                         .lock()
-                        .entry(m.vote.leader_id().term)
-                        .or_default()
-                        .insert(leader);
+                        .push(format!("node {node}: {seen:?} after {last:?}"));
                 }
+                last = Some(seen);
+                leaders.lock().insert(seen);
             }
         });
         self.shared.lock().insert(node, shared);
@@ -344,6 +362,7 @@ async fn run(seed: u64) {
         }),
         shared: Mutex::default(),
         leaders: Arc::default(),
+        regressions: Arc::default(),
     };
     for node in NODES {
         cell.start(node).await;
@@ -532,12 +551,11 @@ async fn run(seed: u64) {
             );
         }
     }
-    for (term, leaders) in cell.leaders.lock().iter() {
-        assert!(
-            leaders.len() <= 1,
-            "seed {seed}: term {term} had leaders {leaders:?}"
-        );
-    }
+    let regressions = cell.regressions.lock().clone();
+    assert!(
+        regressions.is_empty(),
+        "seed {seed}: a committed leader went backwards: {regressions:?}"
+    );
     assert!(
         acked.len() > 100,
         "seed {seed}: the cell made progress ({} of 400 acknowledged)",
@@ -551,7 +569,7 @@ async fn run(seed: u64) {
         })
         .collect();
     eprintln!(
-        "seed {seed}: {} of 400 acknowledged, {} terms, {kills} kills, snapshots at {snapshots:?}",
+        "seed {seed}: {} of 400 acknowledged, {} leaders, {kills} kills, snapshots at {snapshots:?}",
         acked.len(),
         cell.leaders.lock().len(),
     );

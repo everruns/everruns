@@ -21,7 +21,7 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::node::{Node, Proposed};
-use crate::state::{CellId, Change, Command, Placement, SessionState};
+use crate::state::{CellId, Change, Command, Placement, Response, SessionState};
 use crate::types::{NodeId, TypeConfig};
 
 pub fn router(node: Arc<Node>) -> Router {
@@ -43,6 +43,8 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/members", get(members).post(add_member))
         .route("/cell/members/{node}", axum::routing::delete(remove_member))
         .route("/cell/directory/{session}", get(directory))
+        .route("/cell/tenants/{tenant}/grants", post(grant))
+        .route("/cell/allowances", get(allowances))
         .route("/cell/shards/{shard}/handoff", post(handoff_shard))
         .route("/cell/sessions/{session}", get(session))
         .route("/cell/sessions/{session}/events", get(events))
@@ -583,6 +585,37 @@ async fn directory(
 }
 
 #[derive(Deserialize)]
+struct GrantBody {
+    grant_id: String,
+    #[serde(flatten)]
+    grant: crate::allowance::Grant,
+}
+
+/// `POST /cell/tenants/{tenant}/grants`: take a spend allowance grant (the
+/// control plane's side of `allowance`). Idempotent by `grant_id`.
+async fn grant(
+    State(node): State<Arc<Node>>,
+    Path(tenant): Path<String>,
+    Json(body): Json<GrantBody>,
+) -> Result<Json<Response>, (StatusCode, String)> {
+    let (response, _) = node
+        .propose(Command::Grant {
+            tenant,
+            grant_id: body.grant_id,
+            grant: body.grant,
+        })
+        .await
+        .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
+    Ok(Json(response))
+}
+
+/// `GET /cell/allowances`: every tenant's grants, usage and open
+/// reservations, as this replica applied them.
+async fn allowances(State(node): State<Arc<Node>>) -> Json<crate::allowance::Allowances> {
+    Json(node.shared.state.read().allowances.clone())
+}
+
+#[derive(Deserialize)]
 struct Handoff {
     to: CellId,
 }
@@ -912,6 +945,9 @@ fn reply_of(error: impl std::fmt::Display) -> CellReply {
 #[derive(Deserialize)]
 pub struct CreateBody {
     pub definition: serde_json::Value,
+    /// The tenant the session's spend is billed to, if metered.
+    #[serde(default)]
+    pub tenant: Option<String>,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -932,6 +968,19 @@ async fn create_session(
         Err(error) => reply_of(error),
     };
     drop(definition);
+    // Billed before the reply, so no input reaches the session unmetered.
+    if let (CellReply::Ok { .. }, Some(tenant)) = (&reply, body.tenant) {
+        let (assigned, _) = node
+            .propose(Command::Assign {
+                session: id,
+                tenant,
+            })
+            .await
+            .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
+        if let Response::Rejected { reason } = assigned {
+            return Ok(Json(CellReply::Refused { reason }));
+        }
+    }
     Ok(Json(reply))
 }
 

@@ -1,8 +1,45 @@
 //! The cell's session actor store: Engine's epochs (claim, renew,
 //! progress, release, hand-off) and the journal its holders read, as Raft
-//! commands. Split from `hosting.rs` for size.
+//! commands, and the spend allowance check before each provider call.
+//! Split from `hosting.rs` for size.
 
 use super::*;
+
+/// `backends` with the cell's allowance as the turn's budget authority: the
+/// Engine's budget gate asks it before every provider call, and the cell
+/// reserves the call's maximum from the session's tenant (see `allowance`).
+pub(super) fn with_allowance(
+    inner: Arc<Inner>,
+    session: SessionId,
+    mut backends: HostBackends,
+) -> HostBackends {
+    let checker: Arc<dyn everruns_contracts::runtime::tool_execution::BudgetChecker> =
+        Arc::new(CellBudget { inner, session });
+    backends.extensions.authorities.budget = Some(Arc::new(move |_| Some(checker.clone())));
+    backends
+}
+
+struct CellBudget {
+    inner: Arc<Inner>,
+    session: SessionId,
+}
+
+#[async_trait]
+impl everruns_contracts::runtime::tool_execution::BudgetChecker for CellBudget {
+    async fn check_budgets(
+        &self,
+        _session_id: &str,
+    ) -> Result<everruns_contracts::runtime::budget::BudgetToolResponse> {
+        let command = Command::Reserve {
+            session: self.session,
+            now_ms: now_ms(),
+        };
+        match self.inner.propose(self.session, command).await? {
+            Response::Value { value } => serde_json::from_value(value).map_err(store_err),
+            other => Err(store_err(format!("reserve: {other:?}"))),
+        }
+    }
+}
 
 #[async_trait]
 impl SessionActorStore for Ports {
@@ -139,4 +176,17 @@ impl Ports {
             other => Err(refused(session, other)),
         }
     }
+}
+
+pub(super) struct Guard<F: FnOnce()>(Option<F>);
+impl<F: FnOnce()> Drop for Guard<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() {
+            f()
+        }
+    }
+}
+/// Run `f` when the returned guard drops.
+pub(super) fn scopeguard<F: FnOnce()>(f: F) -> Guard<F> {
+    Guard(Some(f))
 }

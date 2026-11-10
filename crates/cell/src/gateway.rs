@@ -432,6 +432,7 @@ impl Gateway {
         definition: Value,
         cell: Option<CellId>,
         id: Option<SessionId>,
+        tenant: Option<String>,
     ) -> Result<Value, ApiError> {
         // Reject a malformed definition here, not at its first turn. Whether
         // a node has the tools and provider it names shows at the turn.
@@ -480,7 +481,7 @@ impl Gateway {
                 _ => cells.retain(|c| *c != cell),
             }
         };
-        let body = json!({ "definition": definition });
+        let body = json!({ "definition": definition, "tenant": tenant });
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let reply: CellReply = self
@@ -715,6 +716,9 @@ struct CreateBody {
     cell: Option<CellId>,
     #[serde(default)]
     id: Option<SessionId>,
+    /// The tenant the session's spend is billed to (see `allowance`).
+    #[serde(default)]
+    tenant: Option<String>,
 }
 
 async fn create(
@@ -723,7 +727,11 @@ async fn create(
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     Ok((
         StatusCode::CREATED,
-        Json(gateway.create(body.agent, body.cell, body.id).await?),
+        Json(
+            gateway
+                .create(body.agent, body.cell, body.id, body.tenant)
+                .await?,
+        ),
     ))
 }
 

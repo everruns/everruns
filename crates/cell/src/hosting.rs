@@ -267,6 +267,20 @@ impl SessionHosting for RaftHosting {
         Some(self)
     }
 
+    async fn prepare_activation(
+        &self,
+        _engine: &everruns::Engine,
+        session: SessionId,
+        _environment: &everruns::Environment,
+        backends: HostBackends,
+    ) -> Result<HostBackends> {
+        Ok(actors::with_allowance(
+            self.inner.clone(),
+            session,
+            backends,
+        ))
+    }
+
     async fn command(&self, session: SessionId, command: SessionCommand) -> Result<Value> {
         let definition = match &command {
             SessionCommand::Create { binding } => {
@@ -1475,17 +1489,6 @@ impl CompactionCheckpointStore for Ports {
     }
 }
 
-struct Guard<F: FnOnce()>(Option<F>);
-impl<F: FnOnce()> Drop for Guard<F> {
-    fn drop(&mut self) {
-        if let Some(f) = self.0.take() {
-            f()
-        }
-    }
-}
-fn scopeguard<F: FnOnce()>(f: F) -> Guard<F> {
-    Guard(Some(f))
-}
-
 #[path = "hosting_actors.rs"]
 mod actors;
+use actors::scopeguard;

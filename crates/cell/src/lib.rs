@@ -21,6 +21,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod allowance;
 pub mod api;
 pub mod authority;
 pub mod batch;
