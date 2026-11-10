@@ -180,6 +180,38 @@ const CREATE_APP_NEXT_STEP: &str = "Creating the GitHub App needs a browser: ope
 // Shared with the identity-scoped routes
 // ============================================================================
 
+/// Whether an agent acting as this identity pushes code: its `repositories`
+/// capability, set on the agent or inherited from its harness, has a writable
+/// repository or lets the agent add one. Decides whether the agent's GitHub
+/// App asks for Contents write (`github_apps::agent_permissions`).
+pub(crate) async fn identity_pushes_code(
+    db: &StorageBackend,
+    org_id: i64,
+    identity_id: VirtualUserId,
+) -> Result<bool, CommandError> {
+    use everruns_integrations::github::{REPOSITORIES_CAPABILITY_ID, RepositoriesConfig};
+
+    for agent in db.list_agents_with_identity(org_id, identity_id).await? {
+        let own =
+            crate::domains::agents::queries::get_capabilities(db, org_id, agent.id.uuid()).await?;
+        let inherited =
+            crate::domains::harnesses::queries::resolve_effective(db, org_id, agent.harness_id)
+                .await?
+                .map(|harness| harness.capabilities)
+                .unwrap_or_default();
+        // The agent's own config replaces the harness's, as at session start.
+        let config = own
+            .iter()
+            .chain(inherited.iter())
+            .find(|capability| capability.capability_id() == REPOSITORIES_CAPABILITY_ID)
+            .map(|capability| capability.config_value());
+        if config.is_some_and(RepositoriesConfig::config_can_push) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// The status the agent page shows.
 pub(crate) async fn status_for_agent(
     db: &StorageBackend,
@@ -200,6 +232,7 @@ pub(crate) async fn status_for_agent(
         });
     };
     let app = db.get_github_app_for_identity(org_id, identity_id).await?;
+    let pushes_code = identity_pushes_code(db, org_id, identity_id).await?;
     let any_connection = db
         .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
         .await?;
@@ -263,7 +296,7 @@ pub(crate) async fn status_for_agent(
         missing_permissions: connection
             .as_ref()
             .filter(|_| !chose_everruns_app)
-            .map(|c| missing_permissions(c.scopes.as_deref()))
+            .map(|c| missing_permissions(c.scopes.as_deref(), pushes_code))
             .unwrap_or_default(),
         account: connection.and_then(|c| c.provider_username),
         repository_selection,
@@ -356,6 +389,7 @@ pub(crate) async fn begin_connect(
         api_base_url: &github.api_base_url,
         frontend_url: &github.frontend_url,
         app_row_id,
+        pushes_code: identity_pushes_code(db, org_id, identity_id).await?,
     });
     Ok(BeginConnectResponse::CreateApp {
         action: manifest_form_action(web_url, request.owner_org.as_deref(), &setup_state),

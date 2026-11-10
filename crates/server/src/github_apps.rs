@@ -55,6 +55,18 @@ pub fn default_permissions() -> Value {
     })
 }
 
+/// Permissions an agent's App requests. Contents becomes writable only for an
+/// agent whose `repositories` capability lets it push (a writable repository,
+/// or leave to add one): every other agent keeps a read-only App, so a
+/// reviewer bot never gains push rights it does not use.
+pub fn agent_permissions(pushes_code: bool) -> Value {
+    let mut permissions = default_permissions();
+    if pushes_code {
+        permissions["contents"] = json!("write");
+    }
+    permissions
+}
+
 /// Webhook events every agent App subscribes to.
 pub const DEFAULT_EVENTS: &[&str] = &[
     "push",
@@ -84,7 +96,7 @@ pub fn scopes_from_permissions(permissions: &Value) -> Option<String> {
 /// Permissions an installation lacks compared with what new Apps request, as
 /// `name:level`. An App created before a permission was added keeps its old
 /// set until its owner updates it on GitHub and the installation accepts.
-pub fn missing_permissions(scopes: Option<&str>) -> Vec<String> {
+pub fn missing_permissions(scopes: Option<&str>, pushes_code: bool) -> Vec<String> {
     let granted: std::collections::HashMap<&str, &str> = scopes
         .unwrap_or_default()
         .split(',')
@@ -95,7 +107,7 @@ pub fn missing_permissions(scopes: Option<&str>) -> Vec<String> {
         "read" => 1,
         _ => 0,
     };
-    let mut missing: Vec<String> = default_permissions()
+    let mut missing: Vec<String> = agent_permissions(pushes_code)
         .as_object()
         .into_iter()
         .flatten()
@@ -155,6 +167,8 @@ pub struct ManifestInput<'a> {
     pub frontend_url: &'a str,
     /// Row id the App will be stored under.
     pub app_row_id: Uuid,
+    /// Whether the agent pushes code, see [`agent_permissions`].
+    pub pushes_code: bool,
 }
 
 /// Build the manifest GitHub uses to create the App.
@@ -171,7 +185,7 @@ pub fn build_manifest(input: &ManifestInput<'_>) -> Value {
         "setup_url": format!("{api}/v1/github/apps/{}/setup", input.app_row_id),
         "setup_on_update": true,
         "public": false,
-        "default_permissions": default_permissions(),
+        "default_permissions": agent_permissions(input.pushes_code),
         "default_events": DEFAULT_EVENTS,
     });
     if is_publicly_reachable(api) {
@@ -801,22 +815,28 @@ mod tests {
     fn missing_permissions_compares_levels_with_new_apps() {
         let all =
             "actions:read,checks:read,contents:read,issues:write,metadata:read,pull_requests:write";
-        assert!(missing_permissions(Some(all)).is_empty());
+        assert!(missing_permissions(Some(all), false).is_empty());
+        // An agent that pushes code needs Contents write on top.
+        assert_eq!(missing_permissions(Some(all), true), vec!["contents:write"]);
         // An App created before CI triggers.
         assert_eq!(
-            missing_permissions(Some(
-                "contents:read,issues:write,metadata:read,pull_requests:write"
-            )),
+            missing_permissions(
+                Some("contents:read,issues:write,metadata:read,pull_requests:write"),
+                false
+            ),
             vec!["actions:read", "checks:read"]
         );
         // Write covers read; read does not cover write.
         assert_eq!(
-            missing_permissions(Some(
-                "actions:write,checks:read,contents:write,issues:read,metadata:read,pull_requests:write"
-            )),
+            missing_permissions(
+                Some(
+                    "actions:write,checks:read,contents:write,issues:read,metadata:read,pull_requests:write"
+                ),
+                false
+            ),
             vec!["issues:write"]
         );
-        assert_eq!(missing_permissions(None).len(), 6);
+        assert_eq!(missing_permissions(None, false).len(), 6);
     }
 
     #[test]
@@ -932,6 +952,7 @@ mod tests {
             api_base_url: "https://app.everruns.com/api/",
             frontend_url: "https://app.everruns.com",
             app_row_id: id,
+            pushes_code: false,
         });
         assert_eq!(
             manifest["hook_attributes"]["url"],
@@ -947,6 +968,14 @@ mod tests {
         );
         assert_eq!(manifest["default_permissions"]["pull_requests"], "write");
         assert_eq!(manifest["default_permissions"]["contents"], "read");
+        let pushing = build_manifest(&ManifestInput {
+            name: "coder-abc123",
+            api_base_url: "https://app.everruns.com/api/",
+            frontend_url: "https://app.everruns.com",
+            app_row_id: id,
+            pushes_code: true,
+        });
+        assert_eq!(pushing["default_permissions"]["contents"], "write");
         assert_eq!(manifest["public"], false);
         assert!(
             manifest["default_events"]
@@ -963,6 +992,7 @@ mod tests {
             api_base_url: "http://localhost:27100/api",
             frontend_url: "http://localhost:27100",
             app_row_id: Uuid::nil(),
+            pushes_code: false,
         });
         assert!(manifest.get("hook_attributes").is_none());
         assert_eq!(manifest["default_events"], json!([]));

@@ -561,6 +561,27 @@ impl Database {
         Ok(exists.is_some())
     }
 
+    /// Agents acting as one service identity. Usually one.
+    pub async fn list_agents_with_identity(
+        &self,
+        org_id: i64,
+        virtual_user_id: VirtualUserId,
+    ) -> Result<Vec<AgentRow>> {
+        Ok(sqlx::query_as::<_, AgentRow>(sql!(
+            r#"
+            SELECT {AgentRow}
+            FROM agents
+            WHERE org_id = $1
+              AND virtual_user_id = $2
+              AND status != 'deleted'
+            "#
+        ))
+        .bind(org_id)
+        .bind(virtual_user_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         // Archive instead of hard delete
         let result = sqlx::query(
