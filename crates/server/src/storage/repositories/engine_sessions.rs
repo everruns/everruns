@@ -322,5 +322,4 @@ impl Database {
 }
 
 #[cfg(test)]
-#[path = "engine_sessions_tests.rs"]
 mod tests;

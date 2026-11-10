@@ -182,5 +182,4 @@ async fn configuration(
 }
 
 #[cfg(test)]
-#[path = "sessions_tests.rs"]
 mod tests;

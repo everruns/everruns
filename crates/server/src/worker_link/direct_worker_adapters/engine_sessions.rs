@@ -111,3 +111,26 @@ impl EngineSessions for DirectEngineSessions {
             .map_err(|e| store_error(format!("Failed to schedule Engine session: {e}")))
     }
 }
+
+/// The adapters' lease store: it notes which leases the control plane routes
+/// to the Engine, in the routes every lease store these adapters make shares.
+pub(super) fn lease_store(
+    adapters: &super::DirectWorkerAdapters,
+) -> Arc<dyn everruns_worker::ActorLeaseStore> {
+    Arc::new(super::actors::DirectActorLeaseStore {
+        db: adapters.db.clone(),
+        engine_routes: Some(adapters.engine_routes.clone()),
+    })
+}
+
+/// The Engine lane's link to the control plane's session authority.
+pub(super) fn link(
+    adapters: &super::DirectWorkerAdapters,
+) -> everruns_worker::engine_sessions::EngineLink {
+    everruns_worker::engine_sessions::EngineLink {
+        sessions: Arc::new(DirectEngineSessions {
+            db: adapters.db.clone(),
+        }),
+        routes: adapters.engine_routes.clone(),
+    }
+}

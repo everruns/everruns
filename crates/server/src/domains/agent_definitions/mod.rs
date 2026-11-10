@@ -382,5 +382,4 @@ pub fn sweep_job(
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;
