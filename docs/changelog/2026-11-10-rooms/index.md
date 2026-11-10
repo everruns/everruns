@@ -1,6 +1,6 @@
 ---
-title: Rooms put people and agents in one conversation, and wake the agents they address
-description: Create a room with people, Everruns agents and your own users; an @mention wakes an agent in its own session, it answers with send_message, and loop limits stop agents talking forever.
+title: Rooms put people and agents in one conversation
+description: Put people, agents and your own users in one room. An @mention wakes an agent in its own session, and loop limits stop agents talking forever.
 date: 2026-11-10
 kind: feature
 significance: notable
