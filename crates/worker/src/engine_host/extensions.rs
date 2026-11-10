@@ -33,14 +33,15 @@ use everruns_capabilities::{PlatformStoreSubagentDelegate, PlatformToolAugmentor
 use everruns_contracts::CapabilityRef;
 use everruns_contracts::error::Result;
 use everruns_contracts::tool_types::ToolDefinition;
-use everruns_contracts::typed_id::{AgentId, SessionId};
+use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
 
 use crate::core::execution_loading::SessionStore;
 use crate::core::session_files::SessionFileSystem;
 use crate::core::session_task::SessionTaskRegistry;
 use crate::core::tools::ToolRegistry;
 use crate::host::{
-    HostBackends, HostExtensions, HostToolAugmentor, RuntimeHostAdapter, ToolContextRequest,
+    HostBackends, HostExtensions, HostMcp, HostToolAugmentor, RuntimeHostAdapter,
+    ToolContextRequest,
 };
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::worker_adapters::WorkerAdapters;
@@ -94,6 +95,12 @@ pub fn with_platform_services<A: WorkerAdapters>(
     extensions.hooks.hosted_mcp = Some(Arc::new(move |_, input| {
         mcp.hosted_mcp_resolver(org, session, agent, input)
     }));
+    extensions.hooks.mcp = Some(Arc::new(PlatformMcp {
+        host: host.clone(),
+        org_id: org,
+        session_id: session,
+        agent_id: agent,
+    }));
     extensions.hooks.knowledge = adapters.knowledge_runtime(org);
     extensions.hooks.waits_on_person = Some(Arc::new(crate::actor_runtime::waits_on_person));
 
@@ -128,6 +135,32 @@ pub fn with_platform_services<A: WorkerAdapters>(
                 resolved_capabilities: &capabilities,
             })
         }))
+}
+
+/// The platform's MCP servers for the session's turns: the ones a worker
+/// turn gets, listed by the control plane for the turn's input (the agent's,
+/// the harness's, the session's and the sender's own servers) and called
+/// with the platform's credentials, OAuth grants and egress guard.
+struct PlatformMcp<A: WorkerAdapters> {
+    host: WorkerRuntimeHost<A>,
+    org_id: i64,
+    session_id: SessionId,
+    agent_id: Option<AgentId>,
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> HostMcp for PlatformMcp<A> {
+    async fn tool_definitions(&self, input: MessageId) -> Result<Vec<ToolDefinition>> {
+        self.host
+            .mcp_tool_definitions(self.org_id, self.session_id, input)
+            .await
+    }
+
+    async fn executor(&self) -> Option<Arc<dyn crate::core::McpToolInvoker>> {
+        self.host
+            .mcp_executor(self.org_id, self.session_id, self.agent_id)
+            .await
+    }
 }
 
 /// The platform's turn tools over the platform's session and file stores.
