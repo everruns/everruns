@@ -36,8 +36,9 @@ choose one transaction domain. Session-directory mode does not publish shared
 agent definitions, that requires a separate control plane.
 
 Moving an existing shared authority is a canonical-state transfer, never a
-JSONL replay. A host-supplied exclusive session lease covers every transfer,
-including children opened during recovery. Live epochs and shared maintenance
+JSONL replay. Host-supplied exclusive leases quiesce the entire source family
+before the first snapshot, including ancestors and siblings when a child opens
+first. This preserves late cross-session reports. Live epochs and shared maintenance
 state refuse transfer. The original source remains unchanged; a completed
 session database is published atomically and reopened independently.
 

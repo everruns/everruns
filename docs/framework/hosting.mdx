@@ -63,9 +63,11 @@ The host still supplies registered builds, Environments and stable secret keys.
 Keep the directory, its WAL files and encryption keys together when backing up.
 
 To transfer an older shared authority, use `open_session_from` with the host's
-exclusive source-session lease callback. Each transfer copies canonical SQLite
-state and publishes a complete private database atomically. Children acquire
-their own source leases. Live epochs and shared maintenance state refuse
+exclusive source-session lease callback. It acquires leases for the complete
+source family before copying any database, including ancestors and siblings
+when a child opens first, so late task reports survive handoff. Each transfer
+copies canonical SQLite state and publishes a complete private database
+atomically. Live epochs and shared maintenance state refuse
 transfer; completed session databases reopen without consulting the old source.
 The source is retained, and transferred sessions must use the updated host.
 

@@ -45,8 +45,10 @@ impl SqliteHosting {
     /// The caller must exclusively own each source session before opening it,
     /// and must not run that session on an older host after transferring it.
     /// `ownership` acquires and retains the host's exclusive source-session
-    /// lease during each transfer, including lazily opened children.
-    /// Other sessions may keep using the source. The source is left untouched
+    /// leases for the complete source family before copying any database. This
+    /// includes ancestors and siblings when a worker is opened first. The leases
+    /// cover every source producer, including cross-session reports and inputs.
+    /// Other families may keep using the source. The source is left untouched
     /// for backup; a live execution epoch refuses transfer.
     pub fn open_session_from(
         directory: impl AsRef<Path>,
@@ -199,6 +201,28 @@ impl SessionDirectory {
         if let Some(hosting) = databases.get(&session) {
             return Ok(hosting.clone());
         }
+        if !SqliteHosting::session_db_path(&self.root, session).exists()
+            && let Some(source) = self.source.as_ref().filter(|source| source.exists())
+        {
+            let family = self.source_family(source, session)?;
+            for member in &family.sessions {
+                if let std::collections::hash_map::Entry::Vacant(entry) = databases.entry(*member) {
+                    entry.insert(self.open_database(*member, true)?);
+                }
+            }
+            // Drop source leases only after the complete family is published.
+            drop(family);
+            return databases
+                .get(&session)
+                .cloned()
+                .ok_or_else(|| error("transferred session is missing"));
+        }
+        let hosting = self.open_database(session, false)?;
+        databases.insert(session, hosting.clone());
+        Ok(hosting)
+    }
+
+    fn open_database(&self, session: SessionId, source_leased: bool) -> Result<SqliteHosting> {
         let path = SqliteHosting::session_db_path(&self.root, session);
         let parent = path.parent().expect("session database parent");
         private_directory(&self.root)?;
@@ -221,7 +245,11 @@ impl SessionDirectory {
         if !path.exists()
             && let Some(source) = self.source.as_ref().filter(|source| source.exists())
         {
-            let _ownership = (self.ownership)(session)?;
+            let _ownership = if source_leased {
+                None
+            } else {
+                Some((self.ownership)(session)?)
+            };
             migrate_shared(source, &path, session)?;
         }
         // THREAT[TM-FS-014]: precreate privately before SQLite opens the file
@@ -236,8 +264,116 @@ impl SessionDirectory {
                 "CREATE TABLE IF NOT EXISTS framework_session_children(session TEXT PRIMARY KEY);",
             )
             .map_err(error)?;
-        databases.insert(session, hosting.clone());
         Ok(hosting)
+    }
+}
+
+struct SourceFamily {
+    sessions: Vec<SessionId>,
+    // Source producers stay quiescent until every family snapshot is published.
+    _leases: Vec<Box<dyn Send + Sync>>,
+}
+
+fn source_control(source: &rusqlite::Connection, session: SessionId) -> Result<Option<Control>> {
+    source
+        .query_row(
+            "SELECT control FROM framework_authority WHERE session=?",
+            [session.to_string()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(error)?
+        .map(decode)
+        .transpose()
+}
+
+impl SessionDirectory {
+    fn source_family(&self, source: &Path, selected: SessionId) -> Result<SourceFamily> {
+        let source = rusqlite::Connection::open_with_flags(
+            source,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .map_err(error)?;
+        source.busy_timeout(Duration::from_secs(5)).map_err(error)?;
+        let mut family = SourceFamily {
+            sessions: Vec::new(),
+            _leases: Vec::new(),
+        };
+        let mut leased = HashSet::new();
+        let mut ancestors = HashSet::new();
+        let mut cursor = selected;
+        // A worker may be opened first. Quiesce its ancestors and siblings as
+        // well: coordinator updates and child reports cross session boundaries.
+        loop {
+            if !ancestors.insert(cursor) {
+                return Err(error("source session parent link contains a cycle"));
+            }
+            if ancestors.len() > 65_536 {
+                return Err(error("source session family exceeds transfer limit"));
+            }
+            if leased.insert(cursor) {
+                family._leases.push((self.ownership)(cursor)?);
+                family.sessions.push(cursor);
+            }
+            let Some(state) = source_control(&source, cursor)? else {
+                if cursor != selected {
+                    return Err(error("source session parent is missing"));
+                }
+                return Ok(family);
+            };
+            let binding = state.binding(cursor)?;
+            let parent = binding.metadata.get("parent_session_id");
+            match parent {
+                None | Some(Value::Null) => break,
+                Some(Value::String(parent)) => cursor = parent.parse().map_err(error)?,
+                Some(_) => return Err(error("invalid source session parent link")),
+            }
+        }
+        let root = cursor;
+        // A child can create another child just before its source lease is
+        // acquired. Rescan under the retained leases until the family is closed.
+        loop {
+            let mut pending = vec![root];
+            let mut visited = HashSet::new();
+            let before = leased.len();
+            while let Some(session) = pending.pop() {
+                if !visited.insert(session) {
+                    continue;
+                }
+                if visited.len() > 65_536 {
+                    return Err(error("source session family exceeds transfer limit"));
+                }
+                if leased.insert(session) {
+                    family._leases.push((self.ownership)(session)?);
+                    family.sessions.push(session);
+                }
+                let children = {
+                    let mut query = source.prepare("SELECT session FROM framework_authority WHERE json_extract(control,'$.binding.metadata.parent_session_id')=? LIMIT 65537").map_err(error)?;
+                    query
+                        .query_map([session.to_string()], |row| row.get::<_, String>(0))
+                        .map_err(error)?
+                        .map(|row| row.map_err(error)?.parse().map_err(error))
+                        .collect::<Result<Vec<SessionId>>>()?
+                };
+                pending.extend(children);
+            }
+            if leased.len() == before {
+                break;
+            }
+        }
+        // Refuse a live epoch anywhere in the family before publishing even
+        // the first destination. The host leases cover all source producers.
+        for session in &family.sessions {
+            let state = source_control(&source, *session)?
+                .ok_or_else(|| error("source family session disappeared"))?;
+            state.binding(*session)?;
+            if state.holder.is_some() && state.expires > now() {
+                return Err(error(
+                    "cannot transfer a session with a live execution epoch",
+                ));
+            }
+        }
+        Ok(family)
     }
 }
 
@@ -952,10 +1088,10 @@ mod tests {
                 .to_string()
                 .contains("source child lease unavailable")
         );
-        assert!(SqliteHosting::session_db_path(&root, parent).exists());
+        assert!(!SqliteHosting::session_db_path(&root, parent).exists());
         assert!(!SqliteHosting::session_db_path(&root, child).exists());
         let reopened = SqliteHosting::open_session_from(&root, parent, Some(&shared), move |id| {
-            assert_eq!(id, child, "completed parent migration must not run again");
+            assert!([parent, child].contains(&id));
             Ok(Box::new(()))
         })
         .unwrap();
@@ -964,6 +1100,122 @@ mod tests {
             json!(parent)
         );
         assert_eq!(source.status(child).await.unwrap().binding.behavior, build);
+    }
+
+    #[tokio::test]
+    async fn all_family_source_leases_precede_the_first_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("shared.sqlite");
+        let root = dir.path().join("sessions");
+        let parent = SessionId::new();
+        let child = SessionId::new();
+        let build = AgentBuild::new("assistant", "family-transfer-v1");
+        let source = SqliteHosting::open(&shared).unwrap();
+        let engine = crate::Engine::builder()
+            .hosting(source.clone())
+            .register(build.clone(), agent())
+            .build();
+        engine.create_registered(parent, &build).await.unwrap();
+        engine
+            .create_registered_with_metadata(child, &build, json!({"parent_session_id": parent}))
+            .await
+            .unwrap();
+        let reporting_child = source.clone();
+        let target = SqliteHosting::open_session_from(&root, parent, Some(&shared), move |id| {
+            if id == child {
+                // A source child can report to its parent until we acquire
+                // that child's lease, even if the parent host has stopped.
+                reporting_child.transaction(parent, |tx, _| {
+                    put(
+                        tx,
+                        parent,
+                        "framework",
+                        "handoff/last_child_report",
+                        &json!("reported before child stopped"),
+                    )
+                })?;
+            }
+            Ok(Box::new(()))
+        })
+        .unwrap();
+        assert_eq!(
+            target
+                .record(parent, "handoff/last_child_report")
+                .await
+                .unwrap(),
+            Some(json!("reported before child stopped"))
+        );
+    }
+
+    #[tokio::test]
+    async fn opening_a_source_child_first_quiesces_ancestors_and_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("shared.sqlite");
+        let root = dir.path().join("sessions");
+        let parent = SessionId::new();
+        let child = SessionId::new();
+        let sibling = SessionId::new();
+        let build = AgentBuild::new("assistant", "child-first-v1");
+        let source = SqliteHosting::open(&shared).unwrap();
+        let engine = crate::Engine::builder()
+            .hosting(source.clone())
+            .register(build.clone(), agent())
+            .build();
+        engine.create_registered(parent, &build).await.unwrap();
+        for id in [child, sibling] {
+            engine
+                .create_registered_with_metadata(id, &build, json!({"parent_session_id": parent}))
+                .await
+                .unwrap();
+        }
+        let acquired = Arc::new(Mutex::new(HashSet::new()));
+        let observed = acquired.clone();
+        let target = SqliteHosting::open_session_from(&root, child, Some(&shared), move |id| {
+            observed.lock().unwrap().insert(id);
+            Ok(Box::new(()))
+        })
+        .unwrap();
+        assert_eq!(
+            *acquired.lock().unwrap(),
+            HashSet::from([parent, child, sibling])
+        );
+        for id in [parent, child, sibling] {
+            assert!(SqliteHosting::session_db_path(&root, id).exists());
+            assert_eq!(target.status(id).await.unwrap().binding.behavior, build);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_live_source_child_refuses_before_publishing_its_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("shared.sqlite");
+        let root = dir.path().join("sessions");
+        let parent = SessionId::new();
+        let child = SessionId::new();
+        let build = AgentBuild::new("assistant", "live-child-v1");
+        let source = SqliteHosting::open(&shared).unwrap();
+        let engine = crate::Engine::builder()
+            .hosting(source.clone())
+            .register(build.clone(), agent())
+            .build();
+        engine.create_registered(parent, &build).await.unwrap();
+        engine
+            .create_registered_with_metadata(child, &build, json!({"parent_session_id": parent}))
+            .await
+            .unwrap();
+        source
+            .transaction(child, |_, state| {
+                state.holder = Some("live child".into());
+                state.expires = now() + 60_000;
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            SqliteHosting::open_session_from(&root, parent, Some(&shared), |_| Ok(Box::new(())))
+                .is_err()
+        );
+        assert!(!SqliteHosting::session_db_path(&root, parent).exists());
+        assert!(!SqliteHosting::session_db_path(&root, child).exists());
     }
 
     #[test]

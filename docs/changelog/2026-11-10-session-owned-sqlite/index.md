@@ -15,10 +15,10 @@ including child sessions. Coordinators retain child registrations while each
 child owns its history, tasks and schedules. A busy session no longer takes
 the SQLite writer lock for unrelated sessions.
 
-Existing shared authorities transfer one session at a time from canonical
-SQLite state, preserving pending inputs, task messages, schedules and sealed
-secrets. Transfer requires exclusive ownership and refuses live execution
-leases. The original database stays available for backup.
+Existing shared authorities transfer from canonical SQLite state, preserving
+pending inputs, task messages, schedules and sealed secrets. Transfer acquires
+exclusive ownership of the complete source family before the first snapshot,
+so late child reports survive handoff, and refuses live execution leases. The original database stays available for backup.
 
 With the Rust Framework's `local` feature:
 
