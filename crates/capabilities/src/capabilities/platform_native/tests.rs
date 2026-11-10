@@ -164,7 +164,7 @@ async fn native_prompt_describes_the_selected_interface() {
 #[tokio::test]
 async fn native_catalog_uses_bounded_disclosure_and_preserves_the_baseline_prompt() {
     use everruns_contracts::CapabilityRef;
-    use everruns_core::RuntimeAgentBuilder;
+    use everruns_core::TurnAgentBuilder;
     use everruns_core::builtins::ToolSearchCapability;
     use everruns_core::capabilities::CapabilityRegistry;
     use everruns_core::tools::ToolRegistry;
@@ -177,7 +177,7 @@ async fn native_catalog_uses_bounded_disclosure_and_preserves_the_baseline_promp
     capabilities.register(PlatformCapability);
     capabilities.register(ToolSearchCapability::new());
     let mut prompt_context = SystemPromptContext::without_file_store(SessionId::new());
-    let initial = RuntimeAgentBuilder::new()
+    let initial = TurnAgentBuilder::new()
         .with_capability_configs(&configs, &capabilities, &prompt_context)
         .await
         .build();
@@ -243,7 +243,7 @@ async fn native_catalog_uses_bounded_disclosure_and_preserves_the_baseline_promp
         .tool_disclosure
         .revealed
         .insert("platform_update_agent".into());
-    let resumed = RuntimeAgentBuilder::new()
+    let resumed = TurnAgentBuilder::new()
         .with_capability_configs(&configs, &capabilities, &prompt_context)
         .await
         .build();
@@ -268,7 +268,7 @@ async fn native_catalog_uses_bounded_disclosure_and_preserves_the_baseline_promp
     );
 
     // A historical reveal does not reintroduce a detached capability.
-    let detached = RuntimeAgentBuilder::new()
+    let detached = TurnAgentBuilder::new()
         .with_capability_configs(&configs[1..], &capabilities, &prompt_context)
         .await
         .build();

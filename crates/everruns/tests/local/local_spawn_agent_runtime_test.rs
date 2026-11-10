@@ -368,7 +368,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .await
         .expect("load context");
     let spawn_agent = context
-        .runtime_agent
+        .turn_agent
         .tools
         .iter()
         .find(|tool| tool.name() == "spawn_agent")

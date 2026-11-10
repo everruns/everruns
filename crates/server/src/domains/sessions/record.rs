@@ -456,7 +456,7 @@ pub struct Session {
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub model_id: Option<ModelId>,
     /// Session-level capabilities (additive to agent capabilities).
-    /// Applied after agent capabilities when building RuntimeAgent.
+    /// Applied after agent capabilities when building TurnAgent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
@@ -472,7 +472,7 @@ pub struct Session {
     )]
     pub mcp_servers: ScopedMcpServers,
     /// Session-level system prompt override.
-    /// Prepended to the agent's system prompt when building RuntimeAgent.
+    /// Prepended to the agent's system prompt when building TurnAgent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
     /// Starting files for a new file tree (additive to agent/harness files).
@@ -607,7 +607,7 @@ pub struct Session {
     pub forked_from_sequence: Option<i32>,
 
     // -- Blueprint fields (only set when this session runs a blueprint agent) --
-    /// Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
+    /// Blueprint ID. When set, reason_activity and act_activity build TurnAgent
     /// from the blueprint definition instead of from harness_id/agent_id.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "blueprint_research_pack")]

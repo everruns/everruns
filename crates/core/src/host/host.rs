@@ -987,7 +987,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
 fn blocked_reason_result(text: String, error: &str) -> ReasonResult {
     ReasonResult {
         text,
-        max_iterations: crate::runtime_agent::default_max_iterations(),
+        max_iterations: crate::turn_agent::default_max_iterations(),
         error: Some(error.to_string()),
         ..Default::default()
     }

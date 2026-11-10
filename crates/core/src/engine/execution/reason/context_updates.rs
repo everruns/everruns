@@ -67,7 +67,7 @@ fn notice(content: Option<&str>) -> RuntimeMessage {
 /// inventories instead use recorded tail updates, below system authority.
 pub(super) fn apply(
     messages: &mut Vec<RuntimeMessage>,
-    agent: &everruns_contracts::runtime::runtime_agent::RuntimeAgent,
+    agent: &everruns_contracts::runtime::turn_agent::TurnAgent,
 ) -> ContextUpdates {
     if let Some(context) = agent
         .conversation_context

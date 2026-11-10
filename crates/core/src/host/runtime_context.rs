@@ -147,7 +147,7 @@ impl TurnContextResolver for StoreTurnContextResolver {
         // Native web search is decided per turn against the organization's
         // current defaults, so a changed default or Automatic order reaches
         // running sessions (cached for WEB_SEARCH_SETTINGS_TTL).
-        let options = &mut assembled.runtime_agent.driver_options;
+        let options = &mut assembled.turn_agent.driver_options;
         if let Some(resolver) = &self.web_search_settings
             && options.contains_key(NATIVE_WEB_SEARCH_OPTION)
         {

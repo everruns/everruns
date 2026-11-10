@@ -410,10 +410,10 @@ impl ToolRegistry {
         self.tools.keys().map(|s| s.as_str()).collect()
     }
 
-    /// Get tool definitions for use in RuntimeAgent.
+    /// Get tool definitions for use in TurnAgent.
     ///
     /// Returns a Vec of ToolDefinition that can be passed to
-    /// `RuntimeAgent::with_tools()`.
+    /// `TurnAgent::with_tools()`.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .keys()

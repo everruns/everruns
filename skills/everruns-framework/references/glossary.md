@@ -55,11 +55,11 @@ runtime, so they transfer to the rest of Everruns.
 - **Assembled turn context**: the merged context the reason phase uses: harness
   chain + agent + session overlay, resolved capabilities (with dependency
   resolution and message filtering), resolved model and locale, and the
-  constructed `RuntimeAgent`. Built by `everruns_core::assemble_turn_context(...)`
+  constructed `TurnAgent`. Built by `everruns_core::assemble_turn_context(...)`
   at execution time and `inspect_turn_context(...)` for read-only inspection
   (`InProcessRuntime::load_context`).
 
-- **RuntimeAgent**: the fully-resolved agent the LLM step runs against: final
+- **TurnAgent**: the fully-resolved agent the LLM step runs against: final
   system prompt, model, and tool set.
 
 ## Framework application surface

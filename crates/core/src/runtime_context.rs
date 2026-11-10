@@ -18,10 +18,10 @@ use crate::events::TokenUsage;
 use crate::harness_definition::HarnessDefinition;
 use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::provider::DriverId;
-use crate::runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 use crate::session::ExecutionSession;
 use crate::session_files::SessionFileSystem;
 use crate::tool_types::ToolDefinition;
+use crate::turn_agent::{TurnAgent, TurnAgentBuilder};
 use crate::typed_id::{MessageId, ModelId, SessionId};
 use crate::{AgentCapabilityConfig, ResolvedExecutionSnapshot};
 
@@ -122,7 +122,7 @@ pub struct AssembledTurnContext {
     /// them ([`MessageHistory::sequences`](crate::MessageHistory)).
     pub message_sequences: std::collections::HashMap<everruns_contracts::typed_id::MessageId, i64>,
     /// Fully assembled runtime agent for this turn.
-    pub runtime_agent: RuntimeAgent,
+    pub turn_agent: TurnAgent,
     /// Credential-safe model identity and opaque ready driver.
     pub model: ResolvedModelExecution,
     /// Configured model ID selected for this turn, when any.
@@ -199,7 +199,7 @@ pub async fn assemble_resolved_turn_context(
             .get(config.capability_id())?
             .compaction_policy(config.config_value())
     });
-    let mut runtime_agent = build_runtime_agent(
+    let mut turn_agent = build_runtime_agent(
         &snapshot,
         effective_overlay,
         capability_registry,
@@ -211,21 +211,19 @@ pub async fn assemble_resolved_turn_context(
     // Every path (blueprints included) honors the agent's ceiling, never above
     // what the model can emit.
     if let Some(requested) = snapshot.max_output_tokens {
-        runtime_agent.max_tokens = Some(clamp_max_output_tokens(
+        turn_agent.max_tokens = Some(clamp_max_output_tokens(
             requested,
             &model.provider_type,
-            &runtime_agent.model,
+            &turn_agent.model,
         ));
     }
     if let Some((key, value)) = &model.provider_managed_reduction_option {
-        runtime_agent
-            .driver_options
-            .insert(key.clone(), value.clone());
+        turn_agent.driver_options.insert(key.clone(), value.clone());
     } else if resolved_capability_configs
         .iter()
         .any(|config| config.capability_id() == "infinity_context")
     {
-        runtime_agent.driver_options.insert(
+        turn_agent.driver_options.insert(
             "everruns/provider_managed_reduction_fallback".to_string(),
             serde_json::json!({"reason":"provider_or_model_ineligible"}),
         );
@@ -239,7 +237,7 @@ pub async fn assemble_resolved_turn_context(
         message_source_sequence,
         message_floor: None,
         message_sequences: Default::default(),
-        runtime_agent,
+        turn_agent,
         model,
         resolved_model_id,
         resolved_locale,
@@ -378,8 +376,8 @@ async fn build_runtime_agent(
     prompt_ctx: &SystemPromptContext,
     mcp_tool_definitions: &[ToolDefinition],
     model: &str,
-) -> Result<RuntimeAgent> {
-    let mut runtime_agent = if let Some(ref blueprint_id) = snapshot.blueprint_id {
+) -> Result<TurnAgent> {
+    let mut turn_agent = if let Some(ref blueprint_id) = snapshot.blueprint_id {
         let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
             anyhow::anyhow!(
                 "Unknown blueprint: \"{blueprint_id}\". Snapshot references a blueprint absent from the registry."
@@ -400,7 +398,7 @@ async fn build_runtime_agent(
         if let Some(ref config) = snapshot.blueprint_config {
             prompt.push_str(&format!("\n\n<config>\n{}\n</config>", config));
         }
-        RuntimeAgentBuilder::new()
+        TurnAgentBuilder::new()
             .system_prompt(&prompt)
             .tools(blueprint.tool_definitions())
             .model(&blueprint_model)
@@ -410,7 +408,7 @@ async fn build_runtime_agent(
             .build()
     } else {
         let overlay_tools = std::mem::take(&mut effective_overlay.tools);
-        RuntimeAgentBuilder::from_overlay(effective_overlay, capability_registry, prompt_ctx)
+        TurnAgentBuilder::from_overlay(effective_overlay, capability_registry, prompt_ctx)
             .await
             .with_locale(prompt_ctx.locale.as_deref())
             .tools(
@@ -426,9 +424,9 @@ async fn build_runtime_agent(
     // Blueprint agents are built without the overlay, so the agent's setting
     // is applied here for every path.
     if snapshot.communication.is_explicit() {
-        runtime_agent = crate::conversation::apply_explicit_communication(runtime_agent);
+        turn_agent = crate::conversation::apply_explicit_communication(turn_agent);
     }
-    Ok(runtime_agent)
+    Ok(turn_agent)
 }
 
 /// Clamp an agent's output ceiling to the model's published output limit.
@@ -545,10 +543,10 @@ mod tests {
             )
         };
         let unset = assemble(agent.clone()).await.unwrap();
-        assert_eq!(unset.runtime_agent.max_tokens, None);
+        assert_eq!(unset.turn_agent.max_tokens, None);
         agent.max_output_tokens = Some(1234);
         let set = assemble(agent).await.unwrap();
-        assert_eq!(set.runtime_agent.max_tokens, Some(1234));
+        assert_eq!(set.turn_agent.max_tokens, Some(1234));
     }
 
     struct UserMcpStub;

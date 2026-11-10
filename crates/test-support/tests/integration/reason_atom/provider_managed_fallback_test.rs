@@ -296,7 +296,7 @@ async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
         .resolve_turn_context(request)
         .await
         .expect("native context should assemble before request preflight");
-    assembled.runtime_agent.max_tokens = Some(160_000);
+    assembled.turn_agent.max_tokens = Some(160_000);
     let events = InMemoryEventEmitter::new();
     let atom = ReasonAtom::new(resolver, message_retriever, capabilities, events.clone());
 

@@ -212,7 +212,7 @@ pub struct ExecutionSession {
     /// Session this one was forked from (delegation-result correlation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forked_from_session_id: Option<SessionId>,
-    /// Blueprint ID. When set, execution builds the RuntimeAgent from the
+    /// Blueprint ID. When set, execution builds the TurnAgent from the
     /// blueprint definition instead of harness/agent configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blueprint_id: Option<String>,

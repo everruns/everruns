@@ -727,7 +727,7 @@ pub async fn agent_definitions(profile: impl SessionHosting + Clone) {
     let agent = format!("defined-{}", uuid::Uuid::new_v4().simple());
     let revision = |revision: &str, reply: &str| AgentDefinition {
         build: AgentBuild::new(agent.clone(), revision),
-        package: json!({ "name": agent, "instructions": reply }),
+        runtime_agent: super::RuntimeAgent::new(json!({ "name": agent, "instructions": reply })),
     };
     // Offline hydration: the instructions become the simulated reply.
     fn replying(definition: &AgentDefinition) -> super::spi::error::Result<Hydrated> {

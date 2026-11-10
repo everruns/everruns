@@ -1,12 +1,12 @@
 // Runtime agent configuration for the loop
 //
-// RuntimeAgent is a DB-agnostic configuration struct that can be:
+// TurnAgent is a DB-agnostic configuration struct that can be:
 // - Created directly for standalone usage
 // - Built from a AgentConfigOverlay via `from_overlay()` (preferred)
 // - Built from individual Harness/Agent entities via builder methods (legacy)
 //
 // Preferred usage: merge Harness/Agent/Session into a AgentConfigOverlay, then:
-//   RuntimeAgentBuilder::from_overlay(layer, &registry, &ctx).await
+//   TurnAgentBuilder::from_overlay(layer, &registry, &ctx).await
 //       .model("gpt-5.2")
 //       .build()
 //
@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 /// Runtime configuration for the agent loop
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeAgent {
+pub struct TurnAgent {
     /// System prompt that defines the agent's behavior
     pub system_prompt: String,
 
@@ -119,7 +119,7 @@ pub fn default_max_iterations() -> usize {
     500
 }
 
-impl RuntimeAgent {
+impl TurnAgent {
     pub(crate) fn apply_definition_hook(&mut self, hook: &dyn ToolDefinitionHook) {
         if let Some(budget) = hook.model_tool_budget(&self.tools) {
             self.model_tool_budget = Some(budget);
@@ -201,7 +201,7 @@ impl RuntimeAgent {
 /// System prompt used when no harness, agent or session layer supplies one.
 pub const FALLBACK_SYSTEM_PROMPT: &str = "You are a helpful assistant.";
 
-impl Default for RuntimeAgent {
+impl Default for TurnAgent {
     fn default() -> Self {
         Self {
             system_prompt: FALLBACK_SYSTEM_PROMPT.to_string(),
@@ -224,27 +224,27 @@ impl Default for RuntimeAgent {
     }
 }
 
-/// Builder for RuntimeAgent with fluent API
+/// Builder for TurnAgent with fluent API
 ///
 /// Use `new()` to start building, then chain methods like `with_agent()`,
 /// `model()`, `temperature()`, etc. Call `build()` to get the final runtime agent.
-pub struct RuntimeAgentBuilder {
-    runtime_agent: RuntimeAgent,
+pub struct TurnAgentBuilder {
+    turn_agent: TurnAgent,
     tool_definition_hooks: Vec<std::sync::Arc<dyn ToolDefinitionHook>>,
 }
 
-impl RuntimeAgentBuilder {
+impl TurnAgentBuilder {
     /// Start building a new runtime agent from scratch
     pub fn new() -> Self {
         Self {
-            runtime_agent: RuntimeAgent::default(),
+            turn_agent: TurnAgent::default(),
             tool_definition_hooks: Vec::new(),
         }
     }
 
     /// Build from a pre-merged AgentConfigOverlay.
     ///
-    /// This is the preferred way to build a RuntimeAgent. The caller merges
+    /// This is the preferred way to build a TurnAgent. The caller merges
     /// Harness/Agent/Session into a single AgentConfigOverlay (via `AgentConfigOverlay::fold`),
     /// then this method resolves capabilities and assembles the final config.
     ///
@@ -256,7 +256,7 @@ impl RuntimeAgentBuilder {
     ///     AgentConfigOverlay::from(&agent),
     ///     AgentConfigOverlay::from(&session),
     /// ]);
-    /// let runtime_agent = RuntimeAgentBuilder::from_overlay(layer, &registry, &ctx)
+    /// let turn_agent = TurnAgentBuilder::from_overlay(layer, &registry, &ctx)
     ///     .await
     ///     .model("gpt-5.2")
     ///     .build();
@@ -340,7 +340,7 @@ impl RuntimeAgentBuilder {
     ///
     /// ```ignore
     /// let ctx = SystemPromptContext::without_file_store(session_id);
-    /// let runtime_agent = RuntimeAgentBuilder::new()
+    /// let turn_agent = TurnAgentBuilder::new()
     ///     .with_harness(&harness, &registry, &ctx).await
     ///     .with_agent(&agent, &registry, &ctx).await
     ///     .with_capabilities(&session_caps, &registry, &ctx).await
@@ -412,16 +412,16 @@ impl RuntimeAgentBuilder {
 
         // Apply system prompt additions after the stable base prompt.
         if let Some(prefix) = collected.system_prompt_prefix() {
-            self.runtime_agent.system_prompt =
-                compose_system_prompt(&self.runtime_agent.system_prompt, Some(&prefix));
+            self.turn_agent.system_prompt =
+                compose_system_prompt(&self.turn_agent.system_prompt, Some(&prefix));
         }
 
         // Carry conversation context (e.g. hierarchical AGENTS.md) alongside
         // the agent. The turn loop renders it as the leading user-role
         // message: model-visible every turn, but never folded into the cached
         // system prompt.
-        self.runtime_agent.conversation_context = collected.conversation_context();
-        self.runtime_agent.conversation_context_update = collected.conversation_context_update();
+        self.turn_agent.conversation_context = collected.conversation_context();
+        self.turn_agent.conversation_context_update = collected.conversation_context_update();
 
         // Apply tool definitions
         if !collected.tool_definitions.is_empty() {
@@ -430,21 +430,21 @@ impl RuntimeAgentBuilder {
 
         // Apply tool_search config if capability provided one
         if let Some(ts_config) = collected.tool_search {
-            self.runtime_agent.tool_search = Some(ts_config);
+            self.turn_agent.tool_search = Some(ts_config);
         }
 
         if let Some(pc_config) = collected.prompt_cache {
-            self.runtime_agent.prompt_cache = Some(pc_config);
+            self.turn_agent.prompt_cache = Some(pc_config);
         }
 
         for (key, value) in collected.driver_options {
-            self.runtime_agent.driver_options.insert(key, value);
+            self.turn_agent.driver_options.insert(key, value);
         }
 
         // Apply the `parallel_tool_calls` capability preference. An explicit
         // request-level field set later (see `from_overlay`) takes precedence.
         if let Some(ptc) = collected.parallel_tool_calls {
-            self.runtime_agent.parallel_tool_calls = Some(ptc);
+            self.turn_agent.parallel_tool_calls = Some(ptc);
         }
 
         self.tool_definition_hooks
@@ -455,7 +455,7 @@ impl RuntimeAgentBuilder {
 
     /// Set the system prompt
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
-        self.runtime_agent.system_prompt = prompt.into();
+        self.turn_agent.system_prompt = prompt.into();
         self
     }
 
@@ -463,8 +463,8 @@ impl RuntimeAgentBuilder {
     pub fn prepend_system_prompt(mut self, prefix: impl Into<String>) -> Self {
         let prefix = prefix.into();
         if !prefix.is_empty() {
-            self.runtime_agent.system_prompt =
-                format!("{}\n\n{}", prefix, self.runtime_agent.system_prompt);
+            self.turn_agent.system_prompt =
+                format!("{}\n\n{}", prefix, self.turn_agent.system_prompt);
         }
         self
     }
@@ -487,11 +487,11 @@ impl RuntimeAgentBuilder {
     pub fn append_system_prompt(mut self, suffix: impl Into<String>) -> Self {
         let suffix = suffix.into();
         if !suffix.is_empty() {
-            if self.runtime_agent.system_prompt.is_empty() {
-                self.runtime_agent.system_prompt = suffix;
+            if self.turn_agent.system_prompt.is_empty() {
+                self.turn_agent.system_prompt = suffix;
             } else {
-                self.runtime_agent.system_prompt =
-                    format!("{}\n\n{}", self.runtime_agent.system_prompt, suffix);
+                self.turn_agent.system_prompt =
+                    format!("{}\n\n{}", self.turn_agent.system_prompt, suffix);
             }
         }
         self
@@ -499,25 +499,25 @@ impl RuntimeAgentBuilder {
 
     /// Set the model
     pub fn model(mut self, model: impl Into<String>) -> Self {
-        self.runtime_agent.model = model.into();
+        self.turn_agent.model = model.into();
         self
     }
 
     /// Add a tool
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
-        self.runtime_agent.tools.push(tool);
+        self.turn_agent.tools.push(tool);
         self
     }
 
     /// Add multiple tools
     pub fn tools(mut self, tools: impl IntoIterator<Item = ToolDefinition>) -> Self {
-        self.runtime_agent.tools.extend(tools);
+        self.turn_agent.tools.extend(tools);
         self
     }
 
     /// Set maximum iterations
     pub fn max_iterations(mut self, max: usize) -> Self {
-        self.runtime_agent.max_iterations = max;
+        self.turn_agent.max_iterations = max;
         self
     }
 
@@ -526,44 +526,44 @@ impl RuntimeAgentBuilder {
         mut self,
         network_access: Option<crate::runtime::network_access::NetworkAccessList>,
     ) -> Self {
-        self.runtime_agent.network_access = network_access;
+        self.turn_agent.network_access = network_access;
         self
     }
 
     /// Set the request-level parallel tool calling preference (EVE-598).
     pub fn parallel_tool_calls(mut self, parallel_tool_calls: Option<bool>) -> Self {
-        self.runtime_agent.parallel_tool_calls = parallel_tool_calls;
+        self.turn_agent.parallel_tool_calls = parallel_tool_calls;
         self
     }
 
     /// Set how the agent talks. `Explicit` adds `send_message` and `no_reply`
     /// and their instructions when the agent is built.
     pub fn communication(mut self, communication: Communication) -> Self {
-        self.runtime_agent.communication = communication;
+        self.turn_agent.communication = communication;
         self
     }
 
     /// Set temperature
     pub fn temperature(mut self, temp: f32) -> Self {
-        self.runtime_agent.temperature = Some(temp);
+        self.turn_agent.temperature = Some(temp);
         self
     }
 
     /// Set max tokens
     pub fn max_tokens(mut self, tokens: u32) -> Self {
-        self.runtime_agent.max_tokens = Some(tokens);
+        self.turn_agent.max_tokens = Some(tokens);
         self
     }
 
     /// Set tool_search configuration
     pub fn tool_search(mut self, config: ToolSearchConfig) -> Self {
-        self.runtime_agent.tool_search = Some(config);
+        self.turn_agent.tool_search = Some(config);
         self
     }
 
     /// Set prompt caching configuration
     pub fn prompt_cache(mut self, config: PromptCacheConfig) -> Self {
-        self.runtime_agent.prompt_cache = Some(config);
+        self.turn_agent.prompt_cache = Some(config);
         self
     }
 
@@ -578,10 +578,10 @@ impl RuntimeAgentBuilder {
     /// `openai_tool_search` / `claude_tool_search` capability (directly or via
     /// `auto_tool_search`) is added to the agent or harness. This method does NOT
     /// auto-enable it.
-    pub fn build(mut self) -> RuntimeAgent {
-        if self.runtime_agent.communication.is_explicit() {
-            self.runtime_agent =
-                crate::runtime::conversation::apply_explicit_communication(self.runtime_agent);
+    pub fn build(mut self) -> TurnAgent {
+        if self.turn_agent.communication.is_explicit() {
+            self.turn_agent =
+                crate::runtime::conversation::apply_explicit_communication(self.turn_agent);
         }
 
         // Deduplicate tools by name (last wins). Tools are collected additively
@@ -590,15 +590,15 @@ impl RuntimeAgentBuilder {
         // multiple sources.
         {
             let mut seen = std::collections::HashSet::new();
-            let mut deduped = Vec::with_capacity(self.runtime_agent.tools.len());
+            let mut deduped = Vec::with_capacity(self.turn_agent.tools.len());
             // Iterate in reverse so the last-added tool wins, then reverse back.
-            for tool in self.runtime_agent.tools.drain(..).rev() {
+            for tool in self.turn_agent.tools.drain(..).rev() {
                 if seen.insert(tool.name().to_owned()) {
                     deduped.push(tool);
                 }
             }
             deduped.reverse();
-            self.runtime_agent.tools = deduped;
+            self.turn_agent.tools = deduped;
         }
 
         // Resolve tool_search (deferred tool loading). The mechanism is already
@@ -616,7 +616,7 @@ impl RuntimeAgentBuilder {
             [DriverId::OpenAI, DriverId::Anthropic]
                 .iter()
                 .any(|provider| {
-                    get_model_profile(provider, &self.runtime_agent.model)
+                    get_model_profile(provider, &self.turn_agent.model)
                         .is_some_and(|p| p.tool_search)
                 });
 
@@ -626,31 +626,31 @@ impl RuntimeAgentBuilder {
         // disabled below (full schemas, no client-side fallback). This is what
         // makes a hand-configured `openai_tool_search` win over a separately
         // configured `tool_search`.
-        let native_tool_search = self.runtime_agent.tool_search.is_some();
+        let native_tool_search = self.turn_agent.tool_search.is_some();
         for hook in &self.tool_definition_hooks {
             if native_tool_search && !hook.applies_with_native_tool_search() {
                 continue;
             }
-            self.runtime_agent.apply_definition_hook(hook.as_ref());
+            self.turn_agent.apply_definition_hook(hook.as_ref());
         }
 
         // Clear a hosted config the model can't honor (a direct `openai_tool_search`
         // on an unsupported model): it simply sends full schemas. `auto_tool_search`
         // never reaches here on an unsupported model — it resolves to the generic
         // client-side mechanism at collection time and sets no hosted config.
-        if self.runtime_agent.tool_search.is_some() && !model_supports_native {
+        if self.turn_agent.tool_search.is_some() && !model_supports_native {
             tracing::debug!(
-                model = %self.runtime_agent.model,
+                model = %self.turn_agent.model,
                 "hosted tool_search not supported by model; disabling (full schemas)"
             );
-            self.runtime_agent.tool_search = None;
+            self.turn_agent.tool_search = None;
         }
 
-        self.runtime_agent
+        self.turn_agent
     }
 }
 
-impl Default for RuntimeAgentBuilder {
+impl Default for TurnAgentBuilder {
     fn default() -> Self {
         Self::new()
     }
@@ -776,12 +776,12 @@ mod tests {
             "max_iterations":500, "temperature":null, "max_tokens":null
         });
         for agent in [
-            RuntimeAgent::new("Custom prompt", "custom-model"),
-            RuntimeAgentBuilder::new()
+            TurnAgent::new("Custom prompt", "custom-model"),
+            TurnAgentBuilder::new()
                 .system_prompt("Custom prompt")
                 .model("custom-model")
                 .build(),
-            serde_json::from_value::<RuntimeAgent>(
+            serde_json::from_value::<TurnAgent>(
                 serde_json::json!({"system_prompt":"Custom prompt","model":"custom-model"}),
             )
             .unwrap(),
@@ -798,7 +798,7 @@ mod tests {
             ("", "Suffix.", "Base prompt.\n\nSuffix."),
             ("Prefix.", "Suffix.", "Prefix.\n\nBase prompt.\n\nSuffix."),
         ] {
-            let agent = RuntimeAgentBuilder::new()
+            let agent = TurnAgentBuilder::new()
                 .system_prompt("Base prompt.")
                 .prepend_system_prompt(prefix)
                 .append_system_prompt(suffix)
@@ -806,7 +806,7 @@ mod tests {
             assert_eq!(agent.system_prompt, expected);
         }
         assert_eq!(
-            RuntimeAgentBuilder::new()
+            TurnAgentBuilder::new()
                 .system_prompt("")
                 .append_system_prompt("Only suffix.")
                 .build()
@@ -818,14 +818,14 @@ mod tests {
     #[test]
     fn locale_instructions_trim_input_preserve_base_and_omit_empty_preferences() {
         for locale in [None, Some(""), Some(" \t")] {
-            let agent = RuntimeAgentBuilder::new()
+            let agent = TurnAgentBuilder::new()
                 .system_prompt("Base prompt.")
                 .with_locale(locale)
                 .build();
             assert_eq!(agent.system_prompt, "Base prompt.");
         }
         for locale in ["uk-UA", " uk-UA \n"] {
-            let prompt = RuntimeAgentBuilder::new()
+            let prompt = TurnAgentBuilder::new()
                 .system_prompt("Base prompt.")
                 .with_locale(Some(locale))
                 .build()
@@ -841,7 +841,7 @@ mod tests {
     #[tokio::test]
     async fn empty_capability_application_preserves_existing_configuration() {
         let tool = client_tool("click", "existing tool");
-        let agent = RuntimeAgentBuilder::new()
+        let agent = TurnAgentBuilder::new()
             .system_prompt("Base prompt.")
             .model("custom-model")
             .max_iterations(19)
@@ -861,7 +861,7 @@ mod tests {
 
     #[tokio::test]
     async fn direct_capabilities_preserve_complete_tool_definitions() {
-        let agent = RuntimeAgentBuilder::new()
+        let agent = TurnAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&["tool_fixture".into()], &fixture_registry(), &test_ctx())
             .await
@@ -886,7 +886,7 @@ mod tests {
                 source.tools.push(client.clone());
                 expected.push(client);
             }
-            let agent = RuntimeAgentBuilder::new()
+            let agent = TurnAgentBuilder::new()
                 .with_agent(&source, &fixture_registry(), &test_ctx())
                 .await
                 .build();
@@ -899,7 +899,7 @@ mod tests {
     async fn capability_prompt_follows_stable_base_once() {
         let mut registry = CapabilityRegistry::new();
         registry.register(FileSystemFixture);
-        let agent = RuntimeAgentBuilder::new()
+        let agent = TurnAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&["session_file_system".into()], &registry, &test_ctx())
             .await
@@ -917,7 +917,7 @@ mod tests {
             .capabilities
             .push(AgentCapabilityConfig::new("tool_fixture"));
         let registry = fixture_registry();
-        let agent = RuntimeAgentBuilder::new()
+        let agent = TurnAgentBuilder::new()
             .with_agent(&source, &registry, &test_ctx())
             .await
             .with_capabilities(&["prompt_tool_fixture".into()], &registry, &test_ctx())
@@ -943,7 +943,7 @@ mod tests {
             ("claude-opus-4-8", true),
         ] {
             assert!(
-                RuntimeAgentBuilder::new()
+                TurnAgentBuilder::new()
                     .model(model)
                     .build()
                     .tool_search
@@ -951,7 +951,7 @@ mod tests {
                 "must not auto-enable for {model}"
             );
             for (enabled, threshold) in [(true, 5), (false, 0)] {
-                let agent = RuntimeAgentBuilder::new()
+                let agent = TurnAgentBuilder::new()
                     .model(model)
                     .tool_search(ToolSearchConfig { enabled, threshold })
                     .build();
@@ -991,7 +991,7 @@ mod tests {
             ("gpt-5.4", true, "original|first|last", true),
             ("gpt-5.2", true, "original|first|last", false),
         ] {
-            let mut builder = RuntimeAgentBuilder::new()
+            let mut builder = TurnAgentBuilder::new()
                 .model(model)
                 .tool(client_tool("click", "original"));
             if configured {
@@ -1022,7 +1022,7 @@ mod tests {
         }
         let retained = client_tool("search", "retained");
         let last = client_tool("click", "last wins across tool variants");
-        let agent = RuntimeAgentBuilder::new()
+        let agent = TurnAgentBuilder::new()
             .tool(first)
             .tools([retained.clone(), last.clone()])
             .build();
@@ -1097,7 +1097,7 @@ mod tests {
                 max_output_tokens: Some(3000),
                 ..Default::default()
             };
-            let agent = RuntimeAgentBuilder::from_overlay(layer, &registry, &test_ctx())
+            let agent = TurnAgentBuilder::from_overlay(layer, &registry, &test_ctx())
                 .await
                 .model("gpt-5.4")
                 .build();
@@ -1147,7 +1147,7 @@ mod tests {
         );
         session.system_prompt = Some("Session prompt.".into());
         session.max_iterations = Some(17);
-        let without_agent = RuntimeAgentBuilder::from_overlay(
+        let without_agent = TurnAgentBuilder::from_overlay(
             AgentConfigOverlay::fold([
                 AgentConfigOverlay::from(&harness),
                 AgentConfigOverlay::from(&session),
@@ -1158,7 +1158,7 @@ mod tests {
         .await
         .model("gpt-5.4")
         .build();
-        let with_empty_agent = RuntimeAgentBuilder::from_overlay(
+        let with_empty_agent = TurnAgentBuilder::from_overlay(
             AgentConfigOverlay::fold([
                 AgentConfigOverlay::from(&harness),
                 AgentConfigOverlay::from(&empty_agent),
@@ -1182,7 +1182,7 @@ mod tests {
         // put the generic persona line ahead of the agent's prompt.
         let harness = HarnessDefinition::default();
         let agent = AgentDefinition::new(AgentId::new(), "reviewer", "You review pull requests.");
-        let runtime = RuntimeAgentBuilder::from_overlay(
+        let runtime = TurnAgentBuilder::from_overlay(
             AgentConfigOverlay::fold([
                 AgentConfigOverlay::from(&harness),
                 AgentConfigOverlay::from(&agent),
@@ -1199,7 +1199,7 @@ mod tests {
     #[tokio::test]
     async fn empty_overlay_uses_fallback_prompt_without_enabling_preferences() {
         for prompt in [None, Some(String::new()), Some("  \n".into())] {
-            let agent = RuntimeAgentBuilder::from_overlay(
+            let agent = TurnAgentBuilder::from_overlay(
                 AgentConfigOverlay {
                     system_prompt: prompt,
                     ..Default::default()
@@ -1250,20 +1250,20 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(FileSystemFixture);
         registry.register(SampleDataFixture);
-        let runtime_agent = RuntimeAgentBuilder::new()
+        let turn_agent = TurnAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&["sample_data".to_string()], &registry, &test_ctx())
             .await
             .build();
 
         assert_eq!(
-            runtime_agent.system_prompt,
+            turn_agent.system_prompt,
             concat!(
                 "<system-prompt>\nBase prompt.\n</system-prompt>\n\n",
                 "<capability id=\"session_file_system\">\nThe workspace root is `/workspace`.\n</capability>\n\n",
                 "<capability id=\"sample_data\">\nRead-only sample files are mounted at `/samples`.\n</capability>"
             )
         );
-        assert!(runtime_agent.tools.is_empty());
+        assert!(turn_agent.tools.is_empty());
     }
 }

@@ -414,8 +414,8 @@ mod registry;
 pub use configuration::*;
 pub use registry::DriverRegistry;
 
-// The `From<&RuntimeAgent>` adapter for LlmCallConfig lives in
-// everruns-core (`llm_conversions`), since RuntimeAgent is a core domain type.
+// The `From<&TurnAgent>` adapter for LlmCallConfig lives in
+// everruns-core (`llm_conversions`), since TurnAgent is a core domain type.
 
 /// Response from an LLM call (non-streaming)
 #[derive(Debug, Clone)]

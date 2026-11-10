@@ -246,7 +246,7 @@ pub use everruns_contracts::runtime::output_guardrail;
 pub mod path_identity;
 pub mod provider_resolution;
 pub use everruns_contracts::runtime::resource_ownership;
-pub use everruns_contracts::runtime::runtime_agent;
+pub use everruns_contracts::runtime::turn_agent;
 pub mod runtime_context;
 /// Deployment-owned decision checks, answered by the source the org picked.
 pub mod system_decisions;
@@ -309,7 +309,6 @@ pub use message_filter::{
 pub use message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
 pub use provider_resolution::ProviderStore;
-pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
     AssembledTurnContext, HistoryFloor, ResolvedModelExecution, ResolvedRuntimeCapabilities,
     ResolvedTurnContextInput, TurnContextRequest, TurnContextResolver,
@@ -321,6 +320,7 @@ pub use session_services::{
 };
 pub use tool_context::{ReasoningEffortHandle, ToolContext};
 pub use tool_execution::{OutboundToolRateLimiter, ToolExecutor};
+pub use turn_agent::{TurnAgent, TurnAgentBuilder};
 pub use workspace_policy::{WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError};
 pub use workspace_roots::{
     ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,

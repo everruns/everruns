@@ -2,7 +2,7 @@
 // Integration tests for tool_search (deferred tool loading).
 //
 // Tests the full pipeline for provider-backed and generic client-side tool_search
-// capability wiring through RuntimeAgent and LlmCallConfig.
+// capability wiring through TurnAgent and LlmCallConfig.
 //
 // Includes real GPT-5.4, GPT-5.5, and GPT-5.6 Terra integration tests that
 // exercise hosted tool_search end-to-end against the OpenAI API.

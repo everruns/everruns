@@ -185,7 +185,7 @@ fn sent_message_reads_only_delivered_send_message_results() {
 
 #[test]
 fn explicit_mode_is_idempotent_and_keeps_agent_settings() {
-    let agent = RuntimeAgent::new("You investigate deployments", "test-model");
+    let agent = TurnAgent::new("You investigate deployments", "test-model");
     let first = apply_explicit_communication(agent.clone());
     let mut names: Vec<_> = first.tools.iter().map(|t| t.name().to_owned()).collect();
     names.sort();

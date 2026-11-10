@@ -55,7 +55,7 @@ impl OpenAiToolSearchCapability {
 ///
 /// This is the single source of truth for the native-vs-client-side decision,
 /// consulted by `auto_tool_search`'s runtime dispatch (at capability-collection
-/// time) and by `RuntimeAgentBuilder::build` (when disabling a hosted config the
+/// time) and by `TurnAgentBuilder::build` (when disabling a hosted config the
 /// model can't honor). Native tool_search is an OpenAI hosted feature, so the
 /// lookup is against the OpenAI provider profile regardless of how the model is
 /// otherwise routed.

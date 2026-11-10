@@ -380,7 +380,7 @@ pub(crate) async fn execute_reason<A: crate::host::RuntimeHostAdapter>(
     }
     let original_driver = assembled.model.driver.clone();
     let supported = original_driver
-        .native_async_driver(&assembled.runtime_agent.model, tools.clone(), None)
+        .native_async_driver(&assembled.turn_agent.model, tools.clone(), None)
         .is_some();
     let Some(store) = adapter.native_async_store() else {
         if !supported {
@@ -467,11 +467,11 @@ pub(crate) async fn execute_reason<A: crate::host::RuntimeHostAdapter>(
         harness_id: input.harness_id,
         agent_id: input.agent_id,
         tool_calls: vec![],
-        tool_definitions: assembled.runtime_agent.tools.clone(),
+        tool_definitions: assembled.turn_agent.tools.clone(),
         locale: assembled.resolved_locale.clone(),
         blueprint_id: assembled.snapshot.blueprint_id.clone(),
-        network_access: assembled.runtime_agent.network_access.clone(),
-        parallel_tool_calls: assembled.runtime_agent.parallel_tool_calls,
+        network_access: assembled.turn_agent.network_access.clone(),
+        parallel_tool_calls: assembled.turn_agent.parallel_tool_calls,
     };
     let executor = Arc::new(RuntimeNativeAsyncExecutor::new(adapter.clone(), template));
     let lease_heartbeat = journal.clone();
@@ -480,7 +480,7 @@ pub(crate) async fn execute_reason<A: crate::host::RuntimeHostAdapter>(
             Box::new(journal),
             executor,
             crate::engine::configured_max_tool_concurrency(),
-            assembled.runtime_agent.parallel_tool_calls != Some(false),
+            assembled.turn_agent.parallel_tool_calls != Some(false),
         )
         .await?,
     ));
@@ -490,7 +490,7 @@ pub(crate) async fn execute_reason<A: crate::host::RuntimeHostAdapter>(
             let mut usage = saved_usage;
             let prior_responses = checkpoint.completed_responses;
             let max_responses = assembled
-                .runtime_agent
+                .turn_agent
                 .max_iterations
                 .saturating_sub(input.iteration.saturating_sub(1) as usize)
                 .saturating_sub(prior_responses as usize);
@@ -510,7 +510,7 @@ pub(crate) async fn execute_reason<A: crate::host::RuntimeHostAdapter>(
                 };
                 let mut context = assembled.clone();
                 context.model.driver = original_driver
-                    .native_async_driver(&context.runtime_agent.model, tools.clone(), delivery)
+                    .native_async_driver(&context.turn_agent.model, tools.clone(), delivery)
                     .ok_or_else(|| AgentLoopError::config("native driver became unavailable"))?;
                 let mut next_input = input.clone();
                 next_input.context.exec_id = everruns_contracts::typed_id::ExecId::new();

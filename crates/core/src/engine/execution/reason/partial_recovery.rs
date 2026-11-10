@@ -83,7 +83,7 @@ impl ReasonAtom {
         prior: PriorStream,
         context: &ExecutionContext,
         iteration: u32,
-        runtime_agent: &crate::engine::RuntimeAgent,
+        turn_agent: &crate::engine::TurnAgent,
         resolved_capability_configs: &[crate::engine::CapabilityRef],
         reasoning_replay: Option<&mut ReasoningReplay>,
     ) -> Result<Recovery> {
@@ -112,7 +112,7 @@ impl ReasonAtom {
                     context,
                     partial,
                     iteration,
-                    runtime_agent,
+                    turn_agent,
                     resolved_capability_configs,
                 )
                 .await
@@ -155,7 +155,7 @@ impl ReasonAtom {
         context: &ExecutionContext,
         partial: PartialStreamState,
         iteration: u32,
-        runtime_agent: &crate::engine::RuntimeAgent,
+        turn_agent: &crate::engine::TurnAgent,
         resolved_capability_configs: &[crate::engine::CapabilityRef],
     ) -> Result<ReasonResult> {
         let event_context = EventContext::from_execution_context(context);
@@ -221,8 +221,8 @@ impl ReasonAtom {
             text: accumulated,
             tool_calls: vec![],
             has_tool_calls: false,
-            tool_definitions: runtime_agent.tools.clone(),
-            max_iterations: runtime_agent.max_iterations,
+            tool_definitions: turn_agent.tools.clone(),
+            max_iterations: turn_agent.max_iterations,
             error: None,
             user_facing_error: None,
             error_disclosure: None,

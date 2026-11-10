@@ -238,7 +238,7 @@ and context inspection. Its public entrypoints are
 
 `everruns-core` owns only the deterministic projection and transformation
 steps: `ResolvedExecutionSnapshot::project`, capability/overlay resolution,
-locale projection, `RuntimeAgent` construction, and
+locale projection, `TurnAgent` construction, and
 `assemble_resolved_turn_context`. `ResolvedTurnContextInput` contains the
 secret-free snapshot, filtered messages, safe model/provider identity, and an
 opaque ready driver. It never contains persisted Agent, Harness, or Session
@@ -297,7 +297,7 @@ is never persistence.
 atomic session-capability upsert/removal; backends that do not implement the
 methods return the default unsupported error.
 
-Live capability changes do not replace the `RuntimeAgent` in place. The session
+Live capability changes do not replace the `TurnAgent` in place. The session
 overlay is the source of truth, and the existing per-boundary assembly path
 rebuilds the prompt, definitions, executable registry, and hooks before the
 next reason/act step. This preserves session identity and conversation history

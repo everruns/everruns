@@ -1,8 +1,8 @@
 //! Tests: registry_tests.
 
 use super::*;
-use crate::runtime::runtime_agent::RuntimeAgent;
 use crate::runtime::tools::Tool;
+use crate::runtime::turn_agent::TurnAgent;
 use crate::runtime::typed_id::SessionId;
 
 use super::tests_support::*;
@@ -253,7 +253,7 @@ fn test_system_prompt_preview_default_delegates_to_addition() {
 #[tokio::test]
 async fn test_apply_capabilities_noop() {
     let registry = fixture_registry();
-    let mut base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+    let mut base_runtime_agent = TurnAgent::new("You are a helpful assistant.", "gpt-5.2");
 
     base_runtime_agent.max_iterations = 13;
     base_runtime_agent.temperature = Some(0.25);
@@ -269,13 +269,13 @@ async fn test_apply_capabilities_noop() {
 
     // Noop has no system prompt addition or tools
     assert_eq!(
-        applied.runtime_agent.system_prompt,
+        applied.turn_agent.system_prompt,
         base_runtime_agent.system_prompt
     );
     assert!(applied.tool_registry.is_empty());
     assert_eq!(applied.applied_ids, vec!["noop"]);
     assert_eq!(
-        serde_json::to_value(&applied.runtime_agent).unwrap(),
+        serde_json::to_value(&applied.turn_agent).unwrap(),
         serde_json::to_value(&base_runtime_agent).unwrap()
     );
     let collected = collect_capabilities(&["noop".into()], &registry, &test_ctx()).await;
@@ -287,7 +287,7 @@ async fn test_apply_capabilities_noop() {
 #[tokio::test]
 async fn test_apply_capabilities_current_time() {
     let registry = fixture_registry();
-    let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+    let base_runtime_agent = TurnAgent::new("You are a helpful assistant.", "gpt-5.2");
 
     let applied = apply_capabilities(
         base_runtime_agent.clone(),
@@ -302,14 +302,14 @@ async fn test_apply_capabilities_current_time() {
     // the conversation tail per request). It also keeps its tool.
     assert!(
         applied
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains(FACTS_DYNAMIC_NOTE),
         "current_time should contribute the dynamic-facts note"
     );
     assert!(
         applied
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains(&base_runtime_agent.system_prompt),
         "base prompt is preserved"
@@ -341,7 +341,7 @@ async fn test_apply_capabilities_skips_coming_soon() {
     }
     let mut registry = CapabilityRegistry::new();
     registry.register(ComingSoonFixture);
-    let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+    let base_runtime_agent = TurnAgent::new("You are a helpful assistant.", "gpt-5.2");
 
     let applied = apply_capabilities(
         base_runtime_agent.clone(),
@@ -352,7 +352,7 @@ async fn test_apply_capabilities_skips_coming_soon() {
     .await;
 
     assert_eq!(
-        applied.runtime_agent.system_prompt,
+        applied.turn_agent.system_prompt,
         base_runtime_agent.system_prompt
     );
     assert!(applied.applied_ids.is_empty());
@@ -383,7 +383,7 @@ async fn test_apply_capabilities_keeps_deprecated_fully_functional() {
     }
     let mut registry = CapabilityRegistry::new();
     registry.register(DeprecatedFixture);
-    let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+    let base_runtime_agent = TurnAgent::new("You are a helpful assistant.", "gpt-5.2");
 
     let applied = apply_capabilities(
         base_runtime_agent,
@@ -393,12 +393,7 @@ async fn test_apply_capabilities_keeps_deprecated_fully_functional() {
     )
     .await;
 
-    assert!(
-        applied
-            .runtime_agent
-            .system_prompt
-            .contains("Still working.")
-    );
+    assert!(applied.turn_agent.system_prompt.contains("Still working."));
     assert_eq!(applied.applied_ids, vec!["deprecated_fixture"]);
 }
 
@@ -427,7 +422,7 @@ async fn test_apply_capabilities_skips_retired_without_failing() {
     }
     let mut registry = fixture_registry();
     registry.register(RetiredFixture);
-    let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+    let base_runtime_agent = TurnAgent::new("You are a helpful assistant.", "gpt-5.2");
 
     let applied = apply_capabilities(
         base_runtime_agent,
@@ -439,7 +434,7 @@ async fn test_apply_capabilities_skips_retired_without_failing() {
 
     assert!(
         !applied
-            .runtime_agent
+            .turn_agent
             .system_prompt
             .contains("Should never be applied.")
     );

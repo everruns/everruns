@@ -241,7 +241,7 @@ Use `per_thread` for most Slack bots.
 **Outbound path:**
 
 6. The Slack delivery dispatcher watches the turn.
-7. For a Direct Agent, the RuntimeAgent emits completed output messages and the dispatcher posts them.
+7. For a Direct Agent, the TurnAgent emits completed output messages and the dispatcher posts them.
 8. For an Explicit Agent, `send_message` posts messages directly and returns delivery receipts.
 9. Automatic delivery retries transient failures with exponential backoff. `send_message` returns errors without retrying an uncertain send.
 10. The dispatcher unregisters when the turn completes, fails, or is cancelled.

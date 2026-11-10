@@ -14,11 +14,13 @@ pub mod spi;
 mod admission;
 mod configuration;
 mod definitions;
+mod runtime_agent;
 pub use definitions::{
     AgentDefinition, AgentDefinitions, AgentHydrator, Hydrated, MAX_DEFINITION_BYTES,
     PackageHydrator,
 };
 pub(crate) use definitions::{DEFAULT_HYDRATED_CAPACITY, DefinitionStore, HydratedCache};
+pub use runtime_agent::{RUNTIME_AGENT_FORMAT, RUNTIME_AGENT_FORMATS, RuntimeAgent};
 pub mod cutover;
 mod epoch_cache;
 pub use everruns_contracts::runtime::input_context::InputContext;

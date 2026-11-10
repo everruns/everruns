@@ -198,7 +198,7 @@ These are the most common layout mistakes. Check each one before finishing a dia
 2. **Keep labels clear of boxes.** Arrow labels (`class="arrow-label"`) must not overlap with any box's label or sublabel text. Place them above or beside the arrow, offset from the nearest box edge by at least 10px.
 3. **Separate step badges.** When two arrows are parallel (e.g., bidirectional), put their step badges on opposite sides, one left, one right, so they don't stack on top of each other.
 4. **Use right-angle paths for long connections.** Diagonal arrows that span multiple rows or columns cross over other elements. Use L-shaped or Z-shaped polylines (`<line>` segments) that follow the gaps between boxes.
-5. **Widen boxes for long labels.** A 13px `.label` needs roughly 8px per character. "Management UI" (13 chars) needs ~110px minimum. "RuntimeAgent" needs ~100px. If the label clips, widen the box.
+5. **Widen boxes for long labels.** A 13px `.label` needs roughly 8px per character. "Management UI" (13 chars) needs ~110px minimum. "TurnAgent" needs ~100px. If the label clips, widen the box.
 6. **Section headers need clearance.** Uppercase Silver headers sit above boxes. Leave at least 15px between a header's y-position and the nearest arrow label or step badge to prevent overlap.
 7. **Use inline `<polygon>` for arrowheads.** Do not use `<defs><marker>`, markers render inconsistently across SVG rasterizers and can produce oversized or misaligned heads. Each arrowhead is a separate `<polygon points="...">` element.
 

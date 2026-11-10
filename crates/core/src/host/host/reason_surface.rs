@@ -70,7 +70,7 @@ pub(super) fn reason_capability_registry<A: RuntimeHostAdapter>(
 
 /// The turn context a reason of `session_id` on this host would assemble
 /// now, without running the reason or its prompt hooks. Its
-/// `runtime_agent.tools` is the tool surface that reason hands its act.
+/// `turn_agent.tools` is the tool surface that reason hands its act.
 pub(crate) async fn reason_turn_context<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,

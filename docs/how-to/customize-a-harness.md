@@ -77,7 +77,7 @@ everruns sessions create --harness research-assistant --agent agent_...
 
 ## Inheritance
 
-Harnesses support single-parent inheritance, a child harness can extend another, layering on extra capabilities or a longer system prompt. The merge is associative: a chain of N harnesses produces the same `RuntimeAgent` as a single pre-merged harness.
+Harnesses support single-parent inheritance, a child harness can extend another, layering on extra capabilities or a longer system prompt. The merge is associative: a chain of N harnesses produces the same `TurnAgent` as a single pre-merged harness.
 
 This is useful when one team owns a base harness and other teams add their own specialisation on top.
 

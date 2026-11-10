@@ -25,7 +25,7 @@ use everruns_contracts::runtime_provider::Provider;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::InitialFile;
 use everruns_core::host::{
-    AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
+    AgentBuilder as TurnAgentBuilder, Environment, EnvironmentBindingError,
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
 };
@@ -915,7 +915,7 @@ impl Agent {
 
         // EVE-877: the builder produces a portable AgentDefinition; the
         // harness link lives on the session, not the definition.
-        let mut agent = RuntimeAgentBuilder::new(&self.name, &self.instructions)
+        let mut agent = TurnAgentBuilder::new(&self.name, &self.instructions)
             .capabilities(capabilities.clone())
             .communication(self.communication);
         if let Some(parallel) = self.parallel_tool_calls {

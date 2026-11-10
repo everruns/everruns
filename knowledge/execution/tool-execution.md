@@ -441,7 +441,7 @@ This logic is shared by all execution paths, the in-process runtime/host loop an
 
 ### Request-level `parallel_tool_calls` (EVE-598)
 
-`parallel_tool_calls: Option<bool>` is a config field on harness/agent/session that merges through `AgentConfigOverlay` (overlay wins) into `RuntimeAgent`, then threads through `ReasonResult` into `ActInput`, and is serialized onto the provider request:
+`parallel_tool_calls: Option<bool>` is a config field on harness/agent/session that merges through `AgentConfigOverlay` (overlay wins) into `TurnAgent`, then threads through `ReasonResult` into `ActInput`, and is serialized onto the provider request:
 
 - **Default `None`** preserves all current behavior: no field is sent to the provider, and the act scheduler uses its class-aware concurrent schedule.
 - **`Some(true)`** explicitly signals the provider that parallel tool calls are wanted. This lets an embedder opt into batching independent reads/searches instead of relying on each provider's undocumented default.
@@ -458,7 +458,7 @@ Provider wire mapping is gated by `ChatDriver::supports_parallel_tool_calls(mode
 
 `LlmCallConfig::resolved_parallel_tool_calls(supported)` performs the gating: it returns the preference when `supported` is `true`, else `None` (omit). Each driver calls it with `self.supports_parallel_tool_calls(&config.model)` while building the request.
 
-Durable parity: the worker builds `RuntimeAgent` from gRPC-fetched schema objects, so the proto `Agent` and `Session` messages carry `parallel_tool_calls`. The server schema→proto and worker proto→schema adapters round-trip the value, preserving the operator setting through `RuntimeAgent` → `ReasonResult` → provider in durable mode.
+Durable parity: the worker builds `TurnAgent` from gRPC-fetched schema objects, so the proto `Agent` and `Session` messages carry `parallel_tool_calls`. The server schema→proto and worker proto→schema adapters round-trip the value, preserving the operator setting through `TurnAgent` → `ReasonResult` → provider in durable mode.
 
 ### `parallel_tool_calls` capability
 
@@ -468,7 +468,7 @@ The `parallel_tool_calls` capability is the user-facing way to set the preferenc
 - **`avoid`** → `Some(false)`.
 - **`none`** → `None` (provider default; neutralizes an inherited preference).
 
-The capability resolves its `mode` to a preference during capability collection (`CollectedCapabilities.parallel_tool_calls`) and applies it to `RuntimeAgent.parallel_tool_calls`. An explicit `parallel_tool_calls` field on any layer wins over the capability. The **Generic** harness and the built-in **coding** harnesses enable the capability with `mode: "prefer"`.
+The capability resolves its `mode` to a preference during capability collection (`CollectedCapabilities.parallel_tool_calls`) and applies it to `TurnAgent.parallel_tool_calls`. An explicit `parallel_tool_calls` field on any layer wins over the capability. The **Generic** harness and the built-in **coding** harnesses enable the capability with `mode: "prefer"`.
 
 Because harness/agent capability config is reconstructed from IDs over gRPC (durable worker), a non-default harness/agent `mode` falls back to the default (`prefer`) in durable mode; set the mode at the session level or use the explicit `parallel_tool_calls` field to override durably. This matches other config-bearing capabilities.
 

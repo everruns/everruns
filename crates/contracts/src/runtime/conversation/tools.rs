@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use crate::runtime::events::{ConversationDelivery, ConversationMessageData};
 use crate::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 use crate::runtime::tools::{Tool, ToolExecutionResult};
-use crate::runtime::{RuntimeAgent, tool_context::ToolContext};
+use crate::runtime::{TurnAgent, tool_context::ToolContext};
 use crate::{tool_types::ToolHints, typed_id::MessageId};
 
 use super::Communication;
@@ -66,7 +66,7 @@ pub struct ConversationSenderExt(pub Arc<dyn ConversationSender>);
 /// Turn an agent into one that talks explicitly: add the two tools and the
 /// instructions, and mark the agent so its assistant text is recorded as
 /// working notes. Idempotent.
-pub fn apply_explicit_communication(mut agent: RuntimeAgent) -> RuntimeAgent {
+pub fn apply_explicit_communication(mut agent: TurnAgent) -> TurnAgent {
     for definition in [SendMessageTool.to_definition(), NoReplyTool.to_definition()] {
         if !agent
             .tools

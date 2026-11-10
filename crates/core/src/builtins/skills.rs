@@ -1535,7 +1535,7 @@ mod tests {
     #[tokio::test]
     async fn test_apply_capabilities_with_skills() {
         use crate::builtins::capabilities::SystemPromptContext;
-        use crate::builtins::runtime_agent::RuntimeAgentBuilder;
+        use crate::builtins::turn_agent::TurnAgentBuilder;
 
         let mut registry = crate::builtins::capabilities::CapabilityRegistry::new();
         crate::builtins::register_runtime_capabilities(&mut registry).unwrap();
@@ -1543,7 +1543,7 @@ mod tests {
         let ctx =
             SystemPromptContext::without_file_store(crate::builtins::typed_id::SessionId::new());
         // Use builder pattern which resolves dependencies automatically
-        let runtime_agent = RuntimeAgentBuilder::new()
+        let turn_agent = TurnAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&["skills".to_string()], &registry, &ctx)
             .await
@@ -1552,19 +1552,19 @@ mod tests {
 
         // System prompt should include skills capability section
         assert!(
-            runtime_agent
+            turn_agent
                 .system_prompt
                 .contains("/workspace/.agents/skills/"),
             "System prompt should mention skills path"
         );
         assert!(
-            runtime_agent
+            turn_agent
                 .system_prompt
                 .contains("/workspace/.agents/skills/"),
             "System prompt should mention skills path with workspace prefix"
         );
         assert!(
-            runtime_agent
+            turn_agent
                 .system_prompt
                 .contains("<capability id=\"skills\">"),
             "Should include skills capability in XML tags"
@@ -1572,7 +1572,7 @@ mod tests {
 
         // The filesystem implementation is host-owned; this core fixture only
         // proves the dependency participates in composition.
-        let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
+        let tool_names: Vec<&str> = turn_agent.tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"list_skills"));
         assert!(tool_names.contains(&"activate_skill"));
     }

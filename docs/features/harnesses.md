@@ -108,7 +108,7 @@ The system prompt is built from three layers, each wrapped in XML tags:
 
 ![Capability Hierarchy](../images/features/capability-hierarchy.svg)
 
-The merge is associative: a chain of inherited harnesses produces the same `RuntimeAgent` as a single pre-merged harness.
+The merge is associative: a chain of inherited harnesses produces the same `TurnAgent` as a single pre-merged harness.
 
 ### The base system prompt is optional
 

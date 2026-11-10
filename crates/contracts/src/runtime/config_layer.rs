@@ -9,8 +9,8 @@
 //
 // Each entity produces an AgentConfigOverlay via From<&T>. Harness inheritance
 // chains produce one overlay per harness. All overlays fold bottom-up into a
-// single effective config that RuntimeAgentBuilder::from_overlay() resolves
-// into a RuntimeAgent.
+// single effective config that TurnAgentBuilder::from_overlay() resolves
+// into a TurnAgent.
 //
 // Merge semantics per field:
 // - system_prompt: base first, overlay appended (concatenate non-empty parts)
@@ -37,7 +37,7 @@ use crate::runtime::typed_id::ModelId;
 /// A composable configuration layer.
 ///
 /// Produced by Harness, Agent, or Session via `From<&T>`. Layers merge
-/// bottom-up into a single effective config for RuntimeAgent building.
+/// bottom-up into a single effective config for TurnAgent building.
 #[derive(Debug, Clone, Default)]
 pub struct AgentConfigOverlay {
     /// System prompt fragment for this layer.

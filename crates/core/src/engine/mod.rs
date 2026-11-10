@@ -48,7 +48,7 @@ mod turn;
 pub(crate) use crate::{
     ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION, COMPACTION_CHECKPOINT_FORMAT_VERSION,
     CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore, DecisionsService,
-    EgressService, McpToolInvoker, MessageQuery, ProactiveCompactionAttempt, RuntimeAgent,
+    EgressService, McpToolInvoker, MessageQuery, ProactiveCompactionAttempt, TurnAgent,
     UtilityLlmService, annotation_hook, capabilities, compaction_policy, connection_services,
     delegation_services, durability, event_emitter, events, execution_loading, file_services,
     finalized_tool_calls, image_services, llm_conversions, llm_error_hook, localization, message,

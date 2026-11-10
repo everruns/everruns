@@ -61,13 +61,13 @@ methods (`with_harness_async`, `with_agent_async`, `with_capabilities_async`).
 execute_llm_call()
   ├── Load agent + session
   ├── Create SystemPromptContext { session_id, file_store }
-  ├── Build RuntimeAgent using async builder methods
+  ├── Build TurnAgent using async builder methods
   │   ├── with_harness_async() — resolves harness capabilities (including agent_instructions)
   │   ├── with_agent_async() — resolves agent capabilities
   │   └── with_capabilities_async() — resolves session capabilities
   │       └── For each capability: call system_prompt_contribution(ctx)
   │           └── agent_instructions: reads configured instruction files from file store
-  ├── Build final RuntimeAgent
+  ├── Build final TurnAgent
   └── Execute LLM call
 ```
 

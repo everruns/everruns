@@ -16,7 +16,7 @@
 //   scheduler's concurrent schedule. Same effect as not enabling the capability;
 //   useful to neutralize an inherited preference from a parent harness.
 //
-// The resolved preference threads through `RuntimeAgent.parallel_tool_calls`
+// The resolved preference threads through `TurnAgent.parallel_tool_calls`
 // into both the LLM request (provider-gated, see `ChatDriver::
 // supports_parallel_tool_calls`) and `ActInput.parallel_tool_calls` (the local
 // scheduler). An explicit `parallel_tool_calls` field on harness/agent/session
@@ -51,7 +51,7 @@ impl ParallelToolCallsMode {
     }
 
     /// Map the mode onto the request-level `parallel_tool_calls` preference
-    /// carried by `RuntimeAgent`/`LlmCallConfig`/`ActInput`.
+    /// carried by `TurnAgent`/`LlmCallConfig`/`ActInput`.
     ///
     /// `None` mode resolves to `None` (omit, provider default).
     pub fn to_preference(self) -> Option<bool> {

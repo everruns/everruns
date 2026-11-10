@@ -1,7 +1,7 @@
 use super::*;
 use everruns_contracts::runtime::capabilities::{CapabilityRegistry, ToolDisclosure};
-use everruns_contracts::runtime::runtime_agent::RuntimeAgentBuilder;
 use everruns_contracts::runtime::tools::ToolRegistry;
+use everruns_contracts::runtime::turn_agent::TurnAgentBuilder;
 use everruns_contracts::typed_id::SessionId;
 
 struct CatalogTool(ToolDefinition);
@@ -39,7 +39,7 @@ async fn explicit_bounded_search_supersedes_inherited_discovery() {
                 }
                 let mut ctx = SystemPromptContext::without_file_store(SessionId::new());
                 ctx.model = Some(model.into());
-                let runtime = RuntimeAgentBuilder::new()
+                let runtime = TurnAgentBuilder::new()
                     .tools(definitions(2000))
                     .with_capability_configs(&configs, &registry, &ctx)
                     .await
@@ -382,7 +382,7 @@ async fn initial_surface_stays_constant_at_ten_thousand_tools_and_retains_execut
     let mut registry = CapabilityRegistry::new();
     registry.register(ToolSearchCapability::new());
     for count in [50, 600, 2000, 10000] {
-        let runtime = RuntimeAgentBuilder::new()
+        let runtime = TurnAgentBuilder::new()
             .tools(definitions(count))
             .with_capability_configs(
                 &[crate::AgentCapabilityConfig::with_config(
@@ -862,7 +862,7 @@ async fn later_restrictions_apply_to_hidden_catalog_scope_too() {
     let mut registry = CapabilityRegistry::new();
     registry.register(ToolSearchCapability::new());
     registry.register(RestrictingCapability);
-    let runtime = RuntimeAgentBuilder::new()
+    let runtime = TurnAgentBuilder::new()
         .tools(definitions(2000))
         .with_capability_configs(
             &[
@@ -913,7 +913,7 @@ async fn count_dependent_restriction_runs_once_over_the_complete_scope() {
     let mut registry = CapabilityRegistry::new();
     registry.register(ToolSearchCapability::new());
     registry.register(LimitCapability(calls.clone()));
-    let runtime = RuntimeAgentBuilder::new()
+    let runtime = TurnAgentBuilder::new()
         .tools(definitions(50))
         .with_capability_configs(
             &[

@@ -57,7 +57,7 @@ All outbound HTTP/API call paths must use the host `EgressService` described in
 requests that carry a `NetworkAccessList`.
 
 Merged `NetworkAccessList` flows through:
-1. `ReasonAtom` merges harness + agent + session → stores on `RuntimeAgent.network_access`
+1. `ReasonAtom` merges harness + agent + session → stores on `TurnAgent.network_access`
 2. `ReasonResult.network_access` carries it to `ActInput`
 3. `ActAtom` sets `ToolContext.network_access`
 4. Tools that send agent-authored or capability-configured URLs pass the list

@@ -64,7 +64,7 @@ pub struct CreateSessionRequest {
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub model_id: Option<ModelId>,
     /// Session-level capabilities (additive to agent capabilities).
-    /// Applied after agent capabilities when building RuntimeAgent.
+    /// Applied after agent capabilities when building TurnAgent.
     #[serde(default)]
     #[schema(
         value_type = Vec<crate::records::CapabilityRefSchema>,
@@ -89,7 +89,7 @@ pub struct CreateSessionRequest {
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
     pub mcp_servers: ScopedMcpServers,
     /// Optional session-level system prompt override.
-    /// Prepended to the agent's system prompt when building RuntimeAgent.
+    /// Prepended to the agent's system prompt when building TurnAgent.
     #[serde(default)]
     #[schema(
         example = "You are debugging a production incident. Be concise and cite log lines verbatim."

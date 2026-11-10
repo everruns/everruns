@@ -358,7 +358,7 @@ async fn runtime_records_plugin_addition_redefinition_and_revocation() {
         .load_context(session_id)
         .await
         .expect("context includes the plugin")
-        .runtime_agent;
+        .turn_agent;
     let added_tool = added
         .tools
         .iter()
@@ -383,7 +383,7 @@ async fn runtime_records_plugin_addition_redefinition_and_revocation() {
         .load_context(session_id)
         .await
         .expect("context reloads the plugin schema")
-        .runtime_agent;
+        .turn_agent;
     let redefined_tool = redefined
         .tools
         .iter()
@@ -530,10 +530,7 @@ async fn plugin_namespace_definition_contributes_to_runtime_context() {
         .await
         .expect("plugin context loads");
     assert!(
-        context
-            .runtime_agent
-            .system_prompt
-            .contains("docs-researcher"),
+        context.turn_agent.system_prompt.contains("docs-researcher"),
         "the plugin: declarative definition contributes its agent prompt"
     );
     assert!(
@@ -610,14 +607,14 @@ async fn bounded_search_keeps_late_plugin_schemas_out_of_the_stable_baseline() {
     let context = runtime.load_context(session_id).await.unwrap();
     assert!(
         context
-            .runtime_agent
+            .turn_agent
             .catalog_tools
             .iter()
             .any(|tool| tool.name() == "dynamic_plugin_action")
     );
     assert!(
         !context
-            .runtime_agent
+            .turn_agent
             .tools
             .iter()
             .any(|tool| tool.name() == "dynamic_plugin_action")

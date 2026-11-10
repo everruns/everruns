@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = runtime.load_context(session_id).await?;
 
     // The system prompt should contain the docs-researcher agent section.
-    let has_agent = ctx.runtime_agent.system_prompt.contains("docs-researcher");
+    let has_agent = ctx.turn_agent.system_prompt.contains("docs-researcher");
     println!("System prompt contains docs-researcher agent: {has_agent}");
 
     // The plugin capability config should appear in the resolved set.

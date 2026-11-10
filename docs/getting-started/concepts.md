@@ -8,14 +8,14 @@ This page defines each entity you meet in Everruns and links to the page that ex
 | Layer | Entities | Lifetime |
 |---|---|---|
 | **Configuration** | Harness, Agent, Capability | Long-lived. You author these. |
-| **Runtime** | Session, Turn, RuntimeAgent | Created per conversation. The server owns these. |
+| **Runtime** | Session, Turn, TurnAgent | Created per conversation. The server owns these. |
 | **Data** | Event, Message | Append-only log produced during runtime. |
 
 Your application creates configuration, starts runtime, and consumes data.
 
 ![Configuration Hierarchy](../images/concepts/configuration-hierarchy.svg)
 
-Solid arrows show configuration ownership: a Harness has Agents and Capabilities, and an Agent has Capabilities. Dashed arrows show runtime assembly: configuration merges into a RuntimeAgent, which executes in a Session.
+Solid arrows show configuration ownership: a Harness has Agents and Capabilities, and an Agent has Capabilities. Dashed arrows show runtime assembly: configuration merges into a TurnAgent, which executes in a Session.
 
 ## Configuration
 
@@ -67,9 +67,9 @@ A service virtual user is an agent's account for unattended execution. User conn
 
 ## Runtime
 
-### RuntimeAgent
+### TurnAgent
 
-The merged configuration a session executes. When a session starts, harness, agent, and session settings fold into one `RuntimeAgent`: earlier layers form the base and later layers override or add. System prompts concatenate, capabilities are deduplicated by ID, and network policies can only narrow (allow lists intersect, blocklists union).
+The merged configuration a session executes. When a session starts, harness, agent, and session settings fold into one `TurnAgent`: earlier layers form the base and later layers override or add. System prompts concatenate, capabilities are deduplicated by ID, and network policies can only narrow (allow lists intersect, blocklists union).
 
 Each layer answers a different question. The harness answers "what environment am I running in?", the agent answers "what role am I playing?", and the session answers "what is true for this one conversation?". Operators control harnesses, application authors control agents, and end users or the runtime control sessions.
 

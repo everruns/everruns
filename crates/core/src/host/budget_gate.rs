@@ -222,7 +222,7 @@ pub(crate) async fn before_reason<A: crate::host::RuntimeHostAdapter>(
                 .await?;
             Ok(Some(ReasonResult {
                 text: message.clone(),
-                max_iterations: crate::runtime_agent::default_max_iterations(),
+                max_iterations: crate::turn_agent::default_max_iterations(),
                 error: Some(message),
                 user_facing_error: Some(stop.user_error),
                 ..Default::default()

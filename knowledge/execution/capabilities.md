@@ -204,7 +204,7 @@ Capability implementations are composed explicitly by the selected host:
                             ↓
 ┌─────────────────────────────────────────────────────────┐
 │                      Agent Loop                          │
-│        (receives fully-configured RuntimeAgent)           │
+│        (receives fully-configured TurnAgent)           │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -221,7 +221,7 @@ Capability implementations are composed explicitly by the selected host:
   hosted product/platform-management capabilities.
 - The API layer uses the hosted registry and converts it to response DTOs.
 - The Agent Loop remains focused on execution
-- RuntimeAgent is built with merged system prompt and tools from capabilities
+- TurnAgent is built with merged system prompt and tools from capabilities
 
 ### Live session reconfiguration
 
@@ -578,7 +578,7 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 - **`collect_capabilities()`**: Sync. Collects tools, mounts, static prompts.
 - **`collect_capabilities_async(ctx)`**: Async. Calls `system_prompt_contribution()` for dynamic prompts.
 - **`collect_capabilities_with_configs(ctx, configs)`**: Async. Calls config-aware methods (`tools_with_config`, `system_prompt_contribution_with_config`) for capabilities with per-agent config.
-- **`RuntimeAgentBuilder::with_capabilities_async(ctx)`**: Async builder method.
+- **`TurnAgentBuilder::with_capabilities_async(ctx)`**: Async builder method.
 
 **Note**: `message_filter_provider()` returns an optional filter that modifies message retrieval. See [Message Filters](#message-filters).
 
@@ -715,7 +715,7 @@ harness rows.
 - **`retired`** is the removal. The implementation is deleted down to an
   identity-only shell: no tools, prompt, mounts, dependencies, or hooks. The ID
   stays registered on purpose — an unregistered ID fails
-  `RuntimeAgent` activation (`crates/core/src/host/runtime/mod.rs`), whereas a retired one
+  `TurnAgent` activation (`crates/core/src/host/runtime/mod.rs`), whereas a retired one
   resolves to a no-op, so an agent that still references it keeps running. It is
   hidden from `list_capabilities` unless `include_retired` is set, which is how
   management UIs still name the stale attachment and offer to remove it.
@@ -1179,14 +1179,14 @@ When a session executes:
    - Session capabilities extend the agent's tools
    - Session capability system prompts are prepended after agent capability prompts
    - This allows temporarily extending capabilities without modifying the agent
-6. **Build RuntimeAgent**:
+6. **Build TurnAgent**:
    - System prompt = session cap additions + agent cap additions + agent's base prompt
    - Each section is wrapped in XML tags for clear boundaries (see `knowledge/project/xml-prompt-formatting.md`):
      - Instruction file content: `<agent-instructions source="{path}">`
      - Each capability's addition: `<capability id="{cap_id}">`
      - Base prompt: `<system-prompt>` (only when capabilities contribute prompt additions)
    - Tools = merged tool list from agent capabilities + session capabilities
-7. **Execute**: Run Agent Loop with fully configured RuntimeAgent
+7. **Execute**: Run Agent Loop with fully configured TurnAgent
 
 ### Session Capabilities
 
@@ -1206,7 +1206,7 @@ Session capabilities use the same format as agent capabilities:
 }
 ```
 
-Session capabilities are stored in the `sessions.capabilities` column (JSONB) and applied at runtime via `RuntimeAgentBuilder::with_capabilities()` after agent capabilities are applied.
+Session capabilities are stored in the `sessions.capabilities` column (JSONB) and applied at runtime via `TurnAgentBuilder::with_capabilities()` after agent capabilities are applied.
 
 ### API Endpoints
 
@@ -1237,7 +1237,7 @@ See `crates/server/migrations/legacy/001_base_schema.sql` for the `agent_capabil
 | Question | Decision |
 |----------|----------|
 | Where are capabilities defined? | Implementation-owning crates, composed into an in-memory registry (not database) |
-| How are they applied? | Resolved at API layer, merged into RuntimeAgent |
+| How are they applied? | Resolved at API layer, merged into TurnAgent |
 | Order of application? | By `position` field (lower = earlier) |
 | Can capabilities conflict? | Currently no conflict resolution; later capabilities add to earlier ones |
 | Can users create custom capabilities? | Not in current version (built-in only) |
@@ -1551,7 +1551,7 @@ See `crates/contracts/src/runtime/output_guardrail.rs` for `OutputGuardrail`, `O
 | Question | Decision |
 |----------|----------|
 | Sync vs async `check`? | Sync. Guardrails run on every batched delta in the hot path; slow checks would throttle the stream. Heavy guardrails (e.g. an LLM moderator) must run elsewhere |
-| Where do guardrails live? | On `Capability` trait, not `RuntimeAgent`. They are derived from `resolved_capability_configs` at execution time so `RuntimeAgent` stays serializable |
+| Where do guardrails live? | On `Capability` trait, not `TurnAgent`. They are derived from `resolved_capability_configs` at execution time so `TurnAgent` stays serializable |
 | What surface is checked? | Assistant text only (`output.message.delta`). `tool.output.delta` and `reason.thinking.delta` are out of scope for v1, easy to extend later by adding a surface enum |
 | Original tokens persisted? | No. After replacement, every downstream event (`llm.generation`, `output.message.completed`) carries the replacement text. The model itself never sees the leak on subsequent turns |
 | What if multiple guardrails trip? | The first to return `Block` (in capability registration order) wins. Subsequent guardrails are not consulted on a blocked stream |

@@ -3,11 +3,11 @@
 use super::*;
 use crate::runtime::message::RuntimeMessage;
 use crate::runtime::message_filter::{MessageFilter, MessageFilterProvider, MessageQuery};
-use crate::runtime::runtime_agent::RuntimeAgent;
 use crate::runtime::tool_surface::{
     NativeToolDisclosure, NativeToolDisclosurePolicy, ToolSurface, ToolSurfaceRoute,
 };
 use crate::runtime::tool_types::ToolDefinition;
+use crate::runtime::turn_agent::TurnAgent;
 use crate::runtime::typed_id::SessionId;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -714,14 +714,14 @@ async fn prompt_collection_preserves_exact_sections_attribution_and_base_order()
         Some(format!("{first}\n\n{second}"))
     );
     let applied = apply_capabilities(
-        RuntimeAgent::new("Base.", "fixture-model"),
+        TurnAgent::new("Base.", "fixture-model"),
         &ids,
         &registry,
         &test_ctx(),
     )
     .await;
     assert_eq!(
-        applied.runtime_agent.system_prompt,
+        applied.turn_agent.system_prompt,
         format!("<system-prompt>\nBase.\n</system-prompt>\n\n{first}\n\n{second}")
     );
     assert!(applied.tool_registry.has("write_todos"));

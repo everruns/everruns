@@ -239,7 +239,7 @@ impl StoreCommandHost {
             llm_messages.push(llm_message);
         }
         let mut builder =
-            crate::llm_conversions::llm_call_config_builder_from_agent(&assembled.runtime_agent)
+            crate::llm_conversions::llm_call_config_builder_from_agent(&assembled.turn_agent)
                 .model(&model.model)
                 .tools(vec![])
                 .tool_search(ToolSearchConfig {
@@ -300,7 +300,7 @@ impl CommandHost for StoreCommandHost {
         Ok(CommandTurnContext {
             session_id: assembled.snapshot.session_id,
             messages: assembled.messages.clone(),
-            system_prompt: assembled.runtime_agent.system_prompt.clone(),
+            system_prompt: assembled.turn_agent.system_prompt.clone(),
             model: assembled.model.model.clone(),
             provider_type: assembled.model.provider_type.to_string(),
             resolved_locale: assembled.resolved_locale.clone(),

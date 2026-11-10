@@ -11,7 +11,7 @@
 //! Design decisions:
 //! - Capabilities are defined via the Capability trait for flexibility
 //! - CapabilityRegistry holds all available capability implementations
-//! - apply_capabilities() merges capability contributions into RuntimeAgent
+//! - apply_capabilities() merges capability contributions into TurnAgent
 //! - The agent-loop remains execution-focused; capabilities are applied before execution
 //! - System prompt sections use XML tags for clear boundaries between components.
 //!   This follows Anthropic's recommendation for multi-component prompts and reduces
@@ -26,10 +26,10 @@ use crate::runtime::events::TokenUsage;
 use crate::runtime::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::runtime::message::RuntimeMessage;
 use crate::runtime::message_filter::MessageFilterProvider;
-use crate::runtime::runtime_agent::RuntimeAgent;
 use crate::runtime::tool_surface::{NativeToolDisclosurePolicy, ToolSurfaceMode, ToolSurfacePlan};
 use crate::runtime::tool_types::ToolDefinition;
 use crate::runtime::tools::{Tool, ToolRegistry};
+use crate::runtime::turn_agent::TurnAgent;
 use crate::runtime::typed_id::SessionId;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -275,7 +275,7 @@ pub(crate) fn compaction_is_enabled(
 /// prompt contributions, tools, mounts, and other expensive work.
 ///
 /// This is a fast path for callers that only need message filtering (e.g.,
-/// the message-loading step in ReasonAtom before RuntimeAgent is built).
+/// the message-loading step in ReasonAtom before TurnAgent is built).
 pub fn collect_message_filters_only(
     capability_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
@@ -1065,13 +1065,13 @@ async fn collect(
 }
 
 // ============================================================================
-// Apply Capabilities to RuntimeAgent
+// Apply Capabilities to TurnAgent
 // ============================================================================
 
 /// Result of applying capabilities to a base runtime agent
 pub struct AppliedCapabilities {
     /// The modified runtime agent with capability contributions merged
-    pub runtime_agent: RuntimeAgent,
+    pub turn_agent: TurnAgent,
     /// Tool registry containing all capability tools
     pub tool_registry: ToolRegistry,
     /// IDs of capabilities that were applied
@@ -1102,10 +1102,10 @@ pub struct AppliedCapabilities {
 ///
 /// ```ignore
 /// use everruns_contracts::runtime::capabilities::{apply_capabilities, CapabilityRegistry, SystemPromptContext};
-/// use everruns_contracts::runtime::runtime_agent::RuntimeAgent;
+/// use everruns_contracts::runtime::turn_agent::TurnAgent;
 ///
 /// let registry = CapabilityRegistry::new();
-/// let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+/// let base_runtime_agent = TurnAgent::new("You are a helpful assistant.", "gpt-5.2");
 /// let ctx = SystemPromptContext::without_file_store(SessionId::new());
 ///
 /// let capability_ids = Vec::new();
@@ -1114,7 +1114,7 @@ pub struct AppliedCapabilities {
 /// assert!(applied.applied_ids.is_empty());
 /// ```
 pub async fn apply_capabilities(
-    base_runtime_agent: RuntimeAgent,
+    base_runtime_agent: TurnAgent,
     capability_ids: &[String],
     registry: &CapabilityRegistry,
     ctx: &SystemPromptContext,
@@ -1140,7 +1140,7 @@ pub async fn apply_capabilities(
     tool_registry.set_capability_contexts(&collected.tool_definitions);
 
     // Create modified runtime agent
-    let mut runtime_agent = RuntimeAgent {
+    let mut turn_agent = TurnAgent {
         system_prompt: final_system_prompt,
         model: base_runtime_agent.model,
         tools: collected.tool_definitions,
@@ -1166,11 +1166,11 @@ pub async fn apply_capabilities(
     };
 
     for hook in &collected.tool_definition_hooks {
-        runtime_agent.apply_definition_hook(hook.as_ref());
+        turn_agent.apply_definition_hook(hook.as_ref());
     }
 
     AppliedCapabilities {
-        runtime_agent,
+        turn_agent,
         tool_registry,
         applied_ids: collected.applied_ids,
     }

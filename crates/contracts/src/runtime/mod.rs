@@ -70,7 +70,6 @@ pub mod payment;
 pub mod principal;
 pub mod resource_names;
 pub mod resource_ownership;
-pub mod runtime_agent;
 pub mod sandbox_context;
 pub mod sandbox_egress;
 pub mod sandbox_workspace;
@@ -95,6 +94,7 @@ pub mod tool_output_sanitizer;
 pub mod tool_surface;
 pub mod tools;
 pub mod truncation_info;
+pub mod turn_agent;
 pub mod user_hook_types;
 pub mod utility_llm;
 pub mod web_search;
@@ -265,7 +265,6 @@ pub use self::resource_ownership::{
     ownership_tracking_unavailable_error, require_owned_external_resource,
     resource_not_owned_error, verify_owned_external_resource_if_available,
 };
-pub use self::runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use self::session::{ExecutionSession, SessionExecutionState, SessionSeedMode, SubagentStatus};
 pub use self::session_file::{
     FileInfo, FileStat, GREP_MAX_CONTEXT_LINES, GREP_MAX_RETURN_BYTES, GrepContextBlock,
@@ -309,6 +308,7 @@ pub use self::tool_execution::{OutboundToolRateLimiter, ToolExecutor};
 pub use self::tools::{
     CliSpelling, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder,
 };
+pub use self::turn_agent::{TurnAgent, TurnAgentBuilder};
 pub use self::utility_llm::{
     DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmReasoningEffort, UtilityLlmRequest,
     UtilityLlmService,

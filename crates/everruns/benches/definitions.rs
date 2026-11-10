@@ -70,14 +70,14 @@ fn definition(agent: &str, revision: &str) -> AgentDefinition {
         .collect();
     AgentDefinition {
         build: AgentBuild::new(agent, revision),
-        package: json!({
+        runtime_agent: everruns::hosting::RuntimeAgent::new(json!({
             "name": agent,
             "description": "Customer support",
             "instructions": instructions,
             "tags": ["support", "tier-1"],
             "capabilities": ["current_time", "stateless_todo_list", { "ref": "compaction", "config": {} }],
             "files": files,
-        }),
+        })),
     }
 }
 

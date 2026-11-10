@@ -98,7 +98,7 @@ async fn hides_math_tools_but_runs_them_via_lua() {
         .load_context(session_id)
         .await
         .expect("load context");
-    let visible: Vec<&str> = ctx.runtime_agent.tools.iter().map(|t| t.name()).collect();
+    let visible: Vec<&str> = ctx.turn_agent.tools.iter().map(|t| t.name()).collect();
     assert!(
         visible.contains(&"lua"),
         "lua should be visible: {visible:?}"
@@ -113,7 +113,7 @@ async fn hides_math_tools_but_runs_them_via_lua() {
     // The hidden tools are advertised in the lua tool description so a real
     // model can discover them (their standalone schemas are gone).
     let lua_desc = ctx
-        .runtime_agent
+        .turn_agent
         .tools
         .iter()
         .find(|t| t.name() == "lua")

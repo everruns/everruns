@@ -10,7 +10,7 @@ pub(super) struct FailedGeneration<'a> {
     pub context: EventContext,
     pub trace_id: &'a str,
     pub reason_span_id: &'a str,
-    pub agent: &'a crate::runtime_agent::RuntimeAgent,
+    pub agent: &'a crate::turn_agent::TurnAgent,
     pub model: &'a crate::runtime_context::ResolvedModelExecution,
     pub messages: &'a [RuntimeMessage],
     pub request_options: Option<crate::engine::events::LlmRequestOptions>,

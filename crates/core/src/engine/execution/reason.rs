@@ -333,7 +333,7 @@ impl ReasonAtom {
             .and_then(|hints| hints.get("output_streaming"))
             .and_then(serde_json::Value::as_bool)
             .or(assembled.snapshot.output_streaming)
-            .unwrap_or(!assembled.runtime_agent.communication.is_explicit());
+            .unwrap_or(!assembled.turn_agent.communication.is_explicit());
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let assembled_message_floor = assembled.message_floor;
@@ -350,7 +350,7 @@ impl ReasonAtom {
         let compaction_policy = assembled.compaction_policy;
         let resolved_capability_configs = assembled.resolved_capability_configs;
         let truncation_gate = truncation_gate::Gate::new(&resolved_capability_configs, &messages);
-        let runtime_agent = assembled.runtime_agent;
+        let turn_agent = assembled.turn_agent;
         let embedder_metadata = assembled.embedder_metadata;
 
         emit_capability_usage_snapshot(
@@ -359,7 +359,7 @@ impl ReasonAtom {
             session_id,
             context,
             &resolved_capability_configs,
-            &runtime_agent.tools,
+            &turn_agent.tools,
         )
         .await;
 
@@ -433,7 +433,7 @@ impl ReasonAtom {
             &messages,
             &model_with_provider.provider_type,
             &model_with_provider.model,
-            &runtime_agent,
+            &turn_agent,
         );
 
         // 9. Recover a stream a lost attempt left open (EVE-532): finalize it
@@ -443,7 +443,7 @@ impl ReasonAtom {
                 prior,
                 context,
                 iteration,
-                &runtime_agent,
+                &turn_agent,
                 &resolved_capability_configs,
                 reasoning_replay.as_mut(),
             )
@@ -515,7 +515,7 @@ impl ReasonAtom {
         let mut context_messages = context_messages;
 
         // 9d. Replay reference-data changes at their recorded positions.
-        let context_updates = context_updates::apply(&mut context_messages, &runtime_agent);
+        let context_updates = context_updates::apply(&mut context_messages, &turn_agent);
         let volatile_suffix_len = context_updates.volatile_suffix_len(volatile_suffix_len);
 
         // 10. Resolve images from image_file references (if any)
@@ -528,17 +528,17 @@ impl ReasonAtom {
         // 11. Build LLM messages
         let mut llm_messages = Vec::new();
 
-        let has_system_prompt = !runtime_agent.system_prompt.is_empty();
+        let has_system_prompt = !turn_agent.system_prompt.is_empty();
         if has_system_prompt {
             llm_messages.push(Message::text(
                 MessageRole::System,
-                runtime_agent.system_prompt.clone(),
+                turn_agent.system_prompt.clone(),
             ));
         }
 
         // Build messages for llm.generation event (includes system message)
         let messages_for_event: Vec<RuntimeMessage> = if has_system_prompt {
-            std::iter::once(RuntimeMessage::system(&runtime_agent.system_prompt))
+            std::iter::once(RuntimeMessage::system(&turn_agent.system_prompt))
                 .chain(context_messages.iter().cloned())
                 .collect()
         } else {
@@ -590,7 +590,7 @@ impl ReasonAtom {
 
         // 12. Build LLM call config with reasoning effort and metadata
         let mut llm_config_builder =
-            crate::engine::llm_conversions::llm_call_config_builder_from_agent(&runtime_agent);
+            crate::engine::llm_conversions::llm_call_config_builder_from_agent(&turn_agent);
         if let Some(effort) = reasoning_effort {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
         }
@@ -668,7 +668,7 @@ impl ReasonAtom {
         tracing::debug!(
             session_id = %session_id,
             turn_id = %context.turn_id,
-            model = %runtime_agent.model,
+            model = %turn_agent.model,
             message_count = %llm_messages.len(),
             "ReasonAtom: calling LLM"
         );
@@ -678,7 +678,7 @@ impl ReasonAtom {
         // An agent that talks explicitly writes working notes, never replies:
         // its assistant text is commentary from the first streamed byte, and
         // what people see arrives as `conversation.message` from send_message.
-        let explicit_communication = runtime_agent.communication.is_explicit();
+        let explicit_communication = turn_agent.communication.is_explicit();
         let notes_phase =
             explicit_communication.then_some(everruns_contracts::ExecutionPhase::Commentary);
 
@@ -691,7 +691,7 @@ impl ReasonAtom {
         let mut armed_guardrails: Vec<ArmedGuardrail> = Vec::new();
         for (cap_id, cfg, provider) in &guardrail_providers {
             let ctx = OutputGuardrailContext {
-                system_prompt: &runtime_agent.system_prompt,
+                system_prompt: &turn_agent.system_prompt,
                 config: cfg,
             };
             let guardrail_id = provider.id().to_string();
@@ -724,7 +724,7 @@ impl ReasonAtom {
                 reasoning_state: llm_config.reasoning_state.clone(),
                 turn_id: context.turn_id,
                 message_id: output_message_id,
-                model: Some(runtime_agent.model.clone()),
+                model: Some(turn_agent.model.clone()),
                 iteration: Some(iteration),
                 // Emitted before the LLM call — phase is not yet known, so the
                 // streamed hint starts `None` (treat as assistant text),
@@ -759,7 +759,7 @@ impl ReasonAtom {
                     streaming_event_context.clone(),
                     ReasonThinkingStartedData {
                         turn_id: context.turn_id,
-                        model: Some(runtime_agent.model.clone()),
+                        model: Some(turn_agent.model.clone()),
                     },
                 ))
                 .await
@@ -784,7 +784,7 @@ impl ReasonAtom {
             context: streaming_event_context.clone(),
             trace_id,
             reason_span_id,
-            agent: &runtime_agent,
+            agent: &turn_agent,
             model: &model_with_provider,
             messages: &messages_for_event,
             request_options: build_request_options(
@@ -819,8 +819,7 @@ impl ReasonAtom {
                     message_source_sequence,
                     provider_type: model_with_provider.provider_type.as_str(),
                     model: &model_with_provider.model,
-                    system_prompt: has_system_prompt
-                        .then_some(runtime_agent.system_prompt.as_str()),
+                    system_prompt: has_system_prompt.then_some(turn_agent.system_prompt.as_str()),
                     stateful_response_continuation,
                     checkpoint_suffix_message_count,
                     raw_tool_result_bytes,
@@ -932,9 +931,9 @@ impl ReasonAtom {
                             message_source_sequence,
                             provider_type: model_with_provider.provider_type.as_str(),
                             model: &model_with_provider.model,
-                            summarization_model_fallback: &runtime_agent.model,
+                            summarization_model_fallback: &turn_agent.model,
                             system_prompt: has_system_prompt
-                                .then_some(runtime_agent.system_prompt.as_str()),
+                                .then_some(turn_agent.system_prompt.as_str()),
                             stateful_response_continuation,
                         },
                         &mut llm_messages_for_call,
@@ -1642,7 +1641,7 @@ impl ReasonAtom {
             );
             let collected = collect_annotations(
                 &annotation_providers,
-                &runtime_agent.system_prompt,
+                &turn_agent.system_prompt,
                 &text,
                 &messages,
                 output_hooks::web_citations(&completion_metadata),
@@ -1662,7 +1661,7 @@ impl ReasonAtom {
                     &citation_annotations,
                 );
                 let ctx = PostGenerationOutputContext {
-                    system_prompt: &runtime_agent.system_prompt,
+                    system_prompt: &turn_agent.system_prompt,
                     message_text: &guarded_output,
                     utility_llm_service: self.utility_llm_service.as_ref(),
                     decisions: self.decisions.as_ref(),
@@ -1696,7 +1695,7 @@ impl ReasonAtom {
         {
             let guarded_output = client_visible_guardrail_text(&text, &thinking, &reasoning, &[]);
             let ctx = PostGenerationOutputContext {
-                system_prompt: &runtime_agent.system_prompt,
+                system_prompt: &turn_agent.system_prompt,
                 message_text: &guarded_output,
                 utility_llm_service: self.utility_llm_service.as_ref(),
                 decisions: self.decisions.as_ref(),
@@ -1822,7 +1821,7 @@ impl ReasonAtom {
                 session_id,
                 context,
                 &resolved_capability_configs,
-                &runtime_agent.tools,
+                &turn_agent.tools,
                 &mut tool_calls,
                 iteration,
             )
@@ -1849,7 +1848,7 @@ impl ReasonAtom {
             hosted_tools::completion_usage(
                 meta,
                 &model_with_provider.provider_type,
-                &runtime_agent.model,
+                &turn_agent.model,
             )
         });
 
@@ -1859,7 +1858,7 @@ impl ReasonAtom {
             Some(reason_span_id.to_string()),
         );
         let tools_summary: Vec<ToolDefinitionSummary> =
-            runtime_agent.tools.iter().map(|t| t.into()).collect();
+            turn_agent.tools.iter().map(|t| t.into()).collect();
         let meta = completion_metadata.as_ref();
         let outcome = generation_outcome::GenerationOutcome::from_completion(
             meta,
@@ -1872,7 +1871,7 @@ impl ReasonAtom {
                 tools_summary,
                 Some(text.clone()).filter(|s| !s.is_empty()),
                 finalized_tool_calls.clone(),
-                runtime_agent.model.clone(),
+                turn_agent.model.clone(),
                 Some(model_with_provider.provider_type.to_string()),
                 usage.clone(),
                 Some(llm_duration_ms),
@@ -1916,7 +1915,7 @@ impl ReasonAtom {
         // before its answer is stored (see `truncation_gate`).
         truncation.log(
             model_with_provider.provider_type.as_str(),
-            &runtime_agent.model,
+            &turn_agent.model,
         );
         if truncation.action == crate::output_truncation::OutputTruncationAction::Fail {
             return Err(truncation.failure());
@@ -1924,7 +1923,7 @@ impl ReasonAtom {
 
         // 17. Assistant-message metadata; a retried generation is stamped.
         let mut metadata = generation_outcome::assistant_metadata(
-            &runtime_agent.model,
+            &turn_agent.model,
             llm_config.reasoning_state.as_ref(),
             llm_config
                 .reasoning_state
@@ -2046,8 +2045,8 @@ impl ReasonAtom {
             commentary: explicit_communication,
             tool_calls,
             has_tool_calls,
-            tool_definitions: runtime_agent.execution_tools(),
-            max_iterations: runtime_agent.max_iterations,
+            tool_definitions: turn_agent.execution_tools(),
+            max_iterations: turn_agent.max_iterations,
             usage,
             output_message_id: Some(output_message_id),
             time_to_first_token_ms,
@@ -2056,8 +2055,8 @@ impl ReasonAtom {
             finish_reason,
             truncation_retry: truncation.retries(),
             locale: resolved_locale,
-            network_access: runtime_agent.network_access.clone(),
-            parallel_tool_calls: runtime_agent.parallel_tool_calls,
+            network_access: turn_agent.network_access.clone(),
+            parallel_tool_calls: turn_agent.parallel_tool_calls,
             ..ReasonResult::default()
         };
         if let Some(coordinator) = &self.native_async {
@@ -2109,7 +2108,7 @@ impl ReasonAtom {
                     finalized_calls::rejected_call_data(
                         &self.capability_registry,
                         &resolved_capability_configs,
-                        &runtime_agent.tools,
+                        &turn_agent.tools,
                         call,
                         rejection.error,
                         result.locale.as_deref(),
@@ -2121,7 +2120,7 @@ impl ReasonAtom {
             &session_id,
             &context.turn_id,
             model_with_provider.provider_type.as_str(),
-            &runtime_agent.model,
+            &turn_agent.model,
             result.tool_calls.len(),
         );
 

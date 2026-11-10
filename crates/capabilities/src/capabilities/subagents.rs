@@ -4,7 +4,7 @@
 //
 // Blueprint support: the subagent target accepts optional `blueprint` and `config`
 // params. When blueprint is set, the child session uses the blueprint's
-// RuntimeAgent (own prompt, tools, model) instead of inheriting parent's.
+// TurnAgent (own prompt, tools, model) instead of inheriting parent's.
 //
 // Background mode (default): returns immediately with a task_id; a detached
 // watcher (same pattern as spawn_background runs) sends the instructions,

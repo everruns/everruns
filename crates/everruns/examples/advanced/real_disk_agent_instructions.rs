@@ -111,13 +111,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = runtime.load_context(session_id).await?;
     println!("\n--- conversation context (initial) ---");
     let context = ctx
-        .runtime_agent
+        .turn_agent
         .conversation_context
         .as_deref()
         .unwrap_or("<none>");
     println!("{context}");
     assert!(
-        !ctx.runtime_agent.system_prompt.contains("snake_case"),
+        !ctx.turn_agent.system_prompt.contains("snake_case"),
         "AGENTS.md content must not enter the system prompt"
     );
     assert!(
@@ -142,13 +142,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = runtime.load_context(session_id).await?;
     println!("\n--- conversation context (after editing AGENTS.md on disk) ---");
     let context = ctx
-        .runtime_agent
+        .turn_agent
         .conversation_context
         .as_deref()
         .unwrap_or("<none>");
     println!("{context}");
     assert!(
-        !ctx.runtime_agent.system_prompt.contains("camelCase"),
+        !ctx.turn_agent.system_prompt.contains("camelCase"),
         "edited AGENTS.md must stay out of the system prompt"
     );
     assert!(
