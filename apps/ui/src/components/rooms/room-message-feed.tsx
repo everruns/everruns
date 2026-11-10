@@ -20,9 +20,9 @@ import {
   type RoomMessage,
 } from "@/lib/api/rooms";
 import { formatDate } from "@/lib/formatting";
-import { wakesByMessage } from "@/lib/rooms";
+import { listensByMessage, wakesByMessage } from "@/lib/rooms";
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
-import { MemberTile, WakeChips, useMemberKindLabel } from "./room-parts";
+import { ListenChips, MemberTile, WakeChips, useMemberKindLabel } from "./room-parts";
 
 export interface RoomFeedProps {
   room: Room;
@@ -107,6 +107,7 @@ function RoomMessageItem({
   const kindLabel = useMemberKindLabel();
   const memberById = new Map(members.map((member) => [member.id, member]));
   const wakes = wakesByMessage(events, [message], members).get(message.id) ?? [];
+  const listens = listensByMessage(events, members).get(message.id) ?? [];
   const author = message.author;
   const maxHops = room.loop_limits.max_hops;
 
@@ -161,6 +162,7 @@ function RoomMessageItem({
           </div>
         )}
         <WakeChips wakes={wakes} members={memberById} sessionHref={sessionHref} />
+        <ListenChips listens={listens} members={memberById} />
         <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
           {message.hops > 0 && (
             <span>

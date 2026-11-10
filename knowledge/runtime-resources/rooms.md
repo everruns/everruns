@@ -70,6 +70,10 @@ Settled with the owner, 2026-11-02 to 2026-11-10:
    who made it. Agents use them through their ordinary file tools at `/room`.
 9. **Rooms are part of the Everruns MCP server (2026-11-10):** a client takes
    part in a room through dedicated room tools, not only through `execute`.
+10. **Ambient listening (2026-11-10):** an agent member may wake on relevant
+    messages, the way a Slack channel set to "Relevant messages" answers. The
+    same relevance check decides both, and with no decision model it falls
+    back to the agent's own model and tells the org through Health.
 
 ## Model
 
@@ -124,8 +128,10 @@ acts.
 
 - **Who is addressed.** `mentions` (default): mentioned, or the message is a
   reply in a thread the agent started, replied in or was mentioned in.
-  `everything`: every message. `never`: the agent only reads. An agent is never
-  woken by its own message, and edits and reactions never wake anyone.
+  `everything`: every message. `relevant`: like `mentions`, and a message
+  nobody addressed to it is put to the [relevance check](#relevance-checks).
+  `never`: the agent only reads. An agent is never woken by its own message,
+  and edits and reactions never wake anyone.
 - **Which session.** One session per thread (default) or one for the room,
   owned by the agent's own identity like a trigger's session, so it acts as
   itself. The session carries the `room:` tag, source `room`, the explicit
@@ -146,6 +152,35 @@ acts.
   member, in the thread of the message that woke it, one hop further. The
   session message id is the post's `source_ref`, so a redelivered event posts
   once. The post then wakes whoever it addresses, by the same rules.
+
+### Relevance checks
+
+[`services/relevance`](../../crates/server/src/services/relevance/mod.rs) is
+shared with Slack's "Relevant messages" policy.
+
+- **The question.** Does the message ask for help within the agent's purpose,
+  or continue a conversation with the agent? The judge sees the agent's name,
+  description and purpose (with the member's room instructions), the message
+  and its author, and up to 8 earlier messages of the thread or the room's top
+  level. The agent wakes at probability 0.9 or above; topic overlap alone is
+  not an invitation.
+- **Who answers.** The org's own decision model when System decisions is "This
+  organization's model", otherwise the deployment's decisions service. With
+  neither, the agent's own chat model answers, with a shorter purpose and 4
+  earlier messages. Its answer is a label, not a calibrated probability, and
+  the org's `org.relevance_check_fallback` health issue opens until a decision
+  model answers a check again. A timeout, an error or no model at all is
+  silence.
+- **Off the post path.** The checks run after the post returns, one per agent
+  in parallel. Each records `agent.considered` with the decision, probability,
+  model and judge; a check that says yes wakes the agent, and `agent.woken`
+  carries `reason: relevant`. Every `agent.woken` now names its reason
+  (`mentioned`, `thread`, `everything` or `relevant`).
+- **Only people's messages are checked.** A message with `hops` above 0 (an
+  agent's post) or a room notice is never checked, so agents cannot pull each
+  other in by relevance. A room is checked at most 300 times an hour, and a
+  check a loop limit would stop is skipped without a notice, since nobody
+  addressed that agent.
 
 ### Loop limits
 
@@ -217,9 +252,10 @@ chat client for a product's people.
   agents and test users; test users are guest members named after virtual
   users, and an org admin posts as them with `as_member`, the way a product
   posts for its people. Before a post, the composer says who it will wake.
-- Why an agent woke is derived, not stored: an `agent.woken` event names the
-  member and the message, and the message's mentions and thread give the
-  reason. A member set to wake on everything explains the rest.
+- Why an agent woke comes from the `agent.woken` event's `reason`; events
+  recorded before it existed fall back to the message's mentions and thread.
+  An `agent.considered` event shows an agent that listened and stayed quiet,
+  or woke because the message was relevant, with the check's confidence.
 
 Not in the console yet: approvals routed to the test user who started the
 chain, the facilitator, and cost per room (usage does not carry a room id).

@@ -16,6 +16,11 @@
 //!   far, so an agent added late is not answering out of context.
 //! - Waking is best-effort per agent: one agent that cannot be woken (paused,
 //!   at its session cap) never stops the post or the other agents.
+//! - An agent set to `relevant` that nobody addressed is checked after the
+//!   post returns, so posting never waits on a model: each check runs in the
+//!   background, records `agent.considered` with what it decided, and wakes
+//!   the agent when the check says the message is for it. `agent.woken`
+//!   carries the reason it woke.
 
 use super::queries::RoomView;
 use super::rules::{
@@ -31,6 +36,7 @@ use crate::domains::sessions::types::CreateSessionRequest;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::kernel_imports::Caller;
 use crate::kernel_imports::contracts::typed_id::SessionId;
+use crate::services::relevance::{self, RelevanceChecker, RelevanceQuestion};
 use crate::storage::{
     AgentRow, CreateRoomEventRow, CreateRoomMessageRow, RoomMemberRow, RoomMessageRow,
     StorageBackend,
@@ -60,6 +66,16 @@ pub struct Waker<'a> {
     pub db: &'a Arc<StorageBackend>,
     pub sessions: &'a SessionService,
     pub messages: &'a MessageService,
+    /// Checks agents set to `relevant`. `None` treats them like `mentions`.
+    pub relevance: Option<RelevanceRun>,
+}
+
+/// What a background relevance check needs after the post returned.
+#[derive(Clone)]
+pub struct RelevanceRun {
+    pub checker: Arc<RelevanceChecker>,
+    pub sessions: Arc<SessionService>,
+    pub messages: Arc<MessageService>,
 }
 
 /// Wake the agent members `message` addresses. Returns one entry per agent
@@ -91,10 +107,17 @@ pub async fn wake_agents(
         room_agent_posts_last_hour: db
             .count_room_agent_posts_since(room.id, None, hour_ago)
             .await?,
+        room_checks_last_hour: if waker.relevance.is_some() {
+            db.count_room_events_since(room.id, "agent.considered", hour_ago)
+                .await?
+        } else {
+            0
+        },
     };
     let in_thread = thread_members(db, message).await?;
 
     let mut woke = Vec::new();
+    let mut considered = Vec::new();
     let mut room_limit_noted = false;
     for member in agents {
         let candidate = WakeCandidate {
@@ -106,9 +129,19 @@ pub async fn wake_agents(
                 .count_room_member_events_since(room.id, member.id, "agent.woken", hour_ago)
                 .await?,
         };
+        let reason = if candidate.mentioned {
+            "mentioned"
+        } else if candidate.in_thread {
+            "thread"
+        } else {
+            "everything"
+        };
         match rules::wake_decision(&context, &candidate, &limits) {
+            WakeDecision::Consider if waker.relevance.is_some() => {
+                considered.push(member.clone());
+            }
             WakeDecision::Wake => {
-                let outcome = match wake_one(waker, view, member, message).await {
+                let outcome = match wake_one(waker, view, member, message, reason).await {
                     Ok(session_id) => RoomWake {
                         member_id: member.id.to_string(),
                         handle: member.handle.clone(),
@@ -146,10 +179,176 @@ pub async fn wake_agents(
                     session_id: None,
                 });
             }
-            WakeDecision::NotAddressed | WakeDecision::OwnMessage | WakeDecision::Muted => {}
+            WakeDecision::Consider
+            | WakeDecision::NotAddressed
+            | WakeDecision::OwnMessage
+            | WakeDecision::Muted => {}
         }
     }
+    if let (Some(run), false) = (waker.relevance.clone(), considered.is_empty()) {
+        let db = db.clone();
+        let room = view.room.clone();
+        let message = message.clone();
+        tokio::spawn(async move {
+            if let Err(error) = consider_all(db, run, room, message, considered).await {
+                tracing::warn!(%error, "rooms: relevance checks failed");
+            }
+        });
+    }
     Ok(woke)
+}
+
+/// Check each considered agent in parallel, then wake those the check says
+/// the message is for.
+async fn consider_all(
+    db: Arc<StorageBackend>,
+    run: RelevanceRun,
+    room: crate::storage::RoomRow,
+    message: RoomMessageRow,
+    members: Vec<RoomMemberRow>,
+) -> Result<(), CommandError> {
+    let view = RoomView::load(&db, room).await?;
+    let recent = recent_for_check(&db, &view, &message).await?;
+    let waker = Waker {
+        db: &db,
+        sessions: &run.sessions,
+        messages: &run.messages,
+        relevance: None,
+    };
+    let checks = members
+        .iter()
+        .map(|member| consider_one(&waker, &run.checker, &view, member, &message, &recent));
+    futures::future::join_all(checks).await;
+    Ok(())
+}
+
+async fn consider_one(
+    waker: &Waker<'_>,
+    checker: &RelevanceChecker,
+    view: &RoomView,
+    member: &RoomMemberRow,
+    message: &RoomMessageRow,
+    recent: &[Value],
+) {
+    let db = waker.db;
+    let room = &view.room;
+    let verdict = async {
+        let agent_id = member
+            .agent_id
+            .ok_or_else(|| anyhow::anyhow!("agent member without an agent"))?;
+        let agent = db
+            .get_agent(room.org_id, agent_id)
+            .await?
+            .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
+            .ok_or_else(|| anyhow::anyhow!("agent is not active"))?;
+        let scope_id = match SessionScope::parse(&member.session_scope) {
+            SessionScope::Thread => message.thread_id.unwrap_or(message.id).uuid(),
+            SessionScope::Room => room.id.uuid(),
+        };
+        let session = match db.get_room_agent_session(member.id, scope_id).await? {
+            Some(binding) => db.get_session(room.org_id, binding.session_id).await?,
+            None => None,
+        };
+        let author = message
+            .author_member_id
+            .and_then(|id| view.members.get(&id.uuid()));
+        let latest = json!({
+            "text": relevance::bounded(&message.text, 2048),
+            "author": author.map(|a| a.handle.as_str()).unwrap_or("someone"),
+            "author_kind": author.map(|a| kind_label(&a.kind)).unwrap_or("member"),
+        });
+        let state = relevance::question_state(
+            &agent,
+            member.instructions.as_deref(),
+            latest,
+            recent.to_vec(),
+        );
+        let room_id = room.id.to_string();
+        checker
+            .decide(RelevanceQuestion {
+                org_id: room.org_id,
+                agent: &agent,
+                state,
+                session: session.as_ref(),
+                source: "room_wake",
+                subject: ("room_id", &room_id),
+            })
+            .await
+    }
+    .await;
+    let (data, respond) = match &verdict {
+        Ok(verdict) => (
+            json!({
+                "decision": if verdict.respond { "woke" } else { "quiet" },
+                "probability": verdict.probability,
+                "calibrated": verdict.calibrated,
+                "model": verdict.model,
+                "judge": verdict.judge.as_str(),
+            }),
+            verdict.respond,
+        ),
+        Err(error) => {
+            tracing::info!(room_id = %room.id, member_id = %member.id, %error, "rooms: relevance check unavailable");
+            (
+                json!({ "decision": "quiet", "error": "unavailable" }),
+                false,
+            )
+        }
+    };
+    if let Err(error) = db
+        .append_room_event(CreateRoomEventRow {
+            room_id: room.id,
+            org_id: room.org_id,
+            event_type: "agent.considered".into(),
+            message_id: Some(message.id),
+            member_id: Some(member.id),
+            data,
+        })
+        .await
+    {
+        tracing::warn!(room_id = %room.id, %error, "rooms: could not record a relevance check");
+    }
+    if respond && let Err(error) = wake_one(waker, view, member, message, "relevant").await {
+        tracing::warn!(room_id = %room.id, member_id = %member.id, %error, "rooms: could not wake a relevant agent member");
+    }
+}
+
+/// Up to the check's history of what came before `message`: the thread's
+/// earlier replies and its root, or the room's recent top level.
+async fn recent_for_check(
+    db: &StorageBackend,
+    view: &RoomView,
+    message: &RoomMessageRow,
+) -> Result<Vec<Value>, CommandError> {
+    let mut rows = db
+        .list_room_messages(
+            message.room_id,
+            message.thread_id,
+            Some(message.created_at),
+            None,
+            relevance::HISTORY_LIMIT as i64,
+        )
+        .await?;
+    if let Some(thread_id) = message.thread_id
+        && rows.len() < relevance::HISTORY_LIMIT
+        && let Some(root) = db.get_room_message(message.room_id, thread_id).await?
+    {
+        rows.insert(0, root);
+    }
+    Ok(rows
+        .iter()
+        .filter(|row| row.id != message.id && row.deleted_at.is_none())
+        .map(|row| {
+            let author = row
+                .author_member_id
+                .and_then(|id| view.members.get(&id.uuid()));
+            json!({
+                "author": author.map(|a| a.handle.as_str()).unwrap_or("room"),
+                "role": if author.is_some_and(|a| a.kind == "agent") { "assistant" } else { "user" },
+                "text": relevance::bounded(&row.text, 512),
+            })
+        })
+        .collect())
 }
 
 /// Members who started, replied in, or were mentioned in the thread a reply
@@ -224,6 +423,7 @@ async fn wake_one(
     view: &RoomView,
     member: &RoomMemberRow,
     message: &RoomMessageRow,
+    reason: &str,
 ) -> anyhow::Result<SessionId> {
     let db = waker.db;
     let room = &view.room;
@@ -332,7 +532,7 @@ async fn wake_one(
         event_type: "agent.woken".into(),
         message_id: Some(message.id),
         member_id: Some(member.id),
-        data: json!({ "session_id": session_id.to_string() }),
+        data: json!({ "session_id": session_id.to_string(), "reason": reason }),
     })
     .await?;
     Ok(session_id)

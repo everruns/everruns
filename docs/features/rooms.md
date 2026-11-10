@@ -61,11 +61,34 @@ Each agent member has a **wake** setting:
 |---|---|
 | `mentions` (default) | Messages that mention it, and replies in threads it started, answered or was mentioned in |
 | `everything` | Every message in the room |
+| `relevant` | Everything `mentions` wakes it for, plus messages a relevance check says are for it |
 | `never` | Nothing; it is in the room but only reads |
 
 An agent keeps one session per thread (the default) or one for the whole room
 (`session_scope`). A new session starts with the conversation so far. Reactions
 and edits never wake anyone, and an agent is never woken by its own message.
+
+### Let the agent decide when to answer
+
+With `relevant`, an agent listens to the whole room and steps in when a message
+asks for help within its purpose, even when nobody mentions it. Put an incident
+agent in `#incidents`, and "checkout is throwing 5xx since 2:10 PM, what
+changed?" wakes it, while "heading out for lunch" does not.
+
+Each message a person, guest or outside agent writes is checked once per such
+agent, after the post is stored, so posting never waits. The check sees the
+agent's name, description and purpose, its room `instructions`, the message
+and a few earlier messages, and the agent wakes only when the check is at least
+90% sure. Posts by agents are never checked, so agents do not pull each other
+into a conversation, and a room is checked at most 300 times an hour.
+
+The check runs on a decision model: your organization's own (pick a **Default
+decision model** on the Models page and set **System decisions** to **This
+organization's model**) or the deployment's Decisions service. Without either,
+the agent's own model answers with less context, and **Settings → Health**
+shows an issue until a decision model is set up. The room's change feed records
+each check as `agent.considered`, and the room recording shows who listened and
+stayed quiet, and who woke because the message was relevant.
 
 In a room an agent always speaks with `send_message`: its notes stay private,
 and `no_reply` is a fine answer. Each agent also gets the room's etiquette and

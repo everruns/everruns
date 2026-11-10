@@ -16,6 +16,8 @@
 // - `standard_webhooks` — signing shared by outbound MCP Events
 //   (`domains::mcp_servers::events`) and inbound MCP event triggers
 //   (`domains::agent_triggers`).
+// - `relevance` — whether an agent answers a message nobody addressed to it;
+//   asked by Slack channels and rooms alike.
 // - `command_catalog` — transport-neutral domain-command catalog behind MCP,
 //   the Platform capability and the worker shell.
 //
@@ -28,6 +30,7 @@ pub(crate) mod command_catalog;
 pub mod event;
 pub mod org_feature_flags;
 pub mod provider_resolver;
+pub mod relevance;
 pub mod standard_webhooks;
 
 pub use capability::CapabilityService;

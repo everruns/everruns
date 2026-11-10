@@ -80,6 +80,8 @@ export const messages: Readonly<Record<string, string>> = {
   "unpinned a message": "hat eine Nachricht losgelöst",
   reacted: "hat reagiert",
   "removed a reaction": "hat eine Reaktion entfernt",
+  "checked a message and woke": "hat eine Nachricht geprüft und wurde geweckt",
+  "checked a message and stayed quiet": "hat eine Nachricht geprüft und blieb still",
   "woke for a message": "wurde für eine Nachricht geweckt",
   "was not woken: a loop limit stopped it":
     "wurde nicht geweckt: ein Schleifenlimit hat ihn gestoppt",
@@ -145,4 +147,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Open the agent's session": "Sitzung des Agenten öffnen",
   "Inspect the rooms where people and agents talk together.":
     "Sehen Sie sich die Räume an, in denen Menschen und Agenten miteinander sprechen.",
+  "Relevant messages": "Relevante Nachrichten",
+  "relevant to it": "für den Agenten relevant",
+  Listened: "Hat zugehört",
+  "stayed quiet": "blieb still",
+  "check unavailable": "Prüfung nicht verfügbar",
+  "Listening for relevant messages": "Hört auf relevante Nachrichten",
 };

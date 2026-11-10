@@ -11,6 +11,15 @@
 //!
 //! A limit that stops a wake is recorded as a room notice, so the people in
 //! the room see why an agent went quiet.
+//!
+//! An agent set to `relevant` wakes like `mentions`, and a message nobody
+//! addressed to it is a candidate for a relevance check
+//! ([`WakeDecision::Consider`], `crate::services::relevance`). Only messages a
+//! person, guest or outside agent wrote are checked: an agent's post never
+//! pulls another agent in by relevance, so agents cannot recruit each other
+//! into a conversation. A room is checked at most
+//! [`MAX_RELEVANCE_CHECKS_PER_ROOM_HOUR`] times an hour, and a check that a
+//! loop limit would stop is skipped silently: nobody addressed that agent.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -24,6 +33,9 @@ pub const MAX_HANDLE_CHARS: usize = 40;
 pub const DEFAULT_MAX_HOPS: i32 = 6;
 pub const DEFAULT_MAX_WAKES_PER_AGENT_HOUR: i64 = 30;
 pub const DEFAULT_MAX_AGENT_POSTS_HOUR: i64 = 200;
+/// Relevance checks of agent members in one room per hour, so a busy room
+/// cannot spend without bound on checks.
+pub const MAX_RELEVANCE_CHECKS_PER_ROOM_HOUR: i64 = 300;
 
 /// When an agent member is woken.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -34,6 +46,9 @@ pub enum WakeMode {
     Mentions,
     /// On every message it can see.
     Everything,
+    /// When mentioned, on replies in threads it is in, and on messages a
+    /// relevance check says are for it.
+    Relevant,
     /// Never: the agent only reads.
     Never,
 }
@@ -43,6 +58,7 @@ impl WakeMode {
         match self {
             Self::Mentions => "mentions",
             Self::Everything => "everything",
+            Self::Relevant => "relevant",
             Self::Never => "never",
         }
     }
@@ -50,6 +66,7 @@ impl WakeMode {
     pub fn parse(value: &str) -> Self {
         match value {
             "everything" => Self::Everything,
+            "relevant" => Self::Relevant,
             "never" => Self::Never,
             _ => Self::Mentions,
         }
@@ -259,6 +276,8 @@ pub struct WakeContext {
     pub hops: i32,
     /// Agent posts in this room in the last hour.
     pub room_agent_posts_last_hour: i64,
+    /// Relevance checks in this room in the last hour.
+    pub room_checks_last_hour: i64,
 }
 
 /// One agent member, as the wake decision sees it.
@@ -279,6 +298,9 @@ pub struct WakeCandidate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WakeDecision {
     Wake,
+    /// Nobody addressed it, and it wakes on relevant messages: ask the
+    /// relevance check, then wake it when the check says so.
+    Consider,
     /// Not addressed to it: nothing to say about it.
     NotAddressed,
     /// The agent wrote the message.
@@ -336,21 +358,40 @@ pub fn wake_decision(
     let addressed = match candidate.mode {
         WakeMode::Never => return WakeDecision::Muted,
         WakeMode::Everything => true,
-        WakeMode::Mentions => candidate.mentioned || candidate.in_thread,
+        WakeMode::Mentions | WakeMode::Relevant => candidate.mentioned || candidate.in_thread,
     };
     if !addressed {
-        return WakeDecision::NotAddressed;
+        let considered = candidate.mode == WakeMode::Relevant
+            && message.author.is_some()
+            && message.hops == 0
+            && message.room_checks_last_hour < MAX_RELEVANCE_CHECKS_PER_ROOM_HOUR
+            && limit_hit(message, candidate, limits).is_none();
+        return if considered {
+            WakeDecision::Consider
+        } else {
+            WakeDecision::NotAddressed
+        };
     }
+    match limit_hit(message, candidate, limits) {
+        Some(hit) => WakeDecision::Limited(hit),
+        None => WakeDecision::Wake,
+    }
+}
+
+fn limit_hit(
+    message: &WakeContext,
+    candidate: &WakeCandidate,
+    limits: &LoopLimits,
+) -> Option<LimitHit> {
     if message.hops >= limits.max_hops {
-        return WakeDecision::Limited(LimitHit::Hops);
+        Some(LimitHit::Hops)
+    } else if message.room_agent_posts_last_hour >= limits.max_agent_posts_hour {
+        Some(LimitHit::RoomHourly)
+    } else if candidate.wakes_last_hour >= limits.max_wakes_per_agent_hour {
+        Some(LimitHit::AgentHourly)
+    } else {
+        None
     }
-    if message.room_agent_posts_last_hour >= limits.max_agent_posts_hour {
-        return WakeDecision::Limited(LimitHit::RoomHourly);
-    }
-    if candidate.wakes_last_hour >= limits.max_wakes_per_agent_hour {
-        return WakeDecision::Limited(LimitHit::AgentHourly);
-    }
-    WakeDecision::Wake
 }
 
 /// The hops of a message an agent posts after being woken by a message with
@@ -493,7 +534,75 @@ mod tests {
             author: Some(Uuid::from_u128(1)),
             hops: 0,
             room_agent_posts_last_hour: 0,
+            room_checks_last_hour: 0,
         }
+    }
+
+    #[test]
+    fn relevant_wakes_like_mentions_and_considers_the_rest() {
+        let limits = LoopLimits::default();
+        let msg = person_message();
+        let relevant = candidate(WakeMode::Relevant);
+        assert_eq!(
+            wake_decision(&msg, &relevant, &limits),
+            WakeDecision::Consider
+        );
+        let mentioned = WakeCandidate {
+            mentioned: true,
+            ..relevant
+        };
+        assert_eq!(wake_decision(&msg, &mentioned, &limits), WakeDecision::Wake);
+        let threaded = WakeCandidate {
+            in_thread: true,
+            ..relevant
+        };
+        assert_eq!(wake_decision(&msg, &threaded, &limits), WakeDecision::Wake);
+    }
+
+    #[test]
+    fn only_messages_people_write_are_checked() {
+        let limits = LoopLimits::default();
+        let relevant = candidate(WakeMode::Relevant);
+        // An agent's post never pulls another agent in by relevance.
+        let agent_post = WakeContext {
+            hops: 1,
+            ..person_message()
+        };
+        assert_eq!(
+            wake_decision(&agent_post, &relevant, &limits),
+            WakeDecision::NotAddressed
+        );
+        // Room notices are nobody's message.
+        let notice = WakeContext {
+            author: None,
+            ..person_message()
+        };
+        assert_eq!(
+            wake_decision(&notice, &relevant, &limits),
+            WakeDecision::NotAddressed
+        );
+    }
+
+    #[test]
+    fn checks_are_capped_and_limits_skip_them_silently() {
+        let limits = LoopLimits::default();
+        let relevant = candidate(WakeMode::Relevant);
+        let busy = WakeContext {
+            room_checks_last_hour: MAX_RELEVANCE_CHECKS_PER_ROOM_HOUR,
+            ..person_message()
+        };
+        assert_eq!(
+            wake_decision(&busy, &relevant, &limits),
+            WakeDecision::NotAddressed
+        );
+        let tired = WakeCandidate {
+            wakes_last_hour: limits.max_wakes_per_agent_hour,
+            ..relevant
+        };
+        assert_eq!(
+            wake_decision(&person_message(), &tired, &limits),
+            WakeDecision::NotAddressed
+        );
     }
 
     #[test]
@@ -591,6 +700,7 @@ mod tests {
                 author: Some(Uuid::from_u128(if posts % 2 == 0 { 1 } else { 2 })),
                 hops,
                 room_agent_posts_last_hour: posts,
+                room_checks_last_hour: 0,
             };
             let next = WakeCandidate {
                 member: Uuid::from_u128(if posts % 2 == 0 { 2 } else { 1 }),
@@ -623,7 +733,12 @@ mod tests {
 
     #[test]
     fn modes_round_trip() {
-        for mode in [WakeMode::Mentions, WakeMode::Everything, WakeMode::Never] {
+        for mode in [
+            WakeMode::Mentions,
+            WakeMode::Everything,
+            WakeMode::Relevant,
+            WakeMode::Never,
+        ] {
             assert_eq!(WakeMode::parse(mode.as_str()), mode);
         }
         for scope in [SessionScope::Thread, SessionScope::Room] {

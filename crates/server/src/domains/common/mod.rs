@@ -480,6 +480,8 @@ pub struct Ctx {
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
     /// The deployment's decisions service, for commands that ask typed questions.
     pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
+    /// Whether an agent answers a message nobody addressed to it (rooms).
+    pub relevance: Option<Arc<crate::services::relevance::RelevanceChecker>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Whole-install health checks; `None` on surfaces without the server's services.
@@ -556,6 +558,7 @@ impl Ctx {
             egress_service: None,
             utility_llm_service: None,
             decisions: None,
+            relevance: None,
             health_check_service: None,
             system_doctor: None,
             mcp_event_triggers: None,

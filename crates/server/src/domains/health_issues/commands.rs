@@ -274,6 +274,11 @@ impl Command for CheckHealthIssue {
                 active_turns::recheck(&ctx.db, ctx.org_id(), OrgCaps::from_env()).await?;
                 true
             }
+            None if row.code == super::relevance_fallback::CODE => {
+                let deployment = ctx.decisions.as_ref().is_some_and(|d| d.is_configured());
+                super::relevance_fallback::recheck(&ctx.db, ctx.org_id(), deployment).await?;
+                true
+            }
             None => true,
         };
         if !checked {

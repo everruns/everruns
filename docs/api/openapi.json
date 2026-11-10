@@ -84420,6 +84420,7 @@
         "enum": [
           "mentions",
           "everything",
+          "relevant",
           "never"
         ]
       },

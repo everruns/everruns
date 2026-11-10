@@ -853,6 +853,7 @@ impl ServerAppBuilder {
         .with_frontend_url(auth_config.frontend_url.clone())
         .with_decisions(&host_composition, &provider_resolver, &budget_service)
         .with_channel_host();
+        let relevance = Arc::new(slack_state.relevance_checker());
         crate::channels::slack::socket_mode::spawn(&mut supervisor, slack_state.clone());
         let channel_recovery = slack_state.channels.clone();
         let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
@@ -935,6 +936,7 @@ impl ServerAppBuilder {
             auth: auth_state.clone(),
             session_service: messages_state.session_service.clone(),
             message_service: messages_state.message_service.clone(),
+            relevance: Some(relevance.clone()),
         };
         let mut agent_triggers_state = api::agent_triggers::AppState::new(
             db.clone(),
@@ -1031,6 +1033,7 @@ impl ServerAppBuilder {
         // under, so a client that can reach the endpoint can reach the page.
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
+        .with_relevance(relevance.clone())
         .with_slack_provisioner(slack_provisioner.clone())
         .with_channels(channel_recovery.clone())
         .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(

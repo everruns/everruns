@@ -35627,7 +35627,7 @@ export interface components {
      * @description When an agent member is woken.
      * @enum {string}
      */
-    WakeMode: "mentions" | "everything" | "never";
+    WakeMode: "mentions" | "everything" | "relevant" | "never";
     /** @description An organization's web search defaults. */
     WebSearchDefaults: {
       /**
