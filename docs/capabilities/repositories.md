@@ -103,8 +103,14 @@ the repositories the configuration allows.
 This works with a GitHub App: the agent's own, or the shared Everruns app an org
 admin linked. A person's own GitHub sign-in cannot be narrowed to a repository
 set, so it is never handed to a sandbox; with `acts_as: person` the tools report
-that an App installation is needed. Pushing also needs the App's **Contents:
-write** permission, which agent Apps do not ask for by default.
+that an App installation is needed.
+
+Pushing needs the App's **Contents: write** permission. An agent's own App asks
+for it when the agent is connected to GitHub after `repositories` was given a
+writable repository (or `add_repositories: write`); every other agent's App
+stays read-only. An App created earlier keeps its old permissions: the agent's
+GitHub page lists `contents:write` as missing until the App's owner raises it on
+GitHub and the installation accepts.
 
 Access is decided by the configuration, by repository name. Pointing a
 checkout's `origin` somewhere else does not change where `repo_push` pushes or
