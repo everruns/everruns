@@ -2,7 +2,8 @@ name: Sync public skills
 
 # skills/ is the single source of truth for the public Everruns skills
 # (knowledge/project/public-skills.md). Every change on main is copied to the
-# repositories that ship them, as a PR there that merges on its own green CI.
+# repositories that ship them: straight to plugins main, through an
+# auto-merging PR in landing (its ruleset requires one).
 on:
   push:
     branches: [main]

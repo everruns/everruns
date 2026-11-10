@@ -34,12 +34,15 @@ because nothing else ships them.
 [`.github/workflows/skills-sync.yml`](../../.github/workflows/skills-sync.yml)
 runs on every push to main that touches `skills/`. For each consumer,
 [`scripts/sync-public-skills.sh`](../../scripts/sync-public-skills.sh) runs that
-consumer's own copy step, commits as the owner of the sync token, and opens a
-pull request that merges itself once the consumer's CI is green. The token is
-`SKILLS_SYNC_GITHUB_TOKEN` in Doppler: a fine-grained token with contents and
-pull-request write on plugins and landing, owned by a maintainer so commits
-carry a human identity. Without "Allow auto-merge" in a consumer's settings the
-PR stays open and that consumer's drift check keeps reporting it.
+consumer's own copy step and commits as the owner of the sync token. Each
+consumer lands it the way it lands everything else: plugins commits straight to
+main and has no branch rules, so the copy is pushed to main; landing's main
+ruleset requires a pull request (and its Cloudflare preview builds from one), so
+the copy opens a pull request that merges itself once landing's CI is green.
+The token is `SKILLS_SYNC_GITHUB_TOKEN` in Doppler: a fine-grained token with
+contents and pull-request write on plugins and landing, owned by a maintainer so
+commits carry a human identity. Without "Allow auto-merge" in landing's
+settings the PR stays open and landing's drift check keeps reporting it.
 
 ## Rules for skill text
 

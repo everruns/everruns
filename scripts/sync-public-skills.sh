@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Propagate skills/ (the single source of truth, knowledge/project/public-skills.md)
-# to a consumer repository and open a pull request there that merges itself
-# once that repository's CI is green.
+# to a consumer repository. plugins takes commits straight on main (its own
+# convention, no branch rules); landing's main ruleset requires a pull request,
+# so there the change goes through one that merges itself once CI is green.
 #
 #   GH_TOKEN=... scripts/sync-public-skills.sh <plugins|landing>
 #
@@ -52,13 +53,19 @@ id="$(gh api user --jq .id)"
 git config user.name "$(gh api user --jq '.name // .login')"
 git config user.email "${id}+${login}@users.noreply.github.com"
 
-branch="skills-sync/${source_sha}"
-git checkout --quiet -b "$branch"
 git add -A
 git commit --quiet -m "chore(skills): sync shared skills from everruns ${source_sha}" \
   -m "Copied from everruns/everruns skills/ by scripts/sync-public-skills.sh."
-git push --quiet --force origin "$branch"
+if [ "$target" = plugins ]; then
+  # A concurrent push to main is the only expected rejection: rebase once.
+  git push --quiet origin HEAD:main \
+    || { git pull --quiet --rebase origin main && git push --quiet origin HEAD:main; }
+  echo "pushed to everruns/plugins main: $(git rev-parse --short HEAD)"
+  exit 0
+fi
 
+branch="skills-sync/${source_sha}"
+git push --quiet --force origin "HEAD:refs/heads/$branch"
 url="$(gh pr create --repo "everruns/$target" --head "$branch" --base main \
   --title "chore(skills): sync shared skills from everruns ${source_sha}" \
   --body "Automated copy of \`skills/\` from everruns/everruns@${source_sha}. Source of truth: everruns \`knowledge/project/public-skills.md\`. Do not edit the copies here.
