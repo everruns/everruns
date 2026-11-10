@@ -83,8 +83,9 @@ and NATS as local processes (no Docker), plus the API, worker, UI, and Caddy. Th
 `http://localhost/<PORT_PREFIX>00` (prefix `271` → `http://localhost:27100`). Pick an unused prefix
 from `1` through `654`; never reuse one across concurrent worktrees.
 
-Prerequisites: Rust and Node.js, a configured Doppler CLI, and the repository dependencies. On a
-first checkout run `./scripts/init-cloud-env.sh` and then `just init`. The first Rust and Next.js
+Prerequisites: Rust and Node.js and the repository dependencies. Maintainers also configure the
+Doppler CLI (`./scripts/init-cloud-env.sh`); without it the script starts from the provider keys in
+your environment. On a first checkout run `just init`. The first Rust and Next.js
 build can take several minutes.
 
 `AUTH_MODE=none` is local-development-only and gives the anonymous user admin access. For

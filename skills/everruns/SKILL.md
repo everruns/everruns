@@ -1,10 +1,10 @@
 ---
 name: everruns
-description: Understand Everruns products, core concepts, and where to find documentation. Use for product questions, getting started, or choosing between Cloud, the self-hosted Platform, and the Rust Framework.
+description: Understand Everruns, its core concepts, and where to find documentation. Use for product questions, getting started, or choosing between the Rust Framework, a self-hosted Platform, and the demo instance.
 license: MIT
 metadata:
   category: platform
-  version: "4.3"
+  version: "5.0"
   homepage: https://everruns.com
   docs: https://everruns.com/docs/
   repository: https://github.com/everruns/everruns
@@ -12,11 +12,18 @@ metadata:
 
 # Everruns
 
-Everruns is an open-source agent framework, runtime, and control plane. Use
-[Everruns Cloud](https://app.everruns.com) for the managed service, the
-[self-hosted Platform](https://everruns.com/docs/getting-started/docker-compose/) to operate
-your own deployment, or the [Rust Framework](https://everruns.com/docs/framework/)
-to run agents inside an application.
+Everruns is a free, MIT-licensed, community project: an agent framework,
+durable runtime, and control plane. People run it themselves:
+
+- the [Rust Framework](https://everruns.com/docs/framework/) runs agents inside
+  their own application, with no services;
+- the [self-hosted Platform](https://everruns.com/docs/getting-started/introduction/#self-hosted)
+  runs the shared runtime, UI, and API on their machine (`everruns docker up`),
+  a server, or Kubernetes (`everruns k8s up`); load `everruns-install` to set
+  one up;
+- the [demo instance](https://app.everruns.com) runs the same code so people
+  can look around in a browser. It is a demo, not a hosted service: use it only
+  when the person asks for it.
 
 ## Core concepts
 
@@ -53,8 +60,8 @@ Useful starting points:
 - [Capabilities](https://everruns.com/docs/capabilities/)
 - [CLI usage](https://everruns.com/docs/features/cli/) and
   [command reference](https://everruns.com/docs/reference/cli/)
-- [MCP](https://everruns.com/docs/features/mcp/) and
-  [Cloud authentication guidance](https://everruns.com/auth.md)
+- [MCP](https://everruns.com/docs/features/mcp/); a deployment's own
+  `/auth.md` says how to authenticate against it
 - [Agent packages](https://everruns.com/docs/how-to/define-agents-as-files/)
 - [Agent Triggers](https://everruns.com/docs/features/agent-triggers/)
 - [Rust Framework](https://everruns.com/docs/framework/)
@@ -65,6 +72,8 @@ Use the host's skill loader to activate the guide that matches the task:
 
 | Skill | When to load it |
 |---|---|
+| `everruns-install` | Install, upgrade, check, or remove the person's own Everruns on their machine, a server, or Kubernetes. Asks before changing anything. |
+| `everruns-api` | Drive a deployment over the REST API with a personal access token, where no CLI or MCP client is available. |
 | `everruns-cli` | Use the installed CLI or an agent's command shell; discover commands, script operations, inspect resources, and verify changes. Explains how CLI, session-shell, and MCP invocation differ. |
 | `everruns-mcp` | Connect through an external Everruns MCP server; select an organization, run and follow sessions, handle questions and connections, and use MCP resources. Refers to `everruns-cli` for command usage. |
 | `everruns-agent-authoring` | Create or revise an agent's behavior, choose its harness, capabilities, model, and identity, work with portable packages, and verify the result. |
