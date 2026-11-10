@@ -6,11 +6,18 @@ kind: improvement
 significance: minor
 products: [platform]
 surfaces: [ui]
+links:
+  docs: [/providers/, /getting-started/docker-compose/]
 ---
 
 A new Everruns no longer creates a card for every built-in provider. **Models →
 Providers** starts empty apart from **Connect provider**, and a provider appears
-once you connect it, or at startup when a `DEFAULT_*_API_KEY` is set for it.
+once you [connect it](/providers/), or at startup when a `DEFAULT_*_API_KEY` is set for it:
+
+```bash
+# .env: connects OpenRouter at startup, syncs its models and picks a default
+DEFAULT_OPENROUTER_API_KEY=sk-or-...
+```
 Models of a provider without a key are never enabled, so the model picker only
 offers models that can run.
 
@@ -22,4 +29,5 @@ The default chat model now follows what you connected. Connect only OpenRouter
 and chat defaults to an OpenRouter model instead of failing with "The AI
 provider is not set up correctly". A provider connected from env discovers its
 models right away instead of showing **Last synced: Never** until the hourly
-sync.
+sync. See [Docker Compose setup](/getting-started/docker-compose/) for the
+env keys.
