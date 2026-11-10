@@ -186,6 +186,24 @@ pub async fn resolve(
         Some(id) => db.get_model_with_provider(org_id, id.uuid()).await?,
         None => db.get_default_model(org_id).await?,
     };
+    // The declaration names its provider by name, so the name must pick one
+    // provider (the runtime resolves it the same way).
+    if let Some(row) = &model_row {
+        let key = everruns_contracts::runtime_provider::ProviderKey::new(&row.provider_name);
+        let named = db
+            .list_providers(org_id)
+            .await?
+            .iter()
+            .filter(|provider| {
+                everruns_contracts::runtime_provider::ProviderKey::new(&provider.name) == key
+            })
+            .count();
+        anyhow::ensure!(
+            named == 1,
+            "provider name {} names {named} providers",
+            row.provider_name
+        );
+    }
     Ok(PlatformLayers {
         harness: harness_definition,
         sandbox_policy: agent

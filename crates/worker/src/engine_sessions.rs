@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_internal_protocol::proto;
 use serde_json::Value;
 
@@ -31,6 +31,12 @@ pub struct EngineBinding {
     pub configuration: Value,
     /// RFC 3339.
     pub created_at: String,
+    /// The platform agent and harness the session's events name. The
+    /// worker's event port stamps them; the Engine never sees them.
+    pub event_agent_id: Option<AgentId>,
+    pub event_harness_id: Option<HarnessId>,
+    /// The platform workspace the session's files live in.
+    pub files_workspace_id: uuid::Uuid,
 }
 
 /// The answer to [`EngineSessions::claim`].
@@ -179,6 +185,22 @@ impl EngineSessions for GrpcEngineSessions {
             wake_at_ms: binding.wake_at_ms,
             configuration: json(&binding.configuration_json)?,
             created_at: binding.created_at,
+            event_agent_id: binding
+                .event_agent_id
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(|_| AgentLoopError::store("invalid event agent id"))?,
+            event_harness_id: binding
+                .event_harness_id
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(|_| AgentLoopError::store("invalid event harness id"))?,
+            files_workspace_id: binding
+                .files_workspace_id
+                .parse()
+                .map_err(|_| AgentLoopError::store("invalid files workspace id"))?,
         })))
     }
 

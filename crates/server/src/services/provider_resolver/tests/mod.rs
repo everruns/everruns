@@ -1262,3 +1262,56 @@ async fn org_default_selection_changes_reach_other_replicas_without_cache_flush(
         "gpt-6.1-terra"
     );
 }
+
+/// An Engine declaration names its provider by name: a name one provider
+/// has resolves to it, in its org only, and a name two providers share
+/// resolves to neither.
+#[tokio::test]
+async fn runtime_provider_resolves_a_unique_name() {
+    use crate::storage::CreateProviderRow;
+
+    let db = Arc::new(StorageBackend::test_database());
+    let row = |name: &str| CreateProviderRow {
+        name: name.to_string(),
+        provider_type: "llmsim".to_string(),
+        base_url: None,
+        api_key_encrypted: None,
+        settings: None,
+    };
+    let unique = format!("Sim {}", uuid::Uuid::new_v4().simple());
+    db.create_provider(DEFAULT_ORG_ID, row(&unique))
+        .await
+        .unwrap();
+    let shared = format!("Shared {}", uuid::Uuid::new_v4().simple());
+    db.create_provider(DEFAULT_ORG_ID, row(&shared))
+        .await
+        .unwrap();
+    db.create_provider(DEFAULT_ORG_ID, row(&shared))
+        .await
+        .unwrap();
+    let resolver = ProviderResolverService::new(db, Some(test_encryption()));
+
+    // Keys are normalized the way `ProviderKey` normalizes them.
+    let key = unique.to_ascii_lowercase();
+    let resolved = resolver
+        .resolve_runtime_provider_config(DEFAULT_ORG_ID, &key)
+        .await
+        .unwrap()
+        .expect("a unique name resolves");
+    assert_eq!(resolved.provider_type, "llmsim");
+    assert!(
+        resolver
+            .resolve_runtime_provider_config(999, &key)
+            .await
+            .unwrap()
+            .is_none(),
+        "a name resolves in its own org only"
+    );
+    assert!(
+        resolver
+            .resolve_runtime_provider_config(DEFAULT_ORG_ID, &shared.to_ascii_lowercase())
+            .await
+            .is_err(),
+        "a shared name is ambiguous"
+    );
+}

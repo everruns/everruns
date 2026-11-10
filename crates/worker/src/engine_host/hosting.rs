@@ -25,7 +25,8 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use serde_json::Value;
 
-use super::backends::{PlatformEventLog, PlatformSessionStore};
+use super::backends::{EventStamp, PlatformEventLog, PlatformSessionStore};
+use super::extensions::{PlatformTurn, with_platform_services};
 use crate::actor_lease_store::{
     ActorFence, ActorJournal, ActorLeaseRenewal, ActorRelease, ActorRenewal, LeasedActor,
     SessionActorStore, actor_lease_lost,
@@ -267,6 +268,10 @@ impl<A: WorkerAdapters> SessionHosting for PlatformHosting<A> {
                 self.adapters.clone(),
                 self.leases.clone(),
                 fence.clone(),
+                EventStamp {
+                    agent_id: offer.binding.event_agent_id,
+                    harness_id: offer.binding.event_harness_id,
+                },
             )))
             .with_session_store(Arc::new(PlatformSessionStore::new(
                 self.adapters.clone(),
@@ -278,6 +283,25 @@ impl<A: WorkerAdapters> SessionHosting for PlatformHosting<A> {
             Some(store) => backends.with_compaction_checkpoint_store(store),
             None => backends,
         };
+        // The lane checked the revision builds before offering it, so its
+        // definition is cached; a missing one only gates fewer platform tools.
+        let capabilities = match self.definitions.definition(&binding.behavior).await {
+            Ok(Some(definition)) => definition
+                .agent_package()
+                .map(|package| package.manifest().capabilities.clone())
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        let backends = with_platform_services(
+            backends,
+            &self.adapters,
+            PlatformTurn {
+                org_id: offer.actor.org_id,
+                session_id: session,
+                agent_id: offer.binding.event_agent_id,
+                capabilities,
+            },
+        );
         let epoch = PlatformEpoch {
             session,
             lease: EngineFence {

@@ -7,6 +7,9 @@
 //!   credentials from), and every capability the Framework does not
 //!   implement from the platform's own registry, registered for this agent
 //!   only, so one agent's platform tools never collide with another's.
+//! - Platform sessions write their files, as they do on the worker's host:
+//!   the workspace policy is read-write (hidden and sensitive paths stay
+//!   closed, which the worker's host does not enforce).
 //! - Hydration is pure: the organization of an agent key is learned when its
 //!   session is offered ([`PlatformHydrator::bind_key`]), before the Engine
 //!   hydrates, and a key belongs to one organization for its whole life.
@@ -93,8 +96,13 @@ impl<A: WorkerAdapters> AgentHydrator for PlatformHydrator<A> {
                 services = services.register_shared(capability.clone());
             }
         }
+        // Platform session files are the session's own, writable as on the
+        // worker's host; hidden and sensitive paths stay closed.
+        let builder = Agent::builder()
+            .host_services(services)
+            .workspace_policy(everruns::WorkspacePolicy::read_write());
         let agent = package
-            .apply_to(Agent::builder().host_services(services))
+            .apply_to(builder)
             .map_err(config)?
             .build()
             .map_err(|error| AgentLoopError::config(error.to_string()))?;

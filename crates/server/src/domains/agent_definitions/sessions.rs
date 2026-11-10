@@ -43,6 +43,12 @@ pub struct EngineSession {
     /// The Engine's `SessionConfiguration` as JSON.
     pub configuration: Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// The platform agent and harness the session's events name, stamped by
+    /// the worker's event port.
+    pub event_agent_id: Option<everruns_contracts::typed_id::AgentId>,
+    pub event_harness_id: Option<everruns_contracts::typed_id::HarnessId>,
+    /// The platform workspace holding the session's files.
+    pub files_workspace_id: uuid::Uuid,
 }
 
 /// Claim `session_id`'s Engine binding for the lease `holder` holds at
@@ -103,6 +109,9 @@ pub async fn claim(
     Ok(EngineClaim::Bound(Box::new(EngineSession {
         configuration: serde_json::to_value(configuration(db, &session).await?)?,
         created_at: session.created_at,
+        event_agent_id: session.agent_id,
+        event_harness_id: session.harness_id,
+        files_workspace_id: session.workspace_id,
         binding,
     })))
 }

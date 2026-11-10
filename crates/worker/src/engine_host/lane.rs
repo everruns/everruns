@@ -20,7 +20,7 @@ use everruns::Engine;
 use everruns::hosting::{AgentBuild, AgentDefinitions, AgentHydrator};
 use tracing::{debug, warn};
 
-use super::files::PlatformFiles;
+use super::files::{PlatformFiles, PlatformWorkspace};
 use super::hosting::{LeaseSignals, PlatformHosting};
 use super::hydrator::PlatformHydrator;
 use crate::actor_lease_store::{LeasedActor, SessionActorStore};
@@ -136,7 +136,13 @@ impl<A: WorkerAdapters> EngineLane for WorkerEngine<A> {
         if !self.buildable(&build).await {
             return Some(actor);
         }
-        self.files.bind_session(session, actor.org_id);
+        self.files.bind_session(
+            session,
+            PlatformWorkspace {
+                org: actor.org_id,
+                workspace: binding.files_workspace_id,
+            },
+        );
         self.hosting.offer(
             actor,
             *binding,

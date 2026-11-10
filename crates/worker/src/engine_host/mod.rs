@@ -3,13 +3,17 @@
 //! builds platform declarations and the session-files Environment.
 
 mod backends;
+mod extensions;
 mod files;
 mod hosting;
 mod hydrator;
 mod lane;
 
-pub use backends::{PlatformEventLog, PlatformSessionStore};
-pub use files::{PlatformFiles, PlatformFilesBackend};
+pub use backends::{EventStamp, PlatformEventLog, PlatformSessionStore};
+pub use files::{PlatformFiles, PlatformFilesBackend, PlatformWorkspace};
 pub use hosting::{DEFINITION_ENVIRONMENT, LeaseSignals, PlatformDefinitions, PlatformHosting};
 pub use hydrator::PlatformHydrator;
 pub use lane::WorkerEngine;
+
+#[cfg(test)]
+mod tests;

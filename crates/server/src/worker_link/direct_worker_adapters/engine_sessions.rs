@@ -44,6 +44,9 @@ impl EngineSessions for DirectEngineSessions {
                 wake_at_ms: session.binding.wake_at.map(|at| at.timestamp_millis()),
                 configuration: session.configuration,
                 created_at: session.created_at.to_rfc3339(),
+                event_agent_id: session.event_agent_id,
+                event_harness_id: session.event_harness_id,
+                files_workspace_id: session.files_workspace_id,
             })),
         })
     }

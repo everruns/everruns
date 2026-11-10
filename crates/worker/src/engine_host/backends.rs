@@ -7,6 +7,10 @@
 //!   fenced by the actor lease exactly as the worker's own turns are, so a
 //!   holder that lost its lease writes nothing and its driver hears of it
 //!   (`ActorFence::observe`).
+//! - The Engine names the agent it runs by its own key. The platform's
+//!   events name the platform's agent and harness, as a worker turn's do,
+//!   so this port stamps them on the events that carry them
+//!   ([`EventStamp`]); the Engine never sees a platform id.
 //! - The session record the Engine runs on is the Engine's own: it seeds an
 //!   id-free `ExecutionSession` per activation, and this store keeps it in
 //!   memory for that activation with the session's live configuration
@@ -19,10 +23,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use async_trait::async_trait;
 use everruns::hosting::spi::session_commands::SessionConfiguration;
 use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 
 use crate::actor_lease_store::{ActorFence, SessionActorStore};
-use crate::core::events::{Event, EventRequest};
+use crate::core::events::{Event, EventData, EventRequest};
 use crate::core::host::{
     EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
     EventReader, RuntimeSessionStore, SessionMutator,
@@ -36,11 +40,53 @@ fn backend(error: impl std::fmt::Display) -> EventLogError {
     }
 }
 
+/// The platform agent and harness a session's events name.
+#[derive(Debug, Clone, Default)]
+pub struct EventStamp {
+    pub agent_id: Option<AgentId>,
+    pub harness_id: Option<HarnessId>,
+}
+
+impl EventStamp {
+    /// Name the platform's agent and harness where the Engine named its own,
+    /// and tag the event with the agent as a worker turn does.
+    pub fn apply(&self, request: &mut EventRequest) {
+        match &mut request.data {
+            EventData::SessionStarted(data) => {
+                data.agent_id = self.agent_id;
+                if let Some(harness) = self.harness_id {
+                    data.harness_id = harness;
+                }
+            }
+            EventData::TurnStarted(data) => data.agent_id = self.agent_id,
+            EventData::ReasonStarted(data) => {
+                data.agent_id = self.agent_id;
+                if let Some(harness) = self.harness_id {
+                    data.harness_id = harness;
+                }
+            }
+            _ => {}
+        }
+        if let Some(agent) = self.agent_id {
+            let metadata = request
+                .metadata
+                .get_or_insert_with(|| serde_json::Value::Object(Default::default()));
+            if let Some(metadata) = metadata.as_object_mut() {
+                metadata.insert(
+                    "agent_id".to_string(),
+                    serde_json::Value::String(agent.to_string()),
+                );
+            }
+        }
+    }
+}
+
 /// A platform session's journal. Without a fence it is a reader: appends
 /// are refused.
 pub struct PlatformEventLog<A: WorkerAdapters> {
     adapters: A,
     journal: Arc<dyn SessionActorStore>,
+    stamp: EventStamp,
     /// The lease writes present; the epoch swaps in the driver's fence (its
     /// lost signal) with this worker's holder.
     fence: Option<Arc<Mutex<ActorFence>>>,
@@ -51,10 +97,12 @@ impl<A: WorkerAdapters> PlatformEventLog<A> {
         adapters: A,
         journal: Arc<dyn SessionActorStore>,
         fence: Arc<Mutex<ActorFence>>,
+        stamp: EventStamp,
     ) -> Self {
         Self {
             adapters,
             journal,
+            stamp,
             fence: Some(fence),
         }
     }
@@ -63,6 +111,7 @@ impl<A: WorkerAdapters> PlatformEventLog<A> {
         Self {
             adapters,
             journal,
+            stamp: EventStamp::default(),
             fence: None,
         }
     }
@@ -121,8 +170,9 @@ impl<A: WorkerAdapters> EventReader for PlatformEventLog<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> EventLog for PlatformEventLog<A> {
-    async fn append(&self, request: EventRequest) -> std::result::Result<Event, EventLogError> {
+    async fn append(&self, mut request: EventRequest) -> std::result::Result<Event, EventLogError> {
         let fence = self.fence()?;
+        self.stamp.apply(&mut request);
         let stored = self
             .adapters
             .emit_events_fenced(vec![request], &fence)

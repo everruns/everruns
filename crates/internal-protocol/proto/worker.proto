@@ -1471,6 +1471,13 @@ message EngineSessionBinding {
     string configuration_json = 6;
     // When the session was created, RFC 3339.
     string created_at = 7;
+    // The platform agent and harness the session's events name. The worker
+    // stamps them on the events the Engine writes; the Engine never sees them.
+    optional string event_agent_id = 8;
+    optional string event_harness_id = 9;
+    // The platform workspace the session's files live in: the key the
+    // Engine's file tools scope by, as they do on the worker's own host.
+    string files_workspace_id = 10;
 }
 
 message ClaimEngineSessionResponse {

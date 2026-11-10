@@ -5,8 +5,12 @@
 //! - The session keeps the files it has on the worker's own host: the
 //!   platform's session file store, reached through the same adapter a
 //!   worker turn uses. Moving a session onto the Engine moves no file.
-//! - One workspace per organization and one head per session, both named by
-//!   derived ids, so the backend keeps no state: any worker reopens any
+//! - The Engine's workspace is the platform workspace the session's files
+//!   live in, under the same id: the Framework's file tools key a session's
+//!   files by its workspace id, and the platform keys them by that workspace
+//!   too, so both name the same files. One head per session, named by the
+//!   session. The locator and binding name the organization and the
+//!   workspace, so the backend keeps no state: any worker reopens any
 //!   session's head from its binding alone.
 
 use std::collections::{BTreeMap, HashMap};
@@ -28,22 +32,41 @@ use crate::worker_adapters::{SessionAdapter, WorkerAdapters};
 
 const BACKEND_ID: &str = "everruns.platform.session-files.v1";
 
+#[expect(
+    clippy::expect_used,
+    reason = "BACKEND_ID is a constant valid backend id; the test reopening a head proves it"
+)]
 fn backend_id() -> WorkspaceBackendId {
     WorkspaceBackendId::new(BACKEND_ID).expect("static backend id is valid")
 }
 
-fn workspace_id(org: i64) -> WorkspaceId {
-    WorkspaceId::from_uuid(Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!("everruns:platform:session-files:{org}").as_bytes(),
-    ))
+/// A platform workspace: its organization and id. Written `{org}/{uuid}` as
+/// the locator and as the binding payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlatformWorkspace {
+    pub org: i64,
+    pub workspace: Uuid,
 }
 
-fn org_of(locator: &str) -> std::result::Result<i64, WorkspaceError> {
-    locator.parse().map_err(|_| WorkspaceError::NotFound)
+impl PlatformWorkspace {
+    pub fn locator(&self) -> String {
+        format!("{}/{}", self.org, self.workspace)
+    }
+
+    fn parse(locator: &str) -> Option<Self> {
+        let (org, workspace) = locator.split_once('/')?;
+        Some(Self {
+            org: org.parse().ok()?,
+            workspace: workspace.parse().ok()?,
+        })
+    }
+
+    fn id(&self) -> WorkspaceId {
+        WorkspaceId::from_uuid(self.workspace)
+    }
 }
 
-/// The platform's session files, one workspace per organization.
+/// The platform's session files, one Engine workspace per platform workspace.
 pub struct PlatformFilesBackend<A: WorkerAdapters> {
     adapters: A,
 }
@@ -53,33 +76,35 @@ impl<A: WorkerAdapters> PlatformFilesBackend<A> {
         Self { adapters }
     }
 
-    fn descriptor(org: i64) -> WorkspaceDescriptor {
+    fn descriptor(workspace: PlatformWorkspace) -> WorkspaceDescriptor {
         WorkspaceDescriptor {
-            id: workspace_id(org),
+            id: workspace.id(),
             name: "session files".into(),
-            // Names the organization for `create_head`.
-            metadata: BTreeMap::from([("org".to_string(), org.to_string())]),
+            // Names the workspace for `create_head`.
+            metadata: BTreeMap::from([("platform".to_string(), workspace.locator())]),
         }
     }
 
-    fn org(binding: &WorkspaceBinding) -> std::result::Result<i64, WorkspaceError> {
-        let org = std::str::from_utf8(&binding.payload)
+    fn workspace(
+        binding: &WorkspaceBinding,
+    ) -> std::result::Result<PlatformWorkspace, WorkspaceError> {
+        let workspace = std::str::from_utf8(&binding.payload)
             .ok()
-            .and_then(|payload| payload.parse().ok())
+            .and_then(PlatformWorkspace::parse)
             .ok_or(WorkspaceError::BindingMismatch)?;
-        if binding.provider_id != backend_id() || binding.workspace_id != workspace_id(org) {
+        if binding.provider_id != backend_id() || binding.workspace_id != workspace.id() {
             return Err(WorkspaceError::BindingMismatch);
         }
-        Ok(org)
+        Ok(workspace)
     }
 
     fn resource(
         &self,
         binding: WorkspaceBinding,
     ) -> std::result::Result<WorkspaceHeadResource, WorkspaceError> {
-        let org = Self::org(&binding)?;
+        let workspace = Self::workspace(&binding)?;
         Ok(WorkspaceHeadResource {
-            workspace: Self::descriptor(org),
+            workspace: Self::descriptor(workspace),
             head: WorkspaceHeadDescriptor {
                 id: binding.head_id,
                 name: binding.head_id.to_string(),
@@ -88,7 +113,9 @@ impl<A: WorkerAdapters> PlatformFilesBackend<A> {
                 metadata: BTreeMap::new(),
             },
             binding,
-            file_system: Arc::new(SessionAdapter::new(self.adapters.clone()).for_org(org)),
+            file_system: Arc::new(
+                SessionAdapter::new(self.adapters.clone()).for_org(workspace.org),
+            ),
         })
     }
 }
@@ -103,14 +130,16 @@ impl<A: WorkerAdapters> WorkspaceBackend for PlatformFilesBackend<A> {
         &self,
         locator: &str,
     ) -> std::result::Result<WorkspaceDescriptor, WorkspaceError> {
-        Ok(Self::descriptor(org_of(locator)?))
+        PlatformWorkspace::parse(locator)
+            .map(Self::descriptor)
+            .ok_or(WorkspaceError::NotFound)
     }
 
     async fn open_workspace_from_binding(
         &self,
         binding: &WorkspaceBinding,
     ) -> std::result::Result<WorkspaceDescriptor, WorkspaceError> {
-        Ok(Self::descriptor(Self::org(binding)?))
+        Ok(Self::descriptor(Self::workspace(binding)?))
     }
 
     async fn create_head(
@@ -126,20 +155,20 @@ impl<A: WorkerAdapters> WorkspaceBackend for PlatformFilesBackend<A> {
                 "session-files heads have no base".into(),
             ));
         }
-        let org = workspace
+        let platform = workspace
             .metadata
-            .get("org")
-            .and_then(|org| org.parse().ok())
+            .get("platform")
+            .and_then(|locator| PlatformWorkspace::parse(locator))
             .ok_or(WorkspaceError::NotFound)?;
-        if workspace.id != workspace_id(org) {
+        if workspace.id != platform.id() {
             return Err(WorkspaceError::BindingMismatch);
         }
         self.resource(WorkspaceBinding {
             provider_id: backend_id(),
-            workspace_id: workspace_id(org),
+            workspace_id: platform.id(),
             head_id: WorkspaceHeadId::from_uuid(session),
             access: request.access,
-            payload: org.to_string().into_bytes(),
+            payload: platform.locator().into_bytes(),
         })
     }
 
@@ -154,7 +183,7 @@ impl<A: WorkerAdapters> WorkspaceBackend for PlatformFilesBackend<A> {
         &self,
         binding: &WorkspaceBinding,
     ) -> std::result::Result<WorkspaceCheckpoint, WorkspaceError> {
-        Self::org(binding)?;
+        Self::workspace(binding)?;
         Ok(WorkspaceCheckpoint {
             revision: binding.head_id.to_string(),
             metadata: BTreeMap::new(),
@@ -165,7 +194,7 @@ impl<A: WorkerAdapters> WorkspaceBackend for PlatformFilesBackend<A> {
         &self,
         binding: &WorkspaceBinding,
     ) -> std::result::Result<WorkspaceHeadStatus, WorkspaceError> {
-        Self::org(binding)?;
+        Self::workspace(binding)?;
         Ok(WorkspaceHeadStatus::default())
     }
 
@@ -173,19 +202,19 @@ impl<A: WorkerAdapters> WorkspaceBackend for PlatformFilesBackend<A> {
         &self,
         binding: &WorkspaceBinding,
     ) -> std::result::Result<WorkspaceDiff, WorkspaceError> {
-        Self::org(binding)?;
+        Self::workspace(binding)?;
         Ok(WorkspaceDiff::default())
     }
 
     async fn archive(&self, binding: &WorkspaceBinding) -> std::result::Result<(), WorkspaceError> {
-        Self::org(binding)?;
+        Self::workspace(binding)?;
         Err(WorkspaceError::InvalidRequest(
             "platform session files are archived with their session".into(),
         ))
     }
 
     async fn destroy(&self, binding: &WorkspaceBinding) -> std::result::Result<(), WorkspaceError> {
-        Self::org(binding)?;
+        Self::workspace(binding)?;
         Err(WorkspaceError::InvalidRequest(
             "platform session files are never destroyed by the Engine".into(),
         ))
@@ -193,10 +222,10 @@ impl<A: WorkerAdapters> WorkspaceBackend for PlatformFilesBackend<A> {
 }
 
 /// Opens a session's Environment over [`PlatformFilesBackend`]. The
-/// organization of a session is learned when it is offered.
+/// workspace of a session is learned when it is offered.
 pub struct PlatformFiles<A: WorkerAdapters> {
     backend: Arc<PlatformFilesBackend<A>>,
-    orgs: Arc<Mutex<HashMap<SessionId, i64>>>,
+    orgs: Arc<Mutex<HashMap<SessionId, PlatformWorkspace>>>,
 }
 
 impl<A: WorkerAdapters> Clone for PlatformFiles<A> {
@@ -216,12 +245,12 @@ impl<A: WorkerAdapters> PlatformFiles<A> {
         }
     }
 
-    /// Record `session`'s organization before it activates.
-    pub fn bind_session(&self, session: SessionId, org_id: i64) {
+    /// Record `session`'s workspace before it activates.
+    pub fn bind_session(&self, session: SessionId, workspace: PlatformWorkspace) {
         self.orgs
             .lock()
             .unwrap_or_else(|p| p.into_inner())
-            .insert(session, org_id);
+            .insert(session, workspace);
     }
 
     /// Forget `session` once its activation ended.
@@ -236,7 +265,7 @@ impl<A: WorkerAdapters> PlatformFiles<A> {
 #[async_trait]
 impl<A: WorkerAdapters> EnvironmentFactory for PlatformFiles<A> {
     async fn open(&self, session: SessionId) -> Result<Environment> {
-        let org = self
+        let workspace = self
             .orgs
             .lock()
             .unwrap_or_else(|p| p.into_inner())
@@ -245,7 +274,7 @@ impl<A: WorkerAdapters> EnvironmentFactory for PlatformFiles<A> {
             .ok_or(AgentLoopError::SessionNotFound(session))?;
         let workspace_error = |error: WorkspaceError| AgentLoopError::store(error.to_string());
         let backend: Arc<dyn WorkspaceBackend> = self.backend.clone();
-        let head = Workspace::open(backend, org.to_string())
+        let head = Workspace::open(backend, workspace.locator())
             .await
             .map_err(workspace_error)?
             .head(session.uuid().to_string())
