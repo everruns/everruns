@@ -200,6 +200,8 @@ impl CustomWorkerService for CustomWorkerServiceImpl {
                     attempts: r.attempts as u32,
                     cancel_requested: r.cancel_requested(),
                     cancel_inbox_seq: r.cancel_inbox_seq,
+                    // A custom worker runs its own code, never the Engine.
+                    engine: false,
                 })
                 .collect(),
         }))

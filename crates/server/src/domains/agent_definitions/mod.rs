@@ -30,6 +30,8 @@ use serde_json::{Map, Value, json};
 
 use crate::storage::StorageBackend;
 
+pub mod sessions;
+
 /// The layers a platform turn runs on, already filtered by the
 /// organization's feature flags.
 pub struct PlatformLayers {
@@ -56,10 +58,9 @@ pub fn compile(layers: &PlatformLayers) -> anyhow::Result<RuntimeAgent> {
     manifest.insert("schema_version".into(), json!(1));
     match &layers.agent {
         Some(agent) => {
-            manifest.insert("name".into(), json!(agent.name));
-            if let Some(display_name) = &agent.display_name {
-                manifest.insert("display_name".into(), json!(display_name));
-            }
+            manifest.insert("name".into(), json!(package_name(&agent.name)));
+            let display_name = agent.display_name.as_deref().unwrap_or(&agent.name);
+            manifest.insert("display_name".into(), json!(display_name));
             if let Some(description) = &agent.description {
                 manifest.insert("description".into(), json!(description));
             }
@@ -71,7 +72,8 @@ pub fn compile(layers: &PlatformLayers) -> anyhow::Result<RuntimeAgent> {
             }
         }
         None => {
-            manifest.insert("name".into(), json!(layers.harness.name));
+            manifest.insert("name".into(), json!(package_name(&layers.harness.name)));
+            manifest.insert("display_name".into(), json!(layers.harness.name));
         }
     }
     manifest.insert(
@@ -194,6 +196,29 @@ pub async fn resolve(
         agent: agent.as_ref().map(|agent| agent.definition()),
         model: model_row.map(|row| ModelSpec::on(row.provider_name, row.model_id)),
     })
+}
+
+/// A platform name as a package name: lowercase letters, digits and single
+/// hyphens, at most 255 characters. Platform names are free text ("Support
+/// Bot"); the original stays the display name.
+pub fn package_name(name: &str) -> String {
+    let mut slug = String::with_capacity(name.len());
+    for c in name.chars().flat_map(char::to_lowercase) {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c);
+        } else if !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+        if slug.len() >= 255 {
+            break;
+        }
+    }
+    let slug = slug.trim_end_matches('-');
+    if slug.is_empty() {
+        "agent".to_string()
+    } else {
+        slug.to_string()
+    }
 }
 
 /// The digest the publisher compares to skip no-ops: sha256 of the

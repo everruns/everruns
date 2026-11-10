@@ -99,6 +99,7 @@ impl WorkerServiceImpl {
                     consumed_seq: row.consumed_seq,
                     next_input_seq: row.next_input_seq,
                     attempts: u32::try_from(row.attempts).unwrap_or(0),
+                    engine: row.engine,
                 })
                 .collect(),
         }))

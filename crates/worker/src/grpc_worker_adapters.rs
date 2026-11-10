@@ -46,6 +46,9 @@ use crate::worker_adapters::{TurnContext, WorkerAdapters};
 pub struct GrpcWorkerAdapters {
     client: GrpcClient,
     host_composition: HostComposition,
+    /// Leases the control plane routes to the Engine, shared by every lease
+    /// store these adapters make.
+    engine_routes: Arc<crate::engine_sessions::EngineRoutes>,
 }
 
 impl GrpcWorkerAdapters {
@@ -70,6 +73,7 @@ impl GrpcWorkerAdapters {
         Ok(Self {
             client,
             host_composition,
+            engine_routes: crate::engine_sessions::EngineRoutes::new(),
         })
     }
 
@@ -86,6 +90,7 @@ impl GrpcWorkerAdapters {
         Self {
             client,
             host_composition,
+            engine_routes: crate::engine_sessions::EngineRoutes::new(),
         }
     }
 
@@ -951,8 +956,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     fn actor_lease_store(&self) -> Arc<dyn crate::actor_lease_store::ActorLeaseStore> {
-        Arc::new(crate::grpc_actor_lease_store::GrpcActorLeaseStore::new(
-            self.client.clone(),
-        ))
+        Arc::new(
+            crate::grpc_actor_lease_store::GrpcActorLeaseStore::new(self.client.clone())
+                .with_engine_routes(self.engine_routes.clone()),
+        )
+    }
+
+    fn engine_link(&self) -> Option<crate::engine_sessions::EngineLink> {
+        Some(crate::engine_sessions::EngineLink {
+            sessions: Arc::new(crate::engine_sessions::GrpcEngineSessions::new(
+                self.client.clone(),
+            )),
+            routes: self.engine_routes.clone(),
+        })
     }
 }

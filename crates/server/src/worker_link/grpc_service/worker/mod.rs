@@ -13,6 +13,7 @@ pub(crate) mod commands;
 mod credentials;
 mod detached_calls;
 mod durable;
+mod engine_sessions;
 mod events;
 mod leases;
 mod messages;

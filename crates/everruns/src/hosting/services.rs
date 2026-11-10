@@ -234,6 +234,16 @@ impl HostServices {
         self
     }
 
+    /// [`register`](Self::register) for a capability value the host shares
+    /// with other Agents or runtimes.
+    pub fn register_shared(mut self, capability: Arc<dyn Capability>) -> Self {
+        self.capabilities.push(HostCapability {
+            implementation: capability,
+            activation: None,
+        });
+        self
+    }
+
     /// Resolve the Agent's provider through the host instead of an Agent-owned
     /// [`Provider`](crate::Provider).
     ///
@@ -386,6 +396,24 @@ impl HostServices {
         }
         Ok(())
     }
+}
+
+/// Whether the Framework itself implements capability `id` (by id or
+/// alias). A host registers only the capabilities this is `false` for: a
+/// host capability may not shadow a Framework one.
+pub fn is_framework_capability(id: &str) -> bool {
+    static IDS: std::sync::OnceLock<HashSet<String>> = std::sync::OnceLock::new();
+    IDS.get_or_init(|| {
+        crate::capability_config::framework_capability_registry(false)
+            .list()
+            .into_iter()
+            .flat_map(|capability| {
+                std::iter::once(capability.id().to_string())
+                    .chain(capability.aliases().into_iter().map(str::to_string))
+            })
+            .collect()
+    })
+    .contains(id)
 }
 
 impl fmt::Debug for HostServices {

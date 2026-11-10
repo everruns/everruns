@@ -2,6 +2,7 @@ mod actors;
 mod command_context;
 mod construction;
 mod definition_reads;
+pub(crate) mod engine_sessions;
 pub mod files;
 mod image_store;
 mod internal_commands;
@@ -197,6 +198,9 @@ pub struct DirectWorkerAdapters {
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
     provider_services: Option<crate::domains::providers::ProviderServices>,
     pub(crate) quota: crate::domains::session_files::limits::QuotaLimits,
+    /// Leases the control plane routes to the Engine, shared by every lease
+    /// store these adapters make.
+    engine_routes: Arc<everruns_worker::engine_sessions::EngineRoutes>,
 }
 
 impl DirectWorkerAdapters {
@@ -1542,6 +1546,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn actor_lease_store(&self) -> Arc<dyn everruns_worker::ActorLeaseStore> {
         Arc::new(actors::DirectActorLeaseStore {
             db: self.db.clone(),
+            engine_routes: Some(self.engine_routes.clone()),
+        })
+    }
+
+    fn engine_link(&self) -> Option<everruns_worker::engine_sessions::EngineLink> {
+        Some(everruns_worker::engine_sessions::EngineLink {
+            sessions: Arc::new(engine_sessions::DirectEngineSessions {
+                db: self.db.clone(),
+            }),
+            routes: self.engine_routes.clone(),
         })
     }
 }

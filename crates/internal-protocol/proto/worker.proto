@@ -204,6 +204,16 @@ service WorkerService {
     // without it answers UNIMPLEMENTED and the worker lets the lease expire.
     rpc HandOffActor(ReleaseActorRequest) returns (ReleaseActorResponse);
     rpc ReadActorJournal(ReadActorJournalRequest) returns (ReadActorJournalResponse);
+    // Engine sessions (data plane v2 step 4): a lease whose LeasedActor.engine
+    // is set runs on the Engine. The Engine's session state lives on the same
+    // actor row and its receipts beside it, every write fenced by the lease
+    // (crates/server/src/storage/repositories/engine_sessions.rs).
+    rpc ClaimEngineSession(ClaimEngineSessionRequest) returns (ClaimEngineSessionResponse);
+    rpc GetEngineAgentDefinition(GetEngineAgentDefinitionRequest) returns (GetEngineAgentDefinitionResponse);
+    rpc ReadEngineSessionRecords(ReadEngineSessionRecordsRequest) returns (ReadEngineSessionRecordsResponse);
+    rpc CommitEngineSessionRecord(CommitEngineSessionRecordRequest) returns (EngineSessionWriteResponse);
+    rpc SuspendEngineSession(SuspendEngineSessionRequest) returns (EngineSessionWriteResponse);
+    rpc ScheduleEngineSession(ScheduleEngineSessionRequest) returns (EngineSessionWriteResponse);
     // Detached tool calls: a call a holder took off its turn so the turn
     // parks while the call runs (knowledge/execution/detached-tool-calls.md).
     rpc DetachToolCall(DetachToolCallRequest) returns (DetachToolCallResponse);
@@ -1366,6 +1376,10 @@ message LeasedActor {
     // the turn whose input is at or before it; later input is not cancelled.
     // Absent from an older control plane: the cancel targets any turn.
     optional int64 cancel_inbox_seq = 9;
+    // The lease runs on the Engine: claim it with ClaimEngineSession. Set
+    // for a session with an Engine binding, or one whose org is enrolled in
+    // Engine hosting (it binds at that claim, between turns).
+    bool engine = 10;
 }
 
 message LeaseActorsResponse {
@@ -1433,6 +1447,92 @@ message ReleaseActorResponse {
     // The actor has more to do (newer input, or a cancel the holder never
     // saw) and the next lease call picks it up.
     bool still_runnable = 2;
+}
+
+// Claim a leased session's Engine binding. Between turns the session moves
+// to its agent key's current revision; an unbound session of an enrolled org
+// is bound here. Unset binding: run the lease on the worker's own host.
+message ClaimEngineSessionRequest {
+    Uuid session_id = 1;
+    ActorFence fence = 2;
+}
+
+message EngineSessionBinding {
+    // Opaque: names no platform record.
+    string agent_key = 1;
+    string revision = 2;
+    // The session runtime format the binding was created with.
+    uint32 runtime = 3;
+    optional string suspended_reason = 4;
+    // Milliseconds since the epoch.
+    optional int64 wake_at_ms = 5;
+    // The session's live configuration (model, session capabilities), as the
+    // Engine's SessionConfiguration JSON.
+    string configuration_json = 6;
+    // When the session was created, RFC 3339.
+    string created_at = 7;
+}
+
+message ClaimEngineSessionResponse {
+    optional EngineSessionBinding binding = 1;
+    // The lease was lost: stop without writing.
+    bool lost = 2;
+}
+
+message GetEngineAgentDefinitionRequest {
+    string agent_key = 1;
+    string revision = 2;
+}
+
+message GetEngineAgentDefinitionResponse {
+    // The RuntimeAgent declaration JSON; unset when no such revision exists.
+    optional string runtime_agent_json = 1;
+}
+
+message ReadEngineSessionRecordsRequest {
+    Uuid session_id = 1;
+    // With `key`, read that one receipt; otherwise every receipt whose key
+    // starts with `prefix`, in key order (capped by the server).
+    optional string key = 2;
+    string prefix = 3;
+}
+
+message EngineSessionRecord {
+    string key = 1;
+    string value_json = 2;
+}
+
+message ReadEngineSessionRecordsResponse {
+    repeated EngineSessionRecord records = 1;
+}
+
+message CommitEngineSessionRecordRequest {
+    Uuid session_id = 1;
+    ActorFence fence = 2;
+    EngineSessionRecord record = 3;
+    // Write only a new key.
+    bool absent = 4;
+}
+
+message SuspendEngineSessionRequest {
+    Uuid session_id = 1;
+    ActorFence fence = 2;
+    string reason = 3;
+}
+
+message ScheduleEngineSessionRequest {
+    Uuid session_id = 1;
+    ActorFence fence = 2;
+    // Milliseconds since the epoch; unset clears the timer.
+    optional int64 wake_at_ms = 3;
+}
+
+message EngineSessionWriteResponse {
+    // False when the lease was lost and nothing was written.
+    bool held = 1;
+    // For CommitEngineSessionRecord: the receipt was written (with `absent`,
+    // false for an existing key).
+    bool written = 2;
 }
 
 // The tail of a session's event log an actor folds to resume.

@@ -55,3 +55,22 @@ fn compilation_is_deterministic() {
     edited.harness.system_prompt = Some("Other rules.".into());
     assert_ne!(first, compile(&edited).unwrap());
 }
+
+/// Free-text platform names become package names; the original is shown.
+#[test]
+fn platform_names_become_package_names() {
+    assert_eq!(package_name("Support Bot (EU)"), "support-bot-eu");
+    assert_eq!(package_name("  --  "), "agent");
+    assert_eq!(package_name("Ünïcode Agent 2"), "n-code-agent-2");
+    assert_eq!(package_name(&"a".repeat(300)).len(), 255);
+    let mut named = layers(true);
+    named.agent.as_mut().unwrap().name = "Support Bot".into();
+    let manifest = compile(&named)
+        .unwrap()
+        .package()
+        .unwrap()
+        .manifest()
+        .clone();
+    assert_eq!(manifest.name, "support-bot");
+    assert_eq!(manifest.display_name.as_deref(), Some("Support Bot"));
+}

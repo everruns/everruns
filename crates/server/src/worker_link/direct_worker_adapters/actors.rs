@@ -27,6 +27,8 @@ fn fence_to_db(fence: u64) -> Result<i64> {
 /// [`ActorLeaseStore`] on this process's storage backend.
 pub(super) struct DirectActorLeaseStore {
     pub(super) db: Arc<StorageBackend>,
+    /// Where leases the control plane routes to the Engine are recorded.
+    pub(super) engine_routes: Option<Arc<everruns_worker::engine_sessions::EngineRoutes>>,
 }
 
 #[async_trait]
@@ -48,6 +50,12 @@ impl ActorLeaseStore for DirectActorLeaseStore {
             .map_err(|e| store_error(format!("Failed to lease actors: {e}")))?;
         rows.into_iter()
             .map(|row| {
+                if row.engine
+                    && let Some(routes) = &self.engine_routes
+                    && let Ok(fence) = u64::try_from(row.fence)
+                {
+                    routes.route(row.session_id, fence);
+                }
                 Ok(LeasedActor {
                     session_id: row.session_id,
                     org_id: row.org_id,

@@ -198,6 +198,7 @@ impl DirectWorkerAdapters {
             org_rate_limiter: None,
             provider_services: None,
             quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
+            engine_routes: everruns_worker::engine_sessions::EngineRoutes::new(),
         }
     }
 }

@@ -58,7 +58,9 @@ mod command_idempotency;
 mod declarative_capabilities;
 pub use declarative_capabilities::rows::*;
 mod engine_agents;
+mod engine_sessions;
 pub use engine_agents::{EngineAgentKeyRow, EngineAgentPublishRow};
+pub use engine_sessions::EngineBindingRow;
 mod entity_changes;
 mod evals;
 pub use evals::rows::*;
@@ -116,8 +118,9 @@ pub use schedules::rows::*;
 mod session_actors;
 pub use session_actors::rows::*;
 pub use session_actors::{
-    DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, MAX_ACTOR_RENEWAL_BATCH,
-    mark_session_actor_resumable, mark_session_actor_runnable, sticky_grace,
+    DEFAULT_ACTOR_LEASES_PER_ORG, ENGINE_HOSTING_FLAG, MAX_ACTOR_LEASE_BATCH,
+    MAX_ACTOR_RENEWAL_BATCH, mark_session_actor_resumable, mark_session_actor_runnable,
+    sticky_grace,
 };
 mod session_databases;
 pub use session_databases::{CreateSessionDatabase, SessionDatabaseRow};
