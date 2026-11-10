@@ -12,16 +12,34 @@ use test_harness::TestServer;
 #[tokio::test]
 async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
     let server = TestServer::in_memory().await;
-    let models: Value = server
-        .get("/v1/models")
+    // Seeding no longer pre-creates catalog models for unconnected providers
+    // (#5319), so the test brings its own provider with an embedding model and
+    // a chat model.
+    let provider: Value = server
+        .post(
+            "/v1/providers",
+            json!({"name": "knowledge-test-provider", "provider_type": "llmsim"}),
+        )
         .await
-        .assert_status(StatusCode::OK)
+        .assert_status(StatusCode::CREATED)
         .json();
-    let models = models["data"].as_array().expect("models list");
-    let embedding_model = models
-        .iter()
-        .find(|model| model["model_id"] == "text-embedding-3-small")
-        .expect("seeded embedding model");
+    let models_path = format!(
+        "/v1/providers/{}/models",
+        provider["id"].as_str().expect("provider id")
+    );
+    let embedding_model: Value = server
+        .post(
+            &models_path,
+            json!({
+                "model_id": "knowledge-test-embedding",
+                "display_name": "Knowledge test embedding",
+                "capabilities": ["embeddings"],
+                "enabled": true,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
     assert_eq!(embedding_model["capabilities"], json!(["embeddings"]));
 
     let created: Value = server
@@ -57,15 +75,19 @@ async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
 
-    let chat_model = models
-        .iter()
-        .find(|model| model["model_id"] == "claude-opus-4-7[1m]")
-        .or_else(|| {
-            models
-                .iter()
-                .find(|model| model["model_id"] == "claude-opus-4-7")
-        })
-        .expect("seeded Claude chat model");
+    let chat_model: Value = server
+        .post(
+            &models_path,
+            json!({
+                "model_id": "knowledge-test-chat",
+                "display_name": "Knowledge test chat",
+                "capabilities": ["chat"],
+                "enabled": true,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
     let rejected: Value = server
         .post(
             "/v1/knowledge",

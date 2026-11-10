@@ -332,30 +332,32 @@ async fn seeded_api_fixtures_remain_private_and_preserve_fixture_modes() {
     use crate::test_harness::TestServer;
 
     let first = TestServer::in_memory().await;
-    let original_models: (i64,) = sqlx::query_as("SELECT count(*) FROM models")
+    // Built-in MCP servers are seeded unconditionally; catalog models are not
+    // (they need a connected provider since #5319).
+    let original_servers: (i64,) = sqlx::query_as("SELECT count(*) FROM mcp_servers")
         .fetch_one(&first.pool)
         .await
         .unwrap();
-    assert!(original_models.0 > 0);
-    sqlx::raw_sql("DELETE FROM models; UPDATE organizations SET name = 'changed by first test' WHERE org_id = 1")
+    assert!(original_servers.0 > 0);
+    sqlx::raw_sql("DELETE FROM mcp_servers; UPDATE organizations SET name = 'changed by first test' WHERE org_id = 1")
         .execute(&first.pool).await.unwrap();
     let second = TestServer::in_memory().await;
     assert_ne!(first.database_url(), second.database_url());
-    let second_models: (i64,) = sqlx::query_as("SELECT count(*) FROM models")
+    let second_servers: (i64,) = sqlx::query_as("SELECT count(*) FROM mcp_servers")
         .fetch_one(&second.pool)
         .await
         .unwrap();
-    assert_eq!(original_models, second_models);
+    assert_eq!(original_servers, second_servers);
     let name: (String,) = sqlx::query_as("SELECT name FROM organizations WHERE org_id = 1")
         .fetch_one(&second.pool)
         .await
         .unwrap();
     assert_ne!(name.0, "changed by first test");
-    let first_models: (i64,) = sqlx::query_as("SELECT count(*) FROM models")
+    let first_servers: (i64,) = sqlx::query_as("SELECT count(*) FROM mcp_servers")
         .fetch_one(&first.pool)
         .await
         .unwrap();
-    assert_eq!(first_models.0, 0);
+    assert_eq!(first_servers.0, 0);
 
     let postgres = TestServer::new().await;
     for (pool, expected) in [(&second.pool, 1_i64), (&postgres.pool, 0)] {
