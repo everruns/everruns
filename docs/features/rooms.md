@@ -1,6 +1,6 @@
 ---
 title: Rooms
-description: Put people, Everruns agents, outside agents and your own users in one conversation with mentions and threads; agents wake when they are addressed and answer with send_message.
+description: Put people, Everruns agents and your own users in one conversation with mentions and threads. Agents wake when addressed and answer with send_message.
 sidebar:
   label: Rooms
 appliesTo: [platform, cloud]

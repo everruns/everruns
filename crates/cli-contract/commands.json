@@ -12313,7 +12313,7 @@
       "rooms"
     ],
     "verb": "events",
-    "description": "Read a room's change feed in order: posts, edits, reactions, members, agent wakes. Poll with after=next_after.",
+    "description": "Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.",
     "method": "GET",
     "http_path": "/v1/rooms/{room_id}/events",
     "args": [
@@ -12645,7 +12645,7 @@
       "members"
     ],
     "verb": "update",
-    "description": "Change a member's name, role, wake setting, session scope or instructions. Owners and org admins only.",
+    "description": "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
     "method": "PATCH",
     "http_path": "/v1/rooms/{room_id}/members/{member_id}",
     "args": [
@@ -13148,7 +13148,7 @@
       "rooms"
     ],
     "verb": "unread",
-    "description": "Return what the caller has not read yet (new top-level messages, and new replies in threads they are in) with each thread's root for context, and mark it read.",
+    "description": "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
     "method": "POST",
     "http_path": "/v1/rooms/{room_id}/unread",
     "args": [

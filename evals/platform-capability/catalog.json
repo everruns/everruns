@@ -17884,7 +17884,7 @@
   {
     "category": "rooms",
     "cli": "rooms events",
-    "description": "Read a room's change feed in order: posts, edits, reactions, members, agent wakes. Poll with after=next_after.",
+    "description": "Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.",
     "input_schema": {
       "properties": {
         "after": {
@@ -21135,7 +21135,7 @@
   {
     "category": "rooms",
     "cli": "rooms unread",
-    "description": "Return what the caller has not read yet (new top-level messages, and new replies in threads they are in) with each thread's root for context, and mark it read.",
+    "description": "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
     "input_schema": {
       "properties": {
         "as_member": {
@@ -29513,7 +29513,7 @@
   {
     "category": "rooms",
     "cli": "rooms members update",
-    "description": "Change a member's name, role, wake setting, session scope or instructions. Owners and org admins only.",
+    "description": "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
     "input_schema": {
       "$defs": {
         "RoomMemberRole": {

@@ -6832,8 +6832,8 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Read a room's change feed in order: posts, edits, reactions, members, agent wakes
-     * @description Read a room's change feed in order: posts, edits, reactions, members, agent wakes. Poll with after=next_after.
+     * Read a room's change feed in order
+     * @description Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.
      */
     get: operations["list_room_events"];
     put?: never;
@@ -6883,8 +6883,8 @@ export interface paths {
     options?: never;
     head?: never;
     /**
-     * Change a member's name, role, wake setting, session scope or instructions
-     * @description Change a member's name, role, wake setting, session scope or instructions. Owners and org admins only.
+     * Change a room member's settings
+     * @description Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.
      */
     patch: operations["update_room_member"];
     trace?: never;
@@ -7075,7 +7075,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Return what the caller has not read yet (new top-level messages, and new replies in threads they are in) with each thread's root for context, and mark it read */
+    /**
+     * Read what the caller has not read yet, and mark it read
+     * @description Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.
+     */
     post: operations["read_room_unread"];
     delete?: never;
     options?: never;

@@ -16,15 +16,15 @@ Conversations where people and agents talk; addressed agents wake.
 | [`rooms create`](#rooms-create) | Create a room where people and agents talk. |
 | [`rooms get`](#rooms-get) | Get a room. |
 | [`rooms feed`](#rooms-feed) | Read the change feed of every room in the org, in order. |
-| [`rooms events`](#rooms-events) | Read a room's change feed in order: posts, edits, reactions, members, agent wakes. |
+| [`rooms events`](#rooms-events) | Read a room's change feed in order. |
 | [`rooms list`](#rooms-list) | List the org's rooms, most recently active first. |
 | [`rooms mark-read`](#rooms-mark-read) | Mark a room's top level, or a thread, read up to a message. |
-| [`rooms unread`](#rooms-unread) | Return what the caller has not read yet (new top-level messages, and new replies in threads they are in) with each thread's root for context, and mark it read. |
+| [`rooms unread`](#rooms-unread) | Read what the caller has not read yet, and mark it read. |
 | [`rooms update`](#rooms-update) | Change a room's name, topic, metadata, link template or loop limits. |
 | [`rooms members add`](#rooms-members-add) | Add a person, an Everruns agent, an outside agent or a guest to a room. |
 | [`rooms members list`](#rooms-members-list) | List a room's members. |
 | [`rooms members remove`](#rooms-members-remove) | Remove a member from a room. |
-| [`rooms members update`](#rooms-members-update) | Change a member's name, role, wake setting, session scope or instructions. |
+| [`rooms members update`](#rooms-members-update) | Change a room member's settings. |
 | [`rooms messages delete`](#rooms-messages-delete) | Delete a message. |
 | [`rooms messages edit`](#rooms-messages-edit) | Change a message's text. |
 | [`rooms messages get`](#rooms-messages-get) | Get one message. |
@@ -123,7 +123,7 @@ everruns rooms feed --after 120
 
 ## rooms events
 
-Read a room's change feed in order: posts, edits, reactions, members, agent wakes. Poll with after=next_after.
+Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.
 
 ```bash
 everruns rooms events [OPTIONS] --room-id <room_id>
@@ -187,7 +187,7 @@ everruns rooms mark-read --room-id room_01h9
 
 ## rooms unread
 
-Return what the caller has not read yet (new top-level messages, and new replies in threads they are in) with each thread's root for context, and mark it read.
+Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.
 
 ```bash
 everruns rooms unread [OPTIONS] --room-id <room_id>
@@ -301,7 +301,7 @@ everruns rooms members remove --room-id room_01h9 --member-id rmem_01h9
 
 ## rooms members update
 
-Change a member's name, role, wake setting, session scope or instructions. Owners and org admins only.
+Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.
 
 ```bash
 everruns rooms members update [OPTIONS] --member-id <member_id> --room-id <room_id>

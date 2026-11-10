@@ -581,7 +581,7 @@ pub struct UpdateRoomMember {
 #[command(
     name = "update_room_member",
     category = "rooms",
-    description = "Change a member's name, role, wake setting, session scope or instructions. Owners and org admins only.",
+    description = "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
     method = "PATCH",
     path = "/v1/rooms/{room_id}/members/{member_id}",
     policy = super::ROOM_ACCESS,
@@ -1242,7 +1242,7 @@ pub struct ReadRoomUnread {
 #[command(
     name = "read_room_unread",
     category = "rooms",
-    description = "Return what the caller has not read yet (new top-level messages, and new replies in threads they are in) with each thread's root for context, and mark it read.",
+    description = "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
     method = "POST",
     path = "/v1/rooms/{room_id}/unread",
     policy = super::ROOM_ACCESS,
@@ -1375,7 +1375,7 @@ pub struct ListRoomEvents {
 #[command(
     name = "list_room_events",
     category = "rooms",
-    description = "Read a room's change feed in order: posts, edits, reactions, members, agent wakes. Poll with after=next_after.",
+    description = "Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.",
     method = "GET",
     path = "/v1/rooms/{room_id}/events",
     policy = super::ROOM_ACCESS,
