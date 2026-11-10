@@ -164,11 +164,10 @@ pub async fn resolve(
     )
     .await?;
     if let Some(agent) = agent.as_mut() {
-        crate::platform_chat_agent::add_page_tools(agent, flags.chat_mode);
-        let is_platform_chat = agent.is_built_in && agent.name == crate::platform_chat_agent::NAME;
-        agent.capabilities.retain(|capability| {
-            flags.is_agent_capability_enabled(capability.capability_id(), is_platform_chat)
-        });
+        crate::platform_chat_agent::add_page_tools(agent);
+        agent
+            .capabilities
+            .retain(|capability| flags.is_capability_enabled(capability.capability_id()));
     }
     harness
         .capabilities
