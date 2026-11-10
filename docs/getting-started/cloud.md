@@ -19,8 +19,8 @@ credit works.
 :::tip[Set it up with your agent]
 
 ```text
-Connect my coding agent to the Everruns demo instance and help me build a
-small agent. Instructions: https://everruns.com/agent-setup/prompt.md
+Connect my coding agent to the Everruns demo instance and help me build my
+first agent. Instructions: https://everruns.com/agent-setup/prompt.md
 ```
 
 Prefer to do it yourself? The steps follow.
