@@ -10,6 +10,7 @@ mod lineage;
 mod ports;
 mod secrets;
 mod services;
+mod session_directory;
 use super::*;
 use crate::sqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use everruns_contracts::{
@@ -57,6 +58,7 @@ const DISCOVER_RUNNABLE: &str = "
 /// on startup; the SQLite file and its WAL must survive executor loss.
 #[derive(Clone)]
 pub struct SqliteHosting {
+    directory: Option<Arc<session_directory::SessionDirectory>>,
     db: Arc<Mutex<Connection>>,
     proactive: ProactiveAttempts,
     /// In-process [`SessionHosting::changes`] hints. Other processes sharing
@@ -149,6 +151,7 @@ impl SqliteHosting {
             CREATE TABLE IF NOT EXISTS framework_commands(session TEXT NOT NULL,id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(session,id));").map_err(error)?;
         db.execute_batch(definitions::SCHEMA).map_err(error)?;
         Ok(Self {
+            directory: None,
             db: Arc::new(Mutex::new(db)),
             proactive: Arc::default(),
             changes: super::ChangeHints::default(),
@@ -181,7 +184,8 @@ impl SqliteHosting {
         session: SessionId,
         f: impl FnOnce(&Transaction<'_>, &mut Control) -> Result<T>,
     ) -> Result<T> {
-        let mut db = self
+        let owner = self.for_session(session)?;
+        let mut db = owner
             .db
             .lock()
             .map_err(|_| error("authority database lock poisoned"))?;
@@ -225,6 +229,17 @@ impl SqliteHosting {
     /// claims and every write remain authority-fenced. Shutdown cancels local
     /// execution and leaves the committed recovery obligation intact.
     pub async fn supervise(
+        &self,
+        engine: crate::Engine,
+        shutdown: crate::CancellationToken,
+    ) -> Result<()> {
+        if self.directory.is_some() {
+            return self.supervise_directory(engine, shutdown).await;
+        }
+        self.supervise_local(engine, shutdown).await
+    }
+
+    async fn supervise_local(
         &self,
         engine: crate::Engine,
         shutdown: crate::CancellationToken,
@@ -541,6 +556,7 @@ impl SessionHosting for SqliteHosting {
         session: SessionId,
         command: super::spi::session_commands::SessionCommand,
     ) -> Result<Value> {
+        self.register_child(session, &command, true)?;
         let reply = self.execute_command(session, command);
         if reply.is_ok() {
             self.changes.notify(session);
@@ -568,7 +584,7 @@ impl SessionHosting for SqliteHosting {
         })
     }
     async fn event_sequence(&self, session: SessionId, event_id: &str) -> Result<Option<i32>> {
-        self.db.lock().map_err(|_|error("authority database lock poisoned"))?.query_row("SELECT seq FROM framework_events WHERE session=? AND json_extract(value,'$.id')=? LIMIT 1",params![session.to_string(),event_id],|row|row.get(0)).optional().map_err(error)
+        self.for_session(session)?.db.lock().map_err(|_|error("authority database lock poisoned"))?.query_row("SELECT seq FROM framework_events WHERE session=? AND json_extract(value,'$.id')=? LIMIT 1",params![session.to_string(),event_id],|row|row.get(0)).optional().map_err(error)
     }
     async fn status(&self, session: SessionId) -> Result<HostingStatus> {
         self.transaction(session, |tx, state| {
@@ -612,9 +628,17 @@ impl SessionHosting for SqliteHosting {
     fn reader(&self, session: SessionId) -> HostBackends {
         // Task reads (threads, task tools on query runtimes) see the authority's
         // registry; nothing here is canonical journal state.
+        let schedules = self.clone();
         self.ports(session)
             .backends()
-            .with_session_task_registry(self.services.registry.clone())
+            .with_schedule_store_factory(Arc::new(move |org| {
+                schedules.schedule_store(session, org)
+            }))
+            .with_session_task_registry(if self.directory.is_some() {
+                Arc::new(session_directory::RoutedTasks(self.clone(), false))
+            } else {
+                self.services.registry.clone()
+            })
     }
     async fn record(&self, session: SessionId, key: &str) -> Result<Option<Value>> {
         SessionEpoch::record(&self.ports(session), key).await
@@ -673,7 +697,9 @@ impl SessionHosting for SqliteHosting {
         true
     }
     fn definitions(&self) -> Option<&dyn super::AgentDefinitions> {
-        Some(self)
+        // Session-directory hosting is for code-registered builds. Publishing
+        // one agent across separate authorities needs an explicit control plane.
+        self.directory.is_none().then_some(self)
     }
     async fn prepare_activation(
         &self,
@@ -682,7 +708,9 @@ impl SessionHosting for SqliteHosting {
         environment: &crate::Environment,
         backends: HostBackends,
     ) -> Result<HostBackends> {
-        self.prepare(engine, session, environment, backends).await
+        self.for_session(session)?
+            .prepare(engine, session, environment, backends)
+            .await
     }
     async fn history_lineage(
         &self,
@@ -846,6 +874,13 @@ impl SessionHosting for SqliteHosting {
         })
     }
     async fn import_legacy(&self, session: SessionId, image: LegacySessionImage) -> Result<bool> {
+        self.register_child(
+            session,
+            &super::spi::session_commands::SessionCommand::Create {
+                binding: serde_json::to_value(&image.binding).map_err(error)?,
+            },
+            false,
+        )?;
         let replayed = self.import_image(session, image)?;
         self.changes.notify(session);
         Ok(replayed)

@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-10
+
+- [Engine durable sessions](framework/engine-durable-sessions.md): code-registered SQLite hosts can use a database per session, with parent-owned child registries, routed tasks and schedules, and lossless shared-authority transfer under host session leases.
+
 ## 2026-11-09
 
 - The OpenAI Agents API runtime backend is removed: the capability, the
