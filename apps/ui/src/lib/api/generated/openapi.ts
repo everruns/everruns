@@ -6798,7 +6798,7 @@ export interface paths {
     options?: never;
     head?: never;
     /**
-     * Change a room's name, topic, metadata, link template or loop limits
+     * Change a room's name, topic or settings
      * @description Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.
      */
     patch: operations["update_room"];
@@ -6832,7 +6832,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Read a room's change feed in order
+     * Read a room's change feed
      * @description Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.
      */
     get: operations["list_room_events"];
@@ -6855,7 +6855,7 @@ export interface paths {
     get: operations["list_room_members"];
     put?: never;
     /**
-     * Add a person, an Everruns agent, an outside agent or a guest to a room
+     * Add a member to a room
      * @description Add a person, an Everruns agent, an outside agent or a guest to a room. Owners and org admins only.
      */
     post: operations["add_room_member"];
@@ -7076,7 +7076,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Read what the caller has not read yet, and mark it read
+     * Read and mark a room's unread messages
      * @description Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.
      */
     post: operations["read_room_unread"];

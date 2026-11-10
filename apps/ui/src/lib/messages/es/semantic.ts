@@ -328,4 +328,5 @@ export const messages: Readonly<Record<string, string>> = {
   "{names} reacted {emoji}": "{names} reaccionó con {emoji}",
   "Remove your {emoji}": "Quitar tu {emoji}",
   Reaction: "Reacción",
+  Room: "Sala",
 };

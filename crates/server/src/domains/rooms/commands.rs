@@ -409,6 +409,7 @@ pub struct UpdateRoom {
 
 #[command(
     name = "update_room",
+    summary = "Change a room's name, topic or settings",
     category = "rooms",
     description = "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
     method = "PATCH",
@@ -508,6 +509,7 @@ pub struct AddRoomMember {
 
 #[command(
     name = "add_room_member",
+    summary = "Add a member to a room",
     category = "rooms",
     description = "Add a person, an Everruns agent, an outside agent or a guest to a room. Owners and org admins only.",
     method = "POST",
@@ -580,6 +582,7 @@ pub struct UpdateRoomMember {
 
 #[command(
     name = "update_room_member",
+    summary = "Change a room member's settings",
     category = "rooms",
     description = "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
     method = "PATCH",
@@ -1241,6 +1244,7 @@ pub struct ReadRoomUnread {
 
 #[command(
     name = "read_room_unread",
+    summary = "Read and mark a room's unread messages",
     category = "rooms",
     description = "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
     method = "POST",
@@ -1374,6 +1378,7 @@ pub struct ListRoomEvents {
 
 #[command(
     name = "list_room_events",
+    summary = "Read a room's change feed",
     category = "rooms",
     description = "Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.",
     method = "GET",

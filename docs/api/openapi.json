@@ -26342,7 +26342,7 @@
         "tags": [
           "rooms"
         ],
-        "summary": "Change a room's name, topic, metadata, link template or loop limits",
+        "summary": "Change a room's name, topic or settings",
         "description": "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
         "operationId": "update_room",
         "parameters": [
@@ -26420,7 +26420,7 @@
         "tags": [
           "rooms"
         ],
-        "summary": "Read a room's change feed in order",
+        "summary": "Read a room's change feed",
         "description": "Read a room's change feed in order. It covers posts, edits, reactions, members and agent wakes; poll with after=next_after.",
         "operationId": "list_room_events",
         "parameters": [
@@ -26523,7 +26523,7 @@
         "tags": [
           "rooms"
         ],
-        "summary": "Add a person, an Everruns agent, an outside agent or a guest to a room",
+        "summary": "Add a member to a room",
         "description": "Add a person, an Everruns agent, an outside agent or a guest to a room. Owners and org admins only.",
         "operationId": "add_room_member",
         "parameters": [
@@ -27261,7 +27261,7 @@
         "tags": [
           "rooms"
         ],
-        "summary": "Read what the caller has not read yet, and mark it read",
+        "summary": "Read and mark a room's unread messages",
         "description": "Read what the caller has not read yet, and mark it read. Returns new top-level messages and new replies in threads they are in, with each thread's root for context.",
         "operationId": "read_room_unread",
         "parameters": [
