@@ -7,7 +7,7 @@ import { Key, RefreshCw, Settings2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { EntityCard, EntityCardDetail } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardDetail, EntityCardFooter } from "@/components/ui/entity-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IconTile } from "@/components/layout/page-layout";
 import {
@@ -75,6 +75,7 @@ function ProviderCardContent({
   const detailHref = `/models/providers/${provider.id}`;
   const modelsHref = `/models?provider=${encodeURIComponent(provider.id)}`;
 
+  const description = getProviderDescription(provider.provider_type);
   const credential = provider.managed
     ? "Host managed"
     : provider.api_key_set
@@ -123,65 +124,80 @@ function ProviderCardContent({
         </>
       }
       footer={
-        <div className="mt-4 flex items-center gap-1.5 border-t pt-3">
-          {modelsLoading ? (
-            <Skeleton className="mr-auto h-4 w-36" />
-          ) : (
-            <Link href={modelsHref} className="mr-auto text-xs text-primary hover:underline">
-              {listed.length > 0
-                ? ui("{value0} of {value1} models enabled →", {
-                    value0: enabled,
-                    value1: listed.length,
-                  })
-                : ui("No models yet")}
-            </Link>
-          )}
-          {canEditCredential && !provider.api_key_set && (
-            <Button size="sm" onClick={() => onSetApiKey(provider)}>
-              <Key className="icon-sharp size-3.5" />
-              {ui("Set key")}
-            </Button>
-          )}
-          {canEditCredential && provider.api_key_set && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title={ui("Update key")}
-              aria-label={ui("Update key for {value0}", { value0: provider.name })}
-              onClick={() => onSetApiKey(provider)}
-            >
-              <Key className="icon-sharp size-3.5" />
-            </Button>
-          )}
-          {canSync && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title={ui("Sync models")}
-              aria-label={ui("Sync models for {value0}", { value0: provider.name })}
-              onClick={() => onSyncModels(provider)}
-              disabled={isSyncing}
-            >
-              <RefreshCw className={`icon-sharp size-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-            </Button>
-          )}
-          <LinkButton
-            variant="ghost"
-            size="icon-sm"
-            href={detailHref}
-            title={ui("Provider settings")}
-            aria-label={ui("Settings for {value0}", { value0: provider.name })}
-          >
-            <Settings2 className="icon-sharp size-3.5" />
-          </LinkButton>
-        </div>
+        // Same inset and divider as every other entity card footer, so the
+        // models link and actions line up with the body instead of the border.
+        <EntityCardFooter
+          className="min-h-12 flex-nowrap"
+          meta={
+            modelsLoading ? (
+              <Skeleton className="h-4 w-36" />
+            ) : (
+              <Link href={modelsHref} className="text-primary hover:underline">
+                {listed.length > 0
+                  ? ui("{value0} of {value1} models enabled →", {
+                      value0: enabled,
+                      value1: listed.length,
+                    })
+                  : ui("No models yet")}
+              </Link>
+            )
+          }
+          actions={
+            <div className="flex items-center gap-1.5">
+              {canEditCredential && !provider.api_key_set && (
+                <Button size="sm" onClick={() => onSetApiKey(provider)}>
+                  <Key className="icon-sharp size-3.5" />
+                  {ui("Set key")}
+                </Button>
+              )}
+              {canEditCredential && provider.api_key_set && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title={ui("Update key")}
+                  aria-label={ui("Update key for {value0}", {
+                    value0: provider.name,
+                  })}
+                  onClick={() => onSetApiKey(provider)}
+                >
+                  <Key className="icon-sharp size-3.5" />
+                </Button>
+              )}
+              {canSync && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title={ui("Sync models")}
+                  aria-label={ui("Sync models for {value0}", {
+                    value0: provider.name,
+                  })}
+                  onClick={() => onSyncModels(provider)}
+                  disabled={isSyncing}
+                >
+                  <RefreshCw className={`icon-sharp size-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+                </Button>
+              )}
+              <LinkButton
+                variant="ghost"
+                size="icon-sm"
+                href={detailHref}
+                title={ui("Provider settings")}
+                aria-label={ui("Settings for {value0}", {
+                  value0: provider.name,
+                })}
+              >
+                <Settings2 className="icon-sharp size-3.5" />
+              </LinkButton>
+            </div>
+          }
+        />
       }
     >
-      <div className="space-y-3">
-        <p className="text-sm text-foreground/75">
-          {getProviderDescription(provider.provider_type)}
-        </p>
-        <div className="space-y-1.5">
+      {/* Details sit at the bottom so their rows line up across a grid row
+          whatever the description length, including providers without one. */}
+      <div className="flex h-full flex-col gap-3">
+        {description && <p className="line-clamp-2 text-sm text-foreground/75">{description}</p>}
+        <div className="mt-auto space-y-1.5">
           <EntityCardDetail label={<span className="inline-block w-20">{ui("Services")}</span>}>
             <span className="truncate">{services.join(", ") || "—"}</span>
           </EntityCardDetail>
