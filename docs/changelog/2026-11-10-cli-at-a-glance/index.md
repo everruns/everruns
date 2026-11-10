@@ -1,6 +1,6 @@
 ---
 title: A CLI you can read at a glance
-description: docker up and k8s up now show checks, answers and live pod progress in color and end with one box holding the URL, sign-in and next command; NO_COLOR is honored.
+description: docker up and k8s up show checks, answers and live pod progress in color, then end with one box holding the URL, sign-in and next command.
 date: 2026-11-10
 kind: improvement
 significance: minor
@@ -12,7 +12,7 @@ links:
 
 Setting up Everruns with [`everruns docker up`](/getting-started/docker-compose/)
 or [`everruns k8s up`](/getting-started/kubernetes/) now reads like a checklist.
-Checks and answers get a green ✔, problems a yellow ! or red ✗ with the fix
+Checks and answers get a green ✔, warnings stand out in yellow and failures in red with the fix
 under them, and the run ends in one box with the address, how to sign in and
 the next command to type.
 
@@ -23,7 +23,7 @@ server 1/2`), so a slow rollout says what it is waiting on. The new
 `everruns k8s password` prints the generated admin password instead of a long
 `kubectl` line. Both commands also offer OpenRouter as the LLM provider.
 
-The rest of the [CLI](/features/cli/) follows suit: status pages, sign-in,
+The rest of the [CLI](/features/cli/) follows suit ([every command](/reference/cli/)): status pages, sign-in,
 `chat`, tables and errors. Color is off when output is piped, with `--no-color`
 or `--color never`, and with the usual `NO_COLOR`, `CLICOLOR=0` and
 `TERM=dumb`; `CLICOLOR_FORCE=1` keeps it on.
