@@ -189,7 +189,7 @@ impl Inner {
 /// Why a session is not here, as an error a gateway can act on.
 fn missing(state: &crate::state::CellState, session: SessionId) -> AgentLoopError {
     match state.forwarded.get(&session) {
-        Some(cell) => AgentLoopError::store(format!("{MOVED}{cell}")),
+        Some(left) => AgentLoopError::store(format!("{MOVED}{}", left.cell)),
         None => AgentLoopError::SessionNotFound(session),
     }
 }

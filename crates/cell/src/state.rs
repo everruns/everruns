@@ -102,16 +102,25 @@ pub enum Command {
         change: crate::authority::WriteOp,
         now_ms: i64,
     },
-    /// Directory: `session` lives in `cell`. Only the directory cell applies it.
-    /// `new` marks a new session's first placement, which a draining cell
-    /// refuses; a move's placement is always taken (the move has already
-    /// installed the session there, and the rebalancer moves it on).
+    /// Directory: `session` lives in `cell` at placement `generation`. Only
+    /// the directory cell applies it.
+    ///
+    /// It commits only over the entry at generation `previous` (0: none),
+    /// a compare-and-swap that is a move's ownership transfer: a late or
+    /// duplicated placement of an older move can never repoint the session
+    /// (`Moves` model in `tests/models/data-plane-v2/`). A failed swap
+    /// answers [`Response::Placement`] with the entry as it is. A new
+    /// session's first placement (`previous` 0) is refused by a draining
+    /// cell.
     Place {
         session: SessionId,
         cell: CellId,
-        #[serde(default)]
-        new: bool,
+        generation: u64,
+        previous: u64,
     },
+    /// Directory: read `session`'s entry through the log, so the answer
+    /// ([`Response::Placement`]) is current, not a replica's lagging view.
+    Locate { session: SessionId },
     /// Record `cell`'s current members in the registry (directory cell).
     /// A list, not a map: integer map keys do not survive serde's
     /// internally tagged enums.
@@ -133,25 +142,49 @@ pub enum Command {
         #[serde(default)]
         to: Option<CellId>,
     },
-    /// Undo a freeze (a move that was abandoned).
-    Thaw { session: SessionId },
-    /// Install a session moved from another cell.
+    /// Undo a freeze. With `generation`, a move that was abandoned after
+    /// it may have installed a copy elsewhere: the directory already took
+    /// the session back at that generation (above the abandoned move's), so
+    /// that copy can never be activated.
+    Thaw {
+        session: SessionId,
+        #[serde(default)]
+        generation: Option<u64>,
+    },
+    /// Install a session moved from another cell, prepared: it runs nothing
+    /// until `Activate`. Only a generation newer than any copy this cell
+    /// holds or has seen leave is taken.
     Import {
         session: SessionId,
         image: Box<SessionState>,
     },
-    /// The session now lives in `cell`; drop it here and redirect callers.
-    Forward { session: SessionId, cell: CellId },
+    /// The directory committed this cell's prepared copy at `generation`:
+    /// it may run now.
+    Activate { session: SessionId, generation: u64 },
+    /// The session now lives in `cell` at `generation`; drop the leaving
+    /// copy it was taken from (`generation - 1`) and redirect callers.
+    Forward {
+        session: SessionId,
+        cell: CellId,
+        generation: u64,
+    },
+    /// Drop a prepared copy the directory never committed: it placed the
+    /// session in `cell` at `generation` or later.
+    Drop {
+        session: SessionId,
+        cell: CellId,
+        generation: u64,
+    },
     /// Directory: shard `shard`'s entries now live in cell `to`.
     AssignShard { shard: u16, to: CellId },
     /// Stop taking directory writes for `shard`: it is being handed to
     /// `to`, and a `Place` for it is answered with `Moved { cell: to }`.
     SealShard { shard: u16, to: CellId },
-    /// Take directory entries handed over from another cell. An entry this
-    /// cell already has is newer (written after the hand-over) and stays.
+    /// Take directory entries handed over from another cell. Of an entry
+    /// this cell already has, the higher generation stays.
     Adopt {
         shard: u16,
-        entries: Vec<(SessionId, CellId)>,
+        entries: Vec<(SessionId, Placed)>,
     },
     /// Forget a sealed shard's entries once its new owner serves them.
     DropShard { shard: u16 },
@@ -234,6 +267,10 @@ pub enum Response {
     Rejected {
         reason: String,
     },
+    /// A directory entry, as `Locate` read it or a `Place` found it.
+    Placement {
+        current: Option<Placed>,
+    },
     /// An authority command's reply, as JSON.
     Value {
         value: serde_json::Value,
@@ -241,12 +278,35 @@ pub enum Response {
 }
 
 /// Lifecycle of a session within this cell.
+///
+/// Decision: an imported copy and a departing copy are different states.
+/// When they were one ("frozen"), a late duplicate activation could wake a
+/// copy that had already started leaving (TLC found it in the `Moves`
+/// model). Only a prepared copy can be activated.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Placement {
     #[default]
     Live,
+    /// Leaving for another cell: no new turns or input.
     Frozen,
+    /// Imported, waiting for the directory to commit its generation.
+    Prepared,
+}
+
+/// A directory entry: the session's cell and placement generation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Placed {
+    pub cell: CellId,
+    pub generation: u64,
+}
+
+/// A session that left this cell: where it went, and the highest
+/// generation that left (its tombstone: an import at or below it is late).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Left {
+    pub cell: CellId,
+    pub generation: u64,
 }
 
 /// One session: its canonical log, inbox and current turn.
@@ -282,6 +342,10 @@ pub struct SessionState {
     #[serde(default)]
     pub authority: crate::authority::Authority,
     pub placement: Placement,
+    /// Placement generation of this copy. It only grows: every move takes
+    /// the next one, an abandoned move the one after.
+    #[serde(default)]
+    pub generation: u64,
     /// The cell this session is being moved to, while frozen for a move.
     #[serde(default)]
     pub moving_to: Option<CellId>,
@@ -430,10 +494,12 @@ pub struct CellState {
     pub last_applied: Option<LogId<NodeId>>,
     pub membership: StoredMembership<NodeId, BasicNode>,
     pub sessions: HashMap<SessionId, SessionState>,
-    /// Sessions this cell handed to another cell.
-    pub forwarded: HashMap<SessionId, CellId>,
+    /// Sessions this cell handed to another cell, or dropped a stale copy
+    /// of. A copy that comes back removes its entry: that copy's
+    /// generation is above it.
+    pub forwarded: HashMap<SessionId, Left>,
     /// Directory entries; populated only in the directory cell.
-    pub directory: HashMap<SessionId, CellId>,
+    pub directory: HashMap<SessionId, Placed>,
     /// Cell registry: each cell's members as its leader last reported them.
     /// Populated only in the directory cell; gateways read the fleet's
     /// topology from it, so a cell joins by registering.
@@ -611,8 +677,11 @@ impl CellState {
             Command::Adopt { shard, entries } => {
                 // The shard is back here (or here for the first time).
                 self.sealed.remove(&shard);
-                for (session, cell) in entries {
-                    self.directory.entry(session).or_insert(cell);
+                for (session, placed) in entries {
+                    let entry = self.directory.entry(session).or_insert(placed);
+                    if placed.generation > entry.generation {
+                        *entry = placed;
+                    }
                 }
                 Response::Ok
             }
@@ -709,8 +778,8 @@ impl CellState {
             } => {
                 use everruns::hosting::spi::session_commands::SessionCommand;
                 let create = matches!(command, SessionCommand::Create { .. });
-                if let Some(cell) = self.forwarded.get(&session) {
-                    return Response::Moved { cell: *cell };
+                if let Some(left) = self.forwarded.get(&session) {
+                    return Response::Moved { cell: left.cell };
                 }
                 let fresh = create && !self.sessions.contains_key(&session);
                 if fresh {
@@ -721,6 +790,7 @@ impl CellState {
                             agent: definition["name"].as_str().unwrap_or_default().to_string(),
                             definition: definitions::intern(definition),
                             created_ms: now_ms,
+                            generation: 1,
                             ..SessionState::default()
                         },
                     );
@@ -728,7 +798,7 @@ impl CellState {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
-                if state.placement == Placement::Frozen && !create {
+                if state.placement != Placement::Live && !create {
                     return Response::Frozen;
                 }
                 match state.command(session, command, now_ms, seed) {
@@ -757,7 +827,7 @@ impl CellState {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
-                if state.placement == Placement::Frozen {
+                if state.placement != Placement::Live {
                     return Response::Frozen;
                 }
                 let value = state.claim(&holder, node, ttl_ms, now_ms);
@@ -844,21 +914,40 @@ impl CellState {
                 changes.push(Change::Session(session));
                 Self::applied(session, applied, changes)
             }
-            Command::Place { session, cell, new } => {
+            Command::Locate { session } => {
                 if let Some(to) = self.sealed.get(&shard_of(session)) {
                     return Response::Moved { cell: *to };
                 }
-                if self.directory.get(&session) == Some(&cell) {
+                Response::Placement {
+                    current: self.directory.get(&session).copied(),
+                }
+            }
+            Command::Place {
+                session,
+                cell,
+                generation,
+                previous,
+            } => {
+                if let Some(to) = self.sealed.get(&shard_of(session)) {
+                    return Response::Moved { cell: *to };
+                }
+                let placed = Placed { cell, generation };
+                let current = self.directory.get(&session).copied();
+                if current == Some(placed) {
                     return Response::Duplicate;
                 }
+                if generation <= previous || current.map_or(0, |p| p.generation) != previous {
+                    return Response::Placement { current };
+                }
                 // A gateway placing from a view a second old must not put a
-                // session in a cell that is being emptied.
-                if new && (self.draining.contains(&cell) || self.retired.contains(&cell)) {
+                // new session in a cell that is being emptied.
+                if previous == 0 && (self.draining.contains(&cell) || self.retired.contains(&cell))
+                {
                     return Response::Rejected {
                         reason: format!("cell {cell} is draining"),
                     };
                 }
-                self.directory.insert(session, cell);
+                self.directory.insert(session, placed);
                 Response::Ok
             }
             Command::RegisterCell { cell, members } => {
@@ -903,7 +992,7 @@ impl CellState {
                 // only the cell does; whoever retires it checks that it is
                 // empty first (the gateway does). A placement still naming
                 // it is dropped here so lookups fail fast, not into a void.
-                self.directory.retain(|_, c| *c != cell);
+                self.directory.retain(|_, p| p.cell != cell);
                 self.draining.remove(&cell);
                 self.cells.remove(&cell);
                 self.retired.insert(cell);
@@ -913,35 +1002,138 @@ impl CellState {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
+                // Only the copy the directory committed moves on.
+                if state.placement == Placement::Prepared {
+                    return Response::Frozen;
+                }
                 state.placement = Placement::Frozen;
                 state.moving_to = to;
                 changes.push(Change::Session(session));
                 Response::Ok
             }
-            Command::Thaw { session } => {
+            Command::Thaw {
+                session,
+                generation,
+            } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
+                if state.placement != Placement::Frozen {
+                    return Response::Duplicate;
+                }
+                if let Some(generation) = generation {
+                    if generation <= state.generation {
+                        return Response::Rejected {
+                            reason: format!("thaw at stale generation {generation}"),
+                        };
+                    }
+                    state.generation = generation;
+                }
                 state.placement = Placement::Live;
                 state.moving_to = None;
                 changes.push(Change::Session(session));
                 Response::Ok
             }
             Command::Import { session, image } => {
-                if self.sessions.contains_key(&session) {
+                let generation = image.generation;
+                let held = self.sessions.get(&session).map(|s| s.generation);
+                if held == Some(generation) {
                     return Response::Duplicate;
+                }
+                let left = self.forwarded.get(&session).map_or(0, |l| l.generation);
+                if generation <= held.unwrap_or(0).max(left) {
+                    return Response::Rejected {
+                        reason: format!("import at stale generation {generation}"),
+                    };
                 }
                 self.forwarded.remove(&session);
                 let mut image = *image;
-                image.placement = Placement::Live;
+                image.placement = Placement::Prepared;
                 image.moving_to = None;
                 self.sessions.insert(session, image);
                 changes.push(Change::Session(session));
                 Response::Ok
             }
-            Command::Forward { session, cell } => {
+            Command::Activate {
+                session,
+                generation,
+            } => {
+                let Some(state) = self.session_mut(session) else {
+                    return self.missing(session);
+                };
+                match (state.placement, state.generation == generation) {
+                    (Placement::Prepared, true) => {
+                        state.placement = Placement::Live;
+                        changes.push(Change::Session(session));
+                        Response::Ok
+                    }
+                    // Already activated, and possibly leaving again since.
+                    (_, true) => Response::Duplicate,
+                    _ => Response::Rejected {
+                        reason: format!("no prepared copy at generation {generation}"),
+                    },
+                }
+            }
+            Command::Forward {
+                session,
+                cell,
+                generation,
+            } => {
+                match self.sessions.get(&session) {
+                    Some(s)
+                        if s.placement == Placement::Frozen && s.generation + 1 == generation => {}
+                    Some(_) => {
+                        return Response::Rejected {
+                            reason: format!("no leaving copy for generation {generation}"),
+                        };
+                    }
+                    None => {
+                        return match self.forwarded.get(&session) {
+                            Some(left) if left.generation + 1 >= generation => Response::Duplicate,
+                            _ => Response::NotFound,
+                        };
+                    }
+                }
                 self.sessions.remove(&session);
-                self.forwarded.insert(session, cell);
+                self.forwarded.insert(
+                    session,
+                    Left {
+                        cell,
+                        generation: generation - 1,
+                    },
+                );
+                changes.push(Change::Session(session));
+                Response::Ok
+            }
+            Command::Drop {
+                session,
+                cell,
+                generation,
+            } => {
+                match self.sessions.get(&session) {
+                    Some(s) if s.placement == Placement::Prepared && s.generation <= generation => {
+                    }
+                    Some(_) => {
+                        return Response::Rejected {
+                            reason: "not a stale prepared copy".into(),
+                        };
+                    }
+                    None => {
+                        return match self.forwarded.contains_key(&session) {
+                            true => Response::Duplicate,
+                            false => Response::NotFound,
+                        };
+                    }
+                }
+                if let Some(s) = self.sessions.remove(&session) {
+                    self.forwarded.insert(
+                        session,
+                        Left {
+                            cell,
+                            generation: s.generation,
+                        },
+                    );
+                }
                 changes.push(Change::Session(session));
                 Response::Ok
             }
@@ -973,7 +1165,7 @@ impl CellState {
 
     fn missing(&self, session: SessionId) -> Response {
         match self.forwarded.get(&session) {
-            Some(cell) => Response::Moved { cell: *cell },
+            Some(left) => Response::Moved { cell: left.cell },
             None => Response::NotFound,
         }
     }
@@ -1151,3 +1343,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "state_moves_tests.rs"]
+mod moves_tests;

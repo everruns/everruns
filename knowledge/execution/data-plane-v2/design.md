@@ -1075,6 +1075,16 @@ the storage decision below requires. What it checks and what it found:
   writes each, 5 to 13 kills and 4 to 10 terms per seed: every
   acknowledged write is on every node, the nodes agree, nothing unwritten
   appears, and no term has two leaders.
+- **Placement generations** (`crates/cell/src/state.rs`,
+  `state_moves_tests.rs`): moves now follow the `Moves` model. A session's
+  copy carries a generation that only grows; an imported copy is prepared
+  and runs nothing until the directory commits its generation over the
+  previous one (a compare-and-swap that is the ownership transfer); a cell
+  keeps a tombstone of the last generation that left it, so a late import
+  can't revive a stale copy; a forward drops only the copy it took the
+  image from; an abandoned move takes the session back two generations up,
+  and a prepared copy the directory never committed is dropped. The kill
+  run with 300 sessions, 12 kills (7 of a leader) and 48 live moves passes.
 - **Epochs and fencing model** (`Epochs` in [models.md](models.md)): the
   cell authority's claim, append, progress and release rules, with
   executors restarting under the same name, late and duplicated messages,
@@ -1085,8 +1095,7 @@ the storage decision below requires. What it checks and what it found:
 
 Still open in step 5: exact-replay simulation of the whole node (a
 simulated runtime, so a seed replays bit for bit, with crash points inside
-moves and epochs), placement generations, spend allowances and log
-shipping.
+moves and epochs), spend allowances and log shipping.
 
 ### Corrections after the architecture review (2026-11-09)
 

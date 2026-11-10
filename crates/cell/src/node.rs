@@ -20,9 +20,13 @@ use crate::host::Host;
 use crate::metrics::Metrics;
 use crate::network::Network;
 use crate::sm::{Shared, StateMachine};
-use crate::state::{CellId, Change, Command, Response};
+use crate::state::{CellId, Change, Command, Placed, Response};
 use crate::types::{NodeId, Raft};
 use crate::wal::Wal;
+
+/// How long a prepared copy waits for its source's move before asking the
+/// directory itself.
+const PREPARED_GRACE: Duration = Duration::from_secs(2);
 
 /// How a node is started.
 #[derive(Debug, Clone)]
@@ -918,6 +922,11 @@ impl Node {
             let Some(s) = state.sessions.get(&session) else {
                 return;
             };
+            if s.placement == crate::state::Placement::Prepared {
+                drop(state);
+                self.settle_prepared(session);
+                return;
+            }
             if s.placement != crate::state::Placement::Frozen {
                 return;
             }
@@ -944,9 +953,19 @@ impl Node {
         });
     }
 
+    /// The move protocol, after the `Moves` model: the source (leaving at
+    /// generation `g`) installs a prepared copy at `g + 1` in the target,
+    /// the directory commits `g + 1` over `g` (the ownership transfer), the
+    /// target activates its copy, and the source forwards. A target that
+    /// refuses the copy abandons the move: the directory takes the session
+    /// back here at `g + 2`, above anything the move may have installed.
     async fn finish_move(&self, session: SessionId, to: CellId) -> anyhow::Result<()> {
         if to == self.cfg.cell {
-            self.propose(Command::Thaw { session }).await?;
+            self.propose(Command::Thaw {
+                session,
+                generation: None,
+            })
+            .await?;
             return Ok(());
         }
         let gateway = self
@@ -958,7 +977,10 @@ impl Node {
         let Some(image) = self.shared.image(session, 0, true).await else {
             return Ok(()); // already forwarded
         };
-        let image = image?;
+        let mut image = image?;
+        let leaving = image.generation;
+        let generation = leaving + 1;
+        image.generation = generation;
         let imported = gateway
             .propose(
                 to,
@@ -969,18 +991,127 @@ impl Node {
             )
             .await
             .map_err(|(status, error)| anyhow::anyhow!("import: {status} {error}"))?;
-        if !matches!(imported, Response::Ok | Response::Duplicate) {
-            anyhow::bail!("import refused: {imported:?}");
-        }
+        let (cell, target) = match imported {
+            Response::Ok | Response::Duplicate => (to, generation),
+            Response::Rejected { reason } => {
+                tracing::warn!(%session, to, %reason, "target refused the session; abandoning the move");
+                (self.cfg.cell, leaving + 2)
+            }
+            other => anyhow::bail!("import refused: {other:?}"),
+        };
         let placed = gateway
-            .place_entry(session, to, false)
+            .place_entry(session, cell, target, leaving)
             .await
             .map_err(|(status, error)| anyhow::anyhow!("place: {status} {error}"))?;
-        if !matches!(placed, Response::Ok | Response::Duplicate) {
-            anyhow::bail!("place refused: {placed:?}");
+        let current = match placed {
+            Response::Ok | Response::Duplicate => Placed {
+                cell,
+                generation: target,
+            },
+            // Another try of this move (an earlier leader's, or one to a
+            // different target) already committed: finish that one.
+            Response::Placement {
+                current: Some(current),
+            } if current.generation > leaving => current,
+            other => anyhow::bail!("place refused: {other:?}"),
+        };
+        self.settle_move(session, leaving, current).await
+    }
+
+    /// Finish the move the directory committed: `current` is the entry
+    /// above `leaving`, this cell's departing copy.
+    async fn settle_move(
+        &self,
+        session: SessionId,
+        leaving: u64,
+        current: Placed,
+    ) -> anyhow::Result<()> {
+        if current.cell == self.cfg.cell {
+            self.propose(Command::Thaw {
+                session,
+                generation: Some(current.generation),
+            })
+            .await?;
+            tracing::info!(%session, "move abandoned; session stays");
+            return Ok(());
         }
-        self.propose(Command::Forward { session, cell: to }).await?;
-        tracing::info!(%session, to, "session moved");
+        let gateway = self
+            .gateway
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("no gateway to reach cell {}", current.cell))?;
+        if current.generation == leaving + 1 {
+            let activated = gateway
+                .propose(
+                    current.cell,
+                    &Command::Activate {
+                        session,
+                        generation: current.generation,
+                    },
+                )
+                .await
+                .map_err(|(status, error)| anyhow::anyhow!("activate: {status} {error}"))?;
+            if !matches!(activated, Response::Ok | Response::Duplicate) {
+                anyhow::bail!("activate refused: {activated:?}");
+            }
+        }
+        self.propose(Command::Forward {
+            session,
+            cell: current.cell,
+            generation: leaving + 1,
+        })
+        .await?;
+        tracing::info!(%session, to = current.cell, "session moved");
+        Ok(())
+    }
+
+    /// A prepared copy whose move stalled (its source died after the
+    /// directory committed, or the move was abandoned): ask the directory.
+    /// Committed here: activate it. Placed elsewhere at its generation or
+    /// later: drop it. Neither yet: the move is still running.
+    fn settle_prepared(self: &Arc<Self>, session: SessionId) {
+        if !self.moving.lock().insert(session) {
+            return;
+        }
+        let node = self.clone();
+        tokio::spawn(async move {
+            // Give the source's own move the first chance.
+            tokio::time::sleep(PREPARED_GRACE).await;
+            if let Err(error) = node.settle_prepared_now(session).await {
+                tracing::warn!(%session, %error, "prepared copy not settled; retrying");
+            }
+            node.moving.lock().remove(&session);
+        });
+    }
+
+    async fn settle_prepared_now(&self, session: SessionId) -> anyhow::Result<()> {
+        let generation = {
+            let state = self.shared.state.read();
+            match state.sessions.get(&session) {
+                Some(s) if s.placement == crate::state::Placement::Prepared => s.generation,
+                _ => return Ok(()),
+            }
+        };
+        let gateway = self
+            .gateway
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("no gateway to reach the directory"))?;
+        let current = gateway
+            .placement(session)
+            .await
+            .map_err(|(status, error)| anyhow::anyhow!("locate: {status} {error}"))?;
+        let command = match current {
+            Some(p) if p.cell == self.cfg.cell && p.generation == generation => Command::Activate {
+                session,
+                generation,
+            },
+            Some(p) if p.cell != self.cfg.cell && p.generation >= generation => Command::Drop {
+                session,
+                cell: p.cell,
+                generation: p.generation,
+            },
+            _ => return Ok(()),
+        };
+        self.propose(command).await?;
         Ok(())
     }
 

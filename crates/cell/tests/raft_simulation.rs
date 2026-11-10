@@ -287,7 +287,7 @@ impl Cell {
     fn directory(&self, node: NodeId) -> HashMap<SessionId, u32> {
         let shared = self.shared.lock().get(&node).cloned().unwrap();
         let state = shared.state.read();
-        state.directory.iter().map(|(k, v)| (*k, *v)).collect()
+        state.directory.iter().map(|(k, v)| (*k, v.cell)).collect()
     }
 }
 
@@ -354,7 +354,8 @@ async fn run(seed: u64) {
             let command = Command::Place {
                 session,
                 cell: target,
-                new: false,
+                generation: 1,
+                previous: 0,
             };
             if let Some(outcome) = cell.write(command, &mut rng).await {
                 if outcome {
@@ -383,7 +384,8 @@ async fn run(seed: u64) {
                 Command::Place {
                     session: SessionId::new(),
                     cell: 99,
-                    new: false,
+                    generation: 1,
+                    previous: 0,
                 },
                 &mut rng,
             )

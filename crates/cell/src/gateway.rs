@@ -31,7 +31,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::api::{CellReply, Lookup, SessionView, Stats, sse_event};
 use crate::cluster::TopologySource;
 use crate::node::Proposed;
-use crate::state::{CellId, Command, Response};
+use crate::state::{CellId, Command, Placed, Response};
 
 type ApiError = (StatusCode, String);
 
@@ -310,18 +310,45 @@ impl Gateway {
         }
     }
 
-    /// Record that `session` lives in `cell`, in the cell holding its
-    /// directory shard (following a shard that is being handed over).
+    /// Record that `session` lives in `cell` at `generation`, over the
+    /// entry at `previous` (see `Command::Place`).
     pub async fn place_entry(
         &self,
         session: SessionId,
         cell: CellId,
-        new: bool,
+        generation: u64,
+        previous: u64,
+    ) -> Result<Response, ApiError> {
+        let command = Command::Place {
+            session,
+            cell,
+            generation,
+            previous,
+        };
+        self.directory_command(session, &command).await
+    }
+
+    /// `session`'s directory entry, read through the log.
+    pub async fn placement(&self, session: SessionId) -> Result<Option<Placed>, ApiError> {
+        match self
+            .directory_command(session, &Command::Locate { session })
+            .await?
+        {
+            Response::Placement { current } => Ok(current),
+            other => Err(unavailable(format!("locate: {other:?}"))),
+        }
+    }
+
+    /// Propose `command` to the cell holding `session`'s directory shard,
+    /// following a shard that is being handed over.
+    async fn directory_command(
+        &self,
+        session: SessionId,
+        command: &Command,
     ) -> Result<Response, ApiError> {
         let mut owner = self.directory_of(session)?;
-        let command = Command::Place { session, cell, new };
         for _ in 0..5 {
-            match self.propose(owner, &command).await? {
+            match self.propose(owner, command).await? {
                 Response::Moved { cell: next } => owner = next,
                 other => return Ok(other),
             }
@@ -354,7 +381,7 @@ impl Gateway {
                     .timeout(Duration::from_secs(5))
                     .send()
                     .await
-                    && let Ok(Some(cell)) = response.json::<Option<CellId>>().await
+                    && let Ok(Some(Placed { cell, .. })) = response.json::<Option<Placed>>().await
                 {
                     self.cache.lock().insert(session, cell);
                     return Ok(cell);
@@ -430,15 +457,23 @@ impl Gateway {
         // Place first: a session the directory cannot find is unreachable,
         // and an orphan placement costs nothing. A cell that started
         // draining since the last registry refresh refuses; pick another.
-        let requested = known.or(cell);
+        // A known session is already placed.
+        let requested = cell;
         let cell = loop {
+            if let Some(cell) = known {
+                break cell;
+            }
             if cells.is_empty() {
                 return Err(unavailable("no cell takes new sessions"));
             }
             let cell = requested.unwrap_or_else(|| self.place(&cells));
-            let placed = self.place_entry(session, cell, known.is_none()).await?;
+            let placed = self.place_entry(session, cell, 1, 0).await?;
             match placed {
                 Response::Ok | Response::Duplicate => break cell,
+                // Placed before (a retry the lookup missed): it stays there.
+                Response::Placement {
+                    current: Some(Placed { cell, .. }),
+                } => break cell,
                 other if requested.is_some() || cells.len() < 2 => {
                     return Err((StatusCode::CONFLICT, format!("{other:?}")));
                 }

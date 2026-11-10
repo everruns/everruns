@@ -575,7 +575,7 @@ pub enum Lookup<T> {
 async fn directory(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
-) -> Result<Json<Option<CellId>>, (StatusCode, String)> {
+) -> Result<Json<Option<crate::state::Placed>>, (StatusCode, String)> {
     let session = parse(&session)?;
     Ok(Json(
         node.shared.state.read().directory.get(&session).copied(),
@@ -606,14 +606,14 @@ async fn handoff_shard(
         .await
         .map_err(|e| error(e.to_string()))?;
     node.shared.wait_applied(index).await;
-    let entries: Vec<(SessionId, CellId)> = node
+    let entries: Vec<(SessionId, crate::state::Placed)> = node
         .shared
         .state
         .read()
         .directory
         .iter()
         .filter(|(session, _)| crate::state::shard_of(**session) == shard)
-        .map(|(session, cell)| (*session, *cell))
+        .map(|(session, placed)| (*session, *placed))
         .collect();
     let n = entries.len();
     // At least one Adopt, so the new owner takes the shard even when empty.
@@ -665,7 +665,7 @@ fn lookup<T>(node: &Node, session: SessionId, f: impl FnOnce(&SessionState) -> T
     match state.sessions.get(&session) {
         Some(s) => Lookup::Here(f(s)),
         None => match state.forwarded.get(&session) {
-            Some(cell) => Lookup::Moved { cell: *cell },
+            Some(left) => Lookup::Moved { cell: left.cell },
             None => Lookup::Missing,
         },
     }
@@ -957,7 +957,7 @@ async fn send_message(
             let reply = match lookup(&node, id, |s| s.placement) {
                 Lookup::Moved { cell } => CellReply::Moved { cell },
                 Lookup::Missing => CellReply::NotFound,
-                Lookup::Here(Placement::Frozen) => CellReply::Frozen,
+                Lookup::Here(Placement::Frozen | Placement::Prepared) => CellReply::Frozen,
                 Lookup::Here(_) => reply_of(error),
             };
             return Ok(Json(reply));

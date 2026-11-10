@@ -483,6 +483,7 @@ fn stub(s: &SessionState) -> SessionState {
         events: Vec::new(),
         authority: s.authority.clone(),
         placement: s.placement,
+        generation: s.generation,
         moving_to: s.moving_to,
         turn_start: s.turn_start,
         checkpoints: s.checkpoints.clone(),
