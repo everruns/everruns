@@ -135,6 +135,9 @@ pub struct Stats {
     /// Raft log held in memory (not yet purged by a snapshot).
     #[serde(default)]
     pub wal_held_mb: u64,
+    /// Feed records the control plane has not acknowledged yet.
+    #[serde(default)]
+    pub feed_pending: usize,
     pub metrics: crate::metrics::MetricsReport,
 }
 
@@ -179,6 +182,7 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
         rss_mb: rss_mb(),
         wal: node.wal.stats(),
         wal_held_mb: node.wal.held_bytes() >> 20,
+        feed_pending: node.shared.state.read().feed.records.len(),
         metrics: node.metrics.report(),
     })
 }

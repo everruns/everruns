@@ -39,6 +39,7 @@ async fn cell_on(addr: String) -> (Arc<Node>, tempfile::TempDir) {
         snapshot_every: 100_000,
         keep_log: 256,
         executors: Default::default(),
+        control_plane: None,
     };
     let node = Node::start(cfg, Arc::new(everruns_cell::StandardHost::new()))
         .await

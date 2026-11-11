@@ -34,10 +34,11 @@
 //! the same check: a second reservation for a session that holds one keeps
 //! the one it has instead of doubling it.
 //!
-//! Not here yet (plan step 7, the control plane contract): the per-call
-//! maximum is the grant's `per_call_micros`, not the model's price times
-//! the prompt and `max_tokens`; grants arrive through the cell API, not the
-//! control plane's allowance endpoint.
+//! Grants arrive from the control plane's allowance endpoint (the leader's
+//! control loop, `node_control.rs`), or through the cell API in tests that
+//! run without one. Not here yet (plan step 7): the per-call maximum is the
+//! grant's `per_call_micros`, not the model's price times the prompt and
+//! `max_tokens`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -56,6 +57,16 @@ pub struct Allowance {
     pub grants: BTreeMap<String, Grant>,
     /// Open reservations, by session: the grant and the amount.
     pub reserved: HashMap<SessionId, Reservation>,
+    /// Allowance requests the control plane answered for this tenant: the
+    /// next request's number, so a new leader resends an unanswered one
+    /// under the same id.
+    #[serde(default)]
+    pub requests: u64,
+    /// The control plane's last answer granted nothing, for this reason
+    /// (`budget_exhausted`, `suspended`, ...): turns run and end exhausted
+    /// instead of waiting for money.
+    #[serde(default)]
+    pub refused: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -150,6 +161,67 @@ impl Allowances {
 }
 
 impl Allowance {
+    /// What the unexpired grants can still reserve.
+    pub fn spendable(&self, now_ms: i64) -> i64 {
+        self.grants
+            .iter()
+            .filter(|(_, g)| g.spend_until_ms > now_ms)
+            .map(|(id, g)| self.available(id, g).max(0))
+            .sum()
+    }
+
+    /// What each grant used and holds, for the next allowance request. A
+    /// grant is closed once it expired and holds no reservation: nothing
+    /// more will be charged to it.
+    pub fn settlements(&self, now_ms: i64) -> Vec<crate::dp::GrantSettlement> {
+        self.grants
+            .iter()
+            .map(|(id, g)| {
+                let held = self.held(id);
+                crate::dp::GrantSettlement {
+                    grant_id: id.clone(),
+                    used_micros: g.used_micros,
+                    reserved_micros: held,
+                    closed: g.spend_until_ms <= now_ms && held == 0,
+                }
+            })
+            .collect()
+    }
+
+    /// The control plane answered request `request`: take its grant (if
+    /// any) and forget the grants that request reported closed. `false`:
+    /// that request was answered already.
+    pub fn answered(
+        &mut self,
+        request: u64,
+        grant: Option<(String, Grant)>,
+        refused: Option<String>,
+        closed: &[String],
+    ) -> bool {
+        if request != self.requests {
+            return false;
+        }
+        self.requests += 1;
+        for id in closed {
+            if self.held(id) == 0 {
+                self.grants.remove(id);
+            }
+        }
+        if let Some((id, grant)) = grant {
+            self.grants.entry(id).or_insert(grant);
+        }
+        self.refused = refused;
+        true
+    }
+
+    fn held(&self, id: &str) -> i64 {
+        self.reserved
+            .values()
+            .filter(|r| r.grant == id)
+            .map(|r| r.micros)
+            .sum()
+    }
+
     /// What grant `id` can still reserve.
     fn available(&self, id: &str, grant: &Grant) -> i64 {
         let held: i64 = self

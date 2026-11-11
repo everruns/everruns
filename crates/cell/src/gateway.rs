@@ -691,7 +691,8 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
             axum::routing::delete(remove_node),
         )
         .layer(axum::extract::DefaultBodyLimit::max(max_request_bytes()))
-        .with_state(gateway)
+        .with_state(gateway.clone())
+        .merge(crate::gateway_dp::router(gateway))
 }
 
 /// The largest request body the gateway takes (`CELL_MAX_REQUEST_MB`,
@@ -736,7 +737,15 @@ async fn cancel(
 #[derive(Deserialize)]
 struct CreateBody {
     /// The agent's definition: an Everruns agent package manifest.
-    agent: Value,
+    #[serde(default)]
+    agent: Option<Value>,
+    /// Instead of `agent`: an agent of `org` by id, at its current
+    /// revision from the control plane's config (see `gateway_dp`). The
+    /// session is billed to the org.
+    #[serde(default)]
+    org: Option<String>,
+    #[serde(default)]
+    agent_ref: Option<String>,
     #[serde(default)]
     cell: Option<CellId>,
     #[serde(default)]
@@ -750,11 +759,24 @@ async fn create(
     State(gateway): State<Arc<Gateway>>,
     Json(body): Json<CreateBody>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let (definition, tenant) = match (body.agent, body.org, body.agent_ref) {
+        (Some(agent), _, None) => (agent, body.tenant),
+        (None, Some(org), Some(agent)) => {
+            let revision = gateway.agent_revision(&org, &agent).await?;
+            (revision.package, Some(body.tenant.unwrap_or(org)))
+        }
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "give `agent`, or `org` and `agent_ref`".into(),
+            ));
+        }
+    };
     Ok((
         StatusCode::CREATED,
         Json(
             gateway
-                .create(body.agent, body.cell, body.id, body.tenant)
+                .create(definition, body.cell, body.id, tenant)
                 .await?,
         ),
     ))

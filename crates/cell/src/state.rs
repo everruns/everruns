@@ -58,6 +58,27 @@ pub enum Command {
         grant_id: String,
         grant: crate::allowance::Grant,
     },
+    /// The control plane answered allowance request `request` of `tenant`
+    /// (see `node_control.rs`): its grant, if any, and the grants that
+    /// request settled as closed.
+    Allowance {
+        tenant: String,
+        request: u64,
+        #[serde(default)]
+        grant: Option<(String, crate::allowance::Grant)>,
+        #[serde(default)]
+        refused: Option<String>,
+        #[serde(default)]
+        closed: Vec<String>,
+    },
+    /// A control plane config update for `org` (directory cell).
+    Config {
+        org: String,
+        update: crate::dp::ConfigUpdate,
+        now_ms: i64,
+    },
+    /// The control plane stored the feed through `(index, ordinal)`.
+    FeedAcked { through: (u64, u32) },
     /// Reserve `session`'s next provider call; the reply is the Engine's
     /// budget reading.
     Reserve { session: SessionId, now_ms: i64 },
@@ -571,6 +592,12 @@ pub struct CellState {
     /// Spend allowances, per tenant.
     #[serde(default)]
     pub allowances: crate::allowance::Allowances,
+    /// Each org's control plane config (directory cell only).
+    #[serde(default)]
+    pub orgs: crate::control::Orgs,
+    /// Feed records the control plane has not acknowledged yet.
+    #[serde(default)]
+    pub feed: crate::control::Feed,
     /// Commands arriving in pieces, by id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub parts: std::collections::BTreeMap<uuid::Uuid, Assembly>,
@@ -915,6 +942,45 @@ impl CellState {
                     Response::Duplicate
                 }
             }
+            Command::Allowance {
+                tenant,
+                request,
+                grant,
+                refused,
+                closed,
+            } => {
+                let allowance = self.allowances.tenants.entry(tenant).or_default();
+                if allowance.answered(request, grant, refused, &closed) {
+                    Response::Ok
+                } else {
+                    Response::Duplicate
+                }
+            }
+            Command::Config {
+                org,
+                update,
+                now_ms,
+            } => {
+                let ack = self.orgs.apply(&org, &update);
+                if let crate::dp::ConfigAck::Ok { applied_version } = ack {
+                    let index = self.last_applied.map_or(0, |l| l.index);
+                    self.feed.push(
+                        index,
+                        &org,
+                        now_ms,
+                        crate::dp::Record::ConfigApplied {
+                            version: applied_version,
+                        },
+                    );
+                }
+                Response::Value {
+                    value: serde_json::to_value(ack).unwrap_or_default(),
+                }
+            }
+            Command::FeedAcked { through } => {
+                self.feed.ack(through);
+                Response::Ok
+            }
             Command::Reserve { session, now_ms } => {
                 let Some(state) = self.sessions.get(&session) else {
                     return self.missing(session);
@@ -1001,10 +1067,15 @@ impl CellState {
                 change,
                 now_ms,
             } => {
-                let Some(state) = self.session_mut(session) else {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                let Some(state) = self.sessions.get_mut(&session) else {
                     return self.missing(session);
                 };
+                let before = state.turns_completed();
                 let applied = state.write(fence, change, now_ms);
+                if state.turns_completed() > before {
+                    self.feed.turn_finished(index, &session.to_string(), state);
+                }
                 changes.push(Change::Session(session));
                 self.applied(session, applied, changes)
             }
@@ -1307,10 +1378,14 @@ impl CellState {
         use crate::authority::Applied;
         match applied {
             Applied::Done(value, events) => {
+                let index = self.last_applied.map_or(0, |l| l.index);
                 for event in &events {
                     if let Some(micros) = generation_cost_micros(event) {
                         let tenant = self.sessions.get(&session).and_then(|s| s.tenant.clone());
                         self.allowances.settle(tenant.as_deref(), session, micros);
+                    }
+                    if let Some(s) = self.sessions.get(&session) {
+                        self.feed.observe(index, &session.to_string(), s, event);
                     }
                 }
                 for event in events {

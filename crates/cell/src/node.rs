@@ -54,6 +54,9 @@ pub struct NodeConfig {
     pub keep_log: u64,
     /// Who runs the cell's turns.
     pub executors: ExecutorMode,
+    /// The control plane this cell reports to and asks for allowances
+    /// (`None`: grants come through the cell API).
+    pub control_plane: Option<crate::node_control::ControlPlane>,
 }
 
 /// Who runs a cell's turns.
@@ -162,6 +165,7 @@ pub struct Node {
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
     /// Credits from executors outside the cell (`ExecutorMode::Pull`).
     pub dispatch: crate::dispatch::Dispatch,
+    pub(crate) control: crate::node_control::ControlLink,
 }
 
 impl Node {
@@ -244,6 +248,7 @@ impl Node {
                 shipper: crate::ship::Shipper::new(shared_store, cfg.cell, ship_wal),
                 members: parking_lot::RwLock::new(cfg.members.clone()),
                 dispatch: Default::default(),
+                control: Default::default(),
                 cfg,
             }
         });
@@ -290,6 +295,7 @@ impl Node {
         tokio::spawn(self.clone().unload_loop());
         tokio::spawn(self.clone().register_loop());
         tokio::spawn(self.clone().rebalance_loop());
+        tokio::spawn(self.clone().control_loop());
     }
 
     /// While this node leads: ship the committed log to the object store
@@ -1210,6 +1216,9 @@ impl Node {
             }
             if !a.owed(now) || a.binding.is_none() {
                 return;
+            }
+            if !self.allowance_ready(&state, s, now) {
+                return; // the control loop is asking for its tenant's money
             }
             if self
                 .dispatched

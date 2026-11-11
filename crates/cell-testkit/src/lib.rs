@@ -8,6 +8,8 @@
 //! models here exist only so failure and scale tests are deterministic and
 //! free.
 
+pub mod fake_cp;
+
 use std::io::Write;
 use std::time::Duration;
 

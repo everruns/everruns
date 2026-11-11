@@ -3953,6 +3953,8 @@ version = "0.51.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
+ "chrono",
  "clap",
  "everruns",
  "everruns-cell",
@@ -3961,6 +3963,7 @@ dependencies = [
  "everruns-llmsim",
  "futures",
  "mimalloc",
+ "parking_lot",
  "rand 0.10.3",
  "reqwest",
  "serde",

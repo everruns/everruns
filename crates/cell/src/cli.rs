@@ -77,6 +77,10 @@ enum Mode {
         /// turns themselves).
         #[arg(long, env = "CELL_EXECUTOR_CAP", default_value = "0")]
         executor_cap: usize,
+        /// The control plane's `/dp/v1` base URL: the leader delivers the
+        /// feed there and asks it for spend allowances.
+        #[arg(long, env = "CELL_CONTROL_PLANE")]
+        control_plane: Option<String>,
     },
     /// Run an executor: pull turns from every cell and run them.
     Executor {
@@ -138,6 +142,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             join,
             listen,
             executor_cap,
+            control_plane,
         } => {
             let source = TopologySource { path: topology };
             let seeded = source.read()?.cells.get(&cell).cloned();
@@ -168,6 +173,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                         max_running: executor_cap,
                     }
                 },
+                control_plane: control_plane.map(crate::node_control::ControlPlane::new),
             };
             serve_node(cfg, host, source, addr.parse()?, join).await
         }
@@ -215,6 +221,7 @@ pub async fn serve_node(
     let _ = node.gateway.set(gateway.clone());
     let app = crate::api::router(node.clone())
         .merge(crate::exec_api::router(node.clone()))
+        .merge(crate::gateway_dp::cell_router(node.clone()))
         .merge(crate::gateway::router(gateway));
     let listener = tokio::net::TcpListener::bind(listen).await?;
     tracing::info!(cell, node = id, %listen, "node listening");

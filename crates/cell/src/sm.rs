@@ -623,6 +623,8 @@ impl StateMachine {
             parts: state.parts.clone(),
             definitions: Default::default(),
             allowances: state.allowances.clone(),
+            orgs: state.orgs.clone(),
+            feed: state.feed.clone(),
         }
     }
 }
