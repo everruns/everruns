@@ -50,6 +50,87 @@ pub struct SegRef {
 pub struct Store {
     inner: Arc<dyn ObjectStore>,
     prefix: Path,
+    /// Immutable objects (segments, blobs) read recently, when enabled.
+    cache: Option<Arc<ByteCache>>,
+}
+
+/// A bounded cache of immutable objects, least recently used out first.
+///
+/// Decision (design.md, "Executors"): affinity alone doesn't keep a session
+/// warm, because Engine rebuilds its stored view per epoch; an executor
+/// keeps the history segments and workspace blobs it read across
+/// activations. Every cached key names immutable content (a segment's
+/// range, a blob's hash), so nothing is ever invalidated.
+pub struct ByteCache {
+    capacity: usize,
+    inner: parking_lot::Mutex<CacheInner>,
+    pub hits: std::sync::atomic::AtomicU64,
+    pub misses: std::sync::atomic::AtomicU64,
+}
+
+#[derive(Default)]
+struct CacheInner {
+    map: std::collections::HashMap<String, (bytes::Bytes, u64)>,
+    order: std::collections::BTreeMap<u64, String>,
+    tick: u64,
+    size: usize,
+}
+
+impl ByteCache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            inner: Default::default(),
+            hits: Default::default(),
+            misses: Default::default(),
+        }
+    }
+
+    fn get(&self, key: &str) -> Option<bytes::Bytes> {
+        use std::sync::atomic::Ordering::Relaxed;
+        let mut inner = self.inner.lock();
+        inner.tick += 1;
+        let tick = inner.tick;
+        let found = inner.map.get_mut(key).map(|(bytes, at)| {
+            let old = std::mem::replace(at, tick);
+            (bytes.clone(), old)
+        });
+        match found {
+            Some((bytes, old)) => {
+                inner.order.remove(&old);
+                inner.order.insert(tick, key.to_string());
+                self.hits.fetch_add(1, Relaxed);
+                Some(bytes)
+            }
+            None => {
+                self.misses.fetch_add(1, Relaxed);
+                None
+            }
+        }
+    }
+
+    fn put(&self, key: &str, bytes: bytes::Bytes) {
+        if bytes.len() > self.capacity / 4 {
+            return;
+        }
+        let mut inner = self.inner.lock();
+        inner.tick += 1;
+        let tick = inner.tick;
+        if let Some((old, at)) = inner.map.insert(key.to_string(), (bytes.clone(), tick)) {
+            inner.size -= old.len();
+            inner.order.remove(&at);
+        }
+        inner.size += bytes.len();
+        inner.order.insert(tick, key.to_string());
+        while inner.size > self.capacity {
+            let Some((_, oldest)) = inner.order.pop_first() else {
+                break;
+            };
+            if let Some((gone, _)) = inner.map.remove(&oldest) {
+                inner.size -= gone.len();
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for Store {
@@ -72,7 +153,55 @@ impl Store {
         Ok(Self {
             inner: Arc::from(inner),
             prefix,
+            cache: None,
         })
+    }
+
+    /// Keep up to `bytes` of immutable objects read through this store.
+    pub fn with_cache(mut self, bytes: usize) -> Self {
+        self.cache = Some(Arc::new(ByteCache::new(bytes)));
+        self
+    }
+
+    /// Cache hits and misses so far (zero without a cache).
+    pub fn cache_stats(&self) -> (u64, u64) {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.cache
+            .as_ref()
+            .map_or((0, 0), |c| (c.hits.load(Relaxed), c.misses.load(Relaxed)))
+    }
+
+    fn blob_key(&self, sha256: &str) -> Path {
+        self.key(&format!("blobs/{sha256}"))
+    }
+
+    /// Store `bytes` by their SHA-256 (hex), which names them. Idempotent.
+    pub async fn put_blob(&self, bytes: Vec<u8>) -> anyhow::Result<String> {
+        use sha2::Digest;
+        let sha256 = hex::encode(sha2::Sha256::digest(&bytes));
+        self.put(self.blob_key(&sha256), bytes).await?;
+        Ok(sha256)
+    }
+
+    /// The blob named `sha256`.
+    pub async fn get_blob(&self, sha256: &str) -> anyhow::Result<bytes::Bytes> {
+        if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+            anyhow::bail!("not a blob name: {sha256}");
+        }
+        self.get_immutable(self.blob_key(sha256)).await
+    }
+
+    /// `get` for content that never changes under its key, through the cache.
+    async fn get_immutable(&self, key: Path) -> anyhow::Result<bytes::Bytes> {
+        let Some(cache) = &self.cache else {
+            return self.get(key).await;
+        };
+        if let Some(bytes) = cache.get(key.as_ref()) {
+            return Ok(bytes);
+        }
+        let bytes = self.get(key.clone()).await?;
+        cache.put(key.as_ref(), bytes.clone());
+        Ok(bytes)
     }
 
     fn key(&self, rest: &str) -> Path {
@@ -164,10 +293,10 @@ impl Store {
         }
         let mut out = Vec::new();
         for seg in segments {
-            let events: Vec<Event> = match self.get(self.messages_key(session, *seg)).await {
+            let events: Vec<Event> = match self.get_immutable(self.messages_key(session, *seg)).await {
                 Ok(bytes) => serde_json::from_slice(&bytes)?,
                 Err(error) if is_not_found(&error) => {
-                    let bytes = self.get(self.segment_key(session, *seg)).await?;
+                    let bytes = self.get_immutable(self.segment_key(session, *seg)).await?;
                     let events: Vec<Event> = serde_json::from_slice(&bytes)?;
                     events
                         .into_iter()
@@ -222,7 +351,7 @@ impl Store {
     ) -> anyhow::Result<Vec<Event>> {
         let mut out = Vec::new();
         for seg in segments.iter().filter(|s| s.to >= from && s.from <= to) {
-            let bytes = self.get(self.segment_key(session, *seg)).await?;
+            let bytes = self.get_immutable(self.segment_key(session, *seg)).await?;
             let events: Vec<Event> = serde_json::from_slice(&bytes)?;
             let last = out_last(&out);
             out.extend(

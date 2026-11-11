@@ -47,6 +47,7 @@ impl Cell {
             max_turns_per_node: 64,
             snapshot_every: 100_000,
             keep_log: 256,
+            executors: Default::default(),
         };
         let host = Arc::new(everruns_cell_testkit::host());
         let listen = addr.parse().unwrap();

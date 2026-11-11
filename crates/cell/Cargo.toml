@@ -42,6 +42,9 @@ rand.workspace = true
 object_store.workspace = true
 url = "2"
 bytes.workspace = true
+sha2.workspace = true
+hex.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -28,6 +28,7 @@ async fn cell() -> (Arc<Node>, tempfile::TempDir) {
         max_turns_per_node: 64,
         snapshot_every: 100_000,
         keep_log: 256,
+        executors: Default::default(),
     };
     let node = Node::start(cfg, Arc::new(everruns_cell::StandardHost::new()))
         .await

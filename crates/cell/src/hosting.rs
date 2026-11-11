@@ -60,13 +60,27 @@ pub fn build_for(definition: &Value, build_id: &str) -> everruns::hosting::Agent
 }
 
 struct Inner {
-    node: Weak<Node>,
+    source: Source,
     /// Per session, the newest log index this node wrote: reads wait for it.
     fences: parking_lot::Mutex<HashMap<SessionId, u64>>,
     /// Per session, Engine's change hint (`SessionHosting::changes`).
     hints: parking_lot::Mutex<HashMap<SessionId, Weak<tokio::sync::Notify>>>,
     /// Per session, the hand-off flag of the epoch running here.
     hand_offs: parking_lot::Mutex<HashMap<SessionId, Weak<AtomicBool>>>,
+    /// Per session, the fence of the epoch running here, for workspace
+    /// commits.
+    epochs: parking_lot::Mutex<HashMap<SessionId, u64>>,
+}
+
+/// Where hosting reaches its cell.
+///
+/// Decision: one hosting implementation for both, so an executor outside
+/// the cell runs exactly the authority code a node runs (see `remote`).
+enum Source {
+    /// A cell node: proposals through Raft, reads from its replica.
+    Node(Weak<Node>),
+    /// An executor: proposals over the cell's API, reads from its mirror.
+    Remote(Arc<crate::remote::Remote>),
 }
 
 /// Engine's session authority, backed by this node's cell.
@@ -81,12 +95,22 @@ fn store_err(error: impl std::fmt::Display) -> AgentLoopError {
 
 impl RaftHosting {
     pub fn new(node: Weak<Node>) -> Self {
+        Self::with_source(Source::Node(node))
+    }
+
+    /// Hosting for an executor outside the cell (see `remote`).
+    pub fn remote(remote: Arc<crate::remote::Remote>) -> Self {
+        Self::with_source(Source::Remote(remote))
+    }
+
+    fn with_source(source: Source) -> Self {
         Self {
             inner: Arc::new(Inner {
-                node,
+                source,
                 fences: Default::default(),
                 hints: Default::default(),
                 hand_offs: Default::default(),
+                epochs: Default::default(),
             }),
         }
     }
@@ -121,6 +145,13 @@ impl RaftHosting {
         self.inner.caught_up(session).await.map(|_| ())
     }
 
+    /// Forget what this hosting tracked for `session` (an executor evicting
+    /// it from its mirror).
+    pub fn forget(&self, session: SessionId) {
+        self.inner.fences.lock().remove(&session);
+        self.inner.epochs.lock().remove(&session);
+    }
+
     /// Forget hints and flags nobody holds any more.
     pub fn sweep(&self) {
         self.inner.hints.lock().retain(|_, h| h.strong_count() > 0);
@@ -128,8 +159,7 @@ impl RaftHosting {
             .hand_offs
             .lock()
             .retain(|_, h| h.strong_count() > 0);
-        let node = self.inner.node.upgrade();
-        if let Some(node) = node {
+        if let Ok(node) = self.inner.node() {
             let applied = *node.shared.applied.borrow();
             self.inner.fences.lock().retain(|_, index| *index > applied);
         }
@@ -146,15 +176,28 @@ impl RaftHosting {
 
 impl Inner {
     fn node(&self) -> Result<Arc<Node>> {
-        self.node
-            .upgrade()
-            .ok_or_else(|| AgentLoopError::store("node stopped"))
+        match &self.source {
+            Source::Node(node) => node
+                .upgrade()
+                .ok_or_else(|| AgentLoopError::store("node stopped")),
+            Source::Remote(_) => Err(AgentLoopError::store("an executor has no cell node")),
+        }
+    }
+
+    /// The id epochs claimed here are held under.
+    fn holder_id(&self) -> Result<crate::types::NodeId> {
+        match &self.source {
+            Source::Node(_) => Ok(self.node()?.cfg.node_id),
+            Source::Remote(remote) => Ok(remote.id),
+        }
     }
 
     async fn propose(&self, session: SessionId, command: Command) -> Result<Response> {
-        let node = self.node()?;
         let t = std::time::Instant::now();
-        let (response, index) = node.propose(command).await.map_err(store_err)?;
+        let (response, index) = match &self.source {
+            Source::Node(_) => self.node()?.propose(command).await.map_err(store_err)?,
+            Source::Remote(remote) => remote.propose(session, command).await.map_err(store_err)?,
+        };
         crate::prof::add("propose", t, 1);
         let mut fences = self.fences.lock();
         let fence = fences.entry(session).or_insert(0);
@@ -162,23 +205,35 @@ impl Inner {
         Ok(response)
     }
 
-    /// This replica, once it has applied this node's writes to `session`.
-    async fn caught_up(&self, session: SessionId) -> Result<Arc<Node>> {
-        let node = self.node()?;
+    /// The replica (or mirror) this hosting reads, once it has applied this
+    /// hosting's writes to `session`.
+    async fn caught_up(&self, session: SessionId) -> Result<Arc<crate::sm::Shared>> {
         let index = self.fences.lock().get(&session).copied().unwrap_or(0);
-        if index > 0 {
-            let t = std::time::Instant::now();
-            let _g = scopeguard(move || crate::prof::add("catchup", t, 1));
-            tokio::time::timeout(Duration::from_secs(10), node.shared.wait_applied(index))
-                .await
-                .map_err(|_| AgentLoopError::store("replica did not catch up"))?;
+        match &self.source {
+            Source::Node(_) => {
+                let node = self.node()?;
+                if index > 0 {
+                    let t = std::time::Instant::now();
+                    let _g = scopeguard(move || crate::prof::add("catchup", t, 1));
+                    tokio::time::timeout(Duration::from_secs(10), node.shared.wait_applied(index))
+                        .await
+                        .map_err(|_| AgentLoopError::store("replica did not catch up"))?;
+                }
+                Ok(node.shared.clone())
+            }
+            Source::Remote(remote) => {
+                remote
+                    .caught_up(session, index)
+                    .await
+                    .map_err(store_err)?;
+                Ok(remote.shared.clone())
+            }
         }
-        Ok(node)
     }
 
     async fn read<T>(&self, session: SessionId, f: impl FnOnce(&SessionState) -> T) -> Result<T> {
-        let node = self.caught_up(session).await?;
-        let state = node.shared.state.read();
+        let shared = self.caught_up(session).await?;
+        let state = shared.state.read();
         match state.sessions.get(&session) {
             Some(s) => Ok(f(s)),
             None => Err(missing(&state, session)),
@@ -387,7 +442,6 @@ impl SessionHosting for RaftHosting {
         holder: &str,
         ttl: Duration,
     ) -> Result<Option<SessionActivation>> {
-        let node = self.inner.node()?;
         let response = self
             .inner
             .propose(
@@ -395,7 +449,7 @@ impl SessionHosting for RaftHosting {
                 Command::Claim {
                     session,
                     holder: holder.to_owned(),
-                    node: node.cfg.node_id,
+                    node: self.inner.holder_id()?,
                     ttl_ms: ttl.as_millis() as i64,
                     now_ms: now_ms(),
                 },
@@ -433,7 +487,9 @@ impl SessionHosting for RaftHosting {
             .hand_offs
             .lock()
             .insert(session, Arc::downgrade(&hand_off));
+        self.inner.epochs.lock().insert(session, fence);
         let epoch = Epoch {
+            deltas: deltas::sink(self.inner.clone(), session, fence),
             fence,
             actor_fence: RwLock::new(ActorFence::new(session, holder, fence)),
             hand_off,
@@ -451,6 +507,8 @@ impl SessionHosting for RaftHosting {
 /// One activation's write capability.
 struct Epoch {
     fence: u64,
+    /// Where this epoch's live deltas go (see `hosting_deltas.rs`).
+    deltas: Arc<dyn everruns::hosting::LiveDeltaSink>,
     actor_fence: RwLock<ActorFence>,
     hand_off: Arc<AtomicBool>,
     /// Stored history this activation already paged in (sparse: context
@@ -848,10 +906,10 @@ impl Ports {
     }
 
     async fn window_applied(&self, after: i32, limit: usize) -> Result<(Vec<Event>, i32, bool)> {
-        let node = self.inner.caught_up(self.session).await?;
+        let shared = self.inner.caught_up(self.session).await?;
         let sparse = self.epoch.is_some();
         let (offloaded, segments, resident, high, full_from) = {
-            let state = node.shared.state.read();
+            let state = shared.state.read();
             let s = state
                 .sessions
                 .get(&self.session)
@@ -876,7 +934,7 @@ impl Ports {
         if after >= offloaded {
             return Ok((resident, high, false));
         }
-        let store = &node.shared.store;
+        let store = &shared.store;
         let mut events = if sparse && after + 1 < full_from {
             let epoch = self.epoch()?;
             let cached = {
@@ -1054,6 +1112,9 @@ impl SessionEpoch for Ports {
     fn hand_off(&self) -> Option<Arc<AtomicBool>> {
         self.epoch.as_ref().map(|e| e.hand_off.clone())
     }
+    fn live_deltas(&self) -> Option<Arc<dyn everruns::hosting::LiveDeltaSink>> {
+        self.epoch.as_ref().map(|e| e.deltas.clone())
+    }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
         // Nothing waits on a timer's answer, and the release (or any later
         // waited write) commits it first: queue it behind the epoch's
@@ -1217,277 +1278,14 @@ impl EventLog for Ports {
     }
 }
 
-#[async_trait]
-impl everruns_core::execution_loading::SessionStore for Ports {
-    async fn get_session(&self, session: SessionId) -> Result<Option<ExecutionSession>> {
-        self.scope(session)?;
-        let (record, configuration) = self
-            .inner
-            .read(session, |s| {
-                (s.authority.execution.clone(), s.authority.configuration())
-            })
-            .await?;
-        let Some(record) = record else {
-            return Ok(None);
-        };
-        let mut record: ExecutionSession = serde_json::from_value(record).map_err(store_err)?;
-        let configuration: everruns::hosting::SessionConfiguration =
-            serde_json::from_value(configuration).map_err(store_err)?;
-        configuration.apply(&mut record);
-        Ok(Some(record))
-    }
-}
+#[path = "hosting_ports.rs"]
+mod ports;
 
-#[async_trait]
-impl RuntimeSessionStore for Ports {
-    async fn add_session(&self, session: ExecutionSession) -> Result<()> {
-        self.scope(session.id)?;
-        self.write(WriteOp::Execution {
-            session: serde_json::to_value(session).map_err(store_err)?,
-        })
-        .await
-        .map(|_| ())
-    }
-}
+#[path = "hosting_deltas.rs"]
+mod deltas;
 
-#[async_trait]
-impl SessionMutator for Ports {
-    async fn update_session_title(
-        &self,
-        session: SessionId,
-        title: String,
-    ) -> Result<ExecutionSession> {
-        self.scope(session)?;
-        let record = self.write(WriteOp::Title { title }).await?;
-        serde_json::from_value(record).map_err(store_err)
-    }
-}
-
-fn key_info(key: &str) -> KeyInfo {
-    let epoch = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH;
-    KeyInfo {
-        key: key.to_owned(),
-        created_at: epoch,
-        updated_at: epoch,
-    }
-}
-
-#[async_trait]
-impl SessionStorageStore for Ports {
-    async fn set_value(&self, session: SessionId, key: &str, value: &str) -> Result<()> {
-        self.scope(session)?;
-        self.write(WriteOp::SetValue {
-            key: key.to_owned(),
-            value: value.to_owned(),
-        })
-        .await
-        .map(|_| ())
-    }
-    async fn get_value(&self, session: SessionId, key: &str) -> Result<Option<String>> {
-        self.scope(session)?;
-        self.inner
-            .read(session, |s| s.authority.values.get(key).cloned())
-            .await
-    }
-    async fn take_value(&self, session: SessionId, key: &str) -> Result<Option<String>> {
-        self.scope(session)?;
-        let reply = self
-            .write(WriteOp::TakeValue {
-                key: key.to_owned(),
-            })
-            .await?;
-        Ok(reply.as_str().map(str::to_owned))
-    }
-    async fn delete_value(&self, session: SessionId, key: &str) -> Result<bool> {
-        self.scope(session)?;
-        let reply = self
-            .write(WriteOp::DeleteValue {
-                key: key.to_owned(),
-            })
-            .await?;
-        Ok(reply.as_bool().unwrap_or(false))
-    }
-    async fn list_keys(&self, session: SessionId) -> Result<Vec<KeyInfo>> {
-        self.scope(session)?;
-        self.inner
-            .read(session, |s| {
-                s.authority.values.keys().map(|k| key_info(k)).collect()
-            })
-            .await
-    }
-    async fn set_secret(&self, session: SessionId, name: &str, value: &str) -> Result<()> {
-        self.scope(session)?;
-        self.write(WriteOp::SetSecret {
-            key: name.to_owned(),
-            value: value.to_owned(),
-        })
-        .await
-        .map(|_| ())
-    }
-    async fn get_secret(&self, session: SessionId, name: &str) -> Result<Option<String>> {
-        self.scope(session)?;
-        self.inner
-            .read(session, |s| s.authority.secrets.get(name).cloned())
-            .await
-    }
-    async fn delete_secret(&self, session: SessionId, name: &str) -> Result<bool> {
-        self.scope(session)?;
-        let reply = self
-            .write(WriteOp::DeleteSecret {
-                key: name.to_owned(),
-            })
-            .await?;
-        Ok(reply.as_bool().unwrap_or(false))
-    }
-    async fn list_secrets(&self, session: SessionId) -> Result<Vec<SecretInfo>> {
-        self.scope(session)?;
-        let epoch = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH;
-        self.inner
-            .read(session, |s| {
-                s.authority
-                    .secrets
-                    .keys()
-                    .map(|name| SecretInfo {
-                        name: name.clone(),
-                        created_at: epoch,
-                        updated_at: epoch,
-                    })
-                    .collect()
-            })
-            .await
-    }
-}
-
-fn to_engine(session: SessionId, c: &Checkpoint) -> CompactionCheckpoint {
-    CompactionCheckpoint {
-        id: c.id,
-        session_id: session,
-        source_sequence: c.source_sequence,
-        provider_type: c.provider_type.clone(),
-        model: c.model.clone(),
-        format_version: c.format_version,
-        payload: c.payload.clone(),
-    }
-}
-
-impl Ports {
-    async fn latest(
-        &self,
-        session: SessionId,
-        provider_type: &str,
-        model: &str,
-        format: Option<u32>,
-    ) -> Result<Option<CompactionCheckpoint>> {
-        self.scope(session)?;
-        self.inner
-            .read(session, |s| {
-                s.checkpoints
-                    .iter()
-                    .filter(|c| c.provider_type == provider_type && c.model == model)
-                    .filter(|c| format.is_none_or(|f| c.format_version == f))
-                    .max_by_key(|c| c.source_sequence)
-                    .map(|c| to_engine(session, c))
-            })
-            .await
-    }
-}
-
-#[async_trait]
-impl CompactionCheckpointStore for Ports {
-    async fn get_latest(
-        &self,
-        session: SessionId,
-        provider_type: &str,
-        model: &str,
-    ) -> Result<Option<CompactionCheckpoint>> {
-        self.latest(session, provider_type, model, None).await
-    }
-
-    async fn get_latest_format(
-        &self,
-        session: SessionId,
-        provider_type: &str,
-        model: &str,
-        format: u32,
-    ) -> Result<Option<CompactionCheckpoint>> {
-        self.latest(session, provider_type, model, Some(format))
-            .await
-    }
-
-    async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool> {
-        if checkpoint.session_id != self.session {
-            return Ok(false);
-        }
-        let reply = self
-            .write(WriteOp::Checkpoint {
-                checkpoint: Checkpoint {
-                    id: checkpoint.id,
-                    source_sequence: checkpoint.source_sequence,
-                    provider_type: checkpoint.provider_type,
-                    model: checkpoint.model,
-                    format_version: checkpoint.format_version,
-                    payload: checkpoint.payload,
-                },
-            })
-            .await?;
-        Ok(reply.as_bool().unwrap_or(false))
-    }
-
-    async fn latest_source_sequence(&self, session: SessionId) -> Result<Option<i64>> {
-        if session != self.session {
-            return Ok(None);
-        }
-        self.inner
-            .read(session, |s| {
-                s.checkpoints.iter().map(|c| c.source_sequence).max()
-            })
-            .await
-    }
-
-    async fn get_proactive_attempt(
-        &self,
-        session: SessionId,
-        provider_type: &str,
-        model: &str,
-    ) -> Result<Option<ProactiveCompactionAttempt>> {
-        self.scope(session)?;
-        let key = format!("{provider_type}/{model}");
-        self.inner
-            .read(session, |s| {
-                s.authority
-                    .proactive
-                    .get(&key)
-                    .map(|a| ProactiveCompactionAttempt {
-                        source_sequence: a.source_sequence,
-                        estimated_input_tokens: a.estimated_input_tokens,
-                        input_message_count: a.input_message_count,
-                        source_fingerprint: a.source_fingerprint,
-                    })
-            })
-            .await
-    }
-
-    async fn record_proactive_attempt(
-        &self,
-        session: SessionId,
-        provider_type: &str,
-        model: &str,
-        attempt: ProactiveCompactionAttempt,
-    ) -> Result<()> {
-        self.scope(session)?;
-        self.write(WriteOp::Proactive {
-            key: format!("{provider_type}/{model}"),
-            attempt: ProactiveAttempt {
-                source_sequence: attempt.source_sequence,
-                estimated_input_tokens: attempt.estimated_input_tokens,
-                input_message_count: attempt.input_message_count,
-                source_fingerprint: attempt.source_fingerprint,
-            },
-        })
-        .await
-        .map(|_| ())
-    }
-}
+#[path = "hosting_files.rs"]
+pub mod files;
 
 #[path = "hosting_actors.rs"]
 mod actors;

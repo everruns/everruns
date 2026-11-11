@@ -52,6 +52,19 @@ pub struct NodeConfig {
     /// Entries kept behind each snapshot. A follower further behind than
     /// this catches up by snapshot (a copy of the whole cell).
     pub keep_log: u64,
+    /// Who runs the cell's turns.
+    pub executors: ExecutorMode,
+}
+
+/// Who runs a cell's turns.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ExecutorMode {
+    /// Each node runs turns itself (cells alone, plan step 5).
+    #[default]
+    InNode,
+    /// Executors outside the cell pull turns with credits (step 6); at most
+    /// `max_running` turns run in the cell at once (the per-cell cap).
+    Pull { max_running: usize },
 }
 
 /// What a proposal returned, as sent between nodes.
@@ -82,6 +95,30 @@ fn turn_runtime() -> &'static tokio::runtime::Handle {
                 .expect("turn runtime")
         })
         .handle()
+}
+
+/// The Everruns Engine a node or an executor runs sessions with.
+///
+/// Decision: the Engine builds agents from definitions the cell keeps, not a
+/// fixed registry: a build is (definition key, definition format), and a
+/// definition is whatever a client sent. The cell replicates the definition
+/// with the session, so any node or executor, of any deploy, can rebuild it
+/// (see `hosting::BUILD_ID`). Sessions' workspaces live in the cell
+/// (`hosting::files`).
+pub fn engine(hosting: crate::hosting::RaftHosting, host: Arc<dyn Host>) -> everruns::Engine {
+    everruns::Engine::builder()
+        .hosting(hosting.clone())
+        .definition_environment(hosting.files())
+        .hydrator(move |definition: &everruns::hosting::AgentDefinition| {
+            let agent = host
+                .agent(&definition.runtime_agent.agent)
+                .map_err(everruns_contracts::error::AgentLoopError::config)?;
+            Ok(everruns::hosting::Hydrated {
+                agent,
+                harness: None,
+            })
+        })
+        .build()
 }
 
 pub fn now_ms() -> i64 {
@@ -123,6 +160,8 @@ pub struct Node {
     /// The cell's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
+    /// Credits from executors outside the cell (`ExecutorMode::Pull`).
+    pub dispatch: crate::dispatch::Dispatch,
 }
 
 impl Node {
@@ -183,25 +222,7 @@ impl Node {
             .build()?;
         let node = Arc::new_cyclic(|weak: &std::sync::Weak<Node>| {
             let hosting = crate::hosting::RaftHosting::new(weak.clone());
-            let hydrator_host = host.clone();
-            // Decision: the Engine builds agents from definitions the cell
-            // keeps, not a fixed registry: a build is (definition key,
-            // definition format), and a definition is whatever a client
-            // sent. The cell replicates the definition with the session, so
-            // any node, of any deploy, can rebuild it (see
-            // `hosting::BUILD_ID`).
-            let engine = everruns::Engine::builder()
-                .hosting(hosting.clone())
-                .hydrator(move |definition: &everruns::hosting::AgentDefinition| {
-                    let agent = hydrator_host
-                        .agent(&definition.runtime_agent.agent)
-                        .map_err(everruns_contracts::error::AgentLoopError::config)?;
-                    Ok(everruns::hosting::Hydrated {
-                        agent,
-                        harness: None,
-                    })
-                })
-                .build();
+            let engine = engine(hosting.clone(), host.clone());
             Self {
                 batcher,
                 raft,
@@ -222,6 +243,7 @@ impl Node {
                 moving: Mutex::default(),
                 shipper: crate::ship::Shipper::new(shared_store, cfg.cell, ship_wal),
                 members: parking_lot::RwLock::new(cfg.members.clone()),
+                dispatch: Default::default(),
                 cfg,
             }
         });
@@ -753,6 +775,11 @@ impl Node {
         self.raft.metrics().borrow().current_leader
     }
 
+    /// The address of this cell's leader, as this node knows it.
+    pub fn leader_addr(&self) -> Option<String> {
+        self.leader().and_then(|id| self.member_addr(id))
+    }
+
     pub fn is_leader(&self) -> bool {
         self.leader() == Some(self.cfg.node_id)
     }
@@ -958,6 +985,10 @@ impl Node {
                 },
                 _ = tick.tick() => {
                     self.hosting.sweep();
+                    if self.cfg.executors != ExecutorMode::InNode {
+                        let state = self.shared.state.read();
+                        self.dispatch.retain(|s| state.sessions.contains_key(s));
+                    }
                     self.all_sessions()
                 }
             };
@@ -1188,6 +1219,23 @@ impl Node {
             {
                 return;
             }
+            if let ExecutorMode::Pull { max_running } = self.cfg.executors {
+                // Decision: the per-cell cap counts every unexpired epoch,
+                // so one hot cell can't take the whole executor pool.
+                if self.running_turns(&state) >= max_running {
+                    self.dispatch.queue(session);
+                    return;
+                }
+                drop(state);
+                match self.dispatch.offer(session) {
+                    Some(_) => {
+                        self.dispatched.lock().insert(session, Instant::now());
+                        self.bump_running();
+                    }
+                    None => self.dispatch.queue(session),
+                }
+                return;
+            }
             // Decision: a cell starts no more turns than its nodes have
             // slots for. Past that, CPU contention delays Raft heartbeats
             // and lease renewals, leaders change and turns rerun: the cell
@@ -1234,25 +1282,7 @@ impl Node {
         limit: Option<usize>,
     ) -> Option<NodeId> {
         let alive = self.alive_members();
-        // Decision: counting running turns scans every session, so the count
-        // is cached briefly and bumped on each pick, instead of rescanned per
-        // turn start (which made starts O(sessions) under the state lock).
-        let mut cache = self.load.lock();
-        if cache
-            .as_ref()
-            .is_none_or(|(at, _)| at.elapsed() > Duration::from_millis(100))
-        {
-            let mut counts = BTreeMap::new();
-            let now = now_ms();
-            for s in state.sessions.values() {
-                if let Some(holder) = &s.authority.holder
-                    && holder.expires_ms > now
-                {
-                    *counts.entry(holder.node).or_insert(0) += 1;
-                }
-            }
-            *cache = Some((Instant::now(), counts));
-        }
+        let mut cache = self.counted(state);
         let (_, counts) = cache.as_mut()?;
         let me = self.cfg.node_id;
         let pick = alive
@@ -1269,6 +1299,74 @@ impl Node {
         }
         *counts.entry(pick).or_insert(0) += 1;
         Some(pick)
+    }
+
+    /// Running turns per holder, recounted at most every 100 ms.
+    ///
+    /// Decision: counting running turns scans every session, so the count
+    /// is cached briefly and bumped on each pick, instead of rescanned per
+    /// turn start (which made starts O(sessions) under the state lock).
+    fn counted(
+        &self,
+        state: &crate::state::CellState,
+    ) -> parking_lot::MutexGuard<'_, Option<(Instant, BTreeMap<NodeId, usize>)>> {
+        let mut cache = self.load.lock();
+        if cache
+            .as_ref()
+            .is_none_or(|(at, _)| at.elapsed() > Duration::from_millis(100))
+        {
+            let mut counts = BTreeMap::new();
+            let now = now_ms();
+            for s in state.sessions.values() {
+                if let Some(holder) = &s.authority.holder
+                    && holder.expires_ms > now
+                {
+                    *counts.entry(holder.node).or_insert(0) += 1;
+                }
+            }
+            *cache = Some((Instant::now(), counts));
+        }
+        cache
+    }
+
+    /// Turns running in the cell (every unexpired epoch), as last counted.
+    pub fn running_turns(&self, state: &crate::state::CellState) -> usize {
+        self.counted(state)
+            .as_ref()
+            .map_or(0, |(_, counts)| counts.values().sum())
+    }
+
+    /// Count a turn just handed out until the next recount sees its epoch.
+    fn bump_running(&self) {
+        if let Some((_, counts)) = self.load.lock().as_mut() {
+            *counts.entry(crate::remote::EXECUTOR_IDS).or_insert(0) += 1;
+        }
+    }
+
+    /// Hand waiting sessions to the credits executors just offered.
+    pub fn offer_waiting(self: &Arc<Self>) {
+        let free = self.dispatch.free_credits();
+        for session in self.dispatch.waiting(free) {
+            self.schedule(session);
+        }
+    }
+
+    /// Take an epoch's live deltas for the cell's streams, if the epoch is
+    /// still the session's current one.
+    pub fn publish_live(&self, session: SessionId, fence: u64, events: Vec<Event>) -> bool {
+        let current = self
+            .shared
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .is_some_and(|s| s.authority.current(fence, now_ms()));
+        if current {
+            for event in events {
+                let _ = self.live.send((session, Arc::new(event)));
+            }
+        }
+        current
     }
 
     fn alive_members(&self) -> BTreeSet<NodeId> {
