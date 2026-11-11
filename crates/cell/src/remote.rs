@@ -52,6 +52,12 @@ pub struct SessionDelta {
     /// Where the session went, when it is no longer here.
     #[serde(default)]
     pub left: Option<Left>,
+    /// The view is the whole session (the executor sent no `since`).
+    /// Decision: an explicit flag, because a session's definition may be
+    /// null (one bound through Engine's own binding), so a null definition
+    /// cannot mark a partial view.
+    #[serde(default)]
+    pub whole: bool,
 }
 
 /// `POST /cell/exec/propose`.
@@ -136,6 +142,7 @@ pub fn delta(state: &CellState, applied: u64, session: SessionId, since: Option<
             .get(&session)
             .map(|s| Box::new(view(s, since))),
         left: state.forwarded.get(&session).copied(),
+        whole: since.is_none(),
     }
 }
 
@@ -151,10 +158,10 @@ pub fn merge(state: &mut CellState, session: SessionId, delta: SessionDelta) -> 
     };
     state.forwarded.remove(&session);
     let seq = |e: &Event| e.sequence.unwrap_or(0);
-    if let Some(old) = state.sessions.remove(&session) {
-        if new.definition.is_null() {
-            new.definition = old.definition;
-        }
+    if delta.whole {
+        // Replaces whatever the mirror held.
+    } else if let Some(old) = state.sessions.remove(&session) {
+        new.definition = old.definition;
         let first_new = new.events.first().map(seq);
         let mut events: Vec<Event> = old
             .events
@@ -163,7 +170,7 @@ pub fn merge(state: &mut CellState, session: SessionId, delta: SessionDelta) -> 
             .collect();
         events.append(&mut new.events);
         new.events = events;
-    } else if new.definition.is_null() {
+    } else {
         return false; // a partial view of a session the mirror never held
     }
     let dense = new
@@ -235,8 +242,16 @@ impl Remote {
         self.homes.lock().insert(session, cell);
     }
 
+    /// The cell `session` runs from. Decision: a session nothing bound
+    /// here belongs to the only cell when the fleet has one (a link that
+    /// serves one cell, as the hosting conformance drives it); with more
+    /// cells only a pull says where a session lives.
     pub fn home(&self, session: SessionId) -> Option<CellId> {
-        self.homes.lock().get(&session).copied()
+        if let Some(cell) = self.homes.lock().get(&session).copied() {
+            return Some(cell);
+        }
+        let cells = self.cells.read();
+        (cells.len() == 1).then(|| cells.keys().next().copied()).flatten()
     }
 
     /// Drop `session` from the mirror.
