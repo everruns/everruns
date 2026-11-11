@@ -58,8 +58,12 @@ struct Ledger {
 
 struct Knobs {
     down: AtomicBool,
-    /// Requests to answer as lost: processed, then a 503.
-    lose_replies: AtomicUsize,
+    /// Requests to answer as lost, per channel: processed, then a 503.
+    /// Decision: one count per channel, so a test that loses replies
+    /// knows both the allowance and the feed path saw it, whichever the
+    /// cell happened to call first.
+    lose_allowance_replies: AtomicUsize,
+    lose_feed_replies: AtomicUsize,
     grant_ttl_ms: Mutex<i64>,
     per_call_micros: Mutex<Option<i64>>,
 }
@@ -81,7 +85,8 @@ impl FakeCp {
             ledger: Default::default(),
             knobs: Arc::new(Knobs {
                 down: AtomicBool::new(false),
-                lose_replies: AtomicUsize::new(0),
+                lose_allowance_replies: AtomicUsize::new(0),
+                lose_feed_replies: AtomicUsize::new(0),
                 grant_ttl_ms: Mutex::new(60_000),
                 per_call_micros: Mutex::new(Some(100)),
             }),
@@ -107,9 +112,11 @@ impl FakeCp {
         self.knobs.down.store(down, Ordering::SeqCst);
     }
 
-    /// Process the next `n` requests but lose their replies.
+    /// Process the next `n` allowance requests and the next `n` feed
+    /// batches but lose their replies.
     pub fn lose_replies(&self, n: usize) {
-        self.knobs.lose_replies.store(n, Ordering::SeqCst);
+        self.knobs.lose_allowance_replies.store(n, Ordering::SeqCst);
+        self.knobs.lose_feed_replies.store(n, Ordering::SeqCst);
     }
 
     /// How long new grants may be spent.
@@ -156,14 +163,15 @@ impl FakeCp {
             .sum()
     }
 
-    fn lost(&self) -> bool {
-        self.knobs
-            .lose_replies
+    fn lost(counter: &AtomicUsize) -> bool {
+        counter
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
             .is_ok()
     }
 
-    /// Push `update` for `org` to a data plane gateway, as the outbox does.
+    /// Push `update` for `org` to a data plane gateway, as the outbox
+    /// does: retried until the data plane answers (a directory cell that
+    /// is electing a leader answers 5xx for a moment), for up to 30 s.
     pub async fn push_config(
         &self,
         gateway: &str,
@@ -175,14 +183,22 @@ impl FakeCp {
             "{gateway}/dp/v1/orgs/{org}/config/{}/{}",
             update.epoch, update.version
         );
-        Ok(http
-            .put(url)
-            .json(update)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?)
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let sent = http.put(&url).json(update).send().await;
+            let error = match sent {
+                Ok(reply) if reply.status().is_success() => return Ok(reply.json().await?),
+                Ok(reply) if reply.status().is_client_error() => {
+                    anyhow::bail!("{url}: {}", reply.status())
+                }
+                Ok(reply) => anyhow::anyhow!("{url}: {}", reply.status()),
+                Err(error) => error.into(),
+            };
+            if tokio::time::Instant::now() >= deadline {
+                return Err(error);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
     }
 }
 
@@ -248,11 +264,13 @@ async fn allowance(
                     },
                 );
             }
-            ledger.answers.insert(request.request_id.clone(), answer.clone());
+            ledger
+                .answers
+                .insert(request.request_id.clone(), answer.clone());
             answer
         }
     };
-    if cp.lost() {
+    if FakeCp::lost(&cp.knobs.lose_allowance_replies) {
         return Err(unavailable());
     }
     Ok(Json(answer))
@@ -281,15 +299,14 @@ async fn feed(State(cp): State<FakeCp>, Json(batch): Json<FeedBatch>) -> Reply<F
                     attempt_id,
                     cost_micros,
                     ..
-                } => {
-                    if ledger.usage.contains_key(&attempt_id) {
+                } => match ledger.usage.entry(attempt_id) {
+                    std::collections::hash_map::Entry::Occupied(_) => {
                         ledger.usage_repeats += 1;
-                    } else {
-                        ledger
-                            .usage
-                            .insert(attempt_id, (record.org_id.clone(), cost_micros));
                     }
-                }
+                    std::collections::hash_map::Entry::Vacant(slot) => {
+                        slot.insert((record.org_id.clone(), cost_micros));
+                    }
+                },
                 Record::Session {
                     session_id,
                     session_version,
@@ -313,7 +330,7 @@ async fn feed(State(cp): State<FakeCp>, Json(batch): Json<FeedBatch>) -> Reply<F
             }
         }
     }
-    if cp.lost() {
+    if FakeCp::lost(&cp.knobs.lose_feed_replies) {
         return Err(unavailable());
     }
     Ok(Json(FeedAck {

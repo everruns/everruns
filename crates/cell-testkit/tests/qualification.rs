@@ -64,6 +64,33 @@ async fn a_stale_executor_is_fenced_out() {
     assert!(types(&events).contains(&"turn.completed"));
 }
 
+/// Propose `command` to the cell holding `session`'s directory entry.
+/// Directory shards move between cells while the fleet runs (the
+/// directory leader spreads them), so follow a shard that moved.
+async fn to_directory(fleet: &Fleet, session: &str, command: Value) -> Value {
+    let mut cell = 0;
+    for _ in 0..8 {
+        let reply = fleet.propose(cell, command.clone()).await;
+        if reply["result"] != "moved" {
+            return reply;
+        }
+        cell = reply["cell"].as_u64().unwrap() as u32;
+    }
+    panic!("the directory shard of {session} keeps moving");
+}
+
+/// `session`'s directory entry, read through the log.
+async fn placed(fleet: &Fleet, session: &str) -> Value {
+    let located = to_directory(
+        fleet,
+        session,
+        json!({ "op": "locate", "session": session }),
+    )
+    .await;
+    assert_eq!(located["result"], "placement", "{located}");
+    located["current"].clone()
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn old_messages_of_earlier_moves_change_nothing() {
     let mut fleet = Fleet::start().await;
@@ -75,24 +102,26 @@ async fn old_messages_of_earlier_moves_change_nothing() {
         fleet.say(&session, "go").await;
         fleet.turns(&session, turn as u64 + 1).await;
         let moved = fleet
-            .post(&format!("/v1/sessions/{session}/move"), json!({ "cell": to }))
+            .post(
+                &format!("/v1/sessions/{session}/move"),
+                json!({ "cell": to }),
+            )
             .await;
         assert_eq!(moved["to"], to, "{moved}");
-        let placed = fleet.get(&format!("/cell/directory/{session}")).await;
-        placements.push(placed);
+        placements.push(placed(&fleet, &session).await);
     }
     let now = placements.last().unwrap().clone();
     assert_eq!(now["cell"], 0);
     let first = &placements[0];
     let generation = first["generation"].as_u64().unwrap();
     // The first move's messages, delivered late.
-    let place = fleet
-        .propose(
-            0,
-            json!({ "op": "place", "session": session, "cell": 1,
-                    "generation": generation, "previous": generation - 1 }),
-        )
-        .await;
+    let place = to_directory(
+        &fleet,
+        &session,
+        json!({ "op": "place", "session": session, "cell": 1,
+                "generation": generation, "previous": generation - 1 }),
+    )
+    .await;
     assert_eq!(place["result"], "placement", "{place}");
     let activate = fleet
         .propose(
@@ -110,7 +139,7 @@ async fn old_messages_of_earlier_moves_change_nothing() {
     assert_ne!(forward["result"], "ok", "{forward}");
     // Nothing moved: the session lives where the last move put it, and
     // still runs.
-    assert_eq!(fleet.get(&format!("/cell/directory/{session}")).await, now);
+    assert_eq!(placed(&fleet, &session).await, now);
     fleet.say(&session, "once more").await;
     fleet.turns(&session, 5).await;
     let events = fleet.events(&session).await;
