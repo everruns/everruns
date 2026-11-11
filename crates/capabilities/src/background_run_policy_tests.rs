@@ -516,8 +516,8 @@ async fn post_tool_hooks_see_the_background_result_before_anyone_else() {
                 .unwrap_or_default()
         }
     };
-    let result_json = read(format!("/.background/{run_id}/result.json")).await;
-    let log = read(format!("/.background/{run_id}/output.log")).await;
+    let result_json = read(format!("/background/{run_id}/result.json")).await;
+    let log = read(format!("/background/{run_id}/output.log")).await;
     let signals = fixture.signals.sent_messages.lock().unwrap().clone();
 
     assert_eq!(fixture.ran(), vec!["cat secret.txt".to_string()]);

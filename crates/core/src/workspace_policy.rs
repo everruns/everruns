@@ -38,7 +38,7 @@ const DEFAULT_WRITE_DENY_COMPONENTS: &[&str] = &[
 /// Workspace roots the runtime writes its own records under: delegated-run
 /// records (`/.agent-runs/{run_id}`), structured task results
 /// (`/.tasks/{task_id}`), and background-run artifacts
-/// (`/.background/{run_id}`). See `WorkspacePolicy::runtime_artifacts`.
+/// (`/background/{run_id}`). See `WorkspacePolicy::runtime_artifacts`.
 ///
 /// Decision (EVE-1165): the `read_only` and `read_write` presets make these
 /// roots readable but never writable by the model. Wake messages point the
@@ -46,7 +46,8 @@ const DEFAULT_WRITE_DENY_COMPONENTS: &[&str] = &[
 /// may create them, so the model can read results but not forge them. The
 /// allowance names exact root components; credentials below a root stay
 /// protected, and traversal is rejected before matching.
-const RUNTIME_ARTIFACT_ROOTS: &[&str] = &[".agent-runs", ".tasks", ".background"];
+// Retained task records can still point at the earlier hidden root.
+const RUNTIME_ARTIFACT_ROOTS: &[&str] = &[".agent-runs", ".tasks", "background", ".background"];
 
 fn runtime_artifact_roots() -> impl Iterator<Item = PolicyPath> {
     RUNTIME_ARTIFACT_ROOTS
@@ -80,7 +81,7 @@ fn preset_write_denied_scopes() -> Vec<PolicyPath> {
 /// [`Default`] is intentionally read-only: ordinary non-hidden files are
 /// readable throughout `/workspace`, while writes, hidden paths (except the
 /// framework-managed `.agents` tree and the runtime artifact roots
-/// `.agent-runs`, `.tasks`, and `.background`), and common credential
+/// `.agent-runs`, `.tasks`, and `background`), and common credential
 /// locations are denied. Use [`WorkspacePolicy::builder`] for
 /// narrower scopes or [`WorkspacePolicy::read_write`] for an explicit opt-in
 /// to ordinary writes.
@@ -205,7 +206,7 @@ impl WorkspacePolicy {
     /// (see [`crate::session_files::RuntimeArtifactFileSystem`]).
     ///
     /// Read and write, including the hidden component, under `/.agent-runs`,
-    /// `/.tasks`, and `/.background` only; everything else, the rest of the
+    /// `/.tasks`, and `/background` only; everything else, the rest of the
     /// workspace included, stays denied. It is defense in depth for a store
     /// that only runtime code with runtime-chosen paths holds. The model-facing
     /// presets grant read, never write, on the same roots.
@@ -885,6 +886,7 @@ mod tests {
         ] {
             assert!(!policy.permits_write(path), "{path}");
         }
+        assert!(policy.permits_write("/background/bg_1/output.log"));
         assert!(policy.permits_write("/.background/bg_1/output.log"));
         // The model-facing default reads the roots but cannot write them.
         let default = WorkspacePolicy::default();
@@ -912,7 +914,7 @@ mod tests {
     #[test]
     fn presets_grant_read_only_access_to_runtime_artifact_roots() {
         for policy in [WorkspacePolicy::read_only(), WorkspacePolicy::read_write()] {
-            for root in ["/.agent-runs", "/.tasks", "/.background"] {
+            for root in ["/.agent-runs", "/.tasks", "/background", "/.background"] {
                 for path in [
                     root.to_string(),
                     format!("{root}/run_1/result.json"),
@@ -924,9 +926,14 @@ mod tests {
                     assert!(policy.check_write(&path).is_err(), "check_write: {path}");
                 }
                 // Case variants are distinct paths on case-sensitive providers:
-                // the allow stays exact, the write deny folds case.
+                // hidden-root allows stay exact, ordinary visible paths remain readable,
+                // and the write deny folds case.
                 let upper = format!("{}/run_1/result.json", root.to_ascii_uppercase());
-                assert!(!policy.permits_read(&upper), "read: {upper}");
+                assert_eq!(
+                    policy.permits_read(&upper),
+                    !root.starts_with("/."),
+                    "read: {upper}"
+                );
                 assert!(!policy.permits_write(&upper), "write: {upper}");
             }
             for path in [
