@@ -16,7 +16,10 @@ s3-tests = ["postgres-tests"]
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-arrow = { version = "60.1", default-features = false }
+# arrow and parquet must match the major DataFusion links against (datafusion 55
+# requires arrow ^59.2); a newer major puts two arrow crates in the graph and the
+# RecordBatch types stop type-checking. Move all three together.
+arrow = { version = "59.2", default-features = false }
 bytes.workspace = true
 chrono.workspace = true
 clap.workspace = true
@@ -28,7 +31,7 @@ hex.workspace = true
 # Keep the AWS/XML implementation on the platform's patched generation. The
 # DataFusion receives validated in-memory tables, never an S3 client.
 object_store.workspace = true
-parquet = { version = "60.1", default-features = false, features = ["arrow", "zstd"] }
+parquet = { version = "59.2", default-features = false, features = ["arrow", "zstd"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
