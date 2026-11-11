@@ -15,6 +15,7 @@ use std::sync::Mutex;
 pub(crate) struct InMemorySessionTaskRegistry {
     tasks: Mutex<HashMap<String, SessionTask>>,
     messages: Mutex<HashMap<String, Vec<TaskMessage>>>,
+    reverse_list: std::sync::atomic::AtomicBool,
 }
 
 #[async_trait]
@@ -69,7 +70,7 @@ impl SessionTaskRegistry for InMemorySessionTaskRegistry {
         filter: Option<&SessionTaskFilter>,
     ) -> everruns_contracts::error::Result<Vec<SessionTask>> {
         let tasks = self.tasks.lock().unwrap();
-        Ok(tasks
+        let mut listed = tasks
             .values()
             .filter(|task| {
                 task.session_id == session_id
@@ -79,7 +80,12 @@ impl SessionTaskRegistry for InMemorySessionTaskRegistry {
                     })
             })
             .cloned()
-            .collect())
+            .collect::<Vec<_>>();
+        listed.sort_by(|a, b| a.id.cmp(&b.id));
+        if self.reverse_list.load(std::sync::atomic::Ordering::Relaxed) {
+            listed.reverse();
+        }
+        Ok(listed)
     }
 
     async fn request_cancel(
@@ -365,6 +371,181 @@ async fn list_tasks_returns_compact_entries_with_filters() {
     assert!(entry.get("created_at").is_some());
     // Compact entries omit the full spec.
     assert!(entry.get("spec").is_none());
+}
+
+async fn list_snapshot(context: &ToolContext, arguments: Value) -> Value {
+    let result = ListTasksTool.execute_with_context(arguments, context).await;
+    let ToolExecutionResult::Success(value) = result else {
+        panic!("expected list success: {result:?}");
+    };
+    value
+}
+
+#[tokio::test]
+async fn list_tasks_snapshot_polling_and_explicit_refresh() {
+    let registry = Arc::new(InMemorySessionTaskRegistry::default());
+    let context = test_context(registry.clone());
+    create_task(
+        &registry,
+        &context,
+        TEST_EXECUTOR_KIND,
+        SessionTaskState::Running,
+    )
+    .await;
+    let initial = list_snapshot(&context, json!({})).await;
+    let repeated = list_snapshot(&context, json!({"since": initial["snapshot"]})).await;
+    assert_eq!(repeated["unchanged"], true);
+    assert_eq!(repeated["count"], 1);
+    assert!(repeated.get("tasks").is_none());
+    assert_eq!(repeated["snapshot"], initial["snapshot"]);
+    assert!(repeated.to_string().len() < initial.to_string().len());
+    // No tool-instance or turn-local state is required.
+    let rebuilt = ToolContext::new(context.session_id).with_session_task_registry(registry);
+    assert_eq!(
+        list_snapshot(&rebuilt, json!({"since": initial["snapshot"]})).await,
+        repeated
+    );
+    assert_eq!(list_snapshot(&rebuilt, json!({})).await, initial);
+    assert_eq!(
+        list_snapshot(&rebuilt, json!({"since": "unknown"})).await,
+        initial
+    );
+    assert_eq!(
+        list_snapshot(&rebuilt, json!({"since": null})).await,
+        initial
+    );
+}
+
+#[tokio::test]
+async fn list_tasks_snapshots_scope_sessions_filters_and_empty_lists() {
+    let registry = Arc::new(InMemorySessionTaskRegistry::default());
+    let context = test_context(registry.clone());
+    let empty = list_snapshot(&context, json!({})).await;
+    assert_eq!(
+        list_snapshot(&context, json!({"since": empty["snapshot"]})).await["unchanged"],
+        true
+    );
+    let other = test_context(registry.clone());
+    assert!(
+        list_snapshot(&other, json!({"since": empty["snapshot"]}))
+            .await
+            .get("tasks")
+            .is_some()
+    );
+    for args in [
+        json!({"kind": "subagent", "since": empty["snapshot"]}),
+        json!({"state": "running", "since": empty["snapshot"]}),
+    ] {
+        assert!(list_snapshot(&context, args).await.get("tasks").is_some());
+    }
+    assert_eq!(
+        list_snapshot(
+            &context,
+            json!({"kind": "  ", "state": null, "since": empty["snapshot"]})
+        )
+        .await["unchanged"],
+        true
+    );
+    let task = create_task(
+        &registry,
+        &context,
+        TEST_EXECUTOR_KIND,
+        SessionTaskState::Running,
+    )
+    .await;
+    let populated = list_snapshot(&context, json!({"since": empty["snapshot"]})).await;
+    assert_eq!(populated["count"], 1);
+    let filtered = list_snapshot(&context, json!({"kind": TEST_EXECUTOR_KIND})).await;
+    assert_eq!(
+        list_snapshot(
+            &context,
+            json!({"kind": format!(" {TEST_EXECUTOR_KIND} "), "since": filtered["snapshot"]})
+        )
+        .await["unchanged"],
+        true
+    );
+    registry.tasks.lock().unwrap().remove(&task.id);
+    assert_eq!(
+        list_snapshot(&context, json!({"since": populated["snapshot"]})).await["tasks"],
+        json!([])
+    );
+}
+
+#[tokio::test]
+async fn list_tasks_snapshots_preserve_meaningful_changes_not_heartbeats() {
+    let registry = Arc::new(InMemorySessionTaskRegistry::default());
+    let context = test_context(registry.clone());
+    let task = create_task(
+        &registry,
+        &context,
+        TEST_EXECUTOR_KIND,
+        SessionTaskState::Running,
+    )
+    .await;
+    let original = list_snapshot(&context, json!({})).await;
+    {
+        let mut tasks = registry.tasks.lock().unwrap();
+        let task = tasks.get_mut(&task.id).unwrap();
+        task.heartbeat_at = Some(Utc::now());
+        task.updated_at = Utc::now();
+    }
+    assert_eq!(
+        list_snapshot(&context, json!({"since": original["snapshot"]})).await["unchanged"],
+        true
+    );
+    let baseline = registry.tasks.lock().unwrap()[&task.id].clone();
+    for (field, value) in [
+        ("state", json!("awaiting_input")),
+        ("state_detail", json!("iteration 2")),
+        ("progress", json!({"current": 2, "total": 10})),
+        (
+            "input_request",
+            json!({"id": "input_1", "prompt": "Choose a branch"}),
+        ),
+        ("summary", json!("updated result")),
+        ("result_path", json!("/.tasks/result.txt")),
+        ("error", json!({"kind": "remote", "message": "failed"})),
+        ("attempt", json!(2)),
+        ("cancel_requested_at", json!(Utc::now())),
+    ] {
+        let mut changed = serde_json::to_value(&baseline).unwrap();
+        changed[field] = value.clone();
+        registry
+            .tasks
+            .lock()
+            .unwrap()
+            .insert(task.id.clone(), serde_json::from_value(changed).unwrap());
+        let result = list_snapshot(&context, json!({"since": original["snapshot"]})).await;
+        assert!(
+            result.get("tasks").is_some(),
+            "suppressed change to {field}"
+        );
+        assert_ne!(result["snapshot"], original["snapshot"], "{field}");
+        if field == "input_request" {
+            assert_eq!(result["tasks"][0][field], value);
+        }
+    }
+    // A change after the truncated summary must still be discoverable.
+    let mut long = baseline;
+    long.summary = Some("x".repeat(700));
+    registry
+        .tasks
+        .lock()
+        .unwrap()
+        .insert(task.id.clone(), long.clone());
+    let before = list_snapshot(&context, json!({})).await;
+    long.summary.as_mut().unwrap().push('y');
+    registry.tasks.lock().unwrap().insert(task.id, long);
+    let after = list_snapshot(&context, json!({"since": before["snapshot"]})).await;
+    assert_eq!(before["tasks"], after["tasks"]);
+    assert_ne!(before["snapshot"], after["snapshot"]);
+}
+
+#[test]
+fn list_tasks_teaches_snapshot_polling_and_full_refresh() {
+    assert!(SESSION_TASKS_SYSTEM_PROMPT.contains("pass its previous snapshot as since"));
+    assert!(ListTasksTool.description().contains("Omit since"));
+    assert!(ListTasksTool.parameters_schema()["properties"]["since"].is_object());
 }
 
 #[tokio::test]
@@ -765,4 +946,99 @@ async fn wait_task_times_out_with_snapshot() {
     };
     assert_eq!(value["timed_out"], true);
     assert_eq!(value["task"]["state"], "running");
+}
+
+#[tokio::test]
+async fn list_tasks_snapshot_bounds_repeated_poll_output() {
+    let registry = Arc::new(InMemorySessionTaskRegistry::default());
+    let context = test_context(registry.clone());
+    for _ in 0..10 {
+        create_task(
+            &registry,
+            &context,
+            TEST_EXECUTOR_KIND,
+            SessionTaskState::Running,
+        )
+        .await;
+    }
+    let initial = list_snapshot(&context, json!({})).await;
+    let repeated = list_snapshot(&context, json!({"since": initial["snapshot"]})).await;
+    let full_bytes = initial.to_string().len();
+    let unchanged_bytes = repeated.to_string().len();
+    println!("10 tasks: full={full_bytes} bytes; unchanged={unchanged_bytes} bytes");
+    assert!(unchanged_bytes * 10 < full_bytes);
+}
+
+#[tokio::test]
+async fn list_tasks_snapshots_ignore_order_but_track_filter_membership() {
+    let registry = Arc::new(InMemorySessionTaskRegistry::default());
+    let context = test_context(registry.clone());
+    let first = create_task(
+        &registry,
+        &context,
+        TEST_EXECUTOR_KIND,
+        SessionTaskState::Running,
+    )
+    .await;
+    create_task(
+        &registry,
+        &context,
+        TEST_EXECUTOR_KIND,
+        SessionTaskState::Running,
+    )
+    .await;
+    let initial = list_snapshot(&context, json!({"state": "running"})).await;
+    registry
+        .reverse_list
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    let reversed = list_snapshot(&context, json!({"state": "running"})).await;
+    assert_ne!(initial["tasks"], reversed["tasks"]);
+    assert_eq!(initial["snapshot"], reversed["snapshot"]);
+    assert_eq!(
+        list_snapshot(
+            &context,
+            json!({"state": "running", "since": initial["snapshot"]})
+        )
+        .await["unchanged"],
+        true
+    );
+    registry
+        .update(
+            context.session_id,
+            &first.id,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Succeeded),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let changed = list_snapshot(
+        &context,
+        json!({"state": "running", "since": initial["snapshot"]}),
+    )
+    .await;
+    assert_eq!(changed["count"], 1);
+    assert_eq!(changed["tasks"].as_array().unwrap().len(), 1);
+    assert_ne!(changed["snapshot"], initial["snapshot"]);
+    // Changes outside the filter must not invalidate its snapshot.
+    registry
+        .update(
+            context.session_id,
+            &first.id,
+            SessionTaskUpdate {
+                summary: Some("result".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        list_snapshot(
+            &context,
+            json!({"state": "running", "since": changed["snapshot"]})
+        )
+        .await["unchanged"],
+        true
+    );
 }

@@ -347,6 +347,13 @@ Task lists keep outcome summaries bounded so diagnostics cannot crowd out task
 IDs and lifecycle states. Full summaries remain available through `get_task` and
 durable artifacts. Use the exact returned task ID; run IDs are independent.
 
+Polling `list_tasks` can pass its prior `snapshot` as `since`. Matching snapshots
+return only `unchanged`, `count`, and `snapshot`; omitting `since` always returns
+the list. Snapshots are scoped to the session and normalized filters and do not
+rely on worker-local state. Task ordering and liveness timestamps do not count
+as changes; progress, input requests, state details and complete outcomes do.
+Compact entries expose pending input requests; `get_task` retains full details.
+
 Generic tools replace the per-kind query/messaging tools:
 
 ```
