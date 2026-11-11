@@ -10,7 +10,7 @@ tags:
 
 # Control plane ↔ data plane protocol
 
-Status: approved 2026-11-09, not implemented yet. Part of [design.md](design.md) (data plane v2).
+Status: approved 2026-11-09. Part of [design.md](design.md) (data plane v2). Plan step 6 exercises config (agents and removals), the feed (usage, session summaries, config applied) and allowances against a fake control plane (`crates/cell/src/dp.rs` holds the wire types, `crates/cell-testkit/src/fake_cp.rs` the fake); org admin, secrets, connections, org tokens and feed replay come with step 7.
 
 ## Shape
 
@@ -176,6 +176,8 @@ struct AllowanceGrant {
     spend_until_unix_ms: i64, // after this the cell stops spending from it; the money is
                             // released only by a closed settlement, never by time
     reason: Option<String>, // budget_exhausted | ask_to_continue | suspended
+    per_call_micros: Option<i64>, // the most one provider call may reserve; the cell's
+                            // default when absent (additive, step 6)
 }
 ```
 
