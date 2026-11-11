@@ -60,6 +60,12 @@ pub struct Gateway {
     pub created: crate::prom::Counters,
     /// Moves the rebalancer (on this node) started.
     pub rebalanced: crate::prom::Counters,
+    /// Org tokens, when required (`org_token`).
+    org_tokens: std::sync::OnceLock<Arc<crate::org_token::OrgTokens>>,
+    /// Each session's tenant, as its cell reported it; it never changes.
+    tenants: Mutex<HashMap<SessionId, Option<String>>>,
+    /// The link's token, required on `/dp/v1` (`CELL_DP_TOKEN`).
+    link_token: Mutex<crate::node_control::LinkToken>,
 }
 
 impl Gateway {
@@ -83,7 +89,13 @@ impl Gateway {
             admitted: Default::default(),
             created: Default::default(),
             rebalanced: Default::default(),
+            org_tokens: std::sync::OnceLock::new(),
+            tenants: Mutex::default(),
+            link_token: Mutex::new(crate::node_control::link_token().map(Arc::from)),
         });
+        if let Some(tokens) = crate::org_token::OrgTokens::from_env() {
+            gateway.require_org_tokens(tokens);
+        }
         let weak = Arc::downgrade(&gateway);
         tokio::spawn(async move {
             while let Some(gateway) = weak.upgrade() {
@@ -94,6 +106,39 @@ impl Gateway {
             }
         });
         gateway
+    }
+
+    /// Require `token` on `/dp/v1`; takes effect for routers built after.
+    pub fn set_link_token(&self, token: Option<String>) {
+        *self.link_token.lock() = token.map(Arc::from);
+    }
+
+    pub fn link_token(&self) -> crate::node_control::LinkToken {
+        self.link_token.lock().clone()
+    }
+
+    /// Require an org token on every `/v1` call (`org_token`).
+    pub fn require_org_tokens(&self, tokens: Arc<crate::org_token::OrgTokens>) {
+        let _ = self.org_tokens.set(tokens);
+    }
+
+    /// `session`'s tenant, from its cell once, then from the cache.
+    async fn session_tenant(&self, session: SessionId) -> Result<Option<String>, ApiError> {
+        if let Some(tenant) = self.tenants.lock().get(&session) {
+            return Ok(tenant.clone());
+        }
+        let view: SessionView = self
+            .with_cell(session, |cell| async move {
+                self.call(cell, &format!("/cell/sessions/{session}"), None)
+                    .await
+            })
+            .await?;
+        let mut tenants = self.tenants.lock();
+        if tenants.len() > 100_000 {
+            tenants.clear();
+        }
+        tenants.insert(session, view.tenant.clone());
+        Ok(view.tenant)
     }
 
     /// The fleet's topology: the file (seed nodes and the directory cell)
@@ -691,8 +736,69 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
             axum::routing::delete(remove_node),
         )
         .layer(axum::extract::DefaultBodyLimit::max(max_request_bytes()))
+        .layer(axum::middleware::from_fn_with_state(
+            gateway.clone(),
+            check_org_token,
+        ))
         .with_state(gateway.clone())
         .merge(crate::gateway_dp::router(gateway))
+}
+
+/// With org tokens required: a session call needs a token that may drive
+/// the session's tenant, and every other `/v1` call needs `admin`. A
+/// session of another org answers as a missing one.
+async fn check_org_token(
+    State(gateway): State<Arc<Gateway>>,
+    mut request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use crate::org_token::{ADMIN, OrgTokenClaimsExt, SESSIONS, bearer};
+    use axum::response::IntoResponse;
+    let Some(tokens) = gateway.org_tokens.get().cloned() else {
+        return next.run(request).await;
+    };
+    let Some(token) = bearer(request.headers()).map(str::to_owned) else {
+        return (StatusCode::UNAUTHORIZED, "org token: none sent").into_response();
+    };
+    let claims = match tokens.verify(&token).await {
+        Ok(claims) => claims,
+        Err(error) => return error.into_response(),
+    };
+    let path: Vec<String> = request
+        .uri()
+        .path()
+        .trim_matches('/')
+        .split('/')
+        .map(str::to_owned)
+        .collect();
+    let refused = match path
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["v1", "sessions"] => (!claims.has(SESSIONS) && !claims.has(ADMIN)).then(|| {
+            (
+                StatusCode::FORBIDDEN,
+                "org token: no sessions:write scope".to_owned(),
+            )
+        }),
+        ["v1", "sessions", session, ..] => match parse(session) {
+            Err(error) => Some(error),
+            Ok(id) => match gateway.session_tenant(id).await {
+                Err(error) => Some(error),
+                Ok(tenant) => (!claims.may_drive(tenant.as_deref()))
+                    .then(|| (StatusCode::NOT_FOUND, format!("no session {id}"))),
+            },
+        },
+        _ => (!claims.has(ADMIN))
+            .then(|| (StatusCode::FORBIDDEN, "org token: needs admin".to_owned())),
+    };
+    if let Some(error) = refused {
+        return error.into_response();
+    }
+    request.extensions_mut().insert(claims);
+    next.run(request).await
 }
 
 /// The largest request body the gateway takes (`CELL_MAX_REQUEST_MB`,
@@ -757,8 +863,26 @@ struct CreateBody {
 
 async fn create(
     State(gateway): State<Arc<Gateway>>,
-    Json(body): Json<CreateBody>,
+    claims: Option<axum::Extension<crate::org_token::OrgTokenClaims>>,
+    Json(mut body): Json<CreateBody>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    use crate::org_token::{ADMIN, OrgTokenClaimsExt};
+    // A token's org is the session's tenant, unless the caller is admin.
+    if let Some(axum::Extension(claims)) = claims
+        && !claims.has(ADMIN)
+    {
+        let mine = |named: &Option<String>| named.as_ref().is_none_or(|o| *o == claims.org);
+        if !mine(&body.org) || !mine(&body.tenant) {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "org token: a session of another org".into(),
+            ));
+        }
+        body.tenant = Some(claims.org.clone());
+        if body.agent_ref.is_some() {
+            body.org = Some(claims.org);
+        }
+    }
     let (definition, tenant) = match (body.agent, body.org, body.agent_ref) {
         (Some(agent), _, None) => (agent, body.tenant),
         (None, Some(org), Some(agent)) => {

@@ -165,6 +165,8 @@ pub struct Node {
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
     /// Credits from executors outside the cell (`ExecutorMode::Pull`).
     pub dispatch: crate::dispatch::Dispatch,
+    /// Tenants that may not start turns, polled from the directory.
+    pub tenants: crate::tenants::TenantView,
     pub(crate) control: crate::node_control::ControlLink,
 }
 
@@ -240,6 +242,7 @@ impl Node {
                 running: Mutex::default(),
                 alive: Mutex::default(),
                 dispatched: Mutex::default(),
+                tenants: Default::default(),
                 hosting,
                 engine,
                 load: Mutex::default(),
@@ -296,6 +299,7 @@ impl Node {
         tokio::spawn(self.clone().register_loop());
         tokio::spawn(self.clone().rebalance_loop());
         tokio::spawn(self.clone().control_loop());
+        tokio::spawn(self.clone().tenants_loop());
     }
 
     /// While this node leads: ship the committed log to the object store
@@ -1216,6 +1220,9 @@ impl Node {
             }
             if !a.owed(now) || a.binding.is_none() {
                 return;
+            }
+            if self.tenants.admit(s.tenant.as_deref()) != crate::tenants::Admit::Yes {
+                return; // suspended, deleted, or no word from the directory
             }
             if !self.allowance_ready(&state, s, now) {
                 return; // the control loop is asking for its tenant's money

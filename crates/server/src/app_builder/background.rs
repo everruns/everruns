@@ -251,15 +251,39 @@ pub(super) fn spawn_dev_task_worker(
 /// 24-hour timer restarted with every process, so servers redeployed more
 /// than once a day never synced at all.
 /// Publish platform agents as Engine definitions as they are edited (data
-/// plane v2 step 4).
+/// plane v2 step 4), and deliver them to v2 orgs' data planes (step 7).
 pub(super) fn spawn_engine_agent_publisher(
     supervisor: &mut TaskSupervisor,
     db: Arc<StorageBackend>,
+    encryption: Option<Arc<EncryptionService>>,
 ) {
+    spawn_data_plane_dispatcher(supervisor, db.clone(), encryption);
     supervisor.spawn(
         "engine_agent_publisher",
         RestartPolicy::always_after(Duration::from_secs(5)),
         move || crate::domains::agent_definitions::run_publisher(db.clone()),
+    );
+}
+
+/// Deliver v2 orgs' config to their data planes (data plane v2 step 7).
+/// Idle unless an org is on a data plane.
+fn spawn_data_plane_dispatcher(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+    encryption: Option<Arc<EncryptionService>>,
+) {
+    let link = match crate::domains::data_plane::Link::from_env() {
+        Ok(link) => link,
+        Err(error) => {
+            tracing::error!(%error, "data plane link misconfigured; config is not delivered");
+            return;
+        }
+    };
+    let cp = crate::domains::data_plane::ControlPlane::new(db, encryption, link);
+    supervisor.spawn(
+        "data_plane_dispatcher",
+        RestartPolicy::always_after(Duration::from_secs(5)),
+        move || crate::domains::data_plane::outbox::run_dispatcher(cp.clone()),
     );
 }
 

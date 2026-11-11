@@ -46,6 +46,9 @@ pub mod batch;
 pub mod compact;
 pub mod credential_provider;
 pub mod credential_schema;
+pub mod dataplane;
+#[cfg(feature = "dataplane-seal")]
+pub mod dataplane_seal;
 #[cfg(feature = "http")]
 pub mod driver_helpers;
 mod driver_oauth;

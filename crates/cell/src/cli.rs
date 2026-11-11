@@ -218,6 +218,15 @@ pub async fn serve_node(
     let id = cfg.node_id;
     let node = Node::start(cfg, host).await?;
     let gateway = Gateway::new(topology);
+    if let Some(cp) = &node.cfg.control_plane {
+        gateway.set_link_token(cp.token.clone());
+        if let Some(url) = &cp.jwks_url {
+            gateway.require_org_tokens(Arc::new(crate::org_token::OrgTokens::new(
+                Some(url.clone()),
+                Some(cp.data_plane.clone()),
+            )));
+        }
+    }
     let _ = node.gateway.set(gateway.clone());
     let app = crate::api::router(node.clone())
         .merge(crate::exec_api::router(node.clone()))

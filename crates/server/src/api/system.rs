@@ -22,7 +22,10 @@ pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/system/doctor", get(run_system_doctor))
         .route("/v1/system/detections", get(list_platform_detections))
-        .with_state(state)
+        .with_state(state.clone())
+        // The control plane's /dp/v1 routes and org tokens ride along:
+        // app_builder sits at the file-size ratchet.
+        .merge(super::data_plane::routes(state))
 }
 
 /// GET /v1/system/doctor - Check the whole install

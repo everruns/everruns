@@ -183,6 +183,67 @@ impl Store {
         Ok(sha256)
     }
 
+    /// Write `bytes` at `name` under the store's prefix (exports).
+    pub async fn put_object(&self, name: &str, bytes: Vec<u8>) -> anyhow::Result<()> {
+        self.put(self.key(name), bytes).await
+    }
+
+    /// The object at `name` (exports).
+    pub async fn get_object(&self, name: &str) -> anyhow::Result<bytes::Bytes> {
+        self.get(self.key(name)).await
+    }
+
+    /// Delivered feed records of `source` (one cell incarnation), kept so a
+    /// restored control plane can ask for them again (feed replay).
+    pub async fn put_feed(
+        &self,
+        source: &str,
+        incarnation: u64,
+        records: &[crate::dp::FeedRecord],
+    ) -> anyhow::Result<()> {
+        let (Some(first), Some(last)) = (records.first(), records.last()) else {
+            return Ok(());
+        };
+        let name = format!(
+            "feed/{source}/{incarnation}/{:020}-{:010}-{:020}-{:010}.json",
+            first.index, first.ordinal, last.index, last.ordinal
+        );
+        self.put(self.key(&name), serde_json::to_vec(records)?)
+            .await
+    }
+
+    /// The archived feed records of `source` from `from_index` on, in order.
+    pub async fn feed_since(
+        &self,
+        source: &str,
+        incarnation: u64,
+        from_index: u64,
+    ) -> anyhow::Result<Vec<crate::dp::FeedRecord>> {
+        let dir = self.key(&format!("feed/{source}/{incarnation}"));
+        let mut metas: Vec<_> = self.inner.list(Some(&dir)).try_collect().await?;
+        metas.sort_by(|a, b| a.location.as_ref().cmp(b.location.as_ref()));
+        let mut out: Vec<crate::dp::FeedRecord> = Vec::new();
+        for meta in metas {
+            // `<first index>-<ordinal>-<last index>-<ordinal>.json`
+            let last = meta
+                .location
+                .filename()
+                .and_then(|f| f.split('-').nth(2))
+                .and_then(|n| n.parse::<u64>().ok());
+            if last.is_some_and(|last| last < from_index) {
+                continue;
+            }
+            let bytes = self.get(meta.location.clone()).await?;
+            let records: Vec<crate::dp::FeedRecord> = serde_json::from_slice(&bytes)?;
+            out.extend(records.into_iter().filter(|r| r.index >= from_index));
+        }
+        // Overlapping archives (a resend after a lost ack) hold the same
+        // records under the same ids.
+        out.sort_by_key(|r| (r.index, r.ordinal));
+        out.dedup_by_key(|r| (r.index, r.ordinal));
+        Ok(out)
+    }
+
     /// The blob named `sha256`.
     pub async fn get_blob(&self, sha256: &str) -> anyhow::Result<bytes::Bytes> {
         if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {

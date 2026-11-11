@@ -16,7 +16,7 @@ workspace = true
 everruns-cell = { path = "../cell" }
 everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs"] }
 everruns-core = { workspace = true, features = ["host"] }
-everruns-contracts.workspace = true
+everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
 everruns-llmsim = { workspace = true, features = ["host"] }
 async-trait.workspace = true
 tokio.workspace = true
@@ -32,9 +32,14 @@ mimalloc.workspace = true
 axum.workspace = true
 parking_lot.workspace = true
 chrono.workspace = true
+jsonwebtoken.workspace = true
+aws-lc-rs = "1"
+base64.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tar.workspace = true
+zstd.workspace = true
 
 [[bin]]
 name = "cell-testnode"

@@ -8,6 +8,14 @@
 //!   their ids, and an unanswered allowance request under its id (the
 //!   tenant's answered-request count names it), which the control plane
 //!   answers once.
+//! - Delivered feed records are archived in the object store before the
+//!   acknowledgement leaves state (`feed/<source>/<incarnation>/...`), so a
+//!   restored control plane can ask for them again (`POST
+//!   /dp/v1/feed/replay`). An archive that fails keeps the records in
+//!   state; they are sent again and the control plane deduplicates them.
+//! - Both directions of the link carry the data plane's token (`Authorization:
+//!   Bearer`, `CELL_DP_TOKEN`) when one is set; mTLS replaces it with the
+//!   EKS deployment (step 10).
 //! - A metered session's turn waits while its tenant has no money here and
 //!   the control plane has not refused it: with the control plane down,
 //!   turns run until the allowances are spent, then new turns wait. A
@@ -37,18 +45,75 @@ pub struct ControlPlane {
     pub want_micros: i64,
     /// The most one provider call may cost, when a grant does not say.
     pub per_call_micros: i64,
+    /// The link's shared secret (`CELL_DP_TOKEN`), sent as a bearer token
+    /// and required on the data plane's `/dp/v1`.
+    pub token: Option<String>,
+    /// Where the control plane's org token keys are (`CELL_JWKS_URL`);
+    /// set, the gateway requires org tokens (`org_token`).
+    pub jwks_url: Option<String>,
 }
 
 impl ControlPlane {
     pub fn new(url: impl Into<String>) -> Self {
         Self {
             url: url.into(),
-            data_plane: "dp-local".into(),
+            data_plane: std::env::var("CELL_DATA_PLANE")
+                .ok()
+                .filter(|d| !d.is_empty())
+                .unwrap_or_else(|| "dp-local".into()),
             incarnation: 1,
             want_micros: 1_000_000,
             per_call_micros: 10_000,
+            token: link_token(),
+            jwks_url: std::env::var("CELL_JWKS_URL")
+                .ok()
+                .filter(|u| !u.is_empty()),
         }
     }
+
+    /// A request to the control plane at `path`, with the link's token.
+    pub fn post(&self, http: &reqwest::Client, path: &str) -> reqwest::RequestBuilder {
+        let request = http.post(format!("{}{path}", self.url));
+        match &self.token {
+            Some(token) => request.bearer_auth(token),
+            None => request,
+        }
+    }
+}
+
+/// The link's shared secret, from `CELL_DP_TOKEN` (empty: none).
+pub fn link_token() -> Option<String> {
+    std::env::var("CELL_DP_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty())
+}
+
+/// The link's token as the routes that check it hold it (none: open).
+pub type LinkToken = Option<Arc<str>>;
+
+/// Refuse a `/dp/v1` call that lacks the link's token, when one is set.
+pub async fn require_link_token(
+    axum::extract::State(token): axum::extract::State<LinkToken>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(token) = token {
+        let sent = crate::org_token::bearer(request.headers());
+        if !sent.is_some_and(|sent| same_secret(sent.as_bytes(), token.as_bytes())) {
+            return (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "the data plane token is missing or wrong",
+            )
+                .into_response();
+        }
+    }
+    next.run(request).await
+}
+
+/// Compare two secrets in time that doesn't depend on where they differ.
+pub fn same_secret(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Feed records per batch.
@@ -125,15 +190,24 @@ impl Node {
             incarnation: cp.incarnation,
             records,
         };
-        let ack: FeedAck = self
-            .http
-            .post(format!("{}/dp/v1/feed", cp.url))
+        let ack: FeedAck = cp
+            .post(&self.http, "/dp/v1/feed")
             .json(&batch)
             .timeout(Duration::from_secs(5))
             .send()
             .await?
             .error_for_status()?
             .json()
+            .await?;
+        let delivered: Vec<_> = batch
+            .records
+            .iter()
+            .filter(|r| (r.index, r.ordinal) <= ack.stored_through)
+            .cloned()
+            .collect();
+        self.cfg
+            .store
+            .put_feed(&batch.source, batch.incarnation, &delivered)
             .await?;
         self.propose(Command::FeedAcked {
             through: ack.stored_through,
@@ -142,8 +216,43 @@ impl Node {
         Ok(())
     }
 
-    fn source(&self) -> String {
+    pub(crate) fn source(&self) -> String {
         format!("cell-{}", self.cfg.cell)
+    }
+
+    /// Resend `source`'s archived feed from `from_index` (feed replay).
+    pub async fn replay_feed(
+        &self,
+        source: &str,
+        incarnation: u64,
+        from_index: u64,
+    ) -> anyhow::Result<usize> {
+        let cp = self
+            .cfg
+            .control_plane
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("no control plane configured"))?;
+        let records = self
+            .cfg
+            .store
+            .feed_since(source, incarnation, from_index)
+            .await?;
+        let total = records.len();
+        for chunk in records.chunks(FEED_BATCH) {
+            let batch = FeedBatch {
+                data_plane: cp.data_plane.clone(),
+                source: source.to_owned(),
+                incarnation,
+                records: chunk.to_vec(),
+            };
+            cp.post(&self.http, "/dp/v1/feed")
+                .json(&batch)
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await?
+                .error_for_status()?;
+        }
+        Ok(total)
     }
 
     /// Tenants running or owing turns here that are low on money, or hold
@@ -216,9 +325,8 @@ impl Node {
             want_micros: if busy { cp.want_micros } else { 0 },
             settlements: settlements.clone(),
         };
-        let grant: AllowanceGrant = self
-            .http
-            .post(format!("{}/dp/v1/tenants/{tenant}/allowances", cp.url))
+        let grant: AllowanceGrant = cp
+            .post(&self.http, &format!("/dp/v1/tenants/{tenant}/allowances"))
             .json(&body)
             .timeout(Duration::from_secs(5))
             .send()

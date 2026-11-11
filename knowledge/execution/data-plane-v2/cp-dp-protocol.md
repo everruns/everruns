@@ -10,7 +10,7 @@ tags:
 
 # Control plane ↔ data plane protocol
 
-Status: approved 2026-11-09. Part of [design.md](design.md) (data plane v2). Plan step 6 exercises config (agents and removals), the feed (usage, session summaries, config applied) and allowances against a fake control plane (`crates/cell/src/dp.rs` holds the wire types, `crates/cell-testkit/src/fake_cp.rs` the fake); org admin, secrets, connections, org tokens and feed replay come with step 7.
+Status: approved 2026-11-09; implemented in plan step 7 (2026-11-11). Part of [design.md](design.md) (data plane v2). The wire types are `everruns_contracts::dataplane`, and sealing is `everruns_contracts::dataplane_seal`. The data plane side is `crates/cell` (`gateway_dp.rs`, `node_control.rs`, `org_token.rs`), and `crates/cell-testkit/src/fake_cp.rs` is a fake control plane for cell tests. The control plane side is the server's `domains/data_plane` (outbox, feed, allowances, org tokens) and the operator CLI `everruns-dataplane`.
 
 ## Shape
 
@@ -21,7 +21,7 @@ Status: approved 2026-11-09. Part of [design.md](design.md) (data plane v2). Pla
 | **Feed** | data → control | Usage, session summaries, refreshed tokens, org events, health | Batched, at least once, deduplicated by cursor |
 | **Keys** | data ← control | Public keys that verify org tokens | The data plane pulls JWKS and caches it |
 
-**Transport:** HTTPS with JSON bodies, mTLS between the planes. This is the same stack as the public `/v1` API (axum, serde types, OpenAPI). Traffic is low volume (config on edits, feed batches about once a second), so nothing here needs streaming. Both sides serve an internal `/dp/v1` prefix that the edge router never exposes publicly.
+**Transport:** HTTPS with JSON bodies, mTLS between the planes (until step 10, a bearer token per link: `EVERRUNS_DP_TOKEN` on the control plane, `CELL_DP_TOKEN` on the data plane, checked on both sides). This is the same stack as the public `/v1` API (axum, serde types, OpenAPI). Traffic is low volume (config on edits, feed batches about once a second), so nothing here needs streaming. Both sides serve an internal `/dp/v1` prefix that the edge router never exposes publicly.
 
 **Session traffic is not part of this protocol.** Messages, SSE and webhooks go from the edge router straight to the data plane. If the control plane is down, running sessions continue; edits and new orgs wait until it is back.
 
@@ -35,8 +35,8 @@ Served by the data plane, called by the control plane:
 | --- | --- | --- |
 | `PUT /dp/v1/orgs/{org}/config/{epoch}/{version}` | `ConfigUpdate` → `ConfigAck` | One call per tenant change set, in order; idempotent by `(org, epoch, version)` |
 | `GET /dp/v1/orgs/{org}/config` | → `{ "epoch": u64, "applied_version": u64 }` | Resume the outbox after a restart, detect gaps |
-| `GET /dp/v1/orgs/{org}/config/unknown?epoch={e}` | → `ConfigDiff` | After a control plane restore: agent revisions and secrets the data plane holds that the restored epoch doesn't know |
-| `POST /dp/v1/feed/replay` | `{ source, incarnation, from_index }` → `CommandAck` | Ask a cell to resend feed records from the shipped log (30 days) |
+| `POST /dp/v1/orgs/{org}/config/unknown` | `ConfigKnown` → `ConfigDiff` | After a control plane restore: the control plane sends the revisions it knows, and the data plane answers with the agent revisions, secrets and connections it holds beyond them. A POST because the known set can be larger than a query string |
+| `POST /dp/v1/feed/replay` | `FeedReplay` → `{ command_id, resent }` | Ask a cell to resend feed records from the shipped log (30 days) |
 | `PUT /dp/v1/orgs/{org}` | `OrgEnable` → `CommandAck` | Enable the org on this data plane: data key, placement policy |
 | `POST /dp/v1/orgs/{org}/state` | `{ command_id, state: "active" \| "suspended", reason }` → `CommandAck` | Suspension takes effect immediately |
 | `POST /dp/v1/orgs/{org}/exports` | `{ command_id, export_id }` → `CommandAck` | Writes `orgs/{org}/exports/{export_id}.tar.zst` |
@@ -194,6 +194,8 @@ The edge router and gateways check a JWT signed by the control plane (EdDSA). Th
 | `exp` | short: about 10 minutes |
 | `jti` | token id, for audit |
 
+A gateway requires org tokens when `CELL_JWKS_URL` is set. `sessions:write` lets a caller create sessions in its own org and drive them, and a session of another org answers as missing. `admin` is for operators and is never minted by the control plane. The gateway fetches the JWKS again on an unknown `kid`, at most every 10 s.
+
 The browser and CLI get tokens from the control plane at sign-in and refresh them in the background. **API keys** are long-lived, so the edge exchanges a key for a short token once (`POST /v1/auth/token` on the control plane) and caches the result until it expires. Revoking a user or key therefore takes effect within the token lifetime. A suspended org is pushed through the org state endpoint, so suspension is immediate while the data plane is connected and takes at most 30 s through a partition (see Rules, freshness). A control plane outage longer than the token lifetime stops new sign-ins and token refreshes; running sessions continue.
 
 ## Rules
@@ -220,7 +222,7 @@ The browser and CLI get tokens from the control plane at sign-in and refresh the
 - **Security.**
   - mTLS between the planes.
   - Plaintext secrets never cross: the control plane seals them, and only executors unseal.
-  - Data keys are wrapped with the data plane's KMS key, so a dump of the cell doesn't expose them.
+  - Data keys are wrapped with the data plane's KMS key, so a dump of the cell doesn't expose them. Until step 10 the wrapping key is a local key (`EVERRUNS_DP_KEY` on the control plane, `CELL_DP_KEY` on executors). Sealing is AES-256-GCM, and the associated data names the org, item and revision, so a sealed value can't be moved to another org or replayed as another revision.
 
 ## Data plane v1
 

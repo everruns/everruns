@@ -42,6 +42,7 @@ pub mod moves;
 pub mod network;
 pub mod node;
 pub mod node_control;
+pub mod org_token;
 pub mod prof;
 pub mod prom;
 pub mod remote;
@@ -49,6 +50,7 @@ pub mod ship;
 pub mod sm;
 pub mod state;
 pub mod store;
+pub mod tenants;
 pub mod types;
 pub mod wal;
 

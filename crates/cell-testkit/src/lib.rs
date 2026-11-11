@@ -9,6 +9,7 @@
 //! free.
 
 pub mod fake_cp;
+pub mod signer;
 
 use std::io::Write;
 use std::time::Duration;

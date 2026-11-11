@@ -28,6 +28,25 @@ pub struct HostCharge<'a> {
     pub service: &'a str,
 }
 
+/// Usage journal source of usage a data plane reported.
+pub const DATA_PLANE_USAGE_SOURCE: &str = "data_plane";
+
+/// One usage from a data plane's feed. See
+/// [`BudgetService::meter_data_plane_usage`].
+pub struct DataPlaneUsage<'a> {
+    pub org_id: i64,
+    pub attempt_id: &'a str,
+    pub session_id: &'a str,
+    pub agent_id: &'a str,
+    pub provider: &'a str,
+    pub model: &'a str,
+    pub kind: &'a str,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cached_tokens: u64,
+    pub cost_micros: i64,
+}
+
 /// Everything a posting for one journal row shares.
 pub(super) struct PostingContext<'a> {
     pub(super) journal_id: uuid::Uuid,
@@ -371,6 +390,98 @@ impl BudgetService {
         if delta != 0.0 {
             self.debit_policies(&ctx, &rated, None, managed).await;
         }
+        Ok(true)
+    }
+
+    /// Meter one usage a data plane reported on its feed (data plane v2,
+    /// `domains::data_plane::feed`). Keyed to the attempt, so a replayed
+    /// feed never charges twice. The data plane's sessions are not platform
+    /// sessions: the usage counts against the org's policies only. The
+    /// cost is the data plane's, rated at the provider's price there.
+    /// Returns whether the usage was new.
+    pub async fn meter_data_plane_usage(&self, usage: DataPlaneUsage<'_>) -> anyhow::Result<bool> {
+        let total_tokens = (usage.input_tokens + usage.output_tokens + usage.cached_tokens) as i64;
+        let amount_usd = usage.cost_micros as f64 / 1_000_000.0;
+        let journal = match self
+            .db
+            .create_usage_journal_entry(CreateUsageJournalRow {
+                org_id: usage.org_id,
+                kind: "llm_generation".to_string(),
+                source_type: Some(DATA_PLANE_USAGE_SOURCE.to_string()),
+                source_id: Some(usage.attempt_id.to_string()),
+                event_id: None,
+                session_id: None,
+                turn_id: None,
+                user_id: None,
+                principal_id: None,
+                agent_id: None,
+                harness_id: None,
+                measures: serde_json::json!({
+                    "quantity": total_tokens,
+                    "unit": "token",
+                    "input_tokens": usage.input_tokens,
+                    "output_tokens": usage.output_tokens,
+                    "total_tokens": total_tokens,
+                    "cache_read_tokens": usage.cached_tokens,
+                    "provider_cost_usd": amount_usd,
+                }),
+                metadata: serde_json::json!({
+                    "model": usage.model,
+                    "provider": usage.provider,
+                    "managed": false,
+                    "source_key": "data_plane",
+                    "source_label": "Data plane",
+                    "data_plane_session": usage.session_id,
+                    "data_plane_agent": usage.agent_id,
+                    "usage_kind": usage.kind,
+                }),
+            })
+            .await
+        {
+            Ok(journal) => journal,
+            // The unique source index: this attempt is already recorded.
+            Err(_) => return Ok(false),
+        };
+        let scope = BudgetScope {
+            session_subject_id: String::new(),
+            agent_subject_id: None,
+            user_subject_id: None,
+            org_subject_id: everruns_core::org_public_id_from_internal(usage.org_id),
+            trigger_subject_id: None,
+            channel_subject_id: None,
+            session_id: None,
+            user_id: None,
+            principal_id: None,
+            agent_id: None,
+            harness_id: None,
+            schedule_subject_id: None,
+            unattended: false,
+            eval_run_subject_id: None,
+            monitoring: false,
+        };
+        let ctx = PostingContext {
+            journal_id: journal.id,
+            org_id: usage.org_id,
+            scope: &scope,
+            ref_type: "llm_generation",
+            ref_id: journal.id,
+            description: Some(format!("{total_tokens} tokens on {}", usage.model)),
+            rating_metadata: serde_json::json!({
+                "ruleset_version": "v2",
+                "journal_kind": "llm_generation",
+                "model": usage.model,
+                "provider": usage.provider,
+                "data_plane": true,
+            }),
+        };
+        let rated = RatedCost {
+            amount: Some(amount_usd),
+            basis: CostBasis::Provider,
+            rate_id: None,
+        };
+        self.post_cost(&ctx, "cost", &rated).await;
+        self.debit_policies(&ctx, &rated, Some(total_tokens), false)
+            .await;
         Ok(true)
     }
 

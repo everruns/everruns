@@ -574,6 +574,16 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "webhook_secret_encrypted",
         id_column: "id",
     },
+    EncryptedColumn {
+        table: "dp_orgs",
+        column: "data_key_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "dp_signing_keys",
+        column: "private_key_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]
