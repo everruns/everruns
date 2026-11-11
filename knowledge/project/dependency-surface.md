@@ -62,10 +62,12 @@ component preserves 64 KiB runtime alignment without requiring an
 unsupported Windows over-aligned static. Python stays enabled in the hosted
 integration catalog.
 
-Since 0.21.0 Bashkit's Monty `python3` fails closed unless
-`bashkit::MeteredAllocator` is the process's global allocator. The server and
-worker install mimalloc, so Everruns shells run Python through CPython only;
-wrap the allocator before exposing Monty on any surface.
+Everruns does not compile Bashkit's Monty `python3`: shells run Python through
+CPython, and the server's scripted command surface takes no `python` feature.
+Since 0.21.0 Monty fails closed unless `bashkit::MeteredAllocator` is the
+process's global allocator, and the server and worker install mimalloc, so
+enabling it needs that allocator change first. Leaving it out also keeps
+pyo3, the ruff parser crates and BlueOak-licensed `minicbor` out of the graph.
 
 No Bashkit Git patch or source-policy exception is required. Downstream
 applications resolve the corrected registry packages without inheriting

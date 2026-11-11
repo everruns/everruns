@@ -2,7 +2,7 @@
 
 ## 2026-11-11
 
-- Raise the Bashkit dependency floor to 0.21.0 (Monty 1.4 forks, bounded tree walks, HTTP Host/encoded-slash hardening). Bashkit's Monty `python3` now fails closed unless `bashkit::MeteredAllocator` is the global allocator; Everruns' shells use CPython and no shipped surface runs Monty, so nothing changes today. See [Dependency Surface](project/dependency-surface.md).
+- Raise the Bashkit dependency floor to 0.21.0 (Monty 1.4 forks, bounded tree walks, HTTP Host/encoded-slash hardening). Bashkit's Monty `python3` now fails closed unless `bashkit::MeteredAllocator` is the global allocator; Everruns' shells use CPython, and the server's scripted command surface drops its unused `python` feature, so Monty is no longer compiled in. See [Dependency Surface](project/dependency-surface.md).
 
 ## 2026-11-10
 
