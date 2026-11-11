@@ -15,6 +15,14 @@
 //!   on the platform. The declaration's servers, which carry `${BINDING}`
 //!   placeholders, are dropped from the Engine agent, so it never connects
 //!   to a server itself.
+//! - The control plane copied the harness's, agent's and session's starter
+//!   files into the session when it created it, as for every platform
+//!   session. The declaration's files are dropped from the Engine agent:
+//!   an Engine seeds an agent's files at each activation, which would put
+//!   back files the agent since changed, and the platform's file store
+//!   cannot seed a read-only file through it at all (prod's first Engine
+//!   session never started a turn: every activation failed on a read-only
+//!   handbook file and the lease went round again).
 //! - Hydration is pure: the organization of an agent key is learned when its
 //!   session is offered ([`PlatformHydrator::bind_key`]), before the Engine
 //!   hydrates, and a key belongs to one organization for its whole life.
@@ -83,7 +91,7 @@ impl<A: WorkerAdapters> PlatformHydrator<A> {
 impl<A: WorkerAdapters> AgentHydrator for PlatformHydrator<A> {
     fn hydrate(&self, definition: &AgentDefinition) -> Result<Hydrated> {
         let org = self.org(&definition.build.agent)?;
-        let package = without_mcp_servers(definition.agent_package()?)?;
+        let package = served_by_platform(definition.agent_package()?)?;
         let config = |error: everruns::PackageError| AgentLoopError::config(error.to_string());
         let mut services = HostServices::new().providers(HostProviders::shared(
             Arc::new(OrgAdapter::new(self.adapters.clone(), org)),
@@ -118,13 +126,16 @@ impl<A: WorkerAdapters> AgentHydrator for PlatformHydrator<A> {
     }
 }
 
-/// `package` without its MCP servers, which the platform serves.
-fn without_mcp_servers(package: everruns::AgentPackage) -> Result<everruns::AgentPackage> {
-    if package.manifest().mcp_servers.is_empty() {
+/// `package` without what the platform serves itself: its MCP servers and
+/// its starter files.
+fn served_by_platform(package: everruns::AgentPackage) -> Result<everruns::AgentPackage> {
+    let manifest = package.manifest();
+    if manifest.mcp_servers.is_empty() && manifest.initial_files.is_empty() {
         return Ok(package);
     }
-    let mut manifest = package.manifest().clone();
+    let mut manifest = manifest.clone();
     manifest.mcp_servers = Default::default();
+    manifest.initial_files.clear();
     everruns::AgentPackage::new(manifest).map_err(|error| AgentLoopError::config(error.to_string()))
 }
 
@@ -154,9 +165,27 @@ mod tests {
         // As declared, the placeholder has no binding on the Engine.
         assert!(declared.apply_to(everruns::Agent::builder()).is_err());
 
-        let served = without_mcp_servers(declared).unwrap();
+        let served = served_by_platform(declared).unwrap();
         assert!(served.manifest().mcp_servers.is_empty());
         assert_eq!(served.manifest().instructions, "Answer from the docs.");
         assert!(served.apply_to(everruns::Agent::builder()).is_ok());
+    }
+
+    #[test]
+    fn the_engine_agent_seeds_none_of_the_declared_starter_files() {
+        let declared = package(json!({
+            "schema_version": 1,
+            "name": "company-info",
+            "instructions": "Answer from the handbook.",
+            "files": [
+                {"path": "/handbook/index.md", "content": "# Handbook", "is_readonly": true},
+                {"path": "/notes.md", "content": "draft"}
+            ]
+        }));
+        assert_eq!(declared.manifest().initial_files.len(), 2);
+
+        let served = served_by_platform(declared).unwrap();
+        assert!(served.manifest().initial_files.is_empty());
+        assert_eq!(served.manifest().instructions, "Answer from the handbook.");
     }
 }
