@@ -1148,6 +1148,27 @@ the storage decision below requires. What it checks and what it found:
   be lost. A move now ends the epoch through the log (`Revoke`) before it
   copies the session, never retargets, and thaws only the freeze it names.
 
+- **Follower catch-up** (`scripts/cell/prove_follower_catchup.py`): the
+  first 75 000-session run (2 cells, 3 nodes each, one 15 GB machine)
+  created every session in about 20 s and ran about 210 turns/s, until
+  the machine ran out of memory and killed one cell's leader. That cell
+  never committed again: its other follower was behind the purged log,
+  so it could only catch up by snapshot (about 150 MB), each chunk sent
+  as JSON took longer than the 0.4 to 0.8 s election timeout, and the
+  follower kept calling elections that cancelled its own catch-up (about
+  2 900 terms in 1.5 hours). Snapshot chunks now travel as raw bytes in
+  16 MiB pieces and elections wait 1 to 2 s. The script makes the case on
+  purpose: it pauses one follower until the leader's log has moved past
+  it, resumes it, and kills the other follower; the cell must catch up
+  and complete a turn. With 42 000 sessions in the cell (what each cell
+  held in the 75 000 run) the old transport never elected a leader in
+  180 s; the new one caught up in 9.9 s and completed a turn at 10 s.
+  With 20 000 sessions both pass (9.5 s old, 7.4 s new), so the test runs
+  at the larger size.
+  Writing it found one more: a gateway try could outlast the whole call,
+  so a member that accepts connections but never answers blocked every
+  request. Each try now gets at most 10 s of a 45 s call.
+
 Still open in step 5: running the whole node (openraft, the log, the
 object store) under a simulated runtime with crash points, so the Raft
 simulation replays bit for bit too; the protocol simulation covers the

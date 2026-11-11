@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A follower that fell behind the leader's log heals the cell when it must.
 
-  prove_follower_catchup.py [--sessions 20000]
+  prove_follower_catchup.py [--sessions 42000]
 
 Starts one cell (a snapshot every 500 entries keeping 200 behind it, so
 the leader purges its log soon), fills it with `--sessions` sessions so the snapshot is large, then
@@ -54,7 +54,7 @@ def applied(node):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--sessions", type=int, default=20000)
+    p.add_argument("--sessions", type=int, default=42000)
     a = p.parse_args()
 
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
