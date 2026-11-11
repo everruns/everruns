@@ -88,11 +88,14 @@ language-server tools (TypeScript) work on a checkout in the sandbox. That run
 found that Daytona starts commands under zsh, so the sandbox workspace now runs
 every script under `sh`.
 
-Not verified against GitHub: checkout, fetch and push with an installation
-token. The repository tools are covered by tests that run real git against
-local remotes. The first deployment with a GitHub App connected to an agent
-must run that leg (two writable repositories, one read-only, a push and a
-refused push) before the harness loses its beta tag.
+Run in production against GitHub (2026-11-11), with an agent's own GitHub App,
+two writable repositories and one read-only, on Daytona: checkout with an
+installation token, a rename across both writable repositories, tests, commits
+on the work branch, `repo_push` for both, one pull request in each, and a
+refused push to the read-only repository. Checkout was also run on E2B. That
+run found that an App created before agents could push lacks Contents write,
+and GitHub then refuses to mint the push token: the push error now says which
+permission to grant.
 
 ## In the console
 
