@@ -5,14 +5,14 @@
 <text x="40" y="328" font-family="Geist Mono" font-size="13" fill="#A8B0BE">Nov 11</text>
 <path d="M190 280 H222 V130 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
 <rect x="258" y="106" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
-<text x="274" y="136" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Rooms</text>
+<text x="274" y="136" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Kubernetes install</text>
 <path d="M190 280 H222 V230 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
 <rect x="258" y="206" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
-<text x="274" y="236" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Main chat and threads</text>
+<text x="274" y="236" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Slack acknowledgements</text>
 <path d="M190 280 H222 V330 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
 <rect x="258" y="306" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
-<text x="274" y="336" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Multi-repo coding</text>
+<text x="274" y="336" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">New models</text>
 <path d="M190 280 H222 V430 H258" fill="none" stroke="#3A4766" stroke-width="2" stroke-dasharray="6 6"/>
 <rect x="258" y="406" width="250" height="48" fill="#0F1D45" stroke="#D4A43A" stroke-width="2"/>
-<text x="274" y="436" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Kubernetes install</text>
+<text x="274" y="436" font-family="Geist" font-size="15" font-weight="500" fill="#FFFFFF">Rooms</text>
 </svg>

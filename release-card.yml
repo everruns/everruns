@@ -1,22 +1,22 @@
 version: 0.52.0
 date: 2026-11-11
 headline:
-  - Rooms, threads,
-  - coding agents.
+  - Kubernetes,
+  - rooms, models.
 summary:
-  - People and agents share rooms.
   - Install on Kubernetes in one command.
+  - Agents acknowledge Slack messages.
   - Work toward 75,000 agents begins.
 highlights:
-  - title: Rooms
-    description: People and agents talk, share files and wake each other.
-    source: "#5317"
-  - title: Chat and threads
-    description: Main chat, side chats and threads beside any page.
-    source: "#5322"
-  - title: Multi-repo coding
-    description: One coding agent works across several GitHub repositories.
-    source: "#5311"
   - title: Kubernetes install
     description: everruns k8s up installs Everruns into a cluster.
     source: "#5277"
+  - title: Slack acknowledgements
+    description: Agents react when they start and when they answer.
+    source: "#5247"
+  - title: New models
+    description: Muse Ember, Claude Fable 5.2 and Mythos 5.2.
+    source: "#5305"
+  - title: Rooms
+    description: People and agents talk, share files and wake each other.
+    source: "#5317"
