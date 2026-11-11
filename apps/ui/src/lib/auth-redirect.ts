@@ -160,7 +160,7 @@ export function consumeReturnTo(): string | null {
 export function getPostAuthTarget(returnTo: string | null | undefined): string {
   const sanitized = sanitizeReturnTo(returnTo);
   const stored = consumeReturnTo();
-  return sanitized || stored || "/chats";
+  return sanitized || stored || "/";
 }
 
 /** Persist a typed login email for the next signup page without serializing PII into the URL. */

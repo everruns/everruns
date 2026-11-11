@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  Suspense,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -373,43 +374,54 @@ function EnabledShell({
           aria-hidden={!conversationVisible}
         >
           {(visited || conversationVisible) && thread ? (
-            <ChatWorkspace
-              activeChatId={activeChatId}
-              onActiveChatChange={setActiveChatId}
-              visible={conversationVisible}
-              pageAware={beside}
-              extraActions={
-                beside ? (
-                  <>
-                    <ChatSwitcher
-                      mainChatId={thread.id}
-                      activeChatId={selectedChatId ?? thread.id}
-                      onSelectChat={(id) => setActiveChatId(id === thread.id ? undefined : id)}
-                      onSelectThread={openThreadBeside}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={ui("Full screen")}
-                      title={ui("Full screen (⌘⇧J)")}
-                      onClick={showFullScreen}
-                    >
-                      <Maximize2 className="size-3.5" />
-                    </Button>
-                  </>
-                ) : fullChat ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    title={ui("Back to page (⌘⇧J)")}
-                    onClick={showBesidePage}
-                  >
-                    <Columns2 className="size-3.5" />{" "}
-                    {chatFirst ? ui("Show beside page") : ui("Back to page")}
-                  </Button>
-                ) : undefined
+            // Its own boundary: Chat loads beside the page on arrival, and a
+            // suspended conversation must not hold back the page's navigations
+            // (a server redirect or router.replace would otherwise never commit).
+            <Suspense
+              fallback={
+                <p role="status" className="p-6 text-sm text-muted-foreground">
+                  {ui("Opening Chat…")}
+                </p>
               }
-            />
+            >
+              <ChatWorkspace
+                activeChatId={activeChatId}
+                onActiveChatChange={setActiveChatId}
+                visible={conversationVisible}
+                pageAware={beside}
+                extraActions={
+                  beside ? (
+                    <>
+                      <ChatSwitcher
+                        mainChatId={thread.id}
+                        activeChatId={selectedChatId ?? thread.id}
+                        onSelectChat={(id) => setActiveChatId(id === thread.id ? undefined : id)}
+                        onSelectThread={openThreadBeside}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={ui("Full screen")}
+                        title={ui("Full screen (⌘⇧J)")}
+                        onClick={showFullScreen}
+                      >
+                        <Maximize2 className="size-3.5" />
+                      </Button>
+                    </>
+                  ) : fullChat ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title={ui("Back to page (⌘⇧J)")}
+                      onClick={showBesidePage}
+                    >
+                      <Columns2 className="size-3.5" />{" "}
+                      {chatFirst ? ui("Show beside page") : ui("Back to page")}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </Suspense>
           ) : (
             <p role={error ? "alert" : "status"} className="p-6 text-sm text-muted-foreground">
               {error

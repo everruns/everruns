@@ -56,8 +56,11 @@ export function useLayoutPreference() {
   const setLayout = useCallback(
     (next: AppLayout) => {
       writeLocal(next);
+      const queryKey = queryKeys.userPreferences.detail(LAYOUT_PREFERENCE_KEY);
+      // A read still in flight would land after this and switch the layout back.
+      void queryClient.cancelQueries({ queryKey });
       // Switch immediately; the request only persists the choice.
-      queryClient.setQueryData(queryKeys.userPreferences.detail(LAYOUT_PREFERENCE_KEY), {
+      queryClient.setQueryData(queryKey, {
         key: LAYOUT_PREFERENCE_KEY,
         value: next,
         updated_at: new Date().toISOString(),

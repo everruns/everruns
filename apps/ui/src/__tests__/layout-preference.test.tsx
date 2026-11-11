@@ -72,7 +72,7 @@ describe("layout preference", () => {
     await act(async () => {
       fireEvent.click(classic);
     });
-    expect(classic).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => expect(classic).toHaveAttribute("aria-checked", "true"));
     expect(setUserPreference).toHaveBeenCalledWith("ui.layout", "classic");
   });
 });
