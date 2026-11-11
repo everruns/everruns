@@ -510,7 +510,12 @@ def actor_releases(run_dir: str, n_workers: int) -> dict:
     return out
 
 
-SPAN_END = ("Actor turn execution finished", "Actor lease lost", "the lease will expire")
+SPAN_END = (
+    "Actor turn execution finished",
+    "Actor lease lost",
+    "the lease will expire",
+    "Engine activation failed",
+)
 RELEASE_ACK = ("Actor released", "Actor lease lost before release", "Actor release failed;")
 
 
@@ -520,7 +525,7 @@ def actor_worker_overlap(run_dir: str, n_workers: int, rep: Report) -> int:
     Events carry no worker id, so this reads the workers' own logs: every
     line naming `session_id=session_<hex>` is activity of that worker on that
     session. A span opens at the first such line, extends with each later
-    one, and closes at that worker's execution-finished, lease-lost or
+    one, and closes at that worker's execution-finished, activation-failed, lease-lost or
     "the lease will expire" line for the session, or at a SIGKILL marker.
     Release RPC acknowledgements do not extend execution: they can arrive
     after a valid lease takeover. Spans of one
