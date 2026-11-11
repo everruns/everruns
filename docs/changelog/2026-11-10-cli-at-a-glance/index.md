@@ -5,6 +5,7 @@ date: 2026-11-10
 kind: improvement
 significance: minor
 products: [platform]
+release: "0.52.0"
 surfaces: [cli]
 links:
   docs: [/features/cli/, /reference/cli/, /getting-started/kubernetes/]

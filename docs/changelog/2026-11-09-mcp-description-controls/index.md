@@ -5,6 +5,7 @@ date: 2026-11-09
 kind: improvement
 significance: minor
 products: [framework, platform, cloud]
+release: "0.52.0"
 surfaces: [agent]
 links:
   docs: [/features/mcp/]

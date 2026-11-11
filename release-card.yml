@@ -1,22 +1,22 @@
-version: 0.51.0
-date: 2026-11-05
+version: 0.52.0
+date: 2026-11-11
 headline:
-  - Agent teams.
-  - Multistep evals.
+  - Kubernetes,
+  - rooms, models.
 summary:
-  - Agents share work in one conversation.
-  - MCP refresh keeps its resource.
-  - Summaries preserve sources and doubt.
+  - Install on Kubernetes in one command.
+  - Agents acknowledge Slack messages.
+  - Work toward 75,000 agents begins.
 highlights:
-  - title: Agent teams
-    description: Hand work to other agents with shared files and one conversation.
-    source: "#5202"
-  - title: Conversation evals
-    description: Simulated users and tool fixtures test complete conversations.
-    source: "#5160"
-  - title: MCP OAuth continuity
-    description: Keep the authorized resource through token rotation and restart.
-    source: "#5239"
-  - title: Compaction sources
-    description: Summaries retain sources, uncertainty and corrections.
-    source: "#5240"
+  - title: Kubernetes install
+    description: everruns k8s up installs Everruns into a cluster.
+    source: "#5277"
+  - title: Slack acknowledgements
+    description: Agents react when they start and when they answer.
+    source: "#5247"
+  - title: New models
+    description: Muse Ember, Claude Fable 5.2 and Mythos 5.2.
+    source: "#5305"
+  - title: Rooms
+    description: People and agents talk, share files and wake each other.
+    source: "#5317"

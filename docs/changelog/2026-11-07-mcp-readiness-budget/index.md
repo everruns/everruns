@@ -5,6 +5,7 @@ date: 2026-11-07
 kind: improvement
 significance: minor
 products: [framework, platform, yolop]
+release: "0.52.0"
 surfaces: [agent, api, code, cli]
 links:
   docs: [/framework/host-services/, /features/mcp/]

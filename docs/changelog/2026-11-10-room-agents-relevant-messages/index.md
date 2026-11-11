@@ -5,6 +5,7 @@ date: 2026-11-10
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.52.0"
 surfaces: [ui, api, cli]
 links:
   docs: [/features/rooms/, /how-to/publish-to-slack/]

@@ -5,6 +5,7 @@ date: 2026-11-08
 kind: feature
 significance: notable
 products: [platform]
+release: "0.52.0"
 surfaces: [cli, operations]
 links:
   docs: [/getting-started/kubernetes/, /reference/cli/k8s/]
