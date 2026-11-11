@@ -26,6 +26,14 @@ updates:
       # checks. Drop this when the workspace MSRV moves to 1.95.
       - dependency-name: "parking_lot"
         versions: [">=0.13"]
+      # arrow and parquet must stay on the major datafusion links against
+      # (datafusion 55 requires arrow ^59.2); arrow 60 alone leaves two arrow
+      # crates in the graph and everruns-trace-store stops compiling. Drop this
+      # once a datafusion release on arrow 60 lands, and bump all three together.
+      - dependency-name: "arrow"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "parquet"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directories:

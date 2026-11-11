@@ -16,6 +16,9 @@ s3-tests = ["postgres-tests"]
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+# arrow and parquet must match the major DataFusion links against (datafusion 55
+# requires arrow ^59.2); a newer major puts two arrow crates in the graph and the
+# RecordBatch types stop type-checking. Move all three together.
 arrow = { version = "59.2", default-features = false }
 bytes.workspace = true
 chrono.workspace = true
