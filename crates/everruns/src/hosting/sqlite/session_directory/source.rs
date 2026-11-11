@@ -1,12 +1,12 @@
 //! Read and transfer earlier layouts under the same family ownership fence.
 use super::*;
 
-pub(super) enum SessionSource {
+pub(super) enum MigrationSource {
     Shared(PathBuf),
     Owned(PathBuf),
 }
 
-impl SessionSource {
+impl MigrationSource {
     fn open(&self) -> Result<rusqlite::Connection> {
         let path = match self {
             Self::Shared(path) | Self::Owned(path) => path,
@@ -142,7 +142,7 @@ fn source_control(source: &rusqlite::Connection, session: SessionId) -> Result<O
 }
 
 impl SessionDirectory {
-    pub(super) fn source_for(&self, session: SessionId) -> Result<Option<SessionSource>> {
+    pub(super) fn source_for(&self, session: SessionId) -> Result<Option<MigrationSource>> {
         for path in &self.sources {
             if path == &self.root {
                 continue;
@@ -150,10 +150,10 @@ impl SessionDirectory {
             if path.is_dir() {
                 let database = SqliteHosting::session_db_path(path, session);
                 if database.exists() {
-                    return Ok(Some(SessionSource::Owned(database)));
+                    return Ok(Some(MigrationSource::Owned(database)));
                 }
             } else if path.exists() {
-                let source = SessionSource::Shared(path.clone());
+                let source = MigrationSource::Shared(path.clone());
                 if source.control(session)?.is_some() {
                     return Ok(Some(source));
                 }
@@ -190,7 +190,7 @@ impl SessionDirectory {
                 .transpose()?
                 .flatten();
             let Some(state) = state else {
-                if matches!(source, Some(SessionSource::Owned(_))) {
+                if matches!(source, Some(MigrationSource::Owned(_))) {
                     break;
                 }
                 if cursor != selected {
@@ -243,7 +243,7 @@ impl SessionDirectory {
                 .ok_or_else(|| error("source family session disappeared"))?;
             source.validate_owned(*session)?;
             let Some(state) = source.control(*session)? else {
-                if matches!(source, SessionSource::Owned(_)) {
+                if matches!(source, MigrationSource::Owned(_)) {
                     continue;
                 }
                 return Err(error("source family session disappeared"));
