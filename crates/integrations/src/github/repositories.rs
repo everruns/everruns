@@ -555,7 +555,19 @@ async fn sandbox_token(
         let credential = resolver
             .get_github_token(context.session_id, access)
             .await
-            .map_err(|_| ToolExecutionResult::tool_error("Could not verify GitHub credential"))?;
+            // The cause stays server-side. The usual one is an App created
+            // before the agent could push: GitHub refuses to mint a token
+            // with a permission the App does not hold, so say where to look.
+            .map_err(|_| {
+                ToolExecutionResult::tool_error(format!(
+                    "Could not get a GitHub token with Contents {level} access to {repositories}. \
+                     If the agent's GitHub App does not hold the Contents {level} permission, \
+                     grant it in the App's settings and accept it on the installation, then \
+                     try again.",
+                    level = contents_level(access),
+                    repositories = access.repositories.join(", ")
+                ))
+            })?;
         if let Some(credential) = credential
             && !credential.token.trim().is_empty()
             && access
@@ -575,13 +587,17 @@ async fn sandbox_token(
          the agent and install it on the repository (pushing also needs the App's Contents \
          write permission). A person's own sign-in and GITHUB_TOKEN session secrets are never \
          handed to a sandbox.",
-        access
-            .permissions
-            .get("contents")
-            .map(String::as_str)
-            .unwrap_or("read"),
+        contents_level(access),
         access.repositories.join(", ")
     )))
+}
+
+fn contents_level(access: &GitHubAccess) -> &str {
+    access
+        .permissions
+        .get("contents")
+        .map(String::as_str)
+        .unwrap_or("read")
 }
 
 /// One repository to clone.

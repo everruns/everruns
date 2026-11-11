@@ -20,6 +20,9 @@ const TOKEN: &str = "ghs_repositorytoken456";
 struct RecordingResolver {
     requests: Mutex<Vec<GitHubAccess>>,
     unverified: bool,
+    /// GitHub refuses to mint a token with Contents write, as it does for an
+    /// App that does not hold the permission.
+    refuses_write: bool,
 }
 
 #[async_trait]
@@ -34,6 +37,13 @@ impl UserConnectionResolver for RecordingResolver {
         access: &GitHubAccess,
     ) -> ContractResult<Option<McpResolvedCredential>> {
         self.requests.lock().unwrap().push(access.clone());
+        if self.refuses_write
+            && access.permissions.get("contents").map(String::as_str) == Some("write")
+        {
+            return Err(everruns_contracts::error::AgentLoopError::store(
+                "GitHub API error (422): The permissions requested are not granted to this installation.",
+            ));
+        }
         Ok(Some(McpResolvedCredential {
             token: TOKEN.to_string(),
             acted_as: access.acts_as,
@@ -414,6 +424,31 @@ async fn push_is_refused_without_asking_for_a_token() {
     assert!(!branches.contains(&branch), "{branches}");
 
     assert_eq!(fixture.requests().len(), asked);
+}
+
+#[tokio::test]
+async fn a_push_the_app_may_not_make_says_which_permission_is_missing() {
+    let fixture = Fixture::with_resolver(
+        &["acme/app"],
+        RecordingResolver {
+            refuses_write: true,
+            ..Default::default()
+        },
+    );
+    let config = json!({ "repositories": [{ "repo": "acme/app", "access": "write" }] });
+    fixture.ok(&config, "repo_status", json!({})).await;
+    fixture.sh(
+        &fixture.checkout("app"),
+        "echo change >> README.md && git commit -q -am change",
+    );
+
+    let error = fixture
+        .error(&config, "repo_push", json!({ "repo": "acme/app" }))
+        .await;
+    assert!(error.contains("Contents write"), "{error}");
+    assert!(error.contains("acme/app"), "{error}");
+    // What GitHub answered stays on the server.
+    assert!(!error.contains("422"), "{error}");
 }
 
 #[tokio::test]
