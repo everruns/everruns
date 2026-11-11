@@ -830,9 +830,13 @@ async fn test_openai_tool_reveal_keeps_prompt_cache(#[case] config: ProviderMode
     assert_tool_reveal_keeps_prompt_cache(config).await;
 }
 
-async fn assert_tool_reveal_keeps_prompt_cache(config: ProviderModelConfig) {
+/// Runs the reveal scenario once and returns the loop and the cache read of
+/// the first call that carried the revealed tool.
+async fn tool_reveal_cache_read(
+    config: &ProviderModelConfig,
+) -> Option<(InMemoryAgenticLoop, u32)> {
     let system_prompt = long_cacheable_system_prompt();
-    let Some((runner, result)) = live_turn(&config, "What is 21 + 21?", |model| {
+    let (runner, result) = live_turn(config, "What is 21 + 21?", |model| {
         let system_prompt = system_prompt.clone();
         async move {
             InMemoryAgenticLoop::builder()
@@ -850,10 +854,7 @@ async fn assert_tool_reveal_keeps_prompt_cache(config: ProviderModelConfig) {
                 .unwrap()
         }
     })
-    .await
-    else {
-        return;
-    };
+    .await?;
     assert!(result.success, "Turn should succeed: {:?}", result.error);
 
     let generations: Vec<_> = runner
@@ -899,6 +900,30 @@ async fn assert_tool_reveal_keeps_prompt_cache(config: ProviderModelConfig) {
         .as_ref()
         .and_then(|usage| usage.cache_read_tokens)
         .unwrap_or(0);
+    Some((runner, cache_read))
+}
+
+async fn assert_tool_reveal_keeps_prompt_cache(config: ProviderModelConfig) {
+    // Provider prompt caching is best-effort: OpenAI routes by prefix hash and
+    // can land a request on a machine without the entry (nightly 2026-11-11 saw
+    // gpt-6-luna read 0 once, then 5049 on the next call). A layout regression
+    // misses on every attempt, so one retry keeps the signal without the flake.
+    const ATTEMPTS: usize = 2;
+    let mut last = None;
+    for attempt in 1..=ATTEMPTS {
+        let Some((runner, cache_read)) = tool_reveal_cache_read(&config).await else {
+            return;
+        };
+        if cache_read >= 4096 || attempt == ATTEMPTS {
+            last = Some((runner, cache_read));
+            break;
+        }
+        eprintln!(
+            "{}: attempt {attempt} read {cache_read} cached tokens after the reveal; retrying",
+            config.label()
+        );
+    }
+    let (runner, cache_read) = last.expect("at least one attempt ran");
     assert!(
         cache_read >= 4096,
         "{}: the call after the reveal should read the cached prefix, read {cache_read}",
