@@ -81,7 +81,9 @@ async fn view(
         }
     }
     let index = body.min_index.max(node.shared.changed_at(body.session));
-    Ok(Json(delta_at(&node, body.session, body.since, index).await?))
+    Ok(Json(
+        delta_at(&node, body.session, body.since, index).await?,
+    ))
 }
 
 /// Hold an executor's credits until this leader has sessions for them, or

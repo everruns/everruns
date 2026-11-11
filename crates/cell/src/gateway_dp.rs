@@ -80,7 +80,11 @@ async fn position(
 
 impl Gateway {
     /// `org`'s current revision of `agent`.
-    pub async fn agent_revision(&self, org: &str, agent: &str) -> Result<AgentDefinition, ApiError> {
+    pub async fn agent_revision(
+        &self,
+        org: &str,
+        agent: &str,
+    ) -> Result<AgentDefinition, ApiError> {
         let directory = self.directory_cell()?;
         let found: Option<AgentDefinition> = self
             .call(directory, &format!("/cell/orgs/{org}/agents/{agent}"), None)

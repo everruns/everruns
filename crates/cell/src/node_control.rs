@@ -108,7 +108,13 @@ impl Node {
     async fn deliver_feed(&self, cp: &ControlPlane) -> anyhow::Result<()> {
         let records: Vec<_> = {
             let state = self.shared.state.read();
-            state.feed.records.iter().take(FEED_BATCH).cloned().collect()
+            state
+                .feed
+                .records
+                .iter()
+                .take(FEED_BATCH)
+                .cloned()
+                .collect()
         };
         if records.is_empty() {
             return Ok(());
@@ -194,10 +200,9 @@ impl Node {
         let (request, settlements, busy) = {
             let state = self.shared.state.read();
             let allowance = state.allowances.tenants.get(tenant);
-            let busy = state
-                .sessions
-                .values()
-                .any(|s| s.tenant.as_deref() == Some(tenant) && (s.turn_running() || s.authority.owed(now)));
+            let busy = state.sessions.values().any(|s| {
+                s.tenant.as_deref() == Some(tenant) && (s.turn_running() || s.authority.owed(now))
+            });
             (
                 allowance.map_or(0, |a| a.requests),
                 allowance.map(|a| a.settlements(now)).unwrap_or_default(),

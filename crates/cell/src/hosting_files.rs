@@ -28,11 +28,11 @@ use everruns::{
     WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
     WorkspaceHeadStatus,
 };
+use everruns_contracts::typed_id::WorkspaceId;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
 };
 use everruns_core::session_files::SessionFileSystem;
-use everruns_contracts::typed_id::WorkspaceId;
 
 use crate::files::{Change, Content, Entry, INLINE_MAX};
 
@@ -120,9 +120,7 @@ impl CellFiles {
     }
 
     async fn entries(&self, session: SessionId) -> Result<BTreeMap<String, Entry>> {
-        self.inner
-            .read(session, |s| s.files.entries.clone())
-            .await
+        self.inner.read(session, |s| s.files.entries.clone()).await
     }
 
     async fn content(&self, entry: &Entry) -> Result<Option<String>> {
@@ -188,7 +186,10 @@ impl CellFiles {
         let value = match response {
             Response::Value { value } => value,
             Response::Fenced => {
-                return Err(actor_lease_lost(session, "workspace write after the epoch ended"));
+                return Err(actor_lease_lost(
+                    session,
+                    "workspace write after the epoch ended",
+                ));
             }
             other => return Err(refused(session, other)),
         };
@@ -208,11 +209,18 @@ impl CellFiles {
             ))),
             Some("quota") => Err(AgentLoopError::tool("the workspace is full")),
             Some(_) => Err(AgentLoopError::tool(
-                value["reason"].as_str().unwrap_or("invalid workspace change").to_string(),
+                value["reason"]
+                    .as_str()
+                    .unwrap_or("invalid workspace change")
+                    .to_string(),
             )),
         }
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one put's fields as the workspace port passes them; a struct for four call sites adds nothing"
+    )]
     async fn put(
         &self,
         session: SessionId,
@@ -477,9 +485,7 @@ impl SessionFileSystem for CellFiles {
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
         let regex = regex_of(pattern)?;
-        let files = self
-            .scan(session, options.path_pattern.as_deref())
-            .await?;
+        let files = self.scan(session, options.path_pattern.as_deref()).await?;
         Ok(everruns_core::session_file::build_grep_search_result(
             files, &regex, options,
         ))

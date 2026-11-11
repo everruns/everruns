@@ -154,7 +154,8 @@ impl Executor {
             }
             let credits = self.take_credits();
             if credits == 0 {
-                let _ = tokio::time::timeout(Duration::from_millis(500), self.freed.notified()).await;
+                let _ =
+                    tokio::time::timeout(Duration::from_millis(500), self.freed.notified()).await;
                 continue;
             }
             match self.remote.pull(cell, credits, self.cfg.pull_wait).await {
@@ -197,8 +198,10 @@ impl Executor {
                     }
                 };
                 self.stats.inc(&[("activation", outcome)]);
-                self.stats
-                    .add(&[("activation_ms", "sum")], started.elapsed().as_millis() as u64);
+                self.stats.add(
+                    &[("activation_ms", "sum")],
+                    started.elapsed().as_millis() as u64,
+                );
                 if outcome != "completed" || self.draining.load(Ordering::SeqCst) {
                     break;
                 }
@@ -281,31 +284,49 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
         .route("/health", get(|| async { "ok" }))
         .route(
             "/metrics",
-            get(|axum::extract::State(executor): axum::extract::State<Arc<Executor>>| async move {
-                let id = executor.cfg.id.to_string();
-                let mut w = crate::prom::Writer::new(&[("executor", &id)]);
-                w.gauge("executor_running_turns", "Turns running here.", executor.running() as f64);
-                w.gauge(
-                    "executor_free_slots",
-                    "Slots not running or offered.",
-                    executor.free.load(Ordering::SeqCst) as f64,
-                );
-                w.gauge(
-                    "executor_mirrored_sessions",
-                    "Sessions in the mirror.",
-                    executor.remote.mirrored() as f64,
-                );
-                let (hits, misses) = executor.cfg.store.cache_stats();
-                w.counter("executor_cache_hits_total", "Segment and blob cache hits.", hits as f64);
-                w.counter(
-                    "executor_cache_misses_total",
-                    "Segment and blob cache misses (object store reads).",
-                    misses as f64,
-                );
-                w.counters("executor_cell_calls_total", "Calls to cells, by kind.", &executor.remote.calls);
-                w.counters("executor_events_total", "Pulls and activations.", &executor.stats);
-                w.out
-            }),
+            get(
+                |axum::extract::State(executor): axum::extract::State<Arc<Executor>>| async move {
+                    let id = executor.cfg.id.to_string();
+                    let mut w = crate::prom::Writer::new(&[("executor", &id)]);
+                    w.gauge(
+                        "executor_running_turns",
+                        "Turns running here.",
+                        executor.running() as f64,
+                    );
+                    w.gauge(
+                        "executor_free_slots",
+                        "Slots not running or offered.",
+                        executor.free.load(Ordering::SeqCst) as f64,
+                    );
+                    w.gauge(
+                        "executor_mirrored_sessions",
+                        "Sessions in the mirror.",
+                        executor.remote.mirrored() as f64,
+                    );
+                    let (hits, misses) = executor.cfg.store.cache_stats();
+                    w.counter(
+                        "executor_cache_hits_total",
+                        "Segment and blob cache hits.",
+                        hits as f64,
+                    );
+                    w.counter(
+                        "executor_cache_misses_total",
+                        "Segment and blob cache misses (object store reads).",
+                        misses as f64,
+                    );
+                    w.counters(
+                        "executor_cell_calls_total",
+                        "Calls to cells, by kind.",
+                        &executor.remote.calls,
+                    );
+                    w.counters(
+                        "executor_events_total",
+                        "Pulls and activations.",
+                        &executor.stats,
+                    );
+                    w.out
+                },
+            ),
         )
         .with_state(executor)
 }

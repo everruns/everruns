@@ -129,40 +129,36 @@ impl Feed {
         let Some(org) = s.tenant.as_deref() else {
             return;
         };
+        let EventData::LlmGeneration(data) = &event.data else {
+            return;
+        };
         let at = event.ts.timestamp_millis();
-        match &event.data {
-            EventData::LlmGeneration(data) => {
-                let usage = data.metadata.usage.as_ref();
-                let cost = usage
-                    .and_then(|u| u.effective_cost_usd())
-                    .map(|usd| (usd * 1_000_000.0).ceil() as i64)
-                    .unwrap_or(0);
-                let record = Record::Usage {
-                    session_id: session.to_owned(),
-                    turn_id: event
-                        .context
-                        .turn_id
-                        .map(|t| t.to_string())
-                        .unwrap_or_default(),
-                    // The event's id is stable: a replay of the same entry
-                    // makes the same id, so usage is billed once.
-                    attempt_id: event.id.to_string(),
-                    unresolved: false,
-                    agent_id: s.agent.clone(),
-                    provider: data.metadata.provider.clone().unwrap_or_default(),
-                    model: data.metadata.model.clone(),
-                    input_tokens: usage.map_or(0, |u| u64::from(u.input_tokens)),
-                    output_tokens: usage.map_or(0, |u| u64::from(u.output_tokens)),
-                    cached_tokens: usage
-                        .and_then(|u| u.cache_read_tokens)
-                        .map_or(0, u64::from),
-                    cost_micros: cost,
-                    kind: "model".into(),
-                };
-                self.push(index, org, at, record);
-            }
-            _ => {}
-        }
+        let usage = data.metadata.usage.as_ref();
+        let cost = usage
+            .and_then(|u| u.effective_cost_usd())
+            .map(|usd| (usd * 1_000_000.0).ceil() as i64)
+            .unwrap_or(0);
+        let record = Record::Usage {
+            session_id: session.to_owned(),
+            turn_id: event
+                .context
+                .turn_id
+                .map(|t| t.to_string())
+                .unwrap_or_default(),
+            // The event's id is stable: a replay of the same entry
+            // makes the same id, so usage is billed once.
+            attempt_id: event.id.to_string(),
+            unresolved: false,
+            agent_id: s.agent.clone(),
+            provider: data.metadata.provider.clone().unwrap_or_default(),
+            model: data.metadata.model.clone(),
+            input_tokens: usage.map_or(0, |u| u64::from(u.input_tokens)),
+            output_tokens: usage.map_or(0, |u| u64::from(u.output_tokens)),
+            cached_tokens: usage.and_then(|u| u.cache_read_tokens).map_or(0, u64::from),
+            cost_micros: cost,
+            kind: "model".into(),
+        };
+        self.push(index, org, at, record);
     }
 
     /// `session` recorded a turn's outcome: its summary for the tenant.
@@ -175,7 +171,9 @@ impl Feed {
         let last = s.events.iter().rev().find(|e| {
             matches!(
                 e.data,
-                EventData::TurnCompleted(_) | EventData::TurnFailed(_) | EventData::TurnCancelled(_)
+                EventData::TurnCompleted(_)
+                    | EventData::TurnFailed(_)
+                    | EventData::TurnCancelled(_)
             )
         });
         let status = match last.map(|e| &e.data) {
@@ -207,7 +205,12 @@ mod tests {
                 "package": { "name": id, "instructions": format!("r{revision}") } })
     }
 
-    fn update(epoch: u64, version: u64, base: u64, changes: Vec<serde_json::Value>) -> ConfigUpdate {
+    fn update(
+        epoch: u64,
+        version: u64,
+        base: u64,
+        changes: Vec<serde_json::Value>,
+    ) -> ConfigUpdate {
         ConfigUpdate {
             epoch,
             version,
@@ -220,8 +223,14 @@ mod tests {
     fn config_applies_in_order_and_once() {
         let mut orgs = Orgs::default();
         let ok = |v| ConfigAck::Ok { applied_version: v };
-        assert_eq!(orgs.apply("o", &update(1, 1, 0, vec![agent("a", 1)])), ok(1));
-        assert_eq!(orgs.apply("o", &update(1, 2, 1, vec![agent("a", 2)])), ok(2));
+        assert_eq!(
+            orgs.apply("o", &update(1, 1, 0, vec![agent("a", 1)])),
+            ok(1)
+        );
+        assert_eq!(
+            orgs.apply("o", &update(1, 2, 1, vec![agent("a", 2)])),
+            ok(2)
+        );
         assert_eq!(
             orgs.apply("o", &update(1, 2, 1, vec![agent("a", 2)])),
             ConfigAck::AlreadyApplied { applied_version: 2 },
@@ -234,7 +243,10 @@ mod tests {
         );
         assert_eq!(orgs.orgs["o"].agents["a"].revision, 2);
         // Revisions only move forward, whatever order they arrive in.
-        assert_eq!(orgs.apply("o", &update(1, 3, 2, vec![agent("a", 1)])), ok(3));
+        assert_eq!(
+            orgs.apply("o", &update(1, 3, 2, vec![agent("a", 1)])),
+            ok(3)
+        );
         assert_eq!(orgs.orgs["o"].agents["a"].revision, 2);
     }
 
@@ -251,7 +263,10 @@ mod tests {
             orgs.apply("o", &update(2, 1, 0, vec![agent("a", 3)])),
             ConfigAck::Ok { applied_version: 1 }
         );
-        assert!(!orgs.orgs["o"].agents.contains_key("b"), "the snapshot is whole");
+        assert!(
+            !orgs.orgs["o"].agents.contains_key("b"),
+            "the snapshot is whole"
+        );
         assert_eq!(
             orgs.apply("o", &update(1, 6, 5, vec![agent("b", 2)])),
             ConfigAck::StaleEpoch { epoch: 2 },

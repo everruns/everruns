@@ -370,7 +370,10 @@ mod tests {
             2,
         );
         assert_eq!(reply["refused"], "not_a_directory");
-        assert_eq!(files.entries, before.entries, "nothing of a refused commit stays");
+        assert_eq!(
+            files.entries, before.entries,
+            "nothing of a refused commit stays"
+        );
         assert_eq!(files.version, before.version);
     }
 
@@ -381,7 +384,10 @@ mod tests {
         files.commit("other".into(), vec![put("/a", "2")], 2);
         let again = files.commit("op".into(), vec![put("/a", "1")], 3);
         assert_eq!(first, again);
-        assert_eq!(files.entries["/a"].content, Content::Inline { data: "2".into() });
+        assert_eq!(
+            files.entries["/a"].content,
+            Content::Inline { data: "2".into() }
+        );
     }
 
     #[test]
@@ -394,7 +400,10 @@ mod tests {
         if let Change::Put { expected, .. } = &mut stale {
             *expected = Some(read);
         }
-        assert_eq!(files.commit("3".into(), vec![stale], 3)["refused"], "conflict");
+        assert_eq!(
+            files.commit("3".into(), vec![stale], 3)["refused"],
+            "conflict"
+        );
     }
 
     #[test]
@@ -413,7 +422,10 @@ mod tests {
             }],
             1,
         );
-        assert_eq!(files.commit("w".into(), vec![put("/h/index.md", "x")], 2)["refused"], "read_only");
+        assert_eq!(
+            files.commit("w".into(), vec![put("/h/index.md", "x")], 2)["refused"],
+            "read_only"
+        );
         let gone = files.commit(
             "d".into(),
             vec![Change::Delete {

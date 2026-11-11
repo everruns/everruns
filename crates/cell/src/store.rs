@@ -293,18 +293,19 @@ impl Store {
         }
         let mut out = Vec::new();
         for seg in segments {
-            let events: Vec<Event> = match self.get_immutable(self.messages_key(session, *seg)).await {
-                Ok(bytes) => serde_json::from_slice(&bytes)?,
-                Err(error) if is_not_found(&error) => {
-                    let bytes = self.get_immutable(self.segment_key(session, *seg)).await?;
-                    let events: Vec<Event> = serde_json::from_slice(&bytes)?;
-                    events
-                        .into_iter()
-                        .filter(|e| is_context(&e.event_type))
-                        .collect()
-                }
-                Err(error) => return Err(error),
-            };
+            let events: Vec<Event> =
+                match self.get_immutable(self.messages_key(session, *seg)).await {
+                    Ok(bytes) => serde_json::from_slice(&bytes)?,
+                    Err(error) if is_not_found(&error) => {
+                        let bytes = self.get_immutable(self.segment_key(session, *seg)).await?;
+                        let events: Vec<Event> = serde_json::from_slice(&bytes)?;
+                        events
+                            .into_iter()
+                            .filter(|e| is_context(&e.event_type))
+                            .collect()
+                    }
+                    Err(error) => return Err(error),
+                };
             let last = out_last(&out);
             out.extend(
                 events

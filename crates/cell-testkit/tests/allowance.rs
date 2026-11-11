@@ -48,7 +48,7 @@ impl Cell {
             snapshot_every: 100_000,
             keep_log: 256,
             executors: Default::default(),
-        control_plane: None,
+            control_plane: None,
         };
         let host = Arc::new(everruns_cell_testkit::host());
         let listen = addr.parse().unwrap();

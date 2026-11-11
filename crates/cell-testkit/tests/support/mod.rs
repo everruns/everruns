@@ -159,7 +159,10 @@ impl Fleet {
                     return proposed["response"].clone();
                 }
             }
-            assert!(Instant::now() < deadline, "no member of cell {cell} took {command}");
+            assert!(
+                Instant::now() < deadline,
+                "no member of cell {cell} took {command}"
+            );
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
@@ -212,8 +215,7 @@ impl Fleet {
         };
         let executor = {
             let _guard = rt.enter();
-            let executor =
-                Executor::start(cfg, Arc::new(everruns_cell_testkit::host())).unwrap();
+            let executor = Executor::start(cfg, Arc::new(everruns_cell_testkit::host())).unwrap();
             executor.spawn();
             executor
         };
@@ -229,7 +231,11 @@ impl Fleet {
     }
 
     pub fn kill_node(&mut self, cell: u32, node: u64) {
-        if let Some(rt) = self.nodes.get_mut(&(cell, node)).and_then(|(_, rt)| rt.take()) {
+        if let Some(rt) = self
+            .nodes
+            .get_mut(&(cell, node))
+            .and_then(|(_, rt)| rt.take())
+        {
             rt.shutdown_background();
         }
     }
@@ -344,8 +350,7 @@ impl Fleet {
     }
 
     pub async fn events(&self, session: &str) -> Vec<Value> {
-        self.get(&format!("/v1/sessions/{session}/events"))
-            .await["data"]
+        self.get(&format!("/v1/sessions/{session}/events")).await["data"]
             .as_array()
             .cloned()
             .unwrap_or_default()
@@ -382,4 +387,3 @@ pub fn answers(events: &[Value]) -> Vec<String> {
 pub fn pulled(executor: &Executor) -> u64 {
     executor.stats.get(&[("event", "pulled")])
 }
-

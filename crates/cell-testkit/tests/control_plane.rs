@@ -42,7 +42,11 @@ async fn setup(balance: i64) -> (Fleet, FakeCp) {
     let mut fleet = Fleet::start_with(Some(cp.url.clone())).await;
     fleet.executor(1);
     let ack = cp
-        .push_config(&fleet.base(), ORG, &update(1, 1, 0, vec![agent("helper", 1)]))
+        .push_config(
+            &fleet.base(),
+            ORG,
+            &update(1, 1, 0, vec![agent("helper", 1)]),
+        )
         .await
         .unwrap();
     assert_eq!(ack, ConfigAck::Ok { applied_version: 1 });
@@ -69,7 +73,9 @@ fn generations(events: &[Value]) -> usize {
 async fn feed_drained(fleet: &Fleet) -> bool {
     let mut pending = 0;
     for cell in [0, 1] {
-        pending += fleet.stats(cell).await["feed_pending"].as_u64().unwrap_or(0);
+        pending += fleet.stats(cell).await["feed_pending"]
+            .as_u64()
+            .unwrap_or(0);
     }
     pending == 0
 }
@@ -80,7 +86,11 @@ async fn agents_come_from_config_and_turns_bill_the_org() {
     let first = create(&fleet, 0).await;
     // A new revision reaches new sessions only.
     let ack = cp
-        .push_config(&fleet.base(), ORG, &update(1, 2, 1, vec![agent("helper", 2)]))
+        .push_config(
+            &fleet.base(),
+            ORG,
+            &update(1, 2, 1, vec![agent("helper", 2)]),
+        )
         .await
         .unwrap();
     assert_eq!(ack, ConfigAck::Ok { applied_version: 2 });
@@ -97,10 +107,16 @@ async fn agents_come_from_config_and_turns_bill_the_org() {
     let mut calls = 0;
     for session in [&first, &second] {
         let events = fleet.events(session).await;
-        assert!(types(&events).contains(&"turn.completed"), "{session}: {:?}", types(&events));
+        assert!(
+            types(&events).contains(&"turn.completed"),
+            "{session}: {:?}",
+            types(&events)
+        );
         calls += generations(&events);
     }
-    fleet.until("the feed is delivered", || feed_drained(&fleet)).await;
+    fleet
+        .until("the feed is delivered", || feed_drained(&fleet))
+        .await;
     let usage = cp.usage();
     assert_eq!(usage.len(), calls, "one usage record per provider call");
     assert!(usage.values().all(|(org, _)| org == ORG));
@@ -174,7 +190,10 @@ async fn config_keeps_order_through_retries_and_a_control_plane_rollback() {
     // operator resolved what the data plane held beyond it first).
     let session = create(&fleet, 0).await;
     let definition = fleet.get(&format!("/v1/sessions/{session}/agent")).await;
-    assert!(definition.to_string().contains("Revision 1"), "{definition}");
+    assert!(
+        definition.to_string().contains("Revision 1"),
+        "{definition}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -190,7 +209,9 @@ async fn lost_acknowledgements_grant_and_bill_once() {
         fleet.turns(session, 1).await;
         calls += generations(&fleet.events(session).await);
     }
-    fleet.until("the feed is delivered", || feed_drained(&fleet)).await;
+    fleet
+        .until("the feed is delivered", || feed_drained(&fleet))
+        .await;
     assert!(cp.requests() > cp.grants().len(), "requests were retried");
     assert_eq!(cp.grants().len(), 2, "one grant per cell, not per retry");
     assert_eq!(cp.usage().len(), calls);
@@ -270,7 +291,9 @@ async fn a_delayed_feed_arrives_once_across_a_leader_change() {
     let leader = fleet.leader(0).await;
     fleet.kill_node(0, leader);
     cp.set_down(false);
-    fleet.until("the feed is delivered", || feed_drained(&fleet)).await;
+    fleet
+        .until("the feed is delivered", || feed_drained(&fleet))
+        .await;
     let calls = generations(&fleet.events(&session).await);
     assert_eq!(cp.usage().len(), calls);
     assert_eq!(cp.usage_repeats(), 0);

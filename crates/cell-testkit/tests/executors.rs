@@ -132,7 +132,10 @@ async fn the_workspace_survives_executors_and_a_move() {
     fleet.kill_executor(1);
     fleet.executor(2);
     let moved = fleet
-        .post(&format!("/v1/sessions/{session}/move"), json!({ "cell": 1 }))
+        .post(
+            &format!("/v1/sessions/{session}/move"),
+            json!({ "cell": 1 }),
+        )
         .await;
     assert_eq!(moved["to"], 1, "{moved}");
 
@@ -144,9 +147,9 @@ async fn the_workspace_survives_executors_and_a_move() {
     let answers = answers(&events);
     assert_eq!(answers.len(), 4, "{answers:?}");
     assert!(answers[2].contains("step one"), "{}", answers[2]);
-    assert!(answers[3].contains("tail-marker"), "the big file came back whole");
     assert!(
-        answers.iter().all(|a| !a.contains("error")),
-        "{answers:?}"
+        answers[3].contains("tail-marker"),
+        "the big file came back whole"
     );
+    assert!(answers.iter().all(|a| !a.contains("error")), "{answers:?}");
 }
