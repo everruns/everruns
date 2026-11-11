@@ -55,12 +55,19 @@ before/after under the constraints in [Build Artifact Size](build-artifact-size.
 
 ## Bashkit runtime dependency
 
-The workspace and standalone shell evals use published Bashkit 0.20.2 or
+The workspace and standalone shell evals use published Bashkit 0.21.0 or
 newer in the same compatible release series. This keeps Wasmtime's security
 fixes through 48.0.8 and the Windows CPython COFF embedding fix together. The corrected
 component preserves 64 KiB runtime alignment without requiring an
 unsupported Windows over-aligned static. Python stays enabled in the hosted
 integration catalog.
+
+Everruns does not compile Bashkit's Monty `python3`: shells run Python through
+CPython, and the server's scripted command surface takes no `python` feature.
+Since 0.21.0 Monty fails closed unless `bashkit::MeteredAllocator` is the
+process's global allocator, and the server and worker install mimalloc, so
+enabling it needs that allocator change first. Leaving it out also keeps
+pyo3, the ruff parser crates and BlueOak-licensed `minicbor` out of the graph.
 
 No Bashkit Git patch or source-policy exception is required. Downstream
 applications resolve the corrected registry packages without inheriting
