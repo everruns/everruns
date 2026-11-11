@@ -1,14 +1,14 @@
 ---
 type: Decision
-title: "Chat, side chats, threads and Chat beside the page"
-description: "The conversation model (Main chat, side chats, threads), the beside-the-page and full-screen layouts, and how a Platform Chat instance reads and drafts edits on the page next to it."
+title: "Chat, side chats, threads and the chat-first layout"
+description: "The conversation model (Main chat, side chats, threads), the Chat first and Classic layouts, and how a Platform Chat instance reads and drafts edits on the page next to it."
 tags:
   - ui
   - agents
   - platform-chat
 ---
 
-# Chat, side chats, threads and Chat beside the page
+# Chat, side chats, threads and the chat-first layout
 
 ## Intent
 
@@ -49,42 +49,80 @@ The sidebar shows **Main chat** (with a live dot while it streams) and a
 sidebar: each chat's threads live in that chat's Threads panel. There are no
 channels in the sidebar.
 
-## Two layouts for every conversation
+## Two layouts, picked per person
+
+The layout is a personal preference, stored as the user preference `ui.layout`
+([`use-layout-preference.ts`](../../apps/ui/src/hooks/use-layout-preference.ts))
+so it follows the person across devices and organizations (decided 2026-11-11).
+It is set in Profile → Appearance and in the profile menu.
+
+- **Chat first** (default): the conversation on the left, the current page on the
+  right, and a navigation rail on the right edge.
+- **Classic**: the sidebar on the left and the page filling the rest, as before.
+  Main chat and side chats stay in the sidebar and open full screen at `/chats`.
 
 The app layout owns one long-lived
 [`ChatModeShell`](../../apps/ui/src/components/chat-mode/chat-mode-shell.tsx)
 and one [`ChatWorkspace`](../../apps/ui/src/components/chat/chat-workspace.tsx).
-Moving between layouts only shows and hides panes: nothing remounts, so streams
-and drafts survive.
+The panes are columns of one grid that only show and hide; nothing remounts, so
+streams and drafts survive. There are no width transitions: the conversation is
+always mounted, so nothing animates open or closed.
 
-1. **Beside the page.** The conversation is on the left, the current page in the
-   middle, and the page rail replaces the sidebar on the right.
-   - Clicking Main chat or a side chat in the sidebar on any app page opens it
-     beside that page instead of navigating to `/chats`. Modifier clicks keep
-     ordinary link behavior.
-   - Links in a reply open in the page pane; they never replace the conversation.
-   - **Main chat ▾** in the conversation header
-     ([`ChatSwitcher`](../../apps/ui/src/components/chat/chat-switcher.tsx))
-     switches between Main chat, side chats and the open chat's threads, and
-     starts a new side chat. The page stays as it is.
-   - **Full page** (page header or rail) hides the conversation; it keeps running.
-2. **Full screen.** `/chats` is Main chat and `/chats/{id}` a side chat or a
-   thread, full width. **Show beside page** returns to the last app page with
-   the conversation beside it. The conversation header's **Full screen** goes the
-   other way.
+### Chat first
 
-Keys: Cmd/Ctrl-J opens or closes Chat beside the page (on a Chat route it
-focuses the composer); Cmd/Ctrl-Shift-J switches between full screen and beside
-the page.
+- Arriving at the app (`/`) lands on [Overview](org-home.md) with Main chat
+  beside it. Classic lands on full-screen Main chat.
+- **Splitter.** The divider between conversation and page is invisible until
+  hovered or focused. Dragging resizes (chat at least 360 px, page at least
+  480 px), double-click resets, arrow keys step it, and dragging the chat to the
+  right edge goes full screen. The width is kept on the device.
+- **Main chat ▾** in the conversation header
+  ([`ChatSwitcher`](../../apps/ui/src/components/chat/chat-switcher.tsx))
+  switches between Main chat and side chats and starts a new side chat. The page
+  stays as it is. The chosen chat is kept for the browser tab's session.
+- Links in a reply open in the page pane; they never replace the conversation.
+- **Full screen** in the conversation header goes to `/chats` or `/chats/{id}`;
+  **Show beside page** returns to the last page.
+- Below 768 px both layouts behave as Classic.
 
-Arriving at the app (`/`) opens Main chat beside [Overview](org-home.md);
-`?chat=open` on any app page opens it the same way. An organization switch
-destroys the shell's state. The mounted conversation settles already-owned page
-tool requests even after the split closes: the same original binding may finish,
-while navigation returns an unavailable-page result instead of leaving the turn
-waiting or touching a different form. Full screen never claims a new page
-binding. Threads are not selected as page editors. Page context is enabled only
-beside non-Chat pages.
+### The URL describes the screen
+
+Every change is a real navigation, so the browser's back and forward buttons step
+through it. The page pane is the route. A thread opened beside the chat is the
+route `/threads/{id}`, rendered in the page pane with Back and a full-screen
+link. Full-screen chat is `/chats` or `/chats/{id}`. There is no remembered
+open/closed split, no `?chat=open` parameter and no in-memory "thread replaces
+page" state.
+
+Keys: in Chat first, Cmd/Ctrl-J focuses the composer and Cmd/Ctrl-Shift-J
+switches between full screen and the last page. In Classic, Cmd/Ctrl-J toggles
+full-screen chat.
+
+An organization switch destroys the shell's state. The mounted conversation
+settles already-owned page tool requests even after the page changes: the same
+original binding may finish, while navigation returns an unavailable-page result
+instead of leaving the turn waiting or touching a different form. Full screen
+never claims a new page binding. Threads are not selected as page editors. Page
+context is enabled only beside non-Chat pages.
+
+### Navigation rail
+
+[`AppNavigationRail`](../../apps/ui/src/components/layout/app-navigation-rail.tsx)
+shows the permitted sections as grouped icons with tooltips; Overview carries its
+count badge. System pages, Settings and Dev fold into one menu so the rail stays
+short. The profile menu (profile, organization, theme, layout, sign out) sits at
+the bottom. Expanding the rail shows the regular sidebar without the Chat section;
+the choice is kept on the device.
+
+Rail destinations and visibility come from the existing navigation model,
+including organization role, feature and policy restrictions. The rail receives
+the shell's already-filtered sections and must not grow an independent page
+catalog. Discovery does not prefetch destination content or render hidden,
+disabled or restricted pages. Agent settings drawers mount within the page pane
+with a page-only backdrop, leaving Chat accessible. Agents' columns respond to
+the width of the page pane, not the browser viewport. Automatic transcript
+scrolling targets its own container rather than scrolling ancestors and moving
+the adjacent page.
 
 ## Threads panel
 
@@ -98,40 +136,15 @@ started keeps its `?task=` detail view.
 
 Opening a thread shows it in the panel next to the chat, with "← Threads" to go
 back and an expand button for full width; the chat stays on the left so the
-person can steer it. Beside a page, the right side is the page pane: opening a
-thread shows it in place of the page (the page stays mounted underneath), with
-a back button naming the page. Narrow screens use a drawer and open threads full
-screen.
+person can steer it. Beside a page, opening a thread navigates the page pane to
+`/threads/{id}`; Back returns to the page. Narrow screens use a drawer and open
+threads full screen.
 
 The core **Settings → Chat** page uses the same guarded draft, saved review and
 Undo flow for its independent Chat model. That setting applies to Main chat and
 fresh side chats; it does not replace agent/session defaults. A new side chat's
 model preview waits for organization settings and follows the same default
 selection order as the server. See [model resolution](../foundations/models.md).
-
-The desktop geometry follows the exploration: up to 600 px Chat on the left,
-the current page in the middle, and a 48 px navigation rail on the right.
-The normal sidebar is 240 px. Widths transition over 280 ms with ease-out;
-reduced motion removes the transition. The grid stays within the viewport;
-automatic transcript scrolling must target its own container rather than scrolling
-ancestor containers and moving the adjacent page. On small screens, Chat takes the content
-area while open and Full page returns to the mounted page. Agents' columns
-respond to the width of the page pane, not the browser viewport.
-
-Rail destinations and visibility come from the existing navigation model,
-including organization role, feature and policy restrictions. The rail must
-not grow an independent page catalog. Embedding hosts may supply their existing
-composed navigation sections, so stricter host visibility and loading rules
-remain effective in the rail. Shared role, feature and policy checks still apply. Agent settings drawers mount within the
-page pane with a page-only backdrop, leaving Chat accessible.
-
-Every rail destination has a short explanation in the shared navigation model.
-Hover or keyboard focus reveals its name and purpose in a tooltip to the left of
-the rail. The always-labeled Pages control opens the same permitted destinations
-as a grouped menu with names and descriptions, including on touch screens.
-Escape dismisses an overlay and the menu returns focus to its trigger. Closing
-Chat removes rail overlays without remounting the page or conversation. Discovery
-does not prefetch destination content or render hidden, disabled or restricted pages.
 
 ## Page context is data
 
@@ -297,7 +310,7 @@ Undo requires the durable PostgreSQL store to share the command transaction;
 external stores and remote MCP subscription effects require direct review.
 
 Dialogs and drawers originating in the right page portal into its stable container.
-Chat, sidebar and global overlays retain their normal portal and modal behavior. While Chat is open they are
+Chat, sidebar and global overlays retain their normal portal and modal behavior. While Chat is beside the page they are
 non-modal and outside-pointer dismissal is disabled: focusing Chat keeps the form
 mounted. Explicit Close/Escape still work. The common two-column page body responds
 to the page pane's width.

@@ -1,54 +1,49 @@
 ---
 type: Test Case
-title: "TC007: Chat beside the page and full screen"
-description: "Verify the sidebar entry opens Chat beside the page, full screen in both directions, keyboard shortcuts, persistent Chat/page state, accessible navigation and pane-scoped Agent sheets."
+title: "TC007: Chat first and Classic layouts"
+description: "Verify the layout preference, landing on Overview, the splitter, the navigation rail, full screen, browser back and forward, keyboard shortcuts, persistent Chat/page state and pane-scoped Agent sheets."
 tags: [ui, test-case, agents, platform-chat]
 ---
 
-# TC007: Chat beside the page and full screen
+# TC007: Chat first and Classic layouts
 
 ## Preconditions
 
 - Any test organization; no feature needs enabling.
-- Editable Agent; desktop and narrow viewports; light/dark and reduced-motion emulation.
+- Editable Agent; desktop and narrow viewports; light and dark themes.
 
 ## Steps
 
-1. Open an Agent and click **Main chat** in the sidebar. Chat opens beside the Agent page;
-   the URL stays on the Agent. Modifier-click instead opens `/chats` as a link.
-2. Start an unsaved form edit and type a Chat composer draft. Toggle Chat with
-   Command/Ctrl-J and **Full page**. Confirm both drafts and the page route survive.
-3. Press Command/Ctrl-Shift-J (or **Full screen**): the conversation goes full screen at
-   `/chats`. Press it again (or **Show beside page**): the Agent returns with Chat beside it
-   and the unsaved form edit intact.
-4. Click a side chat in the sidebar while on the Agent page: it opens beside the page.
-   **Main chat ▾** lists Main chat, the open chat's threads and side chats.
-5. While Chat is open, open Network access or Branding. Confirm the 440 px sheet
-   and its backdrop stay inside the page pane and Chat remains interactive.
-6. Use keyboard navigation. The collapsed ordinary sidebar must be inert; the
-   active rail and visible Chat/page controls remain reachable, without duplicate
-   hidden navigation stops. Closing Chat returns focus to the page.
-7. At 390 px, wait for the transition to settle. Confirm Chat and Full page
-   fit the viewport, the page returns without remounting, and the composer is usable.
-8. Repeat key steps in dark mode and with reduced motion. Reduced motion removes
-   the grid transition; colors, focus and change markers remain readable.
-9. Open `/chats` directly and via Command-K; confirm one full conversation with no
-   page-context chip. Command/Ctrl-J focuses its composer. `/chats/history` stays a list.
-10. Hover and keyboard-focus each rail icon: its tooltip must show a page name and short
-    explanation, stay within the viewport and dismiss with Escape.
-11. Open Pages by click, keyboard and touch. Verify a grouped, scrollable menu of
-    names and descriptions; the current page is identified. Escape returns focus
-    to Pages. Disabled flags and role/policy restrictions hide destinations in both
-    the rail and this menu. Closing Chat removes every open rail overlay.
+1. Sign in with the default layout and open `/`. The app lands on Overview with Main chat
+   on the left and the navigation rail on the right.
+2. Hover the divider between chat and page: a thin line appears. Drag it, double-click it
+   and use the arrow keys after focusing it. The chat stays at least 360 px and the page at
+   least 480 px. Reload: the width is kept. Drag the chat to the right edge: `/chats` opens.
+3. In the rail, hover and keyboard-focus icons: tooltips name each page. Overview shows its
+   count. Open **System and settings**: system pages and Settings are listed. Expand the
+   rail with »: the full sidebar appears without the Chat section; « collapses it and the
+   choice survives a reload. Hidden or restricted pages appear in neither form.
+4. Open the profile avatar at the bottom of the rail: profile, organization, theme, layout
+   and sign out are there.
+5. Open an Agent and type a Chat composer draft. Press Command/Ctrl-Shift-J (or
+   **Full screen**): the conversation goes full screen at `/chats` with the draft intact.
+   Press it again (or **Show beside page**): the Agent returns and the draft is still there.
+   Command/Ctrl-J focuses the composer without leaving the page.
+6. Switch to a side chat with **Main chat ▾**: the page stays. Open a thread from the chat:
+   the page pane shows `/threads/{id}`. Browser Back returns to the Agent; Forward reopens
+   the thread.
+7. With an Agent sheet (Network access or Branding) open, confirm the sheet and its backdrop
+   stay inside the page pane and Chat remains interactive.
+8. Switch the profile menu's layout to **Classic**. The left sidebar returns with Main chat
+   and side chats; the rail and splitter are gone. Command/Ctrl-J toggles full-screen chat.
+   Reload `/` in Classic: it lands on full-screen Main chat. The setting is the same on
+   Profile → Appearance and after signing in on another device.
+9. At 390 px, both layouts show one pane at a time with the mobile navigation drawer.
+10. Repeat key steps in dark mode.
 
 ## Expected result
 
-- The same layouts for every organization; no flag gates them.
-- Chat, page state and composer survive every layout change; organization changes reset them.
+- The layout follows the person, not the organization; Chat first is the default.
+- No width transitions; nothing remounts when moving between layouts.
+- Every change is a browser history step except switching chats beside the page.
 - Drawers affect only the page pane; hidden navigation does not retain keyboard focus.
-- Settled desktop/mobile layouts fit, and reduced motion and both themes work.
-
-After a real Chat patch, confirm the draft notice stays inside the workspace,
-the document does not grow beyond the viewport, and the Chat header remains
-visible. Scroll the Agent pane to its field Undo and back; Chat must retain its
-own scroll and composer.

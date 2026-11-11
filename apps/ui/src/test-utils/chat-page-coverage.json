@@ -101,7 +101,8 @@
     "chats/[threadId]/page.tsx",
     "chats/history/page.tsx",
     "chats/new/page.tsx",
-    "chats/page.tsx"
+    "chats/page.tsx",
+    "threads/[threadId]/page.tsx"
   ],
   "manual": [
     "agents/[agentId]/setup/page.tsx",

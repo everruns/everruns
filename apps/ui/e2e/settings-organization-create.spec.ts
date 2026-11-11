@@ -102,7 +102,7 @@ test.describe("Settings > Organization create dialog", () => {
 
       // The dialog should render its heading and the name textbox.
       await expect(page.getByRole("heading", { name: "Create Organization" })).toBeVisible();
-      const nameInput = page.getByRole("textbox", { name: "Name" });
+      const nameInput = page.getByRole("textbox", { name: "Name", exact: true });
       await expect(nameInput).toBeVisible();
 
       // The dialog must be interactive, not merely mounted-but-hidden.

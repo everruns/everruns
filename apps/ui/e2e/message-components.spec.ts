@@ -18,27 +18,20 @@ test.describe("Chat Components Page", () => {
 
   test("should render the shared chat primitives", async ({ page }) => {
     await expect(page.getByText("Tool-heavy runtime scene", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Transcript-focused runtime scene", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("Transcript-focused runtime scene", { exact: true })).toBeVisible();
     await expect(page.getByText("Empty state and composer", { exact: true })).toBeVisible();
     await expect(page.getByText("/ship tighten the tool transcript UI")).toBeVisible();
     await expect(page.getByText("layout.png")).toBeVisible();
   });
 
-  test("should use self-contained attachment previews in the gallery", async ({
-    page,
-  }) => {
+  test("should use self-contained attachment previews in the gallery", async ({ page }) => {
     const uploadedPreview = page.locator('img[alt="layout.png"]');
     const uploadingPreview = page.locator('img[alt="sandbox-daytona.jpg"]');
 
     await expect(uploadedPreview).toBeVisible();
     await expect(uploadedPreview).toHaveAttribute("src", /data:image\/svg\+xml/);
     await expect(uploadingPreview).toBeVisible();
-    await expect(uploadingPreview).toHaveAttribute(
-      "src",
-      /data:image\/svg\+xml/,
-    );
+    await expect(uploadingPreview).toHaveAttribute("src", /data:image\/svg\+xml/);
   });
 });
 
@@ -64,9 +57,7 @@ test.describe("Dev Index Page", () => {
   test("should render developer tools index", async ({ page }) => {
     await page.goto("/dev");
 
-    await expect(
-      page.getByRole("heading", { name: "UI reference pages" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "UI reference pages" })).toBeVisible();
     await expect(
       page.getByText(
         "Development-only previews for the application’s canonical component styles and behaviors.",

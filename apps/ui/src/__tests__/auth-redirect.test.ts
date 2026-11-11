@@ -140,7 +140,7 @@ describe("getPostAuthTarget", () => {
     persistReturnTo("/settings/providers");
 
     expect(getPostAuthTarget("/invite/token123")).toBe("/invite/token123");
-    expect(getPostAuthTarget(null)).toBe("/chats");
+    expect(getPostAuthTarget(null)).toBe("/");
     expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
   });
 
@@ -152,7 +152,7 @@ describe("getPostAuthTarget", () => {
   });
 
   it("falls back to the landing surface when no safe target exists", () => {
-    expect(getPostAuthTarget("https://evil.com")).toBe("/chats");
+    expect(getPostAuthTarget("https://evil.com")).toBe("/");
   });
 });
 
@@ -230,7 +230,7 @@ describe("redirect boundary contracts", () => {
     expect(sessionStorage.getItem("unrelated")).toBe("keep");
     persistReturnTo("/settings");
     expect(getPostAuthTarget("https://evil.test")).toBe("/settings");
-    expect(getPostAuthTarget(null)).toBe("/chats");
+    expect(getPostAuthTarget(null)).toBe("/");
   });
 
   it("routes backend continuations without matching similar frontend paths", () => {

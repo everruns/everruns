@@ -8,6 +8,7 @@ let mockUser = { id: "user_fixture", name: "Alex Northstar", email: "alex@exampl
 const mockSave = jest.fn(async ({ name }: { name: string }) => {
   mockUser = { ...mockUser, name };
 });
+jest.mock("@/components/settings/layout-settings", () => ({ LayoutSettings: () => null }));
 jest.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: mockUser }) }));
 jest.mock("@/hooks/use-auth", () => ({
   useUpdateProfile: () => ({ mutateAsync: mockSave, isPending: false }),

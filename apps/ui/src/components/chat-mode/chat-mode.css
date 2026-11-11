@@ -1,17 +1,27 @@
+/* Five columns: classic sidebar | Chat | splitter | page | navigation rail.
+   Each layout sizes the ones it uses; there are no transitions, the layout
+   is a preference rather than a toggle (knowledge/ui/chat-mode.md). */
 .chat-mode-shell {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: clip;
-  grid-template-columns: 240px 0px minmax(0, 1fr) 0px;
-  transition: grid-template-columns 280ms ease-out;
+  --nav-width: 48px;
+  grid-template-columns: 240px 0px 0px minmax(0, 1fr) 0px;
 }
-.chat-mode-shell[data-chat-mode="open"] {
-  grid-template-columns: 0px min(600px, 44vw) minmax(0, 1fr) 48px;
+.chat-mode-shell[data-nav="expanded"] {
+  --nav-width: 240px;
 }
-.chat-mode-shell[data-chat-mode="chat"] {
-  grid-template-columns: 240px minmax(0, 1fr) 0px 0px;
+.chat-mode-shell[data-layout="classic-chat"] {
+  grid-template-columns: 240px minmax(0, 1fr) 0px 0px 0px;
 }
-.chat-mode-shell[data-chat-mode="chat"] .chat-mode-page {
+.chat-mode-shell[data-layout="beside"] {
+  grid-template-columns: 0px var(--chat-width) 7px minmax(0, 1fr) var(--nav-width);
+}
+.chat-mode-shell[data-layout="chat"] {
+  grid-template-columns: 0px minmax(0, 1fr) 0px 0px var(--nav-width);
+}
+.chat-mode-shell[data-layout="chat"] .chat-mode-page,
+.chat-mode-shell[data-layout="classic-chat"] .chat-mode-page {
   visibility: hidden;
 }
 .chat-mode-sidebar {
@@ -21,16 +31,6 @@
 .chat-mode-conversation {
   grid-column: 2;
   grid-row: 1;
-}
-.chat-mode-page {
-  grid-column: 3;
-  grid-row: 1;
-}
-.chat-mode-rail {
-  grid-column: 4;
-  grid-row: 1;
-}
-.chat-mode-conversation {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -38,10 +38,43 @@
 .chat-mode-conversation[hidden] {
   display: none;
 }
+.chat-mode-splitter {
+  grid-column: 3;
+  grid-row: 1;
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+/* Invisible until hovered, focused or dragged. */
+.chat-mode-splitter::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+}
+.chat-mode-splitter:hover::after,
+.chat-mode-splitter:focus-visible::after,
+.chat-mode-splitter[data-dragging]::after {
+  background: hsl(var(--primary));
+}
+.chat-mode-shell:has(.chat-mode-splitter[data-dragging]) {
+  cursor: col-resize;
+  user-select: none;
+}
+.chat-mode-page {
+  grid-column: 4;
+  grid-row: 1;
+}
 .chat-mode-rail {
+  grid-column: 5;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 .chat-mode-page {
   container-type: inline-size;
@@ -107,38 +140,20 @@
   }
 }
 @media (max-width: 767px) {
-  .chat-mode-shell {
-    grid-template-columns: 0px 0px minmax(0, 1fr) 0px;
+  .chat-mode-shell,
+  .chat-mode-shell[data-layout="classic-chat"] {
+    grid-template-columns: 0px 0px 0px minmax(0, 1fr) 0px;
     grid-template-rows: 48px minmax(0, 1fr);
+  }
+  .chat-mode-shell[data-layout="classic-chat"] {
+    grid-template-columns: 0px minmax(0, 1fr) 0px 0px 0px;
   }
   .chat-mode-sidebar {
     grid-column: 1 / -1;
     grid-row: 1;
   }
+  .chat-mode-conversation,
   .chat-mode-page {
-    grid-column: 3;
     grid-row: 2;
-  }
-  .chat-mode-shell[data-chat-mode="open"] {
-    grid-template-columns: 0px minmax(0, 1fr) 0px 48px;
-  }
-  .chat-mode-shell[data-chat-mode="chat"] {
-    grid-template-columns: 0px minmax(0, 1fr) 0px 0px;
-  }
-  .chat-mode-conversation {
-    grid-column: 2;
-    grid-row: 2;
-  }
-  .chat-mode-rail {
-    grid-column: 4;
-    grid-row: 2;
-  }
-  .chat-mode-shell[data-chat-mode="open"] .chat-mode-page {
-    visibility: hidden;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .chat-mode-shell {
-    transition: none;
   }
 }

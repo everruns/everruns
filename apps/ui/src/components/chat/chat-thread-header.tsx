@@ -158,10 +158,10 @@ export function ChatThreadHeader({
         variant="outline"
         size="sm"
         aria-label={ui("Open session")}
-        className="max-sm:w-7 max-sm:px-0"
+        className="max-sm:w-7 max-sm:px-0 @max-xl/chathead:w-7 @max-xl/chathead:px-0"
       >
         <ExternalLink className="size-4" />
-        <span className="max-sm:hidden">{ui("Open session")}</span>
+        <span className="max-sm:hidden @max-xl/chathead:hidden">{ui("Open session")}</span>
       </LinkButton>
       {extraActions}
     </>
@@ -190,7 +190,9 @@ export function ChatThreadHeader({
     );
   }
   return (
-    <div className="flex min-w-0 items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
+    // A named container: beside a page the chat pane is narrow, so action labels
+    // collapse to icons by the pane's width, not the viewport's.
+    <div className="@container/chathead flex min-w-0 items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
       <AgentAvatar name={counterpart} />
       <div className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-center gap-2">
