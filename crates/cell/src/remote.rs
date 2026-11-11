@@ -238,8 +238,17 @@ impl Remote {
     }
 
     /// `session` runs from `cell`.
+    ///
+    /// Decision: a session that moved drops its mirror. Applied indices
+    /// belong to one cell's log, so the old cell's index would make the new
+    /// cell's views look late and be ignored (found by the qualification
+    /// suite: a session moved back and forth stalled on a stale mirror).
     pub fn bind(&self, session: SessionId, cell: CellId) {
-        self.homes.lock().insert(session, cell);
+        let previous = self.homes.lock().insert(session, cell);
+        if previous.is_some_and(|previous| previous != cell) {
+            self.shared.state.write().sessions.remove(&session);
+            self.applied.lock().remove(&session);
+        }
     }
 
     /// The cell `session` runs from. Decision: a session nothing bound
