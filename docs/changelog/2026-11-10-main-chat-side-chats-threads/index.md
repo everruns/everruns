@@ -5,6 +5,7 @@ date: 2026-11-10
 kind: improvement
 significance: major
 products: [platform, cloud]
+release: "0.52.0"
 surfaces: [ui]
 links:
   docs: [/built-ins/harnesses/platform-chat/]

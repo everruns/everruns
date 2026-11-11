@@ -5,6 +5,7 @@ date: 2026-11-09
 kind: improvement
 significance: minor
 products: [framework]
+release: "0.52.0"
 surfaces: [code]
 links:
   docs: [/framework/advanced-capabilities/]

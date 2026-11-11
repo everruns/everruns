@@ -7,6 +7,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-11-11
+
+Changelog: https://everruns.com/docs/changelog/2026-11-11-everruns-0-52-0/
+
+### Highlights
+
+- **Rooms** - People and agents talk in one shared room. Agents wake when a message addresses them or is relevant to them, rooms keep versioned shared files, and the console shows the room live ([changelog](https://everruns.com/docs/changelog/2026-11-10-rooms/), [#5317](https://github.com/everruns/everruns/pull/5317), [#5326](https://github.com/everruns/everruns/pull/5326), [#5330](https://github.com/everruns/everruns/pull/5330), [#5342](https://github.com/everruns/everruns/pull/5342)).
+- **Main chat, side chats and threads** - Chat with an agent beside any page, branch side chats and threads off it, and choose a chat-first layout per person ([changelog](https://everruns.com/docs/changelog/2026-11-10-main-chat-side-chats-threads/), [#5322](https://github.com/everruns/everruns/pull/5322), [#5346](https://github.com/everruns/everruns/pull/5346)).
+- **Coding agents across several repositories (beta)** - One coding agent checks out several GitHub repositories, navigates code with language servers and structural search, and opens pull requests; pick repositories in agent settings and new chats, and review the Changes tab ([changelog](https://everruns.com/docs/changelog/2026-11-11-coding-agents-several-repositories/), [#5311](https://github.com/everruns/everruns/pull/5311), [#5307](https://github.com/everruns/everruns/pull/5307), [#5327](https://github.com/everruns/everruns/pull/5327), [#5329](https://github.com/everruns/everruns/pull/5329), [#5354](https://github.com/everruns/everruns/pull/5354)).
+- **Install on Kubernetes** - `everruns k8s up` installs Everruns into a cluster, the Helm chart upgrades several servers without downtime, `docker up --tunnel` gives a local instance a public address, and Slack connects over Socket Mode ([changelog](https://everruns.com/docs/changelog/2026-11-08-everruns-k8s-up/), [#5277](https://github.com/everruns/everruns/pull/5277), [#5275](https://github.com/everruns/everruns/pull/5275), [#5276](https://github.com/everruns/everruns/pull/5276), [#5279](https://github.com/everruns/everruns/pull/5279)).
+- **Work toward 75,000 agents begins** - We started the milestone of running 75,000 agents at once: workers admit turns by memory instead of fixed slots, turn paths read less from the database, and the first steps of a cell-based data plane landed ([changelog](https://everruns.com/docs/changelog/2026-11-06-workers-run-thousands-of-turns/), [#5245](https://github.com/everruns/everruns/pull/5245), [#5257](https://github.com/everruns/everruns/pull/5257), [#5320](https://github.com/everruns/everruns/pull/5320), [#5356](https://github.com/everruns/everruns/pull/5356)).
+- **Device-bound browser sessions** - In Chrome, a sign-in is bound to a key in the device's secure hardware, so a stolen session cookie stops working within minutes ([changelog](https://everruns.com/docs/changelog/2026-11-10-device-bound-sessions/), [#5338](https://github.com/everruns/everruns/pull/5338)).
+
+### Upgrade Notes
+
+- `POST /v1/orgs/{org}/members` now returns `403` unless the caller is a platform admin; add people with `POST /v1/orgs/{org}/invites` instead. Callers that name no organization land in the one the user joined first ([changelog](https://everruns.com/docs/changelog/2026-11-07-org-members-join-by-invitation/), [#5261](https://github.com/everruns/everruns/pull/5261)).
+
+### What's Changed
+
+- fix(slack): render agent Markdown on every Slack post, never broadcast ([#5358](https://github.com/everruns/everruns/pull/5358)) by [@chaliy](https://github.com/chaliy)
+- fix(release): treat a 0.0.0 bootstrap placeholder as not yet released in the audit ([#5359](https://github.com/everruns/everruns/pull/5359)) by [@chaliy](https://github.com/chaliy)
+- chore(deps-dev): bump oxfmt from 0.75.0 to 0.76.0 in /apps/ui ([#5351](https://github.com/everruns/everruns/pull/5351)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- fix(repositories): name the missing App permission on a refused push, add the changelog entry ([#5354](https://github.com/everruns/everruns/pull/5354)) by [@chaliy](https://github.com/chaliy)
+- feat(cell): data plane v2 step 6, one thin complete cell, qualified ([#5356](https://github.com/everruns/everruns/pull/5356)) by [@chaliy](https://github.com/chaliy)
+- chore(deps-dev): bump @tailwindcss/postcss from 4.3.3 to 4.3.4 in /apps/ui ([#5349](https://github.com/everruns/everruns/pull/5349)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- test(llm): retry the tool-reveal cache check once on a cache miss ([#5355](https://github.com/everruns/everruns/pull/5355)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the cargo group with 2 updates ([#5353](https://github.com/everruns/everruns/pull/5353)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump cron-parser from 5.10.2 to 5.10.3 in /apps/ui ([#5352](https://github.com/everruns/everruns/pull/5352)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump next from 16.4.2 to 16.4.5 in /apps/ui ([#5350](https://github.com/everruns/everruns/pull/5350)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump mermaid from 12.2.0 to 12.3.0 in /apps/docs ([#5348](https://github.com/everruns/everruns/pull/5348)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump the cargo group with 10 updates, hold arrow/parquet on 59 ([#5347](https://github.com/everruns/everruns/pull/5347)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump @astrojs/starlight from 0.42.7 to 0.42.8 in /apps/docs ([#5336](https://github.com/everruns/everruns/pull/5336)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump shiki from 4.5.0 to 4.6.0 in /apps/docs ([#5335](https://github.com/everruns/everruns/pull/5335)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump @astrojs/markdown-satteri from 0.4.5 to 0.4.6 in /apps/docs ([#5334](https://github.com/everruns/everruns/pull/5334)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- feat(cell): data plane v2 step 5, the cell on the Engine with its storage proof ([#5341](https://github.com/everruns/everruns/pull/5341)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump astro from 7.4.2 to 7.4.5 in /apps/docs ([#5333](https://github.com/everruns/everruns/pull/5333)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- chore(deps): bump marked from 18.1.2 to 18.1.3 in /apps/docs ([#5332](https://github.com/everruns/everruns/pull/5332)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- feat(ui): chat-first layout with a per-person layout preference ([#5346](https://github.com/everruns/everruns/pull/5346)) by [@chaliy](https://github.com/chaliy)
+- fix(local): transfer session layouts and inspect journals directly ([#5345](https://github.com/everruns/everruns/pull/5345)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit from 0.20.2 to 0.21.0 ([#5344](https://github.com/everruns/everruns/pull/5344)) by [@chaliy](https://github.com/chaliy)
+- fix(engine): preserve concurrent first-use keys and revisions ([#5343](https://github.com/everruns/everruns/pull/5343)) by [@chaliy](https://github.com/chaliy)
+- feat(rooms): wake agents on relevant messages, fall back to the agent's model ([#5342](https://github.com/everruns/everruns/pull/5342)) by [@chaliy](https://github.com/chaliy)
+- feat(coding): repositories in the console: agent settings, a picker for new chats and a Changes tab ([#5329](https://github.com/everruns/everruns/pull/5329)) by [@chaliy](https://github.com/chaliy)
+- docs: agent-first setup: everruns-install and everruns-api skills, automated skill sync ([#5340](https://github.com/everruns/everruns/pull/5340)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): device-bound browser sessions (DBSC) ([#5338](https://github.com/everruns/everruns/pull/5338)) by [@chaliy](https://github.com/chaliy)
+- feat(worker): gate the Engine lane locally and in CI, and fix what it found ([#5328](https://github.com/everruns/everruns/pull/5328)) by [@chaliy](https://github.com/chaliy)
+- docs(site): re-sync everruns.com header and footer ([#5339](https://github.com/everruns/everruns/pull/5339)) by [@chaliy](https://github.com/chaliy)
+- docs: present Everruns as a community project, demo as a demo instance ([#5331](https://github.com/everruns/everruns/pull/5331)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): rooms console, room recordings and Playground rooms ([#5330](https://github.com/everruns/everruns/pull/5330)) by [@chaliy](https://github.com/chaliy)
+- fix(coding): check out repositories on E2B and offer the push and pull request tools ([#5327](https://github.com/everruns/everruns/pull/5327)) by [@chaliy](https://github.com/chaliy)
+- feat(rooms): shared room files with every version kept, and room tools on the MCP server ([#5326](https://github.com/everruns/everruns/pull/5326)) by [@chaliy](https://github.com/chaliy)
+- feat(rooms): rooms where people and agents talk, and agents are woken by what addresses them ([#5317](https://github.com/everruns/everruns/pull/5317)) by [@chaliy](https://github.com/chaliy)
+- fix(server): stop integration tests relying on seeded catalog models ([#5325](https://github.com/everruns/everruns/pull/5325)) by [@chaliy](https://github.com/chaliy)
+- fix(hosting): isolate local session SQLite authorities ([#5323](https://github.com/everruns/everruns/pull/5323)) by [@chaliy](https://github.com/chaliy)
+- feat(worker): run platform sessions on the Everruns Engine (data plane v2 step 4) ([#5320](https://github.com/everruns/everruns/pull/5320)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): Main chat, side chats and threads, beside any page ([#5322](https://github.com/everruns/everruns/pull/5322)) by [@chaliy](https://github.com/chaliy)
+- fix(github): ask for Contents write on the App of an agent that pushes code ([#5324](https://github.com/everruns/everruns/pull/5324)) by [@chaliy](https://github.com/chaliy)
+- feat(core): agent continuation limits and a restarting completion-check window ([#5321](https://github.com/everruns/everruns/pull/5321)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): color, summary boxes, shown password, and destroy instead of reset ([#5318](https://github.com/everruns/everruns/pull/5318)) by [@chaliy](https://github.com/chaliy)
+- feat(models): list only connected providers and follow them for the default model ([#5319](https://github.com/everruns/everruns/pull/5319)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): give Tracing its own settings icon ([#5316](https://github.com/everruns/everruns/pull/5316)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): offer OpenRouter in `k8s up` and `docker up` ([#5315](https://github.com/everruns/everruns/pull/5315)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): inset provider card footer and align detail rows ([#5314](https://github.com/everruns/everruns/pull/5314)) by [@chaliy](https://github.com/chaliy)
+- chore(slack): drop the manual manifest validation workflow ([#5313](https://github.com/everruns/everruns/pull/5313)) by [@chaliy](https://github.com/chaliy)
+- Yolop stops cutting off long tasks at ten minutes ([#5312](https://github.com/everruns/everruns/pull/5312)) by [@chaliy](https://github.com/chaliy)
+- feat(coding): repositories capability and multi-repository coding harness (beta) ([#5311](https://github.com/everruns/everruns/pull/5311)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add an organization research model that agents can follow ([#5308](https://github.com/everruns/everruns/pull/5308)) by [@chaliy](https://github.com/chaliy)
+- feat(server): soft delete sessions ([#5310](https://github.com/everruns/everruns/pull/5310)) by [@chaliy](https://github.com/chaliy)
+- chore(durable): refresh the benchmark baseline from a three-run median on main ([#5309](https://github.com/everruns/everruns/pull/5309)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Muse Ember, Spark 1.1, Spark Open and Glimmer 30B profiles ([#5305](https://github.com/everruns/everruns/pull/5305)) by [@chaliy](https://github.com/chaliy)
+- chore: remove the OpenAI Agents API runtime backend ([#5306](https://github.com/everruns/everruns/pull/5306)) by [@chaliy](https://github.com/chaliy)
+- feat(coding): code navigation capabilities for sandbox sessions ([#5307](https://github.com/everruns/everruns/pull/5307)) by [@chaliy](https://github.com/chaliy)
+- fix(framework): corrections to data plane v2 steps 1 to 3 after the architecture review ([#5303](https://github.com/everruns/everruns/pull/5303)) by [@chaliy](https://github.com/chaliy)
+- chore: remove unused UI files and gate durable benchmarks on the median of three runs ([#5304](https://github.com/everruns/everruns/pull/5304)) by [@chaliy](https://github.com/chaliy)
+- chore: drop unused dependencies, repair dead doc links, unblock two weekly jobs ([#5301](https://github.com/everruns/everruns/pull/5301)) by [@chaliy](https://github.com/chaliy)
+- docs: replace unrunnable model examples in Fable 5.2 changelog and CLI docs ([#5302](https://github.com/everruns/everruns/pull/5302)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): record the 2026-11-09 capacity baseline for data plane v1 ([#5300](https://github.com/everruns/everruns/pull/5300)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Claude Fable 5.2 and Mythos 5.2 profiles ([#5299](https://github.com/everruns/everruns/pull/5299)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): agent definitions as data for data plane v2 (step 3) ([#5296](https://github.com/everruns/everruns/pull/5296)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): record coordinated yolop oauth refresh ([76ad9a049c](https://github.com/everruns/everruns/commit/76ad9a049c196a5a7e5364e65152ef5175da3d16)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): mark invisible controls in descriptive projections ([027c71a947](https://github.com/everruns/everruns/commit/027c71a94763573c0b2605d5a32de16566852b77)) by [@chaliy](https://github.com/chaliy)
+- fix(security): scrub cookies in exported command text ([#5298](https://github.com/everruns/everruns/pull/5298)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): trusted host extensions for data plane v2 (step 2) ([#5294](https://github.com/everruns/everruns/pull/5294)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): Engine hooks for data plane v2 (step 1) ([#5283](https://github.com/everruns/everruns/pull/5283)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): upgrade sqlite past wal memory disclosure ([#5293](https://github.com/everruns/everruns/pull/5293)) by [@chaliy](https://github.com/chaliy)
+- test(server): widen the supervisor restart test deadline ([#5292](https://github.com/everruns/everruns/pull/5292)) by [@chaliy](https://github.com/chaliy)
+- fix(everruns): keep input queued behind a cancelled turn ([#5291](https://github.com/everruns/everruns/pull/5291)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): native conversation checkpoint and rewind API ([#5289](https://github.com/everruns/everruns/pull/5289)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): attached control for running sessions ([#5288](https://github.com/everruns/everruns/pull/5288)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): session MCP readiness, probe and change watch ([#5287](https://github.com/everruns/everruns/pull/5287)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): ignore RUSTSEC-2026-0459 until sqlx allows libsqlite3-sys 0.39 ([#5290](https://github.com/everruns/everruns/pull/5290)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): narration hook for facade tools ([#5285](https://github.com/everruns/everruns/pull/5285)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): return post-cancel task state from cancel_task ([#5284](https://github.com/everruns/everruns/pull/5284)) by [@chaliy](https://github.com/chaliy)
+- ci: retry GitHub release downloads with a fixed delay ([#5286](https://github.com/everruns/everruns/pull/5286)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): data plane v2 design and protocol models (step 0) ([#5282](https://github.com/everruns/everruns/pull/5282)) by [@chaliy](https://github.com/chaliy)
+- perf(events): grouped appends stop reading payloads back; feed shares one event copy ([#5278](https://github.com/everruns/everruns/pull/5278)) by [@chaliy](https://github.com/chaliy)
+- chore(changelog): yolop names Rex tabs from session titles ([#5281](https://github.com/everruns/everruns/pull/5281)) by [@chaliy](https://github.com/chaliy)
+- fix(framework): report the log end through Engine's readers ([#5280](https://github.com/everruns/everruns/pull/5280)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): connect Slack channels over Socket Mode, no public address needed ([#5279](https://github.com/everruns/everruns/pull/5279)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): give a local instance a public address with docker up --tunnel ([#5276](https://github.com/everruns/everruns/pull/5276)) by [@chaliy](https://github.com/chaliy)
+- perf(live): plain NATS live delivery and session config reads from memory ([#5272](https://github.com/everruns/everruns/pull/5272)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): everruns k8s up installs Everruns into a Kubernetes cluster ([#5277](https://github.com/everruns/everruns/pull/5277)) by [@chaliy](https://github.com/chaliy)
+- fix(schedules): fire schedules in their own timezone ([#5274](https://github.com/everruns/everruns/pull/5274)) by [@chaliy](https://github.com/chaliy)
+- feat(helm): bring the chart to parity with the hosted EKS deployment ([#5275](https://github.com/everruns/everruns/pull/5275)) by [@chaliy](https://github.com/chaliy)
+- fix(security): bind A2A tasks to the verified caller; one health check per org ([#5273](https://github.com/everruns/everruns/pull/5273)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): add Slack team assistant example and channel guidance in authoring skill ([#5271](https://github.com/everruns/everruns/pull/5271)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): flag capabilities repeated from the harness and workspace pieces on chat harnesses ([#5270](https://github.com/everruns/everruns/pull/5270)) by [@chaliy](https://github.com/chaliy)
+- docs: move Request Signing from Operations to Features ([#5269](https://github.com/everruns/everruns/pull/5269)) by [@chaliy](https://github.com/chaliy)
+- perf(sessions): serve turn-path session reads from their owner and memory ([#5268](https://github.com/everruns/everruns/pull/5268)) by [@chaliy](https://github.com/chaliy)
+- perf(core): long-session turns read from the newest checkpoint and the log's end ([#5267](https://github.com/everruns/everruns/pull/5267)) by [@chaliy](https://github.com/chaliy)
+- docs(mcp): document yolop readiness budget ([#5266](https://github.com/everruns/everruns/pull/5266)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): add optional interactive discovery readiness budgets ([#5265](https://github.com/everruns/everruns/pull/5265)) by [@chaliy](https://github.com/chaliy)
+- fix(tracing): measure organization decision calls ([#5264](https://github.com/everruns/everruns/pull/5264)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): note native patch line-ending preservation ([#5263](https://github.com/everruns/everruns/pull/5263)) by [@chaliy](https://github.com/chaliy)
+- perf(events): store a group of event appends in one statement ([#5262](https://github.com/everruns/everruns/pull/5262)) by [@chaliy](https://github.com/chaliy)
+- fix(security): close the 2026-11 audit's medium findings ([#5261](https://github.com/everruns/everruns/pull/5261)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): preserve session deletion during rolling upgrades ([#5260](https://github.com/everruns/everruns/pull/5260)) by [@chaliy](https://github.com/chaliy)
+- test(server): retry a lost port race when starting the NATS test broker ([#5259](https://github.com/everruns/everruns/pull/5259)) by [@chaliy](https://github.com/chaliy)
+- ci: give the workflow test build 45 minutes for cold caches ([#5258](https://github.com/everruns/everruns/pull/5258)) by [@chaliy](https://github.com/chaliy)
+- perf: 8k-agent budget in the stress bench, and the first cheap per-turn cuts ([#5257](https://github.com/everruns/everruns/pull/5257)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): keep declarative MCP sign-ins on their own server ([#5256](https://github.com/everruns/everruns/pull/5256)) by [@chaliy](https://github.com/chaliy)
+- fix(server): lock lease rows in order when renewing a batch; count lost work in the stress bench ([#5255](https://github.com/everruns/everruns/pull/5255)) by [@chaliy](https://github.com/chaliy)
+- fix(server): keep worker gRPC connections open under bursts of small calls ([#5254](https://github.com/everruns/everruns/pull/5254)) by [@chaliy](https://github.com/chaliy)
+- feat(tracing): record durable human wait spans ([#5253](https://github.com/everruns/everruns/pull/5253)) by [@chaliy](https://github.com/chaliy)
+- docs(yolop): explain Linux download compatibility hotfix ([#5250](https://github.com/everruns/everruns/pull/5250)) by [@chaliy](https://github.com/chaliy)
+- test(server): prove completion-wait wakeups without a wall clock ([#5252](https://github.com/everruns/everruns/pull/5252)) by [@chaliy](https://github.com/chaliy)
+- fix(durable-object): ship qualification secret with first Worker version ([#5251](https://github.com/everruns/everruns/pull/5251)) by [@chaliy](https://github.com/chaliy)
+- fix(models): normalize model ids so a model listed under another spelling is not reported missing ([#5249](https://github.com/everruns/everruns/pull/5249)) by [@chaliy](https://github.com/chaliy)
+- fix(core): in-process resume completes a turn that already answered ([#5248](https://github.com/everruns/everruns/pull/5248)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): cover Yolop OAuth resource continuity ([#5246](https://github.com/everruns/everruns/pull/5246)) by [@chaliy](https://github.com/chaliy)
+- feat(reactions): acknowledge Slack messages with 👀/✅ by default ([#5247](https://github.com/everruns/everruns/pull/5247)) by [@chaliy](https://github.com/chaliy)
+- feat(worker): admit turns by memory and runtime lag, not task slots ([#5245](https://github.com/everruns/everruns/pull/5245)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.52.0. `everruns-coding` (code navigation for coding agents) is published for the first time.
+
 ## [0.51.0] - 2026-11-05
 
 Changelog: https://everruns.com/docs/changelog/2026-11-05-everruns-0-51-0/

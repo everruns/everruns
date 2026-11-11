@@ -5,6 +5,7 @@ date: 2026-11-07
 kind: breaking
 significance: notable
 products: [platform, cloud]
+release: "0.52.0"
 surfaces: [api, agent]
 links:
   docs: [/features/ui/]

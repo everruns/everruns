@@ -5,6 +5,7 @@ date: 2026-11-08
 kind: feature
 significance: minor
 products: [platform]
+release: "0.52.0"
 surfaces: [ui, api]
 links:
   docs: [/capabilities/slack/#socket-mode-or-request-url]

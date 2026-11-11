@@ -5,6 +5,7 @@ date: 2026-11-11
 kind: fix
 significance: minor
 products: [platform, cloud, framework]
+release: "0.52.0"
 surfaces: [api, code]
 links:
   docs: [/capabilities/slack/]

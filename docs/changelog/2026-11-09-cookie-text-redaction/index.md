@@ -5,6 +5,7 @@ date: 2026-11-09
 kind: fix
 significance: minor
 products: [platform]
+release: "0.52.0"
 surfaces: [api]
 ---
 

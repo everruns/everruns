@@ -5,6 +5,7 @@ date: 2026-11-11
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.52.0"
 surfaces: [ui, api]
 links:
   docs: [/capabilities/repositories/, /capabilities/code-navigation/]

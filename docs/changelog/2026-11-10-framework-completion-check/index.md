@@ -5,6 +5,7 @@ date: 2026-11-10
 kind: improvement
 significance: minor
 products: [framework, platform, cloud]
+release: "0.52.0"
 surfaces: [code]
 links:
   docs: [/features/agent-triggers/#completion-check]

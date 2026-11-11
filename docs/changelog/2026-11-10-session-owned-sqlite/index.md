@@ -5,6 +5,7 @@ date: 2026-11-10
 kind: fix
 significance: notable
 products: [yolop, framework]
+release: "0.52.0"
 surfaces: [cli, code]
 links:
   docs: [/framework/hosting/#sqlite-per-session]

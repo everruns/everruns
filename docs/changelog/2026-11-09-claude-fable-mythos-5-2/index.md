@@ -5,6 +5,7 @@ date: 2026-11-09
 kind: feature
 significance: minor
 products: [platform, cloud, framework]
+release: "0.52.0"
 surfaces: [api, ui]
 links:
   docs: [/providers/anthropic/]
