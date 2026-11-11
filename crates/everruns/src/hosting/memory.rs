@@ -860,6 +860,16 @@ impl SessionActorStore for Ports {
         }
         Ok(Some(renewal))
     }
+    async fn record_actor_progress(&self, id: SessionId, holder: &str, fence: u64) -> Result<bool> {
+        self.session.counts.count(Op::Write);
+        self.scope(id)?;
+        let mut state = self.session.control.lock().await;
+        if !state.owns(holder, fence) {
+            return Ok(false);
+        }
+        state.attempts = 1;
+        Ok(true)
+    }
     async fn release_actor(
         &self,
         id: SessionId,

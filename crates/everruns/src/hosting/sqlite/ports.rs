@@ -150,6 +150,22 @@ impl SessionActorStore for Ports {
             }))
         })
     }
+    async fn record_actor_progress(
+        &self,
+        session: SessionId,
+        holder: &str,
+        fence: u64,
+    ) -> Result<bool> {
+        self.scope(session)?;
+        self.hosting.transaction(session, |_, state| {
+            state.binding(session)?;
+            if !state.owns(holder, fence) {
+                return Ok(false);
+            }
+            state.attempts = 1;
+            Ok(true)
+        })
+    }
     async fn release_actor(
         &self,
         session: SessionId,

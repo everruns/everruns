@@ -1,0 +1,16 @@
+[package]
+name = "everruns-cell-example-assistant"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[dependencies]
+everruns-cell = { path = "../../crates/cell" }
+everruns = { path = "../../crates/everruns", features = ["openai"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+anyhow.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

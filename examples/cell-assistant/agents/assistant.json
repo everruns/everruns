@@ -1,0 +1,13 @@
+{
+  "name": "assistant",
+  "instructions": "You are a concise assistant. Use utc_now for anything about the time.",
+  "model": { "provider": "openai", "model": "gpt-6.1-sol" },
+  "tools": [
+    {
+      "type": "client_side",
+      "name": "utc_now",
+      "description": "The current UTC time, RFC 3339.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  ]
+}

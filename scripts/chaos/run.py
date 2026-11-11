@@ -186,6 +186,12 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
                 "system_prompt": "You are a load-test agent.",
                 "default_model_id": model_ids["instant"],
                 "capabilities": caps,
+                # Real agents carry starter files, read-only ones included;
+                # the Engine lane once failed every activation on one.
+                "initial_files": [
+                    {"path": "/handbook/index.md", "content": "# Handbook\n", "is_readonly": True},
+                    {"path": "/notes.md", "content": "notes\n"},
+                ],
             },
         )
         agents[key] = r["id"]

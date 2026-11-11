@@ -60,10 +60,20 @@ test.describe("channel budget refusal", () => {
     "Requires PLAYWRIGHT_REAL_API_URL and DATABASE_URL for the real PostgreSQL-backed server.",
   );
 
+  // The agent page keeps a session event stream open through the proxy route,
+  // so its `route.fetch` never finishes; drop it instead of failing the test.
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  });
+
   test("shows the cap whose stable ID appears in a real refusal", async ({
     page,
     request,
   }, testInfo) => {
+    // The UI runs under `next dev`: the agent page and the channel page each
+    // compile on first visit, which on a CI runner beside the server, worker
+    // and PostgreSQL takes 15 to 20 s apiece.
+    test.setTimeout(120_000);
     const suffix = randomUUID();
     const provider = await jsonResponse<{ id: string }>(
       await request.post(`${apiBaseUrl}/api/v1/providers`, {
@@ -243,7 +253,9 @@ test.describe("channel budget refusal", () => {
     // A legacy schedule channel is a row in the Triggers table that opens the
     // channel's own page, where its spending cap lives.
     await page.getByRole("link", { name: "Every hour", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${agent.id}/channels/${channelId}$`));
+    await expect(page).toHaveURL(new RegExp(`/agents/${agent.id}/channels/${channelId}$`), {
+      timeout: 45_000,
+    });
 
     const channelBudgetPanel = page
       .getByRole("heading", { name: "Shared pool", exact: true })

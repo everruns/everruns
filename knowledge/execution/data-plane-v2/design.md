@@ -1041,6 +1041,172 @@ first runs found two gaps, now fixed: the session state never reached the
 control plane (sessions stayed "running", tool approvals never paused),
 and live deltas never left the worker (chat showed no typing).
 
+### Step 5 progress (2026-11-10)
+
+funout `0a0c0ec` is ported into `crates/cell` and `crates/cell-testkit`
+against today's Engine: the cell is an `AgentDefinitions` and
+`SessionHosting` profile, definitions travel with their sessions, and the
+fleet scripts (`scripts/cell/`) and a real-model example
+(`examples/cell-assistant`) came along. The storage proof came first, as
+the storage decision below requires. What it checks and what it found:
+
+- **Kill run** (`scripts/cell/chaos.py --cells 2 --sessions 300 --moves
+  100`): `kill -9` of nodes, leaders included, while sessions run 3 to 5
+  tool turns and move live between cells; then every session's log is
+  checked. The first run failed 6 of 300 sessions: three node kills inside
+  one turn tripped the Engine's poison guard, which counted holder deaths
+  even when every lease moved the turn on. The guard now counts deaths
+  without progress
+  ([durable execution engine](../../operations/durable-execution-engine.md),
+  "Poison guard"). Since then 4 of 4 runs pass: 900 to 1 500 turns, up to
+  17 kills (6 of a leader), up to 51 live moves, no tool ran twice.
+- **Log crash tests** (`crates/cell/src/wal_tests.rs`): seeded crashes with
+  torn tails and garbage, and named crash points inside truncation, roll
+  and purge. They found a data-loss bug: truncation deleted the segments
+  before renaming the rewritten log in, so a crash between the two left
+  the node with an empty log. A rewrite now commits by a rename and open
+  finishes it. A tear before the active segment now refuses to open rather
+  than hand Raft a log with a hole. The log and the state machine also pass
+  openraft's own storage suite.
+- **Cell simulation** (`crates/cell/tests/raft_simulation.rs`): three real
+  nodes (log, state machine, openraft) over an in-memory network that
+  drops, delays and partitions messages, with nodes killed and restarted
+  from disk and snapshots every 40 entries. 12 seeds per run, about 400
+  writes each, 5 to 13 kills and 4 to 10 terms per seed: every
+  acknowledged write is on every node, the nodes agree, nothing unwritten
+  appears, and no node ever follows an older leader than it followed
+  before. (Not "one leader per term": openraft 0.9 without
+  `single-term-leader` lets two candidates win one term, the higher node
+  id taking over, and a loaded machine makes that happen.)
+- **Placement generations** (`crates/cell/src/state.rs`,
+  `state_moves_tests.rs`): moves now follow the `Moves` model. A session's
+  copy carries a generation that only grows; an imported copy is prepared
+  and runs nothing until the directory commits its generation over the
+  previous one (a compare-and-swap that is the ownership transfer); a cell
+  keeps a tombstone of the last generation that left it, so a late import
+  can't revive a stale copy; a forward drops only the copy it took the
+  image from; an abandoned move takes the session back two generations up,
+  and a prepared copy the directory never committed is dropped. The kill
+  run with 300 sessions, 12 kills (7 of a leader) and 48 live moves passes.
+- **Log shipping** (`crates/cell/src/ship.rs`): the leader ships committed
+  entries to the object store every second, a new leader resumes after
+  the highest shipped index, and new sessions and input wait (callers see
+  a frozen session and retry) while shipping is more than 5 s behind.
+  Restore rebuilds a cell from the newest archived snapshot plus the
+  shipped log after it, and refuses a log with a hole. The cell simulation
+  now ships while the faults run, then loses every node at once and
+  restores from the store: on all 12 seeds every acknowledged write the
+  shipper had reached is in the rebuilt state. Still to come with plan
+  step 9: incarnations for a rebuilt cell, shipping before an at-most-once
+  tool runs, and retention tied to restore points.
+- **Epochs and fencing model** (`Epochs` in [models.md](models.md)): the
+  cell authority's claim, append, progress and release rules, with
+  executors restarting under the same name, late and duplicated messages,
+  and a proposer clock that can move back. It holds the journal to one
+  writer and the poison guard to "seal after exactly K deaths without
+  progress". Three bug configurations keep failing: fencing by holder name,
+  the guard before the fix, and progress reports accepted from any epoch.
+- **Spend allowances** (`crates/cell/src/allowance.rs`, the `Grants`
+  model): grants per tenant live in replicated cell state, so every
+  replica and a new leader agree on what was spent. The cell plugs into
+  the budget gate Engine already has (the host's budget authority), with
+  no platform ids in the agent model: before each provider call it
+  reserves the grant's per-call maximum, a call that doesn't fit never
+  starts and the turn ends as budget exhausted, and each `llm.generation`
+  event settles the reservation at its real cost (anything above counts
+  as an overrun). A reservation left open by an executor that died counts
+  as spent at its maximum when the next epoch claims the session. Grants
+  come in through the cell API for now (`/cell/tenants/{tenant}/grants`);
+  the control plane endpoint and a per-model maximum (price times prompt
+  and `max_tokens`) are plan step 7. An end-to-end test runs a real cell
+  node: a tenant that can't cover one call gets no model call, one that
+  can runs the whole turn, and the ledger closes every reservation. Three
+  holes are closed: a session that moves out closes its leaving copy's
+  open reservation at its maximum; a metered session in a cell with no
+  grant for its tenant is exhausted, not unmetered; and a budget check the
+  cell can't answer (after retrying through a leader change for about
+  5 s) stops the call, because Engine's gate lets a call run when the
+  check errors.
+- **Protocol simulation** (`crates/cell/tests/protocol_simulation.rs`):
+  three cells and a directory as real `CellState`s, with executors,
+  clients, a rebalancer and move drivers that run the node's own move
+  rules (now pure functions in `crates/cell/src/moves.rs`). One network
+  delays, reorders, duplicates and drops every command and reply;
+  executors and drivers die mid-step; proposers' clocks lag by up to a
+  lease. Nothing reads the wall clock, so a seed replays exactly, and each
+  of 40 seeds runs twice and must end the same. It checks the models'
+  invariants at every step (one live copy, the one the directory names;
+  writes only from growing epochs; reservations only for sessions the
+  cell holds, never over the grant) and, after the faults stop, that every
+  acknowledged write survived. About 3 300 moves per run. It found three
+  move bugs the kill runs had missed, each fixed with a rule in
+  `state.rs` and a failing check when the rule is taken out: a late freeze
+  could retarget a move the directory had already committed, and the next
+  driver thawed the leaving copy while the target ran the session; a late
+  thaw of an earlier freeze did the same; and a write from an epoch the
+  driver's clock called expired could land after the copy was taken and
+  be lost. A move now ends the epoch through the log (`Revoke`) before it
+  copies the session, never retargets, and thaws only the freeze it names.
+
+- **Follower catch-up** (`scripts/cell/prove_follower_catchup.py`): the
+  first 75 000-session run (2 cells, 3 nodes each, one 15 GB machine)
+  created every session in about 20 s and ran about 210 turns/s, until
+  the machine ran out of memory and killed one cell's leader. That cell
+  never committed again: its other follower was behind the purged log,
+  so it could only catch up by snapshot (about 150 MB), each chunk sent
+  as JSON took longer than the 0.4 to 0.8 s election timeout, and the
+  follower kept calling elections that cancelled its own catch-up (about
+  2 900 terms in 1.5 hours). Snapshot chunks now travel as raw bytes in
+  16 MiB pieces and elections wait 1 to 2 s. The script makes the case on
+  purpose: it pauses one follower until the leader's log has moved past
+  it, resumes it, and kills the other follower; the cell must catch up
+  and complete a turn. With 42 000 sessions in the cell (what each cell
+  held in the 75 000 run) the old transport never elected a leader in
+  180 s; the new one caught up in 9.9 s and completed a turn at 10 s.
+  With 20 000 sessions both pass (9.5 s old, 7.4 s new), so the test runs
+  at the larger size.
+  Writing it found one more: a gateway try could outlast the whole call,
+  so a member that accepts connections but never answers blocked every
+  request. Each try now gets at most 10 s of a 45 s call.
+- **75 000 sessions** (`scripts/cell/many_sessions.py --concurrency
+  1000`; 2 cells of 3 nodes, all six on one machine with 14 GB for
+  everything, a simulated model with 50 ms per step): 75 000 sessions of
+  the tool-calling `worker` agent, 2 turns each, 150 000 turns in 16
+  minutes at 240 turns/s, 0 errors. Turn p50 4.0 s and p99 11.2 s with
+  1 000 turns in flight; admission p50 179 ms. The check reads every
+  session back: every message completed exactly once, sequences dense,
+  and no tool ran without its durable `tool.started` (150 135 of each:
+  135 steps ran again, each under its own durable start). Node memory:
+  median 1.1 GB, p90 1.5 GB, one sample at 3.1 GB during a snapshot;
+  1.2 to 1.6 GB at the end. The run before this one put two nodes out of
+  memory, and measuring one cell at 37 000 sessions showed two causes,
+  both fixed: the snapshot trigger counted the log tail kept for lagging
+  followers, which alone passed it, so a node copied the whole cell
+  (about 110 MB) every few seconds even when idle; and that tail (2 048
+  entries, kept parsed in memory at about four times their encoded size)
+  held about 500 MB per node. The trigger now counts only the log since
+  the last snapshot and the tail defaults to 256 entries (`node.rs`
+  says why): idle memory went from about 1.8 to 1.2 GB per node and peaks
+  from 2.6 to 1.6 GB, at the same throughput. A stored snapshot is now a
+  metadata line and the state as it is, not the state escaped inside a
+  JSON document, which also dropped three more copies of it from every
+  build. Serving the kept tail from the segment files instead of memory
+  is a follow-up.
+- **Long sessions** (`scripts/cell/scale.py --cells 1 --sessions 40
+  --turns 5000 --agent chat --concurrency 40`, one cell of 3 nodes on the
+  same machine): 200 000 turns at 204 turns/s, 0 errors. Median turn by
+  tenth of each session's turns: 151 ms in the first tenth (empty
+  history), then 180, 196, 179, 176, 176, 176, 171, 176 and 173 ms, so
+  after the first tenth it holds within 9% of the second. Admission p50
+  14 ms, p99 36 ms. At the end the leader held 2.1 GB and the followers
+  1.1 GB; what the leader's extra gigabyte is with only 40 sessions is
+  not broken down yet.
+
+Still open in step 5: running the whole node (openraft, the log, the
+object store) under a simulated runtime with crash points, so the Raft
+simulation replays bit for bit too; the protocol simulation covers the
+layer above it.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

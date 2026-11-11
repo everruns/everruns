@@ -324,6 +324,23 @@ pub trait SessionActorStore: Send + Sync {
         consumed_inbox_seq: i64,
     ) -> Result<ActorRelease>;
 
+    /// `holder`'s turn made progress after a holder died: a step that started
+    /// on this lease was stored. Count the poison guard's attempts from this
+    /// lease again (attempts = 1), so a turn whose holders die for reasons of
+    /// their own (node kills, deploys) is sealed only when it stops making
+    /// progress, as its seal message says. Called once per lease, and only
+    /// on a lease after a death (`attempts > 1`), so a healthy turn never
+    /// pays for it. `false` when the lease is lost. The default keeps
+    /// counting every lease since the last release.
+    async fn record_actor_progress(
+        &self,
+        _session_id: SessionId,
+        _holder: &str,
+        _fence: u64,
+    ) -> Result<bool> {
+        Ok(true)
+    }
+
     /// Hand the lease back mid-turn, between steps, leaving the actor
     /// runnable so the next lease resumes the open turn from the log at once
     /// (a draining holder). `None` when this store cannot: the holder then
